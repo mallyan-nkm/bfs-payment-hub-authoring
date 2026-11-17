@@ -193,3 +193,45 @@ describe('running and exporting', () => {
     expect([200, 503]).toContain(r.status);
   });
 });
+
+describe('scripts-behind and samples', () => {
+  const ACT = {
+    kind: 'activity', name: 'p.enrich.blackbox-note.v1', release: '1.0.0', title: 'Note', type: 'enrich', reads: ['header'], writes: ['facts.note'],
+    outcomes: [{ name: 'done', primary: true }], effect: 'pure', implementation: { binding: 'script', language: 'typescript', script: 'scripts/p.enrich.blackbox-note.v1.ts' },
+  };
+  const SRC = "export async function run({ ctx }) {\n  ctx.facts = { ...(ctx.facts ?? {}), note: { seen: ctx.header.paymentId } };\n  return 'done';\n}\n";
+
+  it('saves a script for an activity draft, and refuses one for no draft, a wrong role or a forbidden call', async () => {
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: SRC })).status).toBe(409); // no draft yet
+    expect((await post('/api/drafts', { tenant: 'owner', actor: 'shared.designer', doc: ACT })).status).toBe(200);
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.auditor', activity: ACT.name, source: SRC })).status).toBe(409);
+    const bad = await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: 'export async function run() { return Date.now() ? "done" : "done"; }' });
+    expect(bad.status).toBe(409);
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: 'export const x = 1;' })).body.error).toContain('run');
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, language: 'python', source: 'x = 1' })).status).toBe(409); // declared typescript
+    const ok = await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: SRC });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(env.scripts.find(ACT.name)?.source).toBe(SRC);
+    const audit = (await get('/api/audit?tenant=owner')).body;
+    expect(audit.some((a: any) => a.action === 'save-script' && a.outcome === 'refused')).toBe(true);
+  });
+
+  it('runs the saved script, and fixes it once the activity is published', async () => {
+    const key = (await get('/api/drafts?tenant=owner')).body.find((d: any) => d.name === ACT.name).key;
+    await post('/api/review', { tenant: 'owner', actor: 'shared.designer', key });
+    expect((await post('/api/publish', { tenant: 'owner', key, checker: 'shared.checker' })).status).toBe(200);
+    const r = await post('/api/bench/run', { target: ACT.name, context: { header: { paymentId: 'P-9' } } });
+    expect(r.body.outcome, JSON.stringify(r.body).slice(0, 400)).toBe('done');
+    expect(JSON.stringify(r.body)).toContain('"seen":"P-9"'); // the script ran, not the reference behaviour
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: SRC })).status).toBe(409);
+  });
+
+  it('saves a sample a test can name, and refuses a bad name or a factory name', async () => {
+    const ok = await post('/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'blackbox-file.csv', content: 'H,1\n' });
+    expect(ok.body.sample).toBe('samples/blackbox-file.csv');
+    expect((await get('/api/samples')).body).toContain('samples/blackbox-file.csv');
+    expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'Bad Name.csv', content: 'x' })).status).toBe(409);
+    expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'wps-sif-valid.sif', content: 'x' })).status).toBe(409);
+    expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.auditor', name: 'x.csv', content: 'x' })).status).toBe(409);
+  });
+});

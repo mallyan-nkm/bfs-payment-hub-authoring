@@ -18,11 +18,14 @@ export interface StudioEnv extends RunnerEnv {
 }
 
 export function openEnv(opts: { dataRoot?: string } = {}): StudioEnv {
-  const store = Store.open(SPEC_ROOT, opts.dataRoot ?? DATA_ROOT);
+  const dataRoot = opts.dataRoot ?? DATA_ROOT;
+  const store = Store.open(SPEC_ROOT, dataRoot);
+  // Scripts and samples a designer writes live in the workspace, after the factory's own.
+  const ws = (sub: string) => (dataRoot ? [path.join(path.resolve(dataRoot), sub)] : []);
   return {
     store,
-    scripts: new ScriptRegistry([path.join(STUDIO_ROOT, 'scripts')]),
-    samplesDirs: [path.join(STUDIO_ROOT, 'fixtures', 'samples')],
+    scripts: new ScriptRegistry([path.join(STUDIO_ROOT, 'scripts'), ...ws('scripts')]),
+    samplesDirs: [path.join(STUDIO_ROOT, 'fixtures', 'samples'), ...ws('samples')],
     schemas: new SchemaValidator(path.join(SPEC_ROOT, 'schemas')),
     specRoot: SPEC_ROOT,
     studioRoot: STUDIO_ROOT,

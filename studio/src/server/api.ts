@@ -14,6 +14,7 @@ import { runGates } from '../ai/gates.js';
 import { assistantConfigured, draft } from '../ai/assistant.js';
 import { modelOf } from '../core/model.js';
 import { typescriptTypes, pythonTypes } from '../core/types.js';
+import * as authoring from '../governance/authoring.js';
 import { CodeRegistry, RegistryError } from '../core/registry.js';
 import { expandWorkflow } from '../core/expand.js';
 import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
@@ -393,6 +394,8 @@ route('POST', '/api/bench/run', async (env, req) => {
 
 route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => !req.query.port || s.doc.port === req.query.port).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
 
+route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: req.body?.actor, activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
+route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: req.body?.actor, name: req.body?.name, content: req.body?.content }));
 route('GET', '/api/samples', (env) => {
   const fs = require_fs();
   const out: string[] = [];
