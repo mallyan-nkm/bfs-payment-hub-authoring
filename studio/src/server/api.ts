@@ -485,9 +485,9 @@ route('POST', '/api/supersessions/test', async (env, req) => {
 // ------------------------------------------------------------------ export
 
 route('POST', '/api/export', (env, req) => {
-  const { workflows, target, tenant } = req.body ?? {};
+  const { workflows, target, tenant, withSimulators } = req.body ?? {};
   if (!Array.isArray(workflows) || !workflows.length) throw new HttpError(400, 'Name at least one workflow: { workflows: [...], target }');
-  const pkg = exportOr400(() => exportPackage(env, { workflows, target: (target ?? 'temporal') as Target, tenant: tenant && tenant !== OWNER_TENANT ? tenant : undefined }));
+  const pkg = exportOr400(() => exportPackage(env, { workflows, target: (target ?? 'temporal') as Target, tenant: tenant && tenant !== OWNER_TENANT ? tenant : undefined, withSimulators: !!withSimulators }));
   return { manifest: pkg.manifest, issues: pkg.issues, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, v.length])), preview: Object.fromEntries(Object.entries(pkg.files).filter(([k]) => k.endsWith('.bpmn20.xml') || k === 'manifest.yaml' || k.startsWith('workflows/') || k === 'portability.json').slice(0, 12)) };
 });
 

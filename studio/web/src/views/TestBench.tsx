@@ -148,6 +148,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
   const [input, setInput] = useState<'context' | 'inbound'>('context');
   const [context, setContext] = useState('{\n  "header": { "paymentId": "P-1", "endToEndId": "E2E-1" }\n}');
   const [inbound, setInbound] = useState('');
+  const [message, setMessage] = useState('');
   const [expect, setExpect] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -158,6 +159,13 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
     return r.flatMap((x) => x.items).filter((i: Summary) => i.status === 'published') as Summary[];
   }, [tenant]);
   const ports = useLoad(() => get('/api/catalogue?kind=port').then((r) => r.items as Summary[]), [tenant]);
+  // The start messages of every scheme's dispatch table: a file from the bank's channel runs as a
+  // payment end to end when the bench names the message it is (R-07-14).
+  const startMessages = useLoad(async () => {
+    const schemes = (await get('/api/schemes')) as { scope: string }[];
+    const docs = await Promise.all(schemes.map((s) => get(`/api/schemes/${s.scope}`)));
+    return docs.flatMap((d: any) => (d.scheme?.messages ?? []).filter((m: any) => m.disposition?.start).map((m: any) => ({ id: m.id as string, leg: m.disposition.start.leg as string })));
+  }, [tenant]);
   const samples = useLoad(() => get<string[]>('/api/samples'), []);
   const simsByPort = useSimulators(bench.map((b) => b.port));
 
@@ -193,12 +201,14 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
         signals: signals.filter((s) => s.signal && s.at).map((s) => ({ signal: s.signal, at: s.at })),
         context: input === 'context' ? ctx : undefined,
         inbound: input === 'inbound' && inbound ? inbound : undefined,
+        message: input === 'inbound' && inbound && message ? message : undefined,
         expect: exp,
       };
       const r = await post<TestRunReport>('/api/bench/run', body, tenant);
       const given: any = {};
       if (body.context) given.context = body.context;
       if (body.inbound) given.inbound = body.inbound;
+      if (body.message) given.message = body.message;
       if (body.signals.length) given.signals = body.signals;
       onReport(r, { target, level: r.level, evaluationDate: date, tenant: runTenant !== 'owner' ? runTenant : undefined, bench: body.bench, given });
     } catch (e: any) {
@@ -296,10 +306,19 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       {input === 'context' ? (
         <textarea className="code-input" rows={8} value={context} onChange={(e) => setContext(e.target.value)} spellCheck={false} aria-label="Context JSON" />
       ) : (
-        <select value={inbound} onChange={(e) => setInbound(e.target.value)} aria-label="Inbound sample">
-          <option value="">Choose a sample</option>
-          {(samples.data ?? []).map((s) => <option key={s}>{s}</option>)}
-        </select>
+        <div className="stack">
+          <select value={inbound} onChange={(e) => setInbound(e.target.value)} aria-label="Inbound sample">
+            <option value="">Choose a sample</option>
+            {(samples.data ?? []).map((s) => <option key={s}>{s}</option>)}
+          </select>
+          <label className="field">
+            <span>Start message (for a whole payment from the bank's channel)</span>
+            <select value={message} onChange={(e) => setMessage(e.target.value)} aria-label="Start message">
+              <option value="">None: an inward simulator sends it, or the leg starts alone</option>
+              {(startMessages.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.id} (starts {m.leg})</option>)}
+            </select>
+          </label>
+        </div>
       )}
       <h4>Expect (optional)</h4>
       <textarea className="code-input" rows={4} value={expect} onChange={(e) => setExpect(e.target.value)} spellCheck={false} placeholder='{ "outcome": "settled", "attempts": { "send": 3 } }' aria-label="Expectation JSON" />
@@ -386,7 +405,7 @@ function SaveAsTest({ report, source }: { report: TestRunReport; source?: any })
     setMsg(undefined);
     try {
       const g = source.given ?? {};
-      setCheck(await post<TestRunReport>('/api/bench/run', { target: source.target, level: source.level, evaluationDate: source.evaluationDate, tenant: source.tenant, bench: source.bench, context: g.context, inbound: g.inbound, signals: g.signals, expect: expect() }));
+      setCheck(await post<TestRunReport>('/api/bench/run', { target: source.target, level: source.level, evaluationDate: source.evaluationDate, tenant: source.tenant, bench: source.bench, context: g.context, inbound: g.inbound, message: g.message, signals: g.signals, expect: expect() }));
     } catch (e: any) {
       setMsg({ tone: 'fail', text: refusal(e) });
     } finally {

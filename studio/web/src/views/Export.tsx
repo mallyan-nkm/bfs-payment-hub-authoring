@@ -12,6 +12,7 @@ export function Export({ query }: { query: URLSearchParams }) {
   const [chosen, setChosen] = useState<string[]>(() => (query.get('workflows') ?? '').split(',').filter(Boolean));
   const [target, setTarget] = useState<(typeof TARGETS)[number]>((query.get('target') as any) ?? 'temporal');
   const [exTenant, setExTenant] = useState(tenant);
+  const [withSims, setWithSims] = useState(false);
   const [filter, setFilter] = useState('');
   const [res, setRes] = useState<any>();
   const [busy, setBusy] = useState(false);
@@ -24,7 +25,7 @@ export function Export({ query }: { query: URLSearchParams }) {
     setBusy(true);
     setError(undefined);
     try {
-      const r = await post('/api/export', { workflows: chosen, target, tenant: exTenant });
+      const r = await post('/api/export', { workflows: chosen, target, tenant: exTenant, withSimulators: withSims });
       setRes(r);
       const bpmn = Object.keys(r.preview ?? {}).find((k) => k.endsWith('.bpmn20.xml'));
       setFile(bpmn ?? Object.keys(r.preview ?? {})[0]);
@@ -46,7 +47,7 @@ export function Export({ query }: { query: URLSearchParams }) {
   }, [res]);
 
   const list = (flows.data ?? []).filter((f) => !filter || f.name.includes(filter) || f.title.toLowerCase().includes(filter.toLowerCase()));
-  const href = downloadUrl(`/api/export/download?workflows=${encodeURIComponent(chosen.join(','))}&target=${target}`, exTenant);
+  const href = downloadUrl(`/api/export/download?workflows=${encodeURIComponent(chosen.join(','))}&target=${target}${withSims ? '&withSimulators=true' : ''}`, exTenant);
   const m = res?.manifest;
 
   return (
@@ -83,6 +84,10 @@ export function Export({ query }: { query: URLSearchParams }) {
                 <select value={exTenant} onChange={(e) => setExTenant(e.target.value)} aria-label="Export tenant">
                   {(meta?.tenants ?? [tenant]).map((t) => <option key={t} value={t}>{t === meta?.owner ? `${t} (shared pack)` : `${t} (bank pack)`}</option>)}
                 </select>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={withSims} onChange={(e) => setWithSims(e.target.checked)} aria-label="With simulators" />
+                <span>With simulators, for a test deployment (the package is then not promotable)</span>
               </label>
               <button className="primary" disabled={!chosen.length || busy} onClick={preview}>{busy ? 'Building…' : 'Preview'}</button>
               <a className={chosen.length ? 'button' : 'button disabled'} href={chosen.length ? href : undefined} download aria-disabled={!chosen.length}>Download the zip</a>
