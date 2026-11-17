@@ -199,6 +199,21 @@ export class Run {
   duplicates: Message[] = [];
   sims = new Map<string, SimulatorInstance>();
   mailbox: Message[] = [];
+  selfChecks: { simulator: string; scenario: string; message: string; ruleSet: string; malformed: boolean; worst: string; findings: any[] }[] = [];
+
+  /**
+   * Self-check (R-07-06, C10-S3): a message a simulator emits must pass the simulator's
+   * self-check rule sets, unless its scenario is marked malformed.
+   */
+  selfCheck(m: Message, ctx: any) {
+    const sim = this.sims.get(m.port);
+    if (!sim || m.from !== 'simulator') return;
+    for (const rs of sim.sim.selfCheck ?? []) {
+      const facts = buildFacts({ ctx, reads: ['header', 'payment', 'batch', 'items[]', 'status', 'facts', 'ext'], extensions: this.extensions() });
+      const res = runRuleSet(rs, facts, { resolve: (n) => this.resolveDoc(n), lookup: (o, p, d, date) => this.lookupParam(o, p, d, date), evaluationDate: this.clock.today() });
+      this.selfChecks.push({ simulator: sim.sim.name, scenario: sim.scenarioName, message: m.type, ruleSet: rs, malformed: !!m.malformed || sim.malformed, worst: res.worst, findings: res.findings });
+    }
+  }
 
   /** Take an early message of a type that belongs to this instance's payment. */
   takeEarly(inst: Instance, type: string): Message | undefined {
@@ -243,7 +258,7 @@ export class Run {
       const kitReleases = Object.keys(this.docs).filter((k) => k.startsWith(name + '@') && this.available(k)).sort((a, b) => compareReleases(a.split('@')[1], b.split('@')[1]));
       if (kitReleases.length) return this.docs[kitReleases[kitReleases.length - 1]];
     }
-    return this.cfg.store.doc(name, release);
+    return this.cfg.store.doc(name, release, this.cfg.tenant);
   }
 
   /** The release an instance runs for a line: its pin, unless a supersession applies to a step not yet started. */
@@ -1414,6 +1429,7 @@ export function attachIntake(run: Run) {
       if (disp.start.intakeMap) {
         const intake = { kind: 'workflow', wfKind: 'intake', name: `${disp.start.intakeMap}#intake`, release: '0.0.0', exit: { outcomes: ['mapped', 'unmappable'] }, do: [{ id: 'intake', call: disp.start.intakeMap, handle: { unmappable: { end: 'unmappable' } } }] };
         const it = await startInstance(run, intake, ctx, 'intake');
+        run.selfCheck(m, ctx);
         if (it.outcome !== 'mapped') return;
       }
       ctx.header.paymentId ??= run.newId('P');

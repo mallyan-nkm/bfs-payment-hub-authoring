@@ -197,6 +197,10 @@ export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfi
     const elapsedMs = (root.endedAt ?? result.run.clock.now) - root.startedAt;
     report.elapsed = msToIso(elapsedMs);
     compare(test.expect ?? {}, root, result, report, elapsedMs);
+    for (const sc of result.run.selfChecks) {
+      if (sc.malformed) report.warnings.push(`Self-check of ${sc.simulator} (${sc.scenario}) skipped: the scenario is marked malformed`);
+      else if (sc.worst === 'reject') report.checks.push({ what: `self-check of ${sc.simulator}`, expected: 'pass', actual: sc.findings.map((f: any) => f.reasonCode), passed: false, note: `${sc.ruleSet} on ${sc.message}` });
+    }
     if (!root.ended) report.checks.push({ what: 'ended', expected: true, actual: false, passed: false, note: `The run stopped ${result.status}` });
     report.passed = report.checks.every((c) => c.passed);
   } catch (e: any) {

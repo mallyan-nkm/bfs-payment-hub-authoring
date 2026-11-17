@@ -10,6 +10,21 @@ import { runTest, runAllTests, type TestRunReport } from '../testing/runner.js';
 import { runKit, loadKit } from '../conformance/kit.js';
 import { exportPackage, exportZip, type Target } from '../export/exporter.js';
 import { templates } from './templates.js';
+import { runGates } from '../ai/gates.js';
+import { assistantConfigured, draft } from '../ai/assistant.js';
+import { modelOf } from '../core/model.js';
+import { typescriptTypes, pythonTypes } from '../core/types.js';
+import { CodeRegistry, RegistryError } from '../core/registry.js';
+import { expandWorkflow } from '../core/expand.js';
+import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
+import * as gov from '../governance/governance.js';
+import { approve, enforce, submitForReview } from '../governance/governance.js';
+import { reasonCodeCoverage } from '../sim/coverage.js';
+import { stubSource } from '../sim/stub.js';
+import { testCoverageReport, untestedOutcomes } from '../testing/coverage.js';
+import { samplesFor, messagesWithSamples } from '../samples/samples.js';
+import { compareBindings } from '../export/bindings.js';
+import * as pathmod from 'node:path';
 import type { StudioEnv } from '../env.js';
 
 // The studio's HTTP API. Every call names the tenant it acts for; a tenant sees shared content
@@ -262,7 +277,9 @@ route('POST', '/api/drafts', (env, req) => {
   const tenant = tenantOf(req);
   const doc = req.body.doc ?? safeParse(req.body.yaml ?? '');
   if (doc.__parseError) throw new HttpError(400, `YAML does not parse: ${doc.__parseError}`);
-  const e = env.store.saveDraft(tenant, req.body.actor ?? 'designer', doc);
+  const actor = req.body.actor ?? '';
+  enforce(env, actor, tenant, 'author', keyOf(doc), doc.kind === 'configuration-set' ? 'b' : (doc.name ? parseName(doc.name)?.scope : doc.scope));
+  const e = env.store.saveDraft(tenant, actor, doc);
   return { draft: summary(e), issues: checkDocument(env, doc), interface: interfaceFor(env, doc) };
 });
 
@@ -271,15 +288,20 @@ route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
   return { ok: true };
 });
 
-route('POST', '/api/publish', (env, req) => {
+route('POST', '/api/publish', async (env, req) => {
   const tenant = tenantOf(req);
   const d = env.store.entries.get(req.body.key);
   if (!d) throw new HttpError(404, `No draft ${req.body.key}`);
-  const errors = checkDocument(env, d.doc).filter((i) => i.severity === 'error');
+  const errors = checkDocument(env, d.doc, tenant).filter((i) => i.severity === 'error');
   if (errors.length) throw new HttpError(422, 'The draft has errors; fix them before publish', { issues: errors });
-  if (d.kind === 'scheme' && (d.doc.messages ?? []).some((m: any) => m.disposition?.planned)) throw new HttpError(422, 'A pack with a planned message cannot publish (R-05-22)');
-  const e = env.store.publish(tenant, req.body.key, req.body.maker ?? d.maker ?? 'designer', req.body.checker);
+  // Maker-checker with roles and green tests (C17-S4, C19-S2).
+  const e = await approve(env, tenant, req.body.checker, req.body.key);
   return { published: summary(e) };
+});
+
+route('POST', '/api/review', (env, req) => {
+  submitForReview(env, tenantOf(req), req.body.actor, req.body.key);
+  return { ok: true };
 });
 
 route('POST', '/api/new', (env, req) => {
@@ -459,39 +481,145 @@ void keyOf;
  */
 route('POST', '/api/gates', async (env, req) => {
   const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
-  if (doc.__parseError) return { gates: [{ gate: 'parse', passed: false, detail: doc.__parseError }], passed: false };
-  const gates: { gate: string; passed: boolean; detail?: any }[] = [];
-  const issues = checkDocument(env, doc);
-  const schema = issues.filter((i) => i.code === 'L00');
-  gates.push({ gate: 'schema', passed: schema.length === 0, detail: schema });
-  const statics = issues.filter((i) => i.code !== 'L00' && i.code !== 'L26' && i.severity === 'error');
-  gates.push({ gate: 'static checks', passed: statics.length === 0, detail: statics });
-  const semver = issues.filter((i) => i.code === 'L26');
-  gates.push({ gate: 'semver', passed: semver.length === 0, detail: semver });
-  if (doc.kind === 'rule' || doc.kind === 'table') {
-    const ex = runExamples(doc, (n) => env.store.doc(n));
-    const hasPassFail = doc.kind === 'table' || (ex.some((e) => (e.expected.findings ?? []).length === 0) && ex.some((e) => (e.expected.findings ?? []).length > 0));
-    gates.push({ gate: 'examples', passed: ex.length > 0 && ex.every((e) => e.passed) && hasPassFail, detail: ex });
+  if (doc.__parseError) return { gates: [{ gate: 'schema', passed: false, detail: doc.__parseError }], passed: false };
+  return runGates(env, { doc, script: req.body?.script, tests: req.body?.tests, tenant: tenantOf(req) });
+});
+
+// ---------------------------------------------------------------- model and types (C03)
+
+route('GET', '/api/model', (env, req) => {
+  const m = modelOf(env.store);
+  const q = req.query.q ?? '';
+  return { roots: q ? undefined : m.roots, matches: q ? m.search(q) : undefined, personal: m.personalPaths() };
+});
+
+route('GET', '/api/types/:name', (env, req, { name }) => {
+  const a = env.store.doc(name, undefined, tenantOf(req));
+  if (!a || a.kind !== 'activity') throw new HttpError(404, `No activity ${name}`);
+  const m = modelOf(env.store);
+  return req.query.lang === 'python' ? { language: 'python', file: `${name}.pyi`, source: pythonTypes(m, a) } : { language: 'typescript', file: `${name}.d.ts`, source: typescriptTypes(m, a) };
+});
+
+let registry: CodeRegistry | undefined;
+const reg = (env: StudioEnv) => (registry ??= CodeRegistry.load(pathmod.join(env.studioRoot, 'registries')));
+
+route('GET', '/api/registry', (env, req) => {
+  const r = reg(env);
+  const date = req.query.date ?? '2026-11-17';
+  const rel = r.at(date);
+  return { version: rel.version, provenance: rel.provenance, sets: rel.sets, report: r.reasonCodeReport(env.store.all().map((e) => e.doc), date) };
+});
+
+route('GET', '/api/registry/lookup', (env, req) => {
+  try {
+    return reg(env).lookup(req.query.set, req.query.code, req.query.date ?? '2026-11-17');
+  } catch (e) {
+    if (e instanceof RegistryError) throw new HttpError(404, e.message);
+    throw e;
   }
-  if (doc.kind === 'simulator') {
-    const missing = missingStandardScenarios(doc);
-    gates.push({ gate: 'standard scenarios', passed: missing.length === 0, detail: missing });
-  }
-  const tests = env.store.byKind('test').filter((t) => t.doc.target === doc.name);
-  if (doc.kind === 'activity') {
-    // R-03-16: at least one test per outcome. A test names the outcome it expects.
-    const covered = new Set(tests.map((t) => t.doc.expect?.outcome));
-    const uncovered = (doc.outcomes ?? []).map((o: any) => o.name).filter((o: string) => !covered.has(o));
-    gates.push({ gate: 'a test per outcome', passed: uncovered.length === 0, detail: uncovered.length ? `No test expects: ${uncovered.join(', ')}` : undefined });
-  }
-  if (tests.length) {
-    const results: any[] = [];
-    for (const t of tests) {
-      const r = await runTest(env, t.doc, { documents: { [doc.name]: doc, [`${doc.name}@${doc.release}`]: doc } });
-      results.push({ id: t.name, passed: r.passed, failed: r.checks.filter((c) => !c.passed) });
-    }
-    gates.push({ gate: 'tests', passed: results.every((r) => r.passed), detail: results });
-  }
-  gates.push({ gate: 'provenance', passed: !!doc.provenance?.origin, detail: doc.provenance ?? 'No provenance: say where the draft came from (F-21)' });
-  return { gates, passed: gates.every((g) => g.passed) };
+});
+
+// --------------------------------------------------------------------- expansion (C04-S6)
+
+route('GET', '/api/expanded/:name', (env, req, { name }) => {
+  const d = env.store.doc(name, req.query.release, tenantOf(req));
+  if (!d) throw new HttpError(404, `No ${name}`);
+  const x = expandWorkflow(d, (n) => env.store.doc(n, undefined, tenantOf(req)));
+  return { expanded: x !== d, doc: x, yaml: toYaml(x) };
+});
+
+// --------------------------------------------------------------- packs (C05-S2, C19)
+
+route('GET', '/api/packs', (env) => ['p', 'uae.p', 'uae.wps', 'uae.aani', 'b'].map((scope) => ({ scope, ...compareManifest(env, scope) })));
+route('GET', '/api/packs/:scope/manifest', (env, req, { scope }) => ({ manifest: packManifest(env, scope, req.query.tenant), compare: compareManifest(env, scope) }));
+route('POST', '/api/packs/build', (env, req) => {
+  const { scope, kind, tenant } = req.body ?? {};
+  const b = buildPack(env, scope, kind ?? 'shared', tenant);
+  return { manifest: b.manifest, refused: b.refused, files: Object.keys(b.files) };
+});
+route('GET', '/api/packs/download', (env, req) => {
+  const b = buildPack(env, req.query.scope, (req.query.kind ?? 'shared') as any, req.query.tenant);
+  if (b.refused) throw new HttpError(422, 'The pack has red checks', { issues: b.refused });
+  return { __binary: true, data: packZip(b), contentType: 'application/zip', filename: `pack-${req.query.scope}-${req.query.kind ?? 'shared'}.zip` };
+});
+route('GET', '/api/packs/:scope/release-gate', async (env, _req, { scope }) => gov.packReleaseGate(env, scope));
+
+// ------------------------------------------------------------ roles and audit (C17)
+
+route('GET', '/api/users', (env, req) => gov.users(env).filter((u) => tenantOf(req) === OWNER_TENANT || u.tenant === tenantOf(req)));
+route('GET', '/api/permit', (env, req) => ({ allowed: !gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope), reason: gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope) }));
+route('GET', '/api/audit/verify', (env) => env.store.verifyAudit());
+
+// --------------------------------------------------- releases, retirement, propagation (C19, C05-S4)
+
+route('GET', '/api/releases/:name/pins', (env, req, { name }) => {
+  const release = req.query.release ?? env.store.latest(name)?.release ?? '';
+  const pinnedBy = gov.pinnedBy(env, name, release);
+  const flying = gov.inFlight(env, name, release);
+  return { name, release, pinnedBy, inFlight: flying, mayRetire: pinnedBy.length === 0 && flying.count === 0 };
+});
+route('POST', '/api/retire', (env, req) => ({ retired: summary(gov.retire(env, req.body.actor, req.body.name, req.body.release)) }));
+route('POST', '/api/in-flight', (env, req) => {
+  gov.importInFlight(env, req.body.actor, req.body.counts ?? {}, req.body.asOf);
+  return { ok: true };
+});
+route('GET', '/api/propagate', async (env, req) => gov.propagate(env, req.query.name, req.query.release));
+
+// ------------------------------------------------------------ supersession (C19-S4, S5)
+
+route('POST', '/api/supersessions/draft', (env, req) => gov.draftSupersession(env, req.body));
+route('POST', '/api/supersessions/evidence', async (env, req) => gov.testSupersession(env, req.body.doc));
+route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, req.body.doc, req.body.checker));
+route('GET', '/api/supersessions/handed-over', (env) => env.store.extra.supersessions ?? []);
+
+// ------------------------------------------------- tenants and configuration (C18)
+
+route('GET', '/api/tenants/:tenant/settable', (env, _req, { tenant }) => gov.settableParameters(env, tenant));
+route('POST', '/api/tenants/:tenant/configuration', (env, req, { tenant }) => ({ saved: summary(gov.saveConfiguration(env, tenant, req.body.actor, req.body.yaml)) }));
+route('POST', '/api/tenants/:tenant/configuration/validate', (env, req, { tenant }) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: doc.__parseError }] };
+  return { issues: gov.checkConfiguration(env, tenant, doc) };
+});
+route('POST', '/api/tenants/:tenant/compatibility-run', async (env, req, { tenant }) => gov.compatibilityRun(env, tenant, (req.body?.candidates ?? []).map((c: any) => (typeof c === 'string' ? safeParse(c) : c))));
+route('GET', '/api/tenants/:tenant/export', (env, _req, { tenant }) => gov.tenantExport(env, tenant));
+
+// ------------------------------------------------------ conformance report (C23-S3)
+
+route('GET', '/api/conformance/report', async (env, req) => gov.conformanceReport(env, req.query.target ?? 'studio'));
+route('POST', '/api/conformance/waivers', (env, req) => {
+  gov.addWaiver(env, req.body.actor, { target: req.body.target ?? 'studio', scenario: req.body.scenario, reason: req.body.reason, approver: req.body.actor });
+  return { ok: true };
+});
+
+// ------------------------------------------------------------------ simulators (C10)
+
+route('GET', '/api/simulators/:name/stub', (env, _req, { name }) => {
+  const sim = env.store.doc(name);
+  if (!sim || sim.kind !== 'simulator') throw new HttpError(404, `No simulator ${name}`);
+  return { __binary: true, data: Buffer.from(stubSource(sim), 'utf8'), contentType: 'text/javascript', filename: `${name}.stub.cjs` };
+});
+route('GET', '/api/coverage/:scope', (env, _req, { scope }) => reasonCodeCoverage(env, scope));
+
+// ------------------------------------------------------------------ tests (C11-S5)
+
+route('GET', '/api/test-coverage', (env) => testCoverageReport(env));
+route('GET', '/api/test-coverage/:name', (env, _req, { name }) => untestedOutcomes(env, name));
+
+// ----------------------------------------------------------------- samples (F-05)
+
+route('GET', '/api/sample-messages', () => messagesWithSamples());
+route('GET', '/api/sample-messages/:message', async (env, req, { message }) => samplesFor(env, message, req.query.prove !== 'false'));
+
+// ----------------------------------------------------------------- bindings (C20-S1)
+
+route('GET', '/api/bindings', (env) => compareBindings(env));
+
+// --------------------------------------------------------------------- AI (C16)
+
+route('GET', '/api/ai/status', () => assistantConfigured());
+route('POST', '/api/ai/draft', async (env, req) => {
+  const st = assistantConfigured();
+  if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);
+  return draft(env, { ...req.body, tenant: tenantOf(req) });
 });

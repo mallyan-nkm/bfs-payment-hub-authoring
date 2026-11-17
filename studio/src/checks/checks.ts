@@ -163,8 +163,8 @@ export class Checker {
     this.denyNames = [...new Set([...tenants, ...denyNames.map((n) => n.toLowerCase())])].filter(Boolean);
   }
 
-  static fromEnv(env: StudioEnv, overlay: any[] = []): Checker {
-    const docs = env.store.all().filter((e) => e.status === 'published').map((e) => e.doc);
+  static fromEnv(env: StudioEnv, overlay: any[] = [], tenant?: string): Checker {
+    const docs = env.store.all().filter((e) => e.status === 'published' && (!tenant || e.tenant === 'owner' || e.tenant === tenant)).map((e) => e.doc);
     const names = new Set(overlay.map((d) => `${d.kind}:${d.name ?? d.scope ?? d.id}`));
     const merged = [...docs.filter((d) => !names.has(`${d.kind}:${d.name ?? d.scope ?? d.id}`)), ...overlay];
     let deny: string[] = [];
@@ -759,12 +759,12 @@ export function checkAll(env: StudioEnv): Issue[] {
   return issues;
 }
 
-export function checkDocument(env: StudioEnv, doc: any): Issue[] {
+export function checkDocument(env: StudioEnv, doc: any, tenant?: string): Issue[] {
   const issues: Issue[] = env.schemas.validate(doc).map((s) => ({ code: 'L00', severity: 'error' as const, key: doc?.name ?? doc?.id ?? '', message: s.message + (s.hint ? ` ${s.hint}` : ''), step: s.path }));
   try {
-    const c = Checker.fromEnv(env, [doc]);
+    const c = Checker.fromEnv(env, [doc], tenant);
     issues.push(...c.check(doc));
-    const prev = doc?.name ? env.store.latest(doc.name)?.doc : undefined;
+    const prev = doc?.name ? env.store.latest(doc.name, tenant)?.doc : undefined;
     if (prev && prev.release !== doc.release) {
       const s = semverIssue(prev, doc);
       if (s) issues.push(s);

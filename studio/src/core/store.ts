@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseYamlAll } from './yaml.js';
-import { contentHash, clone } from './canonical.js';
+import { contentHash, clone, canonicalJson } from './canonical.js';
+import { createHash } from 'node:crypto';
 import { compareReleases, parseName, parseRelease, isShared } from './names.js';
 
 // The artefact store (C01). Artefacts are files in the spec repository (factory, examples,
@@ -10,7 +11,7 @@ import { compareReleases, parseName, parseRelease, isShared } from './names.js';
 
 export const OWNER_TENANT = 'owner';
 
-export type Status = 'published' | 'draft';
+export type Status = 'published' | 'draft' | 'in-review' | 'retired';
 
 export interface Entry {
   key: string; // name@release, or id for tests, or scope for schemes and packs
@@ -34,9 +35,13 @@ export interface AuditEvent {
   at: string;
   tenant: string;
   actor: string;
-  action: 'save-draft' | 'publish' | 'delete-draft' | 'set-configuration';
+  action: string;
   key: string;
   detail?: string;
+  outcome?: 'done' | 'refused';
+  diff?: any;
+  prevHash?: string;
+  hash?: string; // each record hashes the one before it, so the log cannot be changed unseen (C17-S4)
 }
 
 export class StoreError extends Error {
@@ -66,6 +71,11 @@ function nameOfDoc(doc: any): string {
   return doc.name ?? doc.id ?? (doc.kind === 'configuration-set' ? `config:${doc.tenant}` : doc.kind === 'engine-binding' ? `binding:${doc.target}` : doc.scope ?? doc.kind);
 }
 
+/** A bank's own content is keyed by tenant, so two banks may use one name (C17-S1). */
+export function tenantKey(doc: any, tenant: string): string {
+  return (tenant && tenant !== OWNER_TENANT ? `${tenant}/` : '') + keyOf(doc);
+}
+
 export function keyOf(doc: any): string {
   const name = nameOfDoc(doc);
   return doc.release ? `${name}@${doc.release}` : name;
@@ -73,6 +83,7 @@ export function keyOf(doc: any): string {
 
 export class Store {
   entries = new Map<string, Entry>(); // key -> entry
+  extra: Record<string, any> = {}; // persisted studio state: configuration edits, waivers, in-flight imports, users
   audit: AuditEvent[] = [];
   readonly specRoot: string;
   readonly dataRoot: string;
@@ -111,7 +122,7 @@ export class Store {
   add(doc: any, file: string, source: 'spec' | 'studio', generated: boolean, status: Status, tenant?: string): Entry {
     const name = nameOfDoc(doc);
     const e: Entry = {
-      key: keyOf(doc) + (status === 'draft' ? '#draft' : ''),
+      key: tenantKey(doc, tenant ?? this.tenantOfDoc(doc, file)) + (status === 'draft' ? '#draft' : ''),
       kind: doc.kind,
       name,
       release: doc.release ?? '',
@@ -145,27 +156,33 @@ export class Store {
     return [...t];
   }
 
-  releasesOf(name: string, opts: { includeDrafts?: boolean } = {}): Entry[] {
+  releasesOf(name: string, opts: { includeDrafts?: boolean; tenant?: string } = {}): Entry[] {
     return this.all()
       .filter((e) => e.name === name && (opts.includeDrafts || e.status === 'published'))
+      .filter((e) => !opts.tenant || e.tenant === OWNER_TENANT || e.tenant === opts.tenant)
       .sort((a, b) => compareReleases(a.release, b.release));
   }
 
   /** The latest published release of a major line. */
-  latest(name: string): Entry | undefined {
-    const r = this.releasesOf(name);
+  latest(name: string, tenant?: string): Entry | undefined {
+    const r = this.releasesOf(name, { tenant });
     return r[r.length - 1];
   }
 
-  get(name: string, release?: string): Entry | undefined {
+  get(name: string, release?: string, tenant?: string): Entry | undefined {
     // A pack manifest names its scheme manifest `<scope>.scheme`.
-    if (name.endsWith('.scheme') && !this.entries.has(`${name}@${release}`)) return this.get(`scheme:${name.slice(0, -'.scheme'.length)}`, release);
-    if (release) return this.entries.get(`${name}@${release}`);
-    return this.latest(name) ?? this.entries.get(name);
+    if (name.endsWith('.scheme') && !this.entries.has(`${name}@${release}`)) return this.get(`scheme:${name.slice(0, -'.scheme'.length)}`, release, tenant);
+    if (release) {
+      const own = this.entries.get(`${name}@${release}`);
+      if (own) return own;
+      if (tenant) return this.entries.get(`${tenant}/${name}@${release}`);
+      return this.all().find((e) => e.name === name && e.release === release && (e.status === 'published' || e.status === 'retired'));
+    }
+    return this.latest(name, tenant) ?? this.entries.get(name);
   }
 
-  doc(name: string, release?: string): any {
-    return this.get(name, release)?.doc;
+  doc(name: string, release?: string, tenant?: string): any {
+    return this.get(name, release, tenant)?.doc;
   }
 
   byKind(kind: string): Entry[] {
@@ -202,7 +219,7 @@ export class Store {
   saveDraft(tenant: string, actor: string, doc: any): Entry {
     this.assertMayAuthor(tenant, doc);
     if (!doc.release || !parseRelease(doc.release)) throw new StoreError('R-01-08', 'A draft needs a release major.minor.patch');
-    const published = this.entries.get(keyOf(doc));
+    const published = this.entries.get(tenantKey(doc, tenant));
     if (published) throw new StoreError('R-01-11', `${keyOf(doc)} is published and immutable. Release a new one.`);
     const e = this.add(clone(doc), `studio:${tenant}`, 'studio', false, 'draft', tenant);
     this.record({ tenant, actor, action: 'save-draft', key: e.key });
@@ -211,7 +228,7 @@ export class Store {
   }
 
   drafts(tenant: string): Entry[] {
-    return this.all().filter((e) => e.status === 'draft' && e.tenant === tenant);
+    return this.all().filter((e) => (e.status === 'draft' || e.status === 'in-review') && e.tenant === tenant);
   }
 
   deleteDraft(tenant: string, actor: string, key: string) {
@@ -225,32 +242,74 @@ export class Store {
   /** Publish a draft through maker-checker (R-06-04). The maker is the actor who saved it. */
   publish(tenant: string, draftKey: string, maker: string, checker: string): Entry {
     const d = this.entries.get(draftKey);
-    if (!d || d.status !== 'draft' || d.tenant !== tenant) throw new StoreError('not-found', `No draft ${draftKey} in ${tenant}`);
-    if (!maker || !checker || maker === checker) throw new StoreError('R-06-04', 'Maker and checker must differ');
-    const key = keyOf(d.doc);
+    if (!d || (d.status !== 'draft' && d.status !== 'in-review') || d.tenant !== tenant) throw new StoreError('not-found', `No draft ${draftKey} in ${tenant}`);
+    if (!maker || !checker || maker === checker) {
+      this.record({ tenant, actor: checker || maker, action: 'publish', key: draftKey, outcome: 'refused', detail: 'Maker and checker must differ (R-06-04)' });
+      throw new StoreError('R-06-04', 'Maker and checker must differ');
+    }
+    const key = tenantKey(d.doc, tenant);
     if (this.entries.has(key)) throw new StoreError('R-01-11', `${key} is already published. A published release is immutable.`);
     this.entries.delete(draftKey);
     const e = this.add(d.doc, `studio:${tenant}`, 'studio', false, 'published', tenant);
     e.maker = maker;
     e.checker = checker;
     e.publishedAt = new Date().toISOString();
-    this.record({ tenant, actor: checker, action: 'publish', key, detail: `maker ${maker}, checker ${checker}` });
+    const prev = this.releasesOf(e.name).filter((x) => x.key !== e.key).pop();
+    this.record({ tenant, actor: checker, action: 'publish', key, detail: `maker ${maker}, checker ${checker}`, diff: prev ? leafDiff(prev.doc, e.doc) : { created: true } });
     this.persist();
     return e;
   }
 
-  record(ev: Omit<AuditEvent, 'at'>) {
-    this.audit.push({ at: new Date().toISOString(), ...ev });
+  record(ev: Omit<AuditEvent, 'at' | 'hash' | 'prevHash'>) {
+    const prevHash = this.audit[this.audit.length - 1]?.hash ?? 'sha256:' + '0'.repeat(64);
+    const body = { at: new Date().toISOString(), outcome: 'done' as const, ...ev, prevHash };
+    const hash = 'sha256:' + createHash('sha256').update(canonicalJson(body), 'utf8').digest('hex');
+    this.audit.push({ ...body, hash });
+    this.persist();
   }
+
+  /** Verify the audit chain: every record hashes the one before it. */
+  verifyAudit(): { ok: boolean; brokenAt?: number } {
+    let prev = 'sha256:' + '0'.repeat(64);
+    for (let i = 0; i < this.audit.length; i++) {
+      const { hash, ...body } = this.audit[i];
+      if (body.prevHash !== prev) return { ok: false, brokenAt: i };
+      const h = 'sha256:' + createHash('sha256').update(canonicalJson(body), 'utf8').digest('hex');
+      if (h !== hash) return { ok: false, brokenAt: i };
+      prev = hash!;
+    }
+    return { ok: true };
+  }
+
+  /** Move a draft to review, or a review back to draft (C19-S2). */
+  setState(key: string, status: Status) {
+    const e = this.entries.get(key);
+    if (!e) throw new StoreError('not-found', `No ${key}`);
+    e.status = status;
+    this.persist();
+    return e;
+  }
+
+  /** Retire a published release (C19-S3). The caller checks that nothing pins it. */
+  retire(name: string, release: string, actor: string, tenant: string) {
+    const e = this.get(name, release, tenant);
+    if (!e || e.status !== 'published') throw new StoreError('not-found', `${name}@${release} is not published`);
+    e.status = 'retired';
+    if (e.source === 'spec') this.retiredSpec.add(e.key);
+    this.record({ tenant, actor, action: 'retire', key: e.key });
+    return e;
+  }
+
+  retiredSpec = new Set<string>();
 
   // ------------------------------------------------------------ persistence
 
-  private persist() {
-    if (!this.dataRoot) return;
+  persist() {
+    if (!this.dataRoot || this.dataRoot === path.resolve('')) return;
     fs.mkdirSync(this.dataRoot, { recursive: true });
     const studio = this.all().filter((e) => e.source === 'studio');
     const out = studio.map((e) => ({ tenant: e.tenant, status: e.status, doc: e.doc, maker: e.maker, checker: e.checker, publishedAt: e.publishedAt }));
-    fs.writeFileSync(path.join(this.dataRoot, 'workspace.json'), JSON.stringify({ entries: out, audit: this.audit }, null, 2));
+    fs.writeFileSync(path.join(this.dataRoot, 'workspace.json'), JSON.stringify({ entries: out, audit: this.audit, retired: [...this.retiredSpec], extra: this.extra }, null, 2));
   }
 
   private loadWorkspace() {
@@ -264,6 +323,12 @@ export class Store {
       e.publishedAt = x.publishedAt;
     }
     this.audit = w.audit ?? [];
+    this.extra = w.extra ?? {};
+    for (const k of w.retired ?? []) {
+      const e = this.entries.get(k);
+      if (e) e.status = 'retired';
+      this.retiredSpec.add(k);
+    }
   }
 }
 
@@ -273,6 +338,19 @@ export function walkYaml(dir: string): string[] {
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) out.push(...walkYaml(p));
     else if (ent.name.endsWith('.yaml') || ent.name.endsWith('.yml')) out.push(p);
+  }
+  return out;
+}
+
+function leafDiff(a: any, b: any, prefix = '', out: Record<string, { before: any; after: any }> = {}) {
+  const keys = new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
+  for (const k of keys) {
+    const p = prefix ? `${prefix}.${k}` : k;
+    const x = a?.[k];
+    const y = b?.[k];
+    if (JSON.stringify(x) === JSON.stringify(y)) continue;
+    if (x && y && typeof x === 'object' && typeof y === 'object' && !Array.isArray(x) && !Array.isArray(y)) leafDiff(x, y, p, out);
+    else out[p] = { before: x, after: y };
   }
   return out;
 }

@@ -1,0 +1,60 @@
+# Code-set registries (Part 2, R-02-11; C03-S5). Versioned and read by date.
+# Provenance: written from memory of the ISO 20022 external code sets, as the factory pack's
+# reason codes were. NOT verified against the published code sets. Check before G1.
+kind: code-registry
+releases:
+  - version: "2026-11-17.1"
+    validFrom: "2026-01-01"
+    provenance: { status: unverified, note: Written from memory. Verify against the current ISO 20022 external code set publication. }
+    sets:
+      ExternalStatusReason1Code:
+        AC02: Invalid debtor account number
+        AC03: Invalid creditor account number
+        AC04: Closed account number
+        AC06: Blocked account
+        AM01: Zero amount
+        AM02: Not allowed amount
+        AM03: Not allowed currency
+        AM04: Insufficient funds
+        AM05: Duplication
+        AM09: Wrong amount
+        AM10: Invalid control sum
+        AM18: Invalid number of transactions
+        BE01: Inconsistent with end customer
+        BE04: Missing creditor address
+        CH21: Required compulsory element missing
+        DT01: Invalid date
+        DUPL: Duplicate payment
+        FF01: Invalid file format
+        FRAD: Fraudulent origin
+        MS03: Not specified reason agent generated
+        NARR: Narrative
+        RC01: Bank identifier incorrect
+        RR04: Regulatory reason
+        TM01: Cut-off time
+      ExternalReturnReason1Code:
+        AC03: Invalid creditor account number
+        AC04: Closed account number
+        AM05: Duplication
+        FOCR: Following cancellation request
+        NOOR: No original transaction received
+        NARR: Narrative
+      ExternalPaymentTransactionStatus1Code:
+        ACCP: Accepted customer profile
+        ACSC: Accepted settlement completed
+        ACSP: Accepted settlement in process
+        ACTC: Accepted technical validation
+        PDNG: Pending
+        RCVD: Received
+        RJCT: Rejected
+      ExternalCategoryPurpose1Code:
+        CASH: Cash management transfer
+        INTC: Intra-company payment
+        PENS: Pension payment
+        SALA: Salary payment
+        SUPP: Supplier payment
+        TRAD: Trade services
+      ExternalPurpose1Code:
+        OTHR: Other
+        SALA: Salary payment
+        SUPP: Supplier payment

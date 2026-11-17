@@ -1,0 +1,392 @@
+import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
+import { compareReleases, isShared, parseName } from '../core/names.js';
+import { toYaml, parseYaml } from '../core/yaml.js';
+import { Checker, checkDocument, interfaceDiff, pinnable, proposeRelease, refsOf } from '../checks/checks.js';
+import { runTest } from '../testing/runner.js';
+import { runKit } from '../conformance/kit.js';
+import { exportPackage, packageHash } from '../export/exporter.js';
+import { buildPack } from './packs.js';
+import type { StudioEnv } from '../env.js';
+
+// Governance (Part 6, Part 11; C17, C18, C19, C05-S4, C23-S3).
+
+// ------------------------------------------------------------------ roles (C17-S2)
+
+export type Role = 'shared designer' | 'shared checker' | 'bank designer' | 'bank checker' | 'auditor' | 'service operations';
+
+export interface User { id: string; tenant: string; roles: Role[] }
+
+/** The studio's users. Names are role-shaped placeholders: no real person is named. */
+export const DEFAULT_USERS: User[] = [
+  { id: 'shared.designer', tenant: OWNER_TENANT, roles: ['shared designer'] },
+  { id: 'shared.checker', tenant: OWNER_TENANT, roles: ['shared checker'] },
+  { id: 'shared.auditor', tenant: OWNER_TENANT, roles: ['auditor'] },
+  { id: 'service.operations', tenant: OWNER_TENANT, roles: ['service operations'] },
+  { id: 'example.maker', tenant: 'example-bank', roles: ['bank designer'] },
+  { id: 'example.checker', tenant: 'example-bank', roles: ['bank checker'] },
+  { id: 'example.auditor', tenant: 'example-bank', roles: ['auditor'] },
+  { id: 'second.maker', tenant: 'second-bank', roles: ['bank designer'] },
+  { id: 'second.checker', tenant: 'second-bank', roles: ['bank checker'] },
+];
+
+export type Action = 'author' | 'approve' | 'configure' | 'accept-release' | 'retire' | 'supersede' | 'export' | 'read';
+
+export function users(env: StudioEnv): User[] {
+  return env.store.extra.users ?? DEFAULT_USERS;
+}
+
+/** Is this actor allowed this action in this tenant on this scope? Returns the reason when not. */
+export function permit(env: StudioEnv, actor: string, tenant: string, action: Action, scope?: string): string | undefined {
+  const u = users(env).find((x) => x.id === actor);
+  if (!u) return `${actor} is not a user of the studio`;
+  if (u.tenant !== tenant) return `${actor} belongs to tenant ${u.tenant}, not ${tenant} (R-06-01)`;
+  const has = (r: Role) => u.roles.includes(r);
+  const shared = scope ? isShared(scope) : tenant === OWNER_TENANT;
+  switch (action) {
+    case 'read':
+      return undefined;
+    case 'author':
+      if (tenant !== OWNER_TENANT && shared && scope !== undefined) return `A bank designer may author only in scope b; ${scope} is shared content (R-06-03)`;
+      return (tenant === OWNER_TENANT ? has('shared designer') : has('bank designer')) ? undefined : `${actor} is not a ${tenant === OWNER_TENANT ? 'shared' : 'bank'} designer`;
+    case 'approve':
+    case 'accept-release':
+      return (tenant === OWNER_TENANT ? has('shared checker') : has('bank checker')) ? undefined : `${actor} is not a ${tenant === OWNER_TENANT ? 'shared' : 'bank'} checker`;
+    case 'configure':
+      return tenant !== OWNER_TENANT && has('bank designer') ? undefined : 'Only a bank designer sets a bank configuration';
+    case 'retire':
+      return has('shared checker') || has('service operations') ? undefined : `${actor} may not retire a release`;
+    case 'supersede':
+      return has('shared designer') || has('shared checker') ? undefined : `${actor} may not author a supersession`;
+    case 'export':
+      return has('auditor') ? 'An auditor changes nothing and exports nothing' : undefined;
+  }
+}
+
+export function enforce(env: StudioEnv, actor: string, tenant: string, action: Action, key: string, scope?: string) {
+  const why = permit(env, actor, tenant, action, scope);
+  if (why) {
+    env.store.record({ tenant, actor, action, key, outcome: 'refused', detail: why });
+    throw new StoreError('R-06', why);
+  }
+}
+
+// --------------------------------------------------------- release flow (C19-S2)
+
+export function submitForReview(env: StudioEnv, tenant: string, actor: string, key: string) {
+  const e = env.store.entries.get(key);
+  if (!e || e.status !== 'draft' || e.tenant !== tenant) throw new StoreError('not-found', `No draft ${key}`);
+  enforce(env, actor, tenant, 'author', key, e.scope);
+  const errors = checkDocument(env, e.doc).filter((i) => i.severity === 'error');
+  if (errors.length) throw new StoreError('checks', `The draft has ${errors.length} error(s): ${errors.map((x) => x.code).join(', ')}`);
+  env.store.setState(key, 'in-review');
+  env.store.record({ tenant, actor, action: 'submit-for-review', key });
+}
+
+/**
+ * Approve and publish: the checker has the checker role and is not the maker; the tests that target
+ * the draft are green with the draft in place; a scheme with a planned message does not publish.
+ */
+export async function approve(env: StudioEnv, tenant: string, checker: string, key: string) {
+  const e = env.store.entries.get(key);
+  if (!e || (e.status !== 'in-review' && e.status !== 'draft') || e.tenant !== tenant) throw new StoreError('not-found', `No draft in review ${key}`);
+  enforce(env, checker, tenant, 'approve', key, e.scope);
+  const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
+  if (e.kind === 'scheme' && (e.doc.messages ?? []).some((m: any) => m.disposition?.planned)) throw new StoreError('R-05-22', 'A pack with a planned message cannot publish');
+  const tests = env.store.byKind('test').filter((t) => t.doc.target === e.name);
+  const failing: string[] = [];
+  for (const t of tests) {
+    const r = await runTest(env, t.doc, { documents: { [e.name]: e.doc, [`${e.name}@${e.release}`]: e.doc } });
+    if (!r.passed) failing.push(t.name);
+  }
+  if (failing.length) {
+    env.store.record({ tenant, actor: checker, action: 'publish', key, outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
+    throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
+  }
+  return env.store.publish(tenant, key, maker, checker);
+}
+
+// ---------------------------------------------------------- retirement (C19-S3)
+
+/** Who pins a release: published workflow and hook releases whose closure holds it. */
+export function pinnedBy(env: StudioEnv, name: string, release: string) {
+  const checker = Checker.fromEnv(env);
+  const out: { workflow: string; release: string }[] = [];
+  for (const e of env.store.all().filter((x) => x.status === 'published' && (x.kind === 'workflow' || x.kind === 'hook'))) {
+    const pins = new Map<string, string>((e.doc.artefacts ?? []).map((a: any) => [a.name, a.release]));
+    const uses = pins.size ? pins.get(name) === release : pinnable(checker, e.doc).includes(name) && impliedPin(env, e, name) === release;
+    if (uses) out.push({ workflow: e.name, release: e.release });
+  }
+  return out;
+}
+
+/**
+ * A published workflow with no artefacts block pins what was published when it was: the latest
+ * release of the line published no later than the workflow release itself.
+ */
+export function impliedPin(env: StudioEnv, wf: Entry, name: string): string | undefined {
+  const at = wf.publishedAt ?? '';
+  const rs = env.store.releasesOf(name).concat(env.store.all().filter((x) => x.name === name && x.status === 'retired')).filter((r) => (r.publishedAt ?? '') <= at || !r.publishedAt);
+  rs.sort((a, b) => compareReleases(a.release, b.release));
+  return rs[rs.length - 1]?.release;
+}
+
+/** The tests that exercise a workflow: those that target it, and end-to-end tests of the platform workflows a leg fills. */
+export function testsOf(env: StudioEnv, wf: string) {
+  const d = env.store.doc(wf);
+  const hosts: string[] = d?.implements?.of ?? [];
+  const scheme = d ? env.store.scheme(d.name.split('.').slice(0, 2).join('.')) : undefined;
+  const startsIt = (scheme?.messages ?? []).some((m: any) => m.disposition?.start?.leg === wf || m.disposition?.start?.refuseLeg === wf);
+  return env.store.byKind('test').filter((t) => t.doc.target === wf || (startsIt && t.doc.level === 'end-to-end' && hosts.includes(t.doc.target) && (t.doc.bench ?? []).some((b: any) => scheme?.ports?.includes(b.port))));
+}
+
+export function inFlight(env: StudioEnv, name: string, release: string): { count: number; asOf?: string } {
+  const imp = env.store.extra.inFlight;
+  const n = imp?.counts?.[`${name}@${release}`];
+  return { count: n ?? 0, asOf: imp?.asOf };
+}
+
+/** Service operations supplies the in-flight counts per release; the studio does not read payments. */
+export function importInFlight(env: StudioEnv, actor: string, counts: Record<string, number>, asOf: string) {
+  enforce(env, actor, OWNER_TENANT, 'retire', 'in-flight');
+  env.store.extra.inFlight = { counts, asOf };
+  env.store.record({ tenant: OWNER_TENANT, actor, action: 'import-in-flight', key: 'in-flight', detail: `as of ${asOf}` });
+}
+
+export function retire(env: StudioEnv, actor: string, name: string, release: string) {
+  enforce(env, actor, OWNER_TENANT, 'retire', `${name}@${release}`);
+  const pins = pinnedBy(env, name, release);
+  const flying = inFlight(env, name, release);
+  const why = pins.length ? `${name}@${release} is pinned by ${pins.map((p) => `${p.workflow}@${p.release}`).join(', ')} (R-01-23)` : flying.count ? `${flying.count} instance(s) are pinned to it as of ${flying.asOf} (R-01-23)` : undefined;
+  if (why) {
+    env.store.record({ tenant: OWNER_TENANT, actor, action: 'retire', key: `${name}@${release}`, outcome: 'refused', detail: why });
+    throw new StoreError('R-01-23', why);
+  }
+  return env.store.retire(name, release, actor, OWNER_TENANT);
+}
+
+// -------------------------------------------- dependency release propagation (C05-S4)
+
+/**
+ * For a new release of a block: every workflow on that line that pins the block, its tests rerun
+ * with the new release in place, and a proposed new workflow release with the new pin (R-01-18).
+ */
+export async function propagate(env: StudioEnv, name: string, newRelease: string) {
+  const next = env.store.get(name, newRelease) ?? env.store.entries.get(`${name}@${newRelease}#draft`);
+  if (!next) throw new StoreError('not-found', `${name}@${newRelease} does not exist`);
+  const prevs = env.store.releasesOf(name).filter((r) => compareReleases(r.release, newRelease) < 0);
+  const prev = prevs[prevs.length - 1];
+  if (!prev) throw new StoreError('not-found', `No earlier release of ${name}`);
+  const diff = interfaceDiff(prev.doc, next.doc);
+  const bump = diff.required === 'major' ? 'major' : diff.required === 'minor' ? 'minor' : 'patch';
+  const checker = Checker.fromEnv(env);
+  const workflows = env.store.byKind('workflow').filter((w) => w.doc.wfKind !== 'subflow' && w.doc.wfKind !== 'segment' && pinnable(checker, w.doc).includes(name));
+  const out: any[] = [];
+  for (const w of workflows) {
+    const tests = testsOf(env, w.name);
+    const results: any[] = [];
+    for (const t of tests) {
+      const r = await runTest(env, t.doc, { supersessions: [{ artefact: name, replaces: prev.release, with: newRelease }] });
+      results.push({ id: t.name, passed: r.passed, failed: r.checks.filter((c) => !c.passed).map((c) => c.what) });
+    }
+    const red = results.filter((r) => !r.passed);
+    out.push({
+      workflow: w.name, release: w.release, tests: results,
+      proposed: red.length || bump === 'major' ? undefined : proposeRelease(w.release, bump),
+      blockedBy: red.length ? `Red rerun: ${red.map((r) => r.id).join(', ')}` : bump === 'major' ? 'A major of a dependency is a new line; the workflow is not re-released' : !tests.length ? 'No test targets this workflow' : undefined,
+      newPin: { name, release: newRelease, hash: next.hash },
+    });
+  }
+  return { artefact: name, from: prev.release, to: newRelease, change: bump, workflows: out };
+}
+
+// -------------------------------------------------- supersession (C19-S4, C19-S5)
+
+export function draftSupersession(env: StudioEnv, body: { artefact: string; replaces: string; with: string; reason: string; maker: string }) {
+  enforce(env, body.maker, OWNER_TENANT, 'supersede', body.artefact);
+  const pins = pinnedBy(env, body.artefact, body.replaces);
+  const doc = {
+    kind: 'supersession', id: `SUP-${new Date().getUTCFullYear()}-${String((env.store.byKind('supersession').length + (env.store.extra.supersessions?.length ?? 0) + 1)).padStart(3, '0')}`,
+    artefact: body.artefact, replaces: body.replaces, with: body.with, reason: body.reason,
+    scope: { workflowReleases: pins.map((p) => `${p.workflow}@${p.release}`), schemes: [...new Set(pins.map((p) => parseName(p.workflow)?.scope).filter((s) => s && s.includes('.') && !s.endsWith('.p')))] },
+    evidence: { testRuns: [] as any[] },
+    approval: { maker: body.maker, checker: '' },
+  };
+  return doc;
+}
+
+/** Rerun the pinned workflows' tests with the replacement swapped in, and attach the evidence. */
+export async function testSupersession(env: StudioEnv, doc: any) {
+  const runs: any[] = [];
+  for (const wr of doc.scope?.workflowReleases ?? []) {
+    const [wf, rel] = String(wr).split('@');
+    const tests = testsOf(env, wf);
+    const results: any[] = [];
+    for (const t of tests) {
+      const r = await runTest(env, t.doc, { supersessions: [{ artefact: doc.artefact, replaces: doc.replaces, with: doc.with }] });
+      results.push({ id: t.name, passed: r.passed });
+    }
+    runs.push({ workflow: wf, release: rel, result: results.length && results.every((r) => r.passed) ? 'green' : results.length ? 'red' : 'no tests', tests: results });
+  }
+  return { ...doc, evidence: { testRuns: runs.map((r) => ({ workflow: r.workflow, release: r.release, result: r.result })) }, details: runs };
+}
+
+/** The hand-over: the document, its evidence and both approvals. The studio never applies it (R-01-21). */
+export function handOverSupersession(env: StudioEnv, doc: any, checker: string) {
+  enforce(env, checker, OWNER_TENANT, 'approve', doc.id);
+  if (!doc.approval?.maker || doc.approval.maker === checker) throw new StoreError('L27', 'Maker and checker must differ');
+  if (!(doc.evidence?.testRuns ?? []).length || doc.evidence.testRuns.some((r: any) => r.result !== 'green')) throw new StoreError('R-01-20', 'A supersession needs a green rerun of every pinned workflow release in its scope');
+  const { details, ...clean } = doc;
+  void details;
+  const final = { ...clean, approval: { maker: doc.approval.maker, checker } };
+  const issues = env.schemas.validate(final);
+  if (issues.length) throw new StoreError('L00', issues.map((i) => i.message).join('; '));
+  env.store.extra.supersessions = [...(env.store.extra.supersessions ?? []), final];
+  env.store.record({ tenant: OWNER_TENANT, actor: checker, action: 'hand-over-supersession', key: final.id, detail: `${final.artefact} ${final.replaces} to ${final.with}` });
+  return { document: final, yaml: toYaml(final) };
+}
+
+// ------------------------------------------------ configuration sets (C18-S2)
+
+/** The parameters a bank may set: those of shared content it accepts, and of its own artefacts. */
+export function settableParameters(env: StudioEnv, tenant: string) {
+  const out: any[] = [];
+  for (const e of env.store.all().filter((x) => x.status === 'published' && x.doc?.parameters && (x.tenant === OWNER_TENANT || x.tenant === tenant))) {
+    for (const [k, decl] of Object.entries<any>(e.doc.parameters)) if (decl.tenantSettable !== false) out.push({ parameter: `${e.name}#${k}`, owner: e.name, name: k, ...decl });
+  }
+  return out;
+}
+
+export function checkConfiguration(env: StudioEnv, tenant: string, doc: any): { code: string; severity: 'error' | 'warning'; message: string }[] {
+  const issues: any[] = checkDocument(env, doc).map((i) => ({ code: i.code, severity: i.severity, message: i.message }));
+  if (doc.tenant !== tenant) issues.push({ code: 'R-01-07', severity: 'error', message: `The set names tenant ${doc.tenant}, not ${tenant}` });
+  const settable = new Set(settableParameters(env, tenant).map((p) => p.parameter));
+  for (const v of doc.values ?? []) if (!settable.has(v.parameter)) issues.push({ code: 'L14', severity: 'error', message: `${v.parameter} is not a parameter this tenant may set` });
+  // Overlapping periods for one parameter or one hook point are refused (C18-S2).
+  const overlaps = (xs: any[], keyOf: (x: any) => string, what: string) => {
+    const by = new Map<string, any[]>();
+    for (const x of xs) {
+      const k = keyOf(x);
+      if (!by.has(k)) by.set(k, []);
+      by.get(k)!.push(x);
+    }
+    for (const [k, list] of by) {
+      list.sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1));
+      for (let i = 1; i < list.length; i++) {
+        const prev = list[i - 1];
+        if (!prev.validTo || prev.validTo >= list[i].validFrom) issues.push({ code: 'L14', severity: 'error', message: `${what} ${k}: the period from ${prev.validFrom} overlaps the one from ${list[i].validFrom}; close the first with validTo` });
+      }
+    }
+  };
+  overlaps(doc.values ?? [], (v) => v.parameter, 'Value');
+  overlaps(doc.bindings ?? [], (b) => b.hookPoint, 'Binding');
+  for (const x of [...(doc.values ?? []), ...(doc.bindings ?? [])]) if (x.validTo && x.validTo < x.validFrom) issues.push({ code: 'L14', severity: 'error', message: `A period ends before it starts (${x.validFrom} to ${x.validTo})` });
+  return issues;
+}
+
+export function saveConfiguration(env: StudioEnv, tenant: string, actor: string, yaml: string) {
+  enforce(env, actor, tenant, 'configure', `config:${tenant}`, 'b');
+  const doc = parseYaml(yaml);
+  const issues = checkConfiguration(env, tenant, doc).filter((i) => i.severity === 'error');
+  if (issues.length) throw new StoreError('L14', issues.map((i) => i.message).join('; '));
+  const prev = env.store.configurationSet(tenant);
+  if (prev && compareReleases(doc.release, prev.release) <= 0) throw new StoreError('R-06-15', `A changed configuration set needs a later release than ${prev.release}`);
+  const e = env.store.add(doc, `studio:${tenant}`, 'studio', false, 'published', tenant);
+  e.maker = actor;
+  env.store.record({ tenant, actor, action: 'set-configuration', key: e.key, diff: prev ? { before: prev.release, after: doc.release } : { created: true } });
+  env.store.persist();
+  return e;
+}
+
+// ---------------------------------------------------- compatibility run (C18-S3)
+
+/**
+ * Before a tenant accepts a shared release: each bound hook point must still exist with a compatible
+ * contract in the release, and each of the tenant's hook tests must pass against it.
+ */
+export async function compatibilityRun(env: StudioEnv, tenant: string, candidates: any[] = []) {
+  const cs = env.store.configurationSet(tenant);
+  const checker = Checker.fromEnv(env, candidates);
+  const bindings: any[] = [];
+  for (const b of cs?.bindings ?? []) {
+    const [owner, hp] = String(b.hookPoint).split('#');
+    const host = checker.byName.get(owner);
+    const point = host ? checker.hookPoints(host)[hp] : undefined;
+    const hook = env.store.doc(b.hook, b.release);
+    let compatible = !!point;
+    let reason = point ? undefined : `${owner} no longer declares hook point ${hp}`;
+    if (point && hook && point.type !== hook.type) { compatible = false; reason = `The hook point is now ${point.type}; the hook is ${hook.type}`; }
+    if (point && hook) {
+      for (const st of (hook.do ?? [])) {
+        const a = checker.byName.get(st.call);
+        for (const w of a?.writes ?? []) if (point.type === 'transform' && !(point.contract?.writes ?? []).some((x: string) => w === x || w.startsWith(x + '.')) && !w.startsWith('facts.')) { compatible = false; reason = `${a.name} writes ${w}, outside the hook point's contract`; }
+      }
+    }
+    bindings.push({ hookPoint: b.hookPoint, hook: `${b.hook}@${b.release}`, compatible, reason });
+  }
+  const tests = env.store.byKind('test').filter((t) => t.doc.tenant === tenant);
+  const documents = Object.fromEntries(candidates.flatMap((d) => [[d.name, d], [`${d.name}@${d.release}`, d]]));
+  const results: any[] = [];
+  for (const t of tests) {
+    const r = await runTest(env, t.doc, { documents });
+    results.push({ id: t.name, target: t.doc.target, passed: r.passed, outcome: r.outcome, failed: r.checks.filter((c) => !c.passed) });
+  }
+  const accepted = bindings.every((b) => b.compatible) && results.every((r) => r.passed);
+  return { tenant, candidates: candidates.map((c) => `${c.name}@${c.release}`), bindings, results, accepted };
+}
+
+// ----------------------------------------------------------- tenant export (C18-S4)
+
+/** A tenant's export: the shared packs it accepted by hash, unchanged, its bank pack and its configuration set. */
+export function tenantExport(env: StudioEnv, tenant: string) {
+  const cs = env.store.configurationSet(tenant);
+  const shared = (cs?.accepts ?? []).map((a: any) => {
+    const b = buildPack(env, a.scope, 'shared');
+    return { scope: a.scope, release: a.release, hash: 'sha256:' + require_sha(JSON.stringify(b.files)), files: Object.keys(b.files).length };
+  });
+  const bank = buildPack(env, 'b', 'bank', tenant);
+  return { tenant, shared, bank: { files: Object.keys(bank.files).length, hash: 'sha256:' + require_sha(JSON.stringify(bank.files)) }, configuration: cs ? { release: cs.release, yaml: toYaml(cs) } : undefined };
+}
+
+import { createHash } from 'node:crypto';
+function require_sha(s: string) {
+  return createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+// -------------------------------------------------- release gate report (C23-S3)
+
+export interface Waiver { target: string; scenario: string; reason: string; approver: string }
+
+/** The kit report per target with waivers; a red scenario that is not waived blocks the release. */
+export async function conformanceReport(env: StudioEnv, target = 'studio') {
+  const res = await runKit(env);
+  const waivers: Waiver[] = (env.store.extra.waivers ?? []).filter((w: Waiver) => w.target === target);
+  const engines = env.store.extra.engineReports ?? {};
+  const rows = res.map((r) => ({ scenario: r.id, construct: r.construct, result: r.passed ? 'pass' : waivers.some((w) => w.scenario === r.id) ? 'waived' : 'fail', waiver: waivers.find((w) => w.scenario === r.id) }));
+  const kit = env.store.all().find((e) => e.kind === 'conformance-kit')?.doc;
+  return { target, kitRelease: kit?.release, date: kit?.date, rows, green: rows.every((r) => r.result !== 'fail'), engines };
+}
+
+export function addWaiver(env: StudioEnv, actor: string, w: Waiver) {
+  enforce(env, actor, OWNER_TENANT, 'approve', `waiver:${w.scenario}`);
+  if (!w.reason) throw new StoreError('C23-S3', 'A waiver names its reason');
+  env.store.extra.waivers = [...(env.store.extra.waivers ?? []), { ...w, approver: actor }];
+  env.store.record({ tenant: OWNER_TENANT, actor, action: 'waive', key: w.scenario, detail: `${w.target}: ${w.reason}` });
+}
+
+/** Release of a shared pack (C19-S2): checks, green tests, and a green conformance report on every target in the binding list. */
+export async function packReleaseGate(env: StudioEnv, scope: string) {
+  const b = buildPack(env, scope, 'shared');
+  const scheme = env.store.scheme(scope);
+  const planned = (scheme?.messages ?? []).filter((m: any) => m.disposition?.planned).map((m: any) => m.id);
+  const report = await conformanceReport(env, 'studio');
+  return {
+    scope,
+    checks: b.refused ? { green: false, errors: b.refused } : { green: true },
+    planned: planned.length ? { publishable: false, messages: planned, note: 'These message groups are not publishable; the rest of the pack may publish once they are removed or defined' } : { publishable: true },
+    conformance: { target: 'studio', green: report.green, red: report.rows.filter((r) => r.result === 'fail').map((r) => r.scenario) },
+    engines: report.engines,
+  };
+}
+
+export { exportPackage, packageHash };
+void ({} as Entry);
