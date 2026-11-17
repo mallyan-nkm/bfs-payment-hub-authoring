@@ -3,8 +3,16 @@ import { runAllTests, runTest } from './testing/runner.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
 
+const USAGE = 'Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | deploy <package> --workflow <name> [--inbound file] [--date YYYY-MM-DD] [--tenant t] [--bench port=simulator:scenario ...]';
+
+/** A mistake in the command line: the usage and exit code 2. */
+class UsageError extends Error {}
+
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
+  const need = (ok: unknown, what: string) => {
+    if (!ok) throw new UsageError(what);
+  };
   const env = openEnv({ dataRoot: process.env.TH_DATA_ROOT ?? '' });
   if (cmd === 'test') {
     const reports = args.length
@@ -47,6 +55,7 @@ async function main() {
     return;
   }
   if (cmd === 'export') {
+    need(args[0], 'export needs a workflow');
     const { exportPackage } = await import('./export/exporter.js');
     const pkg = exportPackage(env, { workflows: [args[0]], target: (args[1] ?? 'temporal') as any });
     console.log(JSON.stringify(pkg.manifest, null, 2));
@@ -56,10 +65,12 @@ async function main() {
     // studio deploy <package.zip|dir> --workflow <name> [--inbound <file>] [--date YYYY-MM-DD] [--tenant t] [--bench port=simulator:scenario ...]
     const { deploy } = await import('./deploy/deploy.js');
     const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
+    need(args[0] && !args[0].startsWith('--'), 'deploy needs a package (a .zip or a directory)');
+    need(opt('workflow'), 'deploy needs --workflow <name>');
     const bench = args.flatMap((a, i) => (args[i - 1] === '--bench' ? [a] : [])).map((b) => {
-      const [port, rest] = b.split('=');
-      const [simulator, scenario] = rest.split(':');
-      return { port, simulator, scenario };
+      const m = /^([^=]+)=([^:]+):(.+)$/.exec(b);
+      need(m, `--bench ${b}: write it as port=simulator:scenario`);
+      return { port: m![1], simulator: m![2], scenario: m![3] };
     });
     const tenant = opt('tenant');
     const r = await deploy({
@@ -79,16 +90,27 @@ async function main() {
   }
   if (cmd === 'export-zip') {
     // studio export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]
+    need(args[0] && args[1] && args[2], 'export-zip needs a workflow, a target and the zip to write');
     const { exportPackage, exportZip } = await import('./export/exporter.js');
     const pkg = exportPackage(env, { workflows: [args[0]], target: args[1] as any, withSimulators: args.includes('--with-simulators'), tenant: args.includes('--tenant') ? args[args.indexOf('--tenant') + 1] : undefined });
     (await import('node:fs')).writeFileSync(args[2], exportZip(pkg));
     console.log(`${args[2]}: ${Object.keys(pkg.files).length} files, workers ${pkg.manifest.workers.map((w: any) => w.queue).join(', ')}`);
     return;
   }
-  console.log('Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] | deploy <package> --workflow <name> [--inbound file] [--bench port=sim:scenario]');
+  if (cmd && cmd !== 'help' && cmd !== '--help') {
+    console.error(`Unknown command ${cmd}`);
+    process.exitCode = 2;
+  }
+  console.log(USAGE);
 }
 
 main().catch((e) => {
-  console.error(e);
+  if (e instanceof UsageError) {
+    console.error(e.message);
+    console.error(USAGE);
+    process.exitCode = 2;
+    return;
+  }
+  console.error(e?.message ?? e);
   process.exitCode = 1;
 });

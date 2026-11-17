@@ -463,3 +463,10 @@ button.danger-btn { border-color: var(--fail); color: var(--fail); }
   h2 { font-size: 17px; }
 }
 .delta-cell { min-width: 300px; }
+
+/* Phone widths: a wide table scrolls inside itself, and an inline field wraps, so the page never scrolls sideways. */
+@media (max-width: 720px) {
+  table.grid { display: block; overflow-x: auto; max-width: 100%; }
+  .field-inline { flex-wrap: wrap; max-width: 100%; }
+  .field-inline select, .field-inline input { max-width: 100%; min-width: 0; }
+}
