@@ -201,7 +201,12 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       intake, workers, messages: obs.messages ?? [], engine: obs.engine, elapsedMs: Date.now() - t0, log,
     };
   } finally {
-    for (const p of procs) p.child.kill();
+    // Stop the workers and wait for each to exit, so that none outlives the deploy.
+    await Promise.all(procs.map((p) => new Promise<void>((done) => {
+      if (p.child.exitCode !== null || p.child.signalCode !== null) return done();
+      p.child.once('exit', () => done());
+      p.child.kill();
+    })));
     if (!req.keep) fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
