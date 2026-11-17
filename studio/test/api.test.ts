@@ -252,24 +252,40 @@ describe('change sets', () => {
     expect(listed.every((d: any) => d.issues === 0)).toBe(true);
   });
 
-  it('refuses one alone and names its partners; refuses a set not reviewed, an empty set, or the maker as checker', async () => {
-    const alone = await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.checker' });
-    expect(alone.status).toBe(422);
-    expect(alone.body.together).toEqual([keys[1]]);
-    expect((await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.checker' })).status).toBe(409); // not in review
-    for (const key of keys) await post('/api/review', { tenant: 'owner', actor: 'shared.designer', key });
-    expect((await post('/api/publish', { tenant: 'owner', keys: [], checker: 'shared.checker' })).status).toBe(409);
-    expect((await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.designer' })).status).toBe(409);
-    expect((await post('/api/publish', { tenant: 'owner', keys: [keys[0]], checker: 'shared.checker' })).status).toBe(409); // the port without its simulator
-    expect((await get('/api/drafts?tenant=owner')).body.filter((d: any) => keys.includes(d.key)).length).toBe(2); // nothing was published
+  it('generates the change set: the port brings its simulator, and the simulator its port', async () => {
+    for (const key of keys) {
+      const cs = await get(`/api/change-set?key=${encodeURIComponent(key)}`);
+      expect(cs.body.members.map((m: any) => m.key).sort()).toEqual([...keys].sort());
+    }
+    expect((await get('/api/change-set')).status).toBe(400);
+    expect((await get('/api/change-set?key=nope')).status).toBe(404);
   });
 
-  it('publishes the set together, and records it', async () => {
-    const r = await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.checker' });
+  it('refuses the maker as checker and an empty request, and publishes nothing', async () => {
+    expect((await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.designer' })).status).toBe(409);
+    expect((await post('/api/publish', { tenant: 'owner', keys: [], checker: 'shared.checker' })).status).toBe(409);
+    expect((await get('/api/drafts?tenant=owner')).body.filter((d: any) => keys.includes(d.key)).length).toBe(2);
+  });
+
+  it('approving one draft publishes its whole change set, and records it', async () => {
+    for (const key of keys) await post('/api/review', { tenant: 'owner', actor: 'shared.designer', key });
+    const r = await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.checker' });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     expect(r.body.published.map((p: any) => p.name).sort()).toEqual([PORT.name, SIM.name]);
+    expect(r.body.changeSet.id).toMatch(/^CS-\d{4}-\d{2}-\d{2}-\d{3}$/);
+    expect(r.body.changeSet.members.map((m: any) => m.name).sort()).toEqual([PORT.name, SIM.name]);
+    expect((await get('/api/change-sets')).body.map((c: any) => c.id)).toContain(r.body.changeSet.id);
     const audit = (await get('/api/audit?tenant=owner')).body;
-    expect(audit.some((a: any) => a.action === 'publish-set' && a.outcome === 'done')).toBe(true);
-    expect(audit.some((a: any) => a.action === 'publish-set' && a.outcome === 'refused')).toBe(true);
+    expect(audit.some((a: any) => a.action === 'publish-change-set' && a.key === r.body.changeSet.id)).toBe(true);
   });
+
+  it('lists the change sets an export carries: those approved here, and pack releases for shipped content', async () => {
+    const pkg = await post('/api/export', { workflows: ['p.wf.corporate.v1'], target: 'dtfx', tenant: 'example-bank' });
+    const ids = pkg.body.manifest.changeSets.map((c: any) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(['pack:p@1.0.0', 'pack:uae.wps@1.0.0', 'pack:uae.p@1.0.0']));
+    const members = pkg.body.manifest.changeSets.flatMap((c: any) => c.members);
+    expect(new Set(members).size).toBe(members.length); // each artefact in exactly one
+    expect(members).toContain('p.wf.corporate.v1@1.0.0');
+  });
+
 });

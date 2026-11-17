@@ -44,6 +44,7 @@ async function publish(doc: any, tests: any[] = []) {
   const pub = await api.post('/api/publish', { tenant: 'owner', key, checker: CHECKER });
   expect(pub.status, `${doc.name ?? doc.scope}: ${JSON.stringify(pub.data)}`).toBe(200);
 }
+const changeSets: string[] = [];
 /** Drafts that refer to one another, reviewed and published together as one change set. */
 async function publishSet(docs: any[]) {
   const keys: string[] = [];
@@ -55,15 +56,18 @@ async function publishSet(docs: any[]) {
   // With every member saved, each is clean: the checks read the tenant's drafts as a working set.
   const listed = (await api.get('/api/drafts?tenant=owner')).data.filter((d: any) => keys.includes(d.key));
   expect(listed.map((d: any) => [d.key, d.issues]), JSON.stringify(listed)).toEqual(keys.map((k) => [k, 0]));
-  // Alone, the first one cannot publish: it refers to drafts. The refusal names them.
-  const alone = await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: CHECKER });
-  expect(alone.status).toBe(422);
-  expect(alone.data.together.length).toBeGreaterThan(0);
+  // The studio generates the change set: from any member, the same set (R-11-19).
+  for (const key of keys) {
+    const cs = await api.get(`/api/change-set?tenant=owner&key=${encodeURIComponent(key)}`);
+    expect(cs.data.members.map((m: any) => m.key).sort()).toEqual([...keys].sort());
+  }
   for (const key of keys) expect((await api.post('/api/review', { tenant: 'owner', actor: MAKER, key })).status).toBe(200);
-  expect((await api.post('/api/publish', { tenant: 'owner', keys, checker: MAKER })).status).toBe(409); // the maker cannot approve the set
-  const pub = await api.post('/api/publish', { tenant: 'owner', keys, checker: CHECKER });
+  expect((await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: MAKER })).status).toBe(409); // the maker cannot approve it
+  // Approving one member publishes the whole change set.
+  const pub = await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: CHECKER });
   expect(pub.status, JSON.stringify(pub.data)).toBe(200);
   expect(pub.data.published.length).toBe(docs.length);
+  changeSets.push(pub.data.changeSet.id);
 }
 async function runAll(tests: any[]) {
   for (const t of tests) {
@@ -176,6 +180,13 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(parseYaml(files.get(`schemes/${S}.yaml`)!).legs).toEqual([LEG.name]);
     expect(files.get(`workers/th-uae-demo/scripts/${FILE_IN.name}.js`)).toContain('mapped');
     expect(parseYaml(files.get(`configuration/${BANK}.yaml`)!).release).toBe('1.1.0');
+    // The export lists the change sets its artefacts were published in (R-11-20).
+    const listed = manifest.changeSets.map((c: any) => c.id);
+    for (const id of changeSets) expect(listed).toContain(id);
+    const demoSet = manifest.changeSets.find((c: any) => c.members.includes(`${LEG.name}@1.0.0`));
+    expect(demoSet.kind).toBe('approval');
+    expect(demoSet.members).toEqual(expect.arrayContaining([`scheme:${S}@1.0.0`, `${SUBMIT.name}@1.0.0`]));
+    expect(demoSet.checker).toBe(CHECKER);
   });
 
   it('deployed on DTFx: the credit file is paid end to end, each worker a separate process serving only its queue', () => {

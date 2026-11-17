@@ -38,6 +38,8 @@ A factory pack is a shared pack with `origin: factory` (Part 12).
 | R-11-16 | A manifest MUST NOT name a native code-behind release that has not passed the conformance pack. | Release check (C19) |
 | R-11-17 | The release report MUST list, per artefact, what changed in the interface and which workflows gained a new release. | Release report test (C19) |
 | R-11-18 | Retirement MUST be a tracked step. The studio lists who still pins a release; operations supply which instances are still running. | Retirement test (C19) |
+| R-11-19 | Approval publishes a change set the studio generates: the draft, and every draft of the tenant that refers to it or that it refers to, directly or through others. Every member is checked with the others in place, the tests that target any member pass with the whole set in place, the checker is not the maker of any member, and all publish or none does. The change set is recorded with an id. | Publish test (C17) |
+| R-11-20 | An export MUST list the change sets its artefacts were published in: those recorded at approval, and for content shipped with the spec, its pack release. Every artefact of the package is in exactly one. | Export test (C20) |
 
 ## 11.4 Repository layout
 

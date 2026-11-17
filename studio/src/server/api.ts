@@ -19,7 +19,7 @@ import { CodeRegistry, RegistryError } from '../core/registry.js';
 import { expandWorkflow } from '../core/expand.js';
 import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
 import * as gov from '../governance/governance.js';
-import { approve, enforce, submitForReview } from '../governance/governance.js';
+import { enforce, submitForReview } from '../governance/governance.js';
 import { reasonCodeCoverage } from '../sim/coverage.js';
 import { stubSource } from '../sim/stub.js';
 import { testCoverageReport, untestedOutcomes } from '../testing/coverage.js';
@@ -306,23 +306,25 @@ route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
   return { ok: true };
 });
 
+// Approval publishes the change set the studio generates for the draft (R-11-19): the draft and the
+// drafts it refers to or that refer to it, checked and tested together, all or none.
 route('POST', '/api/publish', async (env, req) => {
   const tenant = tenantOf(req);
-  if (Array.isArray(req.body?.keys)) return { published: (await gov.approveSet(env, tenant, req.body.checker, req.body.keys)).map(summary) };
-  const d = env.store.entries.get(req.body.key);
-  if (!d) throw new HttpError(404, `No draft ${req.body.key}`);
-  const errors = checkDocument(env, d.doc, tenant).filter((i) => i.severity === 'error');
-  if (errors.length) {
-    // Say which drafts it needs beside it, so that they can be published together.
-    const drafts = env.store.drafts(tenant).filter((x) => x.key !== d.key);
-    const refersTo = (x: any) => JSON.stringify(x.doc).includes(`"${d.name}"`);
-    const needs = drafts.filter((x) => errors.some((i) => i.message.includes(x.name)) || refersTo(x));
-    throw new HttpError(422, needs.length ? `The draft refers to drafts that are not published: publish it together with ${needs.map((x) => x.key).join(', ')} ({ keys: [...] })` : 'The draft has errors; fix them before publish', { issues: errors, together: needs.map((x) => x.key) });
-  }
-  // Maker-checker with roles and green tests (C17-S4, C19-S2).
-  const e = await approve(env, tenant, req.body.checker, req.body.key);
-  return { published: summary(e) };
+  const keys: string[] = Array.isArray(req.body?.keys) ? req.body.keys : req.body?.key ? [req.body.key] : [];
+  for (const k of keys) if (!env.store.entries.get(k)) throw new HttpError(404, `No draft ${k}`);
+  const r = await gov.approveChangeSet(env, tenant, req.body?.checker, keys);
+  return { changeSet: r.changeSet, published: r.published.map(summary) };
 });
+
+route('GET', '/api/change-set', (env, req) => {
+  const tenant = tenantOf(req);
+  if (!req.query.key) throw new HttpError(400, 'Name the draft: ?key=...');
+  if (!env.store.entries.get(req.query.key)) throw new HttpError(404, `No draft ${req.query.key}`);
+  const keys = gov.changeSetFor(env, tenant, req.query.key);
+  return { key: req.query.key, members: keys.map((k) => summary(env.store.entries.get(k)!)) };
+});
+
+route('GET', '/api/change-sets', (env, req) => (env.store.extra.changeSets ?? []).filter((c: any) => !req.query.tenant || c.tenant === tenantOf(req)));
 
 route('POST', '/api/review', (env, req) => {
   submitForReview(env, tenantOf(req), req.body.actor, req.body.key);

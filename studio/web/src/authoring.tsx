@@ -217,7 +217,7 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
     setMsg(undefined);
     try {
       const r = await post('/api/publish', { key: draftKey, checker });
-      setMsg({ tone: 'pass', text: `Published ${r.published.key}. Maker ${actor}, checker ${checker}.` });
+      setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} published: ${r.published.map((p: any) => p.key).join(', ')}. Maker ${actor}, checker ${checker}.` });
       setDraftKey(undefined);
       forgetCatalogue();
     } catch (e: any) {

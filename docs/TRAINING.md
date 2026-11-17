@@ -274,7 +274,7 @@ The same 46 scenarios run on DTFx and Flowable; see Part D.
 4. Break it on purpose: change the second example's `amount` to `5`. The example fails and the gate goes red. Change it back.
 5. Under **Save and publish**, click **Save draft as shared.designer**, then **Submit for review**.
 6. Choose **Checker** `shared.auditor` and click **Publish as shared.auditor**. It is refused: an auditor is not a checker.
-7. Switch **Acting as** to `shared.checker`. Open **Governance**, tab **Review and approve**. Your draft is listed. Choose **Checker** `shared.checker` and click **Approve as shared.checker**. Approval reruns the tests that target the draft, then publishes it.
+7. Switch **Acting as** to `shared.checker`. Open **Governance**, tab **Review and approve**. Your draft is listed; **Publishes with** says `alone`, because no other draft refers to it. Choose **Checker** `shared.checker` and click **Approve as shared.checker**. Approval reruns the tests that target the draft, then publishes it as change set `CS-<date>-<n>`.
 8. Open the rule in the **Catalogue**: release `1.0.0`, maker `shared.designer`, checker `shared.checker`.
 9. Try to change it: edit the title, keep release `1.0.0`, save and publish. It is refused: a published release never changes. Bump the release to `1.0.1` and it publishes.
 10. Open **Governance**, tab **Audit log**. Every save, submission, publish and refusal is there. Click **Verify the chain**: the hash chain verifies.
@@ -321,6 +321,7 @@ Why a new leg in WPS would not run on its own: the WPS dispatch table names one 
    - **workers**: one per task queue. Here, `th-bank`, `th-p`, `th-uae-p` and `th-uae-wps`: the platform, the bank's hooks, the cluster platform and the WPS leg that fills the slot.
    - **tasks**: each named `name@release`, each on its queue.
    - **files**: workflows in expanded form with their pins, activities, rules, the binding, and `configuration/example-bank.yaml`.
+   - **changeSets**: the change sets the package's artefacts were published in. Shipped content is listed by pack release, for example `pack:uae.wps@1.0.0`; what you approved in Exercise 6 appears as `CS-<date>-<n>` when the package uses it.
 4. Tick **With simulators** and click **Download the zip**. A package with simulators is marked not promotable: it is for testing only.
 5. Download the same package twice and compare: the bytes are identical (a reproducible zip).
 
@@ -428,10 +429,10 @@ Two end-to-end tests show complete pieces of work, done only through the HTTP AP
 `studio/test/blackbox/e2e-new-scheme.test.ts`, with the scheme's documents in `studio/test/blackbox/demo-scheme.ts`. `uae.demo` is a synthetic scheme made up for training.
 
 1. Sample files are saved through `POST /api/samples`.
-2. The port and its simulator are published together. They refer to each other, so they form one reviewed change set (Issue I-27).
+2. The port and its simulator refer to each other. The studio generates their change set, and approving either publishes both (R-11-19).
 3. The rule, rule set and file checks are published, then the intake map and its script-behind (`POST /api/scripts`).
 4. The render map, the acknowledgement map and the send are published.
-5. One change set holds the scheme manifest, the composite and its subflow, and the leg. The dispatch table names the leg; the leg fills the `scheme-leg` slot of `p.wf.corporate.v1`.
+5. One generated change set holds the scheme manifest, the composite and its subflow, and the leg. The dispatch table names the leg and routes the file as an outward corporate payment; the leg fills the `scheme-leg` slot of `p.wf.corporate.v1`.
 6. The end-to-end test fails at the route until the bank's configuration accepts the scheme and enables its rail.
 7. The export gives the new scheme its own worker, `th-uae-demo`, and the deploy pays the credit file end to end.
 
@@ -517,7 +518,7 @@ From `spec/`, the spec's own tools: `python3 tools/validate.py`, `python3 tools/
 | --- | --- |
 | Bench | The simulators a run binds to ports, with a scenario each |
 | Business trace | One line per authored step: `step:outcome` |
-| Change set | Drafts that refer to one another, reviewed and published together |
+| Change set | What one approval publishes: the draft and the drafts it refers to or that refer to it. The studio generates it; an export lists the change sets of its artefacts |
 | Composite | An activity whose behaviour is a subflow, typically send, await, read |
 | Detail | The inner steps of composites: `step.inner:outcome` |
 | Dispatch table | A scheme's routing of each message: start, deliver or sent by |

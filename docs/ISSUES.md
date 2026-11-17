@@ -220,7 +220,15 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **Recommendation.** Define a change set in Part 11: drafts reviewed and approved together, checked as a whole, with green tests with the whole set in place, published all or none. The pack is a candidate unit, but a change set is smaller: it is what one review covers.
 
-**What the studio does.** A draft is checked with the tenant's other drafts in place while it is edited. `POST /api/publish` with `keys` publishes a change set: every member in review, the checker not the maker of any, each checked with the others in place, the tests that target any member green, then all published, with one `publish-set` audit event. A single draft that refers to unpublished drafts is refused with their keys under `together`.
+**Decision.** The studio generates the change set, during approval and export.
+
+**What changed.** R-11-19 and R-11-20 in Part 11.
+- A draft is checked with the tenant's other drafts in place while it is edited.
+- `GET /api/change-set?key=` shows the change set the studio generates for a draft: the draft and every draft that refers to it or that it refers to, directly or through others.
+- Approving any member, `POST /api/publish`, publishes the whole set. Each member is checked with the others in place, the tests that target any member must be green, and the checker must not be the maker of any. All publish or none does.
+- The set is recorded with an id such as `CS-2026-11-17-001`, listed by `GET /api/change-sets` and written to the audit log as `publish-change-set`.
+- Governance, Review and approve, shows what each draft publishes with.
+- An export manifest lists `changeSets`: those recorded at approval, and `pack:<scope>@<release>` for content shipped with the spec. Every artefact of the package is in exactly one.
 
 ## I-28. The example bank's large-payment hold does not see salary files
 

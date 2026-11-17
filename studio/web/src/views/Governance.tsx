@@ -65,6 +65,12 @@ const may = (...roles: string[]) => (u: User) => u.roles.some((r) => roles.inclu
 function Drafts() {
   const { tenant, actor, users, go } = useStudio();
   const drafts = useLoad(() => get<Summary[]>('/api/drafts'), [tenant]);
+  // The change set the studio generates for each draft: what approving it publishes (R-11-19).
+  const sets = useLoad(async () => {
+    const out: Record<string, string[]> = {};
+    for (const d of drafts.data ?? []) out[d.key] = ((await get<any>(`/api/change-set${q({ key: d.key })}`)).members ?? []).map((m: any) => m.key);
+    return out;
+  }, [drafts.data]);
   const [error, setError] = useState<string>();
   const [msg, setMsg] = useState<{ tone: string; text: string }>();
   const [checker, setChecker] = useState('');
@@ -87,7 +93,7 @@ function Drafts() {
         setMsg({ tone: 'pass', text: `${key} is in review, submitted by ${actor}.` });
       } else {
         const r = await post('/api/publish', { key, checker });
-        setMsg({ tone: 'pass', text: `Published ${r.published.key}, approved by ${checker}.` });
+        setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} published, approved by ${checker}: ${r.published.map((p: any) => p.key).join(', ')}.` });
       }
       drafts.reload();
     } catch (e: any) {
@@ -98,13 +104,13 @@ function Drafts() {
   };
   return (
     <Section title={`Drafts of ${tenant}`} count={drafts.data?.length} actions={<AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.some((r) => r.endsWith('checker')) && u.id !== actor} label="Checker" />}>
-      <p className="muted small">The maker submits for review; a checker of this tenant who is not the maker approves. Approval reruns the tests that target the draft and refuses on a red one.</p>
+      <p className="muted small">The maker submits for review; a checker of this tenant who is not the maker approves. Approving a draft publishes its change set: the draft and the drafts it refers to or that refer to it, checked and tested together. Approval refuses on an error or a red test, and then nothing is published.</p>
       <ErrorBox error={drafts.error || error} />
       {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
       {drafts.loading && !drafts.data ? <Loading /> : !drafts.data?.length ? <p className="muted">No drafts.</p> : (
         <div className="table-wrap">
           <table className="grid">
-            <thead><tr><th>Draft</th><th>Kind</th><th>Title</th><th>State</th><th>Errors</th><th></th></tr></thead>
+            <thead><tr><th>Draft</th><th>Kind</th><th>Title</th><th>State</th><th>Errors</th><th>Publishes with</th><th></th></tr></thead>
             <tbody>
               {drafts.data.map((d) => (
                 <tr key={d.key}>
@@ -113,6 +119,7 @@ function Drafts() {
                   <td>{d.title}</td>
                   <td><Badge tone={d.status === 'in-review' ? 'info' : 'warn'}>{d.status}</Badge></td>
                   <td>{d.issues ? <Badge tone="fail">{d.issues}</Badge> : <Badge tone="pass">none</Badge>}</td>
+                  <td className="small">{(sets.data?.[d.key] ?? []).filter((k) => k !== d.key).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}{(sets.data?.[d.key] ?? []).length <= 1 && <span className="muted">alone</span>}</td>
                   <td className="nowrap">
                     {['workflow', 'hook'].includes(d.kind) && <button onClick={() => go(`/designer?open=${encodeURIComponent(d.key)}&draft=1`)}>Open</button>}{' '}
                     <button disabled={busy === d.key || d.status === 'in-review'} onClick={() => act(d.key, 'review')}>Submit as {actor}</button>{' '}

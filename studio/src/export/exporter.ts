@@ -179,6 +179,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     promotable: !req.withSimulators && issues.filter((i) => i.severity === 'error').length === 0,
     workers: [...new Set(tasks.filter((t) => t.kind === 'activity').map((t) => t.queue))].sort().map((q) => ({ queue: q, path: `workers/${q}/`, tasks: tasks.filter((t) => t.kind === 'activity' && t.queue === q).map((t) => t.task).sort() })),
     flows: flowEntries,
+    changeSets: changeSetsOf(env, files),
     ...(fallbackStarts.length ? { fallbackStarts } : {}),
     tasks: tasks.sort((a, b) => a.task.localeCompare(b.task)),
     files: Object.keys(files).sort().map((f) => ({ path: f, hash: 'sha256:' + sha(files[f]) })),
@@ -200,6 +201,40 @@ function walkUse(d: any): string[] {
   };
   visit(d.do);
   return out;
+}
+
+/**
+ * The change sets the package's artefacts were published in (R-11-20): those the studio recorded at
+ * approval, and for content that came with the spec (the factory and the example bank), its pack
+ * release. Every artefact file of the package is in exactly one.
+ */
+function changeSetsOf(env: StudioEnv, files: Record<string, string | Buffer>) {
+  const recorded = (env.store.extra.changeSets ?? []) as any[];
+  const sets = new Map<string, { id: string; kind: string; publishedAt?: string; checker?: string; makers?: string[]; members: string[] }>();
+  const seen = new Set<string>();
+  for (const f of Object.keys(files).sort()) {
+    const m = /^(?:workflows|activities|rules|ports|extensions|hooks|simulators)\/(.+)@([0-9]+\.[0-9]+\.[0-9]+)\.yaml$/.exec(f) ?? /^workers\/[^/]+\/(?:artefacts\/[^/]+|simulators)\/(.+)@([0-9]+\.[0-9]+\.[0-9]+)\.yaml$/.exec(f);
+    const sch = /^schemes\/(.+)\.yaml$/.exec(f);
+    const name = m?.[1] ?? (sch ? sch[1] : undefined);
+    if (!name) continue;
+    const release = m?.[2] ?? env.store.scheme(name)?.release;
+    const member = sch ? `scheme:${name}@${release}` : `${name}@${release}`;
+    if (seen.has(member)) continue;
+    seen.add(member);
+    const cs = recorded.find((c) => c.members.some((x: any) => x.name === (sch ? `scheme:${name}` : name) && x.release === release));
+    let id: string;
+    if (cs) {
+      id = cs.id;
+      if (!sets.has(id)) sets.set(id, { id, kind: 'approval', publishedAt: cs.publishedAt, checker: cs.checker, makers: cs.makers, members: [] });
+    } else {
+      const scope = sch ? name : scopeOf(name);
+      const pack = env.store.byKind('pack').find((p) => p.doc.scope === scope)?.doc;
+      id = `pack:${scope}@${pack?.release ?? release}`;
+      if (!sets.has(id)) sets.set(id, { id, kind: 'pack', members: [] });
+    }
+    sets.get(id)!.members.push(member);
+  }
+  return [...sets.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function queueOf(binding: any, name: string): string {

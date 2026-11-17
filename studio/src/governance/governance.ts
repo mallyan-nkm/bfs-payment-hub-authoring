@@ -89,42 +89,62 @@ export function submitForReview(env: StudioEnv, tenant: string, actor: string, k
   env.store.record({ tenant, actor, action: 'submit-for-review', key });
 }
 
-/**
- * Approve and publish: the checker has the checker role and is not the maker; the tests that target
- * the draft are green with the draft in place; a scheme with a planned message does not publish.
- */
+/** Approve one draft: the change set the studio generates for it is published with it (R-11-19). */
 export async function approve(env: StudioEnv, tenant: string, checker: string, key: string) {
-  const e = env.store.entries.get(key);
-  if (!e || (e.status !== 'in-review' && e.status !== 'draft') || e.tenant !== tenant) throw new StoreError('not-found', `No draft in review ${key}`);
-  enforce(env, checker, tenant, 'approve', key, e.scope);
-  const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
-  if (e.kind === 'scheme' && (e.doc.messages ?? []).some((m: any) => m.disposition?.planned)) throw new StoreError('R-05-22', 'A pack with a planned message cannot publish');
-  const tests = env.store.byKind('test').filter((t) => t.doc.target === e.name);
-  const failing: string[] = [];
-  for (const t of tests) {
-    const r = await runTest(env, t.doc, { documents: { [e.name]: e.doc, [`${e.name}@${e.release}`]: e.doc } });
-    if (!r.passed) failing.push(t.name);
-  }
-  if (failing.length) {
-    env.store.record({ tenant, actor: checker, action: 'publish', key, outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
-    throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
-  }
-  return env.store.publish(tenant, key, maker, checker);
+  const name = env.store.entries.get(key)?.name;
+  const r = await approveChangeSet(env, tenant, checker, [key]);
+  return r.published.find((e) => e.name === name)!;
+}
+
+/** What other artefacts use to refer to a document: its name, or a scheme's scope and message ids. */
+function identifiers(doc: any): string[] {
+  if (doc?.kind === 'scheme') return [doc.scope, ...(doc.messages ?? []).map((m: any) => m.id)];
+  return [doc?.name ?? doc?.id].filter(Boolean);
+}
+
+function mentions(doc: any, ids: string[]): boolean {
+  const text = JSON.stringify(doc);
+  return ids.some((id) => text.includes(`"${id}"`));
 }
 
 /**
- * Approve and publish a change set: drafts that refer to one another (a port and its simulator, a
- * composite and its subflow, a scheme and its legs) are reviewed and published together (Issue
- * I-27). Every draft is checked with the others in place, the tests that target any of them are
- * green with the whole set in place, the checker is not the maker of any, and either all publish
- * or none does.
+ * The change set the studio generates for a draft (R-11-19): the draft and every draft of the
+ * tenant that refers to it or that it refers to, directly or through others. Drafts that refer to
+ * one another (a port and its simulator, a composite and its subflow, a scheme and its legs) can
+ * only publish together.
  */
-export async function approveSet(env: StudioEnv, tenant: string, checker: string, keys: string[]) {
-  if (!Array.isArray(keys) || keys.length === 0) throw new StoreError('not-found', 'Name the drafts to publish together');
+export function changeSetFor(env: StudioEnv, tenant: string, key: string): string[] {
+  const drafts = env.store.drafts(tenant);
+  const start = drafts.find((d) => d.key === key);
+  if (!start) throw new StoreError('not-found', `No draft ${key} in ${tenant}`);
+  const set = new Set<string>([key]);
+  const queue = [start];
+  while (queue.length) {
+    const m = queue.shift()!;
+    const mine = identifiers(m.doc);
+    for (const x of drafts) {
+      if (set.has(x.key)) continue;
+      if (mentions(m.doc, identifiers(x.doc)) || mentions(x.doc, mine)) {
+        set.add(x.key);
+        queue.push(x);
+      }
+    }
+  }
+  return [...set].sort();
+}
+
+/**
+ * Approve and publish a change set (R-11-19). The studio generates it from the drafts named: each
+ * member is checked with the others in place, the tests that target any member are green with the
+ * whole set in place, the checker has the checker role and is not the maker of any member, and
+ * either all publish or none does. The set is recorded, so that an export can list it (R-11-20).
+ */
+export async function approveChangeSet(env: StudioEnv, tenant: string, checker: string, requested: string[]) {
+  if (!Array.isArray(requested) || requested.length === 0) throw new StoreError('not-found', 'Name the draft to approve');
+  const keys = [...new Set(requested.flatMap((k) => changeSetFor(env, tenant, k)))].sort();
   const set = keys.map((key) => {
-    const e = env.store.entries.get(key);
-    if (!e || (e.status !== 'in-review' && e.status !== 'draft') || e.tenant !== tenant) throw new StoreError('not-found', `No draft in review ${key}`);
-    if (e.status !== 'in-review') throw new StoreError('review', `${key} has not been submitted for review`);
+    const e = env.store.entries.get(key)!;
+    if (e.tenant !== tenant || (e.status !== 'in-review' && e.status !== 'draft')) throw new StoreError('not-found', `No draft in review ${key}`);
     enforce(env, checker, tenant, 'approve', key, e.scope);
     const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
     if (!maker || maker === checker) {
@@ -137,8 +157,8 @@ export async function approveSet(env: StudioEnv, tenant: string, checker: string
   const docs = set.map((x) => x.e.doc);
   const problems = set.flatMap(({ e }) => checkDocument(env, e.doc, tenant, docs).filter((i) => i.severity === 'error').map((i) => `${e.name}: ${i.code} ${i.message}`));
   if (problems.length) {
-    env.store.record({ tenant, actor: checker, action: 'publish-set', key: keys.join(','), outcome: 'refused', detail: problems.join('; ') });
-    throw new StoreError('checks', `The set has errors: ${problems.join('; ')}`);
+    env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: problems.join('; ') });
+    throw new StoreError('checks', `The change set has errors: ${problems.join('; ')}`);
   }
   const documents = Object.fromEntries(set.flatMap(({ e }) => [[e.name, e.doc], [`${e.name}@${e.release}`, e.doc]]));
   const failing: string[] = [];
@@ -147,12 +167,21 @@ export async function approveSet(env: StudioEnv, tenant: string, checker: string
     if (!r.passed) failing.push(t.name);
   }
   if (failing.length) {
-    env.store.record({ tenant, actor: checker, action: 'publish-set', key: keys.join(','), outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
+    env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
     throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
   }
-  const published = set.map(({ key, maker }) => env.store.publish(tenant, key, maker, checker));
-  env.store.record({ tenant, actor: checker, action: 'publish-set', key: published.map((p) => p.key).join(','), detail: `${published.length} artefacts published together` });
-  return published;
+  const published = set.map(({ key, maker }) => ({ e: env.store.publish(tenant, key, maker, checker), maker }));
+  const today = new Date().toISOString().slice(0, 10);
+  const all = (env.store.extra.changeSets ??= []) as any[];
+  const id = `CS-${today}-${String(all.filter((c) => c.id.startsWith(`CS-${today}-`)).length + 1).padStart(3, '0')}`;
+  const changeSet = {
+    id, tenant, checker, publishedAt: new Date().toISOString(),
+    makers: [...new Set(published.map((p) => p.maker))].sort(),
+    members: published.map(({ e }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key })).sort((a, b) => a.key.localeCompare(b.key)),
+  };
+  all.push(changeSet);
+  env.store.record({ tenant, actor: checker, action: 'publish-change-set', key: id, detail: changeSet.members.map((m) => m.key).join(', ') });
+  return { changeSet, published: published.map((p) => p.e) };
 }
 
 // ---------------------------------------------------------- retirement (C19-S3)
