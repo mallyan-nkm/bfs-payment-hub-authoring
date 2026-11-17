@@ -1,4 +1,5 @@
 import { clone } from '../core/canonical.js';
+import { durationMs } from '../core/duration.js';
 import { getPath, setPath, coveredByAny } from '../core/paths.js';
 import { Cancelled, Scope } from '../interp/clock.js';
 import { Instance, invoke, Run, type Frame, type RunConfig } from '../interp/interpreter.js';
@@ -29,7 +30,7 @@ export interface AttemptRequest {
 }
 
 export type AttemptResponse =
-  | { kind: 'result'; outcome: string; reasonCode?: string; writes: Record<string, any>; decisions?: Record<string, any> }
+  | { kind: 'result'; outcome: string; reasonCode?: string; writes: Record<string, any>; decisions?: Record<string, any>; ruleTrace?: any; latencyMs?: number }
   | { kind: 'hang' } // the attempt never answers; the engine's attempt timeout ends it
   | { kind: 'error'; name: string; retryable: boolean; message: string };
 
@@ -39,9 +40,14 @@ export class PartyService {
   readonly run: Run;
   private instances = new Map<string, Instance>();
   private due: Delivery[] = [];
+  private latency: Record<string, number> = {};
 
   constructor(env: StudioEnv, built: BuiltScenario) {
-    const cfg: RunConfig = { ...built.config, store: env.store, scripts: env.scripts, documents: built.documents } as RunConfig;
+    // A stub's latency is the engine's to spend on its own clock: the service answers at once and
+    // reports how long the attempt takes (latencyMs).
+    this.latency = Object.fromEntries(Object.entries<any>(built.config.stubs ?? {}).filter(([, v]) => v.latency).map(([k, v]) => [k, durationMs(v.latency)]));
+    const stubs = Object.fromEntries(Object.entries<any>(built.config.stubs ?? {}).map(([k, v]) => [k, { ...v, latency: undefined }]));
+    const cfg: RunConfig = { ...built.config, stubs, store: env.store, scripts: env.scripts, documents: built.documents } as RunConfig;
     this.run = new Run(cfg);
     // A simulator's later reply is not run on the studio clock: it is handed to the engine.
     this.run.clock.at = (t: number, fn: () => void, label?: string) => {
@@ -115,7 +121,8 @@ export class PartyService {
     const r = out.r;
     const writes: Record<string, any> = {};
     for (const [k, v] of Object.entries(r.writes ?? {})) if (coveredByAny(act.writes ?? [], k.replace(/\[\d+\]/g, '[]'))) writes[k] = v;
-    return { kind: 'result', outcome: r.outcome, reasonCode: r.reasonCode, writes, decisions: r.decisions };
+    const latencyMs = this.latency[`step:${req.step}`] ?? this.latency[req.activity];
+    return { kind: 'result', outcome: r.outcome, reasonCode: r.reasonCode, writes, decisions: r.decisions, ...(r.ruleTrace ? { ruleTrace: { worst: r.ruleTrace.worst, findings: r.ruleTrace.findings, trace: r.ruleTrace.trace } } : {}), ...(latencyMs ? { latencyMs } : {}) };
   }
 
   /** Messages the platform sent, for the comparison of messages and ids. */
