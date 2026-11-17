@@ -194,6 +194,8 @@ Status: 17 November 2026. Each entry is an Issue and a Recommendation, as `spec/
 
 **What the studio does.** It takes the second reading. The test runner and the deploy runner start such a leg from the intake of the leg filling the same slot (`startEntryFor`), and the export package records the start it took under `fallbackStarts` in its manifest, with this issue's id.
 
+The end-to-end tests no longer depend on it. WPS is a factory scheme, so its test changes only bank configuration. A new leg belongs in a scheme whose dispatch table names it, as the `uae.demo` test shows; a dispatch table names one leg per start message, so a second leg for the same message replaces the first in a new scheme release.
+
 ## I-25. `returned` has no test in the WPS salary file leg
 
 **Issue.** `uae.wps.wf.salary-file-out.v1` declares the exit outcome `returned`, but no path ends with it and no factory test expects it. The C11-S5 check reports it as untested. It is the same gap as I-22.
@@ -201,6 +203,30 @@ Status: 17 November 2026. Each entry is an Issue and a Recommendation, as `spec/
 **Recommendation.** Remove `returned` from the leg's exit in a new release, or add the return path (a WPS rejection after acknowledgement) once the rulebook confirms it (D10).
 
 **What the studio does.** Reports the gap in the test coverage view and in `GET /api/test-coverage`; the leg is unchanged. A white-box test pins the report.
+
+## I-26. Who sets a payment's direction and segment at intake
+
+**Issue.** `p.table.workflow-select.v1` picks the platform workflow from `header.kind`, `header.direction` and `header.segment`. A start entry in a dispatch table names only the `kind`. Part 2 says the scheme is set at intake but says nothing of direction and segment. An employer's salary file comes in (`direction: in`) but starts an outward corporate payment, so a front door that takes the payment's direction from the message's direction sends it to the inward workflow.
+
+**Recommendation.** Add `direction` and `segment` to `disposition.start` in the scheme schema, so that the dispatch table says what payment a message starts, with a check that the pair selects a platform workflow whose slot the leg fills. Until then, require the intake map to write them.
+
+**What the studio does.** The front door sets `header.direction` from the message's direction; the intake map may overwrite it and set the segment. The WPS SIF intake script sets `outward` and `corporate`, as does the intake of the `uae.demo` test scheme.
+
+## I-27. Artefacts that refer to one another cannot be published one at a time
+
+**Issue.** Maker-checker is per draft (R-06-04), and a draft publishes only when its references resolve. Some artefacts refer to one another: a port needs a simulator (L22) and the simulator names the port; a composite names its subflow and the subflow implements the composite; a subflow may await only a message in its scheme's catalogue (L16) while the scheme's dispatch table names the leg that calls the composite. None of them can be published first, so a new scheme cannot be published at all.
+
+**Recommendation.** Define a change set in Part 11: drafts reviewed and approved together, checked as a whole, with green tests with the whole set in place, published all or none. The pack is a candidate unit, but a change set is smaller: it is what one review covers.
+
+**What the studio does.** A draft is checked with the tenant's other drafts in place while it is edited. `POST /api/publish` with `keys` publishes a change set: every member in review, the checker not the maker of any, each checked with the others in place, the tests that target any member green, then all published, with one `publish-set` audit event. A single draft that refers to unpublished drafts is refused with their keys under `together`.
+
+## I-28. The example bank's large-payment hold does not see salary files
+
+**Issue.** `b.hook.pre-release-approval.v1` holds a corporate payment above the bank's internal limit, through `b.rule.internal-limit.v1`, which reads `payment.instructedAmount`. A salary file is a batch: its total is `batch.controlSum` and each item carries its own amount, so the rule never fires for one. Lowering the limit to 1000 still lets a salary file of 1500 through.
+
+**Recommendation.** Decide whether the internal limit applies to a batch total, to each item, or to both, and say so in the rule; for a batch, match on `Batch.controlSum`. This is the bank's content, so it is the bank's decision.
+
+**What the studio does.** Nothing changes. The WPS end-to-end test records the behaviour: it changes the bank's rails and hook bindings, not the limit.
 
 ## Not done, and why
 

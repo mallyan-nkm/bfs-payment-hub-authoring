@@ -34,9 +34,10 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
 | Generated samples, each proved valid or failing with its labelled code | 12 of 12 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
-| White-box suite (`cd studio && npm test`) | 153 tests, green; 90.3% of lines, 77.8% of branches, 90.9% of functions (`npm run test:coverage`) |
-| Black-box suites (`npm run test:blackbox`) | 111 tests, green: HTTP API 71, command line 8, web app in Chromium 24, end to end 8; the engine suite (2) runs with `TH_ENGINES=1` |
-| End to end | A WPS leg built from scratch over the API, published through maker-checker, exported with a separate worker per task queue, deployed and run on DTFx: settled, rejected by WPS, rejected by the new check |
+| White-box suite (`cd studio && npm test`) | 161 tests, green; 90.7% of lines, 78.1% of branches, 91.7% of functions (`npm run test:coverage`) |
+| Black-box suites (`npm run test:blackbox`) | 123 tests, green: HTTP API 71, command line 8, web app in Chromium 24, end to end 20 (new scheme 12, WPS by configuration 8); the engine suite (2) runs with `TH_ENGINES=1` |
+| End to end, a new scheme | A synthetic scheme built from scratch over the API: manifest and dispatch table, port, simulator, maps with a script, rule, exchange with its subflow, and a leg in the corporate workflow's slot. The bank enables the rail in its configuration, and the payment settles end to end on the interpreter and deployed on DTFx, the new scheme on its own worker |
+| End to end, WPS | The factory WPS scheme changed only by bank configuration: the rail turned off (rejected at the route) and a hook unbound (settled without it), each deployed on DTFx with four separate workers |
 
 ## Coverage of the build backlog
 
@@ -77,6 +78,10 @@ The black-box and white-box suites found and fixed these:
 - A deployed worker lost a simulator's later reply, so a refused WPS file settled. The party service now keeps the reply.
 - The deploy runner returned before its workers had exited.
 - The factory WPS leg has an untested outcome, `returned` (Issue I-25), and a new leg has no start message until its scheme is released (Issue I-24).
+- A simulator keyed by message id answered only its first request, so a payment's posting after its reservation got no reply (R-07-05).
+- On DTFx a bank's transform hook always failed, on a JSON serialiser without a type resolver; the kit has no scenario that catches it.
+- A new scheme's tasks fell back to the platform queue; the queue is now derived from the scope (R-09-05).
+- Artefacts that refer to one another could not be published (Issue I-27); a salary file starts an outward payment that the front door took for inward (Issue I-26); the example bank's hold does not see batches (Issue I-28).
 
 ## Temporal
 

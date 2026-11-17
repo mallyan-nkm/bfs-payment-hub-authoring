@@ -56,7 +56,7 @@ npm run test:blackbox
 | `studio -- check` | Schemas and static checks over every artefact |
 | `studio -- export <workflow> <target>` | The manifest of an export package |
 | `studio -- export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]` | The package as a reproducible zip, with one worker per task queue |
-| `studio -- deploy <package> --workflow <name> [--inbound file] [--bench port=simulator:scenario ...]` | Deploys the package on DTFx: starts each worker as its own process, runs the workflow, prints the outcome, the traces and what each worker served |
+| `studio -- deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--tenant t] [--config file] [--bench port=simulator:scenario ...]` | Deploys the package on DTFx: starts each worker as its own process, runs the workflow, prints the outcome, the traces and what each worker served |
 | `npx tsx engines/dtfx/run-kit.ts` | The kit on DTFx (needs `dotnet-sdk-8.0`) |
 | `engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts` | The kit on Flowable (needs Java; fetches Maven) |
 
@@ -94,18 +94,41 @@ npm run test:blackbox
 
 An export package holds, under `workers/<queue>/`, one worker per task queue of the engine binding (for example `th-uae-p` and `th-uae-wps`): a bundled `worker.cjs`, a `manifest.json` naming the tasks it serves as `name@release`, the artefacts those tasks need, their scripts and, with `--with-simulators`, the simulators of their ports. A package with simulators is marked not promotable. A worker refuses a task that is not on its queue.
 
-`studio deploy` unpacks the package, starts every worker as a separate process, runs the intake map on the worker that owns it, and runs the workflow on DTFx with a router that sends each activity attempt to the worker of its queue. Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command line. `TH_WORKER_LOG=<file>` makes each worker log its attempts.
+`studio deploy` unpacks the package and starts every worker as a separate process. It runs the intake map on the worker that owns it, then runs the workflow on DTFx with a router that sends each activity attempt to the worker of its queue. With `--message`, the front door runs a payment end to end. Workflow-select picks the platform workflow, and the leg the dispatch table names fills its slot. The tenant's configuration set comes from the package; `--config` overrides it. Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command line. `TH_WORKER_LOG=<file>` makes each worker log its attempts.
 
-## End to end: a WPS workflow built from scratch
+## End to end
 
-`test/blackbox/e2e-wps.test.ts` does what a designer would, through the HTTP API only:
+A payment reaches a scheme leg through the front door. A file comes in. The scheme's dispatch table names its intake map and the leg it starts. `p.table.workflow-select.v1` picks the platform workflow from the payment's kind, direction and segment. The leg fills that workflow's `scheme-leg` slot. The route decision (`p.decide.rail.v1`) passes only a rail the bank has enabled in its configuration set. Two black-box tests run this whole path through the HTTP API and the command line only.
 
-1. Starts from a blank leg, and sees the checks refuse a step whose activity does not exist yet.
-2. Sees a bank designer refused for shared content and a maker refused as their own checker.
-3. Authors a rule (the salary month is a valid month, else `DT01`), a rule set and a validate activity with a test per outcome, and publishes each through the gates and maker-checker.
-4. Composes `uae.wps.wf.salary-file-checked.v1`: business date, file checks, the new month check, the record checks per item, render, and the submit composite. Four leg tests cover settled, rejected by WPS, rejected by the month check, and pending.
-5. Exports it for DTFx with simulators. The package has two workers; the new activity and its rule are only on `th-uae-wps`.
-6. Deploys and runs three cases with `studio deploy`: an acknowledged file settles, a refused file is rejected, and a salary month of 13 stops at the month check and sends nothing. Each worker runs as its own process, serves only its queue's tasks and refuses none.
+**A new scheme from scratch** (`test/blackbox/e2e-new-scheme.test.ts`). `uae.demo` is a synthetic scheme made up for the test; its documents are in `test/blackbox/demo-scheme.ts`.
+
+1. A shared designer saves synthetic sample files, then authors:
+   - the port and a simulator with the standard scenario set;
+   - a rule, its rule set and the file checks;
+   - the intake map with its script-behind;
+   - render and acknowledgement maps and the send;
+   - a composite with its subflow;
+   - the leg that fills the scheme-leg slot of `p.wf.corporate.v1`;
+   - the scheme manifest, whose dispatch table routes the credit file to that leg.
+2. Artefacts that refer to one another are published together as one reviewed change set (Issue I-27); each set and each artefact has a different checker from its maker.
+3. The composite and leg tests pass, started from the dispatch table.
+4. The end-to-end test first fails at the route: the bank has not enabled the rail. Then the bank releases configuration 1.1.0, which accepts the scheme and enables the rail, and the payment settles.
+5. The corporate workflow is exported for the bank with simulators. The new scheme gets its own worker, `th-uae-demo`, with the queue derived from its scope.
+6. Deployed on DTFx with `studio deploy --message uae.demo.credit-file`, three cases run:
+   - an acknowledged file is paid;
+   - a refused file is rejected and its reservation undone;
+   - a file in dollars stops at the file checks.
+
+   Every worker runs as its own process and serves only its queue.
+
+**The factory WPS scheme, changed only by configuration** (`test/blackbox/e2e-wps.test.ts`). WPS is factory content, so the bank authors nothing in it.
+
+1. As shipped, a salary file settles. It passes through the corporate workflow, the WPS leg in its slot and the bank's hooks.
+2. The bank is refused when it sets a scheme limit above its bound, reuses a release, or acts as a checker where an author is needed.
+3. Configuration 1.1.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone.
+4. Configuration 1.2.0 turns WPS back on and unbinds the pre-release hook: the payment settles without it.
+5. Each configuration runs on the interpreter, and is exported for the bank and deployed on DTFx. The configuration set travels in the package. There are four separate workers: `th-bank`, `th-p`, `th-uae-p` and `th-uae-wps`.
+6. The audit shows no WPS artefact was touched.
 
 ## How a run works
 
