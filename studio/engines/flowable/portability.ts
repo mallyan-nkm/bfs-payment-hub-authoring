@@ -16,12 +16,12 @@ const dir = path.join(FLOWABLE_DIR, 'out', 'portability');
 fs.rmSync(dir, { recursive: true, force: true });
 fs.mkdirSync(dir, { recursive: true });
 const resolve = (n: string) => env.store.doc(n);
-const rows: { flow: string; file?: string; refused?: string; items: any[] }[] = [];
+const rows: { flow: string; wf: any; file?: string; refused?: string; items: any[] }[] = [];
 for (const e of env.store.byKind('workflow')) {
   const d = e.doc;
   if (d.wfKind === 'segment' || d.wfKind === 'subflow' || d.wfKind === 'handler') continue;
   const wf = callsComposite(d, resolve) ? expandWorkflow(d, resolve) : d;
-  const row: (typeof rows)[number] = { flow: `${d.name}@${d.release}`, items: flowablePortable(wf).steps };
+  const row: (typeof rows)[number] = { flow: `${d.name}@${d.release}`, wf, items: flowablePortable(wf).steps };
   try {
     const file = path.join(dir, `${safe(row.flow)}.bpmn20.xml`);
     fs.writeFileSync(file, generateBpmn(wf, { queueOf: (n) => `th-${n.split('.').slice(0, 2).join('-')}`, resolve }));
@@ -45,7 +45,7 @@ for (const r of rows.sort((a, b) => a.flow.localeCompare(b.flow))) {
   console.log(`${ok ? 'PORTABLE    ' : 'NOT PORTABLE'}  ${r.flow}`);
   if (r.refused) console.log(`      ${r.refused}`);
   for (const i of r.items) console.log(`      step ${i.step ?? '?'}: ${i.note}${i.alternative ? ` Alternative: ${i.alternative}` : ''}`);
-  const warn = portabilityReport([env.store.doc(r.flow.split('@')[0])], 'flowable').filter((i) => i.severity === 'warning');
+  const warn = portabilityReport([r.wf], 'flowable').filter((i) => i.severity === 'warning');
   for (const w of warn) console.log(`      warning${w.step ? ` (step ${w.step})` : ''}: ${w.note}`);
 }
 console.log(`${portable} of ${rows.length} factory workflows are portable to Flowable; each one deployed into Flowable unless shown`);

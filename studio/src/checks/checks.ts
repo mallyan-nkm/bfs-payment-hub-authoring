@@ -7,6 +7,7 @@ import { lintScript } from '../interp/sandbox.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
 import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
+import { flowablePortable } from '../export/bpmn.js';
 import type { StudioEnv } from '../env.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
@@ -327,6 +328,11 @@ export class Checker {
       } catch (e: any) {
         err('L32', `The workflow does not expand: ${e.message}`, e.step);
       }
+    }
+    // L24: portability per target. A construct Flowable cannot express is an error for that target,
+    // and p content must stay in the portable core (R-05-26, R-09-09; C22-S5).
+    if (d.kind === 'workflow' && d.wfKind !== 'segment' && d.wfKind !== 'subflow' && d.wfKind !== 'handler') {
+      for (const it of flowablePortable(flow).steps) err('L24', `Not portable to Flowable: ${it.note}${it.alternative ? ` Use ${it.alternative}.` : ''}`, it.step);
     }
     // L21: budgets fit the deadline.
     if (d.kind === 'workflow' && d.deadline?.after) {

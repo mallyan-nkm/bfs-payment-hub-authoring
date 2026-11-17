@@ -543,8 +543,12 @@ class B {
     const ids = new Set<string>();
     const walk = (xs: any[]) => { for (const x of xs ?? []) { if (x.call) ids.add(x.id ?? shortName(x.call)); if (x.block) ids.add(x.id); for (const a of Object.values(x.handle ?? {})) if (Array.isArray(a)) walk(a); } };
     walk(fe.do);
+    const conc = Math.max(1, fe.concurrency ?? 1);
+    // The item's index in the list, kept local to the item: th_chunk * concurrency + loopCounter.
+    const index = conc > 1 ? `\${execution.setVariable('th_item', ${v('th_chunk')} * ${conc} + ${v('loopCounter')})}` : `\${execution.setVariable('th_item', ${v('loopCounter')})}`;
+    body.push(`<dataObject id="${id}_index" name="th_item" itemSubjectRef="xsd:int"/>`);
     for (const i of [...ids].sort()) body.push(`<dataObject id="${id}_${safe(i)}" name="${outcomeVar(i)}" itemSubjectRef="xsd:string"/>`);
-    body.push(`<startEvent id="${s}"/>`, `<endEvent id="${e}"/>`);
+    body.push(`<startEvent id="${s}">${ext(listener(index))}</startEvent>`, `<endEvent id="${e}"/>`);
     if (f) {
       inner.flow(s, f.entry);
       f.exits.forEach((x) => inner.flow(x, e));
@@ -556,10 +560,25 @@ class B {
         body.push(`<subProcess id="${es}" triggeredByEvent="true"><startEvent id="${es}_start"><errorEventDefinition errorRef="err_end_${safe(o)}"/></startEvent><endEvent id="${es}_end"/><sequenceFlow id="${es}_flow" sourceRef="${es}_start" targetRef="${es}_end"/></subProcess>`);
       }
     }
-    const seq = (fe.concurrency ?? 1) <= 1;
-    this.els.push(`<subProcess id="${id}" name="forEach ${esc(fe.in)}">${ext(ann('forEach', { in: fe.in, count, onItemFailure: fe.onItemFailure ?? 'stop', concurrency: fe.concurrency ?? 1 }))}`,
-      `  <multiInstanceLoopCharacteristics isSequential="${seq}"><loopCardinality>\${${v(count)}}</loopCardinality></multiInstanceLoopCharacteristics>`,
-      ...body.map((x) => '  ' + x), ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    const meta = ext(ann('forEach', { in: fe.in, count, onItemFailure: fe.onItemFailure ?? 'stop', concurrency: conc }));
+    if (conc <= 1) {
+      this.els.push(`<subProcess id="${id}" name="forEach ${esc(fe.in)}">${meta}`,
+        `  <multiInstanceLoopCharacteristics isSequential="true"><loopCardinality>\${${v(count)}}</loopCardinality></multiInstanceLoopCharacteristics>`,
+        ...body.map((x) => '  ' + x), ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    } else {
+      // concurrency n: chunks of n items run in parallel, one chunk after another. Flowable has no
+      // concurrency bound for a parallel multi-instance, and starts every instance in one transaction.
+      const left = `${v(count)} - ${v('th_chunk')} * ${conc}`;
+      this.els.push(`<subProcess id="${id}" name="forEach ${esc(fe.in)}">${meta}`,
+        `  <multiInstanceLoopCharacteristics isSequential="true" flowable:elementIndexVariable="th_chunk"><loopCardinality>\${(${v(count)} + ${conc - 1}) / ${conc}}</loopCardinality></multiInstanceLoopCharacteristics>`,
+        `  <startEvent id="${id}_chunkStart"/>`, `  <endEvent id="${id}_chunkEnd"/>`,
+        `  <subProcess id="${id}__chunk" name="item">`,
+        `    <multiInstanceLoopCharacteristics isSequential="false"><loopCardinality>\${${left} &lt; ${conc} ? ${left} : ${conc}}</loopCardinality></multiInstanceLoopCharacteristics>`,
+        ...body.map((x) => '    ' + x), ...inner.body().map((x) => '    ' + x), '  </subProcess>',
+        `  <sequenceFlow id="${id}_chunkIn" sourceRef="${id}_chunkStart" targetRef="${id}__chunk"/>`,
+        `  <sequenceFlow id="${id}_chunkOut" sourceRef="${id}__chunk" targetRef="${id}_chunkEnd"/>`,
+        '</subProcess>');
+    }
     return { entry: id, exits: [id] };
   }
 

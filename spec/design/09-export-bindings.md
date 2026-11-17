@@ -43,7 +43,7 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx a
 | --- | --- | --- | --- |
 | `attemptTimeout` | Start-To-Close | Durable timer raced against the task | Timer boundary on the external worker task |
 | `totalTimeout` | Schedule-To-Close | `RetryOptions.RetryTimeout` | Timer boundary on the enclosing sub-process |
-| `retry` | Retry Policy | `RetryOptions` with `ScheduleWithRetry` | `failedJobRetryTimeCycle`, or a modelled loop for backoff |
+| `retry` | Retry Policy | `RetryOptions` with `ScheduleWithRetry` | A modelled loop in a sub-process per call, for fixed and growing backoff alike (proved in C22-S1) |
 | Queue timeout, heartbeat | Schedule-To-Start, Heartbeat; from the binding | Not available | Not available |
 
 ## 9.5 Requirements
@@ -76,6 +76,27 @@ The core is the constructs of Part 5, section 5.3. An extension is anything a si
 
 - The Flowable column is the least certain. Build spec C22 starts with a spike that proves timer boundaries, retry and compensation on generated BPMN.
 - Whether an instant rail runs every step as a durable task is open (D9). The `synchronous` marker lets the binding choose later.
+
+
+### Proved on Flowable 7.1.0 (C22-S1)
+
+The kit runs on an embedded Flowable 7.1.0 engine with the generated BPMN (`studio/engines/flowable/`). These patterns pass it.
+
+| Construct | Pattern | Why |
+| --- | --- | --- |
+| Retry and attempt timeout | A modelled loop in a sub-process per call; the attempt timeout is a timer boundary on the external worker task; the total timeout a timer boundary on the sub-process | An attempt timeout ends the task before any failed-job retry, and a spent `failedJobRetryTimeCycle` ends in a dead-letter job, not the `unknown` outcome |
+| Await | An event-based gateway between the message catch and a timer; the binding holds a message until a catch is waiting | Flowable delivers a message only to a catch that is already waiting (R-09-16) |
+| For each | A multi-instance sub-process with outcomes local to the item; `onItemFailure: continue` is an error event sub-process inside it; `concurrency: n` runs in chunks of n | A parallel multi-instance of 10,000 items in one transaction is quadratic inside the engine |
+| Compensation | Compensation boundary events and handler sub-processes; the flow waits on a message the binding sends when no handler is left | Flowable 7.1.0 does not wait for compensation handlers to finish |
+
+Two engine gaps in Flowable 7.1.0, worked around in the binding:
+
+| Gap | Work-around |
+| --- | --- |
+| Compensation handlers are not awaited (`waitForCompletion` is not implemented) | The binding signals completion when no handler is left |
+| An interrupting event sub-process loses the boundary events of the main sub-process | Cancel ends main with a mark that a gateway after main reads, instead of throwing an end error |
+
+Limits that remain: compensation runs in reverse document order, which in parallel branches is not always reverse completion order; chunked concurrency puts a barrier between chunks; external worker tasks are non-exclusive, as exclusive jobs were not acquired while parallel branches waited.
 
 ## 9.8 Examples
 

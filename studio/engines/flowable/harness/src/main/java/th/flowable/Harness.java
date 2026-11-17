@@ -409,7 +409,7 @@ public final class Harness {
         int attempt = av instanceof Number n ? n.intValue() : 1;
         Integer index = null;
         if ("true".equals(task.get("item"))) {
-            Object lc = rt.getVariable(job.getExecutionId(), "loopCounter");
+            Object lc = rt.getVariable(job.getExecutionId(), "th_item");
             if (lc instanceof Number n) index = n.intValue();
         }
         String label = index == null ? step : step + "[" + index + "]";
@@ -713,7 +713,7 @@ public final class Harness {
     String labelOf(ExecutionEntity ex, Map<String, String> a, String step) {
         if ("finally".equals(a.get("record"))) return "finally:" + step;
         if ("true".equals(a.get("item"))) {
-            Object lc = ex.getVariable("loopCounter");
+            Object lc = ex.getVariable("th_item");
             if (lc instanceof Number n) return step + "[" + n.intValue() + "]";
         }
         return step;
