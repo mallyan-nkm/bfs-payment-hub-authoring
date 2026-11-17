@@ -42,13 +42,21 @@ npm run studio -- check
 npm run studio -- export p.wf.commercial.v1 flowable
 ```
 
+```bash
+npm run test:blackbox
+```
+
 | Command | What it shows |
 | --- | --- |
-| `npm test` | The automated suite: store, names, hashes, schemas, rule service, sandbox, simulators, interpreter, factory tests, conformance kit, checks with mutation cases, export |
+| `npm test` | The white-box suite, in process: store, names, hashes, schemas, rule service, sandboxes, simulators, interpreter, factory tests, conformance kit, checks with mutation cases, export, every API route through `dispatch`, the party service, the deploy runner, the assistant with a fake client |
+| `npm run test:coverage` | The same with line and branch coverage (V8), written to `coverage/` |
+| `npm run test:blackbox` | The black-box suites, against the studio as separate processes: the HTTP API on a fresh data root, the command line by output and exit code, the web app in Chromium through Playwright (every view, at desktop and phone width), and the end-to-end test below. `TH_ENGINES=1` adds the kit on DTFx and Flowable |
 | `studio -- test [ID...]` | The factory and bank test cases on the studio interpreter, with failing checks |
-| `studio -- kit [CK-ID...]` | The 43 conformance scenarios against the expected traces in `spec/conformance/kit.yaml` |
+| `studio -- kit [CK-ID...]` | The 46 conformance scenarios against the expected traces in `spec/conformance/kit.yaml` |
 | `studio -- check` | Schemas and static checks over every artefact |
 | `studio -- export <workflow> <target>` | The manifest of an export package |
+| `studio -- export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]` | The package as a reproducible zip, with one worker per task queue |
+| `studio -- deploy <package> --workflow <name> [--inbound file] [--bench port=simulator:scenario ...]` | Deploys the package on DTFx: starts each worker as its own process, runs the workflow, prints the outcome, the traces and what each worker served |
 | `npx tsx engines/dtfx/run-kit.ts` | The kit on DTFx (needs `dotnet-sdk-8.0`) |
 | `engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts` | The kit on Flowable (needs Java; fetches Maven) |
 
@@ -81,6 +89,23 @@ npm run studio -- export p.wf.commercial.v1 flowable
 | `src/ai/` | The authoring gates and the assistant on the Claude API | C16 |
 | `src/conformance/party.ts`, `party-server.ts` | The party service an engine harness calls for every activity attempt | C20 to C23 |
 | `engines/dtfx/`, `engines/flowable/` | The conformance kit on DTFx and on Flowable, each with its own README | C21, C22 |
+
+## Export, workers and deploy
+
+An export package holds, under `workers/<queue>/`, one worker per task queue of the engine binding (for example `th-uae-p` and `th-uae-wps`): a bundled `worker.cjs`, a `manifest.json` naming the tasks it serves as `name@release`, the artefacts those tasks need, their scripts and, with `--with-simulators`, the simulators of their ports. A package with simulators is marked not promotable. A worker refuses a task that is not on its queue.
+
+`studio deploy` unpacks the package, starts every worker as a separate process, runs the intake map on the worker that owns it, and runs the workflow on DTFx with a router that sends each activity attempt to the worker of its queue. Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command line. `TH_WORKER_LOG=<file>` makes each worker log its attempts.
+
+## End to end: a WPS workflow built from scratch
+
+`test/blackbox/e2e-wps.test.ts` does what a designer would, through the HTTP API only:
+
+1. Starts from a blank leg, and sees the checks refuse a step whose activity does not exist yet.
+2. Sees a bank designer refused for shared content and a maker refused as their own checker.
+3. Authors a rule (the salary month is a valid month, else `DT01`), a rule set and a validate activity with a test per outcome, and publishes each through the gates and maker-checker.
+4. Composes `uae.wps.wf.salary-file-checked.v1`: business date, file checks, the new month check, the record checks per item, render, and the submit composite. Four leg tests cover settled, rejected by WPS, rejected by the month check, and pending.
+5. Exports it for DTFx with simulators. The package has two workers; the new activity and its rule are only on `th-uae-wps`.
+6. Deploys and runs three cases with `studio deploy`: an acknowledged file settles, a refused file is rejected, and a salary month of 13 stops at the month check and sends nothing. Each worker runs as its own process, serves only its queue's tasks and refuses none.
 
 ## How a run works
 

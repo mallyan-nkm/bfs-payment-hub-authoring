@@ -29,13 +29,14 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 | Factory and bank test cases on the studio interpreter | 30 of 30 |
 | Conformance kit, studio interpreter | 46 of 46 |
 | Conformance kit, DTFx (DurableTask.Core 3.11.3) | 46 of 46 |
-| Conformance kit, Flowable 7.1.0 with generated BPMN | See `studio/engines/flowable/README.md` for the latest run |
+| Conformance kit, Flowable 7.1.0 with generated BPMN | 46 of 46 |
 | Conformance kit, Temporal | Not run: see below |
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
 | Generated samples, each proved valid or failing with its labelled code | 12 of 12 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
-| Automated test suite (`cd studio && npm test`) | 110 tests, green |
-| Web app | Driven end to end with Playwright through every view |
+| White-box suite (`cd studio && npm test`) | 153 tests, green; 90.3% of lines, 77.8% of branches, 90.9% of functions (`npm run test:coverage`) |
+| Black-box suites (`npm run test:blackbox`) | 111 tests, green: HTTP API 71, command line 8, web app in Chromium 24, end to end 8; the engine suite (2) runs with `TH_ENGINES=1` |
+| End to end | A WPS leg built from scratch over the API, published through maker-checker, exported with a separate worker per task queue, deployed and run on DTFx: settled, rejected by WPS, rejected by the new check |
 
 ## Coverage of the build backlog
 
@@ -59,11 +60,23 @@ The spec's process is one story per branch and pull request, each reviewed. This
 | C17 Tenants, roles, maker-checker | Done: roles enforced on every write, tenant isolation suite, maker and checker differ, a hash-chained audit with diffs and refusals |
 | C18 Hooks and configuration sets | Done: hooks at hook points, configuration editing with bounds and overlap checks, compatibility run, tenant export |
 | C19 Packs, release, retirement, supersession | Done: pack build, review and approval with green tests, release gate, retirement against pins and an in-flight import, supersession draft, evidence and hand-over |
-| C20 Exporter and Temporal binding | Packages and binding done (expanded forms, pins, `name@release`). The Temporal run of the kit (C20-S2 to S4) is not built |
+| C20 Exporter and Temporal binding | Packages and binding done (expanded forms, pins, `name@release`, a separate worker per task queue, a deploy runner on DTFx). The Temporal run of the kit (C20-S2 to S4) is not built |
 | C21 DTFx | Done: 46 of 46 on DTFx |
 | C22 Flowable | Done: generated BPMN runs on Flowable; patterns and engine gaps recorded in Part 9, section 9.7; L24 uses the portability report |
 | C23 Conformance kit and runner | Done: kit content in `ck`, the adapter interface, a reference adapter, the release-gate report with waivers |
 | C24 to C26 Factory content | Partly: samples for every test, six scripts-behind, WPS-IN-001 fixed (C25-S4). Confirming against the rulebooks and the planned message groups wait on D10 and business decisions; see `docs/ISSUES.md` |
+
+## Found by the test suites
+
+The black-box and white-box suites found and fixed these:
+
+- Ten API routes answered 500 to an empty or malformed body; they now answer 400 with a message.
+- `permit` allowed any action it did not know.
+- The command line exited 0 for an unknown command and crashed on a malformed `--bench`; usage mistakes now exit 2.
+- The ISO data and editor views scrolled sideways at phone width.
+- A deployed worker lost a simulator's later reply, so a refused WPS file settled. The party service now keeps the reply.
+- The deploy runner returned before its workers had exited.
+- The factory WPS leg has an untested outcome, `returned` (Issue I-25), and a new leg has no start message until its scheme is released (Issue I-24).
 
 ## Temporal
 
