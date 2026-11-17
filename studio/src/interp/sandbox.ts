@@ -128,18 +128,20 @@ export async function runScript(
 export class ScriptRegistry {
   constructor(private dirs: string[]) {}
 
-  find(name: string): { file: string; source: string } | undefined {
+  find(name: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
     for (const d of this.dirs) {
-      const f = path.join(d, `${name}.ts`);
-      if (fs.existsSync(f)) return { file: f, source: fs.readFileSync(f, 'utf8') };
+      for (const [ext, language] of [['.ts', 'typescript'], ['.py', 'python']] as const) {
+        const f = path.join(d, `${name}${ext}`);
+        if (fs.existsSync(f)) return { file: f, source: fs.readFileSync(f, 'utf8'), language };
+      }
     }
     return undefined;
   }
 
   list(): string[] {
     const out: string[] = [];
-    for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts')).map((f) => f.slice(0, -3)));
-    return out;
+    for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts') || f.endsWith('.py')));
+    return out.sort();
   }
 }
 

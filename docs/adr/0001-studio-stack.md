@@ -20,7 +20,7 @@ The studio is a design-time tool. It must run workflows on its own interpreter w
 | YAML | `yaml` with the integer tag narrowed to match PyYAML | The spec's own tools read YAML 1.1 with PyYAML; see Issue I-05. |
 | Rule service | A TypeScript evaluator with NRules semantics behind `runRuleSet` and `runTable` | D13 (NRules on .NET) stays open. The interface is one session per call, facts in, findings and decisions out, so an NRules service can replace it. |
 | Script sandbox | `node:vm` context with only the injected interface, a deterministic `Date`, no `Math.random`, no `require` or `process`, a guard on reads and a check on writes | Enough for design-time testing of trusted factory and bank scripts. It is not a security boundary for hostile code; D14 (where scripts run) stays open. |
-| Python scripts | Not built in this slice | C08 is phase 3. The sandbox interface is the same, so a Python worker can sit behind `ScriptRegistry`. |
+| Python scripts | One isolated `python3 -I -S` process per call, a restricted set of builtins and pure modules, JSON lines to the studio for port and rule calls | The same interface and the same simulators, rule service and virtual clock as TypeScript; a parity suite checks both give the same result. Like the TypeScript sandbox it keeps honest scripts deterministic; it is not a security boundary against hostile code (D14). |
 | Tests | Vitest | Fast, TypeScript native. |
 | Export | Generated files in a reproducible zip | R-09-15. No engine SDK is a dependency of the studio. |
 

@@ -11,6 +11,7 @@ import { buildFacts } from './facts.js';
 import { effectivePolicy, isRetryable, policyValues, retryInterval, type EffectivePolicy } from './policy.js';
 import { ActivityFailure, TransientFailure, outcomeForStatus, primaryOutcome, reference, type ActivityIO, type ActivityResult } from './reference.js';
 import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from './sandbox.js';
+import { runPythonScript } from './pysandbox.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
 // reference for every engine. It never evaluates rules, reads values or calls ports inline:
@@ -793,8 +794,9 @@ async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: string,
   if (script) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
+    const runner = script.language === 'python' ? runPythonScript : runScript;
     const res = await Promise.race([
-      runScript(script.source, script.file, view, act.reads ?? [], act.writes ?? [], {
+      runner(script.source, script.file, view, act.reads ?? [], act.writes ?? [], {
         ports: scriptPorts(io, act),
         rules: { run: (rs: string, facts?: any) => io.rules(rs, level as any, facts), table: (t: string) => io.table(t) },
         params,

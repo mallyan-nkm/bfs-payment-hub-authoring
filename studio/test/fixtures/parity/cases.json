@@ -1,0 +1,4 @@
+[
+  { "name": "unique", "view": { "header": { "endToEndId": "E2E-1" } }, "reply": { "status": "accepted" }, "expect": { "outcome": "unique", "found": false } },
+  { "name": "duplicate", "view": { "header": { "endToEndId": "E2E-1" } }, "reply": { "status": "rejected" }, "expect": { "outcome": "duplicate", "found": true } }
+]
