@@ -6,7 +6,20 @@ import { getPath } from '../core/paths.js';
 import type { Store } from '../core/store.js';
 import { runRuleSet } from '../rules/service.js';
 import { buildFacts } from '../interp/facts.js';
-import { attachIntake, Instance, Run, runActivity, runInbound, runWorkflow, startInstance, type RunConfig, type RunResult } from '../interp/interpreter.js';
+import { attachIntake, Instance, Run, runActivity, runComposite, runInbound, runWorkflow, startInstance, type RunConfig, type RunResult } from '../interp/interpreter.js';
+import { isComposite, walkSteps } from '../core/expand.js';
+
+function intakeMapFor(run: Run, activity: string): string | undefined {
+  for (const s of run.cfg.store.byKind('scheme').map((e) => e.doc)) {
+    for (const m of s.messages ?? []) {
+      const st = m.disposition?.start;
+      if (!st?.intakeMap || !st.leg) continue;
+      const leg = run.resolveDoc(st.leg);
+      if (leg && walkSteps(leg.do).some((x: any) => x.call === activity)) return st.intakeMap;
+    }
+  }
+  return undefined;
+}
 import type { ScriptRegistry } from '../interp/sandbox.js';
 
 // The test runner (C11). Runs a test case at its level against its bench and compares the
@@ -24,6 +37,7 @@ export interface TestRunReport {
   error?: string;
   outcome?: string;
   trace: string[];
+  detail: string[];
   releaseTrace: string[];
   elapsed: string;
   warnings: string[];
@@ -55,6 +69,8 @@ export interface InstanceView {
   failed?: string;
   durable: boolean;
   trace: string[];
+  detail: string[];
+  expandedFrom?: { release: string; hash: string };
   releaseTrace: string[];
   steps: any[];
   deltas: any[];
@@ -72,7 +88,7 @@ export interface InstanceView {
 export function viewInstance(i: Instance): InstanceView {
   return {
     id: i.id, kind: i.kind, workflow: i.name, release: i.doc?.release, parent: i.parent?.id, outcome: i.outcome, reasonCode: i.reasonCode,
-    failed: i.failed, durable: i.durable, trace: i.trace, releaseTrace: i.releaseTrace, steps: i.steps, deltas: i.deltas,
+    failed: i.failed, durable: i.durable, trace: i.trace, detail: i.detail, expandedFrom: i.expandedFrom, releaseTrace: i.releaseTrace, steps: i.steps, deltas: i.deltas,
     ruleTraces: i.ruleTraces.map((r) => ({ step: r.step, worst: r.result.worst, findings: r.result.findings, decisions: r.result.decisions, trace: r.result.trace, parameters: r.result.parameters })),
     attempts: i.attempts, pins: Object.fromEntries(i.pins), bindings: i.bindings, supersessions: i.supersessionsApplied,
     engineState: i.engineStates[i.engineStates.length - 1], context: clone(i.ctx), startedAt: i.run.clock.start === 0 ? 0 : i.startedAt - i.run.clock.start, endedAt: i.endedAt !== undefined ? i.endedAt - i.run.clock.start : undefined,
@@ -139,7 +155,7 @@ export function baseConfig(env: RunnerEnv, test: any, extra: Partial<RunConfig> 
 }
 
 export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfig> = {}): Promise<TestRunReport> {
-  const report: TestRunReport = { id: test.id, title: test.title, target: test.target, level: test.level, passed: false, checks: [], trace: [], releaseTrace: [], elapsed: 'PT0S', warnings: [] };
+  const report: TestRunReport = { id: test.id, title: test.title, target: test.target, level: test.level, passed: false, checks: [], trace: [], detail: [], releaseTrace: [], elapsed: 'PT0S', warnings: [] };
   try {
     const cfg = baseConfig(env, test, extra);
     if (test.level === 'ruleset') return checkRuleSet(env, test, report);
@@ -176,6 +192,7 @@ export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfi
     if (!root) throw new Error(`The run did not start ${test.target}`);
     report.outcome = root.outcome;
     report.trace = singleItemNormalise(root.trace);
+    report.detail = singleItemNormalise(root.detail);
     report.releaseTrace = root.releaseTrace;
     const elapsedMs = (root.endedAt ?? result.run.clock.now) - root.startedAt;
     report.elapsed = msToIso(elapsedMs);
@@ -205,6 +222,18 @@ async function runActivityTest(cfg: RunConfig, name: string, ctx: any, stepId: s
   const run = new Run(cfg);
   run.messages.push({ ...inbound, at: run.clock.now });
   const act = run.resolveDoc(name);
+  if (isComposite(act)) {
+    // A composite tested from a source file: the intake map of the scheme message whose leg calls it builds the context.
+    const map = intakeMapFor(run, name);
+    if (map) {
+      const intake = { kind: 'workflow', wfKind: 'intake', name: `${map}#intake`, release: '0.0.0', exit: { outcomes: ['mapped', 'unmappable'] }, do: [{ id: 'intake', call: map, handle: { unmappable: { end: 'unmappable' } } }] };
+      ctx.header = { conversation: 'conv-1', paymentId: 'P-1', kind: 'payment', direction: 'outward', receivedAt: run.clock.iso(), ...(ctx.header ?? {}) };
+      let it: Instance | undefined;
+      void startInstance(run, intake, ctx, 'intake').then((i) => (it = i));
+      await run.drive(() => it !== undefined);
+    }
+    return runComposite(run, act, ctx);
+  }
   const wf = { kind: 'workflow', wfKind: 'activity', name: `${name}#test`, release: act.release, exit: { outcomes: act.outcomes.map((o: any) => o.name) }, do: [{ id: stepId, call: name, handle: Object.fromEntries(act.outcomes.filter((o: any) => !o.primary).map((o: any) => [o.name, { end: o.name }])) }] };
   let root: Instance | undefined;
   void startInstance(run, wf, ctx, 'activity').then((i) => (root = i));
@@ -247,7 +276,14 @@ function compare(exp: any, root: Instance, result: RunResult, report: TestRunRep
   if (exp.outcome !== undefined) add('outcome', exp.outcome, root.outcome, exp.outcome === root.outcome, root.failed);
   if (exp.reasonCode !== undefined) add('reasonCode', exp.reasonCode, root.reasonCode, exp.reasonCode === root.reasonCode);
   if (exp.trace) add('trace', exp.trace, report.trace, traceEqual(exp.trace, report.trace));
-  if (exp.attempts) for (const [k, v] of Object.entries<number>(exp.attempts)) add(`attempts.${k}`, v, root.attempts[k] ?? 0, (root.attempts[k] ?? 0) === v);
+  if (exp.detail) add('detail', exp.detail, report.detail, traceEqual(exp.detail, report.detail));
+  // Attempts of a step that ran once; for a step run more than once, as in a loop, the number of
+  // times it ran (Issue I-18).
+  if (exp.attempts) for (const [k, v] of Object.entries<number>(exp.attempts)) {
+    const calls = root.callCounts.get(k) ?? 0;
+    const actual = calls > 1 ? calls : root.attempts[k] ?? 0;
+    add(`attempts.${k}`, v, actual, actual === v, calls > 1 ? `${calls} calls, ${root.attempts[k]} attempts in all` : undefined);
+  }
   if (exp.virtualElapsed) {
     const ms = durationMs(exp.virtualElapsed);
     add('virtualElapsed', exp.virtualElapsed, msToIso(elapsedMs), Math.abs(elapsedMs - ms) < 60000 || (exp.virtualElapsed.includes('D') && elapsedMs >= ms && elapsedMs < ms + 3 * 86400000));

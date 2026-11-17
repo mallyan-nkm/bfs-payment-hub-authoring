@@ -572,3 +572,26 @@ scenarios:
       do:
         - { id: validate, call: ck.kit.validate.limit.v1, handle: { reject: { end: rejected } } }
         - end: done
+
+  - id: CK-BLOCK-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: accept } ]
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: x, call: ck.kit.exchange.request.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-BLOCK-02
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    workflow:
+      do:
+        - { id: x, call: ck.kit.exchange.request.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - end: done
+
+  - id: CK-BLOCK-03
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    workflow:
+      do:
+        - { id: x, call: ck.kit.exchange.request.v1, policy: { replyTimeout: PT4H }, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - end: done

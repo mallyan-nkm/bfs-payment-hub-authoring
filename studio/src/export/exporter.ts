@@ -2,6 +2,7 @@ import { canonicalJson, clone, contentHash } from '../core/canonical.js';
 import { toYaml } from '../core/yaml.js';
 import { Checker, pinnable, type Issue } from '../checks/checks.js';
 import { generateBpmn, portabilityReport } from './bpmn.js';
+import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
 import type { StudioEnv } from '../env.js';
 
@@ -82,13 +83,14 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   const tasks: any[] = [];
   const flowEntries: any[] = [];
   for (const [n, d] of [...flows].sort(([a], [b]) => a.localeCompare(b))) {
-    const out = clone(d);
+    // An engine receives the expanded form only, with the authored release and hash (R-09-17, R-05-36).
+    const out = clone(expandWorkflow(d, (x) => env.store.doc(x)));
     out.artefacts = artefactsBlock(env, checker, d);
     for (const a of out.artefacts) blocks.set(a.name, env.store.doc(a.name, a.release));
     // L23: the pins are complete and exact.
     issues.push(...new Checker([...checker.docs], []).check(out).filter((i) => i.code === 'L23'));
     files[`${KIND_DIR[out.kind] ?? 'workflows'}/${n}@${out.release}.yaml`] = toYaml(out);
-    flowEntries.push({ name: n, kind: out.kind, wfKind: out.wfKind, release: out.release, hash: contentHash(d), pins: out.artefacts.length });
+    flowEntries.push({ name: n, kind: out.kind, wfKind: out.wfKind, release: out.release, hash: contentHash(d), form: out.form ?? 'authored', pins: out.artefacts.length });
     if (out.kind === 'workflow' && out.wfKind === 'segment') continue;
     if (req.target === 'flowable' && out.kind === 'workflow' && out.wfKind !== 'handler') {
       files[`bpmn/${n}@${out.release}.bpmn20.xml`] = generateBpmn(out, { queueOf: (name) => queueOf(binding, name), resolve: (x) => env.store.doc(x) });

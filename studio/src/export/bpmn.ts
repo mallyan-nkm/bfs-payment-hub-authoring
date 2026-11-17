@@ -18,6 +18,7 @@ class Builder {
   flows: string[] = [];
   n = 0;
   ends = new Map<string, string>(); // outcome -> node that leads to finally and the end
+  returns = new Map<string, string>(); // outcome -> error end event inside a block
   constructor(readonly wf: any, readonly ctx: Ctx, readonly inSub: boolean) {}
 
   id(prefix: string) {
@@ -30,6 +31,16 @@ class Builder {
     this.flows.push(cond
       ? `    <sequenceFlow id="${id}" sourceRef="${from}" targetRef="${to}"${name ? ` name="${esc(name)}"` : ''}><conditionExpression xsi:type="tFormalExpression"><![CDATA[${cond}]]></conditionExpression></sequenceFlow>`
       : `    <sequenceFlow id="${id}" sourceRef="${from}" targetRef="${to}"${name ? ` name="${esc(name)}"` : ''}/>`);
+  }
+
+  returnFor(outcome: string): string {
+    let id = this.returns.get(outcome);
+    if (!id) {
+      id = `return_${safe(outcome)}_${this.n++}`;
+      this.returns.set(outcome, id);
+      this.els.push(`    <endEvent id="${id}" name="return:${esc(outcome)}"><errorEventDefinition errorRef="ret_${safe(outcome)}"/></endEvent>`);
+    }
+    return id;
   }
 
   endFor(outcome: string): string {
@@ -65,6 +76,10 @@ class Builder {
     }
     if (action?.end) {
       this.flow(from, this.endFor(action.end), cond, label);
+      return [];
+    }
+    if (action && 'return' in action) {
+      this.flow(from, this.returnFor(action.return), cond, label);
       return [];
     }
     return null; // continue
@@ -177,6 +192,36 @@ class Builder {
       return this.steps(seg?.do ?? []);
     }
     if ('try' in st) return this.steps(st.try);
+    if ('return' in st && Object.keys(st).every((k) => k === 'return' || k === 'id')) {
+      const id = this.id('ret');
+      this.els.push(`    <intermediateThrowEvent id="${id}" name="return:${esc(st.return)}"/>`);
+      this.flow(id, this.returnFor(st.return));
+      return { entry: id, exits: [] };
+    }
+    if ('block' in st) {
+      // A composite step is an embedded sub-process; a return is an error end caught on its boundary.
+      const id = this.id('block');
+      const inner = new Builder(this.wf, this.ctx, true);
+      inner.n = this.n * 100;
+      const f = inner.steps(st.block.do);
+      this.n = inner.n;
+      const act = this.ctx.resolve(st.block.of);
+      const primary = act?.outcomes?.find((o: any) => o.primary)?.name ?? 'done';
+      this.els.push(`    <subProcess id="${id}" name="${esc(st.id)}"><documentation>Composite ${esc(st.block.of)}, subflow ${esc(st.block.by)}</documentation>`, ...inner.body(f, `${id}_in`), '    </subProcess>');
+      const join = this.id('continue');
+      this.els.push(`    <exclusiveGateway id="${join}"/>`);
+      this.flow(id, join, undefined, primary);
+      for (const o of [...inner.returns.keys()].sort()) {
+        const b = `${id}_ret_${safe(o)}`;
+        this.els.push(`    <boundaryEvent id="${b}" attachedToRef="${id}"><errorEventDefinition errorRef="ret_${safe(o)}"/></boundaryEvent>`);
+        if (o === primary) { this.flow(b, join); continue; }
+        const a = st.handle?.[o];
+        const after = a === undefined ? null : this.action(a, b, '', o);
+        if (after === null) this.flow(b, join);
+        else after.forEach((e) => this.flow(e, join));
+      }
+      return { entry: id, exits: [join] };
+    }
     if ('hook' in st) {
       const id = this.id('hook');
       this.els.push(`    <callActivity id="${id}" name="hook ${esc(st.hook)}" calledElement="\${hook_${safe(st.hook)}}" flowable:inheritBusinessKey="true"><documentation>The tenant's binding names the hook; an unbound hook point is skipped by the binding.</documentation></callActivity>`);

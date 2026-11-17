@@ -11,6 +11,7 @@ import { buildFacts } from './facts.js';
 import { effectivePolicy, isRetryable, policyValues, retryInterval, type EffectivePolicy } from './policy.js';
 import { ActivityFailure, TransientFailure, outcomeForStatus, primaryOutcome, reference, type ActivityIO, type ActivityResult } from './reference.js';
 import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from './sandbox.js';
+import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../core/expand.js';
 import { runPythonScript } from './pysandbox.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
@@ -81,6 +82,11 @@ export class EndFlow {
   constructor(public outcome: string, public compensate = false) {}
 }
 
+/** A `return` inside a block gives the block its outcome (Part 5, 5.6). */
+export class ReturnFlow {
+  constructor(public outcome: string) {}
+}
+
 export class StepFailure extends Error {
   constructor(public step: string, message: string, public errorName = 'Failure') {
     super(message);
@@ -97,6 +103,7 @@ interface Frame {
   hookOwner: string; // the workflow or segment that declares hook points for these steps
   tryStack: TryFrame[];
   inFinally?: boolean;
+  detail?: boolean; // inside a block: steps go to the detail, not the business trace
   item?: { index: number; item: any; parent: any };
   label?: (id: string) => string;
 }
@@ -106,6 +113,8 @@ let idSeq = 0;
 export class Instance {
   readonly id: string;
   trace: string[] = [];
+  detail: string[] = []; // the steps inside composite steps (R-05-38)
+  expandedFrom?: { release: string; hash: string };
   releaseTrace: string[] = [];
   timeline: TimelineEvent[] = [];
   steps: StepRecord[] = [];
@@ -139,7 +148,7 @@ export class Instance {
   durable: boolean;
   callCounts = new Map<string, number>();
 
-  constructor(readonly run: Run, readonly doc: any, public ctx: any, readonly kind: string, readonly parent?: Instance) {
+  constructor(readonly run: Run, public doc: any, public ctx: any, readonly kind: string, readonly parent?: Instance) {
     this.id = `${kind}-${++idSeq}`;
     this.startedAt = run.clock.now;
     this.durable = kind !== 'handler' && kind !== 'activity';
@@ -473,6 +482,12 @@ export async function startInstance(run: Run, doc: any, ctx: any, kind: string, 
   else if (kind === 'handler') run.handlerRuns.push(inst);
   else run.instances.push(inst);
   inst.legs = opts.legs ?? {};
+  // The interpreter runs the expanded form and records the authored release and hash (R-05-36).
+  if ((doc.kind === 'workflow' || doc.kind === 'hook') && callsComposite(doc, (n) => run.resolveDoc(n))) {
+    inst.doc = expandWorkflow(doc.kind === 'hook' ? { ...doc, kind: 'workflow' } : doc, (n) => run.resolveDoc(n));
+    if (doc.kind === 'hook') inst.doc = { ...inst.doc, kind: 'hook' };
+  }
+  if (doc.form === 'expanded' || inst.doc.form === 'expanded') inst.expandedFrom = inst.doc.expandedFrom;
   // Pins are taken when the instance starts (R-01-16); bindings likewise (R-06-13).
   inst.pins = pinsFrom(run, doc);
   inst.bindings = run.bindingsAt(run.clock.today());
@@ -496,7 +511,7 @@ async function runWorkflowBody(inst: Instance, outer: Scope) {
   const doc = inst.doc;
   const body = outer.child();
   inst.bodyScope = body;
-  const frame: Frame = { inst, ctx: inst.ctx, scope: body, hookOwner: doc.name, tryStack: [] };
+  const frame: Frame = { inst, ctx: inst.ctx, scope: body, hookOwner: doc.name, tryStack: [], detail: doc.wfKind === 'subflow' };
   let outcome: string | undefined;
   let deadlineOff = () => {};
   if (doc.deadline?.after) {
@@ -534,6 +549,7 @@ async function runWorkflowBody(inst: Instance, outer: Scope) {
 async function settle(e: any, inst: Instance, frame: Frame): Promise<string> {
   const doc = inst.doc;
   if (e instanceof EndFlow) return e.outcome;
+  if (e instanceof ReturnFlow) return e.outcome; // a subflow run alone
   if (e instanceof Cancelled) {
     const r = e.reason;
     if (r?.end instanceof EndFlow) return r.end.outcome;
@@ -597,6 +613,8 @@ async function execStep(st: any, frame: Frame) {
   if ('use' in st) return execUse(st, frame);
   if ('try' in st) return execTry(st, frame);
   if ('hook' in st) return execHook(st, frame);
+  if ('block' in st) return execBlock(st, frame);
+  if ('return' in st && Object.keys(st).every((k) => ['return', 'id'].includes(k))) throw new ReturnFlow(st.return);
   throw new StepFailure(st.id ?? '?', `Unknown step ${JSON.stringify(Object.keys(st))}`);
 }
 
@@ -608,8 +626,37 @@ async function runAction(action: any, frame: Frame) {
       if (action.compensate === 'all' || action.compensate === true) await compensateScope(frame);
       throw new EndFlow(action.end);
     }
+    if ('return' in action) throw new ReturnFlow(action.return);
     if (action.continue) return;
   }
+}
+
+/** Put a trace entry where it belongs: the business trace, or the detail inside a block. */
+function record(frame: Frame, entry: string) {
+  (frame.detail ? frame.inst.detail : frame.inst.trace).push(entry);
+}
+
+/** A composite step in the expanded form: its subflow's steps run as a frame (C09-S12). */
+async function execBlock(st: any, frame: Frame) {
+  const inst = frame.inst;
+  const id = st.id;
+  const act = inst.run.resolveFor(inst, st.block.of, id).doc;
+  if (st.block.by) inst.run.resolveFor(inst, st.block.by, id);
+  inst.event('block-start', label(frame, id), { of: st.block.of, by: st.block.by });
+  let outcome = primaryOutcome(act);
+  try {
+    await execSteps(st.block.do ?? [], { ...frame, detail: true });
+  } catch (e) {
+    if (e instanceof ReturnFlow) outcome = e.outcome;
+    else throw e;
+  }
+  inst.outcomes.set(id, outcome);
+  record(frame, frame.inFinally ? `finally:${id}` : `${label(frame, id)}:${outcome}`);
+  inst.event('block-end', label(frame, id), { outcome });
+  if (outcome === primaryOutcome(act)) return;
+  const action = st.handle?.[outcome];
+  if (action === undefined) throw new StepFailure(id, `Outcome ${outcome} of ${id} is not handled (L05)`);
+  await runAction(action, frame);
 }
 
 async function compensateScope(frame: Frame) {
@@ -693,9 +740,7 @@ async function runActivityStep(st: any, frame: Frame, opts: { silent?: boolean }
   if (result.ruleTrace) inst.ruleTraces.push({ step: label(frame, id), result: result.ruleTrace });
   if (result.reasonCode) inst.reasonCode = result.reasonCode;
   inst.engineStates.push(inst.engineState());
-  if (!opts.silent) {
-    inst.trace.push(frame.inFinally ? `finally:${id}` : `${label(frame, id)}:${outcome}`);
-  }
+  if (!opts.silent) record(frame, frame.inFinally ? `finally:${id}` : `${label(frame, id)}:${outcome}`);
   inst.event('outcome', label(frame, id), { outcome, attempts, reasonCode: result.reasonCode });
   return { outcome, act };
 }
@@ -1011,7 +1056,7 @@ async function execParallel(st: any, frame: Frame) {
   ps.dispose();
   if (firstError !== undefined) throw firstError;
   frame.scope.throwIfCancelled();
-  frame.inst.trace.push(`join:${st.parallel.join ?? 'all'}`);
+  record(frame, `join:${st.parallel.join ?? 'all'}`);
   frame.inst.event('join', undefined, { join: st.parallel.join ?? 'all' });
 }
 
@@ -1096,12 +1141,12 @@ async function execAwait(st: any, frame: Frame) {
     });
   }
   if (!msg) {
-    inst.trace.push(`${label(frame, id)}:timeout`);
+    record(frame, `${label(frame, id)}:timeout`);
     inst.event('await-timeout', id, {});
     if (aw.onTimeout) await runAction(aw.onTimeout, frame);
     return;
   }
-  inst.trace.push(`${label(frame, id)}:received`);
+  record(frame, `${label(frame, id)}:received`);
   inst.event('await-received', id, { type: msg.type, status: msg.status });
   frame.ctx.messages ??= {};
   frame.ctx.messages.received ??= {};
@@ -1115,7 +1160,7 @@ async function execWait(st: any, frame: Frame) {
   if (!isDuration(d)) throw new StepFailure(st.id ?? 'wait', `wait needs a duration, not ${d}`);
   frame.inst.event('wait', st.id, { duration: d });
   await frame.inst.run.clock.sleepUntil(addDuration(frame.inst.run.clock.now, d), frame.scope, 'wait');
-  frame.inst.trace.push(`${st.id ?? 'wait'}:${d}`);
+  record(frame, `${st.id ?? 'wait'}:${d}`);
 }
 
 // ------------------------------------------------------------------------ slot
@@ -1145,7 +1190,7 @@ async function execSlot(st: any, frame: Frame) {
   if (child.reasonCode) inst.reasonCode = child.reasonCode;
   const outcome = child.outcome ?? 'failed';
   inst.outcomes.set(id, outcome);
-  inst.trace.push(`${label(frame, id)}:${outcome}`);
+  record(frame, `${label(frame, id)}:${outcome}`);
   const primary = slot.contract?.primaryOutcome ?? slot.contract?.outcomes?.[0];
   if (outcome === primary) return;
   const action = st.handle?.[outcome];
@@ -1318,6 +1363,7 @@ export async function runActivity(cfg: RunConfig, name: string, ctx: any): Promi
   const run = new Run(cfg);
   const act = run.resolveDoc(name);
   if (!act) throw new Error(`${name} does not resolve`);
+  if (isComposite(act)) return runComposite(run, act, ctx);
   const stepId = act.type; // an activity test names the step by the activity's type
   const wf = { kind: 'workflow', wfKind: 'activity', name: `${name}#test`, release: act.release, exit: { outcomes: (act.outcomes ?? []).map((o: any) => o.name) }, do: [{ id: stepId, call: name, handle: Object.fromEntries((act.outcomes ?? []).filter((o: any) => !o.primary).map((o: any) => [o.name, { end: o.name }])) }] };
   let root: Instance | undefined;
@@ -1385,4 +1431,19 @@ export function attachIntake(run: Run) {
       await startInstance(run, doc, ctx, 'platform', undefined, { legs });
     })();
   };
+}
+
+
+/**
+ * A composite tested alone (R-03-23): its subflow runs with its own step ids, the inner steps go
+ * to the detail, and the outcome is what the subflow returns.
+ */
+export async function runComposite(run: Run, act: any, ctx: any): Promise<RunResult> {
+  const sub = run.resolveDoc(act.implementation.subflow);
+  if (!sub) throw new Error(`The subflow ${act.implementation.subflow} does not resolve`);
+  const doc = { ...expandSubflow(sub, (n) => run.resolveDoc(n), act), exit: { outcomes: (act.outcomes ?? []).map((o: any) => o.name) } };
+  let root: Instance | undefined;
+  void startInstance(run, doc, ctx, 'subflow').then((i) => (root = i));
+  const status = await run.drive(() => root !== undefined && run.clock.pending() === 0);
+  return { run, root, status };
 }

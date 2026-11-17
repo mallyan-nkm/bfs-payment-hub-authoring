@@ -6,6 +6,7 @@ import { analyseTable } from '../rules/service.js';
 import { lintScript } from '../interp/sandbox.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
+import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
 import type { StudioEnv } from '../env.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
@@ -51,6 +52,9 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L27: 'Supersession rules',
   L28: 'Script determinism',
   L29: 'Step ids unique after inlining',
+  L30: 'A composite and its subflow agree; a step that calls a composite has an id',
+  L31: 'await and return only in a subflow; block only in the expanded form',
+  L32: 'An await with no timeout has a reply time to take',
 };
 
 // ---------------------------------------------------------------- walking
@@ -67,6 +71,7 @@ export function walk(steps: any[] | undefined, out: any[] = []): any[] {
     if (st.parallel) for (const b of st.parallel.branches ?? []) walk(b, out);
     if (st.forEach) walk(st.forEach.do, out);
     if (st.loop) walk(st.loop.do, out);
+    if (st.block) walk(st.block.do, out);
     if (st.await && Array.isArray(st.await.onTimeout)) walk(st.await.onTimeout, out);
     if (st.try) {
       walk(st.try, out);
@@ -91,7 +96,9 @@ export function refsOf(d: any): Set<string> {
   for (const k of ['ports', 'ruleSets', 'rules', 'selfCheck']) for (const r of d[k] ?? []) out.add(r);
   for (const k of ['compensation', 'port']) if (typeof d[k] === 'string' && kind !== 'port') out.add(d[k]);
   for (const r of d.map?.edgeRules ?? []) out.add(r);
+  if (d.implementation?.subflow) out.add(d.implementation.subflow);
   if (kind === 'workflow' || kind === 'hook') {
+    if (d.implements?.activity) out.add(d.implements.activity);
     const of = d.implements?.of;
     for (const o of Array.isArray(of) ? of : of ? [of] : []) out.add(o);
     for (const hp of d.hookPoints ?? []) if (hp.policy?.onHold) out.add(hp.policy.onHold);
@@ -212,6 +219,7 @@ export class Checker {
     }
 
     if (kind === 'workflow' || kind === 'hook') this.checkFlow(d, err, warn);
+    if (kind === 'workflow' || kind === 'hook' || kind === 'activity') this.checkComposites(d, err);
     if (kind === 'hook') this.checkHook(d, err);
     if (kind === 'scheme') this.checkScheme(d, err, warn);
     if (kind === 'rule') {
@@ -282,7 +290,7 @@ export class Checker {
         const a = st.call ? this.byName.get(st.call) : undefined;
         if (a) {
           const ok = ['pure', 'read'].includes(a.effect) || (a.type === 'exchange' && a.mode === 'respond');
-          if (!ok || a.type === 'hold') err('L07', `Handler calls ${st.call}, which waits or writes`, stepLabel(st));
+          if (!ok || a.type === 'hold' || this.waits(a)) err('L07', `Handler calls ${st.call}, which waits or writes`, stepLabel(st));
         }
       }
     }
@@ -306,12 +314,84 @@ export class Checker {
     for (const [id, n] of seen) if (n > 1) err('L29', `Step id ${id} appears ${n} times after segments are inlined`, id);
     // L19: data flow.
     if (d.kind === 'workflow' && (d.wfKind === 'platform' || d.wfKind === 'leg')) this.checkDataFlow(d, warn);
+    // R-05-39: a check that needs the whole flow runs on the expanded form and reports at the
+    // authored step, naming the inner step.
+    let flow = d;
+    if (d.kind === 'workflow' && d.wfKind !== 'subflow' && callsComposite(d, (n) => this.byName.get(n))) {
+      try {
+        flow = expandWorkflow(d, (n) => this.byName.get(n));
+        for (const p of checkExpanded(flow, (n) => this.byName.get(n))) {
+          const inner = /(?:step|await|block) (\S+)/.exec(p)?.[1];
+          err(p.includes('twice') ? 'L29' : 'L30', `In the expanded form: ${p}`, inner?.split('.')[0]);
+        }
+      } catch (e: any) {
+        err('L32', `The workflow does not expand: ${e.message}`, e.step);
+      }
+    }
     // L21: budgets fit the deadline.
     if (d.kind === 'workflow' && d.deadline?.after) {
-      const budget = this.longestBudget(d.do ?? []);
+      const budget = this.longestBudget(flow.do ?? []);
       const deadline = addDuration(0, d.deadline.after);
       if (budget > deadline) warn('L21', `The attempt budgets on the longest path sum to ${Math.round(budget / 1000)}s, more than the deadline ${d.deadline.after}`);
     }
+  }
+
+  /** True when calling this activity can park the workflow: a hold, or a composite whose subflow waits. */
+  waits(a: any, seen: string[] = []): boolean {
+    if (a?.type === 'hold') return true;
+    const sub = this.byName.get(a?.implementation?.subflow);
+    if (!sub || seen.includes(a.name)) return false;
+    for (const st of allSteps(sub)) {
+      if (st.await || st.wait) return true;
+      const inner = this.byName.get(st.call);
+      if (inner?.kind === 'activity' && this.waits(inner, [...seen, a.name])) return true;
+    }
+    return false;
+  }
+
+  /** L30, L31, L32: composites and subflows (Part 5, 5.6; R-03-19 to R-03-21, R-05-33 to R-05-40). */
+  private checkComposites(d: any, err: (c: string, m: string, s?: string) => void) {
+    const composite = (a: any) => !!a && a.kind === 'activity' && a.implementation?.binding === 'subflow';
+    const actions = (doc: any): any[] => {
+      const out: any[] = [];
+      for (const st of allSteps(doc)) {
+        for (const a of Object.values(st.handle ?? {})) if (a && !Array.isArray(a) && typeof a === 'object') out.push(a);
+        if (st.await?.onTimeout && !Array.isArray(st.await.onTimeout)) out.push(st.await.onTimeout);
+      }
+      return out;
+    };
+    const returns = (doc: any) => new Set<string>([...allSteps(doc).filter((s) => 'return' in s).map((s) => s.return), ...actions(doc).filter((a) => 'return' in a).map((a) => a.return)]);
+    if (composite(d)) {
+      const sub = this.byName.get(d.implementation.subflow);
+      if (!sub || sub.wfKind !== 'subflow') err('L30', `${d.implementation.subflow} is not a subflow`);
+      else if (sub.implements?.activity !== d.name) err('L30', `${sub.name} does not implement ${d.name}`);
+      else {
+        const outs = new Set<string>((d.outcomes ?? []).map((o: any) => o.name));
+        const ret = returns(sub);
+        for (const o of [...ret].filter((x) => !outs.has(x)).sort()) err('L30', `Its subflow returns ${o}, which the activity does not declare`);
+        for (const o of [...outs].filter((x) => !ret.has(x)).sort()) err('L30', `Declares outcome ${o}, which its subflow never returns`);
+      }
+      for (const k of Object.keys(d.policy ?? {}).filter((k) => !['replyTimeout', 'replyCalendar'].includes(k)).sort()) err('L30', `A composite carries no ${k}; attempts and retries belong to the steps of its subflow`);
+    }
+    if (d.kind !== 'workflow' && d.kind !== 'hook') return;
+    const isSub = d.wfKind === 'subflow';
+    if (isSub) {
+      const act = this.byName.get(d.implements?.activity);
+      if (!composite(act) || act.implementation.subflow !== d.name) err('L30', `${d.implements?.activity} is not a composite activity bound to this subflow`);
+      for (const st of allSteps(d)) for (const k of ['end', 'slot', 'hook', 'use'].filter((k) => k in st)) err('L30', `A subflow may not contain ${k}; it returns an outcome`, stepLabel(st));
+      for (const a of actions(d)) if ('end' in a) err('L30', 'A subflow may not end the workflow; it returns an outcome');
+    }
+    for (const st of allSteps(d)) {
+      if (st.call && composite(this.byName.get(st.call)) && !st.id) err('L30', `A step that calls the composite ${st.call} needs an id`);
+      if (st.await && !isSub) err('L31', `Step ${st.id ?? '?'} awaits ${st.await.message}; an await belongs in the subflow of a composite activity`, stepLabel(st));
+      if (st.block) err('L31', 'A block appears only in the expanded form', stepLabel(st));
+      if ('return' in st && !isSub) err('L31', 'Return appears only in a subflow', stepLabel(st));
+      if (st.await && !('timeout' in st.await) && isSub) {
+        const act = this.byName.get(d.implements?.activity) ?? {};
+        if (!act.policy?.replyTimeout) err('L32', `Await ${st.id ?? '?'} has no timeout and ${act.name} declares no replyTimeout`, stepLabel(st));
+      }
+    }
+    if (!isSub) for (const a of actions(d)) if ('return' in a) err('L31', 'Return appears only in a subflow');
   }
 
   /** Sum of attempt budgets of port-reaching activities on the longest path, in ms. */
@@ -339,6 +419,11 @@ export class Checker {
       } else if (st.switch) {
         sum += Math.max(0, ...Object.values<any>(st.switch.cases ?? {}).map((c) => this.longestBudget(c)), this.longestBudget(st.switch.default ?? []));
       } else if (st.try) sum += this.longestBudget(st.try);
+      else if (st.block) {
+        sum += this.longestBudget(st.block.do);
+        const branches = Object.values(st.handle ?? {}).filter(Array.isArray) as any[][];
+        sum += Math.max(0, ...branches.map((x) => this.longestBudget(x)));
+      }
       else if (st.use) sum += this.longestBudget(this.byName.get(st.use)?.do ?? []);
     }
     return sum;
@@ -583,7 +668,7 @@ export function pinnable(c: Checker, d: any): string[] {
     for (const r of refsOf(doc)) {
       const x = c.byName.get(r);
       if (!x || out.has(r)) continue;
-      if (['activity', 'rule', 'ruleset', 'table'].includes(x.kind) || (x.kind === 'workflow' && x.wfKind === 'segment')) {
+      if (['activity', 'rule', 'ruleset', 'table'].includes(x.kind) || (x.kind === 'workflow' && (x.wfKind === 'segment' || x.wfKind === 'subflow'))) {
         out.add(r);
         visit(x);
       }

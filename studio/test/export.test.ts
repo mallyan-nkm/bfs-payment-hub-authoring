@@ -42,4 +42,15 @@ describe('export (C05, C20, C22)', () => {
     expect(Object.keys(pkg.files).some((f) => f.startsWith('hooks/b.hook.pre-release-approval.v1'))).toBe(true);
     expect(pkg.manifest.containsSimulators).toBe(false);
   });
+  it('ships the expanded form, pins the composite and its subflow, and makes a block a sub-process (R-09-17, R-05-41)', () => {
+    const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'flowable' });
+    const leg = parseYaml(pkg.files['workflows/uae.wps.wf.salary-file-out.v1@1.0.0.yaml']);
+    expect(leg.form).toBe('expanded');
+    expect(leg.expandedFrom.release).toBe('1.0.0');
+    const pins = leg.artefacts.map((a: any) => a.name);
+    expect(pins).toEqual(expect.arrayContaining(['uae.wps.exchange.submit-salary-file.v1', 'uae.wps.sub.submit-salary-file.v1', 'uae.wps.exchange.send-salary-file.v1', 'uae.wps.map.ack-in.v1']));
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    expect(x).toMatch(/<subProcess id="block_\d+" name="submit">/);
+    expect(x).toMatch(/errorRef="ret_pending"/);
+  });
 });

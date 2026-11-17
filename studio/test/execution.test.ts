@@ -33,14 +33,14 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test except WPS-IN-001, which cannot pass as written', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(26);
+    expect(reports.length).toBe(30);
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual(['WPS-IN-001']);
   });
   it('shows three attempts and the backoff for AANI-OUT-003 (F-17)', async () => {
     const env = freshEnv();
     const r = await runTest(env, env.store.test('AANI-OUT-003')!.doc);
-    const send = r.record!.timeline.filter((e: any) => e.step === 'send');
+    const send = r.record!.timeline.filter((e: any) => e.step === 'send.send');
     expect(send.filter((e: any) => e.type === 'attempt').length).toBe(3);
     expect(send.filter((e: any) => e.type === 'retry-wait').map((e: any) => e.detail.ms)).toEqual([1000, 2000]);
   });
@@ -75,11 +75,11 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
 });
 
 describe('the conformance kit on the studio interpreter (C23, C09)', () => {
-  it('passes all 43 scenarios', async () => {
+  it('passes all 46 scenarios', async () => {
     const env = freshEnv();
     const res = await runKit(env);
     const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
     expect(red).toEqual([]);
-    expect(res.length).toBe(43);
+    expect(res.length).toBe(46);
   });
 });

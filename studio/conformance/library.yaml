@@ -536,3 +536,62 @@ state: { keyedBy: message id }
 scenarios:
   - { name: accept, steps: [ { expect: p.ops.item }, { send: p.ops.decision, status: approved, after: PT5M } ] }
 implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.operations.v1.ts }
+---
+kind: activity
+name: ck.kit.map.reply.v1
+release: 1.0.0
+title: Kit read of a reply
+type: map
+reads: [messages]
+writes: [status]
+outcomes:
+  - { name: ok, primary: true }
+  - { name: refused }
+effect: pure
+map: { direction: in, sourceModel: Kit reply, roundTrip: false }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.map.reply.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.request.v1
+release: 1.0.0
+title: Kit composite. Send a request and learn its outcome from the reply
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: pending }
+errors:
+  - { name: TransientError, retryable: true }
+effect: external
+idempotencyKey: concat(header.paymentId, ':request')
+ports: [ck.kit.port.party.v1]
+policy: { replyTimeout: PT1H }
+implementation: { binding: subflow, subflow: ck.kit.sub.request.v1 }
+---
+kind: workflow
+wfKind: subflow
+name: ck.kit.sub.request.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Kit subflow. Send, await the reply, read it
+implements: { activity: ck.kit.exchange.request.v1 }
+exit: { outcomes: [accepted, rejected, pending] }
+do:
+  - id: send
+    call: ck.kit.exchange.send.v1
+    handle:
+      rejected: { return: rejected }
+      unknown: { return: pending }
+  - id: await
+    await:
+      message: ck.kit.reply
+      correlateBy: header.endToEndId
+      onTimeout: { return: pending }
+  - id: read
+    call: ck.kit.map.reply.v1
+    handle:
+      refused: { return: rejected }
+  - return: accepted

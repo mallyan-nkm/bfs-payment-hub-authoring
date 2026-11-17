@@ -12,6 +12,7 @@ describe('names and scopes (R-01-01 to R-01-04)', () => {
     expect(parseName('p.wf.corporate.v1')).toMatchObject({ scope: 'p', type: 'wf' });
     expect(parseName('uae.wps.wf.salary-file-out.v1')).toMatchObject({ scope: 'uae.wps', scopeLevel: 'scheme', scheme: 'wps' });
     expect(parseName('b.hook.add-cost-centre.v1')).toMatchObject({ scope: 'b', scopeLevel: 'bank' });
+    expect(parseName('uae.wps.sub.submit-salary-file.v1')).toMatchObject({ type: 'sub' });
   });
   it('refuses names outside the grammar', () => {
     expect(parseName('platform.wf.corporate.v1')).toBeNull();
@@ -44,7 +45,7 @@ describe('canonical JSON and the content hash (R-01-12)', () => {
       expect(e!.hash, a.name).toBe(a.hash);
       checked++;
     }
-    expect(checked).toBeGreaterThan(150);
+    expect(checked).toBeGreaterThan(165);
   });
 });
 
@@ -65,7 +66,7 @@ describe('durations and the business calendar', () => {
 describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
-    expect(env.store.all().length).toBe(184);
+    expect(env.store.all().length).toBe(198);
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

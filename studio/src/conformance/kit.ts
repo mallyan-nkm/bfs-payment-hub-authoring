@@ -143,6 +143,8 @@ export async function runScenario(env: StudioEnv, kit: KitContent, sc: any, expe
     res.actual = actual;
     const traceOk = equalWithFreeOrder(res.expected, actual, sc.freeOrder);
     res.checks.push({ what: 'trace', expected: res.expected, actual, passed: traceOk });
+    // R-05-38: the comparison includes the detail, the steps inside composite steps.
+    if (expectedEntry?.detail) res.checks.push({ what: 'detail', expected: expectedEntry.detail, actual: root.detail, passed: JSON.stringify(expectedEntry.detail) === JSON.stringify(root.detail) });
     checkExtras(sc, expectedEntry, root, run, res);
     if (root.failed) res.notes!.push(`failed: ${root.failed}`);
     res.passed = res.checks.every((c) => c.passed);
