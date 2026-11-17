@@ -765,10 +765,15 @@ export function checkAll(env: StudioEnv): Issue[] {
   return issues;
 }
 
-export function checkDocument(env: StudioEnv, doc: any, tenant?: string): Issue[] {
+/**
+ * Check one document. `alongside` are documents taken as present with it: the tenant's other drafts
+ * while it is edited, or the rest of a change set at publish.
+ */
+export function checkDocument(env: StudioEnv, doc: any, tenant?: string, alongside: any[] = []): Issue[] {
   const issues: Issue[] = env.schemas.validate(doc).map((s) => ({ code: 'L00', severity: 'error' as const, key: doc?.name ?? doc?.id ?? '', message: s.message + (s.hint ? ` ${s.hint}` : ''), step: s.path }));
   try {
-    const c = Checker.fromEnv(env, [doc], tenant);
+    const self = `${doc?.kind}:${doc?.name ?? doc?.scope ?? doc?.id}`;
+    const c = Checker.fromEnv(env, [...alongside.filter((d) => `${d?.kind}:${d?.name ?? d?.scope ?? d?.id}` !== self), doc], tenant);
     issues.push(...c.check(doc));
     const prev = doc?.name ? env.store.latest(doc.name, tenant)?.doc : undefined;
     if (prev && prev.release !== doc.release) {

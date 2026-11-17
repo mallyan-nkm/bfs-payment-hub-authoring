@@ -74,11 +74,16 @@ export function enforce(env: StudioEnv, actor: string, tenant: string, action: A
 
 // --------------------------------------------------------- release flow (C19-S2)
 
+/** The tenant's drafts, as the working set a draft is checked with while it is edited. */
+export function draftSet(env: StudioEnv, tenant: string): any[] {
+  return env.store.drafts(tenant).map((d) => d.doc);
+}
+
 export function submitForReview(env: StudioEnv, tenant: string, actor: string, key: string) {
   const e = env.store.entries.get(key);
   if (!e || e.status !== 'draft' || e.tenant !== tenant) throw new StoreError('not-found', `No draft ${key}`);
   enforce(env, actor, tenant, 'author', key, e.scope);
-  const errors = checkDocument(env, e.doc).filter((i) => i.severity === 'error');
+  const errors = checkDocument(env, e.doc, tenant, draftSet(env, tenant)).filter((i) => i.severity === 'error');
   if (errors.length) throw new StoreError('checks', `The draft has ${errors.length} error(s): ${errors.map((x) => x.code).join(', ')}`);
   env.store.setState(key, 'in-review');
   env.store.record({ tenant, actor, action: 'submit-for-review', key });
@@ -105,6 +110,49 @@ export async function approve(env: StudioEnv, tenant: string, checker: string, k
     throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
   }
   return env.store.publish(tenant, key, maker, checker);
+}
+
+/**
+ * Approve and publish a change set: drafts that refer to one another (a port and its simulator, a
+ * composite and its subflow, a scheme and its legs) are reviewed and published together (Issue
+ * I-27). Every draft is checked with the others in place, the tests that target any of them are
+ * green with the whole set in place, the checker is not the maker of any, and either all publish
+ * or none does.
+ */
+export async function approveSet(env: StudioEnv, tenant: string, checker: string, keys: string[]) {
+  if (!Array.isArray(keys) || keys.length === 0) throw new StoreError('not-found', 'Name the drafts to publish together');
+  const set = keys.map((key) => {
+    const e = env.store.entries.get(key);
+    if (!e || (e.status !== 'in-review' && e.status !== 'draft') || e.tenant !== tenant) throw new StoreError('not-found', `No draft in review ${key}`);
+    if (e.status !== 'in-review') throw new StoreError('review', `${key} has not been submitted for review`);
+    enforce(env, checker, tenant, 'approve', key, e.scope);
+    const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
+    if (!maker || maker === checker) {
+      env.store.record({ tenant, actor: checker, action: 'publish', key, outcome: 'refused', detail: 'Maker and checker must differ (R-06-04)' });
+      throw new StoreError('R-06-04', `Maker and checker must differ (${key})`);
+    }
+    if (e.kind === 'scheme' && (e.doc.messages ?? []).some((m: any) => m.disposition?.planned)) throw new StoreError('R-05-22', 'A pack with a planned message cannot publish');
+    return { key, e, maker };
+  });
+  const docs = set.map((x) => x.e.doc);
+  const problems = set.flatMap(({ e }) => checkDocument(env, e.doc, tenant, docs).filter((i) => i.severity === 'error').map((i) => `${e.name}: ${i.code} ${i.message}`));
+  if (problems.length) {
+    env.store.record({ tenant, actor: checker, action: 'publish-set', key: keys.join(','), outcome: 'refused', detail: problems.join('; ') });
+    throw new StoreError('checks', `The set has errors: ${problems.join('; ')}`);
+  }
+  const documents = Object.fromEntries(set.flatMap(({ e }) => [[e.name, e.doc], [`${e.name}@${e.release}`, e.doc]]));
+  const failing: string[] = [];
+  for (const t of env.store.byKind('test').filter((t) => set.some(({ e }) => e.name === t.doc.target))) {
+    const r = await runTest(env, t.doc, { documents });
+    if (!r.passed) failing.push(t.name);
+  }
+  if (failing.length) {
+    env.store.record({ tenant, actor: checker, action: 'publish-set', key: keys.join(','), outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
+    throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
+  }
+  const published = set.map(({ key, maker }) => env.store.publish(tenant, key, maker, checker));
+  env.store.record({ tenant, actor: checker, action: 'publish-set', key: published.map((p) => p.key).join(','), detail: `${published.length} artefacts published together` });
+  return published;
 }
 
 // ---------------------------------------------------------- retirement (C19-S3)

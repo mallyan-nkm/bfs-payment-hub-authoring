@@ -285,7 +285,10 @@ function safeParse(y: string): any {
 
 // ---------------------------------------------------------- drafts, publish
 
-route('GET', '/api/drafts', (env, req) => env.store.drafts(tenantOf(req)).map((e) => ({ ...summary(e), issues: checkDocument(env, e.doc).filter((i) => i.severity === 'error').length })));
+route('GET', '/api/drafts', (env, req) => {
+  const set = gov.draftSet(env, tenantOf(req));
+  return env.store.drafts(tenantOf(req)).map((e) => ({ ...summary(e), issues: checkDocument(env, e.doc, tenantOf(req), set).filter((i) => i.severity === 'error').length }));
+});
 
 route('POST', '/api/drafts', (env, req) => {
   const tenant = tenantOf(req);
@@ -294,7 +297,8 @@ route('POST', '/api/drafts', (env, req) => {
   const actor = req.body.actor ?? '';
   enforce(env, actor, tenant, 'author', keyOf(doc), doc.kind === 'configuration-set' ? 'b' : (doc.name ? parseName(doc.name)?.scope : doc.scope));
   const e = env.store.saveDraft(tenant, actor, doc);
-  return { draft: summary(e), issues: checkDocument(env, doc), interface: interfaceFor(env, doc) };
+  // Checked with the tenant's other drafts in place: a designer builds related artefacts together.
+  return { draft: summary(e), issues: checkDocument(env, doc, tenant, gov.draftSet(env, tenant)), interface: interfaceFor(env, doc) };
 });
 
 route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
@@ -304,10 +308,17 @@ route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
 
 route('POST', '/api/publish', async (env, req) => {
   const tenant = tenantOf(req);
+  if (Array.isArray(req.body?.keys)) return { published: (await gov.approveSet(env, tenant, req.body.checker, req.body.keys)).map(summary) };
   const d = env.store.entries.get(req.body.key);
   if (!d) throw new HttpError(404, `No draft ${req.body.key}`);
   const errors = checkDocument(env, d.doc, tenant).filter((i) => i.severity === 'error');
-  if (errors.length) throw new HttpError(422, 'The draft has errors; fix them before publish', { issues: errors });
+  if (errors.length) {
+    // Say which drafts it needs beside it, so that they can be published together.
+    const drafts = env.store.drafts(tenant).filter((x) => x.key !== d.key);
+    const refersTo = (x: any) => JSON.stringify(x.doc).includes(`"${d.name}"`);
+    const needs = drafts.filter((x) => errors.some((i) => i.message.includes(x.name)) || refersTo(x));
+    throw new HttpError(422, needs.length ? `The draft refers to drafts that are not published: publish it together with ${needs.map((x) => x.key).join(', ')} ({ keys: [...] })` : 'The draft has errors; fix them before publish', { issues: errors, together: needs.map((x) => x.key) });
+  }
   // Maker-checker with roles and green tests (C17-S4, C19-S2).
   const e = await approve(env, tenant, req.body.checker, req.body.key);
   return { published: summary(e) };

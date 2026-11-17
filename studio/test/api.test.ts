@@ -235,3 +235,41 @@ describe('scripts-behind and samples', () => {
     expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.auditor', name: 'x.csv', content: 'x' })).status).toBe(409);
   });
 });
+
+describe('change sets', () => {
+  const PROV = { origin: 'authored', status: 'provisional', clauses: ['White-box test'] };
+  const PORT = { kind: 'port', name: 'uae.cset.port.x.v1', release: '1.0.0', title: 'X', party: 'x', operations: [{ name: 'send', style: 'send' }], provenance: PROV };
+  const SIM = { kind: 'simulator', name: 'uae.cset.sim.x.v1', release: '1.0.0', title: 'X', direction: 'outward', port: PORT.name, standsFor: 'x', scenarios: ['accept', 'reject', 'pending-then-final', 'no-reply', 'late-reply', 'duplicate-reply', 'fail-twice-then-accept', 'malformed-reply'].map((name) => ({ name, steps: [{ expect: 'uae.cset.m' }] })), implementation: { binding: 'builtin', service: 'simulator-runtime' }, provenance: PROV };
+  const keys: string[] = [];
+
+  it('checks a draft with the tenant\'s other drafts in place', async () => {
+    const p = await post('/api/drafts', { tenant: 'owner', actor: 'shared.designer', doc: PORT });
+    expect(p.body.issues.some((i: any) => i.code === 'L22')).toBe(true); // alone, the port has no simulator
+    const s = await post('/api/drafts', { tenant: 'owner', actor: 'shared.designer', doc: SIM });
+    expect(s.body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
+    keys.push(p.body.draft.key, s.body.draft.key);
+    const listed = (await get('/api/drafts?tenant=owner')).body.filter((d: any) => keys.includes(d.key));
+    expect(listed.every((d: any) => d.issues === 0)).toBe(true);
+  });
+
+  it('refuses one alone and names its partners; refuses a set not reviewed, an empty set, or the maker as checker', async () => {
+    const alone = await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.checker' });
+    expect(alone.status).toBe(422);
+    expect(alone.body.together).toEqual([keys[1]]);
+    expect((await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.checker' })).status).toBe(409); // not in review
+    for (const key of keys) await post('/api/review', { tenant: 'owner', actor: 'shared.designer', key });
+    expect((await post('/api/publish', { tenant: 'owner', keys: [], checker: 'shared.checker' })).status).toBe(409);
+    expect((await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.designer' })).status).toBe(409);
+    expect((await post('/api/publish', { tenant: 'owner', keys: [keys[0]], checker: 'shared.checker' })).status).toBe(409); // the port without its simulator
+    expect((await get('/api/drafts?tenant=owner')).body.filter((d: any) => keys.includes(d.key)).length).toBe(2); // nothing was published
+  });
+
+  it('publishes the set together, and records it', async () => {
+    const r = await post('/api/publish', { tenant: 'owner', keys, checker: 'shared.checker' });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.published.map((p: any) => p.name).sort()).toEqual([PORT.name, SIM.name]);
+    const audit = (await get('/api/audit?tenant=owner')).body;
+    expect(audit.some((a: any) => a.action === 'publish-set' && a.outcome === 'done')).toBe(true);
+    expect(audit.some((a: any) => a.action === 'publish-set' && a.outcome === 'refused')).toBe(true);
+  });
+});

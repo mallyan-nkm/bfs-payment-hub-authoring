@@ -5,6 +5,7 @@ import { generateBpmn, portabilityReport } from './bpmn.js';
 import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
 import { startEntryFor } from '../testing/runner.js';
+import { queueName } from './bindings.js';
 import type { StudioEnv } from '../env.js';
 
 // Export (Part 9; C05, C20, C21, C22). A package holds the workflow, leg, segment and handler
@@ -48,8 +49,11 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   const checker = Checker.fromEnv(env);
   const files: Record<string, string> = {};
   const issues: Issue[] = [];
-  const binding = env.store.byKind('engine-binding').map((e) => e.doc).find((b) => b.target === req.target);
-  if (!binding) throw new Error(`No engine binding for ${req.target}`);
+  const stored = env.store.byKind('engine-binding').map((e) => e.doc).find((b) => b.target === req.target);
+  if (!stored) throw new Error(`No engine binding for ${req.target}`);
+  // A copy: a scope the binding does not list yet (a new scheme) gets the queue the binding's rule
+  // derives (R-09-05), and the package's binding says so.
+  const binding = clone(stored);
 
   // The flows: chosen workflows, the legs that fill their slots, and the handlers of those schemes.
   const flows = new Map<string, any>();
@@ -199,7 +203,9 @@ function walkUse(d: any): string[] {
 }
 
 function queueOf(binding: any, name: string): string {
-  return binding.queues?.[scopeOf(name)] ?? binding.queues?.p ?? 'default';
+  const scope = scopeOf(name);
+  binding.queues ??= {};
+  return (binding.queues[scope] ??= queueName(scope));
 }
 
 import { createHash } from 'node:crypto';
