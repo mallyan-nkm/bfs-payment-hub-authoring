@@ -119,6 +119,7 @@ public final class Harness {
         final Map<String, String> lastChild = new HashMap<>();
         final Map<String, Integer> notifyAt = new HashMap<>();
         final Set<String> stateKeys = new TreeSet<>();
+        final List<String> ruleTraceSteps = new ArrayList<>();
         int stateSnapshots = 0;
         boolean ended;
         Long startedAt, endedAt;
@@ -284,7 +285,7 @@ public final class Harness {
         i.steps.forEach(steps::add);
         ObjectNode att = o.putObject("attempts");
         i.attempts.forEach(att::put);
-        o.putArray("ruleTraceSteps"); // the party service does not return the rule trace
+        o.set("ruleTraceSteps", Support.arr(i.ruleTraceSteps));
         o.set("engineStateKeys", Support.arr(new ArrayList<>(i.stateKeys)));
         o.put("startedAt", i.startedAt == null ? 0 : i.startedAt);
         if (i.endedAt != null) o.put("endedAt", i.endedAt);
@@ -488,6 +489,8 @@ public final class Harness {
             ms.createExternalWorkerCompletionBuilder(job.getId(), WORKER).bpmnError(retryable ? name : "th:nonRetryable");
             return;
         }
+        // The rule trace is stored with the payment record (R-04-20).
+        if (res.hasNonNull("ruleTrace") && !inst.ruleTraceSteps.contains(label)) inst.ruleTraceSteps.add(label);
         // A result: apply the writes to the context the binding keeps (claim-check), record the delta.
         ObjectNode rec = inst.openStep.get(label);
         ArrayNode delta = rec == null ? F.arrayNode() : (ArrayNode) rec.get("delta");
