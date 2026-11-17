@@ -93,10 +93,10 @@ export class StepFailure extends Error {
   }
 }
 
-interface TryFrame { writes: CompletedWrite[] }
-interface CompletedWrite { step: string; activity: string; compensation: string }
+export interface TryFrame { writes: CompletedWrite[] }
+export interface CompletedWrite { step: string; activity: string; compensation: string }
 
-interface Frame {
+export interface Frame {
   inst: Instance;
   ctx: any;
   scope: Scope;
@@ -828,7 +828,7 @@ function countAttempts(inst: Instance, frame: Frame, id: string): number {
 }
 
 /** One attempt: a stub (kit), a script-behind, or the reference behaviour. */
-async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: string, level: string | undefined, callNo: number, attempt: number): Promise<ActivityResult> {
+export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: string, level: string | undefined, callNo: number, attempt: number): Promise<ActivityResult> {
   const inst = frame.inst;
   const run = inst.run;
   const view = viewFor(frame, act);

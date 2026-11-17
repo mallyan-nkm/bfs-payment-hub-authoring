@@ -108,53 +108,165 @@ function shortName(n: string) {
   return p.length > 2 ? p[p.length - 2] : n;
 }
 
-export async function runScenario(env: StudioEnv, kit: KitContent, sc: any, expectedEntry: any): Promise<KitResult> {
+/**
+ * What a target reports for one scenario (C23-S2). The comparison reads only this: the business
+ * trace, the detail, attempts and messages, never an engine's own history.
+ */
+export interface KitObservation {
+  target: string;
+  instances: {
+    label: string;
+    trace: string[];
+    detail: string[];
+    releaseTrace: string[];
+    steps: { step: string; release?: string; startedAt: number; policy?: any; policySources?: any; delta?: any[] }[];
+    attempts: Record<string, number>;
+    ruleTraceSteps: string[];
+    engineStateKeys: string[];
+    startedAt: number;
+    endedAt?: number;
+    failed?: string;
+    ctx?: any;
+  }[];
+  messages: { from: string; id: string; key?: string; type: string }[];
+  unmatched: number;
+  duplicates: number;
+  earlyKept: number;
+  durableInstances: number;
+  startMs: number;
+}
+
+/** A target the kit runs on: the studio interpreter, an engine, or the reference replay. */
+export interface KitAdapter {
+  target: string;
+  run(scenario: BuiltScenario): Promise<KitObservation>;
+}
+
+export interface BuiltScenario {
+  id: string;
+  spec: any; // the scenario entry of conformance/scenarios.yaml
+  expected: any; // the manifest entry of spec/conformance/kit.yaml
+  workflow: string;
+  documents: Record<string, any>;
+  config: Omit<RunConfig, 'store' | 'scripts' | 'documents'>;
+  context: any;
+}
+
+export function observe(target: string, run: Run, roots: { label: string; inst?: Instance }[]): KitObservation {
+  return {
+    target,
+    instances: roots.filter((r) => r.inst).map((r) => {
+      const i = r.inst!;
+      return {
+        label: r.label, trace: i.trace, detail: i.detail, releaseTrace: i.releaseTrace,
+        steps: i.steps.map((s) => ({ step: s.step, release: s.release, startedAt: s.startedAt, policy: s.policy, policySources: s.policySources, delta: s.delta })),
+        attempts: i.attempts, ruleTraceSteps: i.ruleTraces.map((x) => x.step),
+        engineStateKeys: [...new Set(i.engineStates.flatMap((x) => Object.keys(x ?? {})))],
+        startedAt: i.startedAt - run.clock.start, endedAt: i.endedAt !== undefined ? i.endedAt - run.clock.start : undefined, failed: i.failed, ctx: i.ctx,
+      };
+    }),
+    messages: run.messages.map((m) => ({ from: m.from, id: m.id, key: m.key, type: m.type })),
+    unmatched: run.unmatched.length,
+    duplicates: run.duplicates.length,
+    earlyKept: run.timeline.filter((e) => e.type === 'message-kept').length,
+    durableInstances: run.allInstances().filter((i) => i.durable).length,
+    startMs: run.clock.start,
+  };
+}
+
+/** The studio interpreter as a kit target. */
+export function studioAdapter(env: StudioEnv): KitAdapter {
+  return {
+    target: 'studio',
+    async run(b: BuiltScenario) {
+      const cfg: RunConfig = { ...b.config, store: env.store, scripts: env.scripts, documents: b.documents } as RunConfig;
+      const sc = b.spec;
+      let run: Run;
+      const roots: { label: string; inst?: Instance }[] = [];
+      if (sc.instances) {
+        run = new Run(cfg);
+        for (const spec of sc.instances) {
+          const entry = { label: spec.label as string, inst: undefined as Instance | undefined };
+          roots.push(entry);
+          run.clock.at(run.clock.start + durationMs(spec.at), () => {
+            const doc = run.resolveDoc(b.workflow, spec.workflowRelease);
+            void startInstance(run, doc, clone(b.context), 'platform').then((i) => (entry.inst = i));
+          });
+        }
+        await run.drive(() => roots.every((r) => r.inst?.ended));
+      } else if (sc.handler) {
+        const r = await runInbound(cfg);
+        run = r.run;
+        roots.push({ label: 'root', inst: run.handlerRuns[0] });
+      } else {
+        const r = await runWorkflow(cfg, b.workflow, b.context);
+        run = r.run;
+        roots.push({ label: 'root', inst: r.root });
+      }
+      return observe('studio', run, roots);
+    },
+  };
+}
+
+/** The reference adapter replays the expected traces, so the runner is tested before any target exists. */
+export const referenceAdapter: KitAdapter = {
+  target: 'reference',
+  async run(b: BuiltScenario) {
+    throw Object.assign(new Error('replay'), { replay: b.expected });
+  },
+};
+
+export function build(env: StudioEnv, kit: KitContent, sc: any, expected: any): BuiltScenario {
+  const { name, cfg, ctx, docs } = buildScenario(env, kit, sc);
+  const { store, scripts, documents, ...config } = cfg;
+  void store; void scripts; void documents;
+  return { id: sc.id, spec: sc, expected, workflow: name, documents: docs, config, context: ctx };
+}
+
+export async function runScenario(env: StudioEnv, kit: KitContent, sc: any, expectedEntry: any, adapter: KitAdapter = studioAdapter(env)): Promise<KitResult> {
   const res: KitResult = { id: sc.id, construct: expectedEntry?.construct ?? '', title: expectedEntry?.title ?? '', passed: false, expected: expectedEntry?.expect ?? [], actual: [], checks: [], notes: [] };
   try {
-    const { name, cfg, ctx } = buildScenario(env, kit, sc);
-    let run: Run;
-    let root: Instance | undefined;
-    const roots: { label: string; inst?: Instance }[] = [];
-    if (sc.instances) {
-      run = new Run(cfg);
-      for (const spec of sc.instances) {
-        const entry = { label: spec.label as string, inst: undefined as Instance | undefined };
-        roots.push(entry);
-        run.clock.at(run.clock.start + durationMs(spec.at), () => {
-          const doc = run.resolveDoc(name, spec.workflowRelease);
-          void startInstance(run, doc, clone(ctx), 'platform').then((i) => (entry.inst = i));
-        });
-      }
-      await run.drive(() => roots.every((r) => r.inst?.ended));
-      root = roots[0].inst;
-    } else if (sc.handler) {
-      const r = await runInbound(cfg);
-      run = r.run;
-      root = run.handlerRuns[0];
-    } else {
-      const r = await runWorkflow(cfg, name, ctx);
-      run = r.run;
-      root = r.root;
+    const b = build(env, kit, sc, expectedEntry);
+    let obs: KitObservation;
+    try {
+      obs = await adapter.run(b);
+    } catch (e: any) {
+      if (!e?.replay) throw e;
+      obs = replayObservation(expectedEntry);
     }
-    if (!root) throw new Error('The scenario did not start');
-    res.elapsed = (root.endedAt ?? run.clock.now) - root.startedAt;
-    let actual = viewTrace(sc, root, roots);
-    if (sc.traceDrop) actual = actual.filter((t) => !sc.traceDrop.includes(t));
-    res.actual = actual;
-    const traceOk = equalWithFreeOrder(res.expected, actual, sc.freeOrder);
-    res.checks.push({ what: 'trace', expected: res.expected, actual, passed: traceOk });
-    // R-05-38: the comparison includes the detail, the steps inside composite steps.
-    if (expectedEntry?.detail) res.checks.push({ what: 'detail', expected: expectedEntry.detail, actual: root.detail, passed: JSON.stringify(expectedEntry.detail) === JSON.stringify(root.detail) });
-    checkExtras(sc, expectedEntry, root, run, res);
-    if (root.failed) res.notes!.push(`failed: ${root.failed}`);
-    res.passed = res.checks.every((c) => c.passed);
+    compareObservation(sc, expectedEntry, obs, res);
   } catch (e: any) {
     res.error = String(e?.message ?? e);
   }
   return res;
 }
 
-function viewTrace(sc: any, root: Instance, roots: { label: string; inst?: Instance }[]): string[] {
+function replayObservation(exp: any): KitObservation {
+  return { target: 'reference', instances: [{ label: 'root', trace: exp.expect ?? [], detail: exp.detail ?? [], releaseTrace: exp.expect ?? [], steps: [], attempts: exp.attempts ?? {}, ruleTraceSteps: [], engineStateKeys: [], startedAt: 0 }], messages: [], unmatched: exp.unmatched ?? 0, duplicates: exp.duplicates ?? 0, earlyKept: 0, durableInstances: exp.durableInstances ?? 0, startMs: 0 };
+}
+
+/** Compare a target's observation with the expected trace and checks (R-C-04). */
+export function compareObservation(sc: any, expectedEntry: any, obs: KitObservation, res: KitResult) {
+  const root = obs.instances[0];
+  if (!root) throw new Error('The scenario did not start');
+  res.elapsed = (root.endedAt ?? root.startedAt) - root.startedAt;
+  const replay = obs.target === 'reference';
+  let actual = replay ? root.trace : viewTrace(sc, root, obs);
+  if (sc.traceDrop) actual = actual.filter((t) => !sc.traceDrop.includes(t));
+  res.actual = actual;
+  const traceOk = equalWithFreeOrder(res.expected, actual, sc.freeOrder);
+  const firstDiff = res.expected.findIndex((e, i) => e !== actual[i]);
+  res.checks.push({ what: 'trace', expected: res.expected, actual, passed: traceOk, ...(traceOk ? {} : { at: firstDiff >= 0 ? `entry ${firstDiff + 1}: expected ${res.expected[firstDiff]}, got ${actual[firstDiff] ?? 'nothing'}` : 'length' }) } as any);
+  // R-05-38: the comparison includes the detail, the steps inside composite steps.
+  if (expectedEntry?.detail) res.checks.push({ what: 'detail', expected: expectedEntry.detail, actual: root.detail, passed: JSON.stringify(expectedEntry.detail) === JSON.stringify(root.detail) });
+  if (!replay) checkExtras(sc, expectedEntry, obs, res);
+  if (root.failed) res.notes!.push(`failed: ${root.failed}`);
+  res.passed = res.checks.every((c) => c.passed);
+}
+
+type ObsInstance = KitObservation['instances'][number];
+
+function viewTrace(sc: any, root: ObsInstance, obs: KitObservation): string[] {
   switch (sc.traceView ?? 'business') {
     case 'forEach-summary': {
       const out: string[] = [];
@@ -177,8 +289,8 @@ function viewTrace(sc: any, root: Instance, roots: { label: string; inst?: Insta
       for (const t of root.trace) {
         out.push(t);
         const id = t.split(':')[0];
-        const d = root.deltas.find((x) => x.step === id);
-        if (d && d.delta.length && !t.startsWith('end:')) out.push(`delta:${id}`);
+        const d = root.steps.find((x) => x.step === id);
+        if (d && (d.delta ?? []).length && !t.startsWith('end:')) out.push(`delta:${id}`);
       }
       return out;
     }
@@ -187,7 +299,7 @@ function viewTrace(sc: any, root: Instance, roots: { label: string; inst?: Insta
       for (const t of root.trace) {
         out.push(t);
         const id = t.split(':')[0];
-        if (root.ruleTraces.some((r) => r.step === id) && !t.startsWith('end:')) out.push('ruleTrace:stored');
+        if (root.ruleTraceSteps.includes(id) && !t.startsWith('end:')) out.push('ruleTrace:stored');
       }
       return out;
     }
@@ -196,7 +308,7 @@ function viewTrace(sc: any, root: Instance, roots: { label: string; inst?: Insta
       return root.releaseTrace.filter((t) => re.test(t));
     }
     case 'instance-releases':
-      return roots.flatMap((r) => (r.inst?.steps ?? []).map((s) => `${r.label}:${s.step}@${s.release}`));
+      return obs.instances.flatMap((r) => r.steps.map((s) => `${r.label}:${s.step}@${s.release}`));
     default:
       return root.trace;
   }
@@ -214,17 +326,17 @@ function equalWithFreeOrder(expected: string[], actual: string[], free?: number[
   return expected.every((x, i) => used.has(i) || x === actual[i]);
 }
 
-function checkExtras(sc: any, exp: any, root: Instance, run: Run, res: KitResult) {
+function checkExtras(sc: any, exp: any, obs: KitObservation, res: KitResult) {
+  const root = obs.instances[0];
   const add = (what: string, expected: any, actual: any, passed: boolean) => res.checks.push({ what, expected, actual, passed });
   const c = { ...(exp ?? {}), ...(sc.checks ?? {}) };
   if (c.attempts) for (const [k, v] of Object.entries<number>(c.attempts)) add(`attempts ${k}`, v, root.attempts[k] ?? 0, (root.attempts[k] ?? 0) === v);
   if (c.accepted !== undefined) {
-    const ids = new Set(run.messages.filter((m) => m.from === 'platform').map((m) => m.id));
+    const ids = new Set(obs.messages.filter((m) => m.from === 'platform').map((m) => m.id));
     add('accepted logical messages', c.accepted, ids.size, ids.size === c.accepted);
   }
   if (c.distinctIds !== undefined) {
-    const sends = run.messages.filter((m) => m.from === 'platform' && m.key && m.key.endsWith(':send'));
-    const keys = new Set(sends.map((m) => m.key));
+    const keys = new Set(obs.messages.filter((m) => m.from === 'platform' && m.key && m.key.endsWith(':send')).map((m) => m.key));
     add('distinct business ids sent', c.distinctIds, keys.size, keys.size === c.distinctIds);
   }
   if (c.effective) {
@@ -238,22 +350,15 @@ function checkExtras(sc: any, exp: any, root: Instance, run: Run, res: KitResult
     add('virtual elapsed', c.virtualElapsed, res.elapsed, res.elapsed === ms);
   }
   if (sc.checks?.virtualElapsedBusiness) {
-    const start = run.clock.start;
-    const ms = addDuration(start, sc.checks.virtualElapsedBusiness, DEFAULT_CALENDAR) - start;
+    const ms = addDuration(obs.startMs, sc.checks.virtualElapsedBusiness, DEFAULT_CALENDAR) - obs.startMs;
     add('virtual elapsed on the business calendar', ms, res.elapsed, res.elapsed === ms);
   }
-  if (c.unmatched !== undefined) add('unmatched messages', c.unmatched, run.unmatched.length, run.unmatched.length === c.unmatched);
-  if (c.duplicates !== undefined) add('duplicates ignored', c.duplicates, run.duplicates.length, run.duplicates.length === c.duplicates);
-  if (c.early !== undefined) {
-    const n = run.timeline.filter((e) => e.type === 'message-kept').length;
-    add('messages kept for a later await', c.early, n, n === c.early);
-  }
-  if (c.durableInstances !== undefined) {
-    const n = run.allInstances().filter((i) => i.durable).length;
-    add('durable instances', c.durableInstances, n, n === c.durableInstances);
-  }
+  if (c.unmatched !== undefined) add('unmatched messages', c.unmatched, obs.unmatched, obs.unmatched === c.unmatched);
+  if (c.duplicates !== undefined) add('duplicates ignored', c.duplicates, obs.duplicates, obs.duplicates === c.duplicates);
+  if (c.early !== undefined) add('messages kept for a later await', c.early, obs.earlyKept, obs.earlyKept === c.early);
+  if (c.durableInstances !== undefined) add('durable instances', c.durableInstances, obs.durableInstances, obs.durableInstances === c.durableInstances);
   if (c.forbiddenInState) {
-    const keys = new Set(root.engineStates.flatMap((s) => Object.keys(s ?? {})));
+    const keys = new Set(root.engineStateKeys);
     const bad = c.forbiddenInState.filter((k: string) => keys.has(k.replace('[]', '')) || keys.has(k));
     add('engine state holds references only', [], bad, bad.length === 0);
   }
@@ -264,13 +369,13 @@ function checkExtras(sc: any, exp: any, root: Instance, run: Run, res: KitResult
   if (c.unchanged) add(`${c.unchanged} unchanged`, undefined, getPath(root.ctx, c.unchanged), getPath(root.ctx, c.unchanged) === undefined);
 }
 
-export async function runKit(env: StudioEnv, only: string[] = []): Promise<KitResult[]> {
+export async function runKit(env: StudioEnv, only: string[] = [], adapter?: KitAdapter): Promise<KitResult[]> {
   const kit = loadKit(env);
   const byId = new Map<string, any>(kit.manifest.scenarios.map((s: any) => [s.id, s]));
   const out: KitResult[] = [];
   for (const sc of kit.scenarios.scenarios) {
     if (only.length && !only.includes(sc.id)) continue;
-    out.push(await runScenario(env, kit, sc, byId.get(sc.id)));
+    out.push(await runScenario(env, kit, sc, byId.get(sc.id), adapter ?? studioAdapter(env)));
   }
   // A scenario in the manifest with no studio content is a red scenario (R-C-01).
   for (const m of kit.manifest.scenarios) {
