@@ -613,7 +613,8 @@ sim("uae.wps.sim.wps-outward.v1", "WPS simulator, replies to the bank", "outward
     self_check=["uae.wps.ruleset.salary-file.v1"], p=WP)
 sim("uae.wps.sim.wps-inward.v1", "WPS simulator, sends to the bank", "inward", "uae.wps.port.wps.v1",
     "central bank wages protection system",
-    [sc("payment-file", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"}),
+    [sc("payment-file", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"},
+        {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"}),
      sc("payment-file-wrong-agent", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"}),
      sc("return-file", {"send": "uae.wps.rtc"})], self_check=["uae.wps.ruleset.payment-file.v1"], p=WP)
 sim("uae.wps.sim.employer-channel.v1", "Employer simulator", "inward", "uae.wps.port.employer-channel.v1", "employer file channel",
@@ -794,7 +795,7 @@ test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement rep
      {"inbound": "samples/wps-pif-valid.pif"},
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1}]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
-                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), scope="uae.wps")
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
 test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", AANI_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)

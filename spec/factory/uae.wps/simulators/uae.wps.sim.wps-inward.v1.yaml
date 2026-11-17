@@ -15,6 +15,11 @@ scenarios:
     steps:
       - send: uae.wps.pif
       - send: uae.wps.psi
+      - expect: uae.wps.prc
+      - send: uae.wps.ack
+        status: accepted
+        after: PT10M
+      - expect: uae.wps.dif
   - name: payment-file-wrong-agent
     steps:
       - send: uae.wps.pif

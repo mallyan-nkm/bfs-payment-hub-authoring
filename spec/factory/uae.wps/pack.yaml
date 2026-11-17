@@ -214,7 +214,7 @@ artefacts:
   - name: uae.wps.sim.wps-inward.v1
     kind: simulator
     release: 1.0.0
-    hash: sha256:642dc5ed26995875d865aeec1a5e3ba229d7c0c2de04b266dc4b92e9b1fa6b6c
+    hash: sha256:212d09e1bf05b0291576ba15a34a4f469ba05907cef21cae79ec1563fe46fa27
     path: simulators/uae.wps.sim.wps-inward.v1.yaml
   - name: uae.wps.sim.wps-outward.v1
     kind: simulator
@@ -234,7 +234,7 @@ artefacts:
   - name: WPS-IN-001
     kind: test
     release: 1.0.0
-    hash: sha256:04f32cd9e1558a886e9e4f2cd585e7cb9712bc9c1606364418bea919802a9e53
+    hash: sha256:5e459d0c1a8252ee9885937a7e48058fbcf4f21f1204c2fce91c095d8bae7bff
     path: tests/WPS-IN-001.yaml
   - name: WPS-MAP-001
     kind: test

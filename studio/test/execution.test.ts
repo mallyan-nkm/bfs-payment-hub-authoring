@@ -30,12 +30,12 @@ describe('the simulator runtime (C10)', () => {
 });
 
 describe('the factory tests on the studio interpreter (C09, C11)', () => {
-  it('passes every factory test except WPS-IN-001, which cannot pass as written', async () => {
+  it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
     expect(reports.length).toBe(30);
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
-    expect(failing).toEqual(['WPS-IN-001']);
+    expect(failing).toEqual([]);
   });
   it('shows three attempts and the backoff for AANI-OUT-003 (F-17)', async () => {
     const env = freshEnv();
