@@ -157,6 +157,8 @@ export class Store {
   }
 
   get(name: string, release?: string): Entry | undefined {
+    // A pack manifest names its scheme manifest `<scope>.scheme`.
+    if (name.endsWith('.scheme') && !this.entries.has(`${name}@${release}`)) return this.get(`scheme:${name.slice(0, -'.scheme'.length)}`, release);
     if (release) return this.entries.get(`${name}@${release}`);
     return this.latest(name) ?? this.entries.get(name);
   }

@@ -449,3 +449,49 @@ route('GET', '/api/export/download', (env, req) => {
 });
 
 void keyOf;
+
+// -------------------------------------------------------------- authoring gates
+
+/**
+ * The gates a draft passes before it can be published (C16-S1, F-20): schema, static checks,
+ * semver, its own examples, and the tests that target it. The same gates apply whoever wrote
+ * the draft. The model that drafts is not connected in this build; see docs/ISSUES.md.
+ */
+route('POST', '/api/gates', async (env, req) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError) return { gates: [{ gate: 'parse', passed: false, detail: doc.__parseError }], passed: false };
+  const gates: { gate: string; passed: boolean; detail?: any }[] = [];
+  const issues = checkDocument(env, doc);
+  const schema = issues.filter((i) => i.code === 'L00');
+  gates.push({ gate: 'schema', passed: schema.length === 0, detail: schema });
+  const statics = issues.filter((i) => i.code !== 'L00' && i.code !== 'L26' && i.severity === 'error');
+  gates.push({ gate: 'static checks', passed: statics.length === 0, detail: statics });
+  const semver = issues.filter((i) => i.code === 'L26');
+  gates.push({ gate: 'semver', passed: semver.length === 0, detail: semver });
+  if (doc.kind === 'rule' || doc.kind === 'table') {
+    const ex = runExamples(doc, (n) => env.store.doc(n));
+    const hasPassFail = doc.kind === 'table' || (ex.some((e) => (e.expected.findings ?? []).length === 0) && ex.some((e) => (e.expected.findings ?? []).length > 0));
+    gates.push({ gate: 'examples', passed: ex.length > 0 && ex.every((e) => e.passed) && hasPassFail, detail: ex });
+  }
+  if (doc.kind === 'simulator') {
+    const missing = missingStandardScenarios(doc);
+    gates.push({ gate: 'standard scenarios', passed: missing.length === 0, detail: missing });
+  }
+  const tests = env.store.byKind('test').filter((t) => t.doc.target === doc.name);
+  if (doc.kind === 'activity') {
+    // R-03-16: at least one test per outcome. A test names the outcome it expects.
+    const covered = new Set(tests.map((t) => t.doc.expect?.outcome));
+    const uncovered = (doc.outcomes ?? []).map((o: any) => o.name).filter((o: string) => !covered.has(o));
+    gates.push({ gate: 'a test per outcome', passed: uncovered.length === 0, detail: uncovered.length ? `No test expects: ${uncovered.join(', ')}` : undefined });
+  }
+  if (tests.length) {
+    const results: any[] = [];
+    for (const t of tests) {
+      const r = await runTest(env, t.doc, { documents: { [doc.name]: doc, [`${doc.name}@${doc.release}`]: doc } });
+      results.push({ id: t.name, passed: r.passed, failed: r.checks.filter((c) => !c.passed) });
+    }
+    gates.push({ gate: 'tests', passed: results.every((r) => r.passed), detail: results });
+  }
+  gates.push({ gate: 'provenance', passed: !!doc.provenance?.origin, detail: doc.provenance ?? 'No provenance: say where the draft came from (F-21)' });
+  return { gates, passed: gates.every((g) => g.passed) };
+});

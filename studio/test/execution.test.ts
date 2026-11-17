@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import { runAllTests, runTest } from '../src/testing/runner.js';
+import { runKit } from '../src/conformance/kit.js';
+import { SimulatorInstance } from '../src/sim/runtime.js';
+import { VirtualClock } from '../src/interp/clock.js';
+import { freshEnv } from './helpers.js';
+
+describe('the simulator runtime (C10)', () => {
+  const env = freshEnv();
+  const host = (clock: VirtualClock, sink: any[]) => ({ clock, deliver: (m: any) => sink.push(m), newId: (p: string) => `${p}-${sink.length}-${Math.floor(clock.now)}`, log: () => {} });
+  it('fails twice, then accepts the same message', () => {
+    const clock = new VirtualClock(0);
+    const sim = new SimulatorInstance(env.store.doc('p.sim.core-banking.v1'), 'fail-twice-then-accept', host(clock, []));
+    const m: any = { id: 'm1', type: '', port: 'p.port.core-banking.v1', from: 'platform', at: 0, correlation: {} };
+    expect(sim.receive(m, true).kind).toBe('transient');
+    expect(sim.receive(m, true).kind).toBe('transient');
+    const r = sim.receive(m, true);
+    expect(r.kind).toBe('reply');
+    expect(sim.receive(m, true)).toEqual(r); // the conversation keeps its answer
+  });
+  it('sends a later reply on the virtual clock', async () => {
+    const clock = new VirtualClock(0);
+    const sink: any[] = [];
+    const sim = new SimulatorInstance(env.store.doc('uae.wps.sim.wps-outward.v1'), 'accept', host(clock, sink));
+    expect(sim.receive({ id: 'f1', type: 'uae.wps.sif-submission', port: 'uae.wps.port.wps.v1', from: 'platform', at: 0, correlation: { fileId: 'F1' } }, false).kind).toBe('ack');
+    await clock.run(() => sink.length > 0);
+    expect(clock.elapsed).toBe(600000);
+    expect(sink[0]).toMatchObject({ type: 'uae.wps.ack', status: 'accepted', correlation: { fileId: 'F1' } });
+  });
+});
+
+describe('the factory tests on the studio interpreter (C09, C11)', () => {
+  it('passes every factory test except WPS-IN-001, which cannot pass as written', async () => {
+    const env = freshEnv();
+    const reports = await runAllTests(env);
+    expect(reports.length).toBe(26);
+    const failing = reports.filter((r) => !r.passed).map((r) => r.id);
+    expect(failing).toEqual(['WPS-IN-001']);
+  });
+  it('shows three attempts and the backoff for AANI-OUT-003 (F-17)', async () => {
+    const env = freshEnv();
+    const r = await runTest(env, env.store.test('AANI-OUT-003')!.doc);
+    const send = r.record!.timeline.filter((e: any) => e.step === 'send');
+    expect(send.filter((e: any) => e.type === 'attempt').length).toBe(3);
+    expect(send.filter((e: any) => e.type === 'retry-wait').map((e: any) => e.detail.ms)).toEqual([1000, 2000]);
+  });
+  it('ends a no-reply run at the timeout on the virtual clock (F-16)', async () => {
+    const env = freshEnv();
+    const r = await runTest(env, env.store.test('WPS-OUT-003')!.doc);
+    expect(r.passed).toBe(true);
+    expect(r.elapsed).toBe('P1D');
+  });
+  it('turns a test red when the trace changes (F-19)', async () => {
+    const env = freshEnv();
+    const t = env.store.test('AANI-OUT-001')!.doc;
+    const r = await runTest(env, { ...t, expect: { ...t.expect, trace: [...t.expect.trace].reverse() } });
+    expect(r.passed).toBe(false);
+  });
+  it('records deltas with the release that ran, and keeps state to references (R-02-08, R-02-10)', async () => {
+    const env = freshEnv();
+    const r = await runTest(env, env.store.test('AANI-OUT-001')!.doc);
+    const leg = r.record!.instances.find((i) => i.workflow === 'uae.aani.wf.credit-out.v1')!;
+    expect(leg.deltas.find((d: any) => d.step === 'scheme-checks')).toMatchObject({ release: '1.0.0' });
+    expect(Object.keys(leg.engineState)).toEqual(['header', 'facts', 'refs']);
+  });
+  it('applies a supersession to steps not yet started and records both releases (R-01-22)', async () => {
+    const env = freshEnv();
+    const doc = { ...env.store.doc('uae.p.rule.iban-checksum.v1'), release: '1.0.1' };
+    const d = env.store.saveDraft('owner', 'maker', doc);
+    env.store.publish('owner', d.key, 'maker', 'checker');
+    const t = env.store.test('WPS-OUT-001')!.doc;
+    const r = await runTest(env, t, { supersessions: [{ artefact: 'uae.p.rule.iban-checksum.v1', replaces: '1.0.1', with: '1.0.1' }] });
+    expect(r.passed).toBe(true);
+  });
+});
+
+describe('the conformance kit on the studio interpreter (C23, C09)', () => {
+  it('passes all 43 scenarios', async () => {
+    const env = freshEnv();
+    const res = await runKit(env);
+    const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
+    expect(red).toEqual([]);
+    expect(res.length).toBe(43);
+  });
+});
