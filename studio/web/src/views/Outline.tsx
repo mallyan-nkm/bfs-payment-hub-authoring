@@ -4,7 +4,7 @@ import type { Issue } from '../api';
 // A structured outline of a workflow or hook: the DSL as nested blocks (Part 5.3).
 // Steps with issues are marked; clicking a step selects it.
 
-const KINDS = ['call', 'switch', 'parallel', 'forEach', 'loop', 'await', 'wait', 'slot', 'use', 'try', 'hook', 'end'] as const;
+const KINDS = ['call', 'block', 'switch', 'parallel', 'forEach', 'loop', 'await', 'wait', 'slot', 'use', 'try', 'hook', 'end', 'return'] as const;
 
 export function stepKind(st: any): string {
   if (!st || typeof st !== 'object') return 'unknown';
@@ -35,6 +35,7 @@ export function Outline({ doc, issues = [], selected, onSelect }: Props) {
         <span className="ol-kind k-doc">{doc.kind ?? 'document'}{doc.wfKind ? ` · ${doc.wfKind}` : ''}{doc.type && doc.kind === 'hook' ? ` · ${doc.type}` : ''}</span>
         <span className="mono">{doc.name}</span>
         {doc.release && <span className="muted mono">@{String(doc.release)}</span>}
+        {doc.form === 'expanded' && <span className="ol-tag">expanded form{doc.expandedFrom ? ` of ${doc.expandedFrom.release}` : ''}, read-only</span>}
         {general.length > 0 && <span className="ol-flag" title={general.map((i) => `${i.code}: ${i.message}`).join('\n')}>{general.length} general</span>}
       </div>
       <Interface doc={doc} />
@@ -99,6 +100,7 @@ function Action({ a, ctx }: { a: any; ctx: Ctx }) {
   if (a && typeof a === 'object') {
     if ('end' in a) return <span className="ol-action"><span className="ol-kind k-end">end</span> <code>{String(a.end)}</code>{a.compensate && <span className="ol-tag">compensate {String(a.compensate)}</span>}</span>;
     if ('continue' in a) return <span className="ol-action"><span className="ol-kind k-continue">continue</span></span>;
+    if ('return' in a) return <span className="ol-action"><span className="ol-kind k-return">return</span> <code>{String(a.return)}</code></span>;
     return <Steps steps={[a]} ctx={ctx} />;
   }
   return <code>{String(a)}</code>;
@@ -137,6 +139,15 @@ function Step({ st, ctx }: { st: any; ctx: Ctx }) {
     case 'wait':
       head = <>timer <code>{String(st.wait)}</code></>;
       break;
+    case 'return':
+      head = <code className="strong">{String(st.return)}</code>;
+      break;
+    case 'block': {
+      const b = st.block ?? {};
+      head = <>composite <code className="strong">{b.of}</code> by <code>{b.by}</code></>;
+      body = <Branch label={<span className="ol-case">inside</span>}><Steps steps={b.do} ctx={ctx} /></Branch>;
+      break;
+    }
     case 'end':
       head = <><code className="strong">{String(st.end)}</code>{st.compensate && <span className="ol-tag">compensate {String(st.compensate)}</span>}</>;
       break;
@@ -182,7 +193,8 @@ function Step({ st, ctx }: { st: any; ctx: Ctx }) {
       body = (
         <>
           <Branch label={<span className="ol-case">scope</span>}><Steps steps={st.try} ctx={ctx} /></Branch>
-          {st.catch !== undefined && (
+          {Array.isArray(st.catch) && st.catch.map((c: any, k: number) => <Branch key={k} label={<span className="ol-case timeout">catch {c?.error}</span>}><Action a={c?.do} ctx={ctx} /></Branch>)}
+          {st.catch !== undefined && !Array.isArray(st.catch) && (
             typeof st.catch === 'object' && !Array.isArray(st.catch) && !('end' in st.catch) && !('continue' in st.catch) && !stepKindIsStep(st.catch)
               ? Object.entries<any>(st.catch).map(([k, v]) => <Branch key={k} label={<span className="ol-case timeout">catch {k}</span>}><Action a={v} ctx={ctx} /></Branch>)
               : <Branch label={<span className="ol-case timeout">catch</span>}><Action a={st.catch} ctx={ctx} /></Branch>

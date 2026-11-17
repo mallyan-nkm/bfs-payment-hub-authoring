@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import YAML from 'yaml';
-import { ApiError, del, get, post, q, type Issue, type Summary } from '../api';
-import { Badge, ErrorBox, Issues, Loading, Provenance, Section, StatusBadge, useDebounced, useLoad, useStudio } from '../ui';
+import { del, get, post, q, refusal, type Issue, type Summary } from '../api';
+import { Badge, ErrorBox, Issues, Loading, Provenance, Section, StatusBadge, Tabs, useDebounced, useLoad, useStudio } from '../ui';
+import { DraftActions, toYamlText } from '../authoring';
+import { expandWorkflow, sameDoc, useResolver } from '../expand';
+import { Canvas } from './Canvas';
 import { Outline } from './Outline';
 
 // The workflow designer (F-12 to F-14, F-22): create or open, edit with checks on every edit,
 // see the outline, the interface diff and the proposed release, save, publish.
 
-const WF_KINDS = ['platform', 'leg', 'segment', 'handler'] as const;
+const WF_KINDS = ['platform', 'leg', 'segment', 'handler', 'subflow'] as const;
 
 function parseLocal(text: string): { doc?: any; error?: string } {
   try {
@@ -27,19 +30,18 @@ export function Designer({ query }: { query: URLSearchParams }) {
   const [checkError, setCheckError] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [message, setMessage] = useState<{ tone: 'pass' | 'fail' | 'warn'; text: string; issues?: Issue[] }>();
-  const [checker, setChecker] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<'canvas' | 'outline' | 'expanded'>('canvas');
   const area = useRef<HTMLTextAreaElement>(null);
   const drafts = useLoad(() => get<Summary[]>('/api/drafts'), [tenant]);
 
-  const dYaml = useDebounced(yaml, 350);
-  const local = useMemo(() => parseLocal(dYaml), [dYaml]);
+  // The document follows the YAML on every keystroke; the checks run on a short pause (R-10-03).
+  const local = useMemo(() => parseLocal(yaml), [yaml]);
   const [lastDoc, setLastDoc] = useState<any>();
   useEffect(() => {
     if (local.doc) setLastDoc(local.doc);
   }, [local.doc]);
+  const dYaml = useDebounced(yaml, 300);
 
-  // Checks on every edit (R-10-03).
   useEffect(() => {
     if (!dYaml.trim()) {
       setCheck(undefined);
@@ -56,11 +58,12 @@ export function Designer({ query }: { query: URLSearchParams }) {
     };
   }, [dYaml, tenant]);
 
-  // Open from the URL: ?open=<name> (new release), ?open=<key>&draft=1, ?clone=<name>.
+  // Open from the URL: ?open=<name> (new release), ?open=<key>&draft=1, ?clone=<name>, ?view=expanded.
   const opened = useRef('');
   useEffect(() => {
     const open = query.get('open');
     const sig = query.toString();
+    if (query.get('view') === 'expanded') setView('expanded');
     if (!open || opened.current === sig) return;
     opened.current = sig;
     if (query.get('draft')) openDraft(open);
@@ -94,40 +97,6 @@ export function Designer({ query }: { query: URLSearchParams }) {
     }
   }
 
-  const saveDraft = async () => {
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      const r = await post('/api/drafts', { yaml, actor });
-      setDraftKey(r.draft.key);
-      setCheck({ issues: r.issues, interface: r.interface });
-      const errs = (r.issues as Issue[]).filter((i) => i.severity === 'error').length;
-      setMessage({ tone: errs ? 'warn' : 'pass', text: `Saved draft ${r.draft.key} as ${actor}.${errs ? ` It has ${errs} error(s); fix them before publish.` : ''}` });
-      drafts.reload();
-    } catch (e: any) {
-      setMessage({ tone: 'fail', text: e.message });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const publish = async () => {
-    if (!draftKey) return;
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      const r = await post('/api/publish', { key: draftKey, maker: actor, checker });
-      setMessage({ tone: 'pass', text: `Published ${r.published.key}. Maker ${actor}, checker ${checker}.` });
-      setDraftKey(undefined);
-      drafts.reload();
-    } catch (e: any) {
-      const status = e instanceof ApiError ? e.status : 0;
-      setMessage({ tone: 'fail', text: `${status ? `${status}: ` : ''}${e.message}`, issues: e instanceof ApiError ? e.body?.issues : undefined });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const removeDraft = async (key: string) => {
     if (!window.confirm(`Delete draft ${key}?`)) return;
     try {
@@ -135,11 +104,11 @@ export function Designer({ query }: { query: URLSearchParams }) {
       if (key === draftKey) setDraftKey(undefined);
       drafts.reload();
     } catch (e: any) {
-      setMessage({ tone: 'fail', text: e.message });
+      setMessage({ tone: 'fail', text: refusal(e) });
     }
   };
 
-  /** Select a step: highlight it in the outline and in the YAML. */
+  /** Select a step: highlight it on the canvas and in the YAML. */
   const selectStep = (step: string) => {
     setSelected(step);
     const ta = area.current;
@@ -149,7 +118,6 @@ export function Designer({ query }: { query: URLSearchParams }) {
       const m = p.exec(ta.value);
       if (m) {
         const start = m.index + (m[1]?.length ?? 0);
-        ta.focus();
         ta.setSelectionRange(start, start + m[0].trimEnd().length - (m[1]?.length ?? 0));
         const line = ta.value.slice(0, start).split('\n').length;
         ta.scrollTop = Math.max(0, (line - 4) * 18);
@@ -162,13 +130,14 @@ export function Designer({ query }: { query: URLSearchParams }) {
   const errors = issues.filter((i) => i.severity === 'error').length;
   const warnings = issues.length - errors;
   const doc = local.doc ?? lastDoc;
-  const sameMaker = checker.trim() !== '' && checker.trim() === actor.trim();
+  const resolver = useResolver(doc, tenant);
+  const onCanvas = (next: any) => setYaml(toYamlText(next));
 
   return (
     <div className="view">
       <div className="view-head">
         <h2>Workflow designer</h2>
-        <p className="muted">Create a platform workflow, leg, segment, handler or hook. Every static check runs on every edit and names the step it concerns.</p>
+        <p className="muted">Create a platform workflow, leg, segment, handler, subflow or hook. Compose it on the canvas or in the YAML; the two stay in step. Every static check runs on every edit and shows at the step it concerns.</p>
       </div>
       <div className="cols">
         <div className="col">
@@ -203,11 +172,25 @@ export function Designer({ query }: { query: URLSearchParams }) {
             <div className="pane">
               <label className="sr-only" htmlFor="yaml-editor">Workflow YAML</label>
               <textarea id="yaml-editor" ref={area} className="yaml-editor" spellCheck={false} value={yaml} onChange={(e) => setYaml(e.target.value)} />
-              {local.error && <div className="alert warn small">YAML does not parse: {local.error}. The outline shows the last good version.</div>}
+              {local.error && <div className="alert warn small">YAML does not parse: {local.error}. The canvas shows the last good version and does not edit until the YAML parses.</div>}
             </div>
             <div className="pane">
-              <Section title="Outline">
-                {doc ? <Outline doc={doc} issues={issues} selected={selected} onSelect={selectStep} /> : <Loading />}
+              <Section
+                title={
+                  <Tabs
+                    tabs={[{ id: 'canvas', label: 'Canvas' }, { id: 'outline', label: 'Outline' }, { id: 'expanded', label: 'Expanded form' }]}
+                    value={view}
+                    onChange={setView}
+                  />
+                }
+              >
+                {!doc ? <Loading /> : view === 'canvas' ? (
+                  local.error ? <Outline doc={doc} issues={issues} selected={selected} onSelect={selectStep} /> : <Canvas doc={doc} onChange={onCanvas} issues={issues} docs={resolver.docs} selected={selected} onSelect={selectStep} />
+                ) : view === 'outline' ? (
+                  <Outline doc={doc} issues={issues} selected={selected} onSelect={selectStep} />
+                ) : (
+                  <ExpandedView doc={doc} resolver={resolver} issues={issues} />
+                )}
               </Section>
             </div>
           </div>
@@ -223,22 +206,50 @@ export function Designer({ query }: { query: URLSearchParams }) {
                 <InterfacePanel iface={check?.interface} doc={doc} />
               </Section>
               <Section title="Save and publish">
-                <div className="stack">
-                  <button className="primary" disabled={busy} onClick={saveDraft}>Save draft as {actor}</button>
-                  <label className="field">
-                    <span>Checker</span>
-                    <input value={checker} onChange={(e) => setChecker(e.target.value)} placeholder="A different person from the maker" />
-                  </label>
-                  {sameMaker && <p className="small fail-text">The checker must differ from the maker ({actor}).</p>}
-                  <button disabled={busy || !draftKey || !checker.trim()} onClick={publish} title={!draftKey ? 'Save a draft first' : undefined}>Publish draft</button>
-                  {!draftKey && <p className="muted small">Save a draft first. Publish takes the saved draft, not the editor text.</p>}
-                  {draftKey && <p className="muted small">Draft <code>{draftKey}</code>. <button className="link" onClick={() => go(`/artefact/${encodeURIComponent(draftKey.split('@')[0])}?key=${encodeURIComponent(draftKey)}`)}>Open its page</button></p>}
-                </div>
+                <DraftActions yaml={yaml} draftKey={draftKey} setDraftKey={(k) => { setDraftKey(k); drafts.reload(); }} onSaved={(r) => setCheck({ issues: r.issues, interface: r.iface })} />
               </Section>
             </div>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** The expanded form (F-34): what the interpreter and every engine run. Derived, read-only. */
+function ExpandedView({ doc, resolver, issues }: { doc: any; resolver: { resolve: (n: string) => any; ready: boolean }; issues: Issue[] }) {
+  const { tenant } = useStudio();
+  const x = useMemo(() => (resolver.ready ? expandWorkflow(doc, resolver.resolve) : undefined), [doc, resolver]);
+  const [server, setServer] = useState<{ same?: boolean; error?: string; release?: string }>();
+  useEffect(() => setServer(undefined), [doc]);
+  const compare = async () => {
+    try {
+      // The release in the editor may not be stored yet: compare with it if it is, else with the latest.
+      const r = await get(`/api/expanded/${encodeURIComponent(doc.name)}${q({ release: doc.release })}`, tenant).catch(() => get(`/api/expanded/${encodeURIComponent(doc.name)}`, tenant));
+      const pick = (d: any) => ({ do: d.do, finally: d.finally, deadline: d.deadline });
+      setServer({ same: sameDoc(pick(r.doc), pick(x!.doc)), release: r.doc.release });
+    } catch (e: any) {
+      setServer({ error: e.message });
+    }
+  };
+  if (!x) return <Loading what="the blocks the expansion reaches" />;
+  return (
+    <div className="stack">
+      <p className="muted small">
+        {x.expanded ? 'Each composite step is a block holding the steps of its subflow, with the calling step id in front. Nobody edits this form; it is derived from the authored form.' : 'This workflow calls no composite activity, so its expanded form is the authored form.'}
+      </p>
+      {x.problems.map((p, i) => <div key={i} className="alert fail small">{p}</div>)}
+      <div className="inline-form">
+        <button onClick={compare} disabled={!doc?.name}>Compare with the server's expansion</button>
+        {server?.same === true && <Badge tone="pass">same as GET /api/expanded at {server.release}</Badge>}
+        {server?.same === false && <Badge tone="warn">differs from the stored release {server.release}: the editor holds changes</Badge>}
+        {server?.error && <span className="small fail-text">{server.error}</span>}
+      </div>
+      <Outline doc={x.doc} issues={issues} />
+      <details>
+        <summary>Expanded YAML</summary>
+        <pre className="code tall">{toYamlText(x.doc)}</pre>
+      </details>
     </div>
   );
 }
@@ -287,6 +298,17 @@ function NewPanel({ initialClone, onLoad }: { initialClone?: string; onLoad: (ya
     try {
       const body = from === 'clone' ? { from, source, name: name || undefined, title: title || undefined } : { kind, wfKind: kind === 'workflow' ? wfKind : undefined, from, name: name || undefined, title: title || undefined };
       const r = await post('/api/new', body);
+      if (from !== 'clone' && kind === 'workflow' && wfKind === 'subflow') {
+        // A subflow implements one composite and returns, never ends (R-05-34).
+        const d = YAML.parse(r.yaml);
+        d.name = name || 'uae.aani.sub.new.v1';
+        d.implements = { activity: 'uae.aani.exchange.new.v1' };
+        delete d.entry; delete d.slots; delete d.hookPoints; delete d.signals; delete d.deadline; delete d.finally;
+        d.exit = { outcomes: ['accepted', 'rejected'] };
+        d.do = [{ return: 'accepted' }];
+        onLoad(toYamlText(d), 'New subflow. It implements one composite; await and return are offered on the canvas.');
+        return;
+      }
       onLoad(r.yaml, from === 'clone' ? `Cloned from ${source}` : `New ${kind === 'workflow' ? wfKind : 'hook'}, ${from === 'template' ? 'from the template' : 'blank'}`);
     } catch (e: any) {
       setError(e.message);

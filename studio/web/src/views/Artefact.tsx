@@ -50,6 +50,11 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
           {isFlow && <button onClick={() => go(`/designer?clone=${encodeURIComponent(e.name)}`)}>Clone into a new workflow</button>}
           {(isFlow || e.kind === 'activity') && <button onClick={() => go(`/tests?bench=${encodeURIComponent(e.name)}`)}>Run on the bench</button>}
           {e.kind === 'workflow' && <button onClick={() => go(`/export?workflows=${encodeURIComponent(e.name)}`)}>Export</button>}
+          {e.kind === 'workflow' && <button onClick={() => go(`/designer?open=${encodeURIComponent(e.name)}&view=expanded`)}>See the expanded form</button>}
+          {editorKind(d) && !a.readOnly && <button onClick={() => go(`/editors?kind=${editorKind(d)}&open=${encodeURIComponent(e.name)}`)}>Edit in the form</button>}
+          {d.implementation?.binding === 'subflow' && <button onClick={() => go(`/artefact/${encodeURIComponent(d.implementation.subflow)}`)}>Open its subflow</button>}
+          {e.kind === 'activity' && <button onClick={() => go(`/data?tab=types&activity=${encodeURIComponent(e.name)}`)}>Generated types</button>}
+          {e.status === 'published' && <button onClick={() => go(`/governance?tab=releases&name=${encodeURIComponent(e.name)}`)}>Pins and retirement</button>}
         </div>
       </div>
 
@@ -111,6 +116,19 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
             <Section title="Uses" count={a.uses?.length}>
               <List items={a.uses} render={(u: string) => <ArtefactLink name={u} />} empty="Uses nothing." />
             </Section>
+            {d.provenance && (
+              <Section title="Provenance">
+                <KV rows={[
+                  ['Origin', <code>{d.provenance.origin}</code>],
+                  ['Status', <Provenance status={d.provenance.status} />],
+                  ...(d.provenance.ai?.model ? [['Model', <code>{d.provenance.ai.model}</code>] as [any, any]] : []),
+                  ...(d.provenance.ai?.promptRef ? [['Prompt reference', <code>{d.provenance.ai.promptRef}</code>] as [any, any]] : []),
+                  ...(d.provenance.ai?.inputs?.length ? [['Inputs', <List items={d.provenance.ai.inputs} />] as [any, any]] : []),
+                  ...(d.provenance.clauses?.length ? [['Clauses', <List items={d.provenance.clauses} />] as [any, any]] : []),
+                  ...(d.provenance.note ? [['Note', d.provenance.note] as [any, any]] : []),
+                ]} />
+              </Section>
+            )}
             <Section title="Tests that target it" count={a.tests?.length}>
               <List items={a.tests} render={(t: any) => <><a href={`#/tests?run=${encodeURIComponent(t.id)}`} className="mono">{t.id}</a> <span className="muted small">{t.level}</span> {t.title}</>} empty="No test targets this artefact." />
             </Section>
@@ -119,6 +137,14 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
       )}
     </div>
   );
+}
+
+/** Which form edits this artefact, if any. */
+function editorKind(d: any): string | undefined {
+  if (d.kind === 'rule' || d.kind === 'table' || d.kind === 'simulator') return d.kind;
+  if (d.kind !== 'activity') return undefined;
+  if (d.implementation?.binding === 'subflow') return 'composite';
+  return d.type === 'map' ? 'map' : 'activity';
 }
 
 function Paths({ items }: { items?: string[] }) {

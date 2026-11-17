@@ -71,7 +71,7 @@ export interface Meta { tenants: string[]; owner: string; counts: Record<string,
 export interface Check { what: string; expected: any; actual: any; passed: boolean; note?: string }
 export interface TestRunReport {
   id: string; title?: string; target: string; level: string; passed: boolean; checks: Check[]; error?: string; outcome?: string;
-  trace: string[]; releaseTrace: string[]; elapsed: string; warnings: string[]; record?: RunRecord;
+  trace: string[]; detail?: string[]; releaseTrace: string[]; elapsed: string; warnings: string[]; record?: RunRecord;
 }
 export interface RunRecord {
   status: string; instances: InstanceView[]; timeline: any[]; messages: any[]; unmatched: any[]; duplicates: any[];
@@ -79,10 +79,25 @@ export interface RunRecord {
 }
 export interface InstanceView {
   id: string; kind: string; workflow: string; release: string; parent?: string; outcome?: string; reasonCode?: string; failed?: string;
-  durable: boolean; trace: string[]; releaseTrace: string[]; steps: any[]; deltas: any[]; ruleTraces: any[]; attempts: Record<string, number>;
+  durable: boolean; trace: string[]; detail?: string[]; expandedFrom?: { release: string; hash: string }; releaseTrace: string[]; steps: any[]; deltas: any[]; ruleTraces: any[]; attempts: Record<string, number>;
   pins: Record<string, string>; bindings: any[]; supersessions: any[]; engineState?: any; context: any; startedAt: number; endedAt?: number;
 }
 export interface KitResult {
   id: string; construct: string; title: string; passed: boolean; expected: string[]; actual: string[];
   checks: { what: string; expected: any; actual: any; passed: boolean }[]; error?: string; notes?: string[]; elapsed?: number;
+}
+
+export interface User { id: string; tenant: string; roles: string[] }
+export interface Gate { gate: string; passed: boolean; detail?: any }
+export interface GateResult { gates: Gate[]; passed: boolean; firstRed?: Gate }
+
+/** The roles that may author and approve in a tenant (Part 6). */
+export const isDesigner = (u: User) => u.roles.some((r) => r.endsWith('designer'));
+export const isChecker = (u: User) => u.roles.some((r) => r.endsWith('checker'));
+
+/** An error message with the HTTP status in front, so a refusal reads as one. */
+export function refusal(e: any): string {
+  const status = e instanceof ApiError ? e.status : 0;
+  const code = e instanceof ApiError && e.body?.code ? ` ${e.body.code}` : '';
+  return `${status ? `Refused (${status}${code}): ` : ''}${e?.message ?? e}`;
 }

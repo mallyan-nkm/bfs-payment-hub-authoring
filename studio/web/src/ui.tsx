@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Issue, Meta } from './api';
+import type { Issue, Meta, User } from './api';
 
 // Shared building blocks: the studio context, data loading, badges, issues and small tables.
 
@@ -7,9 +7,12 @@ export interface StudioCtx {
   tenant: string;
   actor: string;
   meta?: Meta;
+  /** The studio's users in this tenant (GET /api/users). */
+  users: User[];
+  setActor: (id: string) => void;
   go: (path: string) => void;
 }
-export const Studio = createContext<StudioCtx>({ tenant: 'owner', actor: 'designer', go: () => {} });
+export const Studio = createContext<StudioCtx>({ tenant: 'owner', actor: 'shared.designer', users: [], setActor: () => {}, go: () => {} });
 export const useStudio = () => useContext(Studio);
 
 /** Load data from the API; reloads when deps change. */

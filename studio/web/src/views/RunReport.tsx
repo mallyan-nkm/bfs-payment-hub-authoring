@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import type { InstanceView, TestRunReport } from '../api';
 import { ArtefactLink, Badge, Json, KV, List, PassFail, Section, Tabs, Val, fmtMs } from '../ui';
 
@@ -22,7 +22,13 @@ function detailText(d: any): string {
     .join(', ');
 }
 
-export function RunReport({ report }: { report: TestRunReport }) {
+/** The detail entries that belong to one business trace entry: those under its step id. */
+function detailOf(report: TestRunReport, entry: string): string[] {
+  const step = entry.slice(0, entry.lastIndexOf(':'));
+  return (report.detail ?? []).filter((d) => d.startsWith(`${step}.`));
+}
+
+export function RunReport({ report, footer }: { report: TestRunReport; footer?: ReactNode }) {
   const rec = report.record;
   const [tab, setTab] = useState<'timeline' | 'instances' | 'messages' | 'bench'>('timeline');
   const failed = report.checks.filter((c) => !c.passed).length;
@@ -66,17 +72,26 @@ export function RunReport({ report }: { report: TestRunReport }) {
           </Section>
         </div>
         <div className="col side">
-          <Section title="Business trace" count={report.trace.length}>
-            <ol className="trace">
-              {report.trace.map((t, i) => <li key={i}><code>{t}</code></li>)}
-            </ol>
-            {report.releaseTrace.length > 0 && (
-              <details>
-                <summary className="small">Release trace</summary>
-                <ol className="trace">{report.releaseTrace.map((t, i) => <li key={i}><code>{t}</code></li>)}</ol>
-              </details>
-            )}
-          </Section>
+          <div className="trace-pair">
+            <Section title="Business trace" count={report.trace.length}>
+              <p className="muted small">One entry per authored step.</p>
+              <ol className="trace">
+                {report.trace.map((t, i) => <li key={i} className={detailOf(report, t).length ? 'has-detail' : ''}><code>{t}</code>{detailOf(report, t).length > 0 && <span className="muted small"> {detailOf(report, t).length} inside</span>}</li>)}
+              </ol>
+            </Section>
+            <Section title="Detail" count={report.detail?.length ?? 0}>
+              <p className="muted small">The steps inside composite steps.</p>
+              {report.detail?.length ? (
+                <ol className="trace">{report.detail.map((t, i) => <li key={i}><code>{t}</code></li>)}</ol>
+              ) : <p className="muted small">No composite step ran.</p>}
+            </Section>
+          </div>
+          {report.releaseTrace.length > 0 && (
+            <details className="panel pad">
+              <summary className="small">Release trace ({report.releaseTrace.length})</summary>
+              <ol className="trace">{report.releaseTrace.map((t, i) => <li key={i}><code>{t}</code></li>)}</ol>
+            </details>
+          )}
         </div>
       </div>
 
@@ -98,20 +113,107 @@ export function RunReport({ report }: { report: TestRunReport }) {
           {tab === 'bench' && <Bench rec={rec} />}
         </>
       )}
+      {footer}
     </div>
   );
+}
+
+interface Group { head: any; inner: any[]; end?: any }
+
+/** Group the timeline: the events of the steps inside a composite sit under its block-start. */
+function groupTimeline(rows: any[]): (any | Group)[] {
+  const out: (any | Group)[] = [];
+  const open: Group[] = [];
+  for (const t of rows) {
+    const g = open[open.length - 1];
+    if (t.type === 'block-start') {
+      const ng: Group = { head: t, inner: [] };
+      (g ? g.inner : out).push(ng);
+      open.push(ng);
+      continue;
+    }
+    if (g && t.type === 'block-end' && t.step === g.head.step && t.instance === g.head.instance) {
+      g.end = t;
+      open.pop();
+      continue;
+    }
+    if (g && t.instance === g.head.instance && String(t.step ?? '').startsWith(`${g.head.step}.`)) {
+      g.inner.push(t);
+      continue;
+    }
+    // An event outside the open block closes it (a block that did not end in this window).
+    while (open.length && !(t.instance === open[open.length - 1].head.instance && String(t.step ?? '').startsWith(`${open[open.length - 1].head.step}.`))) open.pop();
+    (open.length ? open[open.length - 1].inner : out).push(t);
+  }
+  return out;
+}
+
+const isGroup = (x: any): x is Group => x && 'head' in x && 'inner' in x;
+
+function countEvents(g: Group): number {
+  return g.inner.reduce((n, x) => n + (isGroup(x) ? countEvents(x) + 1 : 1), 0);
 }
 
 function Timeline({ timeline, elapsedMs }: { timeline: any[]; elapsedMs: number }) {
   const instances = useMemo(() => [...new Set(timeline.map((t) => t.instance))], [timeline]);
   const [inst, setInst] = useState('');
   const [onlyKey, setOnlyKey] = useState(false);
-  const KEY = /attempt|retry|await|timeout|timer|wait|signal|message|unmatched|duplicate|outcome|end|start$/;
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const KEY = /attempt|retry|await|timeout|timer|wait|signal|message|unmatched|duplicate|outcome|end|start$|block/;
   const rows = timeline.filter((t) => (!inst || t.instance === inst) && (!onlyKey || KEY.test(t.type)));
+  const grouped = useMemo(() => groupTimeline(rows), [rows]);
   const attempts = timeline.filter((t) => t.type === 'attempt');
   const perStep = new Map<string, number>();
   for (const a of attempts) perStep.set(`${a.instance} ${a.step}`, (perStep.get(`${a.instance} ${a.step}`) ?? 0) + 1);
   const multi = [...perStep].filter(([, n]) => n > 1);
+  const blocks = timeline.filter((t) => t.type === 'block-start').map((t) => `${t.instance}|${t.step}|${t.at}`);
+  const toggle = (k: string) => setOpen((s) => {
+    const n = new Set(s);
+    if (n.has(k)) n.delete(k);
+    else n.add(k);
+    return n;
+  });
+  let prevAt: number | undefined;
+  const line = (t: any, depth: number, key: string) => {
+    const tick = prevAt !== undefined && prevAt !== t.at;
+    prevAt = t.at;
+    return (
+      <tr key={key} className={[tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')}>
+        <td className="mono nowrap">{fmtMs(t.at)}</td>
+        <td className="mono small">{t.instance}</td>
+        <td className="mono" style={{ paddingLeft: 7 + depth * 18 }}>{depth > 0 && <span className="muted">└ </span>}{t.step ?? ''}</td>
+        <td><Badge tone={typeTone(t.type)}>{t.type}</Badge></td>
+        <td className="small break">
+          {detailText(t.detail)}
+          {t.detail?.policy && <> <details className="inline"><summary>policy</summary><Json value={t.detail.policy} /></details></>}
+        </td>
+      </tr>
+    );
+  };
+  const render = (items: (any | Group)[], depth: number, path: string): any[] => items.flatMap((x, i) => {
+    if (!isGroup(x)) return [line(x, depth, `${path}-${i}`)];
+    const k = `${x.head.instance}|${x.head.step}|${x.head.at}`;
+    const isOpen = open.has(k);
+    const tick = prevAt !== undefined && prevAt !== x.head.at;
+    prevAt = x.head.at;
+    const head = (
+      <tr key={`${path}-${i}-h`} className={['block-row', tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')} onClick={() => toggle(k)}>
+        <td className="mono nowrap">{fmtMs(x.head.at)}</td>
+        <td className="mono small">{x.head.instance}</td>
+        <td className="mono" style={{ paddingLeft: 7 + depth * 18 }}>
+          <button className="link" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} the steps inside ${x.head.step}`}>{isOpen ? '▾' : '▸'}</button> <b>{x.head.step}</b>
+        </td>
+        <td><Badge tone="info">composite</Badge></td>
+        <td className="small break">
+          {x.head.detail?.of && <><code>{x.head.detail.of}</code> by <code>{x.head.detail.by}</code>, </>}
+          {countEvents(x)} events inside{x.end ? <>, ends <code>{x.end.detail?.outcome}</code> at {fmtMs(x.end.at)}</> : ', not ended'}
+        </td>
+      </tr>
+    );
+    if (!isOpen) return [head];
+    return [head, ...render(x.inner, depth + 1, `${path}-${i}`), ...(x.end ? [line(x.end, depth + 1, `${path}-${i}-e`)] : [])];
+  });
+  const body = render(grouped, 0, 'r');
   return (
     <Section title="Timeline on the virtual clock" actions={<span className="muted small">total {fmtMs(elapsedMs)}</span>}>
       {multi.length > 0 && (
@@ -125,27 +227,18 @@ function Timeline({ timeline, elapsedMs }: { timeline: any[]; elapsedMs: number 
           {instances.map((i) => <option key={i}>{i}</option>)}
         </select>
         <label className="check"><input type="checkbox" checked={onlyKey} onChange={(e) => setOnlyKey(e.target.checked)} /> Attempts, waits, timers, signals and messages only</label>
+        {blocks.length > 0 && (
+          <>
+            <button onClick={() => setOpen(new Set(blocks))}>Open every composite</button>
+            <button onClick={() => setOpen(new Set())}>Close them</button>
+            <span className="muted small">The steps inside a composite are nested under it and closed at first.</span>
+          </>
+        )}
       </div>
       <div className="table-wrap tall">
         <table className="grid compact timeline">
           <thead><tr><th>At</th><th>Instance</th><th>Step</th><th>Event</th><th>Detail</th></tr></thead>
-          <tbody>
-            {rows.map((t, i) => {
-              const prev = rows[i - 1];
-              return (
-                <tr key={i} className={prev && prev.at !== t.at ? 'tick' : ''}>
-                  <td className="mono nowrap">{fmtMs(t.at)}</td>
-                  <td className="mono small">{t.instance}</td>
-                  <td className="mono">{t.step ?? ''}</td>
-                  <td><Badge tone={typeTone(t.type)}>{t.type}</Badge></td>
-                  <td className="small break">
-                    {detailText(t.detail)}
-                    {t.detail?.policy && <> <details className="inline"><summary>policy</summary><Json value={t.detail.policy} /></details></>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
+          <tbody>{body}</tbody>
         </table>
       </div>
     </Section>
@@ -177,7 +270,38 @@ function Instances({ instances }: { instances: InstanceView[] }) {
   );
 }
 
+/** Steps with a dotted id run inside the composite step whose id comes before the dot. */
+function nestSteps(i: InstanceView): { id: string; step?: any; inner?: any[]; outcome?: string }[] {
+  const out: { id: string; step?: any; inner?: any[]; outcome?: string }[] = [];
+  for (const s of i.steps ?? []) {
+    const dot = String(s.step ?? '').indexOf('.');
+    if (dot < 0) {
+      out.push({ id: s.step, step: s });
+      continue;
+    }
+    const id = s.step.slice(0, dot);
+    const last = out[out.length - 1];
+    if (last?.inner && last.id === id) last.inner.push(s);
+    else out.push({ id, inner: [s], outcome: i.trace.find((t) => t.startsWith(`${id}:`))?.slice(id.length + 1) });
+  }
+  return out;
+}
+
+function StepRow({ s, nested }: { s: any; nested?: boolean }) {
+  return (
+    <tr className={nested ? 'nested' : ''}>
+      <td className="mono" style={nested ? { paddingLeft: 26 } : undefined}>{nested && <span className="muted">└ </span>}{s.step}</td>
+      <td>{s.activity && <ArtefactLink name={s.activity} release={s.release} />}{s.pinned && s.pinned !== s.release && <div className="small warn-text">pinned {s.pinned}</div>}</td>
+      <td>{s.attempts}</td>
+      <td>{s.outcome && <code>{s.outcome}</code>}</td>
+      <td className="mono small nowrap">{fmtMs(s.startedAt)}{s.endedAt !== undefined && s.endedAt !== s.startedAt ? ` to ${fmtMs(s.endedAt)}` : ''}</td>
+      <td className="small delta-cell"><Delta delta={s.delta} /></td>
+    </tr>
+  );
+}
+
 function InstanceDetail({ i }: { i: InstanceView }) {
+  const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({});
   return (
     <>
       <Section title={<>Instance <span className="mono">{i.id}</span></>}>
@@ -189,6 +313,8 @@ function InstanceDetail({ i }: { i: InstanceView }) {
             ['Reason code', i.reasonCode ? <code>{i.reasonCode}</code> : <span className="muted">none</span>],
             ['Failed', i.failed ? <span className="fail-text">{i.failed}</span> : <span className="muted">no</span>],
             ['Durable', i.durable ? 'yes' : 'no'],
+            ['Ran the expanded form of', i.expandedFrom ? <span className="mono small">{i.release} {String(i.expandedFrom.hash).replace('sha256:', '').slice(0, 12)}</span> : <span className="muted">the authored form; it calls no composite</span>],
+            ['Detail', i.detail?.length ? <span className="chips">{i.detail.map((d) => <code key={d}>{d}</code>)}</span> : <span className="muted">none</span>],
             ['Started, ended', <span className="mono">{fmtMs(i.startedAt)} to {i.endedAt !== undefined ? fmtMs(i.endedAt) : 'open'}</span>],
             ['Attempts', <span className="chips">{Object.entries(i.attempts ?? {}).map(([k, n]) => <Badge key={k} tone={n > 1 ? 'warn' : 'muted'}>{k} {n}</Badge>)}</span>],
             ['Hook bindings', i.bindings?.length ? <Val v={i.bindings} /> : <span className="muted">none</span>],
@@ -208,16 +334,19 @@ function InstanceDetail({ i }: { i: InstanceView }) {
             <table className="grid compact">
               <thead><tr><th>Step</th><th>Activity and release</th><th>Attempts</th><th>Outcome</th><th>Time</th><th>Context delta</th></tr></thead>
               <tbody>
-                {i.steps.map((s: any, n: number) => (
-                  <tr key={n}>
-                    <td className="mono">{s.step}</td>
-                    <td>{s.activity && <ArtefactLink name={s.activity} release={s.release} />}{s.pinned && s.pinned !== s.release && <div className="small warn-text">pinned {s.pinned}</div>}</td>
-                    <td>{s.attempts}</td>
-                    <td>{s.outcome && <code>{s.outcome}</code>}</td>
-                    <td className="mono small nowrap">{fmtMs(s.startedAt)}{s.endedAt !== undefined && s.endedAt !== s.startedAt ? ` to ${fmtMs(s.endedAt)}` : ''}</td>
-                    <td className="small delta-cell"><Delta delta={s.delta} /></td>
-                  </tr>
-                ))}
+                {nestSteps(i).map((g, n) => g.inner ? (
+                  <Fragment key={n}>
+                    <tr className="block-row" onClick={() => setOpenBlocks((o) => ({ ...o, [g.id]: !o[g.id] }))}>
+                      <td className="mono"><button className="link" aria-expanded={!!openBlocks[g.id]}>{openBlocks[g.id] ? '▾' : '▸'}</button> <b>{g.id}</b></td>
+                      <td><Badge tone="info">composite</Badge></td>
+                      <td>{g.inner.reduce((k: number, x: any) => k + (x.attempts ?? 0), 0)}</td>
+                      <td>{g.outcome && <code>{g.outcome}</code>}</td>
+                      <td className="mono small nowrap">{fmtMs(g.inner[0]?.startedAt)}{g.inner[g.inner.length - 1]?.endedAt !== undefined ? ` to ${fmtMs(g.inner[g.inner.length - 1].endedAt)}` : ''}</td>
+                      <td className="small muted">{g.inner.length} step{g.inner.length === 1 ? '' : 's'} inside</td>
+                    </tr>
+                    {openBlocks[g.id] && g.inner.map((s: any, k: number) => <StepRow key={k} s={s} nested />)}
+                  </Fragment>
+                ) : <StepRow key={n} s={g.step} />)}
               </tbody>
             </table>
           </div>

@@ -1,409 +1,1017 @@
-// BPMN 2.0 generation for Flowable (C22). Every activity is an external worker task, a wait
-// state, so timer boundaries apply (R-09-12). Await is an event-based gateway between a message
-// catch and a timer. A slot is a call activity. A deadline is an interrupting timer boundary on
-// the main sub-process. Every end goes through the finally process before its end event.
+// BPMN 2.0 generation for Flowable (C22). The engine receives the expanded form (R-09-17).
+//
+// What maps how (Part 9, 9.3 and 9.4; the patterns were chosen in the C22-S1 spike, see
+// studio/engines/flowable/README.md):
+// - Every activity is an external worker task, a wait state, so timer boundaries apply (R-09-12).
+//   Its topic is `<queue>:<name>@<release>` (R-09-04, R-09-05).
+// - A call is an embedded sub-process that holds the attempt loop: the attempt timeout is a timer
+//   boundary on the task, a retryable error a BPMN error the worker throws, the backoff a timer
+//   in a modelled loop, the total timeout a timer boundary on the sub-process. A spent loop or a
+//   total timeout gives the unknown outcome where the activity declares it.
+// - handle and switch are exclusive gateways, parallel is a parallel gateway, forEach is a
+//   multi-instance sub-process, loop is a modelled loop with a timer, slot and hook are call
+//   activities, block is an embedded sub-process whose error end events set the outcome.
+// - await is an event-based gateway between a message catch and a timer. A message that arrives
+//   before the catch is waiting is held by the binding (R-09-16).
+// - end and return are BPMN errors caught on the boundary of the main sub-process and of the
+//   block. Every end goes through the finally path before the end event (R-05-14).
+// - A completed write registers a compensation handler; compensation is thrown in reverse order.
+// - The four signals are event sub-processes, with a gate before every step for pause.
+// - Elements carry `th:` annotations for the binding: the worker reads the step, the activity
+//   and its policy; the business trace is written at `th:point` elements.
 // The output is reproducible: the same input gives the same bytes (R-09-15).
 
-import { effectivePolicy } from '../interp/policy.js';
+import { effectivePolicy, isRetryable, retryInterval } from '../interp/policy.js';
 
-interface Ctx {
+export interface Ctx {
   queueOf: (name: string) => string;
   resolve: (name: string) => any;
 }
 
+export const TH_NS = 'urn:transacthub:flowable:1';
+export const SIGNAL_MESSAGES: Record<string, string> = { pause: 'th.signal.pause', resume: 'th.signal.resume', cancel: 'th.signal.cancel', 're-screen': 'th.signal.re-screen' };
+export const COMPENSATED_MESSAGE = 'th.compensated';
+const RESERVED = new Set(['start', 'main', 'deadline', 'end']);
+
 interface Frag { entry: string; exits: string[] }
+type Rec = 'business' | 'detail' | 'finally';
 
-class Builder {
-  els: string[] = [];
-  flows: string[] = [];
-  n = 0;
-  ends = new Map<string, string>(); // outcome -> node that leads to finally and the end
-  returns = new Map<string, string>(); // outcome -> error end event inside a block
-  constructor(readonly wf: any, readonly ctx: Ctx, readonly inSub: boolean) {}
-
-  id(prefix: string) {
-    this.n += 1;
-    return `${prefix}_${this.n}`;
-  }
-
-  flow(from: string, to: string, cond?: string, name?: string) {
-    const id = this.id('flow');
-    this.flows.push(cond
-      ? `    <sequenceFlow id="${id}" sourceRef="${from}" targetRef="${to}"${name ? ` name="${esc(name)}"` : ''}><conditionExpression xsi:type="tFormalExpression"><![CDATA[${cond}]]></conditionExpression></sequenceFlow>`
-      : `    <sequenceFlow id="${id}" sourceRef="${from}" targetRef="${to}"${name ? ` name="${esc(name)}"` : ''}/>`);
-  }
-
-  returnFor(outcome: string): string {
-    let id = this.returns.get(outcome);
-    if (!id) {
-      id = `return_${safe(outcome)}_${this.n++}`;
-      this.returns.set(outcome, id);
-      this.els.push(`    <endEvent id="${id}" name="return:${esc(outcome)}"><errorEventDefinition errorRef="ret_${safe(outcome)}"/></endEvent>`);
-    }
-    return id;
-  }
-
-  endFor(outcome: string): string {
-    let id = this.ends.get(outcome);
-    if (!id) {
-      id = `end_${safe(outcome)}`;
-      this.ends.set(outcome, id);
-    }
-    return id;
-  }
-
-  steps(steps: any[]): Frag | null {
-    let first: string | undefined;
-    let exits: string[] = [];
-    for (const st of steps ?? []) {
-      const f = this.step(st);
-      if (!f) continue;
-      if (!first) first = f.entry;
-      for (const e of exits) this.flow(e, f.entry);
-      exits = f.exits;
-    }
-    return first ? { entry: first, exits } : null;
-  }
-
-  action(action: any, from: string, cond: string, label: string) {
-    if (Array.isArray(action)) {
-      const f = this.steps(action);
-      if (f) {
-        this.flow(from, f.entry, cond, label);
-        return f.exits;
-      }
-      return [];
-    }
-    if (action?.end) {
-      this.flow(from, this.endFor(action.end), cond, label);
-      return [];
-    }
-    if (action && 'return' in action) {
-      this.flow(from, this.returnFor(action.return), cond, label);
-      return [];
-    }
-    return null; // continue
-  }
-
-  step(st: any): Frag | null {
-    if ('call' in st) return this.call(st);
-    if ('end' in st && !('call' in st)) {
-      const id = this.id('goto');
-      this.els.push(`    <intermediateThrowEvent id="${id}" name="end:${esc(st.end)}"/>`);
-      this.flow(id, this.endFor(st.end));
-      return { entry: id, exits: [] };
-    }
-    if ('switch' in st) {
-      const gw = this.id('switch');
-      const join = this.id('join');
-      const by = st.switch.by.outcomeOf ? `outcome_${safe(st.switch.by.outcomeOf)}` : `decision_${safe(st.switch.by.decision)}`;
-      this.els.push(`    <exclusiveGateway id="${gw}" name="switch ${esc(by)}" default="${gw}_default"/>`, `    <exclusiveGateway id="${join}"/>`);
-      for (const [k, v] of Object.entries<any>(st.switch.cases ?? {})) {
-        const f = this.steps(v);
-        if (f) {
-          this.flow(gw, f.entry, `\${${by} == '${k}'}`, k);
-          f.exits.forEach((e) => this.flow(e, join));
-        }
-      }
-      const d = this.steps(st.switch.default ?? []);
-      const did = `${gw}_default`;
-      if (d) {
-        this.flows.push(`    <sequenceFlow id="${did}" sourceRef="${gw}" targetRef="${d.entry}"/>`);
-        d.exits.forEach((e) => this.flow(e, join));
-      } else this.flows.push(`    <sequenceFlow id="${did}" sourceRef="${gw}" targetRef="${join}"/>`);
-      return { entry: gw, exits: [join] };
-    }
-    if ('parallel' in st) {
-      const fork = this.id('fork');
-      const join = this.id('joinAll');
-      this.els.push(`    <parallelGateway id="${fork}"/>`, `    <parallelGateway id="${join}" name="join:all"/>`);
-      for (const b of st.parallel.branches ?? []) {
-        const f = this.steps(b);
-        if (!f) continue;
-        this.flow(fork, f.entry);
-        f.exits.forEach((e) => this.flow(e, join));
-      }
-      return { entry: fork, exits: [join] };
-    }
-    if ('forEach' in st) {
-      const id = this.id('forEach');
-      const inner = new Builder(this.wf, this.ctx, true);
-      inner.n = this.n * 100;
-      const f = inner.steps(st.forEach.do);
-      this.n = inner.n;
-      const seq = (st.forEach.concurrency ?? 1) <= 1;
-      this.els.push(`    <subProcess id="${id}" name="forEach ${esc(st.forEach.in)}">`,
-        `      <multiInstanceLoopCharacteristics isSequential="${seq}" flowable:collection="items" flowable:elementVariable="item"/>`,
-        ...inner.body(f, 'item'), `    </subProcess>`);
-      return { entry: id, exits: [id] };
-    }
-    if ('loop' in st) {
-      const start = this.id('loopStart');
-      const check = this.id('loopUntil');
-      const timer = this.id('loopEvery');
-      this.els.push(`    <exclusiveGateway id="${start}"/>`, `    <exclusiveGateway id="${check}" name="until" default="${check}_again"/>`);
-      const f = this.steps(st.loop.do);
-      if (f) {
-        this.flow(start, f.entry);
-        f.exits.forEach((e) => this.flow(e, check));
-      } else this.flow(start, check);
-      const done = this.id('loopDone');
-      this.els.push(`    <exclusiveGateway id="${done}"/>`);
-      const until = st.loop.until?.outcomeOf ? `(${(st.loop.until.in ?? []).map((o: string) => `outcome_${safe(st.loop.until.outcomeOf)} == '${o}'`).join(' || ') || 'false'})` : 'false';
-      this.flow(check, done, `\${${until} || loopCount_${start} >= ${st.loop.max ?? 1}}`);
-      if (st.loop.every) {
-        this.els.push(`    <intermediateCatchEvent id="${timer}" name="every ${st.loop.every}"><timerEventDefinition><timeDuration>${st.loop.every}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
-        this.flows.push(`    <sequenceFlow id="${check}_again" sourceRef="${check}" targetRef="${timer}"/>`);
-        this.flow(timer, start);
-      } else this.flows.push(`    <sequenceFlow id="${check}_again" sourceRef="${check}" targetRef="${start}"/>`);
-      return { entry: start, exits: [done] };
-    }
-    if ('await' in st) {
-      const aw = st.await;
-      const gw = this.id('await');
-      const msg = this.id('message');
-      const tmr = this.id('timeout');
-      const id = st.id ?? 'await';
-      this.els.push(`    <eventBasedGateway id="${gw}" name="await ${esc(id)}"/>`,
-        `    <intermediateCatchEvent id="${msg}" name="${esc(id)}:received"><messageEventDefinition messageRef="msg_${safe(aw.message)}"/></intermediateCatchEvent>`);
-      this.flow(gw, msg);
-      const exits = [msg];
-      if (aw.timeout) {
-        this.els.push(`    <intermediateCatchEvent id="${tmr}" name="${esc(id)}:timeout"><timerEventDefinition><timeDuration>${aw.timeout}</timeDuration></timerEventDefinition>${aw.calendar === 'business' ? '<documentation>Business calendar: the binding converts the duration to business days.</documentation>' : ''}</intermediateCatchEvent>`);
-        this.flow(gw, tmr);
-        const after = aw.onTimeout ? this.action(aw.onTimeout, tmr, '', 'timeout') : null;
-        if (after === null) exits.push(tmr);
-        else exits.push(...after);
-      }
-      return { entry: gw, exits };
-    }
-    if ('wait' in st) {
-      const id = this.id('wait');
-      this.els.push(`    <intermediateCatchEvent id="${id}" name="wait:${st.wait}"><timerEventDefinition><timeDuration>${st.wait}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
-      return { entry: id, exits: [id] };
-    }
-    if ('slot' in st) {
-      const id = this.id('slot');
-      this.els.push(`    <callActivity id="${id}" name="${esc(st.id ?? st.slot)}" calledElement="\${leg_${safe(st.slot)}}" flowable:inheritBusinessKey="true"><extensionElements><flowable:out source="outcome" target="outcome_${safe(st.id ?? st.slot)}"/></extensionElements></callActivity>`);
-      return this.outcomes(id, st, (this.wf.slots ?? []).find((s: any) => s.name === st.slot)?.contract?.primaryOutcome);
-    }
-    if ('use' in st) {
-      const seg = this.ctx.resolve(st.use);
-      return this.steps(seg?.do ?? []);
-    }
-    if ('try' in st) return this.steps(st.try);
-    if ('return' in st && Object.keys(st).every((k) => k === 'return' || k === 'id')) {
-      const id = this.id('ret');
-      this.els.push(`    <intermediateThrowEvent id="${id}" name="return:${esc(st.return)}"/>`);
-      this.flow(id, this.returnFor(st.return));
-      return { entry: id, exits: [] };
-    }
-    if ('block' in st) {
-      // A composite step is an embedded sub-process; a return is an error end caught on its boundary.
-      const id = this.id('block');
-      const inner = new Builder(this.wf, this.ctx, true);
-      inner.n = this.n * 100;
-      const f = inner.steps(st.block.do);
-      this.n = inner.n;
-      const act = this.ctx.resolve(st.block.of);
-      const primary = act?.outcomes?.find((o: any) => o.primary)?.name ?? 'done';
-      this.els.push(`    <subProcess id="${id}" name="${esc(st.id)}"><documentation>Composite ${esc(st.block.of)}, subflow ${esc(st.block.by)}</documentation>`, ...inner.body(f, `${id}_in`), '    </subProcess>');
-      const join = this.id('continue');
-      this.els.push(`    <exclusiveGateway id="${join}"/>`);
-      this.flow(id, join, undefined, primary);
-      for (const o of [...inner.returns.keys()].sort()) {
-        const b = `${id}_ret_${safe(o)}`;
-        this.els.push(`    <boundaryEvent id="${b}" attachedToRef="${id}"><errorEventDefinition errorRef="ret_${safe(o)}"/></boundaryEvent>`);
-        if (o === primary) { this.flow(b, join); continue; }
-        const a = st.handle?.[o];
-        const after = a === undefined ? null : this.action(a, b, '', o);
-        if (after === null) this.flow(b, join);
-        else after.forEach((e) => this.flow(e, join));
-      }
-      return { entry: id, exits: [join] };
-    }
-    if ('hook' in st) {
-      const id = this.id('hook');
-      this.els.push(`    <callActivity id="${id}" name="hook ${esc(st.hook)}" calledElement="\${hook_${safe(st.hook)}}" flowable:inheritBusinessKey="true"><documentation>The tenant's binding names the hook; an unbound hook point is skipped by the binding.</documentation></callActivity>`);
-      return { entry: id, exits: [id] };
-    }
-    return null;
-  }
-
-  call(st: any): Frag {
-    const act = this.ctx.resolve(st.call);
-    const id = this.id('task');
-    const label = st.id ?? st.call;
-    const release = act?.release ?? '0.0.0';
-    const topic = `${this.ctx.queueOf(st.call)}:${st.call}@${release}`;
-    const pol = act ? effectivePolicy(act, st.policy) : undefined;
-    const retry = pol && pol.maxAttempts.value > 1 ? `R${pol.maxAttempts.value - 1}/${pol.firstInterval.value}` : 'R0/PT0S';
-    this.els.push(`    <serviceTask id="${id}" name="${esc(label)}" flowable:type="external-worker" flowable:topic="${esc(topic)}"><extensionElements><flowable:failedJobRetryTimeCycle>${retry}</flowable:failedJobRetryTimeCycle></extensionElements></serviceTask>`);
-    if (pol?.attemptTimeout.value) {
-      const b = this.id('attemptTimeout');
-      this.els.push(`    <boundaryEvent id="${b}" attachedToRef="${id}" cancelActivity="true"><timerEventDefinition><timeDuration>${pol.attemptTimeout.value}</timeDuration></timerEventDefinition></boundaryEvent>`);
-      // The timed-out attempt goes round the retry loop: back to the task while attempts remain.
-      this.flow(b, id, `\${attempts_${id} < ${pol.maxAttempts.value}}`, 'retry');
-    }
-    const primary = act?.outcomes?.find((o: any) => o.primary)?.name;
-    return this.outcomes(id, st, primary);
-  }
-
-  outcomes(id: string, st: any, primary?: string): Frag {
-    const handle = st.handle ?? {};
-    if (!Object.keys(handle).length) return { entry: id, exits: [id] };
-    const gw = this.id('outcome');
-    const v = `outcome_${safe(st.id ?? st.call ?? st.slot)}`;
-    this.els.push(`    <exclusiveGateway id="${gw}" name="${esc(v)}" default="${gw}_primary"/>`);
-    this.flow(id, gw);
-    const exits: string[] = [];
-    const join = this.id('continue');
-    this.els.push(`    <exclusiveGateway id="${join}"/>`);
-    for (const [o, a] of Object.entries<any>(handle)) {
-      const after = this.action(a, gw, `\${${v} == '${o}'}`, o);
-      if (after === null) this.flow(gw, join, `\${${v} == '${o}'}`, `${o}, continue`);
-      else after.forEach((e) => this.flow(e, join));
-    }
-    this.flows.push(`    <sequenceFlow id="${gw}_primary" sourceRef="${gw}" targetRef="${join}" name="${esc(primary ?? 'primary')}"/>`);
-    exits.push(join);
-    return { entry: gw, exits };
-  }
-
-  body(f: Frag | null, prefix: string): string[] {
-    const s = `${prefix}_start`;
-    const e = `${prefix}_done`;
-    const out = [`      <startEvent id="${s}"/>`, `      <endEvent id="${e}"/>`];
-    if (f) {
-      this.flows.unshift(`    <sequenceFlow id="${prefix}_in" sourceRef="${s}" targetRef="${f.entry}"/>`);
-      f.exits.forEach((x, i) => this.flows.push(`    <sequenceFlow id="${prefix}_out_${i}" sourceRef="${x}" targetRef="${e}"/>`));
-    } else this.flows.push(`    <sequenceFlow id="${prefix}_in" sourceRef="${s}" targetRef="${e}"/>`);
-    for (const [outcome, id] of this.ends) out.push(`      <endEvent id="${id}" name="end:${esc(outcome)}"><errorEventDefinition errorRef="itemEnd_${safe(outcome)}"/></endEvent>`);
-    return [...out, ...this.els.map((x) => '  ' + x), ...this.flows.map((x) => '  ' + x)];
-  }
+interface Opts {
+  record: Rec;
+  item: boolean;
+  hookOwner: string;
+  tryScope?: TryScope;
 }
+
+interface TryScope { markers: string[]; parent?: TryScope }
 
 function esc(s: any) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function safe(s: string) {
+export function safe(s: string) {
   return String(s).replace(/[^A-Za-z0-9_]/g, '_');
+}
+
+function shortName(n: string) {
+  const p = String(n).split('.');
+  return p.length > 2 ? p[p.length - 2] : n;
+}
+
+const v = (name: string) => `execution.getVariable('${name}')`;
+const setVar = (name: string, value: string) => `\${execution.setVariable('${name}', '${value}')}`;
+const outcomeVar = (id: string) => `outcome_${safe(id)}`;
+const isoMs = (ms: number) => `PT${Number((ms / 1000).toFixed(3))}S`;
+
+/** Shared state of one generated document: ids, errors, messages and process-level parts. */
+class Gen {
+  n = 0;
+  errors = new Map<string, string>(); // id -> code
+  messages = new Map<string, string>(); // id -> name
+  usedIds = new Set<string>();
+  signals = new Set<string>();
+  endpoints = new Map<string, string>(); // outcome -> endpoint node at process level
+  processLevel: string[] = []; // event sub-processes at process level (notify hooks)
+  markers: { id: string; tries: TryScope[] }[] = []; // compensation markers in document order
+  screenSteps: { st: any; opts: Opts }[] = [];
+  constructor(readonly wf: any, readonly ctx: Ctx) {}
+
+  id(prefix: string) {
+    this.n += 1;
+    return `th_${prefix}_${this.n}`;
+  }
+
+  /** The element id for a step: the step id itself, made unique and valid. */
+  stepId(id: string, suffix = '') {
+    let base = /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(id) ? id : `s_${safe(id)}`;
+    if (RESERVED.has(base) || base.startsWith('th_')) base = `step_${base}`;
+    base += suffix;
+    let out = base;
+    for (let i = 2; this.usedIds.has(out); i++) out = `${base}_${i}`;
+    this.usedIds.add(out);
+    return out;
+  }
+
+  error(code: string, id = `err_${safe(code)}`) {
+    this.errors.set(id, code);
+    return id;
+  }
+
+  message(name: string) {
+    const id = `msg_${safe(name)}`;
+    this.messages.set(id, name);
+    return id;
+  }
+
+  endpoint(outcome: string) {
+    let id = this.endpoints.get(outcome);
+    if (!id) {
+      id = `th_endpoint_${safe(outcome)}`;
+      this.endpoints.set(outcome, id);
+    }
+    return id;
+  }
+
+  resolveAct(name: string) {
+    return this.ctx.resolve(name);
+  }
+}
+
+function ann(tag: string, attrs: Record<string, any>) {
+  const a = Object.entries(attrs).filter(([, x]) => x !== undefined && x !== null && x !== '').map(([k, x]) => ` ${k}="${esc(typeof x === 'string' ? x : JSON.stringify(x))}"`).join('');
+  return `<th:${tag}${a}/>`;
+}
+
+function ext(...parts: (string | undefined)[]) {
+  const p = parts.filter(Boolean);
+  return p.length ? `<extensionElements>${p.join('')}</extensionElements>` : '';
+}
+
+const listener = (expr: string, event = 'start') => `<flowable:executionListener event="${event}" expression="${esc(expr)}"/>`;
+
+/** One container (the process, or a sub-process): its elements and flows. */
+class B {
+  els: string[] = [];
+  flows: string[] = [];
+  returns = new Set<string>();
+  assocs: string[] = []; // artifacts come after every flow element (BPMN schema)
+  constructor(readonly g: Gen, readonly o: Opts, readonly parent?: B) {}
+
+  body(): string[] {
+    return [...this.els, ...this.flows, ...this.assocs];
+  }
+
+  child(o: Partial<Opts> = {}) {
+    return new B(this.g, { ...this.o, ...o }, this);
+  }
+
+  flow(from: string, to: string, cond?: string, name?: string, id?: string) {
+    const fid = id ?? this.g.id('flow');
+    const nm = name ? ` name="${esc(name)}"` : '';
+    this.flows.push(cond
+      ? `<sequenceFlow id="${fid}" sourceRef="${from}" targetRef="${to}"${nm}><conditionExpression xsi:type="tFormalExpression"><![CDATA[${cond}]]></conditionExpression></sequenceFlow>`
+      : `<sequenceFlow id="${fid}" sourceRef="${from}" targetRef="${to}"${nm}/>`);
+  }
+
+  /** A none event that only marks a place: the binding writes the trace there. */
+  point(attrs: Record<string, any>, name?: string, extra = '') {
+    const id = this.g.id('rec');
+    this.els.push(`<intermediateThrowEvent id="${id}"${name ? ` name="${esc(name)}"` : ''}>${ext(ann('point', attrs), extra)}</intermediateThrowEvent>`);
+    return id;
+  }
+
+  /** A none event that sets a variable on the way through. */
+  setter(name: string, value: string) {
+    const id = this.g.id('set');
+    this.els.push(`<intermediateThrowEvent id="${id}">${ext(listener(setVar(name, value)))}</intermediateThrowEvent>`);
+    return id;
+  }
+
+  gateway(id: string, name?: string, deflt?: string) {
+    this.els.push(`<exclusiveGateway id="${id}"${name ? ` name="${esc(name)}"` : ''}${deflt ? ` default="${deflt}"` : ''}/>`);
+    return id;
+  }
+
+  /** End the flow with an outcome: an error in main, a flow to the endpoint at process level. */
+  endWith(outcome: string, from: string, cond?: string, name?: string, compensate = false) {
+    let src = from;
+    if (compensate) {
+      const c = this.compensation(this.o.tryScope);
+      if (c) {
+        this.flow(src, c.entry, cond, name);
+        src = c.exit;
+        cond = undefined;
+        name = undefined;
+      }
+    }
+    for (let b: B | undefined = this; b; b = b.parent) b.endsHere.add(outcome);
+    const id = this.g.id('end');
+    this.els.push(`<endEvent id="${id}" name="end:${esc(outcome)}"><errorEventDefinition errorRef="${this.g.error(`end:${outcome}`, `err_end_${safe(outcome)}`)}"/></endEvent>`);
+    this.flow(src, id, cond, name);
+  }
+
+  endsHere = new Set<string>();
+  failsHere = false;
+
+  returnWith(outcome: string, from: string, cond?: string, name?: string) {
+    this.returns.add(outcome);
+    const id = this.g.id('return');
+    this.els.push(`<endEvent id="${id}" name="return:${esc(outcome)}"><errorEventDefinition errorRef="${this.g.error(`return:${outcome}`, `ret_${safe(outcome)}`)}"/></endEvent>`);
+    this.flow(from, id, cond, name);
+  }
+
+  /** A step failure (StepFailure in the interpreter): an error that ends the instance failed. */
+  fail(from: string, cond?: string, name?: string, flowId?: string) {
+    for (let b: B | undefined = this; b; b = b.parent) b.failsHere = true;
+    const id = this.g.id('fail');
+    this.els.push(`<endEvent id="${id}" name="failed"><errorEventDefinition errorRef="${this.g.error('th:failed', 'err_th_failed')}"/></endEvent>`);
+    this.flow(from, id, cond, name, flowId);
+  }
+
+  /**
+   * Compensation of the completed writes of a scope, in reverse order (R-05-15). One throw per
+   * write step names its marker; the engine orders the instances of each by completion. Flowable
+   * 7.1 does not wait for the handlers (waitForCompletion is not implemented), so the flow waits
+   * on a message the binding sends when no handler is left.
+   */
+  compensation(scope?: TryScope): { entry: string; exit: string } | null {
+    const markers = this.g.markers.filter((m) => !scope || m.tries.includes(scope)).map((m) => m.id).reverse();
+    if (!markers.length) return null;
+    let entry = '';
+    let prev = '';
+    for (const m of markers) {
+      const id = this.g.id('compensate');
+      this.els.push(`<intermediateThrowEvent id="${id}" name="compensate ${esc(m)}"><compensateEventDefinition activityRef="${m}"/></intermediateThrowEvent>`);
+      if (prev) this.flow(prev, id);
+      else entry = id;
+      prev = id;
+    }
+    const wait = this.g.id('compensated');
+    this.els.push(`<intermediateCatchEvent id="${wait}" name="compensated">${ext(ann('point', { kind: 'compensationWait' }))}<messageEventDefinition messageRef="${this.g.message(COMPENSATED_MESSAGE)}"/></intermediateCatchEvent>`);
+    this.flow(prev, wait);
+    return { entry, exit: wait };
+  }
+
+  /** The action for a non-primary outcome: steps, end, return, or continue (null). */
+  action(a: any, from: string, cond: string | undefined, label: string): string[] | null {
+    if (Array.isArray(a)) {
+      const f = this.steps(a);
+      if (!f) return null;
+      this.flow(from, f.entry, cond, label);
+      return f.exits;
+    }
+    if (a && typeof a === 'object' && 'end' in a) {
+      this.endWith(a.end, from, cond, label, a.compensate === 'all' || a.compensate === true);
+      return [];
+    }
+    if (a && typeof a === 'object' && 'return' in a) {
+      this.returnWith(a.return, from, cond, label);
+      return [];
+    }
+    return null;
+  }
+
+  steps(steps: any[]): Frag | null {
+    let first: string | undefined;
+    let exits: string[] = [];
+    let open = true;
+    for (const st of steps ?? []) {
+      if (!open) break; // nothing after an end or a return is reachable
+      const f = this.step(st);
+      if (!f) continue;
+      if (!first) first = f.entry;
+      for (const e of exits) this.flow(e, f.entry);
+      exits = f.exits;
+      open = exits.length > 0;
+    }
+    return first ? { entry: first, exits } : null;
+  }
+
+  /** A gate before every step: a paused instance waits here for resume (R-05-12). */
+  step(st: any): Frag | null {
+    const real = this.stepBody(st);
+    if (!real) return null;
+    const gate = this.g.id('gate');
+    const wait = this.g.id('paused');
+    this.els.push(`<exclusiveGateway id="${gate}" default="${gate}_go">${ext(ann('point', { kind: 'gate' }))}</exclusiveGateway>`);
+    this.els.push(`<intermediateCatchEvent id="${wait}" name="paused"><signalEventDefinition signalRef="sig_th_resume"/></intermediateCatchEvent>`);
+    this.flow(gate, wait, `\${${v('paused')} == true}`, 'paused');
+    this.flow(wait, gate);
+    this.flow(gate, real.entry, undefined, undefined, `${gate}_go`);
+    return { entry: gate, exits: real.exits };
+  }
+
+  stepBody(st: any): Frag | null {
+    if ('call' in st) return this.call(st);
+    if ('end' in st && Object.keys(st).every((k) => ['end', 'compensate', 'id'].includes(k))) {
+      const id = this.g.id('goto');
+      this.els.push(`<intermediateThrowEvent id="${id}" name="end:${esc(st.end)}"/>`);
+      this.endWith(st.end, id, undefined, undefined, st.compensate === 'all' || st.compensate === true);
+      return { entry: id, exits: [] };
+    }
+    if ('return' in st && Object.keys(st).every((k) => ['return', 'id'].includes(k))) {
+      const id = this.g.id('goto');
+      this.els.push(`<intermediateThrowEvent id="${id}" name="return:${esc(st.return)}"/>`);
+      this.returnWith(st.return, id);
+      return { entry: id, exits: [] };
+    }
+    if ('switch' in st) return this.switchStep(st);
+    if ('parallel' in st) return this.parallel(st);
+    if ('forEach' in st) return this.forEach(st);
+    if ('loop' in st) return this.loop(st);
+    if ('await' in st) return this.await(st);
+    if ('wait' in st) {
+      const id = st.id ? this.g.stepId(st.id) : this.g.id('wait');
+      this.els.push(`<intermediateCatchEvent id="${id}" name="wait:${esc(st.wait)}"><timerEventDefinition><timeDuration>${esc(st.wait)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      const p = this.point({ kind: 'text', text: `${st.id ?? 'wait'}:${st.wait}`, record: this.o.record });
+      this.flow(id, p);
+      return { entry: id, exits: [p] };
+    }
+    if ('slot' in st) return this.slot(st);
+    if ('use' in st) {
+      const seg = this.g.ctx.resolve(st.use);
+      if (!seg) throw new Error(`Segment ${st.use} does not resolve`);
+      const c = this.child({ hookOwner: seg.name });
+      c.els = this.els;
+      c.flows = this.flows;
+      c.returns = this.returns;
+      c.assocs = this.assocs;
+      return c.steps(seg.do ?? []);
+    }
+    if ('try' in st) return this.tryStep(st);
+    if ('hook' in st) return this.hook(st);
+    if ('block' in st) return this.block(st);
+    throw new Error(`The generator cannot express the step ${JSON.stringify(Object.keys(st))}`);
+  }
+
+  // ---------------------------------------------------------------------- call
+
+  /**
+   * The attempt loop of one activity, as the content of an embedded sub-process: the task, its
+   * attempt timeout, retryable errors and the backoff. With `swallow` (a compensation handler) a
+   * failure ends the handler instead of the instance, as the interpreter records and goes on.
+   */
+  attempts(sid: string, stepId: string, name: string, act: any, pol: ReturnType<typeof effectivePolicy>, o: { level?: string; record: string; item: boolean; swallow: boolean; policy: any; sources?: any }): B {
+    const release = act.release ?? '0.0.0';
+    const topic = `${this.g.ctx.queueOf(name)}:${name}@${release}`;
+    const max = Math.max(1, pol.maxAttempts.value);
+    const hasUnknown = !o.swallow && (act.outcomes ?? []).some((x: any) => x.name === 'unknown');
+    const ov = outcomeVar(stepId);
+    const inner = this.child();
+    const task = `${sid}_task`;
+    const merge = `${sid}_attempt`;
+    const done = `${sid}_done`;
+    const fail = (from: string) => (o.swallow ? inner.flow(from, done) : inner.fail(from));
+    inner.els.push(`<dataObject id="${sid}_attempts" name="th_attempt" itemSubjectRef="xsd:int">${ext('<flowable:value>0</flowable:value>')}</dataObject>`);
+    inner.els.push(`<startEvent id="${sid}_start"/>`, `<exclusiveGateway id="${merge}"/>`, `<endEvent id="${done}"/>`);
+    inner.els.push(`<serviceTask id="${task}" name="${esc(stepId)}" flowable:type="external-worker" flowable:topic="${esc(topic)}" flowable:exclusive="false">${ext(
+      listener(`\${execution.setVariable('th_attempt', ${v('th_attempt')} + 1)}`),
+      ann('task', { step: stepId, activity: name, release, level: o.level, record: o.record, item: o.item ? 'true' : undefined, policy: o.policy, sources: o.sources }),
+    )}</serviceTask>`);
+    inner.flow(`${sid}_start`, merge);
+    inner.flow(merge, task);
+    inner.flow(task, done);
+    // Retryable errors and a retryable attempt timeout go round the loop; anything else fails the step.
+    const retryNames = new Set<string>(['TransientError', ...(act.errors ?? []).filter((e: any) => e.retryable).map((e: any) => e.name)]);
+    const retryable = [...retryNames].filter((n) => isRetryable(pol, n, act.errors)).sort();
+    const check = `${sid}_retry`;
+    const exhausted = `${sid}_spent`;
+    const retryPaths: string[] = [];
+    for (const n of retryable) {
+      const b = `${sid}_err_${safe(n)}`;
+      inner.els.push(`<boundaryEvent id="${b}" attachedToRef="${task}"><errorEventDefinition errorRef="${this.g.error(n, `err_${safe(n)}`)}"/></boundaryEvent>`);
+      retryPaths.push(b);
+    }
+    const fatal = `${sid}_fatal`;
+    inner.els.push(`<boundaryEvent id="${fatal}" attachedToRef="${task}"><errorEventDefinition/></boundaryEvent>`);
+    fail(fatal);
+    if (pol.attemptTimeout.value) {
+      const b = `${sid}_timeout`;
+      inner.els.push(`<boundaryEvent id="${b}" attachedToRef="${task}" cancelActivity="true"><timerEventDefinition><timeDuration>${pol.attemptTimeout.value}</timeDuration></timerEventDefinition></boundaryEvent>`);
+      if (isRetryable(pol, 'Timeout', act.errors)) retryPaths.push(b);
+      else fail(b);
+    }
+    if (retryPaths.length) {
+      inner.gateway(check, 'attempts left', `${check}_spent`);
+      for (const b of retryPaths) inner.flow(b, check);
+      if (max > 1) {
+        const wait = `${sid}_backoff`;
+        const intervals = Array.from({ length: max - 1 }, (_, i) => isoMs(retryInterval(pol, i + 1)));
+        let expr = intervals[intervals.length - 1];
+        let dur = `${expr}`;
+        if (new Set(intervals).size > 1) {
+          expr = `'${intervals[intervals.length - 1]}'`;
+          for (let i = intervals.length - 2; i >= 0; i--) expr = `${v('th_attempt')} == ${i + 1} ? '${intervals[i]}' : (${expr})`;
+          dur = `\${${expr}}`;
+        }
+        inner.els.push(`<intermediateCatchEvent id="${wait}" name="backoff"><timerEventDefinition><timeDuration>${esc(dur)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+        inner.flow(check, wait, `\${${v('th_attempt')} < ${max}}`, 'retry');
+        inner.flow(wait, merge);
+      }
+      inner.els.push(`<intermediateThrowEvent id="${exhausted}" name="retries spent"/>`);
+      inner.flow(check, exhausted, undefined, undefined, `${check}_spent`);
+      if (hasUnknown) {
+        const s = inner.setter(ov, 'unknown');
+        inner.flow(exhausted, s);
+        inner.flow(s, done);
+      } else fail(exhausted);
+    }
+    return inner;
+  }
+
+  call(st: any, elementSuffix = ''): Frag {
+    const act = this.g.resolveAct(st.call);
+    if (!act) throw new Error(`${st.call} does not resolve`);
+    const stepId = st.id ?? shortName(st.call);
+    const sid = this.g.stepId(stepId, elementSuffix);
+    const release = act.release ?? '0.0.0';
+    const pol = effectivePolicy(act, st.policy);
+    const policy = Object.fromEntries(Object.entries(pol).map(([k, x]) => [k, x.value]));
+    const sources = Object.fromEntries(Object.entries(pol).map(([k, x]) => [k, x.source]));
+    const hasUnknown = (act.outcomes ?? []).some((o: any) => o.name === 'unknown');
+    const ov = outcomeVar(stepId);
+    const level = st.level ?? act.level;
+    const inner = this.attempts(sid, stepId, st.call, act, pol, { level, record: this.o.record, item: this.o.item, swallow: false, policy, sources });
+    this.els.push(`<subProcess id="${sid}" name="${esc(stepId)}">${ext(ann('call', { step: stepId, activity: st.call, release }))}`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    const after = this.g.id('called');
+    this.gateway(after);
+    this.flow(sid, after);
+    if (pol.totalTimeout.value) {
+      const b = `${sid}_total`;
+      this.els.push(`<boundaryEvent id="${b}" attachedToRef="${sid}" cancelActivity="true"><timerEventDefinition><timeDuration>${pol.totalTimeout.value}</timeDuration></timerEventDefinition></boundaryEvent>`);
+      if (hasUnknown) {
+        const s = this.setter(ov, 'unknown');
+        this.flow(b, s);
+        this.flow(s, after);
+      } else this.fail(b);
+    }
+    const rec = this.point({ kind: 'call', step: stepId, var: ov, record: this.o.record, item: this.o.item ? 'true' : undefined });
+    this.flow(after, rec);
+    if (act.type === 'screen' && this.o.record !== 'finally' && !elementSuffix) this.g.screenSteps.push({ st, opts: this.o });
+    const primary = (act.outcomes ?? []).find((o: any) => o.primary)?.name ?? act.outcomes?.[0]?.name;
+    const f = this.outcomes(rec, st, ov, primary, (act.outcomes ?? []).map((o: any) => o.name));
+    // A completed write registers its compensation: a marker on the primary path carries the handler.
+    if (act.compensation && (act.effect === 'write' || act.effect === 'external') && f.primaryExit && this.o.record !== 'finally') {
+      const m = `${sid}_written`;
+      const cb = `${sid}_compensate`;
+      const undo = `${sid}_undo`;
+      const comp = this.g.resolveAct(act.compensation);
+      this.els.push(`<manualTask id="${m}" name="${esc(stepId)} written"/>`);
+      this.els.push(`<boundaryEvent id="${cb}" attachedToRef="${m}"><compensateEventDefinition/></boundaryEvent>`);
+      const upol = effectivePolicy(comp ?? {}, undefined);
+      const uin = this.attempts(undo, `undo-${stepId}`, act.compensation, comp ?? {}, upol, { record: 'silent', item: false, swallow: true, policy: Object.fromEntries(Object.entries(upol).map(([k, x]) => [k, x.value])) });
+      this.els.push(`<subProcess id="${undo}" name="undo ${esc(stepId)}" isForCompensation="true">${ext(ann('point', { kind: 'undo', step: stepId }))}`, ...uin.body().map((x) => '  ' + x), '</subProcess>');
+      this.assocs.push(`<association id="${sid}_assoc" associationDirection="One" sourceRef="${cb}" targetRef="${undo}"/>`);
+      const tries: TryScope[] = [];
+      for (let t = this.o.tryScope; t; t = t.parent) tries.push(t);
+      this.g.markers.push({ id: m, tries });
+      // Re-route the primary exit through the marker.
+      const idx = f.exits.indexOf(f.primaryExit);
+      this.flow(f.primaryExit, m);
+      f.exits[idx] = m;
+    }
+    return { entry: sid, exits: f.exits };
+  }
+
+  /**
+   * The gateway on a step's outcome. The primary outcome carries on; a handled outcome runs its
+   * action; an outcome nobody handles fails the step, as the interpreter does (L05).
+   */
+  outcomes(from: string, st: any, ov: string, primary: string | undefined, declared: string[]): { exits: string[]; primaryExit?: string } {
+    const handle = st.handle ?? {};
+    const lenient = this.o.record === 'finally';
+    const others = declared.filter((o) => o !== primary && !(o in handle));
+    if (!Object.keys(handle).length && (lenient || !others.length)) return { exits: [from], primaryExit: from };
+    const gw = this.g.id('outcome');
+    this.gateway(gw, ov, `${gw}_other`);
+    this.flow(from, gw);
+    const prim = this.g.id('primary');
+    this.els.push(`<intermediateThrowEvent id="${prim}" name="${esc(primary ?? 'primary')}"/>`);
+    const exits: string[] = [prim];
+    let cont: string | undefined;
+    for (const [o, a] of Object.entries<any>(handle)) {
+      const cond = `\${${v(ov)} == '${o}'}`;
+      const after = this.action(a, gw, cond, o);
+      if (after === null) {
+        if (!cont) { cont = this.g.id('continue'); this.gateway(cont); exits.push(cont); }
+        this.flow(gw, cont, cond, `${o}, continue`);
+      } else exits.push(...after);
+    }
+    if (lenient) this.flow(gw, prim, undefined, primary ?? 'primary', `${gw}_other`);
+    else {
+      this.flow(gw, prim, `\${${v(ov)} == '${primary}'}`, primary);
+      this.fail(gw, undefined, 'not handled', `${gw}_other`);
+    }
+    return { exits, primaryExit: prim };
+  }
+
+  // -------------------------------------------------------------------- switch
+
+  switchStep(st: any): Frag {
+    const sw = st.switch;
+    const by = sw.by?.outcomeOf ? outcomeVar(sw.by.outcomeOf) : `decision_${safe(sw.by?.decision)}`;
+    const gw = this.g.id('switch');
+    const join = this.g.id('join');
+    this.gateway(gw, `switch ${by}`, `${gw}_default`);
+    let joined = false;
+    for (const [k, steps] of Object.entries<any>(sw.cases ?? {})) {
+      const f = this.steps(steps);
+      const cond = `\${${v(by)} == '${k}'}`;
+      if (f) {
+        this.flow(gw, f.entry, cond, k);
+        f.exits.forEach((e) => { this.flow(e, join); joined = true; });
+      } else { this.flow(gw, join, cond, k); joined = true; }
+    }
+    const d = this.steps(sw.default ?? []);
+    if (d) {
+      this.flow(gw, d.entry, undefined, 'default', `${gw}_default`);
+      d.exits.forEach((e) => { this.flow(e, join); joined = true; });
+    } else { this.flow(gw, join, undefined, 'default', `${gw}_default`); joined = true; }
+    if (joined) this.gateway(join);
+    return { entry: gw, exits: joined ? [join] : [] };
+  }
+
+  // ------------------------------------------------------------------ parallel
+
+  parallel(st: any): Frag {
+    const fork = this.g.id('fork');
+    const join = this.g.id('joinAll');
+    this.els.push(`<parallelGateway id="${fork}"/>`, `<parallelGateway id="${join}" name="join:${esc(st.parallel.join ?? 'all')}"/>`);
+    for (const branch of st.parallel.branches ?? []) {
+      const f = this.steps(branch);
+      if (!f) { this.flow(fork, join); continue; }
+      this.flow(fork, f.entry);
+      f.exits.forEach((e) => this.flow(e, join));
+    }
+    const p = this.point({ kind: 'text', text: `join:${st.parallel.join ?? 'all'}`, record: this.o.record });
+    this.flow(join, p);
+    return { entry: fork, exits: [p] };
+  }
+
+  // ------------------------------------------------------------------- forEach
+
+  forEach(st: any): Frag {
+    const fe = st.forEach;
+    const id = st.id ? this.g.stepId(st.id) : this.g.id('forEach');
+    const count = `th_count_${safe(String(fe.in).replace('[]', ''))}`;
+    const inner = this.child({ item: true });
+    const f = inner.steps(fe.do ?? []);
+    const s = `${id}_start`;
+    const e = `${id}_end`;
+    const body: string[] = [];
+    // Outcomes are local to each item.
+    const ids = new Set<string>();
+    const walk = (xs: any[]) => { for (const x of xs ?? []) { if (x.call) ids.add(x.id ?? shortName(x.call)); if (x.block) ids.add(x.id); for (const a of Object.values(x.handle ?? {})) if (Array.isArray(a)) walk(a); } };
+    walk(fe.do);
+    for (const i of [...ids].sort()) body.push(`<dataObject id="${id}_${safe(i)}" name="${outcomeVar(i)}" itemSubjectRef="xsd:string"/>`);
+    body.push(`<startEvent id="${s}"/>`, `<endEvent id="${e}"/>`);
+    if (f) {
+      inner.flow(s, f.entry);
+      f.exits.forEach((x) => inner.flow(x, e));
+    } else inner.flow(s, e);
+    // onItemFailure continue: an end inside an item ends that item only.
+    if ((fe.onItemFailure ?? 'stop') === 'continue') {
+      for (const o of [...inner.endsHere].sort()) {
+        const es = `${id}_itemEnd_${safe(o)}`;
+        body.push(`<subProcess id="${es}" triggeredByEvent="true"><startEvent id="${es}_start"><errorEventDefinition errorRef="err_end_${safe(o)}"/></startEvent><endEvent id="${es}_end"/><sequenceFlow id="${es}_flow" sourceRef="${es}_start" targetRef="${es}_end"/></subProcess>`);
+      }
+    }
+    const seq = (fe.concurrency ?? 1) <= 1;
+    this.els.push(`<subProcess id="${id}" name="forEach ${esc(fe.in)}">${ext(ann('forEach', { in: fe.in, count, onItemFailure: fe.onItemFailure ?? 'stop', concurrency: fe.concurrency ?? 1 }))}`,
+      `  <multiInstanceLoopCharacteristics isSequential="${seq}"><loopCardinality>\${${v(count)}}</loopCardinality></multiInstanceLoopCharacteristics>`,
+      ...body.map((x) => '  ' + x), ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    return { entry: id, exits: [id] };
+  }
+
+  // ---------------------------------------------------------------------- loop
+
+  loop(st: any): Frag {
+    const lp = st.loop;
+    const id = st.id ? this.g.stepId(st.id) : this.g.id('loop');
+    const counter = `th_loop_${safe(id)}`;
+    const inner = this.child();
+    const s = `${id}_start`;
+    const again = `${id}_again`;
+    const count = `${id}_count`;
+    const check = `${id}_until`;
+    const e = `${id}_end`;
+    inner.els.push(`<dataObject id="${id}_counter" name="${counter}" itemSubjectRef="xsd:int">${ext('<flowable:value>0</flowable:value>')}</dataObject>`);
+    inner.els.push(`<startEvent id="${s}"/>`, `<exclusiveGateway id="${again}"/>`, `<endEvent id="${e}"/>`);
+    inner.els.push(`<intermediateThrowEvent id="${count}" name="count">${ext(listener(`\${execution.setVariable('${counter}', ${v(counter)} + 1)}`))}</intermediateThrowEvent>`);
+    inner.gateway(check, 'until', `${check}_again`);
+    inner.flow(s, again);
+    const f = inner.steps(lp.do ?? []);
+    if (f) {
+      inner.flow(again, f.entry);
+      f.exits.forEach((x) => inner.flow(x, count));
+    } else inner.flow(again, count);
+    inner.flow(count, check);
+    const until = lp.until?.outcomeOf ? (lp.until.in ?? []).map((o: string) => `${v(outcomeVar(lp.until.outcomeOf))} == '${o}'`).join(' || ') : '';
+    inner.flow(check, e, `\${${until ? `${until} || ` : ''}${v(counter)} >= ${lp.max ?? 1}}`, 'done');
+    if (lp.every) {
+      const t = `${id}_every`;
+      inner.els.push(`<intermediateCatchEvent id="${t}" name="every ${esc(lp.every)}"><timerEventDefinition><timeDuration>${esc(lp.every)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      inner.flow(check, t, undefined, 'again', `${check}_again`);
+      inner.flow(t, again);
+    } else inner.flow(check, again, undefined, 'again', `${check}_again`);
+    for (const r of inner.returns) this.returns.add(r);
+    this.els.push(`<subProcess id="${id}" name="loop">`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    return { entry: id, exits: [id] };
+  }
+
+  // --------------------------------------------------------------------- await
+
+  await(st: any): Frag {
+    const aw = st.await;
+    const stepId = st.id ?? 'await';
+    const gw = this.g.stepId(stepId);
+    const msg = `${gw}_message`;
+    const tmr = `${gw}_timeout`;
+    this.els.push(`<eventBasedGateway id="${gw}" name="await ${esc(stepId)}"/>`);
+    this.els.push(`<intermediateCatchEvent id="${msg}" name="${esc(stepId)}:received">${ext(ann('await', { step: stepId, message: aw.message, correlateBy: aw.correlateBy }))}<messageEventDefinition messageRef="${this.g.message(aw.message)}"/></intermediateCatchEvent>`);
+    this.flow(gw, msg);
+    const got = this.point({ kind: 'awaitReceived', step: stepId, message: aw.message, record: this.o.record, item: this.o.item ? 'true' : undefined });
+    this.flow(msg, got);
+    const exits = [got];
+    if (aw.timeout) {
+      const cal = aw.calendar === 'business' ? ' flowable:businessCalendarName="business"' : '';
+      this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout"><timerEventDefinition${cal}><timeDuration>${esc(aw.timeout)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      this.flow(gw, tmr);
+      const out = this.point({ kind: 'awaitTimeout', step: stepId, message: aw.message, record: this.o.record, item: this.o.item ? 'true' : undefined });
+      this.flow(tmr, out);
+      const after = aw.onTimeout ? this.action(aw.onTimeout, out, undefined, 'timeout') : null;
+      if (after === null) exits.push(out);
+      else exits.push(...after);
+    }
+    return { entry: gw, exits };
+  }
+
+  // ---------------------------------------------------------------------- slot
+
+  slot(st: any): Frag {
+    const stepId = st.id ?? st.slot;
+    const id = this.g.stepId(stepId);
+    const slot = (this.g.wf.slots ?? []).find((s: any) => s.name === st.slot);
+    const ov = outcomeVar(stepId);
+    this.els.push(`<callActivity id="${id}" name="${esc(stepId)}" calledElement="\${${v(`th_leg_${safe(st.slot)}`)}}" flowable:inheritBusinessKey="true">${ext(
+      `<flowable:out source="th_outcome" target="${ov}"/>`,
+      ann('slot', { slot: st.slot, step: stepId, writes: (slot?.contract?.writes ?? []).join(',') }),
+    )}</callActivity>`);
+    const rec = this.point({ kind: 'slot', step: stepId, slot: st.slot, var: ov, record: this.o.record, writes: (slot?.contract?.writes ?? []).join(',') });
+    this.flow(id, rec);
+    const primary = slot?.contract?.primaryOutcome ?? slot?.contract?.outcomes?.[0];
+    const f = this.outcomes(rec, st, ov, primary, slot?.contract?.outcomes ?? []);
+    return { entry: id, exits: f.exits };
+  }
+
+  // ----------------------------------------------------------------------- try
+
+  tryStep(st: any): Frag {
+    const id = st.id ? this.g.stepId(st.id) : this.g.id('try');
+    const scope: TryScope = { markers: [], parent: this.o.tryScope };
+    const inner = this.child({ tryScope: scope });
+    const f = inner.steps(st.try);
+    const s = `${id}_start`;
+    const e = `${id}_end`;
+    inner.els.unshift(`<startEvent id="${s}"/>`, `<endEvent id="${e}"/>`);
+    if (f) {
+      inner.flow(s, f.entry);
+      f.exits.forEach((x) => inner.flow(x, e));
+    } else inner.flow(s, e);
+    // A failure inside the try: compensate its writes if asked, then run the catch or fail on.
+    const es = `${id}_failed`;
+    const h = inner.child({ tryScope: scope });
+    h.els.push(`<startEvent id="${es}_start"><errorEventDefinition errorRef="${this.g.error('th:failed', 'err_th_failed')}"/></startEvent>`, `<endEvent id="${es}_end"/>`);
+    let at = `${es}_start`;
+    if (st.compensate === 'all') {
+      const c = h.compensation(scope);
+      if (c) { h.flow(at, c.entry); at = c.exit; }
+    }
+    const catchSteps = Array.isArray(st.catch) ? st.catch.flatMap((c: any) => (Array.isArray(c?.do) ? c.do : [c])) : [];
+    const cf = catchSteps.length ? h.steps(catchSteps) : null;
+    if (cf) {
+      h.flow(at, cf.entry);
+      cf.exits.forEach((x) => h.flow(x, `${es}_end`));
+    } else h.fail(at);
+    inner.els.push(`<subProcess id="${es}" triggeredByEvent="true">`, ...h.body().map((x) => '  ' + x), '</subProcess>');
+    for (const r of inner.returns) this.returns.add(r);
+    this.els.push(`<subProcess id="${id}" name="try">`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    return { entry: id, exits: [id] };
+  }
+
+  // ---------------------------------------------------------------------- hook
+
+  hook(st: any): Frag {
+    const name = st.hook;
+    const owner = this.g.ctx.resolve(this.o.hookOwner) ?? this.g.wf;
+    const point = (owner.hookPoints ?? []).find((h: any) => h.name === name) ?? (this.g.wf.hookPoints ?? []).find((h: any) => h.name === name);
+    if (!point) throw new Error(`Hook point ${name} is not declared (L06)`);
+    const key = `${this.o.hookOwner}#${name}`;
+    const hv = `th_hook_${safe(key)}`;
+    const raw = `th_hookOutcome_${safe(name)}`;
+    const eff = `th_hookEffect_${safe(name)}`;
+    const pol = point.policy ?? {};
+    const meta = { hookPoint: key, name, type: point.type, writes: (point.contract?.writes ?? []).join(','), onFailure: pol.onFailure ?? 'fail-open', timeout: pol.timeout };
+    const gw = this.g.id('hookBound');
+    const after = this.g.id('hookDone');
+    this.gateway(gw, `hook ${name} bound`, `${gw}_bound`);
+    this.gateway(after);
+    this.flow(gw, after, `\${${v(hv)} == null}`, 'unbound');
+    const callHook = (into: B, from: string, fromId?: string): string => {
+      const id = this.g.stepId(`hook-${name}`);
+      into.els.push(`<callActivity id="${id}" name="hook ${esc(name)}" calledElement="\${${v(hv)}}" flowable:inheritBusinessKey="true">${ext(`<flowable:out source="th_outcome" target="${raw}"/>`, ann('hook', meta))}</callActivity>`);
+      into.flow(from, id, undefined, undefined, fromId);
+      const res = into.point({ kind: 'hookResult', ...meta });
+      into.flow(id, res);
+      if (pol.timeout) {
+        const b = `${id}_timeout`;
+        into.els.push(`<boundaryEvent id="${b}" attachedToRef="${id}" cancelActivity="true"><timerEventDefinition><timeDuration>${esc(pol.timeout)}</timeDuration></timerEventDefinition></boundaryEvent>`);
+        const s = into.setter(raw, 'failed');
+        into.flow(b, s);
+        into.flow(s, res);
+      }
+      return res;
+    };
+    if (point.type === 'notify') {
+      // A notify hook must not delay or change the flow (R-06-09): it runs in an event sub-process.
+      const sig = `sig_th_notify_${safe(name)}`;
+      const thr = this.g.id('notify');
+      this.els.push(`<intermediateThrowEvent id="${thr}" name="notify ${esc(name)}">${ext(ann('point', { kind: 'hookStart', ...meta }))}<signalEventDefinition signalRef="${sig}"/></intermediateThrowEvent>`);
+      this.flow(gw, thr, undefined, 'bound', `${gw}_bound`);
+      this.flow(thr, after);
+      const es = new B(this.g, { record: 'business', item: false, hookOwner: this.o.hookOwner });
+      const esId = `th_onNotify_${safe(name)}`;
+      es.els.push(`<startEvent id="${esId}_start" isInterrupting="false"><signalEventDefinition signalRef="${sig}"/></startEvent>`, `<endEvent id="${esId}_end"/>`);
+      const res = callHook(es, `${esId}_start`);
+      es.flow(res, `${esId}_end`);
+      this.g.processLevel.push(`<subProcess id="${esId}" triggeredByEvent="true">`, ...es.body().map((x) => '  ' + x), '</subProcess>');
+      this.g.signals.add(sig);
+      return { entry: gw, exits: [after] };
+    }
+    const res = callHook(this, gw, `${gw}_bound`);
+    const og = this.g.id('hookEffect');
+    this.gateway(og, eff, `${og}_continue`);
+    this.flow(res, og);
+    this.flow(og, after, undefined, 'continue', `${og}_continue`);
+    // hold runs the hold block the hook point names; reject compensates and ends rejected.
+    const hold = this.holdFor(point);
+    this.flow(og, hold.entry, `\${${v(eff)} == 'hold'}`, 'hold');
+    hold.exits.forEach((x) => this.flow(x, after));
+    if (point.type !== 'transform') this.endWith('rejected', og, `\${${v(eff)} == 'reject'}`, 'reject', true);
+    return { entry: gw, exits: [after] };
+  }
+
+  holdFor(point: any): Frag {
+    const block = point.policy?.onHold ?? 'p.hold.approval.v1';
+    const act = this.g.resolveAct(block);
+    const primary = (act?.outcomes ?? []).find((o: any) => o.primary)?.name;
+    const handle: Record<string, any> = {};
+    for (const o of act?.outcomes ?? []) if (o.name !== primary) handle[o.name] = { end: o.name === 'expired' ? 'review' : 'rejected', compensate: 'all' };
+    const f = this.call({ id: 'hold', call: block, handle });
+    return f;
+  }
+
+  // --------------------------------------------------------------------- block
+
+  block(st: any): Frag {
+    // A composite step is an embedded sub-process; a return is an error end caught on its boundary.
+    const id = this.g.id('block').replace(/^th_block_/, 'block_');
+    const inner = this.child({ record: 'detail' });
+    const f = inner.steps(st.block.do ?? []);
+    const act = this.g.resolveAct(st.block.of);
+    const primary = act?.outcomes?.find((o: any) => o.primary)?.name ?? 'done';
+    const ov = outcomeVar(st.id);
+    const s = `${id}_start`;
+    const e = `${id}_end`;
+    inner.els.unshift(`<startEvent id="${s}"/>`, `<endEvent id="${e}"/>`);
+    if (f) {
+      inner.flow(s, f.entry);
+      f.exits.forEach((x) => inner.flow(x, e));
+    } else inner.flow(s, e);
+    this.els.push(`<subProcess id="${id}" name="${esc(st.id)}"><documentation>Composite ${esc(st.block.of)}, subflow ${esc(st.block.by)}</documentation>${ext(ann('block', { step: st.id, of: st.block.of, by: st.block.by }))}`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
+    const join = this.g.id('returned');
+    this.gateway(join);
+    const ok = this.setter(ov, primary);
+    this.flow(id, ok);
+    this.flow(ok, join);
+    for (const o of [...inner.returns].sort()) {
+      const b = `${id}_ret_${safe(o)}`;
+      this.els.push(`<boundaryEvent id="${b}" attachedToRef="${id}"><errorEventDefinition errorRef="${this.g.error(`return:${o}`, `ret_${safe(o)}`)}"/></boundaryEvent>`);
+      const sv = this.setter(ov, o);
+      this.flow(b, sv);
+      this.flow(sv, join);
+    }
+    // The block's own trace entry is written where its step id is the element id.
+    const rec = this.g.stepId(st.id);
+    this.els.push(`<intermediateThrowEvent id="${rec}" name="${esc(st.id)}">${ext(ann('point', { kind: 'call', step: st.id, var: ov, record: this.o.record, item: this.o.item ? 'true' : undefined }))}</intermediateThrowEvent>`);
+    this.flow(join, rec);
+    const fr = this.outcomes(rec, st, ov, primary, (act?.outcomes ?? []).map((o: any) => o.name));
+    return { entry: id, exits: fr.exits };
+  }
+}
+
+/** The signal event sub-processes inside main: pause, resume, cancel, re-screen (R-05-12). */
+function signalHandlers(g: Gen, main: B): string[] {
+  const out: string[] = [];
+  const sub = (id: string, interrupting: boolean, message: string, build: (b: B, start: string, end: string) => void) => {
+    const b = main.child();
+    b.els.push(`<startEvent id="${id}_start" isInterrupting="${interrupting}"><messageEventDefinition messageRef="${g.message(message)}"/></startEvent>`, `<endEvent id="${id}_end"/>`);
+    build(b, `${id}_start`, `${id}_end`);
+    out.push(`<subProcess id="${id}" triggeredByEvent="true">`, ...b.body().map((x) => '  ' + x), '</subProcess>');
+  };
+  sub('th_onPause', false, SIGNAL_MESSAGES.pause, (b, s, e) => {
+    const t = 'th_pause_set';
+    b.els.push(`<intermediateThrowEvent id="${t}">${ext(listener(`\${execution.setVariable('paused', true)}`))}</intermediateThrowEvent>`);
+    b.flow(s, t);
+    b.flow(t, e);
+  });
+  sub('th_onResume', false, SIGNAL_MESSAGES.resume, (b, s, e) => {
+    const t = 'th_resume_set';
+    const r = 'th_resume_throw';
+    b.els.push(`<intermediateThrowEvent id="${t}">${ext(listener(`\${execution.setVariable('paused', false)}`))}</intermediateThrowEvent>`);
+    b.els.push(`<intermediateThrowEvent id="${r}"><signalEventDefinition signalRef="sig_th_resume"/></intermediateThrowEvent>`);
+    b.flow(s, t);
+    b.flow(t, r);
+    b.flow(r, e);
+  });
+  sub('th_onCancel', true, SIGNAL_MESSAGES.cancel, (b, s, e) => {
+    // Cancel compensates the completed steps in reverse order, then ends cancelled; finally runs after.
+    // It ends main normally (Flowable 7.1 loses main's boundary executions when an interrupting
+    // event sub-process starts, so an error thrown from here finds no catch); the gateway after
+    // main reads the mark.
+    const c = b.compensation(undefined);
+    let at = s;
+    if (c) { b.flow(s, c.entry); at = c.exit; }
+    const mark = b.setter('th_cancelled', 'true');
+    b.flow(at, mark);
+    b.flow(mark, e);
+  });
+  if (g.screenSteps.length) {
+    sub('th_onRescreen', false, SIGNAL_MESSAGES['re-screen'], (b, s, e) => {
+      // Re-screen runs the screen steps that have run, again, on a waiting payment.
+      let at = s;
+      for (const { st } of g.screenSteps) {
+        const id = st.id ?? shortName(st.call);
+        const gw = g.id('rescreen');
+        const next = g.id('rescreened');
+        b.gateway(gw, `screened ${id}`, `${gw}_skip`);
+        b.gateway(next);
+        b.flow(at, gw);
+        const f = b.call(st, '__rescreen');
+        b.flow(gw, f.entry, `\${${v(outcomeVar(id))} != null}`, 'screened');
+        f.exits.forEach((x) => b.flow(x, next));
+        b.flow(gw, next, undefined, 'not yet', `${gw}_skip`);
+        at = next;
+      }
+      b.flow(at, e);
+    });
+  }
+  return out;
+}
+
+/** Boundaries on a top-level container: each end outcome to its endpoint, a failure to failed. */
+function catchEnds(g: Gen, b: B, container: string, proc: B, lines: string[], target: (o: string) => string) {
+  for (const o of [...b.endsHere].sort()) {
+    const id = `${container}_end_${safe(o)}`;
+    lines.push(`<boundaryEvent id="${id}" attachedToRef="${container}"><errorEventDefinition errorRef="err_end_${safe(o)}"/></boundaryEvent>`);
+    proc.flow(id, target(o), undefined, undefined, `th_f_${id}`);
+  }
+  if (b.failsHere) {
+    const id = `${container}_failed`;
+    lines.push(`<boundaryEvent id="${id}" attachedToRef="${container}"><errorEventDefinition errorRef="err_th_failed"/></boundaryEvent>`);
+    proc.flow(id, target('failed'), undefined, undefined, `th_f_${id}`);
+  }
+}
+
+function container(id: string, name: string, b: B, f: Frag | null, extra: string[] = []): string[] {
+  const body: string[] = [`<startEvent id="${id}_start"/>`, `<endEvent id="${id}_end"/>`];
+  if (f) {
+    b.flow(`${id}_start`, f.entry);
+    f.exits.forEach((x) => b.flow(x, `${id}_end`));
+  } else b.flow(`${id}_start`, `${id}_end`);
+  return [`<subProcess id="${id}" name="${esc(name)}">`, ...[...body, ...b.els, ...extra, ...b.flows, ...b.assocs].map((x) => '  ' + x), '</subProcess>'];
 }
 
 export function generateBpmn(wf: any, ctx: Ctx): string {
   const pid = safe(`${wf.name}@${wf.release}`);
-  const b = new Builder(wf, ctx, false);
-  const main = b.steps(wf.do ?? []);
-  const primaryExit = wf.exit?.outcomes?.[0] ?? 'done';
+  const g = new Gen(wf, ctx);
+  const durable = wf.kind !== 'hook';
+  const exitOutcomes: string[] = wf.exit?.outcomes ?? [];
+  const primaryExit = exitOutcomes[0] ?? 'done';
+  const base: Opts = { record: wf.wfKind === 'subflow' ? 'detail' : 'business', item: false, hookOwner: wf.name };
+  const proc = new B(g, base);
   const lines: string[] = [];
-  const messages = new Set<string>();
-  const collect = (steps: any[]) => {
-    for (const st of steps ?? []) {
-      if (st.await) messages.add(st.await.message);
-      for (const a of Object.values(st.handle ?? {})) if (Array.isArray(a)) collect(a);
-      for (const k of ['try', 'catch']) if (Array.isArray(st[k])) collect(st[k]);
-      if (st.loop) collect(st.loop.do);
-      if (st.forEach) collect(st.forEach.do);
-      if (st.parallel) for (const x of st.parallel.branches ?? []) collect(x);
-      if (st.switch) {
-        for (const c of Object.values<any>(st.switch.cases ?? {})) collect(c);
-        collect(st.switch.default);
-      }
-    }
-  };
-  collect(wf.do);
-  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
-  lines.push(`<!-- Generated by the TransactHub Designer Studio from ${wf.name}@${wf.release} (DSL ${wf.dsl ?? '1.0.0'}). Do not edit; regenerate. -->`);
-  lines.push('<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="urn:transacthub:workflows">');
-  for (const m of [...messages].sort()) lines.push(`  <message id="msg_${safe(m)}" name="${esc(m)}"/>`);
-  lines.push(`  <process id="${pid}" name="${esc(wf.title ?? wf.name)}" isExecutable="true">`);
-  lines.push('    <startEvent id="start"/>');
-  if (!b.ends.has(primaryExit)) b.endFor(primaryExit);
-  const finallyId = 'finally';
-  const hasFinally = (wf.finally ?? []).length > 0;
+  lines.push(`<startEvent id="start">${ext(listener(`\${execution.setVariable('paused', false)}`))}</startEvent>`);
+  // main holds the flow; an end inside it is an error caught on its boundary.
+  const main = new B(g, base);
+  const f = main.steps(wf.do ?? []);
+  const handlers = durable ? signalHandlers(g, main) : [];
+  lines.push(...container('main', 'main', main, f, handlers));
+  proc.flow('start', 'main', undefined, undefined, 'th_f_start');
+  const mainDone = proc.gateway('th_main_done', 'cancelled?', 'th_f_main_done');
+  proc.flow('main', mainDone, undefined, undefined, 'th_f_main');
+  proc.flow(mainDone, g.endpoint(primaryExit), undefined, primaryExit, 'th_f_main_done');
+  if (durable) proc.flow(mainDone, g.endpoint('cancelled'), `\${${v('th_cancelled')} == 'true'}`, 'cancelled', 'th_f_main_cancelled');
+  catchEnds(g, main, 'main', proc, lines, (o) => g.endpoint(o));
   if (wf.deadline?.after) {
-    // The main flow is a sub-process with an interrupting timer: the deadline is a timer, never an engine execution timeout (R-05-20).
-    const inner = new Builder(wf, ctx, true);
-    const f = inner.steps(wf.do ?? []);
-    if (!inner.ends.has(primaryExit)) inner.endFor(primaryExit);
-    lines.push(`    <subProcess id="main" name="main">`, ...inner.body(f, 'main'), '    </subProcess>');
-    lines.push(`    <boundaryEvent id="deadline" attachedToRef="main" cancelActivity="true"><timerEventDefinition><timeDuration>${wf.deadline.after}</timeDuration></timerEventDefinition></boundaryEvent>`);
-    for (const [o] of inner.ends) lines.push(`    <boundaryEvent id="caught_${safe(o)}" attachedToRef="main"><errorEventDefinition errorRef="itemEnd_${safe(o)}"/></boundaryEvent>`);
-    lines.push(`    <sequenceFlow id="f_start" sourceRef="start" targetRef="main"/>`);
-    const d = b.steps(wf.deadline.do ?? []);
-    if (d) lines.push(`    <sequenceFlow id="f_deadline" sourceRef="deadline" targetRef="${d.entry}"/>`);
-    for (const [o] of inner.ends) lines.push(`    <sequenceFlow id="f_caught_${safe(o)}" sourceRef="caught_${safe(o)}" targetRef="${b.endFor(o)}"/>`);
-  } else if (main) {
-    lines.push(`    <sequenceFlow id="f_start" sourceRef="start" targetRef="${main.entry}"/>`);
-    main.exits.forEach((e, i) => b.flow(e, b.endFor(primaryExit), undefined, `fall-through ${i}`));
+    // The deadline is a timer on the main sub-process, never an engine execution timeout (R-05-20).
+    lines.push(`<boundaryEvent id="deadline" attachedToRef="main" cancelActivity="true"><timerEventDefinition><timeDuration>${esc(wf.deadline.after)}</timeDuration></timerEventDefinition></boundaryEvent>`);
+    const p = proc.point({ kind: 'text', text: 'deadline:fired', record: 'business' });
+    proc.flow('deadline', p, undefined, undefined, 'th_f_deadline');
+    const db = new B(g, base);
+    const df = db.steps(wf.deadline.do ?? []);
+    lines.push(...container('th_deadline', 'deadline', db, df));
+    proc.flow(p, 'th_deadline');
+    proc.flow('th_deadline', g.endpoint(exitOutcomes[0] ?? 'late'), undefined, undefined, 'th_f_deadline_done');
+    catchEnds(g, db, 'th_deadline', proc, lines, (o) => g.endpoint(o));
   }
-  // Every end goes through finally (R-05-14), then ends with its outcome.
-  for (const [o, id] of [...b.ends].sort(([a], [c]) => a.localeCompare(c))) {
-    lines.push(`    <intermediateThrowEvent id="${id}" name="end:${esc(o)}"/>`);
-    if (hasFinally) {
-      lines.push(`    <callActivity id="${id}_finally" name="finally" calledElement="${pid}__${finallyId}" flowable:inheritBusinessKey="true"/>`);
-      lines.push(`    <sequenceFlow id="${id}_to_finally" sourceRef="${id}" targetRef="${id}_finally"/>`);
-      lines.push(`    <sequenceFlow id="${id}_to_exit" sourceRef="${id}_finally" targetRef="${id}_exit"/>`);
-    } else lines.push(`    <sequenceFlow id="${id}_to_exit" sourceRef="${id}" targetRef="${id}_exit"/>`);
-    lines.push(`    <endEvent id="${id}_exit" name="${esc(o)}"><extensionElements><flowable:executionListener event="start" expression="\${execution.setVariable('outcome', '${esc(o)}')}"/></extensionElements></endEvent>`);
+  // Every end goes through finally (R-05-14), then ends with its outcome. An end or a failure
+  // inside finally ends finally only.
+  const fin = new B(g, { record: 'finally', item: false, hookOwner: wf.name });
+  const ff = fin.steps(wf.finally ?? []);
+  const endpointLines: string[] = [];
+  for (const [o, id] of [...g.endpoints].sort(([a], [c]) => a.localeCompare(c))) {
+    endpointLines.push(`<intermediateThrowEvent id="${id}" name="end:${esc(o)}">${ext(listener(setVar('th_outcome', o)))}</intermediateThrowEvent>`);
+    proc.flow(id, 'th__finally', undefined, undefined, `th_f_${id}`);
   }
-  lines.push(...b.els, ...b.flows);
-  lines.push('  </process>');
-  if (hasFinally) {
-    const fb = new Builder(wf, ctx, false);
-    const f = fb.steps(wf.finally);
-    lines.push(`  <process id="${pid}__${finallyId}" name="finally" isExecutable="true">`, '    <startEvent id="fstart"/>', '    <endEvent id="fend"/>');
-    if (f) {
-      lines.push(`    <sequenceFlow id="ff_start" sourceRef="fstart" targetRef="${f.entry}"/>`);
-      f.exits.forEach((e) => fb.flow(e, 'fend'));
-    }
-    lines.push(...fb.els, ...fb.flows, '  </process>');
-  }
-  lines.push('</definitions>', '');
-  return lines.join('\n');
+  endpointLines.push('<exclusiveGateway id="th__finally" name="finally"/>');
+  if (ff) {
+    endpointLines.push(...container('th_finally', 'finally', fin, ff));
+    endpointLines.push('<boundaryEvent id="th_finally_stopped" attachedToRef="th_finally"><errorEventDefinition/></boundaryEvent>');
+    proc.flow('th__finally', 'th_finally', undefined, undefined, 'th_f_finally');
+    proc.flow('th_finally', 'th_end', undefined, undefined, 'th_f_finally_done');
+    proc.flow('th_finally_stopped', 'th_end', undefined, undefined, 'th_f_finally_stopped');
+  } else proc.flow('th__finally', 'th_end', undefined, undefined, 'th_f_finally');
+  endpointLines.push(`<intermediateThrowEvent id="th_end" name="end">${ext(ann('point', { kind: 'end' }))}</intermediateThrowEvent>`, '<endEvent id="end"/>');
+  proc.flow('th_end', 'end', undefined, undefined, 'th_f_end');
+
+  const out: string[] = [];
+  out.push('<?xml version="1.0" encoding="UTF-8"?>');
+  out.push(`<!-- Generated by the TransactHub Designer Studio from ${esc(wf.name)}@${esc(wf.release)} (DSL ${esc(wf.dsl ?? '1.0.0')}). Do not edit; regenerate. -->`);
+  out.push(`<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:flowable="http://flowable.org/bpmn" xmlns:th="${TH_NS}" targetNamespace="urn:transacthub:workflows">`);
+  if (durable) for (const m of Object.values(SIGNAL_MESSAGES)) g.message(m);
+  for (const [id, name] of [...g.messages].sort(([a], [b]) => a.localeCompare(b))) out.push(`  <message id="${id}" name="${esc(name)}"/>`);
+  out.push(`  <signal id="sig_th_resume" name="th.resume" flowable:scope="processInstance"/>`);
+  for (const s of [...g.signals].sort()) out.push(`  <signal id="${s}" name="${s}" flowable:scope="processInstance"/>`);
+  for (const [id, code] of [...g.errors].sort(([a], [b]) => a.localeCompare(b))) out.push(`  <error id="${id}" errorCode="${esc(code)}"/>`);
+  out.push(`  <process id="${pid}" name="${esc(wf.title ?? wf.name)}" isExecutable="true">`);
+  out.push(`    ${ext(ann('workflow', { name: wf.name, release: wf.release, kind: wf.kind, wfKind: wf.wfKind, exit: exitOutcomes.join(',') }))}`);
+  for (const x of [...lines, ...proc.els, ...endpointLines, ...g.processLevel, ...proc.flows]) out.push('    ' + x);
+  out.push('  </process>');
+  out.push('</definitions>', '');
+  return out.join('\n');
 }
 
 // ----------------------------------------------------------- portability (C22-S5)
 
-export interface PortabilityItem { flow: string; construct: string; target: string; note: string; severity: 'info' | 'warning' }
+export interface PortabilityItem { flow: string; construct: string; target: string; note: string; severity: 'info' | 'warning' | 'error'; step?: string; alternative?: string }
 
+/**
+ * What a target does with each construct of a flow, by step (L24). For Flowable an `error` is a
+ * construct outside the Flowable profile: the generator refuses it or the engine does not keep
+ * its meaning. The report names the step and the portable alternative.
+ */
 export function portabilityReport(flows: any[], target: string): PortabilityItem[] {
   const out: PortabilityItem[] = [];
   const seen = new Set<string>();
   for (const f of flows) {
-    const add = (construct: string, note: string, severity: 'info' | 'warning' = 'info') => {
-      const k = `${f.name}|${construct}|${note}`;
-      if (!seen.has(k)) { seen.add(k); out.push({ flow: f.name, construct, target, note, severity }); }
+    const add = (construct: string, note: string, severity: PortabilityItem['severity'] = 'info', step?: string, alternative?: string) => {
+      const k = `${f.name}|${construct}|${step ?? ''}|${note}`;
+      if (!seen.has(k)) { seen.add(k); out.push({ flow: f.name, construct, target, note, severity, ...(step ? { step } : {}), ...(alternative ? { alternative } : {}) }); }
     };
-    const steps: any[] = [];
-    const walk = (xs: any[]) => {
+    const steps: { st: any; inItem: boolean; inParallel: boolean }[] = [];
+    const walk = (xs: any[], inItem = false, inParallel = false) => {
       for (const st of xs ?? []) {
-        steps.push(st);
-        for (const a of Object.values(st.handle ?? {})) if (Array.isArray(a)) walk(a);
-        for (const k of ['try', 'catch']) if (Array.isArray(st[k])) walk(st[k]);
-        if (st.loop) walk(st.loop.do);
-        if (st.forEach) walk(st.forEach.do);
-        if (st.parallel) for (const x of st.parallel.branches ?? []) walk(x);
-        if (st.switch) { for (const c of Object.values<any>(st.switch.cases ?? {})) walk(c); walk(st.switch.default); }
+        if (!st || typeof st !== 'object') continue;
+        steps.push({ st, inItem, inParallel });
+        for (const a of Object.values(st.handle ?? {})) if (Array.isArray(a)) walk(a, inItem, inParallel);
+        if (Array.isArray(st.try)) walk(st.try, inItem, inParallel);
+        if (Array.isArray(st.catch)) walk(st.catch.flatMap((c: any) => (Array.isArray(c?.do) ? c.do : [c])), inItem, inParallel);
+        if (st.loop) walk(st.loop.do, inItem, inParallel);
+        if (st.block) walk(st.block.do, inItem, inParallel);
+        if (st.forEach) walk(st.forEach.do, true, inParallel);
+        if (st.parallel) for (const x of st.parallel.branches ?? []) walk(x, inItem, true);
+        if (st.switch) { for (const c of Object.values<any>(st.switch.cases ?? {})) walk(c, inItem, inParallel); walk(st.switch.default, inItem, inParallel); }
+        if (st.await && Array.isArray(st.await.onTimeout)) walk(st.await.onTimeout, inItem, inParallel);
       }
     };
     walk(f.do);
     walk(f.finally);
     if (f.synchronous) add('synchronous', 'Marked synchronous (D9 open): the binding decides whether steps run as durable tasks.', 'warning');
-    for (const st of steps) {
+    const known = ['call', 'end', 'return', 'switch', 'parallel', 'forEach', 'loop', 'await', 'wait', 'slot', 'use', 'try', 'hook', 'block'];
+    for (const { st, inItem, inParallel } of steps) {
+      const sid = st.id ?? (st.call ? shortName(st.call) : st.hook ? `hook ${st.hook}` : undefined);
+      if (!known.some((k) => k in st) && target === 'flowable') add('unknown', `The generator cannot express a step with ${Object.keys(st).join(', ')}.`, 'error', sid, 'Use a construct of the portable core (Part 5, 5.3).');
       if (st.await) {
-        if (target === 'flowable') add('await', 'A message that arrives before the catch event is held by the binding until the catch is waiting (R-09-16).', 'warning');
+        if (target === 'flowable') add('await', 'A message that arrives before the catch event is held by the binding until the catch is waiting (R-09-16).', 'warning', sid);
         if (target === 'temporal') add('await', 'A signal with a timer; early signals are kept in workflow state.');
         if (target === 'dtfx') add('await', 'An external event raced with a durable timer; early events are kept in orchestration state.');
-        if (st.await.calendar === 'business') add('await', 'Business calendar: the binding converts the timeout to business days.', 'warning');
+        if (st.await.calendar === 'business') add('await', 'Business calendar: the binding converts the timeout to business days.', 'warning', target === 'flowable' ? sid : undefined);
+        if (target === 'flowable' && inParallel) add('await', 'Two awaits for one message type in parallel branches cannot be told apart by the binding.', 'warning', sid, 'Await in sequence, or await distinct message types.');
       }
       if (st.forEach && (target === 'temporal' || target === 'dtfx')) add('forEach', 'Large batches are chunked with continue-as-new; the chunk size comes from the binding (R-09-13).');
-      if (st.call && st.policy?.attemptTimeout && target === 'dtfx') add('policy', `Step ${st.id ?? st.call}: an attempt timeout abandons the late result; it does not cancel the task (R-09-11).`, 'warning');
-      if (st.call && target === 'flowable' && st.policy?.retry?.backoff && st.policy.retry.backoff !== 1) add('policy', `Step ${st.id ?? st.call}: backoff is modelled as a retry loop with timers.`, 'warning');
-      if (st.hook) add('hook', 'Bound per tenant at instance start; an unbound hook point is skipped.');
+      if (st.forEach && target === 'flowable' && (st.forEach.concurrency ?? 1) > 1) add('forEach', `Step ${sid ?? 'forEach'}: concurrency ${st.forEach.concurrency} becomes a parallel multi-instance; Flowable starts every item at once and has no concurrency bound.`, 'warning', sid, 'Set concurrency 1 for a sequential multi-instance, or chunk the batch in the binding.');
+      if (st.call && st.policy?.attemptTimeout && target === 'dtfx') add('policy', `Step ${sid}: an attempt timeout abandons the late result; it does not cancel the task (R-09-11).`, 'warning');
+      if (st.call && target === 'flowable') {
+        add('policy', `Step ${sid}: attempts, backoff and total timeout are a modelled loop in an embedded sub-process, with timer boundaries.`, 'info', sid);
+        if (inItem && inParallel) add('policy', `Step ${sid}: a step inside a parallel for each in a parallel branch shares outcome variables.`, 'warning', sid, 'Move the parallel branches into the item, or the item into a branch.');
+      }
+      if (st.try && target === 'flowable' && Array.isArray(st.catch)) add('try', `Step ${sid ?? 'try'}: catch runs in an error event sub-process of the try scope.`, 'info', sid);
+      if (st.hook) add('hook', 'Bound per tenant at instance start; an unbound hook point is skipped.', 'info', target === 'flowable' ? sid : undefined);
+      if (st.hook && target === 'flowable') add('hook', `Hook ${st.hook}: the binding enforces the hook point's contract on the hook's writes before the outcome is used.`, 'info', sid);
+    }
+    if (target === 'flowable' && steps.some((x) => x.st.call && x.inParallel)) {
+      const writes = steps.filter((x) => x.inParallel && x.st.call && x.st.handle && Object.values(x.st.handle).some((a: any) => a?.compensate));
+      for (const w of writes) add('compensate', `Step ${w.st.id}: compensation inside parallel branches runs in reverse document order, not reverse completion order.`, 'warning', w.st.id, 'Keep compensable writes out of parallel branches.');
     }
     if (f.deadline && target === 'flowable') add('deadline', 'An interrupting timer boundary on the main sub-process.');
     if (f.wfKind === 'handler') add('handler', 'A plain request handler at the interop boundary; no durable instance (R-09-14).');
   }
   return out;
+}
+
+/** A flow is portable to Flowable when the report holds no error for it (C22-S5). */
+export function flowablePortable(flow: any): { portable: boolean; steps: PortabilityItem[] } {
+  const items = portabilityReport([flow], 'flowable').filter((i) => i.severity === 'error');
+  return { portable: items.length === 0, steps: items };
 }

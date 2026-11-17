@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { get, post, type Summary, type TestRunReport } from '../api';
-import { ErrorBox, Loading, PassFail, Section, useLoad, useStudio } from '../ui';
+import { get, post, refusal, type Issue, type Summary, type TestRunReport } from '../api';
+import { Badge, ErrorBox, Issues, Loading, PassFail, Section, useLoad, useStudio } from '../ui';
+import { StringList, toYamlText } from '../authoring';
 import { RunReport } from './RunReport';
 
 // The test bench (F-16 to F-19): stored tests with run and run-all, and an ad hoc bench.
@@ -15,6 +16,7 @@ export function TestBench({ query }: { query: URLSearchParams }) {
   const { tenant } = useStudio();
   const tests = useLoad(() => get<TestRow[]>('/api/tests'), [tenant]);
   const [report, setReport] = useState<TestRunReport>();
+  const [source, setSource] = useState<any>();
   const [running, setRunning] = useState<string>();
   const [error, setError] = useState<string>();
   const [all, setAll] = useState<any[]>();
@@ -22,8 +24,9 @@ export function TestBench({ query }: { query: URLSearchParams }) {
   const reportRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<'tests' | 'bench'>(query.get('bench') ? 'bench' : 'tests');
 
-  const show = (r: TestRunReport) => {
+  const show = (r: TestRunReport, src?: any) => {
     setReport(r);
+    setSource(src);
     setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
@@ -31,7 +34,8 @@ export function TestBench({ query }: { query: URLSearchParams }) {
     setRunning(id);
     setError(undefined);
     try {
-      show(await post<TestRunReport>(`/api/tests/${encodeURIComponent(id)}/run`, {}));
+      const [r, t] = await Promise.all([post<TestRunReport>(`/api/tests/${encodeURIComponent(id)}/run`, {}), get(`/api/tests/${encodeURIComponent(id)}`).catch(() => undefined)]);
+      show(r, t?.test);
       tests.reload();
     } catch (e: any) {
       setError(e.message);
@@ -128,12 +132,12 @@ export function TestBench({ query }: { query: URLSearchParams }) {
       ) : (
         <AdHocBench key={benchParam} initialTarget={query.get('bench') ?? ''} tests={tests.data ?? []} onReport={show} />
       )}
-      <div ref={reportRef}>{report && <RunReport report={report} />}</div>
+      <div ref={reportRef}>{report && <RunReport key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} footer={<SaveAsTest report={report} source={source} />} />}</div>
     </div>
   );
 }
 
-function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string; tests: TestRow[]; onReport: (r: TestRunReport) => void }) {
+function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string; tests: TestRow[]; onReport: (r: TestRunReport, src?: any) => void }) {
   const { tenant, meta } = useStudio();
   const [target, setTarget] = useState(initialTarget);
   const [level, setLevel] = useState('');
@@ -183,15 +187,20 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
     try { exp = expect.trim() ? JSON.parse(expect) : undefined; } catch (e: any) { setError(`The expectation is not JSON: ${e.message}`); return; }
     setBusy(true);
     try {
-      const r = await post<TestRunReport>('/api/bench/run', {
+      const body = {
         target, level: level || undefined, evaluationDate: date, tenant: runTenant,
         bench: bench.filter((b) => b.port).map((b) => ({ port: b.port, simulator: b.simulator || undefined, scenario: b.scenario || undefined })),
         signals: signals.filter((s) => s.signal && s.at).map((s) => ({ signal: s.signal, at: s.at })),
         context: input === 'context' ? ctx : undefined,
         inbound: input === 'inbound' && inbound ? inbound : undefined,
         expect: exp,
-      }, tenant);
-      onReport(r);
+      };
+      const r = await post<TestRunReport>('/api/bench/run', body, tenant);
+      const given: any = {};
+      if (body.context) given.context = body.context;
+      if (body.inbound) given.inbound = body.inbound;
+      if (body.signals.length) given.signals = body.signals;
+      onReport(r, { target, level: r.level, evaluationDate: date, tenant: runTenant !== 'owner' ? runTenant : undefined, bench: body.bench, given });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -316,3 +325,139 @@ function useSimulators(ports: string[]) {
   return map;
 }
 
+
+/**
+ * Turn a run into a saved test (C15-S4): the assertions are captured from the run and can be
+ * edited, checked against a fresh run, and saved as a test draft.
+ */
+function SaveAsTest({ report, source }: { report: TestRunReport; source?: any }) {
+  const { actor } = useStudio();
+  const rec = report.record;
+  const root = rec?.instances?.find((i) => !i.parent) ?? rec?.instances?.[0];
+  const outMsgs = useMemo(() => {
+    const m = new Map<string, { port: string; message: string; count: number }>();
+    for (const x of rec?.messages ?? []) {
+      if (x.from !== 'platform' || !x.type) continue;
+      const k = `${x.port}|${x.type}`;
+      m.set(k, { port: x.port, message: x.type, count: (m.get(k)?.count ?? 0) + 1 });
+    }
+    return [...m.values()];
+  }, [rec]);
+  const retried = Object.fromEntries(Object.entries(root?.attempts ?? {}).filter(([, n]) => (n as number) > 1));
+  const [id, setId] = useState(`${report.id === 'BENCH-RUN' ? 'NEW' : report.id}-CAPTURED`);
+  const [title, setTitle] = useState(`Captured from a run of ${report.target}`);
+  const [on, setOn] = useState<Record<string, boolean>>({ outcome: !!report.outcome, reasonCode: !!root?.reasonCode, trace: true, detail: !!report.detail?.length, messages: outMsgs.length > 0, attempts: Object.keys(retried).length > 0, virtualElapsed: false });
+  const [outcome, setOutcome] = useState(report.outcome ?? '');
+  const [reasonCode, setReasonCode] = useState(root?.reasonCode ?? '');
+  const [trace, setTrace] = useState<string[]>(report.trace);
+  const [detail, setDetail] = useState<string[]>(report.detail ?? []);
+  const [messages, setMessages] = useState(outMsgs);
+  const [attempts, setAttempts] = useState(JSON.stringify(retried));
+  const [elapsed, setElapsed] = useState(report.elapsed);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: string; text: string; issues?: Issue[] }>();
+  const [check, setCheck] = useState<TestRunReport>();
+  if (!source) return <Section title="Save the run as a test"><p className="muted small">Run a stored test or the ad hoc bench to capture its assertions.</p></Section>;
+
+  const expect = () => {
+    const e: any = {};
+    if (on.outcome && outcome) e.outcome = outcome;
+    if (on.reasonCode && reasonCode) e.reasonCode = reasonCode;
+    if (on.messages && messages.length) e.messages = messages;
+    if (on.trace) e.trace = trace;
+    if (on.detail && detail.length) e.detail = detail;
+    if (on.attempts) {
+      try {
+        const a = JSON.parse(attempts || '{}');
+        if (Object.keys(a).length) e.attempts = a;
+      } catch {
+        /* shown below */
+      }
+    }
+    if (on.virtualElapsed && elapsed) e.virtualElapsed = elapsed;
+    return e;
+  };
+  const testDoc = () => ({
+    kind: 'test', id, release: '1.0.0', title, target: source.target, level: source.level ?? report.level, evaluationDate: source.evaluationDate ?? '2026-11-17',
+    ...(source.tenant ? { tenant: source.tenant } : {}), ...(source.bench?.length ? { bench: source.bench } : {}), given: source.given ?? {}, expect: expect(),
+  });
+  const verify = async () => {
+    setBusy(true);
+    setMsg(undefined);
+    try {
+      const g = source.given ?? {};
+      setCheck(await post<TestRunReport>('/api/bench/run', { target: source.target, level: source.level, evaluationDate: source.evaluationDate, tenant: source.tenant, bench: source.bench, context: g.context, inbound: g.inbound, signals: g.signals, expect: expect() }));
+    } catch (e: any) {
+      setMsg({ tone: 'fail', text: refusal(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const save = async () => {
+    setBusy(true);
+    setMsg(undefined);
+    try {
+      const r = await post('/api/drafts', { doc: testDoc(), actor });
+      const errs = (r.issues as Issue[]).filter((i) => i.severity === 'error');
+      setMsg({ tone: errs.length ? 'warn' : 'pass', text: `Saved the test draft ${r.draft.key} as ${actor}.`, issues: r.issues });
+    } catch (e: any) {
+      setMsg({ tone: 'fail', text: refusal(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const box = (k: string, label: string) => <label className="check"><input type="checkbox" checked={!!on[k]} onChange={(e) => setOn((o) => ({ ...o, [k]: e.target.checked }))} /> {label}</label>;
+  let attemptsErr: string | undefined;
+  try {
+    JSON.parse(attempts || '{}');
+  } catch (e: any) {
+    attemptsErr = e.message;
+  }
+  return (
+    <Section title="Save the run as a test (assertions)">
+      <p className="muted small">The assertions come from this run. Edit them, check them against a fresh run, and save the test as a draft. A changed trace or detail turns the test red.</p>
+      <div className="form-grid">
+        <label className="field"><span>Test id</span><input value={id} onChange={(e) => setId(e.target.value)} className="mono" aria-label="Test id" /></label>
+        <label className="field wide"><span>Title</span><input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Test title" /></label>
+        <label className="field"><span>Target</span><code className="break">{source.target}</code></label>
+      </div>
+      <div className="assert-grid">
+        <div>{box('outcome', 'Outcome')}<input value={outcome} onChange={(e) => setOutcome(e.target.value)} className="mono" disabled={!on.outcome} aria-label="Expected outcome" /></div>
+        <div>{box('reasonCode', 'Reason code')}<input value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} className="mono" disabled={!on.reasonCode} aria-label="Expected reason code" /></div>
+        <div>{box('virtualElapsed', 'Virtual time')}<input value={elapsed} onChange={(e) => setElapsed(e.target.value)} className="mono" disabled={!on.virtualElapsed} aria-label="Expected virtual time" /></div>
+        <div>{box('attempts', 'Attempts per step')}<input value={attempts} onChange={(e) => setAttempts(e.target.value)} className="mono" disabled={!on.attempts} aria-label="Expected attempts JSON" />{attemptsErr && <div className="small fail-text">Not JSON</div>}</div>
+      </div>
+      <div className="assert-grid two">
+        <div>{box('trace', 'Business trace')}{on.trace && <StringList value={trace} onChange={(v) => setTrace(v ?? [])} placeholder="step:outcome" label="Add a trace entry" />}</div>
+        <div>{box('detail', 'Detail inside composite steps')}{on.detail && <StringList value={detail} onChange={(v) => setDetail(v ?? [])} placeholder="step.inner:outcome" label="Add a detail entry" />}</div>
+      </div>
+      <div>
+        {box('messages', 'Messages sent')}
+        {on.messages && (
+          <table className="grid compact">
+            <thead><tr><th>Port</th><th>Message</th><th>Count</th><th></th></tr></thead>
+            <tbody>
+              {messages.map((m, i) => (
+                <tr key={i}>
+                  <td className="mono small">{m.port}</td><td className="mono small">{m.message}</td>
+                  <td><input value={m.count} onChange={(e) => setMessages(messages.map((x, n) => (n === i ? { ...x, count: Number(e.target.value) || 0 } : x)))} size={3} aria-label={`Count of ${m.message}`} /></td>
+                  <td><button className="link danger" onClick={() => setMessages(messages.filter((_, n) => n !== i))}>Remove</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <div className="row-actions">
+        <button onClick={verify} disabled={busy}>{busy ? 'Running…' : 'Check against a fresh run'}</button>
+        <button className="primary" onClick={save} disabled={busy || !id}>Save as a test draft as {actor}</button>
+        {check && <span>{check.passed ? <Badge tone="pass">the assertions hold</Badge> : <Badge tone="fail">{check.checks.filter((c) => !c.passed).map((c) => c.what).join(', ')} red</Badge>}</span>}
+      </div>
+      {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}{msg.issues && <Issues issues={msg.issues} />}</div>}
+      <details>
+        <summary>The test as YAML</summary>
+        <pre className="code">{toYamlText(testDoc())}</pre>
+      </details>
+    </Section>
+  );
+}

@@ -105,6 +105,7 @@ function KitDetail({ scenario, result }: { scenario: any; result?: KitResult }) 
           })}
         </tbody>
       </table>
+      {result?.checks.find((c) => c.what === 'detail') && <DetailCompare check={result.checks.find((c) => c.what === 'detail')!} />}
       {result && result.checks.length > 0 && (
         <>
           <h4>Checks</h4>
@@ -116,5 +117,30 @@ function KitDetail({ scenario, result }: { scenario: any; result?: KitResult }) 
       )}
       {result?.notes && result.notes.length > 0 && <ul className="small">{result.notes.map((x, i) => <li key={i}>{x}</li>)}</ul>}
     </div>
+  );
+}
+
+/** The detail, the steps inside composite steps, compared line by line (R-05-38). */
+function DetailCompare({ check }: { check: { expected: any; actual: any; passed: boolean } }) {
+  const e: string[] = check.expected ?? [];
+  const a: string[] = check.actual ?? [];
+  const n = Math.max(e.length, a.length);
+  return (
+    <>
+      <h4>Detail, inside composite steps</h4>
+      <table className="grid compact trace-compare">
+        <thead><tr><th>#</th><th>Expected</th><th>Actual</th><th></th></tr></thead>
+        <tbody>
+          {Array.from({ length: n }, (_, i) => (
+            <tr key={i} className={e[i] !== a[i] ? 'row-fail' : ''}>
+              <td className="muted">{i + 1}</td>
+              <td className="mono">{e[i] ?? ''}</td>
+              <td className="mono">{a[i] ?? <span className="muted">missing</span>}</td>
+              <td>{e[i] === a[i] ? <Badge tone="pass">same</Badge> : <Badge tone="fail">differs</Badge>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }

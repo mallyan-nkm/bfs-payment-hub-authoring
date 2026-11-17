@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DataTabs } from './Data';
 import { get, q } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Loading, Provenance, Section, useDebounced, useLoad } from '../ui';
 import { DispatchTable } from './Artefact';
@@ -16,8 +17,8 @@ function Reader({ r }: { r: string }) {
   );
 }
 
-export function IsoData() {
-  const [text, setText] = useState('payment.instructedAmount');
+function PathsTab({ initial }: { initial?: string }) {
+  const [text, setText] = useState(initial || 'payment.instructedAmount');
   const dq = useDebounced(text, 300);
   const data = useLoad(() => get(`/api/data${q({ q: dq })}`), [dq]);
   const schemes = useLoad(() => get<any[]>('/api/schemes'), []);
@@ -25,11 +26,8 @@ export function IsoData() {
   const detail = useLoad(() => (scheme ? get(`/api/schemes/${encodeURIComponent(scheme)}`) : Promise.resolve(undefined)), [scheme]);
 
   return (
-    <div className="view">
-      <div className="view-head">
-        <h2>ISO data</h2>
-        <p className="muted">Search a canonical context path, an extension field or a reason code. See which blocks read and write it.</p>
-      </div>
+    <div>
+      <p className="muted">Search a canonical context path, an extension field or a reason code. See which blocks read and write it.</p>
       <div className="toolbar">
         <input type="search" className="grow" value={text} onChange={(e) => setText(e.target.value)} placeholder="For example payment.instructedAmount, salary or AM04" aria-label="Search the data" />
       </div>
@@ -118,4 +116,8 @@ export function IsoData() {
       )}
     </div>
   );
+}
+
+export function IsoData({ query }: { query: URLSearchParams }) {
+  return <DataTabs query={query} paths={<PathsTab key={query.get('q') ?? ''} initial={query.get('q') ?? undefined} />} />;
 }
