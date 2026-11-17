@@ -35,7 +35,7 @@ export async function run({ ctx, rules }) {
   const fileId = (fileName ?? `${employerId}-${creationDate}-${creationTime}`).replace(/\.sif$/i, '');
   // The employer's file comes in, but the payment it starts goes out: an outward corporate payment.
   // The intake map says so, since the dispatch table does not (Issue I-26).
-  ctx.header = { fileId, endToEndId: fileId, direction: 'outward', segment: 'corporate' };
+  ctx.header = { ...(ctx.header ?? {}), fileId, endToEndId: fileId, direction: 'outward', segment: 'corporate' };
   ctx.batch = {
     id: fileId,
     numberOfTransactions: Number(recordCount),

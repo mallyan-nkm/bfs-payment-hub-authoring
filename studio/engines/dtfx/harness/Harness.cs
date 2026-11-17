@@ -141,6 +141,8 @@ public sealed class Harness : IDisposable
         var r = $"{id}#ctx";
         Store.Create(r, payload);
         var inp = new JsonObject { ["kind"] = "workflow", ["doc"] = docKey, ["state"] = state, ["payloadRef"] = r };
+        // The legs the front door chose from the dispatch table fill the platform workflow's slots (R-05-08).
+        if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
         client.CreateOrchestrationInstanceAsync(DtfxEngine.OrchestrationName, "", id, J.Str(inp)).GetAwaiter().GetResult();
         // Signals are external events, raised at their virtual times (R-05-12).
         foreach (var s in J.A(config, "signals"))

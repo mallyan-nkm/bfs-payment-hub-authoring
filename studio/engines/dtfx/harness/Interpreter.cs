@@ -1154,6 +1154,7 @@ public sealed partial class Interp
             return;
         }
         var res = await RunIt();
+        if (res.failed is not null) Console.Error.WriteLine($"hook {J.S(hook, "name")} at {key} failed: {res.failed}");
         Trace[traceAt] = $"hook:{res.outcome}";
         var outcome = res.outcome;
         if (outcome == "failed") outcome = J.S(policy, "onFailure") == "fail-closed" ? "hold" : "continue";

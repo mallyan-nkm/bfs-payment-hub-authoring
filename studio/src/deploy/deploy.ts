@@ -6,6 +6,7 @@ import { parseYaml } from '../core/yaml.js';
 import { walkYaml } from '../core/store.js';
 import { unzip } from '../export/zip.js';
 import { startEntryFor } from '../testing/runner.js';
+import { runTable } from '../rules/service.js';
 
 // Deploy an export package and run it (Part 9). The package's workers start as separate processes,
 // one per task queue, each serving only its own tasks. The engine harness runs the exported, expanded
@@ -87,8 +88,13 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   if ((req.engine ?? 'dtfx') !== 'dtfx' || binding.target !== 'dtfx') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx`);
   const log: string[] = [];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-run-'));
+  // The tenant's configuration set travels in the package (R-09-02); an environment may override it.
+  const environment: DeployEnvironment = { ...req.environment, tenant: req.environment.tenant ?? manifest.tenant };
+  const packaged = environment.tenant ? path.join(dir, 'configuration', `${environment.tenant}.yaml`) : undefined;
+  if (!environment.configurationSet && packaged && fs.existsSync(packaged)) environment.configurationSet = parseYaml(fs.readFileSync(packaged, 'utf8'));
+  if (environment.configurationSet) log.push(`configuration ${environment.tenant}@${environment.configurationSet.release}${req.environment.configurationSet ? '' : ' from the package'}`);
   const envFile = path.join(tmp, 'environment.json');
-  fs.writeFileSync(envFile, JSON.stringify(req.environment));
+  fs.writeFileSync(envFile, JSON.stringify(environment));
 
   // 1. Workers: one process per queue.
   const procs: { queue: string; port: number; child: ChildProcess; url: string; tasks: string[] }[] = [];
@@ -127,6 +133,8 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     // 3. The front door: the scheme's intake map, on the worker of its queue.
     let ctx: any = req.context ?? {};
     let intake: DeployResult['intake'];
+    let endToEnd = false;
+    let legs: Record<string, string> | undefined;
     const start = Date.parse(`${req.environment.evaluationDate}T06:00:00Z`);
     if (req.inbound) {
       const schemes = Object.values(documents).filter((d: any) => d.kind === 'scheme');
@@ -145,13 +153,28 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       const map = entry.disposition.start.intakeMap;
       const queue = binding.queues[scopeOf(map)];
       const msg = { id: 'in-1', type: entry.id, payload: req.inbound.payload };
-      ctx = { header: { conversation: 'conv-1', paymentId: 'P-1', scheme: scheme.scope, kind: entry.disposition.start.kind, direction: wf.direction ?? 'outward', receivedAt: new Date(start).toISOString() }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
+      // End to end when the workflow is not the leg the message starts: the front door runs the
+      // platform workflow that workflow-select picks, with that leg in its slot (R-05-08).
+      endToEnd = entry.disposition.start.leg !== req.workflow;
+      const direction = endToEnd ? (entry.direction === 'in' ? 'inward' : 'outward') : wf.direction ?? 'outward';
+      ctx = { header: { conversation: 'conv-1', paymentId: 'P-1', scheme: scheme.scope, kind: entry.disposition.start.kind, direction, receivedAt: new Date(start).toISOString() }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
       const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', body: JSON.stringify({ instance: 'intake', activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) })).json();
       if (r.kind !== 'result') throw new Error(`Intake ${map} failed: ${r.message ?? r.kind}`);
       for (const [p, v] of Object.entries<any>(r.writes ?? {})) setPath(ctx, p, v);
       intake = { activity: map, queue, outcome: r.outcome };
       log.push(`intake ${map} on ${queue}: ${r.outcome}`);
       if (r.outcome !== 'mapped') throw new Error(`Intake ${map} returned ${r.outcome}`);
+      if (endToEnd) {
+        const sel = Object.values<any>(documents).find((d) => d.name === 'p.table.workflow-select.v1');
+        if (!sel) throw new Error('The package has no p.table.workflow-select.v1 for the front door');
+        const chosen = runTable(sel, { Header: [ctx.header] }, { resolve: (n) => Object.values<any>(documents).find((d) => d.name === n), evaluationDate: req.environment.evaluationDate }).decisions.find((d) => d.name === 'workflow')?.value;
+        log.push(`front door: workflow-select chose ${chosen ?? 'nothing'} for ${ctx.header.kind} ${ctx.header.direction} ${ctx.header.segment ?? ''}`.trimEnd());
+        if (chosen !== req.workflow) throw new Error(`The front door chose ${chosen ?? 'no workflow'} for ${entry.id}, not ${req.workflow}`);
+        const leg = Object.values<any>(documents).find((d) => d.name === entry.disposition.start.leg);
+        if (!leg) throw new Error(`The leg ${entry.disposition.start.leg} that ${entry.id} starts is not in the package`);
+        legs = { [leg.implements?.slot ?? 'scheme-leg']: entry.disposition.start.leg, ...(entry.disposition.start.refuseLeg ? { 'scheme-refuse': entry.disposition.start.refuseLeg } : {}) };
+        log.push(`front door: ${entry.disposition.start.leg} fills ${Object.keys(legs).join(', ')}`);
+      }
       // The payload stays with the workers by reference; every worker can resolve it.
       for (const pr of procs) if (pr.url !== urlOf(queue)) await fetch(`${pr.url}/attempt`, { method: 'POST', body: JSON.stringify({ instance: 'intake', activity: '__register__', step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) });
     }
@@ -165,7 +188,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     const input = {
       studioRoot: req.studioRoot,
       chunkSize: binding.defaults?.forEachChunk ?? 500,
-      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, config: { evaluationDate: req.environment.evaluationDate, tenant: req.environment.tenant, bindings: req.environment.configurationSet?.bindings ?? [] }, context: ctx },
+      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [] }, context: ctx },
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),
       queues: binding.queues,
@@ -188,6 +211,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       throw new Error(err ? JSON.parse(err.slice(6)) : `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
     }
     const obs = JSON.parse(obsLine.slice('OBSERVATION '.length));
+    for (const l of r.stderr.split('\n').map((x) => x.trim()).filter(Boolean)) log.push(`[engine] ${l}`);
     const root = obs.instances?.[0] ?? {};
     const workers: DeployResult['workers'] = [];
     for (const pr of procs) {
@@ -215,5 +239,8 @@ function setPath(obj: any, p: string, v: any) {
   const parts = p.replace(/^items\[\]/, 'items').split('.');
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]] ??= {};
-  cur[parts[parts.length - 1]] = v;
+  const k = parts[parts.length - 1];
+  // A write to a whole part merges into what the front door set (header.kind, scheme, paymentId).
+  const plain = (x: any) => x && typeof x === 'object' && !Array.isArray(x);
+  cur[k] = plain(cur[k]) && plain(v) ? { ...cur[k], ...v } : v;
 }

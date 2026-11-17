@@ -3,7 +3,7 @@ import { runAllTests, runTest } from './testing/runner.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
 
-const USAGE = 'Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | deploy <package> --workflow <name> [--inbound file] [--date YYYY-MM-DD] [--tenant t] [--bench port=simulator:scenario ...]';
+const USAGE = 'Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
@@ -62,7 +62,7 @@ async function main() {
     return;
   }
   if (cmd === 'deploy') {
-    // studio deploy <package.zip|dir> --workflow <name> [--inbound <file>] [--date YYYY-MM-DD] [--tenant t] [--bench port=simulator:scenario ...]
+    // studio deploy <package.zip|dir> --workflow <name> [--inbound <file>] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]
     const { deploy } = await import('./deploy/deploy.js');
     const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
     need(args[0] && !args[0].startsWith('--'), 'deploy needs a package (a .zip or a directory)');
@@ -77,8 +77,8 @@ async function main() {
       packagePath: args[0],
       workflow: opt('workflow')!,
       studioRoot: env.studioRoot,
-      environment: { evaluationDate: opt('date') ?? '2026-11-17', tenant, bench, configurationSet: tenant ? env.store.configurationSet(tenant) : undefined },
-      inbound: opt('inbound') ? { payload: (await import('node:fs')).readFileSync(opt('inbound')!, 'utf8') } : undefined,
+      environment: { evaluationDate: opt('date') ?? '2026-11-17', tenant, bench, configurationSet: opt('config') ? (await import('./core/yaml.js')).parseYaml((await import('node:fs')).readFileSync(opt('config')!, 'utf8')) : undefined },
+      inbound: opt('inbound') ? { payload: (await import('node:fs')).readFileSync(opt('inbound')!, 'utf8'), ...(opt('message') ? { message: opt('message') } : {}) } : undefined,
     });
     for (const l of r.log) console.log(l);
     for (const w of r.workers) console.log(`worker ${w.queue} (pid ${w.pid}) served ${JSON.stringify(w.served)}, refused ${w.refused}`);

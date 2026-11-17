@@ -386,7 +386,7 @@ route('POST', '/api/bench/run', async (env, req) => {
   const test = {
     kind: 'test', id: 'BENCH-RUN', title: 'Bench run', target: b.target, level, evaluationDate: b.evaluationDate ?? '2026-11-17',
     tenant: b.tenant && b.tenant !== OWNER_TENANT ? b.tenant : undefined, bench: b.bench ?? [],
-    given: { ...(b.context ? { context: b.context } : {}), ...(b.inbound ? { inbound: b.inbound } : {}), ...(b.signals?.length ? { signals: b.signals } : {}) },
+    given: { ...(b.context ? { context: b.context } : {}), ...(b.inbound ? { inbound: b.inbound } : {}), ...(b.message ? { message: b.message } : {}), ...(b.signals?.length ? { signals: b.signals } : {}) },
     expect: b.expect ?? {},
   };
   return runTest(env, test, b.supersessions ? { supersessions: b.supersessions } : {});

@@ -145,6 +145,11 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
       }
     }
   }
+  // The front door's workflow-select decision picks the platform workflow a start message runs.
+  if (Object.keys(files).some((k) => k.startsWith('schemes/'))) {
+    const sel = env.store.latest('p.table.workflow-select.v1');
+    if (sel) files[`rules/${sel.name}@${sel.release}.yaml`] = toYaml(sel.doc);
+  }
   // Separate workers, one per task queue (R-09-05): each serves only its queue's tasks.
   Object.assign(files, workerFiles(env, checker, binding, blocks, !!req.withSimulators));
 

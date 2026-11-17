@@ -8,7 +8,8 @@ namespace DtfxHarness;
 /// <summary>Helpers for the DSL documents and the context, held as JSON nodes.</summary>
 public static class J
 {
-    public static readonly JsonSerializerOptions Opts = new() { WriteIndented = false };
+    // A resolver, so that a node holding a CLR value (not only parsed JSON) serialises too.
+    public static readonly JsonSerializerOptions Opts = new() { WriteIndented = false, TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver() };
 
     public static JsonNode? Parse(string? s) => string.IsNullOrEmpty(s) ? null : JsonNode.Parse(s);
     public static string Str(JsonNode? n) => n is null ? "null" : n.ToJsonString(Opts);
