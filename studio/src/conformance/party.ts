@@ -64,7 +64,11 @@ export class PartyService {
       (this.run as any).frontDoor = (m: Message) => captured.push(m);
       try { fn(); } finally { (this.run as any).frontDoor = orig; }
       void before;
-      for (const m of captured) this.due.push({ at: t, message: pickMsg(m) });
+      for (const m of captured) {
+        // Keep the reply, so that a map reading it later on this service finds it by id.
+        if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push(m);
+        this.due.push({ at: t, message: pickMsg(m) });
+      }
       void label;
       return () => {};
     };

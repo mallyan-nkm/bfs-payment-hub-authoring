@@ -98,7 +98,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       const wdir = path.join(dir, w.path);
       const p = port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules') },
+        env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
@@ -133,7 +133,12 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       const resolve = (n: string) => Object.entries(documents).find(([k]) => k.startsWith(`${n}@`))?.[1];
       const found = req.inbound.message
         ? (() => { for (const s of schemes) { const e = (s.messages ?? []).find((m: any) => m.id === req.inbound!.message); if (e) return { scheme: s, entry: e }; } return undefined; })()
-        : startEntryFor(schemes, req.workflow, resolve);
+        : startEntryFor(schemes, req.workflow, resolve) ?? (() => {
+            const f = (manifest.fallbackStarts ?? []).find((x: any) => x.leg === req.workflow);
+            const scheme = f && schemes.find((x: any) => x.scope === f.scheme);
+            const entry = scheme && (scheme.messages ?? []).find((m: any) => m.id === f.message);
+            return entry ? { scheme, entry } : undefined;
+          })();
       const scheme = found?.scheme;
       const entry = found?.entry;
       if (!entry?.disposition?.start?.intakeMap) throw new Error(`No start message in the package's dispatch tables leads to ${req.workflow}`);

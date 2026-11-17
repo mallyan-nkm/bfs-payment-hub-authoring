@@ -80,6 +80,7 @@ const server = http.createServer(async (req, res) => {
       }
       served[task] = (served[task] ?? 0) + 1;
       const r = await party.attempt({ ...b, release });
+      if (process.env.TH_WORKER_LOG) fs.appendFileSync(process.env.TH_WORKER_LOG, JSON.stringify({ queue: manifest.queue, task, step: b.step, messages: b.ctx?.messages, result: r }) + '\n');
       return send(res, 200, { ...r, deliveries: party.takeDeliveries() });
     }
     send(res, 404, { error: 'not found' });

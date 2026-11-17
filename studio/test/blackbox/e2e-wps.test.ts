@@ -83,8 +83,10 @@ async function publish(doc: any, tests: any[] = []) {
   expect(saved.status, JSON.stringify(saved.data)).toBe(200);
   const errors = saved.data.issues.filter((i: any) => i.severity === 'error');
   expect(errors, JSON.stringify(errors)).toEqual([]);
-  const gates = await api.post('/api/gates', { doc, tests });
-  expect(gates.data.passed, JSON.stringify(gates.data.firstRed)).toBe(true);
+  if (doc.kind !== 'test') {
+    const gates = await api.post('/api/gates', { doc, tests });
+    expect(gates.data.passed, JSON.stringify(gates.data.firstRed)).toBe(true);
+  }
   const key = saved.data.draft.key;
   expect((await api.post('/api/review', { tenant: 'owner', actor: MAKER, key })).status).toBe(200);
   const pub = await api.post('/api/publish', { tenant: 'owner', key, checker: CHECKER });

@@ -4,6 +4,7 @@ import { Checker, pinnable, type Issue } from '../checks/checks.js';
 import { generateBpmn, portabilityReport } from './bpmn.js';
 import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
+import { startEntryFor } from '../testing/runner.js';
 import type { StudioEnv } from '../env.js';
 
 // Export (Part 9; C05, C20, C21, C22). A package holds the workflow, leg, segment and handler
@@ -69,6 +70,18 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     for (const l of legs) addFlow(l);
     for (const h of scheme.handlers ?? []) addFlow(h);
     files[`schemes/${scheme.scope}.yaml`] = toYaml(scheme);
+  }
+  // A leg the dispatch table does not name yet starts from the intake of the leg filling the same
+  // slot (Issue I-24). The package carries that scheme and records the start it takes.
+  const fallbackStarts: { leg: string; scheme: string; message: string; issue: string }[] = [];
+  const schemeDocs = env.store.byKind('scheme').map((e) => e.doc);
+  for (const w of req.workflows) {
+    const d = env.store.doc(w);
+    if (d?.wfKind !== 'leg' || schemeDocs.some((s) => (s.messages ?? []).some((m: any) => m.disposition?.start?.leg === w))) continue;
+    const found = startEntryFor(schemeDocs, w, (n) => env.store.doc(n));
+    if (!found) continue;
+    files[`schemes/${found.scheme.scope}.yaml`] = toYaml(found.scheme);
+    fallbackStarts.push({ leg: w, scheme: found.scheme.scope, message: found.entry.id, issue: 'I-24' });
   }
 
   // Hooks a tenant binds, with its configuration set (R-09-02, R-06-18).
@@ -157,6 +170,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     promotable: !req.withSimulators && issues.filter((i) => i.severity === 'error').length === 0,
     workers: [...new Set(tasks.filter((t) => t.kind === 'activity').map((t) => t.queue))].sort().map((q) => ({ queue: q, path: `workers/${q}/`, tasks: tasks.filter((t) => t.kind === 'activity' && t.queue === q).map((t) => t.task).sort() })),
     flows: flowEntries,
+    ...(fallbackStarts.length ? { fallbackStarts } : {}),
     tasks: tasks.sort((a, b) => a.task.localeCompare(b.task)),
     files: Object.keys(files).sort().map((f) => ({ path: f, hash: 'sha256:' + sha(files[f]) })),
   };
