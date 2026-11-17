@@ -25,7 +25,7 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 | Spec documents valid against their schemas | 198 of 198 |
 | Content hashes (RFC 8785) equal to the pack manifests | All; four of the five pack manifests also regenerate identically (Issue I-20 for the bank pack) |
 | Expansion of composite steps | Identical to `tools/expand.py` on the four reference workflows |
-| Rule and table examples | 60 of 60 |
+| Rule and table examples | 64 of 64 |
 | Factory and bank test cases on the studio interpreter | 30 of 30 |
 | Conformance kit, studio interpreter | 46 of 46 |
 | Conformance kit, DTFx (DurableTask.Core 3.11.3) | 46 of 46 |
@@ -81,7 +81,9 @@ The black-box and white-box suites found and fixed these:
 - A simulator keyed by message id answered only its first request, so a payment's posting after its reservation got no reply (R-07-05).
 - On DTFx a bank's transform hook always failed, on a JSON serialiser without a type resolver; the kit has no scenario that catches it.
 - A new scheme's tasks fell back to the platform queue; the queue is now derived from the scope (R-09-05).
-- Artefacts that refer to one another could not be published (Issue I-27); a salary file starts an outward payment that the front door took for inward (Issue I-26); the example bank's hold does not see batches (Issue I-28).
+- Artefacts that refer to one another could not be published (Issue I-27); a salary file starts an outward payment that the front door took for inward (Issue I-26); the example bank's hold did not see batches (Issue I-28). All three are decided and built: change sets are generated, the dispatch table routes (R-05-42, L33), and the limit checks each line and the file total.
+- A halt hook that found something always counted as failed, on every runtime, because a hook's blocks could write only `facts.hooks` while check L13 allows `facts.*`.
+- On a deployed worker the approval hold could not run: the party service fired its timer at once and sent the operations decision to the engine instead of the hold.
 
 ## Temporal
 

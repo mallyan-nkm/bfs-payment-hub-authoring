@@ -2,10 +2,12 @@
 kind: activity
 name: b.validate.internal-limit.v1
 release: 1.0.0
-title: Bank internal limit
+title: Bank internal limit, per payment, per line and per file
 type: validate
 reads:
   - payment.instructedAmount
+  - batch
+  - items[]
 writes:
   - facts.validation
 outcomes:

@@ -994,11 +994,12 @@ function makeIO(act: any, frame: Frame, scope: Scope, stepId: string, view: any,
           inst.consumed.add(early.id);
           return resolve(early);
         }
+        let off = () => {};
         const w = { type, resolve: (m: Message) => { off(); resolve(m); } };
         inst.waiters.push(w);
         const kill = timeoutMs !== null ? run.clock.at(run.clock.now + timeoutMs, () => { inst.waiters = inst.waiters.filter((x) => x !== w); off(); resolve(null); }) : () => {};
         const off0 = scope.onCancel((r) => { kill(); inst.waiters = inst.waiters.filter((x) => x !== w); reject(new Cancelled(r)); });
-        const off = () => { kill(); off0(); };
+        off = () => { kill(); off0(); };
       }),
     rules: (rs: string, lvl?: string, given?: any) => {
       const { doc } = run.resolveFor(inst, rs, stepId);
@@ -1292,7 +1293,9 @@ async function execHook(st: any, frame: Frame) {
       // A hook reads and writes only what the hook point's contract allows (R-06-07).
       const allowed: string[] = [...(point.contract?.writes ?? [])];
       const changes = diffPaths(frame.ctx, hctx);
-      const outside = changes.filter((p) => !coveredByAny(allowed, p) && !p.startsWith('facts.hooks'));
+      // A hook's blocks may derive facts, as check L13 allows; they never reach the payment unless the
+      // hook point's contract lets a transform copy them back.
+      const outside = changes.filter((p) => !coveredByAny(allowed, p) && !p.startsWith('facts.'));
       if (outside.length) return { outcome: 'failed', failed: `wrote outside its contract: ${outside.join(', ')}` };
       if (point.type === 'transform') for (const w of allowed) {
         const v = getPath(hctx, w);

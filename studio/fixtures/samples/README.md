@@ -13,7 +13,8 @@ metadata, not part of the message, and the intake maps read it as the `SourceFil
 | `wps-sif-bad-control-total.sif` | WPS SIF, control total wrong | WPS-OUT-004 |
 | `wps-sif-bad-iban.sif` | WPS SIF, IBAN check digits wrong | WPS-OUT-005 |
 | `wps-pif-valid.pif` | WPS PIF | WPS-IN-001 |
-| `wps-sif-bad-month.sif` | WPS SIF, salary month 13 | The end-to-end test that builds a WPS leg from scratch |
+| `wps-sif-bad-month.sif` | WPS SIF, salary month 13 | Kept as an invalid sample; the leg test that used it was replaced |
+| `wps-sif-two-lines.sif` | WPS SIF, two lines of 1000 and 500, total 1500 | The WPS end-to-end test: the bank's limit on each line and on the file total |
 | `aani-credit-in-valid.xml` | ISO 20022 credit transfer | AANI-IN-001 |
 | `aani-status-request-in.xml` | ISO 20022 status request | AANI-HND-001 |
 

@@ -27,7 +27,7 @@ artefacts:
   - name: b.validate.internal-limit.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:4807311eff039e70cfc61ea8a98441c058c28f1738f06a69b08858f142ae0191
+    hash: sha256:49c9bcaa865b4ce1269d0c602414e435c7b3ae74b3966054b79e583194947532
     path: activities/b.validate.internal-limit.v1.yaml
   - name: b.ext.bank.v1
     kind: extension
@@ -62,7 +62,7 @@ artefacts:
   - name: b.rule.internal-limit.v1
     kind: rule
     release: 1.0.0
-    hash: sha256:3ea31de740dfda361916a647d2680b51c03879a7573b7967bf9859dfec5f06e3
+    hash: sha256:c823250687f5fbaa4c91799bef4637d292165b7aebeb4ee26031e5ee49cf435b
     path: rules/b.rule.internal-limit.v1.yaml
   - name: b.ruleset.internal-limit.v1
     kind: ruleset

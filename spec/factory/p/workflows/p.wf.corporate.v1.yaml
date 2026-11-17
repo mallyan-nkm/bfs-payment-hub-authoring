@@ -21,9 +21,9 @@ slots:
 hookPoints:
   - name: before-release
     type: halt
-    description: A bank may hold or reject a payment after routing and before it leaves.
+    description: A bank may hold or reject a payment after routing and before it leaves. A file's lines are offered too, so that a bank can check each line as well as the total.
     contract:
-      reads: [header, payment, batch, facts.route, facts.reservation]
+      reads: [header, payment, batch, "items[]", facts.route, facts.reservation]
     policy: { timeout: PT30S, onFailure: fail-closed, onHold: p.hold.approval.v1 }
   - name: on-close
     type: notify

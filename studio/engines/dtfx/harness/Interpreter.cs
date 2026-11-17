@@ -1133,7 +1133,8 @@ public sealed partial class Interp
                 {
                     ["op"] = "diff", ["aState"] = J.Clone(frame.State), ["aRef"] = frame.PayloadRef, ["bState"] = J.Clone(J.P(child, "state")), ["bRef"] = J.S(child, "payloadRef"),
                 });
-                var outside = J.Strings(J.P(diff, "paths")).Where(p => !J.CoveredByAny(allowed, p) && !p.StartsWith("facts.hooks")).ToList();
+                // A hook's blocks may derive facts, as check L13 allows (R-06-07).
+                var outside = J.Strings(J.P(diff, "paths")).Where(p => !J.CoveredByAny(allowed, p) && !p.StartsWith("facts.")).ToList();
                 if (outside.Count > 0) return ("failed", $"wrote outside its contract: {string.Join(", ", outside)}");
                 if (type == "transform") await CopyBack(frame, child, allowed);
                 return (J.S(child, "outcome") ?? "done", null);

@@ -817,7 +817,8 @@ public final class Harness {
                 List<String> changes = new ArrayList<>();
                 Support.diffPaths(inst.ctx, c.ctx, "", changes);
                 List<String> allowed = Support.csv(p.get("writes"));
-                boolean outside = changes.stream().anyMatch(x -> !Support.coveredByAny(allowed, x) && !x.startsWith("facts.hooks"));
+                // A hook's blocks may derive facts, as check L13 allows (R-06-07).
+                boolean outside = changes.stream().anyMatch(x -> !Support.coveredByAny(allowed, x) && !x.startsWith("facts."));
                 if (outside) raw = "failed";
                 else if ("transform".equals(p.get("type"))) for (String w : allowed) {
                     JsonNode val = Support.getPath(c.ctx, w);

@@ -25,6 +25,9 @@ const BENCH = [
 const SETTLED = ['validate:pass', 'duplicate:unique', 'hook:done', 'sanctions:clear', 'fraud:clear', 'join:all', 'limits:pass', 'reserve:reserved', 'route:decided', 'hook:continue', 'leg:settled', 'post:posted', 'verify:verified', 'finally:notify', 'finally:publish', 'hook:done', 'end:settled'];
 const NO_WPS_RAIL = ['validate:pass', 'duplicate:unique', 'hook:done', 'sanctions:clear', 'fraud:clear', 'join:all', 'limits:pass', 'reserve:reserved', 'route:no-match', 'undo:reserve', 'finally:notify', 'finally:publish', 'hook:done', 'end:rejected'];
 const NO_HOLD_HOOK = SETTLED.filter((s, i) => !(s === 'hook:continue' && i === 9));
+const HELD = (decision: 'approved' | 'declined') => [...SETTLED.slice(0, 9), 'hook:hold', `hold:${decision}`, ...(decision === 'approved' ? SETTLED.slice(10) : ['undo:reserve', 'finally:notify', 'finally:publish', 'hook:done', 'end:rejected'])];
+const TWO_LINES = 'samples/wps-sif-two-lines.sif'; // lines of 1000 and 500, total 1500
+const OPS = (scenario: string) => ({ port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario });
 
 let server: Server;
 let api: ReturnType<typeof client>;
@@ -52,20 +55,20 @@ async function release(version: string, change: (c: any) => void) {
 }
 
 /** The salary file end to end on the studio interpreter, for the bank. */
-async function bench() {
-  const r = await api.post('/api/bench/run', { target: PLATFORM, tenant: TENANT, inbound: SAMPLE, message: MESSAGE, bench: BENCH });
+async function bench(sample = SAMPLE, extra: any[] = []) {
+  const r = await api.post('/api/bench/run', { target: PLATFORM, tenant: TENANT, inbound: sample, message: MESSAGE, bench: [...BENCH, ...extra] });
   expect(r.status, JSON.stringify(r.data).slice(0, 400)).toBe(200);
   return r.data;
 }
 
 /** Export the corporate workflow for the bank and deploy the salary file on DTFx. */
-function deploy(label: string) {
+function deploy(label: string, sample = SAMPLE, extra: any[] = []) {
   return (async () => {
     const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=dtfx&withSimulators=true&tenant=${TENANT}`);
     expect(z.status).toBe(200);
     const file = path.join(work, `${label}.zip`);
     fs.writeFileSync(file, z.data);
-    const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', SAMPLE), '--tenant', TENANT, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
+    const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...[...BENCH, ...extra].flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
     const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, encoding: 'utf8', env: { ...process.env, TH_DATA_ROOT: '' }, timeout: 300000 });
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     const workers = [...out.matchAll(/worker (th-[\w-]+) \(pid (\d+)\) served (\{.*\}), refused (\d+)/g)].map((m) => ({ queue: m[1], pid: m[2], served: JSON.parse(m[3]), refused: Number(m[4]) }));
@@ -143,13 +146,49 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(bank.served['b.enrich.cost-centre.v1@1.0.0']).toBe(1);
   }, 300000);
 
+  // The bank's limit holds each line of a file and the file total (Issue I-28, decided). A held
+  // payment waits for the bank's operations: approved, it goes on; declined, it is rejected.
+  const limit = (value: number) => (c: any) => {
+    c.bindings = shipped.bindings;
+    c.values.find((v: any) => v.parameter === 'b.rule.internal-limit.v1#internalLimit').value = value;
+  };
+
+  it('1.3.0 sets the internal limit to 1200: every line is within, the file total is not, so the payment is held', async () => {
+    await release('1.3.0', limit(1200));
+    const approved = await bench(TWO_LINES, [OPS('approve')]);
+    expect(approved.trace).toEqual(HELD('approved'));
+    expect(approved.outcome).toBe('settled');
+    const declined = await bench(TWO_LINES, [OPS('decline')]);
+    expect(declined.trace).toEqual(HELD('declined'));
+    expect(declined.outcome).toBe('rejected');
+  });
+
+  it('1.3.0 deployed on DTFx: held on the file total and declined, the bank worker ran the limit', async () => {
+    const d = await deploy('1.3.0', TWO_LINES, [OPS('decline')]);
+    expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
+    expect(d.trace).toEqual(HELD('declined'));
+    expect(d.workers.find((w) => w.queue === 'th-bank')!.served['b.validate.internal-limit.v1@1.0.0']).toBe(1);
+    expect(d.workers.find((w) => w.queue === 'th-p')!.served['p.hold.approval.v1@1.0.0']).toBe(1);
+  }, 300000);
+
+  it('1.4.0 sets the limit to 900: the line of 1000 is above it, so the payment is held', async () => {
+    await release('1.4.0', limit(900));
+    expect((await bench(TWO_LINES, [OPS('approve')])).trace).toEqual(HELD('approved'));
+  });
+
+  it('1.5.0 sets the limit to 2000: every line and the total are within, so nothing is held', async () => {
+    await release('1.5.0', limit(2000));
+    const r = await bench(TWO_LINES, [OPS('decline')]);
+    expect(r.trace).toEqual(SETTLED);
+  });
+
   it('changed nothing in the factory: no WPS artefact was drafted or published, and the audit chain verifies', async () => {
     for (const t of ['owner', TENANT]) {
       const audit = (await api.get(`/api/audit?tenant=${t}`)).data;
       expect(audit.filter((a: any) => a.outcome === 'done' && /^uae\.wps\./.test(a.key ?? ''))).toEqual([]);
     }
     const bank = (await api.get(`/api/audit?tenant=${TENANT}`)).data;
-    expect(bank.filter((a: any) => a.action === 'set-configuration' && a.outcome === 'done').map((a: any) => a.diff.after).sort()).toEqual(['1.1.0', '1.2.0']);
+    expect(bank.filter((a: any) => a.action === 'set-configuration' && a.outcome === 'done').map((a: any) => a.diff.after).sort()).toEqual(['1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0']);
     expect(bank.some((a: any) => a.outcome === 'refused')).toBe(true);
     expect((await api.get('/api/audit/verify')).data.ok).toBe(true);
   });

@@ -2,7 +2,7 @@
 kind: rule
 name: b.rule.internal-limit.v1
 release: 1.0.0
-title: Amount is within the bank's internal limit
+title: A payment, each line of a file and the file total are within the bank's internal limit
 ruleKind: policy
 parameters:
   internalLimit:
@@ -11,19 +11,32 @@ parameters:
 repeatability: non-repeatable
 when:
   - match:
-      fact: Payment
-      as: p
-  - match:
       fact: Param
       as: internalLimit
       where: internalLimit.name == 'internalLimit'
-  - having: p.instructedAmount.value > internalLimit.value
+  - or:
+      - and:
+          - match:
+              fact: Payment
+              as: p
+          - having: p.instructedAmount.value > internalLimit.value
+      - and:
+          - match:
+              fact: Item
+              as: i
+          - having: i.payment.instructedAmount.value > internalLimit.value
+      - and:
+          - match:
+              fact: Batch
+              as: b
+          - having: b.controlSum > internalLimit.value
 then:
   - yield:
       finding:
         severity: reject
         path: payment.instructedAmount.value
         reasonCode: AM02
+        message: 'An amount above the internal limit: a payment, a line of a file, or a file total'
 examples:
   - name: passes
     evaluationDate: '2026-11-17'
@@ -31,7 +44,7 @@ examples:
       Payment:
         instructedAmount:
           value: 10
-      Param:
+      Param: &id001
         name: internalLimit
         value: 100
     expect:
@@ -42,12 +55,71 @@ examples:
       Payment:
         instructedAmount:
           value: 101
-      Param:
-        name: internalLimit
-        value: 100
+      Param: *id001
     expect:
       findings:
         - reasonCode: AM02
+  - name: boundary, equal to the limit
+    evaluationDate: '2026-11-17'
+    given:
+      Payment:
+        instructedAmount:
+          value: 100
+      Param: *id001
+    expect:
+      findings: []
+  - name: fails, one line of a file
+    evaluationDate: '2026-11-17'
+    given:
+      Batch:
+        id: B1
+        controlSum: 100
+      Item:
+        - batchId: B1
+          payment:
+            instructedAmount:
+              value: 101
+      Param: *id001
+    expect:
+      findings:
+        - reasonCode: AM02
+  - name: fails, the file total with every line within
+    evaluationDate: '2026-11-17'
+    given:
+      Batch:
+        id: B1
+        controlSum: 150
+      Item:
+        - batchId: B1
+          payment:
+            instructedAmount:
+              value: 80
+        - batchId: B1
+          payment:
+            instructedAmount:
+              value: 70
+      Param: *id001
+    expect:
+      findings:
+        - reasonCode: AM02
+  - name: passes, a file within on every line and in total
+    evaluationDate: '2026-11-17'
+    given:
+      Batch:
+        id: B1
+        controlSum: 100
+      Item:
+        - batchId: B1
+          payment:
+            instructedAmount:
+              value: 60
+        - batchId: B1
+          payment:
+            instructedAmount:
+              value: 40
+      Param: *id001
+    expect:
+      findings: []
 provenance:
   origin: factory
   status: confirmed

@@ -299,7 +299,9 @@ The same 46 scenarios run on DTFx and Flowable; see Part D.
 8. Try to set `uae.aani.rule.amount-within-limit.v1#maxAmount` to `90000`. The check refuses it: the scheme's bound is 50000, and a bank may only lower it.
 9. Use **Compatibility run**, then **Run**. Before a bank accepts a new shared release, it checks that every bound hook point still exists with a compatible contract and that the bank's hook tests pass. Leave the box empty to run against the current releases.
 
-Note: a bank's limit on large corporate payments (`b.rule.internal-limit.v1`) reads one payment's amount. A salary file carries a total and one amount per line, so today the limit does not hold a salary file. Issue I-28 in `docs/ISSUES.md` records the decision that it should check each line and the file total.
+10. The bank's internal limit (`b.rule.internal-limit.v1#internalLimit`) holds a payment, each line of a file and the file total. Bump the release again, put back the `before-release` binding from the shipped configuration, and set the limit to `1200`. Save.
+11. Run Exercise 4 with the sample `samples/wps-sif-two-lines.sif` (lines of 1000 and 500, total 1500), and bind `p.port.operations-queue.v1` to `p.sim.operations.v1` with scenario `decline`. Every line is within the limit but the total is not. The trace shows `hook:hold`, then `hold:declined`, `undo:reserve`, and the payment is rejected. With scenario `approve` it settles after `hold:approved`.
+12. Set the limit to `900`: now the line of 1000 is above it, and the payment is held for that line. Set it to `2000`: nothing is held.
 
 ### Exercise 9. The workflow designer (25 minutes)
 

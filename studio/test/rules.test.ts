@@ -36,7 +36,7 @@ describe('rule sessions (C06-S2 to S5)', () => {
         n++;
       }
     }
-    expect(n).toBe(60);
+    expect(n).toBe(64);
   });
   it('stops at a stage with a blocking finding (R-04-14)', () => {
     const res = runRuleSet('uae.aani.ruleset.credit.v1', { Payment: [{ instructedAmount: { value: 999999, currency: 'USD' }, creditorAccount: {} }] }, { resolve, evaluationDate: '2026-11-17' });

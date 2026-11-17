@@ -41,6 +41,8 @@ export class PartyService {
   readonly run: Run;
   private instances = new Map<string, Instance>();
   private due: Delivery[] = [];
+  /** The attempt in progress is a hold, which waits on this service for its decision. */
+  private holding = false;
   private latency: Record<string, number> = {};
 
   /** A party service for a kit scenario. */
@@ -56,20 +58,26 @@ export class PartyService {
     const stubs = Object.fromEntries(Object.entries<any>(base.stubs ?? {}).map(([k, v]) => [k, { ...v, latency: undefined }]));
     const cfg: RunConfig = { ...base, stubs };
     this.run = new Run(cfg);
-    // A simulator's later reply is not run on the studio clock: it is handed to the engine.
+    // A simulator's later reply is not run on the studio clock: it is handed to the engine. Timers are
+    // the engine's too, so nothing else scheduled here runs: a block's own timeout is the engine's
+    // attempt timeout.
     this.run.clock.at = (t: number, fn: () => void, label?: string) => {
-      const before = this.run.messages.length;
+      if (!label || !/ sends /.test(label)) return () => {};
       const captured: Message[] = [];
       const orig = this.run.frontDoor.bind(this.run);
       (this.run as any).frontDoor = (m: Message) => captured.push(m);
       try { fn(); } finally { (this.run as any).frontDoor = orig; }
-      void before;
       for (const m of captured) {
         // Keep the reply, so that a map reading it later on this service finds it by id.
         if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push(m);
+        // A hold waits within its own attempt for its decision: the operations decision
+        // answers the hold on this service, not the workflow.
+        if (this.holding) {
+          this.run.mailbox.push(m);
+          continue;
+        }
         this.due.push({ at: t, message: pickMsg(m) });
       }
-      void label;
       return () => {};
     };
   }
@@ -100,6 +108,7 @@ export class PartyService {
     inst.callCounts.set(req.step, req.call - 1);
     const act = req.release ? this.run.resolveDoc(req.activity, req.release) : this.run.resolveDoc(req.activity);
     if (!act) return { kind: 'error', name: 'NotFound', retryable: false, message: `${req.activity} does not resolve` };
+    this.holding = act.type === 'hold';
     const scope = new Scope();
     let ctx = inst.ctx;
     let item: Frame['item'];

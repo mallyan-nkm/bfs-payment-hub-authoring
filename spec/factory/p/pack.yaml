@@ -264,7 +264,7 @@ artefacts:
   - name: p.wf.corporate.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:acb6c174eb55a5c22687598e31d4f27b88f63012a1f3b6bd56b819b90af90c9c
+    hash: sha256:68fb398dbb38eeb0bc5762fccbaf66b62c2f791f3eebaa749b43d44d59a8f73c
     path: workflows/p.wf.corporate.v1.yaml
   - name: p.wf.inward.v1
     kind: workflow

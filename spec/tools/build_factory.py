@@ -271,7 +271,7 @@ act("uae.aani.exchange.respond-status.v1", "Answer the scheme with a status", ["
     ["responded"], "external", mode="respond", ports=["uae.aani.port.switch.v1"], policy=SHORT, p=AP)
 
 # example bank tenant
-act("b.validate.internal-limit.v1", "Bank internal limit", ["payment.instructedAmount"], ["facts.validation"],
+act("b.validate.internal-limit.v1", "Bank internal limit, per payment, per line and per file", ["payment.instructedAmount", "batch", "items[]"], ["facts.validation"],
     ["pass", "reject"], "pure", rule_sets=["b.ruleset.internal-limit.v1"], base=EXAMPLES)
 act("b.enrich.cost-centre.v1", "Add the bank cost centre", ["payment.debtorAccount"], ["ext.b.costCentre"],
     ["done"], "read", ports=["b.port.reference-data.v1"], lang="python", base=EXAMPLES)
@@ -291,7 +291,7 @@ def par(name):
     return m("Param", name, "%s.name == '%s'" % (name, name))
 
 
-def rule(name, title, kind, when, path, code, ok, bad, *, sev="reject", level=None, params=None, msg=None, p=None, base=FACTORY):
+def rule(name, title, kind, when, path, code, ok, bad, *, sev="reject", level=None, params=None, msg=None, p=None, base=FACTORY, more=None):
     doc = {"kind": "rule", "name": name, "release": REL, "title": title, "ruleKind": kind}
     if level:
         doc["level"] = level
@@ -306,6 +306,8 @@ def rule(name, title, kind, when, path, code, ok, bad, *, sev="reject", level=No
     doc["examples"] = [
         {"name": "passes", "evaluationDate": DATE, "given": ok, "expect": {"findings": []}},
         {"name": "fails", "evaluationDate": DATE, "given": bad, "expect": {"findings": [{"reasonCode": code}]}}]
+    for name_, given, fires in (more or []):
+        doc["examples"].append({"name": name_, "evaluationDate": DATE, "given": given, "expect": {"findings": [{"reasonCode": code}] if fires else []}})
     doc["provenance"] = prov(**(p or {}))
     return emit(doc, base)
 
@@ -463,11 +465,22 @@ ruleset("uae.aani.ruleset.credit.v1", "Aani credit transfer checks", "validation
          "uae.p.rule.iban-checksum.v1", "uae.aani.rule.amount-within-limit.v1"], stages=["field", "policy"], p=AP)
 
 # example bank rule
-rule("b.rule.internal-limit.v1", "Amount is within the bank's internal limit", "policy",
-     [m("Payment", "p"), par("internalLimit"), {"having": "p.instructedAmount.value > internalLimit.value"}],
+# A payment, each line of a file and the file total are held against the one limit the bank sets
+# (Issue I-28, decided). A finding's path is fixed per rule, so the message says which amount.
+LIM = {"Param": {"name": "internalLimit", "value": 100}}
+rule("b.rule.internal-limit.v1", "A payment, each line of a file and the file total are within the bank's internal limit", "policy",
+     [par("internalLimit"), {"or": [
+         {"and": [m("Payment", "p"), {"having": "p.instructedAmount.value > internalLimit.value"}]},
+         {"and": [m("Item", "i"), {"having": "i.payment.instructedAmount.value > internalLimit.value"}]},
+         {"and": [m("Batch", "b"), {"having": "b.controlSum > internalLimit.value"}]}]}],
      "payment.instructedAmount.value", "AM02",
-     {"Payment": {"instructedAmount": {"value": 10}}, "Param": {"name": "internalLimit", "value": 100}},
-     {"Payment": {"instructedAmount": {"value": 101}}, "Param": {"name": "internalLimit", "value": 100}},
+     {"Payment": {"instructedAmount": {"value": 10}}, **LIM},
+     {"Payment": {"instructedAmount": {"value": 101}}, **LIM},
+     msg="An amount above the internal limit: a payment, a line of a file, or a file total",
+     more=[("boundary, equal to the limit", {"Payment": {"instructedAmount": {"value": 100}}, **LIM}, False),
+           ("fails, one line of a file", {"Batch": {"id": "B1", "controlSum": 100}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 101}}}], **LIM}, True),
+           ("fails, the file total with every line within", {"Batch": {"id": "B1", "controlSum": 150}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 80}}}, {"batchId": "B1", "payment": {"instructedAmount": {"value": 70}}}], **LIM}, True),
+           ("passes, a file within on every line and in total", {"Batch": {"id": "B1", "controlSum": 100}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 60}}}, {"batchId": "B1", "payment": {"instructedAmount": {"value": 40}}}], **LIM}, False)],
      params={"internalLimit": {"type": "amount", "default": 1000000}}, base=EXAMPLES)
 ruleset("b.ruleset.internal-limit.v1", "Bank internal limit", "validation", ["b.rule.internal-limit.v1"], stages=["policy"], base=EXAMPLES)
 
