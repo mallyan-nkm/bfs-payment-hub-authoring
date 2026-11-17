@@ -311,6 +311,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
             <option value="">Choose a sample</option>
             {(samples.data ?? []).map((s) => <option key={s}>{s}</option>)}
           </select>
+          <AddSample onSaved={(name) => { samples.reload(); setInbound(name); }} />
           <label className="field">
             <span>Start message (for a whole payment from the bank's channel)</span>
             <select value={message} onChange={(e) => setMessage(e.target.value)} aria-label="Start message">
@@ -478,5 +479,33 @@ function SaveAsTest({ report, source }: { report: TestRunReport; source?: any })
         <pre className="code">{toYamlText(testDoc())}</pre>
       </details>
     </Section>
+  );
+}
+
+// A synthetic sample file a test or a bench run names (C12-S4). Never personal data.
+function AddSample({ onSaved }: { onSaved: (name: string) => void }) {
+  const { actor } = useStudio();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [content, setContent] = useState('');
+  const [msg, setMsg] = useState<string>();
+  const save = async () => {
+    setMsg(undefined);
+    try {
+      const r = await post('/api/samples', { actor, name, content });
+      onSaved(r.sample);
+      setOpen(false);
+    } catch (e: any) {
+      setMsg(refusal(e));
+    }
+  };
+  if (!open) return <button className="link" onClick={() => setOpen(true)}>Add a sample file</button>;
+  return (
+    <div className="stack">
+      <label className="field"><span>Sample file name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="demo-credit-file-valid.csv" aria-label="Sample file name" /></label>
+      <textarea className="code-input" rows={6} value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} aria-label="Sample content" placeholder="Synthetic content only. Never real names or account numbers." />
+      <div><button onClick={save} disabled={!name || !content}>Save the sample as {actor}</button> <button className="link" onClick={() => setOpen(false)}>Cancel</button></div>
+      {msg && <div className="alert fail" role="status">{msg}</div>}
+    </div>
   );
 }

@@ -183,6 +183,13 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actor, users]);
 
+  // What publishing this draft takes with it: the change set the studio generates (R-11-19).
+  const [set, setSet] = useState<string[]>([]);
+  useEffect(() => {
+    if (!draftKey) { setSet([]); return; }
+    get<any>(`/api/change-set?key=${encodeURIComponent(draftKey)}`).then((r) => setSet((r.members ?? []).map((m: any) => m.key))).catch(() => setSet([]));
+  }, [draftKey, msg]);
+
   const save = async () => {
     setBusy(true);
     setMsg(undefined);
@@ -239,6 +246,12 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
         </select>
       </label>
       {checker && !checkers.some((c) => c.id === checker) && <p className="small warn-text">{checker} has no checker role. The server will refuse.</p>}
+      {set.length > 1 && (
+        <div className="small">
+          <strong>Change set.</strong> Publishing takes these drafts with it, checked and tested together:
+          {set.filter((k) => k !== draftKey).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}
+        </div>
+      )}
       <button disabled={busy || !draftKey || !checker} onClick={publish} title={!draftKey ? 'Save a draft first' : undefined}>Publish as {checker || 'checker'}</button>
       <p className="muted small">
         Publish needs a checker who is not the maker, no error, and green tests on the saved draft.

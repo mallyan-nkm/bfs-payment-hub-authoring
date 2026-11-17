@@ -10,17 +10,20 @@ import { Canvas, getIn, setIn } from './Canvas';
 // a decision table, an activity contract, a map, a simulator and a composite with its subflow.
 // Each saves as a draft and shows the publish gates on every edit, the first red one highlighted.
 
-type Kind = 'rule' | 'table' | 'activity' | 'map' | 'simulator' | 'composite';
+type Kind = 'rule' | 'ruleset' | 'table' | 'activity' | 'map' | 'simulator' | 'composite' | 'port' | 'scheme';
 type Path = (string | number)[];
 type Set = (p: Path, v: any) => void;
 
 const KINDS: { id: Kind; label: string; catalogue: string; open: string }[] = [
   { id: 'rule', label: 'Rule', catalogue: 'rule', open: 'uae.aani.rule.amount-within-limit.v1' },
+  { id: 'ruleset', label: 'Rule set', catalogue: 'ruleset', open: 'uae.wps.ruleset.salary-file.v1' },
   { id: 'table', label: 'Decision table', catalogue: 'table', open: 'p.table.workflow-select.v1' },
   { id: 'activity', label: 'Activity contract', catalogue: 'activity', open: 'p.reserve.funds.v1' },
   { id: 'map', label: 'Map', catalogue: 'activity', open: 'uae.wps.map.sif-in.v1' },
   { id: 'simulator', label: 'Simulator', catalogue: 'simulator', open: 'uae.p.sim.participant-directory.v1' },
   { id: 'composite', label: 'Composite and subflow', catalogue: 'activity', open: 'uae.wps.exchange.submit-salary-file.v1' },
+  { id: 'port', label: 'Port', catalogue: 'port', open: 'uae.wps.port.wps.v1' },
+  { id: 'scheme', label: 'Scheme and dispatch table', catalogue: 'scheme', open: '' },
 ];
 
 const STANDARD = ['accept', 'reject', 'pending-then-final', 'no-reply', 'late-reply', 'duplicate-reply', 'fail-twice-then-accept', 'malformed-reply'];
@@ -29,6 +32,23 @@ const PROV = { origin: 'authored', status: 'provisional' };
 
 function starter(kind: Kind): any {
   switch (kind) {
+    case 'ruleset':
+      return { kind: 'ruleset', name: 'uae.demo.ruleset.file.v1', release: '1.0.0', title: 'New rule set', mode: 'validation', stages: ['field'], rules: ['uae.demo.rule.currency-aed.v1'], provenance: PROV };
+    case 'port':
+      return {
+        kind: 'port', name: 'uae.demo.port.demo.v1', release: '1.0.0', title: 'New port', party: 'the party behind the port',
+        operations: [{ name: 'submit-file', style: 'send' }, { name: 'receive-file', style: 'receive' }], provenance: PROV,
+      };
+    case 'scheme':
+      return {
+        kind: 'scheme', scope: 'uae.demo', release: '1.0.0', title: 'New scheme', wire: 'file',
+        messages: [
+          { id: 'uae.demo.credit-file', title: 'File that starts a payment', direction: 'in', confirmed: true, disposition: { start: { kind: 'payment', direction: 'outward', segment: 'corporate', leg: 'uae.demo.wf.credit-file-out.v1', intakeMap: 'uae.demo.map.file-in.v1' } } },
+          { id: 'uae.demo.file-submission', title: 'File sent to the scheme', direction: 'out', confirmed: true, disposition: { sentBy: 'uae.demo.exchange.send-file.v1' } },
+          { id: 'uae.demo.ack', title: 'Acknowledgement from the scheme', direction: 'in', confirmed: true, disposition: { deliver: { correlateBy: 'file id' } } },
+        ],
+        legs: ['uae.demo.wf.credit-file-out.v1'], ports: ['uae.demo.port.demo.v1'], provenance: PROV,
+      };
     case 'rule':
       return {
         kind: 'rule', name: 'uae.aani.rule.new.v1', release: '1.0.0', title: 'New rule', ruleKind: 'field', repeatability: 'non-repeatable',
@@ -158,19 +178,22 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
     case 'map': form = <><ActivityForm doc={doc} set={set} /><TestsOf name={doc.name} /></>; break;
     case 'simulator': form = <SimulatorForm doc={doc} set={set} />; break;
     case 'composite': form = <ActivityForm doc={doc} set={set} composite />; break;
+    case 'ruleset': form = <RuleSetForm doc={doc} set={set} />; break;
+    case 'port': form = <PortForm doc={doc} />; break;
+    case 'scheme': form = <SchemeForm doc={doc} />; break;
   }
 
   return (
     <>
       <div className="toolbar">
-        <label className="field-inline">
+        {kind !== 'scheme' && <label className="field-inline">
           <span>Open a published {meta.label.toLowerCase()} as a new release</span>
           <select value="" onChange={(e) => e.target.value && openRelease(e.target.value)} aria-label={`Open a published ${meta.label}`}>
             <option value="">Choose</option>
             {choices.map((c) => <option key={c.key} value={c.name}>{c.name} @{c.release}</option>)}
           </select>
-        </label>
-        <button onClick={() => openRelease(meta.open)}>Open {meta.open}</button>
+        </label>}
+        {meta.open && <button onClick={() => openRelease(meta.open)}>Open {meta.open}</button>}
         <button onClick={() => { setDoc(starter(kind)); setPage(undefined); setDraftKey(undefined); setOrigin('A new document from the starter.'); if (kind === 'composite') setSub(subflowStarter(starter('composite'))); }}>Start new</button>
       </div>
       <ErrorBox error={error} />
@@ -183,6 +206,7 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
             <DraftActions doc={clean(doc)} draftKey={draftKey} setDraftKey={setDraftKey} />
           </Section>
           <YamlPane doc={doc} onDoc={setDoc} />
+          {(kind === 'activity' || kind === 'map') && doc.implementation?.binding === 'script' && <ScriptBehind doc={doc} />}
           {(kind === 'activity' || kind === 'composite' || kind === 'map') && <Untested name={doc.name} />}
           {kind === 'simulator' && doc.name && <Section title="Stub"><a className="button" href={downloadUrl(`/api/simulators/${encodeURIComponent(doc.name)}/stub`)}>Download the stub of the published {doc.name}</a><p className="muted small">A stand-alone stub that plays the scenarios, for a bank's own test environment.</p></Section>}
         </div>
@@ -190,6 +214,85 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
       {kind === 'composite' && sub && <SubflowEditor act={doc} sub={sub} setSub={setSub} />}
       {kind === 'composite' && <TestsOf name={doc.name} title="Tests of the composite alone" />}
     </>
+  );
+}
+
+function RuleSetForm({ doc, set }: { doc: any; set: Set }) {
+  const rules = useCatalogue('rule').filter((r) => r.status === 'published').map((r) => r.name);
+  return (
+    <Section title="Rule set">
+      <p className="muted small">A rule set groups rules for a validate or decide activity. Its mode is validation (findings) or decision (decisions); its stages run in order, and a blocking finding stops the next stage.</p>
+      <div className="stack">
+        <Sel label="Mode" value={doc.mode} onChange={(v) => set(['mode'], v)} options={['validation', 'decision']} />
+        <label className="field"><span>Stages, in order</span><StringList value={doc.stages} onChange={(v) => set(['stages'], v)} label="Stages" mono /></label>
+        <label className="field"><span>Rules</span><StringList value={doc.rules} onChange={(v) => set(['rules'], v)} suggestions={rules} label="Rules" /></label>
+      </div>
+    </Section>
+  );
+}
+
+// A port and a scheme manifest are short documents: the form shows what matters, the YAML pane edits.
+function PortForm({ doc }: { doc: any }) {
+  return (
+    <Section title="Port">
+      <p className="muted small">A port is the connection to one party: a scheme, core banking, screening. Every port needs a simulator (check L22); publish the two together. Edit the document in the YAML pane.</p>
+      <table className="grid compact"><tbody>
+        <tr><th>Name</th><td className="mono">{doc.name}</td></tr>
+        <tr><th>Party</th><td>{doc.party}</td></tr>
+        {(doc.operations ?? []).map((o: any) => <tr key={o.name}><th>Operation</th><td className="mono">{o.name} ({o.style})</td></tr>)}
+      </tbody></table>
+    </Section>
+  );
+}
+
+function SchemeForm({ doc }: { doc: any }) {
+  return (
+    <Section title="Scheme and dispatch table">
+      <p className="muted small">The dispatch table routes each message. A start message names the payment it starts (kind, direction and, for an outward payment, segment), its intake map and its leg (R-05-42, check L33). A deliver message reaches the workflow that awaits it; an outward message names the block that sends it. Edit the document in the YAML pane; publish it with its legs, composites and subflows as one change set.</p>
+      <div className="table-wrap"><table className="grid compact">
+        <thead><tr><th>Message</th><th>Direction</th><th>Disposition</th></tr></thead>
+        <tbody>
+          {(doc.messages ?? []).map((m: any) => {
+            const d = m.disposition ?? {};
+            const what = d.start ? `start: ${d.start.kind ?? '?'} ${d.start.direction ?? '?'}${d.start.segment ? ' ' + d.start.segment : ''}, leg ${d.start.leg}, intake ${d.start.intakeMap}` : d.deliver ? `deliver by ${d.deliver.correlateBy}` : d.sentBy ? `sent by ${d.sentBy}` : d.handler ? `handler ${d.handler}` : d.planned ? 'planned' : JSON.stringify(d);
+            return <tr key={m.id}><td className="mono">{m.id}</td><td>{m.direction}</td><td className="small">{what}</td></tr>;
+          })}
+        </tbody>
+      </table></div>
+      <p className="small">Legs: <span className="mono">{(doc.legs ?? []).join(', ') || 'none'}</span>. Ports: <span className="mono">{(doc.ports ?? []).join(', ') || 'none'}</span>.</p>
+    </Section>
+  );
+}
+
+const SCRIPT_STARTER = `// The script-behind: it uses only what is injected (ctx, ports, rules, params, clock, ids, log).
+// It changes ctx and returns the outcome.
+export async function run({ ctx }) {
+  return 'mapped';
+}
+`;
+
+// The script of an activity bound to a script (C07). It belongs to the activity's draft: save the
+// draft first. Once the activity is published, its script is fixed.
+function ScriptBehind({ doc }: { doc: any }) {
+  const { actor } = useStudio();
+  const [source, setSource] = useState(SCRIPT_STARTER);
+  const [msg, setMsg] = useState<{ tone: string; text: string }>();
+  const save = async () => {
+    setMsg(undefined);
+    try {
+      const r = await post('/api/scripts', { actor, activity: doc.name, language: doc.implementation?.language ?? 'typescript', source });
+      setMsg({ tone: 'pass', text: `Saved ${r.file} as ${actor}.` });
+    } catch (e: any) {
+      setMsg({ tone: 'fail', text: refusal(e) });
+    }
+  };
+  return (
+    <Section title="Script-behind">
+      <p className="muted small">Save the activity as a draft first. The script is checked as you save: no network, files, clock, randomness or environment.</p>
+      <textarea className="yaml-editor short" spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Script source" />
+      <button onClick={save}>Save the script as {actor}</button>
+      {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
+    </Section>
   );
 }
 
