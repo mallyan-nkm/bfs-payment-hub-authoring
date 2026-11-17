@@ -27,6 +27,7 @@ Then open http://localhost:4317. Switch tenant in the header between `owner` (sh
 | Factory and bank test cases on the studio interpreter | 25 of 26; WPS-IN-001 cannot pass as written (Issue I-01) |
 | Static checks over the spec | 0 errors, the 2 expected L10 warnings, and warnings from the checks built here (L19, L21, L22, L25) |
 | Automated test suite (`cd studio && npm test`) | 74 tests, green |
+| Web app | Driven end to end with Playwright through every view |
 | Spec tools (`spec/tools`) | validator 0 errors, 21 of 21 mutations caught, unchanged by this work |
 
 ## Coverage of the build backlog
@@ -45,7 +46,7 @@ The spec's process is one story per branch and pull request. This build was done
 | C09 Studio interpreter | Built: every construct of the portable core, virtual clock, policies, hooks, signals, pins, lookup, supersession, deltas, claim-check |
 | C10 Simulator runtime | Built: outward and inward scenarios, conversation state, standard scenario check. Not built: self-check of emitted messages, deployable stub |
 | C11 Test runner | Built for every level, with the run record the bench shows |
-| C12 to C15 Catalogue, editors, designer, test bench | Web app in `studio/web`, see `studio/README.md` |
+| C12 to C15 Catalogue, editors, designer, test bench | Built as a web app: catalogue and artefact pages, ISO data and scheme catalogues, workflow designer (YAML with checks on every edit, a structured outline, interface diff, drafts, maker-checker publish), test bench with timeline, deltas, rule traces and an ad hoc bench, the kit, tenant configuration, export, governance. Not built: form editors for rules, tables, maps and simulators (they show read-only), sample generation (F-05), a drag-and-drop canvas |
 | C16 AI authoring assistant | Partly: the gates every draft must pass (`POST /api/gates`). No model is connected |
 | C17 Tenants, roles, maker-checker | Built: tenant isolation, shared content read-only to a bank, maker and checker must differ, audit log. Roles are named, not enforced by login |
 | C18 Hooks and configuration sets | Built: hooks at hook points with timeout and failure mode, configuration values in bounds, compatibility run, tenant export |

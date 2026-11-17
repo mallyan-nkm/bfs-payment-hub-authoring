@@ -46,7 +46,8 @@ export class StoreError extends Error {
 }
 
 function scopeOfDoc(doc: any): string {
-  if (doc.scope) return doc.scope;
+  if (typeof doc.scope === 'string') return doc.scope;
+  if (doc.kind === 'supersession' && doc.artefact) return parseName(doc.artefact)?.scope ?? 'p';
   const n = doc.name ? parseName(doc.name) : null;
   if (n) return n.scope;
   if (doc.kind === 'test') {
