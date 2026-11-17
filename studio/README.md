@@ -18,7 +18,7 @@ npm run web:build
 npm start
 ```
 
-Then open http://localhost:4317. `PORT` changes the port, `TH_SPEC_ROOT` the spec repository (default `../spec`), `TH_DATA_ROOT` the workspace for drafts, releases and the audit log (default `studio/data`).
+Then open http://localhost:4317. Set `ANTHROPIC_API_KEY` (or run `ant auth login`) for the AI assistant. `PORT` changes the port, `TH_SPEC_ROOT` the spec repository (default `../spec`), `TH_DATA_ROOT` the workspace for drafts, releases and the audit log (default `studio/data`).
 
 ## Check it
 
@@ -49,6 +49,8 @@ npm run studio -- export p.wf.commercial.v1 flowable
 | `studio -- kit [CK-ID...]` | The 43 conformance scenarios against the expected traces in `spec/conformance/kit.yaml` |
 | `studio -- check` | Schemas and static checks over every artefact |
 | `studio -- export <workflow> <target>` | The manifest of an export package |
+| `npx tsx engines/dtfx/run-kit.ts` | The kit on DTFx (needs `dotnet-sdk-8.0`) |
+| `engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts` | The kit on Flowable (needs Java; fetches Maven) |
 
 ## Where things are
 
@@ -71,6 +73,14 @@ npm run studio -- export p.wf.commercial.v1 flowable
 | `src/server/` | HTTP API and static server | C12 to C19 (back end) |
 | `web/` | The studio's web app | C12 to C19 (front end) |
 | `fixtures/samples/` | Synthetic sample messages for the factory tests | C25, C26, in part |
+| `src/core/expand.ts` | Expansion of composite steps into blocks; the form every run and engine uses | C04-S6 |
+| `src/core/model.ts`, `types.ts`, `registry.ts`, `registries/` | The canonical model as data, types per activity in both languages with the type check gate, versioned code-set registries | C03 |
+| `src/governance/` | Packs and manifests; roles, review and approval, retirement, propagation, supersession, configuration, compatibility run, tenant export, release gate | C05, C17, C18, C19, C23-S3 |
+| `src/sim/coverage.ts`, `stub.ts` | Reason-code coverage; the deployable simulator stub | C10-S4, C10-S5 |
+| `src/samples/` | Valid and invalid sample messages per scheme, each proved | C12-S4 |
+| `src/ai/` | The authoring gates and the assistant on the Claude API | C16 |
+| `src/conformance/party.ts`, `party-server.ts` | The party service an engine harness calls for every activity attempt | C20 to C23 |
+| `engines/dtfx/`, `engines/flowable/` | The conformance kit on DTFx and on Flowable, each with its own README | C21, C22 |
 
 ## How a run works
 

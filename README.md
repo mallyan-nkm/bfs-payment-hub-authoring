@@ -1,11 +1,12 @@
 # TransactHub Designer Studio
 
-The design-time tool in which a payments workflow designer defines, scripts, tests and exports payment workflows built from composable blocks over one ISO 20022 canonical context. One multi-tenant application; each bank is a tenant that shares platform and scheme content, sets configuration values and authors hooks.
+The design-time tool in which a payments workflow designer defines, scripts, tests and exports payment workflows built from composable blocks over one ISO 20022 canonical context. One multi-tenant application; each bank is a tenant that shares platform and scheme content, sets configuration values and authors hooks. Built from the specification set at draft 0.2.
 
 | Folder | What it is |
 | --- | --- |
-| `spec/` | The specification set as delivered on 17 November 2026: design parts and annexes, schemas, the factory pack, the example bank, the conformance kit, the build backlog and the spec's own tools. The re-ideation plan (`.docx`) and its summary sit beside them. |
-| `studio/` | The studio, built from the spec. See `studio/README.md`. |
+| `spec/` | The specification set at draft 0.2: design parts and annexes, schemas, the factory pack, the example bank, the conformance kit, the expanded forms, the build backlog and the spec's own tools. The re-ideation plan (`.docx`), its summary, and `delta/DELTA-0.2.md` sit beside them. |
+| `studio/` | The studio: server, interpreter, rule service, sandboxes, simulators, checks, export, governance and the web app. See `studio/README.md`. |
+| `studio/engines/` | The conformance kit on real engines: DTFx (C#) and Flowable (Java). |
 | `docs/` | The stack decision record and the issues found in the spec while building. |
 
 ## Start
@@ -14,49 +15,63 @@ The design-time tool in which a payments workflow designer defines, scripts, tes
 cd studio && npm install && npm run web:build && npm start
 ```
 
-Then open http://localhost:4317. Switch tenant in the header between `owner` (shared content) and `example-bank`.
+Then open http://localhost:4317. Choose the tenant (`owner` for shared content, `example-bank`) and the user you act as in the header; roles are enforced.
 
 ## What runs today
 
 | Evidence | Result |
 | --- | --- |
-| Spec documents loaded and valid against their schemas | 184 of 184 |
-| Content hashes (RFC 8785) equal to the pack manifests | 170 of 170 |
+| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 2 expected warnings; `expand.py --check` up to date; 24 of 24 mutations caught; 130 stories render |
+| Spec documents valid against their schemas | 198 of 198 |
+| Content hashes (RFC 8785) equal to the pack manifests | All; four of the five pack manifests also regenerate identically (Issue I-20 for the bank pack) |
+| Expansion of composite steps | Identical to `tools/expand.py` on the four reference workflows |
 | Rule and table examples | 60 of 60 |
-| Conformance kit on the studio interpreter | 43 of 43 scenarios |
-| Factory and bank test cases on the studio interpreter | 25 of 26; WPS-IN-001 cannot pass as written (Issue I-01) |
-| Static checks over the spec | 0 errors, the 2 expected L10 warnings, and warnings from the checks built here (L19, L21, L22, L25) |
-| Automated test suite (`cd studio && npm test`) | 74 tests, green |
+| Factory and bank test cases on the studio interpreter | 30 of 30 |
+| Conformance kit, studio interpreter | 46 of 46 |
+| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 46 of 46 |
+| Conformance kit, Flowable 7.1.0 with generated BPMN | See `studio/engines/flowable/README.md` for the latest run |
+| Conformance kit, Temporal | Not run: see below |
+| Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
+| Generated samples, each proved valid or failing with its labelled code | 12 of 12 |
+| Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
+| Automated test suite (`cd studio && npm test`) | 110 tests, green |
 | Web app | Driven end to end with Playwright through every view |
-| Spec tools (`spec/tools`) | validator 0 errors, 21 of 21 mutations caught, unchanged by this work |
 
 ## Coverage of the build backlog
 
-The spec's process is one story per branch and pull request. This build was done on one branch, as one walking skeleton across the components, so read it as a first pass to review at G1, not as accepted stories.
+The spec's process is one story per branch and pull request, each reviewed. This build was done on one branch as a first implementation of the whole backlog, to review at G1, not as accepted stories.
 
 | Component | State |
 | --- | --- |
-| C01 Artefact store and naming | Built: loader, names and scopes, canonical JSON and hash, drafts, immutable publish, releases of a line |
-| C02 Schema validation | Built: by kind, errors a designer can act on, command line check |
-| C03 Canonical model and type generation | Partly: context paths, extension fields and readers and writers in the ISO data browser. Not built: generated TypeScript and Python types, code-set registries |
-| C04 Static checks | Built: the reference checks, plus L19, L20, L21, L22 (bench half), L23, L25, L28, L29, per document on every edit. L24 has nothing to flag: DSL 1.0.0 has no extension constructs |
-| C05 Pins, manifests and semver | Built: closure and `artefacts` block, interface diff and proposed release (L26). Not built: dependency release propagation (C05-S4) |
-| C06 Rule service | Built: expression language, sessions with NRules semantics, stages, parameters by date and tenant, decision tables, examples, trace. The evaluator is TypeScript, not NRules (D13 open) |
-| C07, C08 Script sandboxes | Built for TypeScript and Python, with contract enforcement, determinism and a parity check. Not a security boundary (D14 open) |
-| C09 Studio interpreter | Built: every construct of the portable core, virtual clock, policies, hooks, signals, pins, lookup, supersession, deltas, claim-check |
-| C10 Simulator runtime | Built: outward and inward scenarios, conversation state, standard scenario check. Not built: self-check of emitted messages, deployable stub |
-| C11 Test runner | Built for every level, with the run record the bench shows |
-| C12 to C15 Catalogue, editors, designer, test bench | Built as a web app: catalogue and artefact pages, ISO data and scheme catalogues, workflow designer (YAML with checks on every edit, a structured outline, interface diff, drafts, maker-checker publish), test bench with timeline, deltas, rule traces and an ad hoc bench, the kit, tenant configuration, export, governance. Not built: form editors for rules, tables, maps and simulators (they show read-only), sample generation (F-05), a drag-and-drop canvas |
-| C16 AI authoring assistant | Partly: the gates every draft must pass (`POST /api/gates`). No model is connected |
-| C17 Tenants, roles, maker-checker | Built: tenant isolation, shared content read-only to a bank, maker and checker must differ, audit log. Roles are named, not enforced by login |
-| C18 Hooks and configuration sets | Built: hooks at hook points with timeout and failure mode, configuration values in bounds, compatibility run, tenant export |
-| C19 Packs, release, retirement, supersession | Partly: publish through maker-checker, supersession test. Not built: pack build, retirement |
-| C20 to C22 Export | Built: packages for Temporal and DTFx (interpreter) and Flowable (generated BPMN), reproducible, with pins, binding, tests and a portability report. Not run on any engine: no engine is part of this build |
-| C23 Conformance kit and runner | Built: kit content in cluster `ck`, runner and trace comparison, 43 of 43 on the studio |
-| C24 to C26 Factory content | Partly: synthetic samples for every factory test, six scripts-behind; the other blocks run a reference behaviour by type (Issue I-13) |
+| D02-S1, D02-S2 Draft 0.2 | Done: the overlay applied; `sub` names, subflows, L30 to L32, checks reading subflows, pins through composites |
+| C01 Artefact store and naming | Done: loader, names and scopes, canonical JSON and hash, drafts, immutable publish, releases, tenant-keyed bank content |
+| C02 Schema validation | Done |
+| C03 Canonical model and types | Done: the model as data with ISO types and personal-data flags, the extension registry, TypeScript and Python types per activity with a type check gate, versioned code-set registries. The registry content is from memory and marked unverified |
+| C04 Static checks | Done: every check of the catalogue, L00 to L32, per document on every edit; expansion (C04-S6); whole-flow checks on the expanded form reported at the authored step |
+| C05 Pins, manifests and semver | Done: closure and pins, pack manifests, interface diff and proposed release, dependency release propagation |
+| C06 Rule service | Done. The evaluator is TypeScript with NRules semantics; D13 stays open |
+| C07, C08 Script sandboxes | Done for TypeScript and Python with a parity check. Not a security boundary (D14) |
+| C09 Studio interpreter | Done: the portable core, blocks and returns, the business trace and the detail |
+| C10 Simulator runtime | Done: scenarios, self-check, reason-code coverage, a deployable stub |
+| C11 Test runner | Done: every level, the detail, publish check of untested outcomes |
+| C12 to C15 Catalogue, editors, designer, test bench | Done in the web app: catalogue, ISO data and model browser, scheme catalogues with proved samples, editors for rules, tables, activity contracts, maps, simulators and composites, the workflow canvas with composite expansion, the test bench with nested detail and saved assertions |
+| C16 AI authoring assistant | Done except a live model run: the assistant calls the Claude API (`claude-opus-5-5`); no credentials are set here, so it was tested with an injected drafter. Gates, provenance and questions work |
+| C17 Tenants, roles, maker-checker | Done: roles enforced on every write, tenant isolation suite, maker and checker differ, a hash-chained audit with diffs and refusals |
+| C18 Hooks and configuration sets | Done: hooks at hook points, configuration editing with bounds and overlap checks, compatibility run, tenant export |
+| C19 Packs, release, retirement, supersession | Done: pack build, review and approval with green tests, release gate, retirement against pins and an in-flight import, supersession draft, evidence and hand-over |
+| C20 Exporter and Temporal binding | Packages and binding done (expanded forms, pins, `name@release`). The Temporal run of the kit (C20-S2 to S4) is not built |
+| C21 DTFx | Done: 46 of 46 on DTFx |
+| C22 Flowable | Done: generated BPMN runs on Flowable; patterns and engine gaps recorded in Part 9, section 9.7; L24 uses the portability report |
+| C23 Conformance kit and runner | Done: kit content in `ck`, the adapter interface, a reference adapter, the release-gate report with waivers |
+| C24 to C26 Factory content | Partly: samples for every test, six scripts-behind, WPS-IN-001 fixed (C25-S4). Confirming against the rulebooks and the planned message groups wait on D10 and business decisions; see `docs/ISSUES.md` |
+
+## Temporal
+
+Running the kit on Temporal was started as a separate piece of work and was refused by the session's permission classifier, with no reason given. It was not attempted another way. The studio's Temporal export package and binding exist and are tested; the Temporal SDK installs and a Temporal test server is downloadable from GitHub releases here, so the work is feasible once permitted.
 
 ## Not verified
 
-- `uae.wps` and `uae.aani` stay provisional. Nothing in this build confirms a scheme fact; the samples and scripts follow the factory pack's own provisional reading.
-- No engine was run. The Temporal, DTFx and Flowable packages are generated and checked by the studio only.
+- `uae.wps` and `uae.aani` stay provisional. Nothing here confirms a scheme fact; samples and scripts follow the factory pack's own provisional reading.
+- The ISO code-set registry was written from memory, like the factory's reason codes.
+- The AI assistant has not run against a live model in this environment.
 - The sandboxes keep honest scripts deterministic; they were not tested against hostile code.
