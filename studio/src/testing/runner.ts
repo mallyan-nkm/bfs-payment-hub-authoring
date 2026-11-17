@@ -253,8 +253,9 @@ function renameStep(r: RunResult, _name: string, _stepId: string): RunResult {
 async function runLegFromInbound(env: RunnerEnv, cfg: RunConfig, leg: string): Promise<RunResult> {
   const run = new Run(cfg);
   attachIntake(run);
-  const scheme = env.store.byKind('scheme').map((e) => e.doc).find((s) => (s.messages ?? []).some((m: any) => m.disposition?.start?.leg === leg));
-  const entry = scheme?.messages.find((m: any) => m.disposition?.start?.leg === leg);
+  const found = startEntryFor(env.store.byKind('scheme').map((e) => e.doc), leg, (n) => run.resolveDoc(n));
+  const scheme = found?.scheme;
+  const entry = found?.entry;
   if (!entry) throw new Error(`No start message in a dispatch table names leg ${leg}`);
   const inbound = { id: run.newId('in'), type: entry.id, port: '', from: 'simulator' as const, at: run.clock.now, correlation: {}, payload: cfg.inbound?.payload, conversation: 'conv-1' };
   run.messages.push(inbound);
@@ -337,4 +338,24 @@ export async function runAllTests(env: RunnerEnv, filter?: (t: any) => boolean):
   const out: TestRunReport[] = [];
   for (const t of tests) out.push(await runTest(env, t));
   return out;
+}
+
+/**
+ * The start message whose intake leads to a leg. A leg the dispatch table does not name yet (a new
+ * leg, before its scheme manifest has a new release) takes the intake of the leg that fills the same
+ * slot of the same platform workflow in its scheme (Issue I-24).
+ */
+export function startEntryFor(schemes: any[], leg: string, resolve: (n: string) => any): { scheme: any; entry: any } | undefined {
+  for (const s of schemes) {
+    const entry = (s.messages ?? []).find((m: any) => m.disposition?.start?.leg === leg);
+    if (entry) return { scheme: s, entry };
+  }
+  const d = resolve(leg);
+  const scope = leg.split('.').slice(0, 2).join('.');
+  const s = schemes.find((x) => x.scope === scope);
+  for (const m of s?.messages ?? []) {
+    const other = m.disposition?.start?.leg ? resolve(m.disposition.start.leg) : undefined;
+    if (other && d?.implements && other.implements?.slot === d.implements.slot && (other.implements.of ?? []).some((o: string) => (d.implements.of ?? []).includes(o))) return { scheme: s, entry: m };
+  }
+  return undefined;
 }

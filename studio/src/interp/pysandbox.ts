@@ -8,7 +8,7 @@ import { ContractViolation, ScriptError, type ScriptApi, type ScriptResult } fro
 // talking JSON lines; port and rule calls come back to the studio, so a Python script runs on
 // the same simulators, rule service and virtual clock as a TypeScript one.
 
-const HARNESS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'py_harness.py');
+const HARNESS = process.env.TH_PY_HARNESS ?? path.join(path.dirname(fileURLToPath(typeof __filename !== 'undefined' ? 'file://' + __filename : import.meta.url)), 'py_harness.py');
 export const PYTHON = process.env.TH_PYTHON ?? 'python3';
 
 export async function runPythonScript(

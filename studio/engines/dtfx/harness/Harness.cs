@@ -45,7 +45,7 @@ public sealed class Harness : IDisposable
     public VirtualClock Clock = null!;
     public VirtualTimeOrchestrationService Service = null!;
     public readonly ClaimCheckStore Store = new();
-    PartyClient party = null!;
+    IParty party = null!;
     Deployment dep = null!;
     TaskHubClient client = null!;
     readonly List<(string label, string id)> roots = new();
@@ -73,7 +73,10 @@ public sealed class Harness : IDisposable
         PartyActivity.H = this;
         ClaimCheckActivity.H = this;
 
-        party = new PartyClient(J.S(input, "studioRoot")!);
+        // A deployment calls the separate workers; a kit run calls the party service.
+        party = J.P(input, "workers") is JsonObject workers
+            ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)
+            : new PartyClient(J.S(input, "studioRoot")!);
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
 
         // The worker: one generic orchestration, one task activity per activity release (R-09-04).

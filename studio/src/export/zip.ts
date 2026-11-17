@@ -64,3 +64,21 @@ export function zip(entries: { name: string; content: Buffer }[]): Buffer {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, cd, end]);
 }
+
+/** Read a ZIP of stored entries, as `zip` writes them. */
+export function unzip(buf: Buffer): { name: string; content: Buffer }[] {
+  const out: { name: string; content: Buffer }[] = [];
+  let i = 0;
+  while (i + 30 <= buf.length && buf.readUInt32LE(i) === 0x04034b50) {
+    const method = buf.readUInt16LE(i + 8);
+    const size = buf.readUInt32LE(i + 18);
+    const nameLen = buf.readUInt16LE(i + 26);
+    const extraLen = buf.readUInt16LE(i + 28);
+    const name = buf.subarray(i + 30, i + 30 + nameLen).toString('utf8');
+    const start = i + 30 + nameLen + extraLen;
+    if (method !== 0) throw new Error(`${name}: only stored entries are read`);
+    out.push({ name, content: buf.subarray(start, start + size) });
+    i = start + size;
+  }
+  return out;
+}

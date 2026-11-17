@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vm from 'node:vm';
-import ts from 'typescript';
+import { createRequire } from 'node:module';
+
+// TypeScript is loaded only to transpile a .ts script; a deployed worker runs precompiled JavaScript.
+const req: NodeRequire = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
 import { coveredByAny, diff } from '../core/paths.js';
 
 // The TypeScript script sandbox (Part 8; C07). A script-behind sees only the injected
@@ -44,10 +47,11 @@ export function compileScript(source: string, file = 'script.ts'): vm.Script {
   const key = file + '\n' + source;
   let s = compiled.get(key);
   if (!s) {
-    const js = ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, strict: false },
-      fileName: file,
-    }).outputText;
+    let js = source;
+    if (!file.endsWith('.js') && !file.endsWith('.cjs')) {
+      const ts = req('typescript');
+      js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, strict: false }, fileName: file }).outputText;
+    }
     s = new vm.Script(`(function (exports, module) { ${js}\n })`, { filename: file });
     compiled.set(key, s);
   }
@@ -130,7 +134,7 @@ export class ScriptRegistry {
 
   find(name: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
     for (const d of this.dirs) {
-      for (const [ext, language] of [['.ts', 'typescript'], ['.py', 'python']] as const) {
+      for (const [ext, language] of [['.ts', 'typescript'], ['.js', 'typescript'], ['.py', 'python']] as const) {
         const f = path.join(d, `${name}${ext}`);
         if (fs.existsSync(f)) return { file: f, source: fs.readFileSync(f, 'utf8'), language };
       }
@@ -140,7 +144,7 @@ export class ScriptRegistry {
 
   list(): string[] {
     const out: string[] = [];
-    for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts') || f.endsWith('.py')));
+    for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.py')));
     return out.sort();
   }
 }

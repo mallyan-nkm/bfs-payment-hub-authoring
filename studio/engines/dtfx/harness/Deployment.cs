@@ -173,7 +173,13 @@ public sealed class ClaimCheckStore
 }
 
 /// <summary>The party service over JSON lines (studio/src/conformance/party-server.ts).</summary>
-public sealed class PartyClient : IDisposable
+/// Everything outside the orchestration: the party service in a kit run, or the deployed workers.
+public interface IParty : IDisposable
+{
+    Task<JsonObject> Call(JsonObject req);
+}
+
+public sealed class PartyClient : IParty
 {
     readonly Process proc;
     readonly SemaphoreSlim lk = new(1, 1);
@@ -215,4 +221,81 @@ public sealed class PartyClient : IDisposable
     {
         try { proc.StandardInput.Close(); if (!proc.WaitForExit(2000)) proc.Kill(); } catch { }
     }
+}
+
+/// A deployment (Part 9; R-09-04, R-09-05): each activity attempt goes over HTTP to the worker
+/// process of the task queue the binding derives from the activity's scope. Workers are separate
+/// processes; a task that is not on a worker's queue is refused by that worker.
+public sealed class WorkerRouter : IParty
+{
+    readonly Dictionary<string, string> workers; // queue -> base URL
+    readonly Dictionary<string, string> queues;  // scope -> queue
+    readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    public readonly Dictionary<string, int> Calls = new();
+
+    public WorkerRouter(JsonObject workers, JsonObject queues)
+    {
+        this.workers = workers.ToDictionary(kv => kv.Key, kv => kv.Value!.GetValue<string>().TrimEnd('/'));
+        this.queues = queues.ToDictionary(kv => kv.Key, kv => kv.Value!.GetValue<string>());
+    }
+
+    static string ScopeOf(string name)
+    {
+        var parts = name.Split('.');
+        return parts[0] is "p" or "b" ? parts[0] : $"{parts[0]}.{parts[1]}";
+    }
+
+    async Task<JsonObject> Post(string url, JsonObject body)
+    {
+        using var content = new StringContent(J.Str(body), System.Text.Encoding.UTF8, "application/json");
+        using var res = await http.PostAsync(url, content);
+        var text = await res.Content.ReadAsStringAsync();
+        var o = (JsonObject)J.Parse(text)!;
+        if (J.S(o, "error") is string err) throw new InvalidOperationException($"worker {url}: {err}");
+        return o;
+    }
+
+    public async Task<JsonObject> Call(JsonObject req)
+    {
+        switch (J.S(req, "op"))
+        {
+            case "open":
+                return new JsonObject { ["ok"] = true };
+            case "start":
+            {
+                var all = new JsonArray();
+                foreach (var url in workers.Values.Distinct())
+                {
+                    var r = await Post($"{url}/start", new JsonObject { ["now"] = J.Clone(J.P(req, "now")), ["conversation"] = J.S(req, "conversation") });
+                    foreach (var d in J.A(r, "deliveries")) all.Add(J.Clone(d));
+                }
+                return new JsonObject { ["deliveries"] = all };
+            }
+            case "attempt":
+            {
+                var activity = J.S(req, "activity")!;
+                var scope = ScopeOf(activity);
+                if (!queues.TryGetValue(scope, out var queue) || !workers.TryGetValue(queue, out var url))
+                    throw new InvalidOperationException($"No worker serves queue {queue ?? "?"} for {activity}");
+                Calls[queue] = Calls.GetValueOrDefault(queue) + 1;
+                var body = (JsonObject)J.Clone(req)!;
+                body.Remove("op");
+                return await Post($"{url}/attempt", body);
+            }
+            case "sent":
+            {
+                var all = new JsonArray();
+                foreach (var url in workers.Values.Distinct())
+                {
+                    var text = await http.GetStringAsync($"{url}/sent");
+                    foreach (var m in J.A((JsonObject)J.Parse(text)!, "messages")) all.Add(J.Clone(m));
+                }
+                return new JsonObject { ["messages"] = all };
+            }
+            default:
+                throw new InvalidOperationException($"Unknown op {J.S(req, "op")}");
+        }
+    }
+
+    public void Dispose() => http.Dispose();
 }

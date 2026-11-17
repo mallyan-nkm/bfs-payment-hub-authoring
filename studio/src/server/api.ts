@@ -466,7 +466,7 @@ route('GET', '/api/export/download', (env, req) => {
   const workflows = (req.query.workflows ?? '').split(',').filter(Boolean);
   const target = (req.query.target ?? 'temporal') as Target;
   const tenant = req.query.tenant && req.query.tenant !== OWNER_TENANT ? req.query.tenant : undefined;
-  const pkg = exportPackage(env, { workflows, target, tenant });
+  const pkg = exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' });
   return { __binary: true, data: exportZip(pkg), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
 });
 

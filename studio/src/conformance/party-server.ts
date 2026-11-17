@@ -24,7 +24,7 @@ rl.on('line', async (line) => {
       const exp = kit.manifest.scenarios.find((s: any) => s.id === req.scenario);
       if (!sc) return write({ error: `No scenario ${req.scenario}` });
       const b = build(env, kit, sc, exp);
-      party = new PartyService(env, b);
+      party = PartyService.forScenario(env, b);
       return write({ ok: true, built: b });
     }
     if (!party) return write({ error: 'open a scenario first' });

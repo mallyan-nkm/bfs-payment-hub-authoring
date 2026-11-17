@@ -101,6 +101,13 @@ export class Store {
     return s;
   }
 
+  /** A store over plain folders of YAML, as a deployed worker holds its artefacts. */
+  static fromDirs(dirs: string[]): Store {
+    const s = new Store(dirs[0] ?? '.', '');
+    for (const d of dirs) s.loadDir(d, 'spec');
+    return s;
+  }
+
   private loadDir(dir: string, source: 'spec' | 'studio') {
     if (!fs.existsSync(dir)) return;
     for (const f of walkYaml(dir)) {

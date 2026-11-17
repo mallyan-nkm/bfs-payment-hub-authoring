@@ -27,6 +27,7 @@ export interface AttemptRequest {
   ctx: any; // the instance's context
   level?: 'item';
   policy?: any;
+  messages?: { id: string; type: string; payload?: any }[];
 }
 
 export type AttemptResponse =
@@ -42,12 +43,18 @@ export class PartyService {
   private due: Delivery[] = [];
   private latency: Record<string, number> = {};
 
-  constructor(env: StudioEnv, built: BuiltScenario) {
+  /** A party service for a kit scenario. */
+  static forScenario(env: StudioEnv, built: BuiltScenario): PartyService {
+    return new PartyService({ ...built.config, store: env.store, scripts: env.scripts, documents: built.documents } as RunConfig);
+  }
+
+  /** A party service over any run configuration: a deployed worker builds one from its environment. */
+  constructor(base: RunConfig) {
     // A stub's latency is the engine's to spend on its own clock: the service answers at once and
     // reports how long the attempt takes (latencyMs).
-    this.latency = Object.fromEntries(Object.entries<any>(built.config.stubs ?? {}).filter(([, v]) => v.latency).map(([k, v]) => [k, durationMs(v.latency)]));
-    const stubs = Object.fromEntries(Object.entries<any>(built.config.stubs ?? {}).map(([k, v]) => [k, { ...v, latency: undefined }]));
-    const cfg: RunConfig = { ...built.config, stubs, store: env.store, scripts: env.scripts, documents: built.documents } as RunConfig;
+    this.latency = Object.fromEntries(Object.entries<any>(base.stubs ?? {}).filter(([, v]) => v.latency).map(([k, v]) => [k, durationMs(v.latency)]));
+    const stubs = Object.fromEntries(Object.entries<any>(base.stubs ?? {}).map(([k, v]) => [k, { ...v, latency: undefined }]));
+    const cfg: RunConfig = { ...base, stubs };
     this.run = new Run(cfg);
     // A simulator's later reply is not run on the studio clock: it is handed to the engine.
     this.run.clock.at = (t: number, fn: () => void, label?: string) => {
@@ -78,6 +85,8 @@ export class PartyService {
 
   async attempt(req: AttemptRequest): Promise<AttemptResponse> {
     this.run.clock.now = req.now;
+    // Messages the context refers to by claim-check, handed over with the request (a deployed worker holds no payloads).
+    for (const m of req.messages ?? []) if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push({ port: '', from: 'simulator', at: req.now, correlation: {}, ...m } as Message);
     let inst = this.instances.get(req.instance);
     if (!inst) {
       inst = new Instance(this.run, { kind: 'workflow', name: req.instance, release: '0.0.0' }, req.ctx, 'engine');

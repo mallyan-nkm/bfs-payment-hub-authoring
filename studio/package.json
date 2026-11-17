@@ -8,6 +8,8 @@
     "dev": "tsx watch src/server/main.ts",
     "start": "tsx src/server/main.ts",
     "test": "vitest run",
+    "test:blackbox": "vitest run --config vitest.blackbox.config.ts",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "studio": "tsx src/cli.ts",
     "web:dev": "vite --config web/vite.config.ts",
@@ -20,6 +22,7 @@
     "@anthropic-ai/sdk": "^1.9.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "yaml": "^2.9.1"
