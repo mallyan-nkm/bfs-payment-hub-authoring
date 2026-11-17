@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:hook",
+  "title": "Hook",
+  "description": "A bank's implementation of one declared hook point. See design/06.",
+  "type": "object",
+  "required": ["kind", "name", "release", "title", "implements", "type", "do"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "hook" },
+    "name": { "type": "string", "pattern": "^b\\.hook\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "implements": {
+      "type": "object",
+      "required": ["hookPoint", "of"],
+      "additionalProperties": false,
+      "properties": {
+        "hookPoint": { "$ref": "urn:th:schema:common#/$defs/identifier" },
+        "of": { "$ref": "urn:th:schema:common#/$defs/artefactName" }
+      }
+    },
+    "type": { "enum": ["halt", "transform", "notify"] },
+    "outcomes": {
+      "description": "Halt hooks: continue, hold or reject. Transform and notify hooks: done.",
+      "type": "array",
+      "items": { "enum": ["continue", "hold", "reject", "done"] },
+      "uniqueItems": true
+    },
+    "do": { "$ref": "urn:th:schema:workflow#/$defs/steps" },
+    "artefacts": { "$ref": "urn:th:schema:common#/$defs/pins" },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  }
+}

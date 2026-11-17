@@ -1,0 +1,45 @@
+# Three engine bindings, one document each. Settings here are placeholders.
+kind: engine-binding
+target: temporal
+strategy: interpreter
+queues:
+  p: th-p
+  uae.p: th-uae-p
+  uae.wps: th-uae-wps
+  uae.aani: th-uae-aani
+  b: th-bank
+taskNaming: "<name>@<release>"
+defaults:
+  queueTimeout: PT30S
+  heartbeat: PT10S
+  forEachChunk: 500
+  historyLimit: 10000
+---
+kind: engine-binding
+target: dtfx
+strategy: interpreter
+queues:
+  p: th-p
+  uae.p: th-uae-p
+  uae.wps: th-uae-wps
+  uae.aani: th-uae-aani
+  b: th-bank
+taskNaming: "<name>@<release>"
+defaults:
+  forEachChunk: 500
+extensions:
+  attemptTimeout: timer-race
+---
+kind: engine-binding
+target: flowable
+strategy: generation
+queues:
+  p: th-p
+  uae.p: th-uae-p
+  uae.wps: th-uae-wps
+  uae.aani: th-uae-aani
+  b: th-bank
+taskNaming: "<name>@<release>"
+extensions:
+  activityTask: external-worker
+  retry: modelled-loop

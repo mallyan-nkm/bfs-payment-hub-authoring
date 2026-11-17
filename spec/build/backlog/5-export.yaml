@@ -1,0 +1,180 @@
+group: Export
+components:
+  - id: C20
+    title: Exporter and Temporal binding
+    phase: 2
+    purpose: Export a pack with its engine binding and run it on Temporal through a generic interpreter workflow. Where the platform already has an interpreter on Temporal, these stories change it to read this DSL; they do not build a second one.
+    design: [Part 9, Annex C]
+    schemas: [engine-binding, pack, workflow]
+    dependsOn: [C05, C09, C23]
+    dos: The conformance kit passes on Temporal, and the factory legs run end to end against deployed simulator stubs.
+    stories:
+      - id: C20-S1
+        title: Export package and binding
+        sp: 3
+        story: As an implementation lead, I want the export to carry the workflows, their pins and a binding for the chosen engine, so that deployment needs nothing from the studio.
+        dod:
+          - The package holds the pack, its manifest (C05-S2) and a binding that validates against engine-binding.schema.json.
+          - Task names follow name@release.
+        dos: The Temporal binding in examples/bindings is regenerated from the factory pack with no difference.
+      - id: C20-S2
+        title: Interpreter workflow on Temporal
+        sp: 8
+        story: As a platform engineer, I want one generic Temporal workflow that interprets the DSL, so that a new workflow release needs no new workflow code.
+        needs: [C20-S1]
+        dod:
+          - Every core construct maps as Part 9 states; a leg runs as a child workflow; signals map to Temporal signals.
+          - The interpreter is deterministic under replay and versioned so that in-flight instances replay on the release they started with.
+          - The Temporal adapter for the kit runner (C23-S2) is part of this story.
+        dos: The sequence, handle, switch, parallel, for each, loop, wait, await and slot scenarios of the kit pass on Temporal with the business trace equal to the studio's.
+      - id: C20-S3
+        title: Policy mapping and activity workers
+        sp: 5
+        story: As a platform engineer, I want timeouts and retries taken from the DSL and activities dispatched by name and release, so that policy is never restated in code.
+        needs: [C20-S2]
+        dod:
+          - attemptTimeout maps to Start-To-Close, totalTimeout to Schedule-To-Close and retry to the Retry Policy.
+          - A worker registers name@release; two releases of one line run side by side.
+        dos: CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02 and CK-PIN-01 pass on Temporal.
+      - id: C20-S4
+        title: Lookup, hooks and supersession at run time
+        sp: 5
+        phase: 4
+        story: As a platform engineer, I want values read at each step, hook bindings taken at start and supersessions applied to steps not yet started, so that hot update on the engine matches the studio.
+        needs: [C20-S3]
+        dod:
+          - Values come from the configuration service by date and tenant; a supersession is applied by service operations and recorded in the instance history.
+        dos: CK-LOOKUP-01, CK-HOOK-01 to 04 and CK-SUP-01 pass on Temporal.
+
+  - id: C21
+    title: DTFx interpreter
+    phase: 4
+    purpose: Run the same export on the Durable Task Framework through a generic orchestration.
+    design: [Part 9, Annex C]
+    schemas: [engine-binding, workflow]
+    dependsOn: [C20]
+    dos: The conformance kit passes on DTFx with the same business trace as the studio.
+    stories:
+      - id: C21-S1
+        title: Interpreter orchestration
+        sp: 8
+        story: As a platform engineer, I want one generic DTFx orchestration that interprets the DSL, so that portability is proven by running and not by claim.
+        dod:
+          - Core constructs map as Part 9 states; a leg runs as a sub-orchestration; signals map to external events.
+          - Orchestration code is deterministic; long histories continue as new.
+          - The DTFx adapter for the kit runner (C23-S2) is part of this story.
+        dos: The sequence, handle, switch, parallel, for each and loop scenarios of the kit pass on DTFx.
+      - id: C21-S2
+        title: Timers, awaits and policy
+        sp: 5
+        story: As a platform engineer, I want attempt timeouts built as a timer race and retries from RetryOptions, so that policy means the same as on Temporal.
+        needs: [C21-S1]
+        dod:
+          - attemptTimeout is a race of the task against a durable timer, with the timer cancelled when the task wins; totalTimeout maps to the retry timeout.
+          - An await is an external event raced against a timer; an event raised before the await starts is kept in orchestration state.
+        dos: CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02 and CK-AWAIT-01 to 05 pass on DTFx.
+      - id: C21-S3
+        title: Compensation, finally and signals
+        sp: 5
+        story: As a platform engineer, I want compensation, finally and the four signals to behave as in the studio, so that failure paths are portable.
+        needs: [C21-S1]
+        dod:
+          - Completed write steps are tracked in orchestration state; cancel compensates in reverse and then runs finally.
+        dos: CK-COMP-01, CK-FINALLY-01, CK-DEADLINE-01 and CK-SIGNAL-01 to 03 pass on DTFx.
+      - id: C21-S4
+        title: Binding and limits
+        sp: 1
+        story: As an implementation lead, I want the DTFx binding generated and its known limits stated, so that a bank on DTFx knows what it gets.
+        needs: [C21-S2]
+        dod:
+          - The binding lists task hubs, activity names and settings; limits are recorded in Part 9, section 9.7.
+        dos: The DTFx binding in examples/bindings is regenerated with no difference.
+
+  - id: C22
+    title: Flowable generator
+    phase: 4
+    purpose: Generate BPMN for Flowable from the DSL, with activities run by external workers.
+    design: [Part 9, Annex C]
+    schemas: [engine-binding, workflow]
+    dependsOn: [C04, C20]
+    dos: The conformance kit passes on Flowable for the core profile, and every construct that cannot be generated is reported by L24.
+    stories:
+      - id: C22-S1
+        title: Spike, generated BPMN against the kit
+        sp: 5
+        story: As an architect, I want a time-boxed spike that generates BPMN for the hardest constructs, so that the generation strategy is chosen on evidence.
+        dod:
+          - The spike covers retry with backoff, await with timeout, for each with per-item outcomes and compensation in reverse.
+          - A short report states what generates cleanly, what needs a modelled pattern and what is refused.
+        dos: The report names the pattern chosen for each of the four constructs and Part 9, section 9.7 is updated from it.
+      - id: C22-S2
+        title: Core constructs to BPMN
+        sp: 8
+        story: As a platform engineer, I want BPMN generated for the core constructs, so that a workflow runs on Flowable with no hand modelling.
+        needs: [C22-S1]
+        dod:
+          - call maps to an external worker task, handle and switch to gateways, parallel to parallel gateways, forEach to multi-instance, slot to a call activity.
+          - Generation is reproducible; the model carries step ids as element ids.
+          - The Flowable adapter for the kit runner (C23-S2) is part of this story.
+        dos: The sequence, handle, switch, parallel, for each and slot scenarios of the kit pass on Flowable.
+      - id: C22-S3
+        title: Policy as boundary events and retry loops
+        sp: 5
+        story: As a platform engineer, I want timeouts as timer boundary events and retries as the pattern the spike chose, so that policy survives generation.
+        needs: [C22-S2]
+        dod:
+          - attemptTimeout is a timer boundary event on the task; retry is a failed-job retry cycle where backoff is fixed and a modelled loop where it grows.
+        dos: CK-RETRY-01 and 02 and CK-TIMEOUT-01 and 02 pass on Flowable.
+      - id: C22-S4
+        title: Await, signals, compensation and finally
+        sp: 5
+        story: As a platform engineer, I want awaits, the four signals, compensation and finally generated, so that long-running legs are portable.
+        needs: [C22-S2]
+        dod:
+          - await maps to a message catch raced against a timer, with early messages held by the binding until the catch is waiting; signals map to event sub-processes; compensation uses compensation events in reverse order.
+        dos: CK-AWAIT-01 to 05, CK-SIGNAL-01 to 03, CK-COMP-01 and CK-FINALLY-01 pass on Flowable.
+      - id: C22-S5
+        title: Portability report
+        sp: 3
+        story: As a designer, I want to know before export what will not generate for Flowable, so that I choose a portable construct while designing.
+        needs: [C22-S2, C04-S4]
+        dod:
+          - L24 lists each construct outside the Flowable profile with the step and the alternative.
+        dos: Every factory workflow is reported as portable or lists the exact step that is not.
+
+  - id: C23
+    title: Conformance kit and runner
+    phase: 2
+    purpose: Hold the 43 scenarios as content, run them on any target through an adapter, and report the result so a release can be gated on it.
+    design: [Annex C, Part 9]
+    schemas: [test-case, workflow]
+    dependsOn: [C01, C02]
+    dos: One command runs the kit on a named target and produces a report that a release gate can read.
+    stories:
+      - id: C23-S1
+        title: Kit content
+        sp: 5
+        story: As a platform engineer, I want each scenario of the kit backed by a small workflow, simulators and an expected trace in the reserved cluster ck, so that the kit is content like any other.
+        dod:
+          - All 43 scenarios of conformance/kit.yaml have their artefacts under scope ck and validate.
+          - The ck scope is refused in any shared or bank pack.
+        dos: The kit pack validates, and every scenario id in conformance/kit.yaml has a workflow and an expected trace.
+      - id: C23-S2
+        title: Runner, adapter and trace comparison
+        sp: 5
+        story: As a platform engineer, I want one runner that drives a target through an adapter and compares business traces, so that engines are judged by the same measure.
+        needs: [C23-S1]
+        dod:
+          - An adapter interface starts an instance, delivers a message, sends a signal, advances time and reads the trace.
+          - The comparison is on step id, outcome, attempts and messages, never on engine history.
+          - A reference adapter replays the expected traces, so the runner is tested before any target exists.
+        dos: The runner reports 43 of 43 on the reference adapter, and a trace with one changed outcome is reported at the step that differs.
+      - id: C23-S3
+        title: Report for the release gate
+        sp: 1
+        phase: 4
+        story: As a shared checker, I want the result per target as a report a release gate can read, so that portability cannot regress unseen.
+        needs: [C23-S2]
+        dod:
+          - The report lists target, kit release, each scenario and its result; a waiver names the scenario, the reason and the approver.
+        dos: A report with one red scenario on one target names that scenario, and the release flow of C19-S2 refuses the pack.

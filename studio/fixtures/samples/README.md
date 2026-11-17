@@ -1,0 +1,25 @@
+# Sample messages
+
+Synthetic sample messages for the factory tests. Every value is invented: no person, employer or
+bank in these files exists. IBANs use the UAE format with computed check digits.
+
+A line that starts with `# file:` gives the name the file had on the channel. It is fixture
+metadata, not part of the message, and the intake maps read it as the `SourceFile` fact.
+
+| File | Format | Used by |
+| --- | --- | --- |
+| `wps-sif-valid.sif` | WPS SIF, SCR first | WPS-MAP-001, WPS-OUT-001 to 003 |
+| `wps-sif-valid-scr-last.sif` | WPS SIF, SCR last, two records | WPS-MAP-002 |
+| `wps-sif-bad-control-total.sif` | WPS SIF, control total wrong | WPS-OUT-004 |
+| `wps-sif-bad-iban.sif` | WPS SIF, IBAN check digits wrong | WPS-OUT-005 |
+| `wps-pif-valid.pif` | WPS PIF | WPS-IN-001 |
+| `aani-credit-in-valid.xml` | ISO 20022 credit transfer | AANI-IN-001 |
+| `aani-status-request-in.xml` | ISO 20022 status request | AANI-HND-001 |
+
+Format of a SIF line, comma separated:
+
+- `SCR,<employer id 13>,<employer bank routing code 9>,<creation date>,<creation time>,<salary month MMYYYY>,<record count>,<total salary>,<currency>,<employer reference>`
+- `EDR,<person id 14>,<agent routing code 9>,<IBAN>,<pay start>,<pay end>,<days in period>,<fixed pay>,<variable pay>,<leave days>`
+
+The SIF layout follows the public bank guides the factory pack was written from. It is
+provisional, as `uae.wps` is.

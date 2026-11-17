@@ -1,0 +1,4 @@
+# Names that must never appear in p, cluster or scheme content (check L09).
+# One per line, lower case. Add every bank tenant id and every vendor product name here.
+# Tenant ids found in packs and configuration sets are added automatically.
+example-bank

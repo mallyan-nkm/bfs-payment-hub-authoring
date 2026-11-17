@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic sample. Every value is invented. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.05">
+  <FIToFIPmtStsReq>
+    <GrpHdr>
+      <MsgId>AANI-REQ-0001</MsgId>
+      <CreDtTm>2026-11-17T06:00:00Z</CreDtTm>
+    </GrpHdr>
+    <TxInf>
+      <OrgnlEndToEndId>E2E-IN-0001</OrgnlEndToEndId>
+      <OrgnlTxId>TX-IN-0001</OrgnlTxId>
+    </TxInf>
+  </FIToFIPmtStsReq>
+</Document>

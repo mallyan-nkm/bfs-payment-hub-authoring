@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:rule",
+  "title": "Rule, rule set and decision table",
+  "description": "The rule DSL has NRules semantics. See design/04.",
+  "oneOf": [
+    { "$ref": "#/$defs/rule" },
+    { "$ref": "#/$defs/ruleset" },
+    { "$ref": "#/$defs/table" }
+  ],
+  "$defs": {
+    "pattern": {
+      "type": "object",
+      "required": ["fact"],
+      "additionalProperties": false,
+      "properties": {
+        "fact": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "as": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "where": { "$ref": "urn:th:schema:common#/$defs/expression" }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "match": { "$ref": "#/$defs/pattern" },
+        "exists": { "$ref": "#/$defs/pattern" },
+        "not": { "$ref": "#/$defs/pattern" },
+        "all": { "$ref": "#/$defs/pattern" },
+        "query": {
+          "type": "object",
+          "required": ["as", "match"],
+          "additionalProperties": false,
+          "properties": {
+            "as": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+            "match": { "$ref": "#/$defs/pattern" },
+            "collect": { "type": "boolean" },
+            "groupBy": { "$ref": "urn:th:schema:common#/$defs/expression" }
+          }
+        },
+        "let": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "urn:th:schema:common#/$defs/expression" }
+        },
+        "having": { "$ref": "urn:th:schema:common#/$defs/expression" },
+        "or": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/condition" } },
+        "and": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/condition" } }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["severity", "path", "reasonCode"],
+      "additionalProperties": false,
+      "properties": {
+        "severity": { "enum": ["reject", "repair", "warn"] },
+        "path": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "schemeCode": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["name", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "value": {},
+        "reason": { "type": "string" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "yield": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "finding": { "$ref": "#/$defs/finding" },
+            "decision": { "$ref": "#/$defs/decision" },
+            "fact": {
+              "description": "Decision sets only. A fact other rules may match.",
+              "type": "object",
+              "required": ["type"],
+              "properties": { "type": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" } }
+            }
+          }
+        }
+      }
+    },
+    "example": {
+      "type": "object",
+      "required": ["name", "given", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "evaluationDate": { "$ref": "urn:th:schema:common#/$defs/date" },
+        "given": { "type": "object" },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "findings": { "type": "array" },
+            "decisions": { "type": "array" }
+          }
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["kind", "name", "release", "title", "ruleKind", "when", "then", "examples"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "rule" },
+        "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+        "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "ruleKind": { "enum": ["structural", "field", "cross-field", "reference", "policy", "decision"] },
+        "level": { "enum": ["payment", "batch", "item"] },
+        "parameters": { "$ref": "urn:th:schema:common#/$defs/parameters" },
+        "priority": { "type": "integer" },
+        "repeatability": { "const": "non-repeatable" },
+        "when": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/condition" } },
+        "then": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } },
+        "examples": {
+          "description": "At least one passing and one failing case; boundary cases for any threshold.",
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/example" }
+        },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+      }
+    },
+    "ruleset": {
+      "type": "object",
+      "required": ["kind", "name", "release", "title", "mode", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "ruleset" },
+        "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+        "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+        "title": { "type": "string" },
+        "mode": { "description": "Validation sets do not chain. Decision sets may chain; their yield graph must be acyclic.", "enum": ["validation", "decision"] },
+        "stages": {
+          "description": "Validation sets: stage order. A blocking finding stops entry to the next stage.",
+          "type": "array",
+          "items": { "enum": ["structural", "field", "cross-field", "reference", "policy"] },
+          "uniqueItems": true
+        },
+        "rules": { "type": "array", "minItems": 1, "items": { "$ref": "urn:th:schema:common#/$defs/artefactName" }, "uniqueItems": true },
+        "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["kind", "name", "release", "title", "hitPolicy", "inputs", "outputs", "rows", "examples"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "table" },
+        "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+        "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+        "title": { "type": "string" },
+        "hitPolicy": { "enum": ["unique", "first", "collect"] },
+        "parameters": { "$ref": "urn:th:schema:common#/$defs/parameters" },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "expression"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "expression": { "$ref": "urn:th:schema:common#/$defs/expression" }
+            }
+          }
+        },
+        "outputs": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["when", "then"],
+            "additionalProperties": false,
+            "properties": {
+              "when": { "type": "object" },
+              "then": { "type": "object" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "examples": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/example" } },
+        "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+      }
+    }
+  }
+}

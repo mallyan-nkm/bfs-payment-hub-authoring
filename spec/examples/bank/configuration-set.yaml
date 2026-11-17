@@ -1,0 +1,43 @@
+kind: configuration-set
+tenant: example-bank
+release: 1.0.0
+title: Example bank configuration
+accepts:
+  - { scope: p, release: 1.0.0 }
+  - { scope: uae.p, release: 1.0.0 }
+  - { scope: uae.wps, release: 1.0.0 }
+  - { scope: uae.aani, release: 1.0.0 }
+values:
+  # A value, not a definition. The rule's bounds allow at most 50000, so 25000 tightens it.
+  - parameter: uae.aani.rule.amount-within-limit.v1#maxAmount
+    value: 50000
+    validFrom: "2026-01-01"
+    validTo: "2026-12-31"
+  - parameter: uae.aani.rule.amount-within-limit.v1#maxAmount
+    value: 25000
+    validFrom: "2027-01-01"
+  - parameter: p.table.rail-choice.v1#enabledRails
+    value: [uae.aani, uae.wps]
+    validFrom: "2026-01-01"
+  - parameter: uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes
+    value: ["302620122"]
+    validFrom: "2026-01-01"
+  - parameter: b.rule.internal-limit.v1#internalLimit
+    value: 250000
+    validFrom: "2026-01-01"
+bindings:
+  - hookPoint: p.wf.corporate.v1#before-release
+    hook: b.hook.pre-release-approval.v1
+    release: 1.0.0
+    validFrom: "2026-01-01"
+  - hookPoint: p.seg.check-and-screen.v1#enrich-before-screen
+    hook: b.hook.add-cost-centre.v1
+    release: 1.0.0
+    validFrom: "2026-01-01"
+  - hookPoint: p.wf.corporate.v1#on-close
+    hook: b.hook.treasury-notify.v1
+    release: 1.0.0
+    validFrom: "2026-01-01"
+approval:
+  maker: example.maker
+  checker: example.checker

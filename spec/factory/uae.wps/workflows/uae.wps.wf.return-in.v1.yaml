@@ -1,0 +1,28 @@
+kind: workflow
+wfKind: leg
+name: uae.wps.wf.return-in.v1
+release: 1.0.0
+dsl: 1.0.0
+title: WPS return, bank as the employer's bank
+description: A return file has arrived. Credit the employer's account.
+direction: inward
+implements:
+  slot: scheme-leg
+  of: [p.wf.inward.v1]
+entry:
+  reads: [header, batch, "items[]", facts.disposition]
+exit:
+  writes: [status, facts.posting]
+  outcomes: [settled, rejected, returned, pending]
+do:
+  - id: credit-employer
+    call: p.post.accounting.v1
+    handle:
+      rejected: { end: pending }
+      unknown: { end: pending }
+  - end: settled
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [CBUAE WPS responsibility guide 2018]
+  note: From public sources. Confirm against the current CBUAE WPS rulebook.

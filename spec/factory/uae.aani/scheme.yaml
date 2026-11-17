@@ -1,0 +1,99 @@
+kind: scheme
+scope: uae.aani
+release: 1.0.0
+title: Aani instant payments
+wire: iso20022
+messages:
+  - id: uae.aani.credit-transfer
+    title: Credit transfer sent to the scheme
+    direction: out
+    isoMessage: pacs.008
+    confirmed: false
+    disposition:
+      sentBy: uae.aani.exchange.send-credit.v1
+  - id: uae.aani.status-report
+    title: Status report received for a credit transfer we sent
+    direction: in
+    isoMessage: pacs.002
+    confirmed: false
+    disposition:
+      deliver: { correlateBy: original end-to-end id }
+  - id: uae.aani.status-request
+    title: Status request we send about a payment we sent
+    direction: out
+    isoMessage: pacs.028
+    confirmed: false
+    disposition:
+      sentBy: uae.aani.exchange.inquire-status.v1
+  - id: uae.aani.credit-transfer-in
+    title: Credit transfer received from the scheme
+    direction: in
+    isoMessage: pacs.008
+    confirmed: false
+    disposition:
+      start:
+        kind: payment
+        leg: uae.aani.wf.credit-in.v1
+        refuseLeg: uae.aani.wf.credit-refuse.v1
+        intakeMap: uae.aani.map.credit-in.v1
+  - id: uae.aani.status-report-out
+    title: Status report we send for a credit transfer we received
+    direction: out
+    isoMessage: pacs.002
+    confirmed: false
+    disposition:
+      sentBy: uae.aani.exchange.respond-status.v1
+  - id: uae.aani.status-request-in
+    title: Status request received about a payment we hold
+    direction: in
+    isoMessage: pacs.028
+    confirmed: false
+    disposition:
+      handler: uae.aani.handler.status-inquiry-in.v1
+  - id: uae.aani.proxy-request
+    title: Proxy resolution request to the scheme directory
+    direction: out
+    confirmed: false
+    disposition:
+      sentBy: uae.aani.enrich.proxy-resolve.v1
+  - id: uae.aani.proxy-lookup
+    title: Proxy lookup asked by a channel
+    direction: in
+    confirmed: false
+    disposition:
+      handler: uae.aani.handler.proxy-lookup.v1
+  - id: uae.aani.return
+    title: Return of a credit transfer, either direction
+    direction: in
+    isoMessage: pacs.004
+    confirmed: false
+    disposition:
+      planned: Return legs, inward and outward
+  - id: uae.aani.recall-request
+    title: Recall or cancellation request, either direction
+    direction: in
+    isoMessage: camt.056
+    confirmed: false
+    disposition:
+      planned: Recall legs with resolution, inward and outward
+  - id: uae.aani.request-to-pay
+    title: Request to pay, either direction
+    direction: in
+    isoMessage: pain.013
+    confirmed: false
+    disposition:
+      planned: Request-to-pay legs, inward and outward
+legs:
+  - uae.aani.wf.credit-out.v1
+  - uae.aani.wf.credit-in.v1
+  - uae.aani.wf.credit-refuse.v1
+handlers:
+  - uae.aani.handler.status-inquiry-in.v1
+  - uae.aani.handler.proxy-lookup.v1
+ports:
+  - uae.aani.port.switch.v1
+  - uae.aani.port.proxy.v1
+provenance:
+  origin: factory
+  status: provisional
+  note: ISO message identifiers are what an ISO 20022 instant scheme usually uses, not confirmed for Aani. Three message groups are planned, so this pack is not yet publishable.

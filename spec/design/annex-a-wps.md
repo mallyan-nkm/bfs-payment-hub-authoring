@@ -1,0 +1,97 @@
+# Annex A. WPS authored on paper
+
+Status: draft 0.1, 17 November 2026. Provisional: built from the 2018 CBUAE responsibility guide and public bank guides. Confirm every item against the current CBUAE WPS rulebook (decision D10).
+
+## A.1 The scheme in one paragraph
+
+An employer sends a salary information file (SIF) to its bank. The bank checks it, secures the funds and submits it to WPS. WPS answers with an acknowledgement, ACK or NAK. WPS splits an accepted file into one payment file (PIF) per agent, each with a supplementary file (PSI). An agent confirms receipt (PRC), pays the employees and reports disbursement (DIF). Refunds run as a request (RFR), a response (RRR) and a settlement file (RSU). Returns run as a returns file from the agent (RFA) and a return file to the employer's bank (RTC).
+
+## A.2 What WPS tests in the model
+
+| Model feature | Why WPS needs it |
+| --- | --- |
+| Maps both ways | The wire format is a file, not ISO 20022 |
+| Batch and item level | A file holds one control record and many employee records |
+| Scheme extension | Pay period, days paid, fixed and variable pay, leave days and the ids have no ISO home |
+| Long awaits on a business calendar | Acknowledgements, refunds and returns arrive hours or days later |
+| Two roles, two legs | The bank is the employer's bank and an agent |
+| Reports as exchanges | PRC and DIF move no money |
+| A request workflow | A refund request is not a payment |
+| A refuse slot that sends nothing | WPS has no message by which an agent refuses a file |
+
+## A.3 Canonical mapping
+
+| Source | Canonical |
+| --- | --- |
+| SCR employer id | `ext.uae.wps.employerId` |
+| SCR employer bank routing code | `batch.debtorAgent.clearingMemberId` |
+| SCR file creation date and time | `ext.uae.wps.fileCreationDate`, `ext.uae.wps.fileCreationTime` |
+| SCR salary month | `ext.uae.wps.salaryMonth` |
+| SCR record count | `batch.numberOfTransactions` |
+| SCR total salary | `batch.controlSum` |
+| SCR currency | `batch.currency` |
+| EDR person id | `items[].ext.uae.wps.personId` (personal data) |
+| EDR agent routing code | `items[].payment.creditorAgent.clearingMemberId` |
+| EDR IBAN | `items[].payment.creditorAccount.iban` |
+| EDR fixed plus variable pay | `items[].payment.instructedAmount.value` |
+| EDR fixed pay, variable pay | `items[].ext.uae.wps.fixedPay`, `variablePay` (personal data) |
+| EDR pay start, pay end, days, leave days | `items[].ext.uae.wps.payStartDate`, `payEndDate`, `daysInPeriod`, `leaveDays` |
+| Constant | `batch.categoryPurpose` = salary |
+
+Public bank guides disagree on whether the SCR is the first or the last line, and on the time format. The intake map therefore carries channel variants (`scr-first`, `scr-last`), and scheme truth comes from the CBUAE specification.
+
+## A.4 Legs
+
+| Leg | Role | Fills | Steps |
+| --- | --- | --- | --- |
+| `uae.wps.wf.salary-file-out.v1` | Employer's bank | `scheme-leg` of `p.wf.corporate.v1` | Set the business date; file checks; per item, record checks and the cluster IBAN check; render SIF; submit; await acknowledgement; read it |
+| `uae.wps.wf.agent-payment-in.v1` | Agent | `scheme-leg` of `p.wf.inward.v1` | Await the PSI that pairs with the PIF; file checks; send PRC; await acknowledgement; credit each employee; send DIF |
+| `uae.wps.wf.refund-out.v1` | Employer's bank | `scheme-leg` of `p.wf.request.v1` | Render RFR; submit; await acknowledgement; await RSU; credit the employer |
+| `uae.wps.wf.return-in.v1` | Employer's bank | `scheme-leg` of `p.wf.inward.v1` | Credit the employer |
+| `uae.wps.wf.inward-refuse.v1` | Agent | `scheme-refuse` of `p.wf.inward.v1` | Hand to operations; nothing is sent |
+
+## A.5 Dispatch table
+
+| Message | Direction | Disposition |
+| --- | --- | --- |
+| `uae.wps.sif` | In, from the employer | Start: payment, `salary-file-out` |
+| `uae.wps.sif-submission` | Out | Sent by `send-salary-file` |
+| `uae.wps.ack` | In | Deliver by file id |
+| `uae.wps.pif`, `uae.wps.psi` | In | Start: payment, `agent-payment-in`; the PSI is delivered to it |
+| `uae.wps.prc`, `uae.wps.dif` | Out | Sent by the two report blocks |
+| `uae.wps.refund-order` | In, from the employer | Start: request, `refund-out` |
+| `uae.wps.rfr` | Out | Sent by `send-refund-request` |
+| `uae.wps.rsu` | In | Deliver by refund request file id |
+| `uae.wps.rtc` | In | Start: return, `return-in` |
+| `uae.wps.dcr`, `uae.wps.rfr-in`, `uae.wps.rrr`, `uae.wps.rfa` | Mixed | Planned |
+
+## A.6 Artefacts
+
+Generated from `factory/inventory.yaml`.
+
+<!-- INVENTORY:uae.wps -->
+| Kind | Count | Artefacts |
+| --- | --- | --- |
+| Activity | 17 | `uae.wps.exchange.send-disbursement-file.v1`, `uae.wps.exchange.send-receipt-confirmation.v1`, `uae.wps.exchange.send-refund-request.v1`, `uae.wps.exchange.send-salary-file.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.dif-out.v1`, `uae.wps.map.pif-in.v1`, `uae.wps.map.prc-out.v1`, `uae.wps.map.refund-order-in.v1`, `uae.wps.map.rfr-out.v1`, `uae.wps.map.rsu-in.v1`, `uae.wps.map.rtc-in.v1`, `uae.wps.map.sif-in.v1`, `uae.wps.map.sif-out.v1`, `uae.wps.validate.payment-file.v1`, `uae.wps.validate.salary-file.v1`, `uae.wps.validate.salary-record.v1` |
+| Rule | 11 | `uae.wps.rule.agent-is-this-bank.v1`, `uae.wps.rule.amounts-non-negative.v1`, `uae.wps.rule.control-total-matches.v1`, `uae.wps.rule.currency-aed.v1`, `uae.wps.rule.employer-id-format.v1`, `uae.wps.rule.employer-routing-code-format.v1`, `uae.wps.rule.file-name-matches-control.v1`, `uae.wps.rule.net-pay-positive.v1`, `uae.wps.rule.pay-period-valid.v1`, `uae.wps.rule.person-id-format.v1`, `uae.wps.rule.record-count-matches.v1` |
+| Ruleset | 3 | `uae.wps.ruleset.payment-file.v1`, `uae.wps.ruleset.salary-file.v1`, `uae.wps.ruleset.salary-record.v1` |
+| Port | 2 | `uae.wps.port.employer-channel.v1`, `uae.wps.port.wps.v1` |
+| Simulator | 3 | `uae.wps.sim.employer-channel.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1` |
+| Workflow | 5 | `uae.wps.wf.agent-payment-in.v1`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
+| Scheme | 1 | `uae.wps.scheme` |
+| Extension | 1 | `uae.wps.ext.salary.v1` |
+| Test | 8 | `WPS-IN-001`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005` |
+| Total | 51 | |
+<!-- /INVENTORY:uae.wps -->
+
+## A.7 Open points
+
+| Id | Point |
+| --- | --- |
+| OP-A1 | Scheme validation runs first in the leg, after the reservation. A reject releases the reservation. Moving it before Reserve needs a second slot in `p.wf.corporate.v1`. |
+| OP-A2 | The wait for an acknowledgement and for a refund settlement are placeholders. |
+| OP-A3 | What an agent must do with a payment file it cannot process is assumed: hand to operations. |
+| OP-A4 | Whether file-level rejection is all-or-nothing, or WPS can reject single records, is not confirmed. |
+| OP-A5 | Reason codes for NAK files are scheme codes; the mapping to ISO reason codes is assumed. |
+| OP-A6 | WPS is already on the engine. The existing flow is the oracle: `WPS-OUT-001` to `WPS-OUT-005` must reproduce it. |
+| OP-A7 | The PSI is awaited and held by reference. Its layout, its map and the wait for it are not built. |

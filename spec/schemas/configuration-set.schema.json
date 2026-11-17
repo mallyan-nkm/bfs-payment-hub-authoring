@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:configuration-set",
+  "title": "Configuration set",
+  "description": "A tenant's values and hook bindings. Values, not definitions. See design/06.",
+  "type": "object",
+  "required": ["kind", "tenant", "release", "values", "bindings"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "configuration-set" },
+    "tenant": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "accepts": {
+      "description": "The shared pack releases this tenant has accepted.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scope", "release"],
+        "additionalProperties": false,
+        "properties": {
+          "scope": { "$ref": "urn:th:schema:common#/$defs/scope" },
+          "release": { "$ref": "urn:th:schema:common#/$defs/release" }
+        }
+      }
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["parameter", "value", "validFrom"],
+        "additionalProperties": false,
+        "properties": {
+          "parameter": {
+            "description": "<artefact name>#<parameter name>",
+            "type": "string",
+            "pattern": "^[a-z0-9.\\-]+\\.v[1-9][0-9]*#[a-z][A-Za-z0-9]*$"
+          },
+          "value": {},
+          "validFrom": { "$ref": "urn:th:schema:common#/$defs/date" },
+          "validTo": { "$ref": "urn:th:schema:common#/$defs/date" }
+        }
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["hookPoint", "hook", "release", "validFrom"],
+        "additionalProperties": false,
+        "properties": {
+          "hookPoint": {
+            "description": "<workflow name>#<hook point name>",
+            "type": "string",
+            "pattern": "^[a-z0-9.\\-]+\\.v[1-9][0-9]*#[a-z][a-z0-9-]*$"
+          },
+          "hook": { "type": "string", "pattern": "^b\\.hook\\.[a-z0-9-]+\\.v[1-9][0-9]*$" },
+          "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+          "hash": { "$ref": "urn:th:schema:common#/$defs/hash" },
+          "validFrom": { "$ref": "urn:th:schema:common#/$defs/date" },
+          "validTo": { "$ref": "urn:th:schema:common#/$defs/date" }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maker": { "type": "string" },
+        "checker": { "type": "string" },
+        "approvedAt": { "type": "string" }
+      }
+    }
+  }
+}

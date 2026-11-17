@@ -1,0 +1,16 @@
+kind: hook
+name: b.hook.pre-release-approval.v1
+release: 1.0.0
+title: Hold large corporate payments for approval
+implements:
+  hookPoint: before-release
+  of: p.wf.corporate.v1
+type: halt
+outcomes: [continue, hold, reject]
+do:
+  - id: internal-limit
+    call: b.validate.internal-limit.v1
+    handle:
+      reject: { end: hold }
+  - end: continue
+provenance: { origin: authored, status: confirmed, note: Example only. Shows a halt hook. }

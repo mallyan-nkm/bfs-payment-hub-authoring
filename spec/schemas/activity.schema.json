@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:activity",
+  "title": "Activity contract",
+  "description": "A block is its contract. See design/03.",
+  "type": "object",
+  "required": [
+    "kind",
+    "name",
+    "release",
+    "title",
+    "type",
+    "reads",
+    "writes",
+    "outcomes",
+    "effect",
+    "implementation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "activity"
+    },
+    "name": {
+      "$ref": "urn:th:schema:common#/$defs/artefactName"
+    },
+    "release": {
+      "$ref": "urn:th:schema:common#/$defs/release"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "map",
+        "validate",
+        "enrich",
+        "screen",
+        "decide",
+        "reserve",
+        "exchange",
+        "post",
+        "notify",
+        "hold",
+        "reconcile"
+      ]
+    },
+    "mode": {
+      "description": "Exchange blocks only.",
+      "enum": [
+        "send",
+        "respond",
+        "inquire",
+        "report"
+      ]
+    },
+    "level": {
+      "enum": [
+        "payment",
+        "batch",
+        "item"
+      ],
+      "default": "payment"
+    },
+    "invokedBy": {
+      "description": "What runs this block. Default workflow. A block that no workflow calls MUST say front-door or schedule (lint L11).",
+      "enum": [
+        "workflow",
+        "front-door",
+        "schedule"
+      ]
+    },
+    "reads": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/contextPath"
+      },
+      "uniqueItems": true
+    },
+    "writes": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/contextPath"
+      },
+      "uniqueItems": true
+    },
+    "outcomes": {
+      "description": "Named business outcomes. Exactly one is primary and falls through to the next step; every other one must be handled by the workflow.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "urn:th:schema:common#/$defs/identifier"
+          },
+          "primary": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "contains": {
+        "type": "object",
+        "required": [
+          "primary"
+        ],
+        "properties": {
+          "primary": {
+            "const": true
+          }
+        }
+      },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "retryable"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9]*$"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "effect": {
+      "enum": [
+        "pure",
+        "read",
+        "write",
+        "external"
+      ]
+    },
+    "idempotencyKey": {
+      "$ref": "urn:th:schema:common#/$defs/expression"
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      },
+      "uniqueItems": true
+    },
+    "ruleSets": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      },
+      "uniqueItems": true
+    },
+    "parameters": {
+      "$ref": "urn:th:schema:common#/$defs/parameters"
+    },
+    "policy": {
+      "$ref": "urn:th:schema:common#/$defs/policy"
+    },
+    "compensation": {
+      "$ref": "urn:th:schema:common#/$defs/artefactName"
+    },
+    "map": {
+      "description": "Map blocks only.",
+      "type": "object",
+      "required": [
+        "direction",
+        "sourceModel"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "in",
+            "out"
+          ]
+        },
+        "sourceModel": {
+          "type": "string"
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "via": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "edgeRules": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:th:schema:common#/$defs/artefactName"
+          }
+        },
+        "roundTrip": {
+          "type": "boolean"
+        }
+      }
+    },
+    "implementation": {
+      "$ref": "urn:th:schema:common#/$defs/implementation"
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "provenance": {
+      "$ref": "urn:th:schema:common#/$defs/provenance"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "write",
+              "external"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "idempotencyKey"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "map"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "map"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "exchange"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "mode",
+          "ports"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "validate",
+              "decide"
+            ]
+          }
+        }
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "ruleSets"
+            ]
+          },
+          {
+            "properties": {
+              "effect": {
+                "enum": [
+                  "read"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

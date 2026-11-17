@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic sample. Every value is invented. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>AANI-MSG-0001</MsgId>
+      <CreDtTm>2026-11-17T06:00:00Z</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId>
+        <EndToEndId>E2E-IN-0001</EndToEndId>
+        <TxId>TX-IN-0001</TxId>
+        <UETR>8a562c67-ca16-48ba-b074-65581be6f001</UETR>
+      </PmtId>
+      <IntrBkSttlmAmt Ccy="AED">750.00</IntrBkSttlmAmt>
+      <Dbtr><Nm>Debtor Party A</Nm><PstlAdr><TwnNm>Dubai</TwnNm><Ctry>AE</Ctry></PstlAdr></Dbtr>
+      <DbtrAcct><Id><IBAN>AE650260000000000000001</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><ClrSysMmbId><MmbId>203320101</MmbId></ClrSysMmbId></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><ClrSysMmbId><MmbId>302620122</MmbId></ClrSysMmbId></FinInstnId></CdtrAgt>
+      <Cdtr><Nm>Creditor Party B</Nm><PstlAdr><TwnNm>Abu Dhabi</TwnNm><Ctry>AE</Ctry></PstlAdr></Cdtr>
+      <CdtrAcct><Id><IBAN>AE070331234567890123456</IBAN></Id></CdtrAcct>
+      <Purp><Cd>OTHR</Cd></Purp>
+      <RmtInf><Ustrd>Invoice 0001</Ustrd></RmtInf>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>

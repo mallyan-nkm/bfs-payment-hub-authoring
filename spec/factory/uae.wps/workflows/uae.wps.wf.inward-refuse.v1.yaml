@@ -1,0 +1,27 @@
+kind: workflow
+wfKind: leg
+name: uae.wps.wf.inward-refuse.v1
+release: 1.0.0
+dsl: 1.0.0
+title: WPS inward file refused
+description: WPS has no message by which an agent refuses a file, so a refused inward file goes to operations. This shows that a refuse leg need not send anything.
+direction: inward
+implements:
+  slot: scheme-refuse
+  of: [p.wf.inward.v1]
+entry:
+  reads: [header, batch, facts.disposition, facts.validation]
+exit:
+  writes: [status]
+  outcomes: [refused, pending]
+do:
+  - id: operations
+    call: p.hold.repair.v1
+    handle:
+      rejected: { end: refused }
+      expired: { end: pending }
+  - end: pending
+provenance:
+  origin: factory
+  status: provisional
+  note: Assumption. Confirm how an agent should treat a payment file it cannot process.

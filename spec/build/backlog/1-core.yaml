@@ -1,0 +1,244 @@
+group: Core
+components:
+  - id: C01
+    title: Artefact store and naming
+    phase: 2
+    purpose: Store artefacts as files, one per artefact, with names, releases and hashes enforced.
+    design: [Part 1, Part 11]
+    schemas: [common, pack]
+    dependsOn: []
+    dos: Every factory and example document loads, and no published release can be overwritten.
+    stories:
+      - id: C01-S1
+        title: Repository layout and loader
+        sp: 3
+        story: As a shared designer, I want every artefact stored as one file at its scope, folder and name, so that content is reviewed as code.
+        dod:
+          - The loader reads a pack folder into typed objects and rejects a file whose path disagrees with its name.
+          - Multi-document files are refused except for engine bindings.
+        dos: The loader reads every document under factory/ and examples/ and reports the same count as tools/validate.py.
+      - id: C01-S2
+        title: Name and scope parsing
+        sp: 1
+        story: As a developer, I want one parser for artefact names, so that scope, type, name and major are never split by hand.
+        dod:
+          - The parser returns scope, tier, type, name and major, and rejects anything R-01-01 to R-01-03 forbid.
+        dos: A table of twenty valid and twenty invalid names passes, including p, b, uae.p and uae.wps scopes.
+      - id: C01-S3
+        title: Canonical JSON and content hash
+        sp: 3
+        story: As a release checker, I want a stable hash per artefact, so that a pin proves exactly what was tested.
+        needs: [C01-S1]
+        dod:
+          - Canonical form follows RFC 8785 and the hash is SHA-256 over it.
+          - Key order, whitespace and YAML or JSON storage do not change the hash.
+        dos: The same artefact stored as YAML and as JSON yields one hash, and a one-character change yields another.
+      - id: C01-S4
+        title: Drafts and immutable publish
+        sp: 3
+        story: As a shared checker, I want a published release to be immutable, so that a pin can never point at changed content.
+        needs: [C01-S3]
+        dod:
+          - A draft can be edited freely; publishing writes name, release and hash.
+          - A second publish of the same name and release fails with a named error.
+        dos: An attempt to overwrite uae.p.validate.iban.v1 at 1.0.0 is refused and the stored hash is unchanged.
+      - id: C01-S5
+        title: Releases of a major line
+        sp: 1
+        story: As a designer, I want to list the releases of a major line and fetch one exactly, so that I can see history and pin precisely.
+        needs: [C01-S4]
+        dod:
+          - List by major line, newest first; fetch by name and release; fetch by hash.
+        dos: Three releases of one line are listed in order and each is fetched by its hash.
+
+  - id: C02
+    title: Schema validation
+    phase: 2
+    purpose: Validate any document against the schema for its kind and report errors a designer can act on.
+    design: [Part 1, Part 5]
+    schemas: [all]
+    dependsOn: [C01]
+    dos: The validator reproduces every L00 result of tools/validate.py on the factory pack and on the cases of tools/mutation_tests.py.
+    stories:
+      - id: C02-S1
+        title: Validate by kind
+        sp: 3
+        story: As a designer, I want every document checked against its schema on save, so that a malformed artefact never reaches the catalogue.
+        dod:
+          - Schemas load once with cross-file references resolved.
+          - The kind selects the schema; an unknown kind is an error.
+        dos: Zero errors on factory/ and examples/; removing an idempotency key from a write activity is reported.
+      - id: C02-S2
+        title: Errors a designer can act on
+        sp: 3
+        story: As a designer, I want an error to name the artefact, the path inside it and the step id where there is one, so that I can fix it without reading a schema.
+        needs: [C02-S1]
+        dod:
+          - Each error carries code, artefact, JSON path, step id when inside a step, and a plain sentence.
+        dos: Ten seeded faults each produce one error that names the right step.
+      - id: C02-S3
+        title: Command line check
+        sp: 1
+        story: As a build engineer, I want one command that validates a folder and sets the exit code, so that the check runs in CI.
+        needs: [C02-S1]
+        dod:
+          - Exit 0 with no errors, 1 otherwise; warnings do not fail the run.
+        dos: The command exits 0 on the repository as delivered and 1 on every error case of tools/mutation_tests.py.
+
+  - id: C03
+    title: Canonical model and type generation
+    phase: 2
+    purpose: Hold the canonical ISO 20022 model once and generate types for both script languages from it.
+    design: [Part 2, Part 8]
+    schemas: [common, extension]
+    dependsOn: [C01, C02]
+    dos: One model produces equivalent TypeScript and Python types, and every context path in the factory pack resolves in it.
+    stories:
+      - id: C03-S1
+        title: The canonical model as data
+        sp: 5
+        story: As a shared designer, I want the canonical context held as one machine-readable model with ISO names and types, so that every tool reads the same definition.
+        dod:
+          - The model covers header, payment, batch, items, status, facts and messages as Part 2 lists them.
+          - Every element carries its ISO data type and whether it is personal data.
+        dos: Every reads and writes path in factory/ resolves to an element of the model.
+      - id: C03-S2
+        title: Extension registry
+        sp: 3
+        story: As a scheme owner, I want scheme fields registered as typed extensions, so that no untyped field exists.
+        needs: [C03-S1]
+        dod:
+          - Extension artefacts merge into the model under their root.
+          - A path under ext that no extension registers is an error (L18).
+        dos: ext.uae.wps and ext.b resolve; ext.uae.unknown.field is refused.
+      - id: C03-S3
+        title: TypeScript types
+        sp: 5
+        story: As a script author, I want generated TypeScript types for the context, so that a wrong path fails before the script runs.
+        needs: [C03-S2]
+        dod:
+          - Types are generated per activity from its declared reads and writes.
+          - Generation is reproducible, the same model giving the same files.
+        dos: A script that reads an undeclared path fails the type check; one that reads a declared path passes.
+      - id: C03-S4
+        title: Python types
+        sp: 5
+        phase: 3
+        story: As a script author, I want generated Python types for the context, so that Python scripts get the same safety as TypeScript ones.
+        needs: [C03-S2]
+        dod:
+          - Typed stubs are generated per activity from its declared reads and writes.
+          - A static type check runs in the authoring gates.
+        dos: The parity fixture, one context in both languages, round-trips to identical JSON.
+      - id: C03-S5
+        title: Code-set registries
+        sp: 3
+        story: As a rule author, I want purpose, status and reason codes held in versioned registries, so that no script carries a literal code.
+        needs: [C03-S1]
+        dod:
+          - Registries are versioned and read by date.
+          - A lookup of an unknown code is an error with the registry version named.
+        dos: Every reason code used by a factory rule is found in the registry or is listed as missing in one report.
+
+  - id: C04
+    title: Static checks
+    phase: 2
+    purpose: Run every check of the catalogue in Part 5 on every edit and name the step each finding concerns.
+    design: [Part 5, Part 6]
+    schemas: [workflow, activity, hook, configuration-set, scheme]
+    dependsOn: [C01, C02]
+    dos: The checks give the same result as tools/validate.py where it implements them, and each new check has a mutation case that it catches.
+    stories:
+      - id: C04-S1
+        title: Port the reference checks
+        sp: 5
+        story: As a designer, I want every check that tools/validate.py implements to run in the studio, so that what the reference validator proves is proven on every edit.
+        dod:
+          - L02 to L18 and L27 are implemented against the loaded model, not against raw files.
+          - Each finding carries the check code, the artefact and the step id.
+        dos: No error on factory/ and examples/; every case of tools/mutation_tests.py is caught with the same code.
+      - id: C04-S2
+        title: Data-flow check
+        sp: 5
+        story: As a designer, I want to be told when a step reads a path nothing has written, so that a workflow cannot fail at run time for missing data.
+        needs: [C04-S1]
+        dod:
+          - L19 follows every path through handle, switch, parallel, forEach, loop, try and segments.
+          - entry.reads, intake and slot contracts count as writers.
+        dos: Removing the reserve step from p.wf.corporate.v1 flags the first step that reads facts.reservation.
+      - id: C04-S3
+        title: Effects and budgets
+        sp: 3
+        story: As a designer, I want retry allowed only where it is safe and step budgets checked against the deadline, so that policy mistakes show at design time.
+        needs: [C04-S1]
+        dod:
+          - L20 flags retry on a write or external activity with no idempotency key, and a write inside a try with no compensation.
+          - L21 sums attempt budgets on the longest path and compares them with the deadline.
+        dos: Raising the attempt timeout of uae.aani.exchange.send-credit.v1 above the PT8S deadline of uae.aani.wf.credit-out.v1 is flagged at the send step.
+      - id: C04-S4
+        title: Ports, portability and step ids
+        sp: 3
+        phase: 3
+        story: As a designer, I want unbound ports, non-portable constructs and duplicate step ids reported, so that a workflow is testable and exportable.
+        needs: [C04-S1]
+        dod:
+          - L22 lists ports reachable from a workflow that have no simulator.
+          - L24 flags extension constructs per target and any in p scope.
+          - L29 checks step ids after segments are inlined.
+        dos: A segment and its host that both use the id validate are flagged once, at the host.
+      - id: C04-S5
+        title: Incremental results for the designer
+        sp: 3
+        story: As a designer, I want check results to follow my edits, so that I see a finding at the step I just changed.
+        needs: [C04-S1]
+        dod:
+          - Results are recomputed for the edited artefact and for artefacts that depend on it.
+          - A finding that is fixed disappears without a full run.
+        dos: Editing one handle entry updates only that workflow's findings and those of legs that fill its slots.
+
+  - id: C05
+    title: Pins, manifests and semver
+    phase: 2
+    purpose: Resolve what a workflow uses, pin it exactly, and derive the release number from the interface.
+    design: [Part 1, Part 11]
+    schemas: [common, workflow, pack]
+    dependsOn: [C01, C04, C11]
+    dos: Every exported workflow carries complete pins and every release number matches its interface diff.
+    stories:
+      - id: C05-S1
+        title: Closure and the artefacts block
+        sp: 3
+        story: As a release checker, I want the exact release and hash of everything a workflow uses written into it at publish, so that the export is self-describing.
+        dod:
+          - The closure covers activities, segments, rule sets, rules, tables, ports, compensations and hold blocks named by hook points.
+          - L23 fails an export with a missing or stale pin.
+        dos: The artefacts block of p.wf.corporate.v1 lists every artefact its steps and its segment reach, and no other.
+      - id: C05-S2
+        title: Pack manifest
+        sp: 3
+        story: As a release checker, I want a manifest generated per pack, so that the pack is its own lock file.
+        needs: [C05-S1]
+        dod:
+          - The manifest lists name, kind, release, hash and path, and the packs it depends on.
+          - Simulators set containsSimulators and clear promotable.
+        dos: The generated manifest of each factory pack validates and matches the one in the repository.
+      - id: C05-S3
+        title: Interface diff and semver
+        sp: 5
+        phase: 3
+        story: As a designer, I want the studio to propose major, minor or patch from what I changed, so that the version always means the same thing.
+        needs: [C05-S1]
+        dod:
+          - A change to reads, writes, outcomes, errors, ports, parameters, slots, hook points, entry or exit proposes a major.
+          - Adding a hook point proposes a minor; any other change proposes a patch unless the designer raises it to a minor.
+        dos: Adding an outcome to uae.aani.exchange.send-credit.v1 proposes 2.0.0 and a new name ending in v2.
+      - id: C05-S4
+        title: Dependency release propagation
+        sp: 5
+        phase: 5
+        story: As a designer, I want a new release of a block to produce proposed releases of the workflows on that line, so that nothing published ever changes underneath.
+        needs: [C05-S3, C11-S2]
+        dod:
+          - The studio lists every workflow that pins the line, reruns its tests with the new release, and proposes a patch or a minor.
+          - A red rerun blocks the proposal and names the failing test.
+        dos: A patch of uae.p.rule.iban-checksum.v1 proposes a patch release of uae.wps.wf.salary-file-out.v1 and of each Aani leg that validates a credit, each with the new pin.

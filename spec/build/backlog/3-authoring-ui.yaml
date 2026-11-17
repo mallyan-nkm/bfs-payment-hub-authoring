@@ -1,0 +1,244 @@
+group: Authoring UI
+components:
+  - id: C12
+    title: Catalogue and ISO data browser
+    phase: 3
+    purpose: Let the designer find any artefact and any canonical element, and see who uses it.
+    design: [Part 10, Part 2, Part 1]
+    schemas: [all]
+    dependsOn: [C01, C03, C04, C06, C17]
+    dos: Functions F-01 to F-05 pass their acceptance lines against the factory pack.
+    stories:
+      - id: C12-S1
+        title: Catalogue browse and search
+        sp: 5
+        phase: 2
+        story: As a designer, I want to browse and search artefacts by scope, kind, type and text, so that I reuse a block before I build one.
+        dod:
+          - Filters for scope, kind, activity type, status and major line; free text over name, title and context paths.
+          - A tenant sees shared content and its own, and nothing of another tenant.
+        dos: uae.p.validate.iban.v1 is found by its name, by its title and by the path payment.creditorAccount.
+      - id: C12-S2
+        title: Artefact page
+        sp: 3
+        phase: 2
+        story: As a designer, I want one page per artefact with its contract, releases, tests and users, so that I can judge a block without opening its file.
+        needs: [C12-S1]
+        dod:
+          - The page shows the contract, every release with its hash, the tests and their last result, and every artefact that references it.
+        dos: The users list of p.reserve.funds.v1 equals the reference graph that L03 builds.
+      - id: C12-S3
+        title: ISO data browser
+        sp: 5
+        story: As a designer, I want to search any canonical element, type or code and see which blocks read and write it, so that I see the full ISO data capability.
+        needs: [C12-S1, C03-S1]
+        dod:
+          - Search by element name, ISO type and code value; each element shows readers, writers and whether it is personal data.
+          - Extensions are shown under their scope and are told apart from ISO elements.
+        dos: Every reader and writer of payment.instructedAmount in the factory pack is listed, and none is missed.
+      - id: C12-S4
+        title: Scheme message catalogue and samples
+        sp: 5
+        story: As a scheme owner, I want the message catalogue of a scheme with dispositions and sample messages, so that coverage is visible and tests have inputs.
+        needs: [C12-S3, C06-S2]
+        dod:
+          - The dispatch table is shown per scheme with planned entries marked.
+          - A valid and an invalid sample are generated per message; each is labelled with the rule it breaks.
+        dos: The valid salary file sample passes uae.wps.ruleset.salary-file.v1 and the invalid one fails with the code it is labelled with.
+
+  - id: C13
+    title: Artefact editors
+    phase: 3
+    purpose: Let the designer define rules, tables, activities, maps and simulators in forms, with no code.
+    design: [Part 10, Part 3, Part 4, Part 7]
+    schemas: [activity, rule, simulator, port, extension]
+    dependsOn: [C02, C06, C10, C12]
+    dos: Functions F-06 to F-11 pass their acceptance lines, and every document an editor saves validates.
+    stories:
+      - id: C13-S1
+        title: Rule editor
+        sp: 5
+        story: As a rule author, I want to write a rule as when and then with parameters, bounds and examples, so that a validation is readable by a payments analyst.
+        dod:
+          - Patterns are picked from the canonical model; expressions are checked as typed.
+          - Examples run on save; fewer than two examples blocks publish.
+        dos: uae.aani.rule.amount-within-limit.v1 is rebuilt in the editor and saves to a document with the same hash.
+      - id: C13-S2
+        title: Decision table editor
+        sp: 3
+        story: As a designer, I want to edit a decision table as a grid and see gaps and overlaps, so that routing is complete by construction.
+        needs: [C13-S1]
+        dod:
+          - Hit policy is chosen; gaps and overlaps are highlighted on the rows that cause them.
+        dos: An overlapping row added to p.table.workflow-select.v1 is highlighted and publish is blocked.
+      - id: C13-S3
+        title: Activity contract editor
+        sp: 5
+        story: As a designer, I want to define an activity contract in a form, so that reads, writes, outcomes, errors, effect, ports and policy are complete before any script exists.
+        dod:
+          - The form enforces one primary outcome, an idempotency key for write and external effects, and the fields each activity type requires.
+          - Paths are picked from the canonical model; a free-typed path must resolve.
+        dos: Every factory activity opens in the form and saves with no change to its hash.
+      - id: C13-S4
+        title: Map editor and round trip
+        sp: 5
+        story: As a designer, I want to define a map in both directions and test the round trip, so that data is canonical inside and exact at the boundary.
+        needs: [C13-S3]
+        dod:
+          - Field rows map external to canonical and back; lossy rows are flagged.
+          - A round-trip test is generated from a sample.
+        dos: WPS-MAP-001 and WPS-MAP-002 run green from the editor.
+      - id: C13-S5
+        title: Simulator editor
+        sp: 3
+        story: As a designer, I want to define a simulator and its scenarios against a port, so that every outside party can be played in a test.
+        needs: [C13-S3, C10-S1]
+        dod:
+          - Scenarios are built from steps; the standard set is offered as a starting point and is required before publish.
+        dos: A new simulator for uae.p.port.participant-directory.v1 publishes only when all eight standard scenarios exist.
+
+  - id: C14
+    title: Workflow designer
+    phase: 3
+    purpose: Let the designer compose a platform workflow, leg, segment or handler from the catalogue and see every check as she edits.
+    design: [Part 5, Part 10]
+    schemas: [workflow]
+    dependsOn: [C04, C05, C12]
+    dos: Functions F-12 to F-15 pass their acceptance lines, and a workflow saved by the designer has the same hash as its file.
+    stories:
+      - id: C14-S1
+        title: Create and open
+        sp: 3
+        phase: 2
+        story: As a designer, I want to start a workflow blank, from a template or by cloning a release, so that a new platform workflow is cheap to create.
+        dod:
+          - Kinds platform, leg, segment and handler; a clone starts a draft on the same or the next major line.
+        dos: A clone of p.wf.corporate.v1 saves as a draft, validates and shows no finding.
+      - id: C14-S2
+        title: Compose steps
+        sp: 8
+        story: As a designer, I want to place and edit every construct of the DSL on a canvas, so that I never edit YAML to build a workflow.
+        needs: [C14-S1]
+        dod:
+          - call, handle, switch, parallel, forEach, loop, await, wait, slot, use, try, hook and end can be placed, moved and removed.
+          - The canvas and the document stay in step in both directions.
+        dos: Each of the fifteen factory workflows opens on the canvas and saves with no change to its hash.
+      - id: C14-S3
+        title: Slots, hook points and finally
+        sp: 3
+        story: As a designer, I want to declare slots, hook points and a finally block, so that legs and bank hooks have typed places to attach.
+        needs: [C14-S2]
+        dod:
+          - A slot declares its contract; a hook point declares type, reads, writes and failure mode; finally is edited as its own lane.
+        dos: The two hook points of p.seg.check-and-screen.v1 are edited in the designer and still pass L06 and L13.
+      - id: C14-S4
+        title: Checks on the canvas
+        sp: 3
+        story: As a designer, I want each finding shown on the step it concerns, so that I fix a workflow where it is wrong.
+        needs: [C14-S2, C04-S5]
+        dod:
+          - Findings appear on the step with code and sentence; a list view jumps to the step.
+        dos: Removing a handle entry shows L05 on that step within one edit.
+      - id: C14-S5
+        title: Effective policy
+        sp: 3
+        story: As a designer, I want to see the effective timeout and retry policy of a step and where each value came from, so that budgets are deliberate.
+        needs: [C14-S2]
+        dod:
+          - The panel shows type default, activity default and step override per field, and the budget of the longest path against the deadline.
+        dos: For the send step of uae.aani.wf.credit-out.v1 the panel shows each value with its source, and the longest path against the PT8S deadline.
+
+  - id: C15
+    title: Test bench UI
+    phase: 3
+    purpose: Let the designer bind simulators, run a test on the virtual clock, step through it and assert on the result.
+    design: [Part 10, Part 7, Part 8]
+    schemas: [test-case]
+    dependsOn: [C09, C10, C11]
+    dos: Functions F-16 to F-19 pass their acceptance lines.
+    stories:
+      - id: C15-S1
+        title: Bench set-up
+        sp: 3
+        phase: 2
+        story: As a designer, I want to bind a simulator and scenario to each port and set the date and the tenant, so that a run is fully described.
+        dod:
+          - Every port a run can reach must be bound before it starts; the bench is saved with the test.
+        dos: The bench of AANI-OUT-005, with the no-reply scenario, runs to its end on the virtual clock and ends pending.
+      - id: C15-S2
+        title: Run and step
+        sp: 5
+        phase: 2
+        story: As a designer, I want to run a test and step through it, so that I can see the payment move.
+        needs: [C15-S1]
+        dod:
+          - Run, pause, step and run to a chosen step; the current step is shown on the canvas.
+          - The four fixed signals can be sent during a run.
+        dos: Sending cancel during WPS-OUT-001 shows compensation in reverse and then finally.
+      - id: C15-S3
+        title: Timeline and context diff
+        sp: 5
+        story: As a designer, I want a timeline of attempts, waits and timers and the context diff per step, so that timeout and retry behaviour is visible.
+        needs: [C15-S2, C11-S3]
+        dod:
+          - The timeline is on virtual time; each step opens its delta with personal data masked.
+        dos: The timeline of AANI-OUT-003 shows three attempts and the backoff between them.
+      - id: C15-S4
+        title: Assertions and saved tests
+        sp: 3
+        story: As a designer, I want to turn a run into a saved test with assertions, so that today's behaviour is tomorrow's regression test.
+        needs: [C15-S2]
+        dod:
+          - Assertions on outcome, status, messages, postings and trace are captured from a run and can be edited.
+        dos: A test captured from a run turns red when one step of the workflow is removed.
+
+  - id: C16
+    title: AI authoring assistant
+    phase: 3
+    purpose: Draft contracts, rules, scripts, simulators and maps from scheme text and samples, and gate every draft by behaviour.
+    design: [Part 8]
+    schemas: [common, activity, rule, simulator]
+    dependsOn: [C07, C08, C10, C11, C13]
+    dos: Functions F-20 and F-21 pass, and no AI draft can be published with a red gate.
+    stories:
+      - id: C16-S1
+        title: Authoring loop and gates
+        sp: 5
+        story: As a designer, I want every AI draft run through the same gates, so that I judge behaviour and never have to read code.
+        dod:
+          - The gates run in order, schema, static checks, type check, tests, determinism, and the first red gate is shown with its evidence.
+          - A draft is never published by the assistant; publish stays with maker-checker.
+        dos: A draft with a failing test stops at the tests gate and shows the failing case.
+      - id: C16-S2
+        title: Draft a contract and rules from scheme text
+        sp: 5
+        story: As a designer, I want to paste a rulebook clause and a sample and receive a draft contract and rules with examples, so that a new scheme starts from its source.
+        needs: [C16-S1]
+        dod:
+          - Each rule cites the clause it came from; each has two examples at least; unknowns are listed as questions and not guessed.
+        dos: From the public salary file description the assistant drafts rules that agree with the factory rule set on its examples.
+      - id: C16-S3
+        title: Draft a script-behind
+        sp: 5
+        story: As a designer, I want a script-behind written for a contract in Python or TypeScript, so that an activity runs in the studio the day its contract is agreed.
+        needs: [C16-S1]
+        dod:
+          - The script uses only the injected interface and the generated types; tests per outcome are drafted with it.
+        dos: A drafted script for p.validate.duplicate.v1 passes every gate in both languages.
+      - id: C16-S4
+        title: Draft a simulator
+        sp: 3
+        story: As a designer, I want a simulator drafted from a port and sample messages, so that the standard scenarios exist without hand work.
+        needs: [C16-S1, C10-S3]
+        dod:
+          - The eight standard scenarios are drafted; each emitted message passes the self-check.
+        dos: A drafted simulator for uae.p.port.calendar.v1 passes self-check on every scenario not marked malformed.
+      - id: C16-S5
+        title: Provenance
+        sp: 1
+        story: As an auditor, I want to see how an AI-authored artefact was made, so that review has the evidence it needs.
+        needs: [C16-S1]
+        dod:
+          - The model, the prompt reference, the inputs and the clauses are stored in provenance and shown on the artefact page.
+          - No prompt text containing personal data is stored.
+        dos: The artefact page of a drafted rule shows its clause reference and the model that drafted it.

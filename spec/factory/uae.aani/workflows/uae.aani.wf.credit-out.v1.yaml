@@ -1,0 +1,81 @@
+kind: workflow
+wfKind: leg
+name: uae.aani.wf.credit-out.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Aani credit transfer, outward
+description: Scheme checks, participant lookup, prefund check and send. A pending reply waits for the status report; an unknown outcome leads to a status inquiry. A short budget; never a blind re-send.
+direction: outward
+synchronous: true
+implements:
+  slot: scheme-leg
+  of: [p.wf.commercial.v1]
+entry:
+  reads: [header, payment, facts.route, facts.reservation]
+exit:
+  writes: [status, facts.liquidity, messages]
+  outcomes: [settled, rejected, returned, pending]
+deadline:
+  after: PT8S
+  do:
+    - end: pending
+do:
+  - id: scheme-checks
+    call: uae.aani.validate.credit.v1
+    handle:
+      reject: { end: rejected }
+  - id: participants
+    call: uae.p.enrich.participant.v1
+    handle:
+      unknown: { end: rejected }
+  - id: prefund
+    call: uae.aani.reserve.prefund-check.v1
+    handle:
+      insufficient: { end: rejected }
+  - id: render
+    call: uae.aani.map.credit-out.v1
+    handle:
+      unmappable: { end: rejected }
+  - id: send
+    call: uae.aani.exchange.send-credit.v1
+    handle:
+      rejected: { end: rejected }
+      pending:
+        - id: await-status
+          await:
+            message: uae.aani.status-report
+            correlateBy: header.endToEndId
+            timeout: PT4S
+            onTimeout: { end: pending }
+        - id: read-status
+          call: uae.aani.map.status-in.v1
+          handle:
+            rejected: { end: rejected }
+            pending: { end: pending }
+        - end: settled
+      unknown:
+        - loop:
+            max: 3
+            every: PT2S
+            until: { outcomeOf: inquire, in: [accepted, rejected] }
+            do:
+              - id: inquire
+                call: uae.aani.exchange.inquire-status.v1
+                handle:
+                  rejected: { continue: true }
+                  pending: { continue: true }
+                  unknown: { continue: true }
+        - switch:
+            by: { outcomeOf: inquire }
+            cases:
+              accepted:
+                - end: settled
+              rejected:
+                - end: rejected
+            default:
+              - end: pending
+  - end: settled
+provenance:
+  origin: factory
+  status: provisional
+  note: Message set, time limits and reason codes are not public. Budgets here are placeholders. Confirm against the AEP participant specification.

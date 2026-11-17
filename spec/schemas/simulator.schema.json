@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:simulator",
+  "title": "Simulator",
+  "description": "A scripted stand-in for one external party on one port. See design/07.",
+  "type": "object",
+  "required": ["kind", "name", "release", "title", "direction", "port", "standsFor", "scenarios", "implementation"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "simulator" },
+    "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "direction": {
+      "description": "outward = stands in for the party the platform sends to. inward = stands in for the party that sends to the platform.",
+      "enum": ["inward", "outward"]
+    },
+    "port": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "standsFor": { "type": "string" },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "keyedBy": { "type": "string" } }
+    },
+    "selfCheck": {
+      "description": "Rule sets every emitted message is validated against, unless the scenario is marked malformed.",
+      "type": "array",
+      "items": { "$ref": "urn:th:schema:common#/$defs/artefactName" }
+    },
+    "goldenFiles": { "type": "array", "items": { "type": "string" } },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "$ref": "urn:th:schema:common#/$defs/identifier" },
+          "description": { "type": "string" },
+          "malformed": { "type": "boolean" },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "expect": { "type": "string", "description": "Message the simulator waits for." },
+                "send": { "type": "string", "description": "Message the simulator emits." },
+                "status": { "type": "string" },
+                "reasonCode": { "type": "string" },
+                "after": { "$ref": "urn:th:schema:common#/$defs/duration" },
+                "noReply": { "type": "boolean" },
+                "failTimes": { "type": "integer", "minimum": 1 },
+                "duplicate": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "implementation": { "$ref": "urn:th:schema:common#/$defs/implementation" },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  }
+}

@@ -1,0 +1,14 @@
+kind: hook
+name: b.hook.add-cost-centre.v1
+release: 1.0.0
+title: Add the bank cost centre before screening
+implements:
+  hookPoint: enrich-before-screen
+  of: p.seg.check-and-screen.v1
+type: transform
+outcomes: [done]
+do:
+  - id: cost-centre
+    call: b.enrich.cost-centre.v1
+  - end: done
+provenance: { origin: authored, status: confirmed, note: Example only. Shows a transform hook that writes only ext.b. }

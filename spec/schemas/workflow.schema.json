@@ -1,0 +1,733 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:workflow",
+  "title": "Workflow DSL",
+  "description": "Platform workflow, scheme leg, segment or handler. Block-structured, engine-neutral. See design/05.",
+  "type": "object",
+  "required": [
+    "kind",
+    "wfKind",
+    "name",
+    "release",
+    "dsl",
+    "title",
+    "do"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "workflow"
+    },
+    "wfKind": {
+      "enum": [
+        "platform",
+        "leg",
+        "segment",
+        "handler"
+      ]
+    },
+    "name": {
+      "$ref": "urn:th:schema:common#/$defs/artefactName"
+    },
+    "release": {
+      "$ref": "urn:th:schema:common#/$defs/release"
+    },
+    "dsl": {
+      "$ref": "urn:th:schema:common#/$defs/release"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "direction": {
+      "enum": [
+        "inward",
+        "outward"
+      ]
+    },
+    "implements": {
+      "description": "Legs only: the slot this leg fills.",
+      "type": "object",
+      "required": [
+        "slot",
+        "of"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "slot": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "of": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:th:schema:common#/$defs/artefactName"
+          }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reads": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:th:schema:common#/$defs/contextPath"
+          }
+        }
+      }
+    },
+    "exit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:th:schema:common#/$defs/contextPath"
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:th:schema:common#/$defs/identifier"
+          }
+        }
+      }
+    },
+    "slots": {
+      "description": "Platform workflows only. A slot is a contract that any conforming leg fills.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "contract"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "urn:th:schema:common#/$defs/identifier"
+          },
+          "contract": {
+            "type": "object",
+            "required": [
+              "reads",
+              "writes",
+              "outcomes"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "reads": {
+                "type": "array",
+                "items": {
+                  "$ref": "urn:th:schema:common#/$defs/contextPath"
+                }
+              },
+              "writes": {
+                "type": "array",
+                "items": {
+                  "$ref": "urn:th:schema:common#/$defs/contextPath"
+                }
+              },
+              "outcomes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "urn:th:schema:common#/$defs/identifier"
+                }
+              },
+              "primaryOutcome": {
+                "$ref": "urn:th:schema:common#/$defs/identifier"
+              }
+            }
+          }
+        }
+      }
+    },
+    "hookPoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "contract",
+          "policy"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "urn:th:schema:common#/$defs/identifier"
+          },
+          "type": {
+            "enum": [
+              "halt",
+              "transform",
+              "notify"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "contract": {
+            "type": "object",
+            "required": [
+              "reads"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "reads": {
+                "type": "array",
+                "items": {
+                  "$ref": "urn:th:schema:common#/$defs/contextPath"
+                }
+              },
+              "writes": {
+                "type": "array",
+                "items": {
+                  "$ref": "urn:th:schema:common#/$defs/contextPath"
+                }
+              }
+            }
+          },
+          "policy": {
+            "type": "object",
+            "required": [
+              "timeout",
+              "onFailure"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "timeout": {
+                "$ref": "urn:th:schema:common#/$defs/duration"
+              },
+              "onFailure": {
+                "enum": [
+                  "fail-open",
+                  "fail-closed"
+                ]
+              },
+              "onHold": {
+                "$ref": "urn:th:schema:common#/$defs/artefactName"
+              }
+            }
+          }
+        }
+      }
+    },
+    "signals": {
+      "description": "The fixed emergency signal set. Designers cannot add signals.",
+      "type": "array",
+      "items": {
+        "enum": [
+          "pause",
+          "resume",
+          "cancel",
+          "re-screen"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "parameters": {
+      "$ref": "urn:th:schema:common#/$defs/parameters"
+    },
+    "deadline": {
+      "type": "object",
+      "required": [
+        "after",
+        "do"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "$ref": "urn:th:schema:common#/$defs/duration"
+        },
+        "do": {
+          "$ref": "#/$defs/steps"
+        }
+      }
+    },
+    "synchronous": {
+      "description": "Marks a workflow whose steps may run on a fast path. See open decision D9.",
+      "type": "boolean"
+    },
+    "artefacts": {
+      "$ref": "urn:th:schema:common#/$defs/pins"
+    },
+    "do": {
+      "$ref": "#/$defs/steps"
+    },
+    "provenance": {
+      "$ref": "urn:th:schema:common#/$defs/provenance"
+    },
+    "finally": {
+      "description": "Steps that run on every end, whatever the outcome, after any compensation.",
+      "$ref": "#/$defs/steps"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "wfKind": {
+            "const": "leg"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "implements",
+          "direction",
+          "exit"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "wfKind": {
+            "const": "platform"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "slots",
+          "exit"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/callStep"
+        },
+        {
+          "$ref": "#/$defs/switchStep"
+        },
+        {
+          "$ref": "#/$defs/parallelStep"
+        },
+        {
+          "$ref": "#/$defs/forEachStep"
+        },
+        {
+          "$ref": "#/$defs/loopStep"
+        },
+        {
+          "$ref": "#/$defs/awaitStep"
+        },
+        {
+          "$ref": "#/$defs/waitStep"
+        },
+        {
+          "$ref": "#/$defs/slotStep"
+        },
+        {
+          "$ref": "#/$defs/useStep"
+        },
+        {
+          "$ref": "#/$defs/tryStep"
+        },
+        {
+          "$ref": "#/$defs/hookStep"
+        },
+        {
+          "$ref": "#/$defs/endStep"
+        }
+      ]
+    },
+    "outcomeAction": {
+      "description": "What to do on a non-primary outcome: run steps, or end the workflow.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/steps"
+        },
+        {
+          "type": "object",
+          "required": [
+            "end"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "$ref": "urn:th:schema:common#/$defs/identifier"
+            },
+            "compensate": {
+              "const": "all"
+            }
+          }
+        },
+        {
+          "description": "Record the outcome and carry on. A later decide block reads it.",
+          "type": "object",
+          "required": [
+            "continue"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "continue": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "onMap": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "urn:th:schema:common#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/outcomeAction"
+      },
+      "description": "Outcome name to action. The key is handle, never on: YAML 1.1 reads on as a boolean."
+    },
+    "callStep": {
+      "type": "object",
+      "required": [
+        "call"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "call": {
+          "$ref": "urn:th:schema:common#/$defs/artefactName"
+        },
+        "level": {
+          "enum": [
+            "payment",
+            "batch",
+            "item"
+          ]
+        },
+        "policy": {
+          "$ref": "urn:th:schema:common#/$defs/policy"
+        },
+        "handle": {
+          "$ref": "#/$defs/onMap"
+        }
+      }
+    },
+    "switchStep": {
+      "description": "Branch on a named outcome or decision. Never on payment data.",
+      "type": "object",
+      "required": [
+        "switch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "switch": {
+          "type": "object",
+          "required": [
+            "by",
+            "cases"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cases": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "$ref": "#/$defs/steps"
+              }
+            },
+            "default": {
+              "$ref": "#/$defs/steps"
+            },
+            "by": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 1,
+              "additionalProperties": false,
+              "properties": {
+                "outcomeOf": {
+                  "$ref": "urn:th:schema:common#/$defs/identifier"
+                },
+                "decision": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "parallelStep": {
+      "type": "object",
+      "required": [
+        "parallel"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "parallel": {
+          "type": "object",
+          "required": [
+            "branches"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "branches": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/steps"
+              }
+            },
+            "join": {
+              "const": "all"
+            }
+          }
+        }
+      }
+    },
+    "forEachStep": {
+      "type": "object",
+      "required": [
+        "forEach"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "forEach": {
+          "type": "object",
+          "required": [
+            "in",
+            "do"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "in": {
+              "$ref": "urn:th:schema:common#/$defs/contextPath"
+            },
+            "do": {
+              "$ref": "#/$defs/steps"
+            },
+            "concurrency": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "onItemFailure": {
+              "enum": [
+                "continue",
+                "stop"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "loopStep": {
+      "description": "A bounded loop. Used for business retry such as a status inquiry.",
+      "type": "object",
+      "required": [
+        "loop"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "loop": {
+          "type": "object",
+          "required": [
+            "max",
+            "do"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "every": {
+              "$ref": "urn:th:schema:common#/$defs/duration"
+            },
+            "until": {
+              "type": "object",
+              "required": [
+                "outcomeOf",
+                "in"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "outcomeOf": {
+                  "$ref": "urn:th:schema:common#/$defs/identifier"
+                },
+                "in": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "urn:th:schema:common#/$defs/identifier"
+                  }
+                }
+              }
+            },
+            "do": {
+              "$ref": "#/$defs/steps"
+            }
+          }
+        }
+      }
+    },
+    "awaitStep": {
+      "type": "object",
+      "required": [
+        "await"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "await": {
+          "type": "object",
+          "required": [
+            "message",
+            "correlateBy",
+            "timeout",
+            "onTimeout"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "message": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            },
+            "correlateBy": {
+              "$ref": "urn:th:schema:common#/$defs/contextPath"
+            },
+            "timeout": {
+              "$ref": "urn:th:schema:common#/$defs/duration"
+            },
+            "calendar": {
+              "enum": [
+                "elapsed",
+                "business"
+              ]
+            },
+            "onTimeout": {
+              "$ref": "#/$defs/outcomeAction"
+            }
+          }
+        }
+      }
+    },
+    "waitStep": {
+      "type": "object",
+      "required": [
+        "wait"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "wait": {
+          "$ref": "urn:th:schema:common#/$defs/duration"
+        }
+      }
+    },
+    "slotStep": {
+      "type": "object",
+      "required": [
+        "slot"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "slot": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "handle": {
+          "$ref": "#/$defs/onMap"
+        }
+      }
+    },
+    "useStep": {
+      "description": "Inline a segment.",
+      "type": "object",
+      "required": [
+        "use"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "use": {
+          "$ref": "urn:th:schema:common#/$defs/artefactName"
+        }
+      }
+    },
+    "tryStep": {
+      "type": "object",
+      "required": [
+        "try"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "try": {
+          "$ref": "#/$defs/steps"
+        },
+        "catch": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "error",
+              "do"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "error": {
+                "type": "string"
+              },
+              "do": {
+                "$ref": "#/$defs/outcomeAction"
+              }
+            }
+          }
+        },
+        "compensate": {
+          "const": "all"
+        }
+      }
+    },
+    "hookStep": {
+      "type": "object",
+      "required": [
+        "hook"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "hook": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        }
+      }
+    },
+    "endStep": {
+      "type": "object",
+      "required": [
+        "end"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "$ref": "urn:th:schema:common#/$defs/identifier"
+        },
+        "compensate": {
+          "const": "all"
+        }
+      }
+    }
+  }
+}

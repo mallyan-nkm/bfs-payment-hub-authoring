@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:port",
+  "title": "Port",
+  "description": "A named interop profile. Activities call ports, never endpoints; simulators implement ports. See design/03 and design/07.",
+  "type": "object",
+  "required": ["kind", "name", "release", "title", "party", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "port" },
+    "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "party": { "type": "string", "description": "The external party behind the port, by role. Never a bank or vendor name." },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "style"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "$ref": "urn:th:schema:common#/$defs/identifier" },
+          "style": { "enum": ["request-reply", "send", "receive"] },
+          "request": { "type": "string" },
+          "reply": { "type": "string" }
+        }
+      }
+    },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  }
+}

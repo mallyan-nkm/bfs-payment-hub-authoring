@@ -1,0 +1,80 @@
+kind: workflow
+wfKind: platform
+name: p.wf.corporate.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Corporate payments
+description: Outward lifecycle for file and high-value rails. Check, screen, reserve, route, scheme leg, post, close.
+direction: outward
+entry:
+  reads: [header, payment, batch, "items[]"]
+exit:
+  writes: [status, facts.route, facts.reservation, facts.posting]
+  outcomes: [settled, rejected, returned, review]
+slots:
+  - name: scheme-leg
+    contract:
+      reads: [header, payment, batch, "items[]", facts.route, facts.reservation]
+      writes: [status, facts.settlement, messages]
+      outcomes: [settled, rejected, returned, pending]
+      primaryOutcome: settled
+hookPoints:
+  - name: before-release
+    type: halt
+    description: A bank may hold or reject a payment after routing and before it leaves.
+    contract:
+      reads: [header, payment, batch, facts.route, facts.reservation]
+    policy: { timeout: PT30S, onFailure: fail-closed, onHold: p.hold.approval.v1 }
+  - name: on-close
+    type: notify
+    description: A bank may be told that a payment has closed.
+    contract:
+      reads: [header, status, payment.instructedAmount, facts.route]
+    policy: { timeout: PT10S, onFailure: fail-open }
+signals: [pause, resume, cancel, re-screen]
+do:
+  - use: p.seg.check-and-screen.v1
+  - id: limits
+    call: p.validate.limits.v1
+    handle:
+      repair: { end: rejected }
+      reject: { end: rejected }
+  - try:
+      - id: reserve
+        call: p.reserve.funds.v1
+        handle:
+          insufficient: { end: rejected }
+      - id: route
+        call: p.decide.rail.v1
+        handle:
+          no-match: { end: rejected, compensate: all }
+      - hook: before-release
+      - id: leg
+        slot: scheme-leg
+        handle:
+          rejected: { end: rejected, compensate: all }
+          returned: { end: returned, compensate: all }
+          pending:
+            - id: pending-review
+              call: p.hold.repair.v1
+              handle:
+                rejected: { end: rejected, compensate: all }
+                expired: { end: review }
+    compensate: all
+  - id: post
+    call: p.post.accounting.v1
+    handle:
+      rejected: { end: review }
+      unknown: { continue: true }
+  - id: verify
+    call: p.post.verify.v1
+    handle:
+      mismatch: { end: review }
+  - end: settled
+finally:
+  - id: notify
+    call: p.notify.channel.v1
+  - id: publish
+    call: p.notify.publish-fact.v1
+  - hook: on-close
+provenance: { origin: factory, status: confirmed }

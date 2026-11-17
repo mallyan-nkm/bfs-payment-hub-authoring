@@ -1,0 +1,362 @@
+group: Execution
+components:
+  - id: C06
+    title: Rule service
+    phase: 2
+    purpose: Evaluate rules written in the rule DSL, with NRules semantics, for the studio and for every engine.
+    design: [Part 4]
+    schemas: [rule, common]
+    dependsOn: [C03]
+    dos: Every example of every factory rule and table gives the expected findings or decisions, and the same service answers the studio and an engine worker.
+    stories:
+      - id: C06-S1
+        title: Expression language
+        sp: 5
+        story: As a rule author, I want a small typed expression language, so that conditions are safe, total and checkable against the canonical model.
+        dod:
+          - A grammar, a parser and a type checker cover literals, paths, comparison, boolean and arithmetic operators, in, and the function library of Part 4.
+          - An expression with a side effect or an unknown function is refused.
+        dos: Every expression in factory/ parses and type-checks; ten seeded bad expressions are each refused with a position.
+      - id: C06-S2
+        title: Compile and evaluate a rule set
+        sp: 8
+        story: As a designer, I want a rule set evaluated in one session per call, so that the result depends only on the facts given.
+        needs: [C06-S1]
+        dod:
+          - Rules compile to the NRules canonical rule model; match, exists, not, all, query, let and having are supported.
+          - Validation sets run by stage and collect every finding of a stage; nothing survives the call.
+        dos: uae.wps.ruleset.salary-file.v1 returns AM10 for a wrong control total and no finding for a correct file.
+      - id: C06-S3
+        title: Parameters by date and tenant
+        sp: 3
+        story: As a bank designer, I want a rule to read the value in force on the evaluation date for my tenant, so that I change values and never the rule.
+        needs: [C06-S2]
+        dod:
+          - Values resolve default, then scope values, then the tenant's configuration set, by effective date, and are inserted as Param facts.
+          - The lookup date is step time unless the parameter declares payment-date.
+        dos: AANI-RULE-003 and AANI-RULE-004 pass, the same amount rejected on 2 January 2027 and accepted on 31 December 2026.
+      - id: C06-S4
+        title: Decision tables
+        sp: 5
+        story: As a designer, I want a decision table compiled to rules with its hit policy, so that tables and rules share one evaluator.
+        needs: [C06-S2]
+        dod:
+          - unique, first and collect are supported; each row compiles to one rule.
+          - L25 reports gaps and overlaps in a unique table, a missing catch-all in a first table, and a cycle in a decision set.
+        dos: The three factory tables give their example decisions; adding an overlapping row to p.table.workflow-select.v1 is refused.
+      - id: C06-S5
+        title: Examples runner
+        sp: 3
+        story: As a rule author, I want every rule's examples run on save, so that a rule can never publish with a failing example.
+        needs: [C06-S2]
+        dod:
+          - Each example builds facts from its given block and compares findings or decisions.
+          - Publish is blocked on a red example or on fewer than two examples.
+        dos: All examples of the 26 factory and example rules and three tables are green.
+      - id: C06-S6
+        title: Rule trace
+        sp: 3
+        story: As an auditor, I want the rules fired, their inputs and their releases returned with every evaluation, so that the platform can record the reason.
+        needs: [C06-S2]
+        dod:
+          - The trace lists rule, release, bound facts and result, with personal data redacted.
+        dos: The trace of AANI-RULE-002 names uae.aani.rule.amount-within-limit.v1 at 1.0.0 and the value of maxAmount it used.
+
+  - id: C07
+    title: Script sandbox, TypeScript
+    phase: 2
+    purpose: Run a TypeScript script-behind with nothing reachable but the injected interface.
+    design: [Part 8, Part 3]
+    schemas: [activity, common]
+    dependsOn: [C03]
+    dos: A script can do everything the interface offers and nothing else, and the sandbox parity suite is green.
+    stories:
+      - id: C07-S1
+        title: Sandbox and injected interface
+        sp: 8
+        story: As a script author, I want my script to receive ctx, ports, rules, params, clock, ids and log, so that it needs nothing else.
+        dod:
+          - The ten members of Part 8, section 8.3 are implemented.
+          - Network, file system, system clock, randomness and environment are unreachable.
+        dos: A script that tries each forbidden capability fails with a named error; a script that uses each member passes.
+      - id: C07-S2
+        title: Contract enforcement
+        sp: 3
+        story: As a shared checker, I want a read or write outside the declared paths to fail the run, so that the contract is enforced by the sandbox and not by review.
+        needs: [C07-S1]
+        dod:
+          - Undeclared reads and writes, undeclared ports, undeclared outcomes and undeclared errors all fail.
+          - Each write is recorded as a delta with the step id.
+        dos: A script for p.reserve.funds.v1 that writes payment.creditor is refused; one that writes facts.reservation passes.
+      - id: C07-S3
+        title: Timeout and determinism
+        sp: 3
+        story: As a designer, I want a script stopped at its attempt timeout and checked for determinism, so that tests are repeatable.
+        needs: [C07-S1]
+        dod:
+          - A script that overruns is killed and the attempt fails as transient.
+          - L28 flags use of time, randomness or iteration order that is not defined.
+        dos: The same script, input and scenario give byte-identical deltas on one hundred runs.
+      - id: C07-S4
+        title: Parity suite
+        sp: 3
+        story: As a platform engineer, I want one suite that every sandbox must pass, so that the two languages cannot drift.
+        needs: [C07-S2]
+        dod:
+          - The suite is language-neutral, with fixtures in and expected deltas, outcomes and errors out.
+        dos: The TypeScript sandbox passes every case of the suite.
+
+  - id: C08
+    title: Script sandbox, Python
+    phase: 3
+    purpose: Run a Python script-behind with the same interface and the same guarantees as the TypeScript sandbox.
+    design: [Part 8, Part 3]
+    schemas: [activity, common]
+    dependsOn: [C03, C07]
+    dos: The Python sandbox passes the same parity suite as the TypeScript one.
+    stories:
+      - id: C08-S1
+        title: Sandbox and injected interface
+        sp: 8
+        story: As a script author, I want the same ten members in Python, so that I can choose the language without changing what a script may do.
+        dod:
+          - The interface matches Part 8, section 8.3 member for member.
+          - Imports are limited to an allow-list; network, file system, clock, randomness and environment are unreachable.
+        dos: The forbidden-capability cases of C07-S1 fail the same way in Python.
+      - id: C08-S2
+        title: Contract enforcement
+        sp: 3
+        story: As a shared checker, I want the Python sandbox to enforce declared paths, ports, outcomes and errors, so that both languages honour one contract.
+        needs: [C08-S1]
+        dod:
+          - The same enforcement and the same delta format as C07-S2.
+        dos: b.enrich.cost-centre.v1 written in Python may write ext.b.costCentre and nothing else.
+      - id: C08-S3
+        title: Timeout and determinism
+        sp: 3
+        story: As a designer, I want Python scripts stopped at their timeout and checked for determinism, so that they behave like TypeScript ones in tests.
+        needs: [C08-S1]
+        dod:
+          - Kill on overrun; L28 for Python.
+        dos: One hundred runs give byte-identical deltas.
+      - id: C08-S4
+        title: Parity
+        sp: 1
+        story: As a platform engineer, I want the Python sandbox proven against the shared suite, so that a workflow may mix languages safely.
+        needs: [C08-S2, C07-S4]
+        dod:
+          - Every parity case passes; any difference between the sandboxes is a defect.
+        dos: The suite reports identical results for both sandboxes.
+
+  - id: C09
+    title: Studio interpreter
+    phase: 2
+    purpose: Run the workflow DSL in the studio on a virtual clock, as the reference for every engine.
+    design: [Part 5, Part 6, Annex C]
+    schemas: [workflow, hook, configuration-set, test-case]
+    dependsOn: [C04, C06, C07, C10, C23]
+    dos: The interpreter produces the expected trace for all 43 scenarios of the conformance kit.
+    stories:
+      - id: C09-S1
+        title: Core flow
+        sp: 5
+        story: As a designer, I want call, handle, switch, use and end to run, so that a simple workflow executes in the studio.
+        needs: [C23-S2]
+        dod:
+          - Segments are inlined; the primary outcome falls through; handle runs steps, ends, or continues.
+          - The run emits a business trace of step id and outcome.
+          - The interpreter implements the adapter of C23-S2, so the kit runner can drive it.
+        dos: CK-SEQ-01, CK-HANDLE-01 to 03 and CK-SWITCH-01 and 02 pass.
+      - id: C09-S2
+        title: Virtual clock, wait, await and loop
+        sp: 5
+        story: As a designer, I want waits of days to finish in seconds, so that long-running legs are testable.
+        needs: [C09-S1]
+        dod:
+          - One virtual clock drives timers, awaits, backoff and simulator delays; business calendars are supported.
+          - A message that arrives before its await starts is kept and consumed by it.
+          - A late message or a second copy resumes nothing and is recorded as unmatched.
+        dos: CK-WAIT-01, CK-AWAIT-01 to 05 and CK-LOOP-01 and 02 pass.
+      - id: C09-S3
+        title: Timeouts and retries
+        sp: 5
+        story: As a designer, I want attempt timeout, total timeout and retry applied as declared, so that I can prove timeout and retry behaviour without an engine.
+        needs: [C09-S2]
+        dod:
+          - Policy resolves type default, activity, step; the resolved policy is part of the run record.
+          - Non-retryable errors are not retried; the total timeout surfaces as the unknown outcome where the activity declares one.
+        dos: CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 and CK-UNKNOWN-01 pass.
+      - id: C09-S4
+        title: Parallel and for each
+        sp: 5
+        story: As a designer, I want branches to run together and items to keep their own outcomes, so that batch legs behave as on an engine.
+        needs: [C09-S1]
+        dod:
+          - parallel joins on all; forEach honours concurrency and onItemFailure and records per-item outcomes.
+        dos: CK-PAR-01 and CK-FOREACH-01 and 02 pass.
+      - id: C09-S5
+        title: Try, compensate, finally and deadline
+        sp: 5
+        story: As a designer, I want compensation in reverse order, finally on every end and deadlines as timers, so that failure paths are provable.
+        needs: [C09-S3]
+        dod:
+          - compensate all runs the compensation of completed write steps in reverse; finally runs after it on every end.
+          - A deadline fires on the virtual clock and runs its handler.
+        dos: CK-COMP-01, CK-FINALLY-01 and CK-DEADLINE-01 pass.
+      - id: C09-S6
+        title: Slots, legs and dispatch
+        sp: 5
+        story: As a designer, I want a slot to run the leg that the dispatch table or the route decision names, so that a platform workflow and a leg test together.
+        needs: [C09-S1]
+        dod:
+          - A leg runs as a child instance, pinned when it starts; its outcome returns to the slot step.
+          - An inbound message is dispatched to start, deliver or handler as the scheme manifest says.
+        dos: CK-SLOT-01 and 02 pass; WPS-OUT-001 and AANI-OUT-001 run end to end.
+      - id: C09-S7
+        title: Signals
+        sp: 3
+        phase: 3
+        story: As a designer, I want to send pause, resume, cancel and re-screen during a run, so that emergency behaviour is testable.
+        needs: [C09-S5]
+        dod:
+          - Only the four fixed signals exist; cancel compensates then runs finally.
+        dos: CK-SIGNAL-01 to 03 pass.
+      - id: C09-S8
+        title: Hook points and bindings
+        sp: 5
+        phase: 3
+        story: As a bank designer, I want my bound hooks to run at their hook points for my tenant, so that I can test them against the shared workflow.
+        needs: [C09-S6]
+        dod:
+          - Bindings are taken when the instance starts; an unbound hook point does nothing.
+          - Halt, transform and notify follow Part 6, including timeout and failure mode.
+        dos: CK-HOOK-01 to 04 pass; BANK-HOOK-001 and 002 pass for tenant example-bank.
+      - id: C09-S9
+        title: Handlers
+        sp: 3
+        phase: 3
+        story: As a designer, I want a handler to run without durable state, so that stateless messages are tested as they will run.
+        needs: [C09-S1]
+        dod:
+          - A handler run creates no instance record and holds no timer.
+        dos: CK-HANDLER-01 and AANI-HND-001 pass.
+      - id: C09-S10
+        title: Pins, lookup and supersession
+        sp: 3
+        phase: 3
+        story: As a designer, I want the interpreter to honour exact pins, read values by date and apply a supersession, so that hot update is proven before it is used.
+        needs: [C09-S6, C06-S3]
+        dod:
+          - Two releases of a line run side by side; values are read at each step; a supersession applies to steps not yet started and is recorded.
+        dos: CK-PIN-01 and 02, CK-LOOKUP-01 and CK-SUP-01 pass.
+      - id: C09-S11
+        title: Trace, deltas and claim-check
+        sp: 3
+        story: As an auditor, I want every run to record deltas and the rule trace and to keep personal data out of state, so that the studio shows what the record will show.
+        needs: [C09-S1]
+        dod:
+          - State holds header, facts and references only; each step's delta and the release that ran are recorded.
+        dos: CK-CLAIM-01, CK-DELTA-01 and CK-TRACE-01 pass.
+
+  - id: C10
+    title: Simulator runtime
+    phase: 2
+    purpose: Run inward and outward simulators on the virtual clock, in the studio and as deployable stubs.
+    design: [Part 7]
+    schemas: [simulator, port]
+    dependsOn: [C07, C06]
+    dos: Every factory simulator runs every one of its scenarios, and no simulator emits a message its self-check refuses unless the scenario is marked malformed.
+    stories:
+      - id: C10-S1
+        title: Outward simulators
+        sp: 5
+        story: As a designer, I want a simulator to answer on a port as its scenario says, so that I can test an activity without the real party.
+        dod:
+          - Scenario steps expect, send, after, noReply, failTimes and duplicate are supported, with state keyed by message id.
+          - The standard scenario set is required before publish.
+        dos: All eight standard scenarios of uae.aani.sim.switch-outward.v1 run, and a later status request gets an answer consistent with the first.
+      - id: C10-S2
+        title: Inward simulators
+        sp: 3
+        story: As a designer, I want a simulator to send messages into the platform on a schedule, so that inward legs and handlers are testable.
+        needs: [C10-S1]
+        dod:
+          - A test step or a virtual-clock schedule triggers a send; the message goes through dispatch.
+        dos: uae.wps.sim.wps-inward.v1 payment-file starts p.wf.inward.v1 with the agent leg.
+      - id: C10-S3
+        title: Self-check and malformed scenarios
+        sp: 3
+        story: As a shared checker, I want every simulated message validated against the scheme's rule sets, so that a simulator cannot teach the platform something the scheme would refuse.
+        needs: [C10-S1, C06-S2]
+        dod:
+          - Each emitted message is checked against selfCheck; a failure fails the test with the finding shown.
+          - A scenario marked malformed is exempt and labelled so in the run.
+        dos: A simulator edited to send a salary file with a wrong control total fails its self-check unless marked malformed.
+      - id: C10-S4
+        title: Coverage against reason codes
+        sp: 3
+        story: As a scheme owner, I want to see which reason codes have a scenario, so that gaps in simulated behaviour are visible.
+        needs: [C10-S1]
+        dod:
+          - A report lists each code of the scheme list with its scenarios or its waiver.
+        dos: The report for uae.aani lists AC04 as covered and every uncovered code as open.
+      - id: C10-S5
+        title: Deployable stub
+        sp: 3
+        story: As an implementation lead, I want the same simulator definition deployed as a stub in pre-prod, so that test packs run there unchanged.
+        needs: [C10-S1]
+        dod:
+          - A stub package is exported per simulator; it is part of a test pack and never of a promotable pack.
+        dos: The stub of p.sim.core-banking.v1 answers the eight standard scenarios outside the studio.
+
+  - id: C11
+    title: Test runner and test bench
+    phase: 2
+    purpose: Run test cases at every level against a bench of simulators and assert on outcomes, messages and traces.
+    design: [Part 8, Part 7]
+    schemas: [test-case]
+    dependsOn: [C09, C10]
+    dos: All 26 factory and example tests run green once their scripts exist, and a changed trace turns a test red.
+    stories:
+      - id: C11-S1
+        title: Rule set and activity tests
+        sp: 5
+        story: As a designer, I want to test one rule set or one activity alone, so that a block is proven before it is composed.
+        dod:
+          - given builds the context; the bench binds simulators to ports; expect compares outcome, findings, writes and attempts.
+        dos: AANI-RULE-001 and 002 and P-RES-001 and 002 pass.
+      - id: C11-S2
+        title: Leg and end-to-end tests
+        sp: 5
+        story: As a designer, I want to test a leg, or a platform workflow with a leg, so that the whole payment is proven on the virtual clock.
+        needs: [C11-S1]
+        dod:
+          - expect compares outcome, reason code, messages per port with counts, trace and virtual elapsed time.
+          - An inbound sample is injected through an inward simulator.
+        dos: AANI-OUT-001 to 008, WPS-OUT-001 to 005, AANI-IN-001 and WPS-IN-001 pass.
+      - id: C11-S3
+        title: Timeline and context diff data
+        sp: 3
+        story: As a designer, I want each run to yield a timeline of attempts, waits and timers and a context diff per step, so that the test bench can show them.
+        needs: [C11-S2]
+        dod:
+          - The run record holds attempts with times, backoff waits, timers, awaits and deltas.
+        dos: The record of AANI-OUT-003 shows three attempts and the two backoff waits between them.
+      - id: C11-S4
+        title: Conformance fixtures
+        sp: 3
+        phase: 3
+        story: As a platform engineer, I want tests marked conformance exported as language-neutral fixtures, so that a code-behind is proven against the same cases.
+        needs: [C11-S1]
+        dod:
+          - Fixtures carry input context, simulator scenario, expected writes, outcome and messages.
+        dos: The conformance pack of uae.wps.map.sif-in.v1 holds WPS-MAP-001 and 002.
+      - id: C11-S5
+        title: Publish checks on tests
+        sp: 1
+        phase: 3
+        story: As a shared checker, I want publish blocked when an activity lacks a test per outcome or a workflow a test per exit outcome, so that coverage is a gate.
+        needs: [C11-S2]
+        dod:
+          - The check lists the outcomes with no test.
+        dos: uae.aani.wf.credit-out.v1 is reported as lacking a test for returned until one is added or the outcome is removed.

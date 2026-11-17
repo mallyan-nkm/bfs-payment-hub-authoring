@@ -1,0 +1,33 @@
+// WPS payment information file (PIF), one per agent, to the canonical batch.
+
+const money = (s: string) => Math.round(Number(s) * 100) / 100;
+
+export async function run({ ctx }) {
+  const inbound = ctx.messages?.inbound;
+  const text: string = inbound?.payload ?? '';
+  if (!text || inbound?.malformed) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  let fileName: string | undefined;
+  const ls = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => {
+    if (!l) return false;
+    if (l.startsWith('#')) { const m = /^#\s*file:\s*(\S+)/.exec(l); if (m) fileName = m[1]; return false; }
+    return true;
+  });
+  const pcr = ls.filter((l) => l.startsWith('PCR,'));
+  const pdr = ls.filter((l) => l.startsWith('PDR,'));
+  if (pcr.length !== 1) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const [, agentCode, employerId, , creationDate, creationTime, salaryMonth, count, total, currency] = pcr[0].split(',');
+  const fileId = (fileName ?? `${agentCode}-${creationDate}-${creationTime}`).replace(/\.pif$/i, '');
+  ctx.header = { fileId, endToEndId: fileId };
+  ctx.batch = { id: fileId, numberOfTransactions: Number(count), controlSum: money(total), currency, categoryPurpose: 'SALA', creditorAgent: { clearingMemberId: agentCode } };
+  ctx.ext = { uae: { wps: { employerId, fileCreationDate: creationDate, fileCreationTime: creationTime, salaryMonth } } };
+  ctx.items = pdr.map((line) => {
+    const [, personId, agent, iban, payStartDate, payEndDate, days, fixed, variable, leave] = line.split(',');
+    const fixedPay = money(fixed);
+    const variablePay = money(variable);
+    return {
+      payment: { creditorAgent: { clearingMemberId: agent }, creditorAccount: { iban }, instructedAmount: { value: Math.round((fixedPay + variablePay) * 100) / 100, currency } },
+      ext: { uae: { wps: { personId, payStartDate, payEndDate, daysInPeriod: Number(days), fixedPay, variablePay, leaveDays: Number(leave) } } },
+    };
+  });
+  return 'mapped';
+}

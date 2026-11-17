@@ -1,0 +1,574 @@
+# Conformance kit scenarios: one workflow (or a few) per scenario of spec/conformance/kit.yaml,
+# with the stubs, bench, signals, values and checks the runner needs. The expected trace is
+# not repeated here: the runner takes it from the kit manifest, so the spec stays the source.
+# Written by hand under build spec C23.
+kind: conformance-scenarios
+release: 0.1.0
+defaults:
+  evaluationDate: "2026-11-17"
+  context: { header: { paymentId: P-1, endToEndId: E2E-1, conversation: conv-1, lane: slow }, payment: { instructedAmount: { value: 100, currency: AED } } }
+scenarios:
+  - id: CK-SEQ-01
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - use: ck.kit.seg.middle.v1
+        - { id: c, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+    documents:
+      - kind: workflow
+        wfKind: segment
+        name: ck.kit.seg.middle.v1
+        release: 1.0.0
+        dsl: 1.0.0
+        title: Kit segment
+        do:
+          - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+
+  - id: CK-HANDLE-01
+    stubs: { "step:a": { outcomes: [other] } }
+    workflow:
+      do:
+        - id: a
+          call: ck.kit.enrich.task.v1
+          handle: { other: [ { id: x, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ], left: { end: failed }, right: { end: failed }, rejected: { end: failed } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-HANDLE-02
+    stubs: { "step:a": { outcomes: [other] } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: stopped }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-HANDLE-03
+    stubs: { "step:a": { outcomes: [other] } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { continue: true }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-SWITCH-01
+    stubs: { "step:a": { outcomes: [left] } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { continue: true }, left: { continue: true }, right: { continue: true }, rejected: { end: failed } } }
+        - switch:
+            by: { outcomeOf: a }
+            cases:
+              left: [ { id: l, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+              right: [ { id: r, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+            default: [ { end: failed } ]
+        - end: done
+
+  - id: CK-SWITCH-02
+    workflow:
+      do:
+        - { id: d, call: ck.kit.decide.lane.v1, handle: { no-match: { end: failed } } }
+        - switch:
+            by: { decision: lane }
+            cases:
+              fast: [ { id: f, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+            default: [ { id: z, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+        - end: done
+
+  - id: CK-PAR-01
+    freeOrder: [[0, 1]]
+    stubs: { "step:a": { latency: PT2S }, "step:b": { latency: PT1S } }
+    workflow:
+      do:
+        - parallel:
+            join: all
+            branches:
+              - [ { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+              - [ { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } } ]
+        - { id: c, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-FOREACH-01
+    stubs: { "step:item": { outcomes: [ok, other, ok] } }
+    context: { items: [ { payment: { instructedAmount: { value: 1 } } }, { payment: { instructedAmount: { value: 2 } } }, { payment: { instructedAmount: { value: 3 } } } ] }
+    workflow:
+      do:
+        - forEach:
+            in: "items[]"
+            onItemFailure: continue
+            do:
+              - { id: item, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: item-failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-FOREACH-02
+    traceView: forEach-summary
+    generateItems: 10000
+    workflow:
+      do:
+        - forEach:
+            in: "items[]"
+            concurrency: 10
+            do:
+              - { id: item, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-LOOP-01
+    stubs: { "step:q": { outcomes: [pending, pending, final] } }
+    workflow:
+      do:
+        - loop:
+            max: 5
+            every: PT1M
+            until: { outcomeOf: q, in: [final] }
+            do:
+              - { id: q, call: ck.kit.enrich.query.v1, handle: { pending: { continue: true } } }
+        - switch:
+            by: { outcomeOf: q }
+            cases: { final: [ { end: done } ] }
+            default: [ { end: gave-up } ]
+
+  - id: CK-LOOP-02
+    stubs: { "step:q": { outcomes: [pending] } }
+    workflow:
+      do:
+        - loop:
+            max: 3
+            every: PT1M
+            until: { outcomeOf: q, in: [final] }
+            do:
+              - { id: q, call: ck.kit.enrich.query.v1, handle: { pending: { continue: true } } }
+        - switch:
+            by: { outcomeOf: q }
+            cases: { final: [ { end: done } ] }
+            default: [ { end: gave-up } ]
+
+  - id: CK-RETRY-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: fail-twice-then-accept-now } ]
+    checks: { attempts: { a: 3 }, accepted: 1 }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.exchange.call.v1, handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } } }
+        - end: done
+
+  - id: CK-RETRY-02
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: reject } ]
+    checks: { attempts: { a: 1 } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.exchange.call.v1, handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } } }
+        - end: done
+
+  - id: CK-TIMEOUT-01
+    stubs: { "step:a": { hangTimes: 1 } }
+    checks: { attempts: { a: 2 } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.exchange.call.v1, handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } } }
+        - end: done
+
+  - id: CK-TIMEOUT-02
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    workflow:
+      do:
+        - id: a
+          call: ck.kit.exchange.call.v1
+          policy: { attemptTimeout: PT5S, totalTimeout: PT12S, retry: { maxAttempts: 10, firstInterval: PT1S, backoff: 1 } }
+          handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } }
+        - end: done
+
+  - id: CK-UNKNOWN-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply-then-status-accepted } ]
+    checks: { distinctIds: 1 }
+    workflow:
+      do:
+        - id: send
+          call: ck.kit.exchange.send-sync.v1
+          handle:
+            rejected: { end: rejected }
+            pending: { end: pending }
+            unknown:
+              - { id: inquire, call: ck.kit.exchange.inquire.v1, handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } } }
+        - end: done
+
+  - id: CK-POLICY-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: accept-now } ]
+    checks: { effective: { step: a, attemptTimeout: PT2S, source: step } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.exchange.call.v1, policy: { attemptTimeout: PT2S }, handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: accept } ]
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-02
+    evaluationDate: "2026-11-20"
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    checks: { virtualElapsedBusiness: P1D }
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: P1D, calendar: business, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-03
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: late-reply } ]
+    checks: { unmatched: 1 }
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-04
+    stubs: { "step:send": { emit: { type: ck.kit.reply, status: accepted }, latency: PT1S } }
+    checks: { early: 1 }
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-05
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: duplicate-reply } ]
+    checks: { duplicates: 1 }
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
+        - wait: PT5M
+        - end: done
+    traceDrop: ["wait:PT5M"]
+
+  - id: CK-WAIT-01
+    checks: { virtualElapsed: PT1H }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - wait: PT1H
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-COMP-01
+    stubs: { "step:x": { outcomes: [rejected] } }
+    workflow:
+      do:
+        - try:
+            - { id: w1, call: ck.kit.post.write.v1, handle: { rejected: { end: failed } } }
+            - { id: w2, call: ck.kit.post.write.v1, handle: { rejected: { end: failed } } }
+            - { id: x, call: ck.kit.enrich.task.v1, handle: { rejected: { end: rejected, compensate: all }, other: { end: failed }, left: { end: failed }, right: { end: failed } } }
+          compensate: all
+        - end: done
+
+  - id: CK-FINALLY-01
+    stubs: { "step:x": { outcomes: [rejected] } }
+    workflow:
+      do:
+        - try:
+            - { id: w1, call: ck.kit.post.write.v1, handle: { rejected: { end: failed } } }
+            - { id: x, call: ck.kit.enrich.task.v1, handle: { rejected: { end: rejected, compensate: all }, other: { end: failed }, left: { end: failed }, right: { end: failed } } }
+          compensate: all
+        - end: done
+      finally:
+        - { id: n, call: ck.kit.notify.tell.v1 }
+
+  - id: CK-DEADLINE-01
+    workflow:
+      exit: { outcomes: [done, late] }
+      deadline: { after: PT10M, do: [ { end: late } ] }
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - wait: PT1H
+        - end: done
+
+  - id: CK-SLOT-01
+    stubs: { "step:route": { decisions: { rail: ck.kit }, writes: { facts.route: { rail: ck.kit } } } }
+    platform: true
+    workflow:
+      do:
+        - { id: route, call: ck.kit.decide.lane.v1, handle: { no-match: { end: rejected } } }
+        - { id: leg, slot: scheme-leg, handle: { rejected: { end: rejected }, pending: { end: review } } }
+        - end: done
+    documents:
+      - &leg
+        kind: workflow
+        wfKind: leg
+        name: ck.kit.wf.leg.v1
+        release: 1.0.0
+        dsl: 1.0.0
+        title: Kit leg
+        direction: outward
+        implements: { slot: scheme-leg, of: [ck.p.wf.platform.v1] }
+        entry: { reads: [header, facts.route] }
+        exit: { writes: [status], outcomes: [settled, rejected, pending] }
+        do:
+          - { id: send, call: ck.kit.enrich.task.v1, handle: { rejected: { end: rejected }, other: { end: pending }, left: { end: pending }, right: { end: pending } } }
+          - end: settled
+
+  - id: CK-SLOT-02
+    stubs: { "step:route": { decisions: { rail: ck.kit }, writes: { facts.route: { rail: ck.kit } } }, "step:send": { outcomes: [rejected] } }
+    platform: true
+    workflow:
+      do:
+        - { id: route, call: ck.kit.decide.lane.v1, handle: { no-match: { end: rejected } } }
+        - { id: leg, slot: scheme-leg, handle: { rejected: { end: rejected }, pending: { end: review } } }
+        - end: done
+    documents: [ *leg ]
+
+  - id: CK-SIGNAL-01
+    signals: [ { after: PT30S, signal: pause }, { after: PT10M, signal: resume } ]
+    stubs: { "step:a": { latency: PT1M } }
+    checks: { notBefore: { step: b, at: PT10M } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, policy: { attemptTimeout: PT2M }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-SIGNAL-02
+    signals: [ { after: PT10M, signal: cancel } ]
+    workflow:
+      do:
+        - { id: w1, call: ck.kit.post.write.v1, handle: { rejected: { end: failed } } }
+        - wait: PT1H
+        - end: done
+      finally:
+        - { id: n, call: ck.kit.notify.tell.v1 }
+
+  - id: CK-SIGNAL-03
+    signals: [ { after: PT10M, signal: re-screen } ]
+    stubs: { "step:screen": { outcomes: [clear, hit] } }
+    workflow:
+      do:
+        - { id: screen, call: ck.kit.screen.check.v1, handle: { hit: { end: held } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-HOOK-01
+    stubs: { "step:check": { outcomes: [rejected] }, "step:hold": { outcomes: [approved] } }
+    bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-01.v1#gate", hook: b.hook.ck-halt.v1, release: 1.0.0, validFrom: "2026-01-01" } ]
+    workflow:
+      hookPoints:
+        - { name: gate, type: halt, description: A bank may hold the payment, contract: { reads: [header, payment] }, policy: { timeout: PT1M, onFailure: fail-closed, onHold: ck.kit.hold.approve.v1 } }
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - hook: gate
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+    documents:
+      - kind: hook
+        name: b.hook.ck-halt.v1
+        release: 1.0.0
+        title: Kit halt hook
+        implements: { hookPoint: gate, of: ck.kit.wf.CK-HOOK-01.v1 }
+        type: halt
+        outcomes: [continue, hold, reject]
+        do:
+          - { id: check, call: ck.kit.enrich.task.v1, handle: { rejected: { end: hold }, other: { end: reject }, left: { end: continue }, right: { end: continue } } }
+          - end: continue
+
+  - id: CK-HOOK-02
+    stubs: { "step:field": { writes: { payment.purpose: CHANGED, ext.b: { tag: kit } } } }
+    bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-02.v1#shape", hook: b.hook.ck-transform.v1, release: 1.0.0, validFrom: "2026-01-01" } ]
+    workflow:
+      hookPoints:
+        - { name: shape, type: transform, description: A bank may add its own fields, contract: { reads: [header, payment], writes: [ext.b] }, policy: { timeout: PT10S, onFailure: fail-open } }
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - hook: shape
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+    checks: { unchanged: payment.purpose }
+    documents:
+      - kind: hook
+        name: b.hook.ck-transform.v1
+        release: 1.0.0
+        title: Kit transform hook that writes outside its contract
+        implements: { hookPoint: shape, of: ck.kit.wf.CK-HOOK-02.v1 }
+        type: transform
+        outcomes: [done]
+        do:
+          - { id: field, call: ck.kit.enrich.bank-field.v1 }
+          - end: done
+
+  - id: CK-HOOK-03
+    stubs: { "step:tell": { error: ChannelDown } }
+    bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-03.v1#closed", hook: b.hook.ck-notify.v1, release: 1.0.0, validFrom: "2026-01-01" } ]
+    workflow:
+      hookPoints:
+        - { name: closed, type: notify, description: A bank may be told, contract: { reads: [header] }, policy: { timeout: PT10S, onFailure: fail-open } }
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - hook: closed
+        - end: done
+    documents:
+      - kind: hook
+        name: b.hook.ck-notify.v1
+        release: 1.0.0
+        title: Kit notify hook that fails
+        implements: { hookPoint: closed, of: ck.kit.wf.CK-HOOK-03.v1 }
+        type: notify
+        outcomes: [done]
+        do:
+          - { id: tell, call: ck.kit.notify.tell.v1 }
+          - end: done
+
+  - id: CK-HOOK-04
+    bindings: []
+    workflow:
+      hookPoints:
+        - { name: gate, type: halt, description: A bank may hold the payment, contract: { reads: [header] }, policy: { timeout: PT1M, onFailure: fail-closed, onHold: ck.kit.hold.approve.v1 } }
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - hook: gate
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-HANDLER-01
+    handler: true
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party-inward.v1, scenario: request } ]
+    checks: { durableInstances: 0 }
+    workflow:
+      do:
+        - { id: read, call: ck.kit.enrich.record.v1, handle: { not-found: { continue: true } } }
+        - { id: answer, call: ck.kit.exchange.answer.v1 }
+        - end: answered
+
+  - id: CK-PIN-01
+    traceView: instance-releases
+    instances:
+      - { label: i1, workflowRelease: 1.0.0, at: PT0S }
+      - { label: i2, workflowRelease: 1.0.1, at: PT2M }
+    availableFrom: { "ck.kit.wf.CK-PIN-01.v1@1.0.1": PT1M, "ck.kit.enrich.pinned.v1@1.0.1": PT1M }
+    workflow:
+      do:
+        - wait: PT5M
+        - { id: a, call: ck.kit.enrich.pinned.v1 }
+        - end: done
+    releases:
+      - { release: 1.0.0, pins: { ck.kit.enrich.pinned.v1: 1.0.0 } }
+      - { release: 1.0.1, pins: { ck.kit.enrich.pinned.v1: 1.0.1 } }
+    documents:
+      - &pinned
+        kind: activity
+        name: ck.kit.enrich.pinned.v1
+        release: 1.0.0
+        title: Kit block with two releases
+        type: enrich
+        reads: [header]
+        writes: [facts.kit]
+        outcomes: [ { name: ok, primary: true } ]
+        effect: read
+        implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.pinned.v1.ts }
+      - <<: *pinned
+        release: 1.0.1
+
+  - id: CK-PIN-02
+    platform: true
+    traceView: releases
+    traceFilter: "^(platform|leg|hook)@"
+    availableFrom: { "ck.kit.wf.leg.v1@1.1.0": PT1M, "b.hook.ck-pass.v1@1.1.0": PT1M }
+    bindings:
+      - { hookPoint: "ck.p.wf.platform.v1#gate", hook: b.hook.ck-pass.v1, release: 1.0.0, validFrom: "2026-01-01" }
+    workflowName: ck.p.wf.platform.v1
+    stubs: { "step:route": { decisions: { rail: ck.kit }, writes: { facts.route: { rail: ck.kit } } } }
+    workflow:
+      hookPoints:
+        - { name: gate, type: halt, description: A bank may hold the payment, contract: { reads: [header] }, policy: { timeout: PT1M, onFailure: fail-open, onHold: ck.kit.hold.approve.v1 } }
+      do:
+        - { id: route, call: ck.kit.decide.lane.v1, handle: { no-match: { end: rejected } } }
+        - wait: PT5M
+        - { id: leg, slot: scheme-leg, handle: { rejected: { end: rejected }, pending: { end: review } } }
+        - hook: gate
+        - end: done
+    documents:
+      - *leg
+      - <<: *leg
+        release: 1.1.0
+      - &passhook
+        kind: hook
+        name: b.hook.ck-pass.v1
+        release: 1.0.0
+        title: Kit halt hook that lets the payment go
+        implements: { hookPoint: gate, of: ck.p.wf.platform.v1 }
+        type: halt
+        outcomes: [continue, hold, reject]
+        do:
+          - end: continue
+      - <<: *passhook
+        release: 1.1.0
+
+  - id: CK-LOOKUP-01
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party-inward.v1, scenario: reply-after-a-day } ]
+    values:
+      - { parameter: "ck.kit.rule.within-limit.v1#limit", value: 50, validFrom: "2026-11-18" }
+    workflow:
+      do:
+        - loop:
+            max: 2
+            do:
+              - { id: limit, call: ck.kit.validate.limit.v1, handle: { reject: { end: rejected } } }
+              - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: P2D, onTimeout: { end: pending } } }
+        - end: done
+
+  - id: CK-SUP-01
+    traceView: releases
+    traceFilter: "^(a@|b@|supersede|end:)"
+    supersessions: [ { id: SUP-CK-01, artefact: ck.kit.enrich.b.v1, replaces: 1.0.0, with: 1.0.1, effectiveAt: PT1M } ]
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.a.v1 }
+        - wait: PT5M
+        - { id: b, call: ck.kit.enrich.b.v1 }
+        - end: done
+    releases:
+      - { release: 1.0.0, pins: { ck.kit.enrich.a.v1: 1.0.0, ck.kit.enrich.b.v1: 1.0.0 } }
+    documents:
+      - &blocka
+        kind: activity
+        name: ck.kit.enrich.a.v1
+        release: 1.0.0
+        title: Kit block a
+        type: enrich
+        reads: [header]
+        writes: [facts.kit]
+        outcomes: [ { name: ok, primary: true } ]
+        effect: read
+        implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.a.v1.ts }
+      - &blockb
+        <<: *blocka
+        name: ck.kit.enrich.b.v1
+        title: Kit block b
+        implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.b.v1.ts }
+      - <<: *blockb
+        release: 1.0.1
+
+  - id: CK-CLAIM-01
+    checks: { forbiddenInState: [payment, "items[]", ext] }
+    context: { ext: { b: { note: reference only } } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-DELTA-01
+    traceView: deltas
+    stubs: { "step:a": { writes: { facts.kit: { step: a } } }, "step:b": { writes: { facts.kit: { step: b } } } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-TRACE-01
+    traceView: rule-trace
+    context: { payment: { instructedAmount: { value: 5000, currency: AED } } }
+    workflow:
+      do:
+        - { id: validate, call: ck.kit.validate.limit.v1, handle: { reject: { end: rejected } } }
+        - end: done

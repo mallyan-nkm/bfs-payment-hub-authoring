@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:test-case",
+  "title": "Test case and conformance fixture",
+  "description": "One case for a rule set, an activity, a hook, a handler, a leg or an end-to-end run. With conformance true it is a language-neutral fixture for the code-behind. See design/08.",
+  "type": "object",
+  "required": ["kind", "id", "target", "level", "evaluationDate", "given", "expect"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "test" },
+    "id": { "type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)+$" },
+    "title": { "type": "string" },
+    "target": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "level": { "enum": ["ruleset", "activity", "hook", "handler", "leg", "end-to-end"] },
+    "conformance": { "type": "boolean" },
+    "evaluationDate": { "$ref": "urn:th:schema:common#/$defs/date" },
+    "tenant": { "type": "string" },
+    "bench": {
+      "description": "Simulators bound to ports for this run.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["port", "simulator", "scenario"],
+        "additionalProperties": false,
+        "properties": {
+          "port": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+          "simulator": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+          "scenario": { "$ref": "urn:th:schema:common#/$defs/identifier" }
+        }
+      }
+    },
+    "given": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": { "type": "object" },
+        "contextFile": { "type": "string" },
+        "inbound": { "type": "string", "description": "A source message or file that an inward simulator injects." },
+        "parameters": { "type": "object" },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["signal", "at"],
+            "additionalProperties": false,
+            "properties": {
+              "signal": { "enum": ["pause", "resume", "cancel", "re-screen"] },
+              "at": { "$ref": "urn:th:schema:common#/$defs/duration" }
+            }
+          }
+        }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outcome": { "type": "string" },
+        "status": { "type": "string" },
+        "reasonCode": { "type": "string" },
+        "writes": { "type": "object" },
+        "findings": { "type": "array" },
+        "decisions": { "type": "array" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["port", "message"],
+            "additionalProperties": false,
+            "properties": {
+              "port": { "type": "string" },
+              "message": { "type": "string" },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "postings": { "type": "array" },
+        "trace": {
+          "description": "The business trace: step ids and outcomes in order. Engines must reproduce it exactly.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "attempts": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "virtualElapsed": { "$ref": "urn:th:schema:common#/$defs/duration" }
+      }
+    }
+  }
+}

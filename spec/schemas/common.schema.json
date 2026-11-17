@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:common",
+  "title": "Common definitions",
+  "description": "Shared definitions for every Designer Studio artefact. See design/01 and design/02.",
+  "$defs": {
+    "scope": {
+      "description": "p = platform, <cluster>.p = cluster platform, <cluster>.<scheme> = cluster scheme, b = bank tenant.",
+      "type": "string",
+      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})$"
+    },
+    "artefactName": {
+      "description": "<scope>.<type>.<name>.v<major>. The major is part of the name.",
+      "type": "string",
+      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})\\.(map|validate|enrich|screen|decide|reserve|exchange|post|notify|hold|reconcile|rule|ruleset|table|sim|wf|seg|handler|hook|port|ext)\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "release": {
+      "description": "major.minor.patch. Major for an interface change, minor for improved function, patch for a bug fix.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "duration": {
+      "description": "ISO 8601 duration, for example PT3S or P1D.",
+      "type": "string",
+      "pattern": "^P(?!$)([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+S)?)?$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "contextPath": {
+      "description": "A path into the canonical context. See design/02.",
+      "type": "string",
+      "pattern": "^(header|payment|batch|items\\[\\]|status|facts|messages|ext\\.[a-z0-9]+(\\.[a-z0-9]+)*)(\\.[A-Za-z][A-Za-z0-9]*(\\[\\])?)*$"
+    },
+    "expression": {
+      "description": "An expression in the studio expression language. See design/04.",
+      "type": "string",
+      "minLength": 1
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "pin": {
+      "type": "object",
+      "required": ["release", "hash"],
+      "additionalProperties": false,
+      "properties": {
+        "release": { "$ref": "#/$defs/release" },
+        "hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "pins": {
+      "description": "Exact release and content hash of every artefact used. Filled by the studio at publish.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/artefactName" },
+      "additionalProperties": { "$ref": "#/$defs/pin" }
+    },
+    "retry": {
+      "type": "object",
+      "required": ["maxAttempts"],
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "firstInterval": { "$ref": "#/$defs/duration" },
+        "backoff": { "type": "number", "minimum": 1 },
+        "maxInterval": { "$ref": "#/$defs/duration" },
+        "nonRetryable": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "policy": {
+      "description": "Timeout and retry policy. Resolved type default, then block default, then step override.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attemptTimeout": { "$ref": "#/$defs/duration" },
+        "totalTimeout": { "$ref": "#/$defs/duration" },
+        "retry": { "$ref": "#/$defs/retry" }
+      }
+    },
+    "parameter": {
+      "description": "A named value a rule, table, activity or workflow exposes. Values are set in configuration sets, inside the bounds.",
+      "type": "object",
+      "required": ["type", "default"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["amount", "integer", "decimal", "boolean", "string", "duration", "code", "list"] },
+        "default": {},
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "bounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "min": {},
+            "max": {},
+            "allowed": { "type": "array" }
+          }
+        },
+        "lookupDate": { "enum": ["step-time", "payment-date"] },
+        "description": { "type": "string" }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*$" },
+      "additionalProperties": { "$ref": "#/$defs/parameter" }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "origin": { "enum": ["factory", "authored"] },
+        "status": { "enum": ["confirmed", "provisional"] },
+        "clauses": { "type": "array", "items": { "type": "string" } },
+        "ai": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string" },
+            "promptRef": { "type": "string" },
+            "inputs": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "required": ["binding"],
+      "additionalProperties": false,
+      "properties": {
+        "binding": { "enum": ["script", "native", "builtin"] },
+        "language": { "enum": ["python", "typescript"] },
+        "script": { "type": "string" },
+        "service": { "type": "string" }
+      }
+    }
+  }
+}

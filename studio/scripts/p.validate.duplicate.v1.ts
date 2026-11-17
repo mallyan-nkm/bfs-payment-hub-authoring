@@ -1,0 +1,9 @@
+// Ask the payment record whether a payment with the same ids, amount and accounts was seen.
+// The record answers accepted when it finds none.
+
+export async function run({ ctx, ports }) {
+  const reply = await ports.request('p.port.payment-record.v1');
+  const found = reply.status === 'rejected' || reply.status === 'found';
+  ctx.facts = { duplicate: { found } };
+  return found ? 'duplicate' : 'unique';
+}

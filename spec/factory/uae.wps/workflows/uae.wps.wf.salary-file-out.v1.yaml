@@ -1,0 +1,69 @@
+kind: workflow
+wfKind: leg
+name: uae.wps.wf.salary-file-out.v1
+release: 1.0.0
+dsl: 1.0.0
+title: WPS salary file, bank as the employer's bank
+description: Sets the business date, validates the file and each record, submits the file to WPS and waits for the acknowledgement. A long wait on a business calendar.
+direction: outward
+implements:
+  slot: scheme-leg
+  of: [p.wf.corporate.v1]
+entry:
+  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation]
+exit:
+  writes: [status, messages]
+  outcomes: [settled, rejected, returned, pending]
+parameters:
+  ackWait:
+    type: duration
+    default: P1D
+    description: Placeholder. How long to wait for the WPS acknowledgement before operations look at it.
+do:
+  - id: business-date
+    call: uae.p.enrich.business-date.v1
+  - id: file-checks
+    call: uae.wps.validate.salary-file.v1
+    handle:
+      repair: { end: rejected }
+      reject: { end: rejected }
+  - forEach:
+      in: "items[]"
+      onItemFailure: stop
+      do:
+        - id: record-checks
+          call: uae.wps.validate.salary-record.v1
+          level: item
+          handle:
+            reject: { end: rejected }
+        - id: record-iban
+          call: uae.p.validate.iban.v1
+          level: item
+          handle:
+            reject: { end: rejected }
+  - id: render
+    call: uae.wps.map.sif-out.v1
+    handle:
+      unmappable: { end: rejected }
+  - id: submit
+    call: uae.wps.exchange.send-salary-file.v1
+    handle:
+      rejected: { end: rejected }
+      unknown: { end: pending }
+  - id: await-ack
+    await:
+      message: uae.wps.ack
+      correlateBy: header.fileId
+      timeout: P1D
+      calendar: business
+      onTimeout: { end: pending }
+  - id: read-ack
+    call: uae.wps.map.ack-in.v1
+    handle:
+      nak: { end: rejected }
+  - end: settled
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [CBUAE WPS responsibility guide 2018]
+  note: From public sources. Confirm against the current CBUAE WPS rulebook.

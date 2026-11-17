@@ -1,0 +1,51 @@
+# The conformance kit. Every target engine and the studio interpreter must produce the
+# same business trace for every scenario. Kit content lives in the reserved cluster `ck`.
+kind: conformance-kit
+release: 0.1.0
+date: "2026-11-17"
+scope: ck.p
+note: Scenario workflows and their activities are authored under build spec C23. A trace is the ordered list of step id and outcome.
+scenarios:
+  - { id: CK-SEQ-01, construct: call, title: Steps run in order, expect: [a:ok, b:ok, c:ok, "end:done"] }
+  - { id: CK-HANDLE-01, construct: handle, title: A non-primary outcome runs its steps, expect: [a:other, x:ok, b:ok, "end:done"] }
+  - { id: CK-HANDLE-02, construct: handle, title: An end action ends the workflow with that outcome, expect: [a:other, "end:stopped"] }
+  - { id: CK-HANDLE-03, construct: handle, title: Continue records the outcome and carries on, expect: [a:other, b:ok, "end:done"] }
+  - { id: CK-SWITCH-01, construct: switch, title: A switch on an outcome takes the matching case, expect: [a:left, l:ok, "end:done"] }
+  - { id: CK-SWITCH-02, construct: switch, title: A switch on a decision takes the default when no case matches, expect: [d:decided, z:ok, "end:done"] }
+  - { id: CK-PAR-01, construct: parallel, title: Branches run together and all are awaited, expect: [a:ok, b:ok, "join:all", c:ok, "end:done"], note: a and b may appear in either order }
+  - { id: CK-FOREACH-01, construct: forEach, title: "Per-item outcomes are kept; one failing item does not stop the rest when onItemFailure is continue", expect: ["item[0]:ok", "item[1]:other", "item[2]:ok", "end:done"] }
+  - { id: CK-FOREACH-02, construct: forEach, title: A large batch is chunked without changing the trace, expect: ["items:10000", "end:done"] }
+  - { id: CK-LOOP-01, construct: loop, title: A loop stops when its until condition is met, expect: [q:pending, q:pending, q:final, "end:done"] }
+  - { id: CK-LOOP-02, construct: loop, title: A loop stops at max, expect: [q:pending, q:pending, q:pending, "end:gave-up"] }
+  - { id: CK-RETRY-01, construct: retry, title: Two transient failures then success make three attempts and one accepted message, expect: [a:ok, "end:done"], attempts: { a: 3 }, accepted: 1 }
+  - { id: CK-RETRY-02, construct: retry, title: A business rejection is not retried, expect: [a:rejected, "end:rejected"], attempts: { a: 1 } }
+  - { id: CK-TIMEOUT-01, construct: attemptTimeout, title: "An attempt that exceeds its timeout is retried; a late result is ignored", expect: [a:ok, "end:done"], attempts: { a: 2 } }
+  - { id: CK-TIMEOUT-02, construct: totalTimeout, title: The total timeout ends retries and surfaces as the unknown outcome, expect: [a:unknown, "end:pending"] }
+  - { id: CK-UNKNOWN-01, construct: inquiry, title: "An unknown send is followed by an inquiry with the original ids; nothing is sent twice with a new id", expect: [send:unknown, inquire:accepted, "end:done"], distinctIds: 1 }
+  - { id: CK-POLICY-01, construct: policy, title: "A step override beats the block default, which beats the type default", expect: [a:ok, "end:done"], effective: { attemptTimeout: PT2S } }
+  - { id: CK-AWAIT-01, construct: await, title: An awaited message resumes the workflow, expect: [send:accepted, "await:received", "end:done"] }
+  - { id: CK-AWAIT-02, construct: await, title: An await that times out on a business calendar takes its timeout branch, expect: [send:accepted, "await:timeout", "end:pending"], virtualElapsed: P1D }
+  - { id: CK-AWAIT-03, construct: await, title: A message that arrives after the timeout resumes nothing and is recorded as unmatched, expect: [send:accepted, "await:timeout", "end:pending"], unmatched: 1 }
+  - { id: CK-AWAIT-04, construct: await, title: A message that arrives before its await starts is kept and consumed by it, expect: [send:accepted, "await:received", "end:done"], arrives: before-await }
+  - { id: CK-AWAIT-05, construct: await, title: A second copy of a consumed message is recorded and ignored, expect: [send:accepted, "await:received", "end:done"], duplicates: 1 }
+  - { id: CK-WAIT-01, construct: wait, title: A timer waits on the virtual clock, expect: [a:ok, "wait:PT1H", b:ok, "end:done"], virtualElapsed: PT1H }
+  - { id: CK-COMP-01, construct: compensate, title: Compensation runs for completed write steps in reverse order, expect: [w1:ok, w2:ok, x:rejected, "undo:w2", "undo:w1", "end:rejected"] }
+  - { id: CK-FINALLY-01, construct: finally, title: Finally runs on every end after compensation, expect: [w1:ok, x:rejected, "undo:w1", "finally:n", "end:rejected"] }
+  - { id: CK-DEADLINE-01, construct: deadline, title: A deadline fires as a timer and runs its handler, expect: [a:ok, "deadline:fired", "end:late"] }
+  - { id: CK-SLOT-01, construct: slot, title: The slot runs the leg the dispatch or route decision names, expect: [route:decided, "leg:settled", "end:done"] }
+  - { id: CK-SLOT-02, construct: slot, title: A leg outcome other than the primary is handled by the platform workflow, expect: [route:decided, "leg:rejected", "end:rejected"] }
+  - { id: CK-SIGNAL-01, construct: signal, title: Pause stops new steps and resume carries on, expect: [a:ok, "signal:pause", "signal:resume", b:ok, "end:done"] }
+  - { id: CK-SIGNAL-02, construct: signal, title: "Cancel compensates in reverse, then runs finally", expect: [w1:ok, "signal:cancel", "undo:w1", "finally:n", "end:cancelled"] }
+  - { id: CK-SIGNAL-03, construct: signal, title: Re-screen runs the screen step again on a waiting payment, expect: [screen:clear, "await:waiting", "signal:re-screen", screen:hit, "end:held"] }
+  - { id: CK-HOOK-01, construct: hook, title: A halt hook that returns hold runs the hold block the hook point names, expect: [a:ok, "hook:hold", hold:approved, b:ok, "end:done"] }
+  - { id: CK-HOOK-02, construct: hook, title: A transform hook that writes outside its contract fails and the hook point's failure mode applies, expect: [a:ok, "hook:failed", b:ok, "end:done"] }
+  - { id: CK-HOOK-03, construct: hook, title: A notify hook that fails does not change the flow, expect: [a:ok, "hook:failed", "end:done"] }
+  - { id: CK-HOOK-04, construct: hook, title: An unbound hook point does nothing, expect: [a:ok, b:ok, "end:done"] }
+  - { id: CK-HANDLER-01, construct: handler, title: A handler answers with no durable state, expect: [read:found, answer:responded, "end:answered"], durableInstances: 0 }
+  - { id: CK-PIN-01, construct: pin, title: "Two releases of one line run side by side; each instance runs the release it pinned", expect: ["i1:a@1.0.0", "i2:a@1.0.1"] }
+  - { id: CK-PIN-02, construct: pin, title: "A leg is pinned when it starts; hook bindings are taken when the instance starts", expect: ["platform@1.0.0", "leg@1.1.0", "hook@1.0.0"] }
+  - { id: CK-LOOKUP-01, construct: lookup, title: A value that changes while an instance waits is read at the next step, expect: [limit:pass, "await:received", limit:reject, "end:rejected"] }
+  - { id: CK-SUP-01, construct: supersession, title: "A supersession replaces a pinned release for steps not yet started; the record shows both", expect: ["a@1.0.0", "supersede:b 1.0.0 to 1.0.1", "b@1.0.1", "end:done"] }
+  - { id: CK-CLAIM-01, construct: claim-check, title: Engine state and traces hold references and no personal data, expect: [a:ok, "end:done"], forbiddenInState: [payment, "items[]", ext] }
+  - { id: CK-DELTA-01, construct: delta, title: Each step's writes are recorded as a delta with the release that ran, expect: [a:ok, "delta:a", b:ok, "delta:b", "end:done"] }
+  - { id: CK-TRACE-01, construct: rules, title: The rule trace is stored with the payment, expect: [validate:reject, "ruleTrace:stored", "end:rejected"] }

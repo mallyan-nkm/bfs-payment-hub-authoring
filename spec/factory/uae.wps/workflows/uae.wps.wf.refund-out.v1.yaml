@@ -1,0 +1,59 @@
+kind: workflow
+wfKind: leg
+name: uae.wps.wf.refund-out.v1
+release: 1.0.0
+dsl: 1.0.0
+title: WPS refund request, bank as the employer's bank
+description: Submits a refund request, waits for the acknowledgement and then for the settlement file, and credits the employer. A request process, not a payment.
+direction: outward
+implements:
+  slot: scheme-leg
+  of: [p.wf.request.v1]
+entry:
+  reads: [header, batch, "items[]"]
+exit:
+  writes: [status, facts.settlement, facts.posting, messages]
+  outcomes: [settled, rejected, pending]
+do:
+  - id: render
+    call: uae.wps.map.rfr-out.v1
+    handle:
+      unmappable: { end: rejected }
+  - id: submit
+    call: uae.wps.exchange.send-refund-request.v1
+    handle:
+      rejected: { end: rejected }
+      unknown: { end: pending }
+  - id: await-ack
+    await:
+      message: uae.wps.ack
+      correlateBy: header.fileId
+      timeout: P1D
+      calendar: business
+      onTimeout: { end: pending }
+  - id: read-ack
+    call: uae.wps.map.ack-in.v1
+    handle:
+      nak: { end: rejected }
+  - id: await-settlement
+    await:
+      message: uae.wps.rsu
+      correlateBy: header.fileId
+      timeout: P10D
+      calendar: business
+      onTimeout: { end: pending }
+  - id: read-settlement
+    call: uae.wps.map.rsu-in.v1
+    handle:
+      declined: { end: rejected }
+  - id: credit-employer
+    call: p.post.accounting.v1
+    handle:
+      rejected: { end: pending }
+      unknown: { end: pending }
+  - end: settled
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [CBUAE WPS responsibility guide 2018]
+  note: From public sources. Waiting times are placeholders.

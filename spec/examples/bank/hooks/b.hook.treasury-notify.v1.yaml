@@ -1,0 +1,14 @@
+kind: hook
+name: b.hook.treasury-notify.v1
+release: 1.0.0
+title: Tell treasury when a corporate payment closes
+implements:
+  hookPoint: on-close
+  of: p.wf.corporate.v1
+type: notify
+outcomes: [done]
+do:
+  - id: tell-treasury
+    call: b.notify.treasury.v1
+  - end: done
+provenance: { origin: authored, status: confirmed, note: Example only. Shows a notify hook; its failure never affects the payment. }

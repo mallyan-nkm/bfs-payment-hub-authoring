@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:scheme",
+  "title": "Scheme manifest and dispatch table",
+  "description": "What makes one rail, and what happens to every message in its catalogue. See design/05 and design/11.",
+  "type": "object",
+  "required": [
+    "kind",
+    "scope",
+    "release",
+    "title",
+    "messages",
+    "legs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "scheme"
+    },
+    "scope": {
+      "$ref": "urn:th:schema:common#/$defs/scope"
+    },
+    "release": {
+      "$ref": "urn:th:schema:common#/$defs/release"
+    },
+    "title": {
+      "type": "string"
+    },
+    "wire": {
+      "enum": [
+        "iso20022",
+        "file",
+        "api",
+        "mixed"
+      ]
+    },
+    "messages": {
+      "description": "The message catalogue. Every message has exactly one disposition.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "direction",
+          "disposition"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "in",
+              "out"
+            ]
+          },
+          "isoMessage": {
+            "type": "string"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "disposition": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "description": "Starts a platform workflow with this leg in its slot.",
+                "type": "object",
+                "required": [
+                  "leg",
+                  "intakeMap"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "leg": {
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
+                  },
+                  "intakeMap": {
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
+                  },
+                  "refuseLeg": {
+                    "description": "Inward only: the leg that fills the platform workflow's scheme-refuse slot.",
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
+                  },
+                  "kind": {
+                    "enum": [
+                      "payment",
+                      "request",
+                      "return"
+                    ]
+                  }
+                }
+              },
+              "deliver": {
+                "description": "Delivered to a running workflow that awaits it.",
+                "type": "object",
+                "required": [
+                  "correlateBy"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "correlateBy": {
+                    "type": "string"
+                  }
+                }
+              },
+              "handler": {
+                "$ref": "urn:th:schema:common#/$defs/artefactName"
+              },
+              "sentBy": {
+                "description": "Outbound message: the exchange block that sends it.",
+                "$ref": "urn:th:schema:common#/$defs/artefactName"
+              },
+              "planned": {
+                "description": "Not yet defined. Blocks publication of the pack.",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "legs": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      }
+    },
+    "handlers": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      }
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:th:schema:common#/$defs/artefactName"
+      }
+    },
+    "provenance": {
+      "$ref": "urn:th:schema:common#/$defs/provenance"
+    }
+  }
+}

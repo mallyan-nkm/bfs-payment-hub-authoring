@@ -1,0 +1,538 @@
+# Conformance kit library: the blocks, ports, simulators and scheme manifest that the
+# scenario workflows share. Content lives in the reserved cluster `ck` (R-C-02).
+# Written by hand under build spec C23. Every activity here is driven by the kit runner's
+# stubs or by the kit simulators; none carries production logic.
+kind: activity
+name: ck.kit.enrich.task.v1
+release: 1.0.0
+title: Kit task with several outcomes
+type: enrich
+reads: [header]
+writes: [facts.kit]
+outcomes:
+  - { name: ok, primary: true }
+  - { name: other }
+  - { name: left }
+  - { name: right }
+  - { name: rejected }
+errors:
+  - { name: TransientError, retryable: true }
+effect: read
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.task.v1.ts }
+---
+kind: activity
+name: ck.kit.enrich.query.v1
+release: 1.0.0
+title: Kit query that is pending until final
+type: enrich
+reads: [header]
+writes: [facts.query]
+outcomes:
+  - { name: final, primary: true }
+  - { name: pending }
+errors:
+  - { name: TransientError, retryable: true }
+effect: read
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.query.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.call.v1
+release: 1.0.0
+title: Kit external call with retry and an unknown outcome
+type: exchange
+mode: send
+reads: [header]
+writes: [status, messages]
+outcomes:
+  - { name: ok, primary: true }
+  - { name: rejected }
+  - { name: pending }
+  - { name: unknown }
+errors:
+  - { name: TransientError, retryable: true }
+  - { name: BusinessReject, retryable: false }
+effect: external
+idempotencyKey: concat(header.paymentId, ':call')
+ports: [ck.kit.port.party.v1]
+policy:
+  attemptTimeout: PT5S
+  totalTimeout: PT30S
+  retry: { maxAttempts: 3, firstInterval: PT1S, backoff: 2, nonRetryable: [BusinessReject] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.call.v1.ts }
+---
+kind: activity
+name: ck.kit.post.write.v1
+release: 1.0.0
+title: Kit write that can be undone
+type: post
+reads: [header]
+writes: [facts.posting]
+outcomes:
+  - { name: ok, primary: true }
+  - { name: rejected }
+errors:
+  - { name: TransientError, retryable: true }
+effect: write
+idempotencyKey: concat(header.paymentId, ':write')
+ports: [ck.kit.port.ledger.v1]
+compensation: ck.kit.post.undo.v1
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.post.write.v1.ts }
+---
+kind: activity
+name: ck.kit.post.undo.v1
+release: 1.0.0
+title: Kit compensation
+type: post
+reads: [facts.posting]
+writes: [facts.posting]
+outcomes:
+  - { name: ok, primary: true }
+errors:
+  - { name: TransientError, retryable: true }
+effect: write
+idempotencyKey: concat(header.paymentId, ':undo')
+ports: [ck.kit.port.ledger.v1]
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.post.undo.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.send.v1
+release: 1.0.0
+title: Kit send whose reply comes later
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: unknown }
+errors:
+  - { name: TransientError, retryable: true }
+  - { name: BusinessReject, retryable: false }
+effect: external
+idempotencyKey: concat(header.paymentId, ':send')
+ports: [ck.kit.port.party.v1]
+policy:
+  attemptTimeout: PT3S
+  totalTimeout: PT8S
+  retry: { maxAttempts: 3, firstInterval: PT1S, backoff: 2, nonRetryable: [BusinessReject] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.send.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.send-sync.v1
+release: 1.0.0
+title: Kit send whose reply comes on the connection
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: pending }
+  - { name: unknown }
+errors:
+  - { name: TransientError, retryable: true }
+  - { name: BusinessReject, retryable: false }
+effect: external
+idempotencyKey: concat(header.paymentId, ':send')
+ports: [ck.kit.port.party.v1]
+policy:
+  attemptTimeout: PT3S
+  totalTimeout: PT8S
+  retry: { maxAttempts: 3, firstInterval: PT1S, backoff: 2, nonRetryable: [BusinessReject] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.send-sync.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.inquire.v1
+release: 1.0.0
+title: Kit status inquiry with the original ids
+type: exchange
+mode: inquire
+reads: [header]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: pending }
+  - { name: unknown }
+errors:
+  - { name: TransientError, retryable: true }
+  - { name: BusinessReject, retryable: false }
+effect: external
+idempotencyKey: concat(header.paymentId, ':inquire')
+ports: [ck.kit.port.party.v1]
+policy:
+  attemptTimeout: PT3S
+  totalTimeout: PT8S
+  retry: { maxAttempts: 3, firstInterval: PT1S, backoff: 2, nonRetryable: [BusinessReject] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.inquire.v1.ts }
+---
+kind: activity
+name: ck.kit.decide.lane.v1
+release: 1.0.0
+title: Kit decision
+type: decide
+reads: [header]
+writes: [facts.route]
+outcomes:
+  - { name: decided, primary: true }
+  - { name: no-match }
+effect: pure
+ruleSets: [ck.kit.table.lane.v1]
+implementation: { binding: builtin, service: rule-service }
+---
+kind: activity
+name: ck.kit.screen.check.v1
+release: 1.0.0
+title: Kit screening
+type: screen
+reads: [header]
+writes: [facts.screening]
+outcomes:
+  - { name: clear, primary: true }
+  - { name: hit }
+errors:
+  - { name: TransientError, retryable: true }
+effect: external
+idempotencyKey: concat(header.paymentId, ':screen')
+ports: [ck.kit.port.screening.v1]
+implementation: { binding: builtin, service: screening }
+---
+kind: activity
+name: ck.kit.hold.approve.v1
+release: 1.0.0
+title: Kit approval
+type: hold
+reads: [header]
+writes: [facts.approval]
+outcomes:
+  - { name: approved, primary: true }
+  - { name: declined }
+  - { name: expired }
+effect: write
+idempotencyKey: concat(header.paymentId, ':approve')
+ports: [ck.kit.port.operations.v1]
+implementation: { binding: builtin, service: operations }
+---
+kind: activity
+name: ck.kit.notify.tell.v1
+release: 1.0.0
+title: Kit notification
+type: notify
+reads: [header, status]
+writes: [facts.notified]
+outcomes:
+  - { name: notified, primary: true }
+effect: write
+idempotencyKey: concat(header.paymentId, ':tell')
+ports: [ck.kit.port.channel.v1]
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.notify.tell.v1.ts }
+---
+kind: activity
+name: ck.kit.validate.limit.v1
+release: 1.0.0
+title: Kit limit check against a looked-up value
+type: validate
+reads: [header, payment]
+writes: [facts.validation]
+outcomes:
+  - { name: pass, primary: true }
+  - { name: reject }
+effect: pure
+ruleSets: [ck.kit.ruleset.limit.v1]
+implementation: { binding: builtin, service: rule-service }
+---
+kind: activity
+name: ck.kit.enrich.record.v1
+release: 1.0.0
+title: Kit read of the payment record
+type: enrich
+reads: [header]
+writes: [facts.record]
+outcomes:
+  - { name: found, primary: true }
+  - { name: not-found }
+errors:
+  - { name: TransientError, retryable: true }
+effect: read
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.record.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.answer.v1
+release: 1.0.0
+title: Kit answer to a request
+type: exchange
+mode: respond
+reads: [header]
+writes: [messages]
+outcomes:
+  - { name: responded, primary: true }
+errors:
+  - { name: TransientError, retryable: true }
+effect: external
+idempotencyKey: concat(header.paymentId, ':answer')
+ports: [ck.kit.port.party.v1]
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.answer.v1.ts }
+---
+kind: activity
+name: ck.kit.enrich.bank-field.v1
+release: 1.0.0
+title: Kit bank block that writes a field
+type: enrich
+reads: [header]
+writes: [ext.b, payment.purpose]
+outcomes:
+  - { name: done, primary: true }
+effect: read
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.enrich.bank-field.v1.ts }
+---
+kind: rule
+name: ck.kit.rule.within-limit.v1
+release: 1.0.0
+title: Amount is within the kit limit
+ruleKind: policy
+parameters:
+  limit:
+    type: amount
+    default: 1000
+    bounds: { max: 1000 }
+    description: A looked-up value. It may change while a payment waits.
+repeatability: non-repeatable
+when:
+  - match: { fact: Payment, as: p }
+  - match: { fact: Param, as: limit, where: "limit.name == 'limit'" }
+  - having: p.instructedAmount.value > limit.value
+then:
+  - yield:
+      finding: { severity: reject, path: payment.instructedAmount.value, reasonCode: AM02 }
+examples:
+  - name: passes
+    given: { Payment: { instructedAmount: { value: 100 } }, Param: { name: limit, value: 1000 } }
+    expect: { findings: [] }
+  - name: fails
+    given: { Payment: { instructedAmount: { value: 100 } }, Param: { name: limit, value: 50 } }
+    expect: { findings: [{ reasonCode: AM02 }] }
+---
+kind: ruleset
+name: ck.kit.ruleset.limit.v1
+release: 1.0.0
+title: Kit limit checks
+mode: validation
+stages: [policy]
+rules: [ck.kit.rule.within-limit.v1]
+---
+kind: table
+name: ck.kit.table.lane.v1
+release: 1.0.0
+title: Kit lane choice
+hitPolicy: first
+inputs:
+  - { name: lane, expression: header.lane }
+outputs: [lane]
+rows:
+  - { when: { lane: fast }, then: { lane: fast }, reason: Fast lane asked for }
+  - { when: {}, then: { lane: other }, reason: Anything else }
+---
+kind: port
+name: ck.kit.port.party.v1
+release: 1.0.0
+title: Kit external party
+party: external party
+operations:
+  - { name: send, style: send }
+  - { name: inquire, style: request-reply }
+---
+kind: port
+name: ck.kit.port.ledger.v1
+release: 1.0.0
+title: Kit ledger
+party: ledger
+operations:
+  - { name: post, style: request-reply }
+---
+kind: port
+name: ck.kit.port.screening.v1
+release: 1.0.0
+title: Kit screening service
+party: screening service
+operations:
+  - { name: screen, style: request-reply }
+---
+kind: port
+name: ck.kit.port.operations.v1
+release: 1.0.0
+title: Kit operations queue
+party: operations user
+operations:
+  - { name: item, style: send }
+---
+kind: port
+name: ck.kit.port.channel.v1
+release: 1.0.0
+title: Kit channel
+party: channel
+operations:
+  - { name: tell, style: send }
+---
+kind: simulator
+name: ck.kit.sim.party.v1
+release: 1.0.0
+title: Kit party, replies to the platform
+direction: outward
+port: ck.kit.port.party.v1
+standsFor: external party
+state: { keyedBy: message id }
+scenarios:
+  - name: accept
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted, after: PT1M }
+  - name: reject
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: rejected, reasonCode: AC04 }
+  - name: pending-then-final
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: pending }
+      - { send: ck.kit.reply, status: accepted, after: PT30S }
+  - name: no-reply
+    steps:
+      - expect: ck.kit.request
+      - noReply: true
+  - name: late-reply
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted, after: PT2H }
+  - name: duplicate-reply
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted, after: PT1M, duplicate: true }
+  - name: fail-twice-then-accept
+    steps:
+      - { expect: ck.kit.request, failTimes: 2 }
+      - { send: ck.kit.reply, status: accepted, after: PT1M }
+  - name: malformed-reply
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted }
+    malformed: true
+  - name: accept-now
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted }
+  - name: fail-twice-then-accept-now
+    steps:
+      - { expect: ck.kit.request, failTimes: 2 }
+      - { send: ck.kit.reply, status: accepted }
+  - name: no-reply-then-status-accepted
+    steps:
+      - expect: ck.kit.request
+      - noReply: true
+      - expect: ck.kit.status-request
+      - { send: ck.kit.status, status: accepted }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.party.v1.ts }
+---
+kind: simulator
+name: ck.kit.sim.party-inward.v1
+release: 1.0.0
+title: Kit party, sends to the platform
+direction: inward
+port: ck.kit.port.party.v1
+standsFor: external party
+state: { keyedBy: message id }
+scenarios:
+  - name: reply-after-a-day
+    steps:
+      - { send: ck.kit.reply, status: accepted, after: P1D }
+  - name: request
+    steps:
+      - send: ck.kit.request-in
+      - expect: ck.kit.answer
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.party-inward.v1.ts }
+---
+kind: scheme
+scope: ck.kit
+release: 1.0.0
+title: Conformance kit scheme
+wire: iso20022
+messages:
+  - { id: ck.kit.request, title: Request the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.send.v1 } }
+  - { id: ck.kit.reply, title: Reply that belongs to a running payment, direction: in, confirmed: true, disposition: { deliver: { correlateBy: end-to-end id } } }
+  - { id: ck.kit.status-request, title: Status request the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.inquire.v1 } }
+  - { id: ck.kit.request-in, title: Request the platform answers without state, direction: in, confirmed: true, disposition: { handler: ck.kit.handler.answer.v1 } }
+  - { id: ck.kit.answer, title: Answer the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.answer.v1 } }
+legs: [ck.kit.wf.leg.v1]
+handlers: [ck.kit.handler.answer.v1]
+ports: [ck.kit.port.party.v1]
+provenance: { origin: factory, status: confirmed }
+---
+kind: simulator
+name: ck.kit.sim.ledger.v1
+release: 1.0.0
+title: Kit ledger simulator
+direction: outward
+port: ck.kit.port.ledger.v1
+standsFor: ledger
+state: { keyedBy: message id }
+scenarios:
+  - { name: accept, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: reject, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: rejected, reasonCode: AM04 } ] }
+  - { name: pending-then-final, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: pending }, { send: ck.kit.ok, status: accepted, after: PT30S } ] }
+  - { name: no-reply, steps: [ { expect: ck.kit.any }, { noReply: true } ] }
+  - { name: late-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, after: PT1H } ] }
+  - { name: duplicate-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, duplicate: true } ] }
+  - { name: fail-twice-then-accept, steps: [ { expect: ck.kit.any, failTimes: 2 }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: malformed-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ], malformed: true }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.ledger.v1.ts }
+---
+kind: simulator
+name: ck.kit.sim.screening.v1
+release: 1.0.0
+title: Kit screening simulator
+direction: outward
+port: ck.kit.port.screening.v1
+standsFor: screening service
+state: { keyedBy: message id }
+scenarios:
+  - { name: accept, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: reject, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: rejected, reasonCode: AM04 } ] }
+  - { name: pending-then-final, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: pending }, { send: ck.kit.ok, status: accepted, after: PT30S } ] }
+  - { name: no-reply, steps: [ { expect: ck.kit.any }, { noReply: true } ] }
+  - { name: late-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, after: PT1H } ] }
+  - { name: duplicate-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, duplicate: true } ] }
+  - { name: fail-twice-then-accept, steps: [ { expect: ck.kit.any, failTimes: 2 }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: malformed-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ], malformed: true }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.screening.v1.ts }
+---
+kind: simulator
+name: ck.kit.sim.channel.v1
+release: 1.0.0
+title: Kit channel simulator
+direction: outward
+port: ck.kit.port.channel.v1
+standsFor: channel
+state: { keyedBy: message id }
+scenarios:
+  - { name: accept, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: reject, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: rejected, reasonCode: AM04 } ] }
+  - { name: pending-then-final, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: pending }, { send: ck.kit.ok, status: accepted, after: PT30S } ] }
+  - { name: no-reply, steps: [ { expect: ck.kit.any }, { noReply: true } ] }
+  - { name: late-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, after: PT1H } ] }
+  - { name: duplicate-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted, duplicate: true } ] }
+  - { name: fail-twice-then-accept, steps: [ { expect: ck.kit.any, failTimes: 2 }, { send: ck.kit.ok, status: accepted } ] }
+  - { name: malformed-reply, steps: [ { expect: ck.kit.any }, { send: ck.kit.ok, status: accepted } ], malformed: true }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.channel.v1.ts }
+---
+kind: simulator
+name: ck.kit.sim.operations.v1
+release: 1.0.0
+title: Kit operator
+direction: inward
+port: ck.kit.port.operations.v1
+standsFor: operations user
+state: { keyedBy: message id }
+scenarios:
+  - { name: accept, steps: [ { expect: p.ops.item }, { send: p.ops.decision, status: approved, after: PT5M } ] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.operations.v1.ts }

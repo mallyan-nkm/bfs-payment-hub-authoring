@@ -1,0 +1,29 @@
+kind: workflow
+wfKind: leg
+name: uae.aani.wf.credit-refuse.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Aani inward credit refused
+description: Answers the scheme with a rejection when the platform has decided to refuse an inward credit.
+direction: inward
+synchronous: true
+implements:
+  slot: scheme-refuse
+  of: [p.wf.inward.v1]
+entry:
+  reads: [header, payment, facts.disposition, facts.validation]
+exit:
+  writes: [status, messages]
+  outcomes: [refused, pending]
+do:
+  - id: render
+    call: uae.aani.map.status-out.v1
+    handle:
+      unmappable: { end: pending }
+  - id: answer
+    call: uae.aani.exchange.respond-status.v1
+  - end: refused
+provenance:
+  origin: factory
+  status: provisional
+  note: Confirm the rejection message and reason codes against the AEP participant specification.

@@ -1,0 +1,153 @@
+group: Tenancy and governance
+components:
+  - id: C17
+    title: Tenants, roles and maker-checker
+    phase: 3
+    purpose: Run one studio for many banks, with shared content read-only to them and every publish approved by a second person.
+    design: [Part 6, Part 11, Part 10]
+    schemas: [pack, common]
+    dependsOn: [C01]
+    dos: Functions F-26 and F-32 pass, and the isolation suite shows that no tenant can read or change another tenant's content.
+    stories:
+      - id: C17-S1
+        title: Tenant model and workspace
+        sp: 5
+        phase: 2
+        story: As a platform owner, I want each bank to work in its own tenant, so that one studio serves many banks.
+        dod:
+          - A tenant has an id, a cluster list and the shared packs it has accepted; the tenant id is never part of an artefact name.
+          - Every read and write carries the tenant.
+        dos: Two tenants each author b.hook.pre-release-approval.v1 with different content and neither sees the other's.
+      - id: C17-S2
+        title: Roles
+        sp: 3
+        story: As a platform owner, I want the roles of Part 6 enforced, so that who may author and who may approve is not left to convention.
+        needs: [C17-S1]
+        dod:
+          - Shared designer, shared checker, bank designer, bank checker and service operations are enforced on every action.
+        dos: A bank designer is refused when editing any artefact outside scope b.
+      - id: C17-S3
+        title: Shared content is read-only to banks
+        sp: 3
+        story: As a bank designer, I want to open shared content and be unable to change it, so that every bank runs the same definitions.
+        needs: [C17-S2]
+        dod:
+          - Shared artefacts open read-only for a tenant; clone into scope b is refused for anything but a hook's own blocks.
+        dos: An edit of uae.aani.wf.credit-out.v1 from tenant example-bank is refused with a reason that names the rule.
+      - id: C17-S4
+        title: Maker-checker and audit
+        sp: 5
+        phase: 5
+        story: As an auditor, I want every publish to have a maker and a different checker, so that no one person changes what runs.
+        needs: [C17-S2]
+        dod:
+          - Publish needs an approval by a different person with the checker role in the same tenant or in shared.
+          - The audit record holds who, what, when, the diff and the approval, and cannot be changed.
+        dos: A maker who tries to approve their own publish is refused, and the attempt is in the audit record.
+      - id: C17-S5
+        title: Isolation suite
+        sp: 3
+        story: As a security reviewer, I want a suite that tries to cross tenant boundaries, so that isolation is proven and not asserted.
+        needs: [C17-S3]
+        dod:
+          - The suite covers catalogue, search, tests, exports and audit for cross-tenant reads and writes.
+        dos: Every case of the suite is refused, and each refusal is logged.
+
+  - id: C18
+    title: Hooks and configuration sets
+    phase: 3
+    purpose: Let a bank author hooks for declared hook points and set values within bounds, with effective dates.
+    design: [Part 6]
+    schemas: [hook, configuration-set]
+    dependsOn: [C09, C11, C17, C19]
+    dos: Functions F-27 to F-29 pass, and the example tenant's hooks and configuration set run as the tests expect.
+    stories:
+      - id: C18-S1
+        title: Hook authoring
+        sp: 5
+        story: As a bank designer, I want to author a hook for a declared hook point with its own blocks, rules and simulators, so that my bank's policy runs without changing shared content.
+        dod:
+          - A hook is chosen against a hook point and inherits its type and contract; its steps are composed like a segment.
+          - L13 refuses a hook that reads or writes outside the contract or exceeds the timeout.
+        dos: The three example hooks are rebuilt in the studio and validate; one that writes payment.creditor is refused.
+      - id: C18-S2
+        title: Configuration set editor
+        sp: 5
+        phase: 5
+        story: As a bank designer, I want to set parameter values within their bounds and bind hooks, each with an effective date, so that configuration changes need no release.
+        needs: [C18-S1]
+        dod:
+          - Only parameters marked tenant-settable are offered; bounds are shown and enforced by L14.
+          - A value or a binding has a start date and an optional end date; overlaps are refused.
+        dos: The example configuration set is rebuilt in the editor; a maxAmount above its bound is refused.
+      - id: C18-S3
+        title: Compatibility run
+        sp: 5
+        phase: 5
+        story: As a bank designer, I want my hooks tested against a new shared release before I accept it, so that an upgrade never breaks my bank's policy by surprise.
+        needs: [C18-S1, C11-S2]
+        dod:
+          - The run checks that each bound hook point still exists with a compatible contract and reruns each hook's tests against the new release.
+          - Acceptance of the shared release is blocked on a red result.
+        dos: Removing a hook point in a new major of the segment lists the bound hook as incompatible.
+      - id: C18-S4
+        title: Tenant export
+        sp: 3
+        phase: 5
+        story: As an implementation lead, I want a tenant export of shared packs unchanged, the bank pack and the configuration set, so that deployment is one package per bank.
+        needs: [C18-S2, C19-S1]
+        dod:
+          - Shared packs are included by hash and are byte-identical across tenants.
+        dos: Two tenants' exports hold identical shared pack hashes and different bank packs.
+
+  - id: C19
+    title: Packs, release, retirement and supersession
+    phase: 5
+    purpose: Release content as packs, retire what nothing pins, and replace a pinned release in flight under control.
+    design: [Part 11, Part 1]
+    schemas: [pack, supersession]
+    dependsOn: [C05, C09, C11, C17]
+    dos: Functions F-22 to F-25 and F-30 pass.
+    stories:
+      - id: C19-S1
+        title: Pack build and export
+        sp: 3
+        story: As a release checker, I want a pack built from its scope with its manifest, so that a release is one checked unit.
+        dod:
+          - Shared, bank and test packs are built; a pack that contains a simulator is never promotable.
+          - The export is refused while any check is red.
+        dos: An export of the four factory packs passes tools/validate.py unchanged.
+      - id: C19-S2
+        title: Release flow
+        sp: 3
+        story: As a shared checker, I want the release flow of Part 11 enforced, so that a pack reaches a bank only when it is proven.
+        needs: [C19-S1]
+        dod:
+          - Draft, in review, published; publish needs green tests, the checker's approval and, for a shared pack, a green conformance report (C23-S3) for every supported engine.
+        dos: A pack with a planned message is reported as not publishable for that message group, and the rest may publish.
+      - id: C19-S3
+        title: Retirement
+        sp: 3
+        story: As a platform owner, I want a release retired only when nothing published pins it and nothing in flight runs it, so that retirement is safe by check.
+        needs: [C19-S1]
+        dod:
+          - The studio lists who pins a release; retirement of a pinned release is refused.
+          - The in-flight count comes from an import supplied by service operations and is shown with its date.
+        dos: Retiring p.reserve.funds.v1 at 1.0.0 is refused while p.wf.corporate.v1 pins it.
+      - id: C19-S4
+        title: Supersession authoring and test
+        sp: 5
+        story: As a shared designer, I want to author a supersession and rerun the pinned test pack with the replacement, so that a hot replacement is proven before it is asked for.
+        needs: [C19-S1, C09-S10]
+        dod:
+          - A supersession names from, to, reason and scope, stays within one major line, and is forward only.
+          - The tests of every workflow that pins the old release rerun with the new one swapped in.
+        dos: SUP-2026-001 is rebuilt in the studio and its rerun is green.
+      - id: C19-S5
+        title: Supersession hand-over
+        sp: 1
+        story: As a service operations engineer, I want the approved supersession as a signed document with its evidence, so that I can apply it with a second approver.
+        needs: [C19-S4]
+        dod:
+          - The export holds the supersession, the test evidence and both approvals; the studio does not apply it.
+        dos: The exported document validates against supersession.schema.json and names two different approvers.

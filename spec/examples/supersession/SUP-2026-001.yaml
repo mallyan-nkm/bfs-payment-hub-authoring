@@ -1,0 +1,17 @@
+kind: supersession
+id: SUP-2026-001
+artefact: uae.p.rule.iban-checksum.v1
+replaces: 1.0.0
+with: 1.0.1
+reason: Example only. A patch that corrects the check-digit rule must apply to salary files already started, at the record checks they have not yet reached.
+scope:
+  workflowReleases: ["uae.wps.wf.salary-file-out.v1@1.0.0"]
+  schemes: [uae.wps]
+evidence:
+  testRuns:
+    - workflow: uae.wps.wf.salary-file-out.v1
+      release: 1.0.0
+      result: green
+approval:
+  maker: example.maker
+  checker: example.checker
