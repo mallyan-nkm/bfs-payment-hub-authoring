@@ -261,9 +261,22 @@ function interfaceFor(env: StudioEnv, doc: any) {
   return { previous: prev.release, ...diff, proposed: diff.required === 'none' ? prev.release : proposeRelease(prev.release, diff.required) };
 }
 
+/** An export of a workflow that does not resolve, or for a target with no binding, is a bad request. */
+function exportOr400<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (e: any) {
+    if (/does not resolve|No engine binding/.test(String(e?.message))) throw new HttpError(400, e.message);
+    throw e;
+  }
+}
+
 function safeParse(y: string): any {
   try {
-    return parseYaml(y);
+    const doc = parseYaml(y);
+    // An empty body, or YAML that is not a document, is the caller's mistake, not the server's.
+    if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) return { __parseError: y.trim() ? 'The YAML is not a document (a mapping)' : 'Send doc or yaml' };
+    return doc;
   } catch (e: any) {
     return { __parseError: e.message };
   }
@@ -443,6 +456,7 @@ route('GET', '/api/supersessions', (env) => env.store.byKind('supersession').map
 /** Test a supersession (F-25): rerun the pinned workflows' tests with the replacement swapped in. */
 route('POST', '/api/supersessions/test', async (env, req) => {
   const { artefact, replaces, with: by, workflows } = req.body ?? {};
+  if (!artefact || !by) throw new HttpError(400, 'Name the artefact and the release that replaces it: { artefact, replaces, with }');
   if (!env.store.get(artefact, by)) throw new HttpError(404, `${artefact}@${by} is not published`);
   const wfs: string[] = workflows ?? [];
   const tests = env.store.byKind('test').filter((t) => wfs.includes(t.doc.target));
@@ -458,15 +472,17 @@ route('POST', '/api/supersessions/test', async (env, req) => {
 
 route('POST', '/api/export', (env, req) => {
   const { workflows, target, tenant } = req.body ?? {};
-  const pkg = exportPackage(env, { workflows, target: (target ?? 'temporal') as Target, tenant: tenant && tenant !== OWNER_TENANT ? tenant : undefined });
+  if (!Array.isArray(workflows) || !workflows.length) throw new HttpError(400, 'Name at least one workflow: { workflows: [...], target }');
+  const pkg = exportOr400(() => exportPackage(env, { workflows, target: (target ?? 'temporal') as Target, tenant: tenant && tenant !== OWNER_TENANT ? tenant : undefined }));
   return { manifest: pkg.manifest, issues: pkg.issues, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, v.length])), preview: Object.fromEntries(Object.entries(pkg.files).filter(([k]) => k.endsWith('.bpmn20.xml') || k === 'manifest.yaml' || k.startsWith('workflows/') || k === 'portability.json').slice(0, 12)) };
 });
 
 route('GET', '/api/export/download', (env, req) => {
   const workflows = (req.query.workflows ?? '').split(',').filter(Boolean);
+  if (!workflows.length) throw new HttpError(400, 'Name at least one workflow: ?workflows=a,b&target=...');
   const target = (req.query.target ?? 'temporal') as Target;
   const tenant = req.query.tenant && req.query.tenant !== OWNER_TENANT ? req.query.tenant : undefined;
-  const pkg = exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' });
+  const pkg = exportOr400(() => exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' }));
   return { __binary: true, data: exportZip(pkg), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
 });
 
@@ -580,13 +596,21 @@ route('POST', '/api/in-flight', (env, req) => {
   gov.importInFlight(env, req.body.actor, req.body.counts ?? {}, req.body.asOf);
   return { ok: true };
 });
-route('GET', '/api/propagate', async (env, req) => gov.propagate(env, req.query.name, req.query.release));
+route('GET', '/api/propagate', async (env, req) => {
+  if (!req.query.name || !req.query.release) throw new HttpError(400, 'Name the artefact and its new release: ?name=...&release=...');
+  return gov.propagate(env, req.query.name, req.query.release);
+});
 
 // ------------------------------------------------------------ supersession (C19-S4, S5)
 
 route('POST', '/api/supersessions/draft', (env, req) => gov.draftSupersession(env, req.body));
-route('POST', '/api/supersessions/evidence', async (env, req) => gov.testSupersession(env, req.body.doc));
-route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, req.body.doc, req.body.checker));
+const supersessionDoc = (req: Req) => {
+  const doc = req.body?.doc;
+  if (!doc || doc.kind !== 'supersession') throw new HttpError(400, 'Send the supersession document as doc');
+  return doc;
+};
+route('POST', '/api/supersessions/evidence', async (env, req) => gov.testSupersession(env, supersessionDoc(req)));
+route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, supersessionDoc(req), req.body.checker));
 route('GET', '/api/supersessions/handed-over', (env) => env.store.extra.supersessions ?? []);
 
 // ------------------------------------------------- tenants and configuration (C18)

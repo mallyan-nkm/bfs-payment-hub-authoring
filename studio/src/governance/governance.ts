@@ -60,6 +60,8 @@ export function permit(env: StudioEnv, actor: string, tenant: string, action: Ac
     case 'export':
       return has('auditor') ? 'An auditor changes nothing and exports nothing' : undefined;
   }
+  // An action the studio does not know is never permitted.
+  return `${action} is not an action of the studio`;
 }
 
 export function enforce(env: StudioEnv, actor: string, tenant: string, action: Action, key: string, scope?: string) {
