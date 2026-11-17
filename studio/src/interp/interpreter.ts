@@ -1418,13 +1418,19 @@ async function settleBackground(run: Run) {
  * decision picks the platform workflow, and the leg named in the dispatch table fills the slot.
  * A `handler` message runs its handler with no durable state.
  */
+/** What a start entry of a dispatch table says about the payment it starts (R-05-42). */
+export function routeOf(start: any): Record<string, string> {
+  if (!start) return {};
+  return Object.fromEntries(Object.entries({ kind: start.kind, direction: start.direction, segment: start.segment }).filter(([, v]) => v !== undefined)) as Record<string, string>;
+}
+
 export function attachIntake(run: Run) {
   run.onStart = (m, entry) => {
     void (async () => {
       const disp = entry.disposition;
       const scope = entry.id.split('.').slice(0, 2).join('.');
       const ctx: any = {
-        header: { conversation: m.conversation, scheme: scope, direction: entry.direction === 'in' ? 'inward' : 'outward', receivedAt: run.clock.iso(), ...(disp.start ? { kind: disp.start.kind } : {}) },
+        header: { conversation: m.conversation, scheme: scope, direction: entry.direction === 'in' ? 'inward' : 'outward', receivedAt: run.clock.iso(), ...routeOf(disp.start) },
         messages: { inbound: { id: m.id, type: m.type } },
       };
       if (disp.handler) {
@@ -1439,6 +1445,8 @@ export function attachIntake(run: Run) {
         run.selfCheck(m, ctx);
         if (it.outcome !== 'mapped') return;
       }
+      // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
+      Object.assign(ctx.header, routeOf(disp.start), { scheme: scope });
       ctx.header.paymentId ??= run.newId('P');
       // Which platform workflow: the workflow-select decision (p.decide.workflow.v1, invoked by the front door).
       const sel = run.resolveDoc('p.table.workflow-select.v1');

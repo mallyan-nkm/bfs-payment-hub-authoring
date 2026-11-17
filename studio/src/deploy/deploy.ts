@@ -7,6 +7,7 @@ import { walkYaml } from '../core/store.js';
 import { unzip } from '../export/zip.js';
 import { startEntryFor } from '../testing/runner.js';
 import { runTable } from '../rules/service.js';
+import { routeOf } from '../interp/interpreter.js';
 
 // Deploy an export package and run it (Part 9). The package's workers start as separate processes,
 // one per task queue, each serving only its own tasks. The engine harness runs the exported, expanded
@@ -157,13 +158,15 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       // platform workflow that workflow-select picks, with that leg in its slot (R-05-08).
       endToEnd = entry.disposition.start.leg !== req.workflow;
       const direction = endToEnd ? (entry.direction === 'in' ? 'inward' : 'outward') : wf.direction ?? 'outward';
-      ctx = { header: { conversation: 'conv-1', paymentId: 'P-1', scheme: scheme.scope, kind: entry.disposition.start.kind, direction, receivedAt: new Date(start).toISOString() }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
+      ctx = { header: { conversation: 'conv-1', paymentId: 'P-1', scheme: scheme.scope, direction, receivedAt: new Date(start).toISOString(), ...(endToEnd ? routeOf(entry.disposition.start) : { kind: entry.disposition.start.kind }) }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
       const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', body: JSON.stringify({ instance: 'intake', activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) })).json();
       if (r.kind !== 'result') throw new Error(`Intake ${map} failed: ${r.message ?? r.kind}`);
       for (const [p, v] of Object.entries<any>(r.writes ?? {})) setPath(ctx, p, v);
       intake = { activity: map, queue, outcome: r.outcome };
       log.push(`intake ${map} on ${queue}: ${r.outcome}`);
       if (r.outcome !== 'mapped') throw new Error(`Intake ${map} returned ${r.outcome}`);
+      // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
+      if (endToEnd) Object.assign(ctx.header, routeOf(entry.disposition.start), { scheme: scheme.scope });
       if (endToEnd) {
         const sel = Object.values<any>(documents).find((d) => d.name === 'p.table.workflow-select.v1');
         if (!sel) throw new Error('The package has no p.table.workflow-select.v1 for the front door');

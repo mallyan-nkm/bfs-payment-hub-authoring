@@ -74,11 +74,13 @@
             "additionalProperties": false,
             "properties": {
               "start": {
-                "description": "Starts a platform workflow with this leg in its slot.",
+                "description": "Starts a platform workflow with this leg in its slot. The dispatch table says what payment the message starts: kind, direction and, where the platform workflow depends on it, segment. Workflow-select reads them to choose the platform workflow (R-05-42).",
                 "type": "object",
                 "required": [
                   "leg",
-                  "intakeMap"
+                  "intakeMap",
+                  "kind",
+                  "direction"
                 ],
                 "additionalProperties": false,
                 "properties": {
@@ -98,6 +100,18 @@
                       "request",
                       "return"
                     ]
+                  },
+                  "direction": {
+                    "description": "The direction of the payment the message starts, not of the message: an employer's salary file comes in and starts an outward payment.",
+                    "enum": [
+                      "inward",
+                      "outward"
+                    ]
+                  },
+                  "segment": {
+                    "description": "The segment of the payment, where the platform workflow depends on it: an outward payment's. A code of the segment registry (Part 2).",
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
                   }
                 }
               },

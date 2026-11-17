@@ -11,6 +11,8 @@ messages:
     disposition:
       start:
         kind: payment
+        direction: outward
+        segment: corporate
         leg: uae.wps.wf.salary-file-out.v1
         intakeMap: uae.wps.map.sif-in.v1
   - id: uae.wps.sif-submission
@@ -32,6 +34,7 @@ messages:
     disposition:
       start:
         kind: payment
+        direction: inward
         leg: uae.wps.wf.agent-payment-in.v1
         refuseLeg: uae.wps.wf.inward-refuse.v1
         intakeMap: uae.wps.map.pif-in.v1
@@ -72,6 +75,7 @@ messages:
     disposition:
       start:
         kind: request
+        direction: outward
         leg: uae.wps.wf.refund-out.v1
         intakeMap: uae.wps.map.refund-order-in.v1
   - id: uae.wps.rfr-in
@@ -105,6 +109,7 @@ messages:
     disposition:
       start:
         kind: return
+        direction: inward
         leg: uae.wps.wf.return-in.v1
         refuseLeg: uae.wps.wf.inward-refuse.v1
         intakeMap: uae.wps.map.rtc-in.v1

@@ -99,6 +99,7 @@ What stays in the designer's hands: the business outcomes of the block, and how 
 | R-05-39 | A static check that needs the whole flow (data flow, effects, budgets, portability, step ids) MUST run on the expanded form and MUST report its finding at the authored step, naming the inner step. | Studio test (C04) |
 | R-05-40 | A step that calls a composite MUST have an id. | Lint L30 |
 | R-05-41 | The pins of a workflow MUST include each composite it calls, that composite's subflow, and everything the subflow reaches. | Lint L23 |
+| R-05-42 | A start message's dispatch entry MUST say what payment it starts: kind, direction and, where the platform workflow depends on it, segment. They MUST select, through workflow-select, one platform workflow whose slot the named leg fills. The front door sets them on the header from the dispatch table; an intake map does not route. | Lint L33; front door (C09) |
 
 ## 5.5 Messages that are not payments
 
@@ -209,6 +210,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L30 | A composite and its subflow agree: binding, outcomes, policy; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
 | L31 | `await` and `return` appear only in a subflow; `block` appears only in the expanded form | Yes |
 | L32 | An `await` with no timeout has a reply time to take | Yes |
+| L33 | A start message routes: its kind, direction and segment select one platform workflow, and its leg fills that workflow's slot | Yes |
 
 ## 5.8 Examples
 

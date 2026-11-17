@@ -115,7 +115,16 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   it('publishes as one change set the scheme manifest, the composite with its subflow, and the leg that fills the corporate workflow\'s scheme-leg slot', async () => {
     // They refer to one another: the dispatch table names the leg and the intake map, the leg calls
     // the composite, the composite's subflow awaits a message of the scheme's catalogue.
+    // The dispatch table routes (R-05-42): an entry with no direction, or one that routes to a
+    // workflow whose slot the leg does not fill, is refused by the checks.
+    const start = SCHEME.messages[0].disposition.start as any;
+    const undirected = await api.post('/api/check', { doc: { ...SCHEME, messages: [{ ...SCHEME.messages[0], disposition: { start: { kind: 'payment', leg: LEG.name, intakeMap: FILE_IN.name } } }, ...SCHEME.messages.slice(1)] } });
+    expect(undirected.data.issues.some((i: any) => i.code === 'L00' && /direction/.test(i.message))).toBe(true);
     await publishSet([SCHEME, SUBMIT, SUBFLOW, LEG]);
+    // Published, the leg fills a slot of p.wf.corporate.v1: a release of the scheme that routed the
+    // file as an inward payment would send it to p.wf.inward.v1, and L33 says so.
+    const misrouted = await api.post('/api/check', { doc: { ...SCHEME, release: '1.0.1', messages: [{ ...SCHEME.messages[0], disposition: { start: { ...start, direction: 'inward', segment: undefined } } }, ...SCHEME.messages.slice(1)] } });
+    expect(misrouted.data.issues.find((i: any) => i.code === 'L33')?.message).toContain(`routes to p.wf.inward.v1, but its leg ${LEG.name} fills a slot of p.wf.corporate.v1`);
     const x = await api.get(`/api/expanded/${LEG.name}`);
     expect(JSON.stringify(x.data.doc)).toContain('submit.await-ack');
     const scheme = (await api.get(`/api/schemes/${S}`)).data.scheme;

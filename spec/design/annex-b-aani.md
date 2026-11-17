@@ -39,7 +39,7 @@ The send step is the composite `uae.aani.exchange.submit-credit.v1`. The designe
 | `uae.aani.credit-transfer` | pacs.008 | Out | Sent by `send-credit` |
 | `uae.aani.status-report` | pacs.002 | In | Deliver by original end-to-end id |
 | `uae.aani.status-request` | pacs.028 | Out | Sent by `inquire-status` |
-| `uae.aani.credit-transfer-in` | pacs.008 | In | Start: payment, `credit-in`; refuse leg `credit-refuse` |
+| `uae.aani.credit-transfer-in` | pacs.008 | In | Start: inward payment, `credit-in`; refuse leg `credit-refuse` |
 | `uae.aani.status-report-out` | pacs.002 | Out | Sent by `respond-status` |
 | `uae.aani.status-request-in` | pacs.028 | In | Handler `status-inquiry-in` |
 | `uae.aani.proxy-request` | Not known | Out | Sent by `proxy-resolve` |

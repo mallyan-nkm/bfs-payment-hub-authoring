@@ -99,7 +99,7 @@ artefacts:
   - name: uae.aani.scheme
     kind: scheme
     release: 1.0.0
-    hash: sha256:8d91b81b3b7cfcf24381293f08565c786e439f3c3e2e305f8e5e74a006747d2d
+    hash: sha256:1f808e5fcb895c70f6fcf7758302d17ca5df83fbc9fcfee5f5d12a1242ab0ff5
     path: scheme.yaml
   - name: uae.aani.sim.proxy.v1
     kind: simulator

@@ -210,7 +210,9 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **Recommendation.** Add `direction` and `segment` to `disposition.start` in the scheme schema, so that the dispatch table says what payment a message starts, with a check that the pair selects a platform workflow whose slot the leg fills. Until then, require the intake map to write them.
 
-**What the studio does.** The front door sets `header.direction` from the message's direction; the intake map may overwrite it and set the segment. The WPS SIF intake script sets `outward` and `corporate`, as does the intake of the `uae.demo` test scheme.
+**Decision.** The dispatch table routes, not the intake script.
+
+**What changed.** `disposition.start` now requires `kind` and `direction` and may name a `segment` (schema `scheme`). R-05-42 says what they mean, and check L33 enforces it in the spec's validator and in the studio, with mutation cases M25 and M26. L33 requires that the entry select, through workflow-select, one platform workflow whose slot the named leg fills. The WPS and Aani manifests name them. The front door, in the studio interpreter, the test runner and the deploy runner, sets them on the header from the dispatch table, and they stand after the intake map runs. The intake scripts no longer set them.
 
 ## I-27. Artefacts that refer to one another cannot be published one at a time
 

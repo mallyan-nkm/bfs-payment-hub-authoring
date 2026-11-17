@@ -6,7 +6,7 @@ import { getPath } from '../core/paths.js';
 import type { Store } from '../core/store.js';
 import { runRuleSet } from '../rules/service.js';
 import { buildFacts } from '../interp/facts.js';
-import { attachIntake, Instance, Run, runActivity, runComposite, runInbound, runWorkflow, startInstance, type RunConfig, type RunResult } from '../interp/interpreter.js';
+import { attachIntake, routeOf, Instance, Run, runActivity, runComposite, runInbound, runWorkflow, startInstance, type RunConfig, type RunResult } from '../interp/interpreter.js';
 import { isComposite, walkSteps } from '../core/expand.js';
 
 function intakeMapFor(run: Run, activity: string): string | undefined {
@@ -259,7 +259,7 @@ async function runLegFromInbound(env: RunnerEnv, cfg: RunConfig, leg: string): P
   if (!entry) throw new Error(`No start message in a dispatch table names leg ${leg}`);
   const inbound = { id: run.newId('in'), type: entry.id, port: '', from: 'simulator' as const, at: run.clock.now, correlation: {}, payload: cfg.inbound?.payload, conversation: 'conv-1' };
   run.messages.push(inbound);
-  const ctx: any = { header: { conversation: 'conv-1', scheme: scheme.scope, kind: entry.disposition.start.kind, direction: 'outward', receivedAt: run.clock.iso() }, messages: { inbound: { id: inbound.id, type: inbound.type } } };
+  const ctx: any = { header: { conversation: 'conv-1', scheme: scheme.scope, direction: 'outward', receivedAt: run.clock.iso(), ...routeOf(entry.disposition.start) }, messages: { inbound: { id: inbound.id, type: inbound.type } } };
   let root: Instance | undefined;
   void (async () => {
     const map = entry.disposition.start.intakeMap;
@@ -269,7 +269,7 @@ async function runLegFromInbound(env: RunnerEnv, cfg: RunConfig, leg: string): P
       if (it.outcome !== 'mapped') { root = it; return; }
     }
     ctx.header.paymentId ??= run.newId('P');
-    ctx.header.direction = 'outward';
+    Object.assign(ctx.header, { direction: 'outward' }, routeOf(entry.disposition.start), { scheme: scheme.scope });
     root = await startInstance(run, run.resolveDoc(leg), ctx, 'leg');
   })();
   const status = await run.drive(() => root !== undefined && run.instances.every((i) => i.ended));

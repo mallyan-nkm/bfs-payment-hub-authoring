@@ -144,9 +144,9 @@ A release is `major.minor.patch`. A published release never changes. A change is
 Learn this path; most exercises follow it.
 
 1. A file or message arrives at the **front door**.
-2. The scheme's **dispatch table** says what the message is. For a start message it names the **intake map** and the **leg** to start.
+2. The scheme's **dispatch table** says what the message is. For a start message it names the payment it starts (kind, direction and, for an outward payment, segment), the **intake map**, and the **leg** to start. The dispatch table routes; the intake map only reads the file.
 3. The intake map turns the file into the canonical ISO 20022 context: header, batch, items.
-4. The **workflow-select** table (`p.table.workflow-select.v1`) picks the **platform workflow** from the payment's kind, direction and segment. An outward corporate payment runs `p.wf.corporate.v1`.
+4. The **workflow-select** table (`p.table.workflow-select.v1`) picks the **platform workflow** from the kind, direction and segment the dispatch table named. An outward corporate payment runs `p.wf.corporate.v1`. Check L33 makes sure every start message routes to a platform workflow whose slot its leg fills.
 5. The platform workflow validates, screens, checks limits, reserves funds, and routes. The **route** step passes only a rail that the bank has enabled in its configuration.
 6. The platform workflow has a **slot** called `scheme-leg`. The leg the dispatch table named fills it and does the scheme's part: checks, render, submit, wait for the acknowledgement.
 7. Back in the platform workflow: post, verify, notify, and the bank's hooks where it bound them.
@@ -172,7 +172,7 @@ Start the studio as in A3 before each session. Unless an exercise says otherwise
 3. Click **Back to the catalogue**. Filter **Kind** to `workflow` and open `p.wf.corporate.v1`. Read its outline: the steps listed in B5, the `scheme-leg` slot and the hook points `before-release` and `on-close`.
 4. Open **ISO data**. In **Canonical model**, open `payment` then `instructedAmount`. Elements marked as personal data must never appear in workflow state, logs, tests or samples.
 5. In **Code registry**, look up code `AM04`. You should see `Insufficient funds`.
-6. In **ISO data**, find the scheme message catalogues. Open `uae.wps` and read its dispatch table: `uae.wps.sif` starts a payment with the leg `uae.wps.wf.salary-file-out.v1` and the intake map `uae.wps.map.sif-in.v1`.
+6. In **ISO data**, find the scheme message catalogues. Open `uae.wps` and read its dispatch table: `uae.wps.sif` starts an outward corporate payment, with the leg `uae.wps.wf.salary-file-out.v1` and the intake map `uae.wps.map.sif-in.v1`.
 
 Check yourself: which leg does a WPS payment file (`uae.wps.pif`) start? (Answer: `uae.wps.wf.agent-payment-in.v1`.)
 

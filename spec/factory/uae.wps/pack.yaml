@@ -204,7 +204,7 @@ artefacts:
   - name: uae.wps.scheme
     kind: scheme
     release: 1.0.0
-    hash: sha256:5e9f7616b111f1b189ab19faea314f3cd5aaa28d90e49134813d739b6e20303c
+    hash: sha256:451a087c04f83ed0a0b32f637916999782069d51aebaab4035c186a3b212ad70
     path: scheme.yaml
   - name: uae.wps.sim.employer-channel.v1
     kind: simulator

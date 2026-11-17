@@ -40,8 +40,8 @@ export const RULESET = { kind: 'ruleset', name: n('ruleset', 'file'), release: '
 export const VALIDATE = { kind: 'activity', name: n('validate', 'file'), release: '1.0.0', title: 'Demo file checks', type: 'validate', level: 'batch', reads: ['batch', 'items[]'], writes: ['facts.validation'], outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'pure', ruleSets: [RULESET.name], implementation: { binding: 'builtin', service: 'rule-service' }, provenance: PROV };
 export const FILE_IN = { kind: 'activity', name: n('map', 'file-in'), release: '1.0.0', title: 'Demo credit file to the canonical batch', type: 'map', reads: ['messages'], writes: ['header', 'batch', 'items[]'], outcomes: [{ name: 'mapped', primary: true }, { name: 'unmappable' }], effect: 'pure', map: { direction: 'in', sourceModel: 'Demo credit file: H and D records', roundTrip: false }, implementation: { binding: 'script', language: 'typescript', script: `scripts/${n('map', 'file-in')}.ts` }, provenance: PROV };
 export const FILE_IN_SCRIPT = `// The demo credit file: one H record (file reference, debtor routing code, currency, count, total)
-// and a D record per credit (IBAN, amount). The file comes in from the bank's channel; the payment
-// it starts goes out, as a corporate payment.
+// and a D record per credit (IBAN, amount). The map reads the file; the dispatch table says what
+// payment it starts (R-05-42).
 export async function run({ ctx }) {
   const text = String(ctx.messages?.inbound?.payload ?? '');
   const ls = text.split(/\\r?\\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
@@ -49,7 +49,7 @@ export async function run({ ctx }) {
   const d = ls.filter((l) => l.startsWith('D,'));
   if (h.length !== 1 || d.length === 0) return { outcome: 'unmappable', reasonCode: 'FF01' };
   const [, fileRef, routing, currency, count, total] = h[0].split(',');
-  ctx.header = { ...(ctx.header ?? {}), fileId: fileRef, endToEndId: fileRef, direction: 'outward', segment: 'corporate' };
+  ctx.header = { ...(ctx.header ?? {}), fileId: fileRef, endToEndId: fileRef };
   ctx.batch = { id: fileRef, numberOfTransactions: Number(count), controlSum: Number(total), currency, debtorAgent: { clearingMemberId: routing } };
   ctx.items = d.map((l) => {
     const [, iban, amount] = l.split(',');
@@ -106,7 +106,7 @@ export const LEG = {
 export const SCHEME = {
   kind: 'scheme', scope: S, release: '1.0.0', title: 'Demo bulk credit file scheme (synthetic)', wire: 'file',
   messages: [
-    { id: `${S}.credit-file`, title: 'Credit file from the corporate customer', direction: 'in', confirmed: true, disposition: { start: { kind: 'payment', leg: LEG.name, intakeMap: FILE_IN.name } } },
+    { id: `${S}.credit-file`, title: 'Credit file from the corporate customer', direction: 'in', confirmed: true, disposition: { start: { kind: 'payment', direction: 'outward', segment: 'corporate', leg: LEG.name, intakeMap: FILE_IN.name } } },
     { id: `${S}.file-submission`, title: 'Credit file submitted to the clearing house', direction: 'out', confirmed: true, disposition: { sentBy: SEND.name } },
     { id: `${S}.ack`, title: 'Acknowledgement from the clearing house', direction: 'in', confirmed: true, disposition: { deliver: { correlateBy: 'file id' } } },
   ],

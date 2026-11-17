@@ -33,6 +33,7 @@ messages:
     disposition:
       start:
         kind: payment
+        direction: inward
         leg: uae.aani.wf.credit-in.v1
         refuseLeg: uae.aani.wf.credit-refuse.v1
         intakeMap: uae.aani.map.credit-in.v1

@@ -71,6 +71,12 @@ CASES = [
      "wfKind: subflow", "wfKind: segment", "an await is written outside a subflow"),
     ("M24", "ERROR L32", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "  replyTimeout: P1D\n", "", "an await with no timeout has no reply time to take"),
+    ("M25", "ERROR L33", "factory/uae.wps/scheme.yaml",
+     "        direction: outward\n        segment: corporate\n", "        direction: inward\n",
+     "a start message routes to a platform workflow whose slot its leg does not fill"),
+    ("M26", "ERROR L33", "factory/uae.wps/scheme.yaml",
+     "        segment: corporate\n", "",
+     "an outward payment names no segment, so workflow-select picks no platform workflow"),
 ]
 
 

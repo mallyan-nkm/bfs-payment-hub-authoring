@@ -63,15 +63,15 @@ Each exchange that waits is one block to the designer. The steps underneath are 
 
 | Message | Direction | Disposition |
 | --- | --- | --- |
-| `uae.wps.sif` | In, from the employer | Start: payment, `salary-file-out` |
+| `uae.wps.sif` | In, from the employer | Start: outward corporate payment, `salary-file-out` |
 | `uae.wps.sif-submission` | Out | Sent by `send-salary-file` |
 | `uae.wps.ack` | In | Deliver by file id |
-| `uae.wps.pif`, `uae.wps.psi` | In | Start: payment, `agent-payment-in`; the PSI is delivered to it |
+| `uae.wps.pif`, `uae.wps.psi` | In | Start: inward payment, `agent-payment-in`; the PSI is delivered to it |
 | `uae.wps.prc`, `uae.wps.dif` | Out | Sent by the two report blocks |
-| `uae.wps.refund-order` | In, from the employer | Start: request, `refund-out` |
+| `uae.wps.refund-order` | In, from the employer | Start: outward request, `refund-out` |
 | `uae.wps.rfr` | Out | Sent by `send-refund-request` |
 | `uae.wps.rsu` | In | Deliver by refund request file id |
-| `uae.wps.rtc` | In | Start: return, `return-in` |
+| `uae.wps.rtc` | In | Start: inward return, `return-in` |
 | `uae.wps.dcr`, `uae.wps.rfr-in`, `uae.wps.rrr`, `uae.wps.rfa` | Mixed | Planned |
 
 ## A.6 Artefacts

@@ -58,6 +58,8 @@ describe('mutation cases', () => {
     ['L30', 'a step that calls a composite has no id', (f) => { delete f('uae.wps.wf.salary-file-out.v1').do.find((s: any) => s.call === 'uae.wps.exchange.submit-salary-file.v1').id; }],
     ['L31', 'a leg awaits a message itself', (f) => { f('uae.wps.wf.salary-file-out.v1').do.splice(1, 0, { id: 'wait-ack', await: { message: 'uae.wps.ack', correlateBy: 'header.fileId', timeout: 'P1D', onTimeout: { end: 'pending' } } }); }],
     ['L32', 'an await has no timeout and its composite no reply time', (f) => { delete f('uae.wps.exchange.submit-salary-file.v1').policy; }],
+    ['L33', 'a start message routes to a workflow whose slot its leg does not fill', (f) => { const st = f('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif').disposition.start; st.direction = 'inward'; delete st.segment; }],
+    ['L33', 'an outward start message names no segment', (f) => { delete f('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif').disposition.start.segment; }],
     ['L24', 'a step uses a construct outside the portable core', (f) => { f('p.wf.request.v1').do.splice(0, 0, { id: 'fan', race: { branches: [] } }); }],
     ['L29', 'two steps share an id after inlining', (f) => { f('p.wf.corporate.v1').do[1].id = 'validate'; }],
     ['L23', 'an exported workflow misses a pin', (f) => { f('p.wf.request.v1').artefacts = [{ name: 'p.notify.channel.v1', release: '1.0.0', hash: 'sha256:' + '0'.repeat(64) }]; f('p.wf.request.v1').do.splice(0, 0, { id: 'x', call: 'p.validate.canonical.v1', handle: { repair: { end: 'rejected' }, reject: { end: 'rejected' } } }); }],

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { compareReleases, parseName, parseRelease } from '../core/names.js';
 import { coveredByAny } from '../core/paths.js';
-import { analyseTable } from '../rules/service.js';
+import { analyseTable, runTable } from '../rules/service.js';
 import { lintScript } from '../interp/sandbox.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
@@ -56,6 +56,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L30: 'A composite and its subflow agree; a step that calls a composite has an id',
   L31: 'await and return only in a subflow; block only in the expanded form',
   L32: 'An await with no timeout has a reply time to take',
+  L33: 'A start message routes: its kind, direction and segment select one platform workflow, and its leg fills its slot',
 };
 
 // ---------------------------------------------------------------- walking
@@ -489,6 +490,28 @@ export class Checker {
     const awaited = new Set<string>();
     for (const w of this.docs) if (w.kind === 'workflow' && scopeOf(w.name) === d.scope) for (const st of allSteps(w)) if (st.await) awaited.add(st.await.message);
     for (const m of d.messages ?? []) if (m.disposition?.deliver && !awaited.has(m.id)) err('L10', `${m.id} is a deliver message but no workflow of ${d.scope} awaits it`);
+    // L33 (R-05-42): the dispatch table routes a start message. Its kind, direction and segment select
+    // one platform workflow through workflow-select, and the leg it names fills that workflow's slot.
+    const select = this.docs.find((x) => x.name === 'p.table.workflow-select.v1');
+    for (const m of d.messages ?? []) {
+      const st = m.disposition?.start;
+      if (!st || !select) continue;
+      let chosen: string | undefined;
+      try {
+        const r = runTable(select, { Header: [{ kind: st.kind, direction: st.direction, segment: st.segment }] }, { resolve: (n) => this.docs.find((x) => x.name === n), evaluationDate: '2026-11-17' });
+        chosen = r.decisions.find((x) => x.name === 'workflow')?.value;
+      } catch {
+        chosen = undefined;
+      }
+      if (!chosen) {
+        err('L33', `${m.id} starts kind ${st.kind ?? '?'}, direction ${st.direction ?? '?'}, segment ${st.segment ?? 'none'}, which workflow-select maps to no single platform workflow`);
+        continue;
+      }
+      for (const legName of [st.leg, st.refuseLeg].filter(Boolean)) {
+        const leg = this.docs.find((x) => x.name === legName);
+        if (leg && !(leg.implements?.of ?? []).includes(chosen)) err('L33', `${m.id} routes to ${chosen}, but its leg ${legName} fills a slot of ${(leg.implements?.of ?? []).join(', ') || 'nothing'}`);
+      }
+    }
   }
 
   private checkRuleSet(d: any, err: (c: string, m: string) => void) {

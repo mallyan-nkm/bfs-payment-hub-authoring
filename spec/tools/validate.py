@@ -343,6 +343,29 @@ for path, d in docs:
             if not inside and not w.startswith("facts."):
                 err("L13", path, "%s writes %s, outside the hook point contract" % (a["name"], w))
 
+
+def select_workflow(start):
+    """The platform workflow workflow-select picks for a start entry, or None (no row, or several for a unique table)."""
+    table = by_name.get("p.table.workflow-select.v1")
+    if not table:
+        return None
+    facts = {"kind": start.get("kind"), "direction": start.get("direction"), "segment": start.get("segment")}
+    inputs = {i["name"]: i.get("expression", "") for i in table["inputs"]}
+    hits = []
+    for row in table["rows"]:
+        ok = True
+        for name, want in (row.get("when") or {}).items():
+            expr = inputs.get(name, "")
+            got = facts.get(expr[len("header."):]) if expr.startswith("header.") else None
+            if got != want:
+                ok = False
+                break
+        if ok:
+            hits.append(row["then"]["workflow"])
+    if table.get("hitPolicy") == "first":
+        return hits[0] if hits else None
+    return hits[0] if len(hits) == 1 else None
+
 # ---------------------------------------------------------- scheme checks
 for path, d in docs:
     if d.get("kind") != "scheme":
@@ -356,6 +379,22 @@ for path, d in docs:
     for m in d["messages"]:
         if "deliver" in m["disposition"] and m["id"] not in awaited:
             err("L10", path, "%s is a deliver message but no workflow of %s awaits it" % (m["id"], d["scope"]))
+    # L33 a start message routes: its kind, direction and segment select, through workflow-select,
+    # one platform workflow, and the leg it names fills that workflow's slot (R-05-42)
+    for m in d["messages"]:
+        st = m["disposition"].get("start")
+        if not st:
+            continue
+        chosen = select_workflow(st)
+        if chosen is None:
+            err("L33", path, "%s starts kind %s, direction %s, segment %s, which workflow-select maps to no single platform workflow" % (
+                m["id"], st.get("kind", "?"), st.get("direction", "?"), st.get("segment", "none")))
+            continue
+        for leg_name in [st["leg"]] + ([st["refuseLeg"]] if st.get("refuseLeg") else []):
+            leg = by_name.get(leg_name)
+            if leg and chosen not in (leg.get("implements") or {}).get("of", []):
+                err("L33", path, "%s routes to %s, but its leg %s fills a slot of %s" % (
+                    m["id"], chosen, leg_name, ", ".join((leg.get("implements") or {}).get("of", [])) or "nothing"))
 
 # ------------------------------------------------- rules and parameters
 for path, d in docs:
