@@ -359,7 +359,7 @@ function SupersessionWizard() {
           <h4>Evidence {green ? <Badge tone="pass">green</Badge> : <Badge tone="fail">not green</Badge>}</h4>
           <table className="grid compact">
             <thead><tr><th>Workflow release</th><th>Result</th><th>Tests</th></tr></thead>
-            <tbody>{(ev.details ?? []).map((r: any) => <tr key={r.workflow}><td><ArtefactLink name={r.workflow} release={r.release} /></td><td><Badge tone={r.result === 'green' ? 'pass' : 'fail'}>{r.result}</Badge></td><td className="small">{r.tests.map((t: any) => <span key={t.id} className="nowrap"><PassFail passed={t.passed} /> <span className="mono">{t.id}</span> </span>)}</td></tr>)}</tbody>
+            <tbody>{(ev.details ?? []).map((r: any) => <tr key={r.workflow}><td><ArtefactLink name={r.workflow} release={r.release} /></td><td><Badge tone={r.result === 'green' ? 'pass' : 'fail'}>{r.result}</Badge></td><td className="small"><span className="chips">{r.tests.map((t: any) => <span key={t.id} className="nowrap"><PassFail passed={t.passed} /> <span className="mono">{t.id}</span></span>)}</span></td></tr>)}</tbody>
           </table>
         </>
       )}

@@ -218,7 +218,8 @@ export class Store {
 
   saveDraft(tenant: string, actor: string, doc: any): Entry {
     this.assertMayAuthor(tenant, doc);
-    if (!doc.release || !parseRelease(doc.release)) throw new StoreError('R-01-08', 'A draft needs a release major.minor.patch');
+    // A test case is keyed by its id and carries no release (test-case.schema.json).
+    if (doc.kind !== 'test' && (!doc.release || !parseRelease(doc.release))) throw new StoreError('R-01-08', 'A draft needs a release major.minor.patch');
     const published = this.entries.get(tenantKey(doc, tenant));
     if (published) throw new StoreError('R-01-11', `${keyOf(doc)} is published and immutable. Release a new one.`);
     const e = this.add(clone(doc), `studio:${tenant}`, 'studio', false, 'draft', tenant);

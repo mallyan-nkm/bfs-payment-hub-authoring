@@ -134,6 +134,7 @@ public final class Harness {
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length > 0 && args[0].equals("--validate")) { validate(java.util.Arrays.copyOfRange(args, 1, args.length)); return; }
         JsonNode plan = M.readTree(new File(args[0]));
         Harness h = new Harness(plan);
         ObjectNode obs;
@@ -145,6 +146,24 @@ public final class Harness {
         }
         System.out.println("OBSERVATION " + M.writeValueAsString(obs));
         System.exit(0);
+    }
+
+    /** Deploy each BPMN file into a fresh engine and say whether Flowable accepts it (C22-S5). */
+    static void validate(String[] files) {
+        ProcessEngineConfigurationImpl cfg = (ProcessEngineConfigurationImpl) ProcessEngineConfiguration.createStandaloneInMemProcessEngineConfiguration();
+        cfg.setJdbcUrl("jdbc:h2:mem:th-validate;DB_CLOSE_DELAY=-1");
+        cfg.setAsyncExecutorActivate(false);
+        cfg.setHistoryLevel(HistoryLevel.NONE);
+        ProcessEngine e = cfg.buildProcessEngine();
+        for (String f : files) {
+            try {
+                e.getRepositoryService().createDeployment().addString(new File(f).getName(), Files.readString(new File(f).toPath())).deploy();
+                System.out.println("DEPLOYED " + f);
+            } catch (Exception x) {
+                System.out.println("REFUSED " + f + " " + rootMessage(x).replace('\n', ' '));
+            }
+        }
+        e.close();
     }
 
     // ================================================================ engine
@@ -645,7 +664,9 @@ public final class Harness {
         @Override public String getOnTransaction() { return null; }
     }
 
-    void processStarted(ExecutionEntity pi) {
+    void processStarted(ExecutionEntity started) {
+        // For a call activity Flowable sends the child's first execution, not the instance.
+        ExecutionEntity pi = started.isProcessInstanceType() ? started : started.getProcessInstance();
         Inst i = new Inst();
         i.pid = pi.getProcessInstanceId();
         Map<String, String> wf = workflowOf.getOrDefault(pi.getProcessDefinitionId(), Map.of());
@@ -655,13 +676,14 @@ public final class Harness {
         i.key = keyOf.get(pi.getProcessDefinitionId());
         i.startedAt = elapsed();
         durable++;
-        ExecutionEntity sup = pi.getSuperExecution();
+        ExecutionEntity sup = pi.getSuperExecutionId() == null ? null : CommandContextUtil.getExecutionEntityManager().findById(pi.getSuperExecutionId());
+        if (DEBUG) System.err.println("[start] " + pi.getProcessInstanceId() + " super=" + pi.getSuperExecutionId() + " at " + (sup == null ? null : sup.getCurrentActivityId()));
         if (sup != null) {
             Inst parent = insts.get(sup.getProcessInstanceId());
             i.parent = parent;
             i.label = "child";
             i.ctx = parent.ctx.deepCopy();
-            Map<String, Map<String, String>> a = annOf(sup.getProcessDefinitionId(), sup.getActivityId());
+            Map<String, Map<String, String>> a = annOf(sup.getProcessDefinitionId(), sup.getCurrentActivityId());
             if (a.containsKey("slot")) parent.lastChild.put("slot:" + a.get("slot").get("step"), i.pid);
             if (a.containsKey("hook")) parent.lastChild.put("hook:" + a.get("hook").get("hookPoint"), i.pid);
             i.bindings = parent.bindings;
@@ -785,6 +807,7 @@ public final class Harness {
         String raw = rawV == null ? "failed" : rawV.toString();
         String child = inst.lastChild.get("hook:" + key);
         Inst c = child == null ? null : insts.get(child);
+        if (DEBUG) System.err.println("[hook] " + key + " raw=" + raw + " child=" + child + " lastChild=" + inst.lastChild + " childCtx=" + (c == null ? null : c.ctx));
         if (!"failed".equals(raw) && c != null) {
             if (c.failed != null) raw = "failed";
             else {

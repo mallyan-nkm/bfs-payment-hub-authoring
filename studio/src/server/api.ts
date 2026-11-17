@@ -85,7 +85,7 @@ function typeOf(e: any): string {
 
 function summary(e: any) {
   return {
-    key: e.key, name: e.name, kind: e.kind, type: typeOf(e), scope: e.scope, release: e.release, title: e.doc?.title ?? e.doc?.id ?? e.name,
+    key: e.key, name: e.name, kind: e.kind, type: typeOf(e), binding: e.doc?.implementation?.binding, scope: e.scope, release: e.release, title: e.doc?.title ?? e.doc?.id ?? e.name,
     status: e.status, tenant: e.tenant, provenance: e.doc?.provenance?.status, generated: e.generated, source: e.source,
   };
 }
@@ -520,6 +520,23 @@ route('GET', '/api/registry/lookup', (env, req) => {
 });
 
 // --------------------------------------------------------------------- expansion (C04-S6)
+
+route('POST', '/api/expanded', (env, req) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError) throw new HttpError(400, `YAML does not parse: ${doc.__parseError}`);
+  try {
+    const x = expandWorkflow(doc, (n) => env.store.doc(n, undefined, tenantOf(req)));
+    return { expanded: x !== doc, doc: x, yaml: toYaml(x) };
+  } catch (e: any) {
+    throw new HttpError(422, e.message);
+  }
+});
+
+route('POST', '/api/analyse', (_env, req) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError || doc.kind !== 'table') throw new HttpError(400, 'Send a decision table');
+  return analyseTable(doc);
+});
 
 route('GET', '/api/expanded/:name', (env, req, { name }) => {
   const d = env.store.doc(name, req.query.release, tenantOf(req));
