@@ -33,7 +33,9 @@ export async function run({ ctx, rules }) {
   if (s.length < 9) return { outcome: 'unmappable', reasonCode: 'FF01' };
   const [, employerId, employerRoutingCode, creationDate, creationTime, salaryMonth, recordCount, totalSalary, currency, employerRef] = s;
   const fileId = (fileName ?? `${employerId}-${creationDate}-${creationTime}`).replace(/\.sif$/i, '');
-  ctx.header = { fileId, endToEndId: fileId };
+  // The employer's file comes in, but the payment it starts goes out: an outward corporate payment.
+  // The intake map says so, since the dispatch table does not (Issue I-26).
+  ctx.header = { fileId, endToEndId: fileId, direction: 'outward', segment: 'corporate' };
   ctx.batch = {
     id: fileId,
     numberOfTransactions: Number(recordCount),

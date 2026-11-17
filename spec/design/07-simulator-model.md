@@ -45,6 +45,7 @@ Every outward simulator carries these eight scenarios, so timeouts and retries c
 | R-07-11 | The same simulator definition MUST run embedded in the studio and as a deployable stub in pre-prod. | Export test (C10) |
 | R-07-12 | A pack that contains a simulator MUST NOT be promotable to production. | Schema `pack` (L00) |
 | R-07-13 | A bank MAY author simulators for its own ports in `b`. Shared simulators are read-only to it. | Tenancy tests (C17) |
+| R-07-14 | A file that starts a payment from the bank's own channel, not from a scheme, has no inward simulator. An end-to-end test names it with `given.inbound` and `given.message`; the front door receives it as that message. The message MUST be a start message in a dispatch table. | Schema `test-case` (L00); runner test (C11) |
 
 ## 7.5 Anatomy
 

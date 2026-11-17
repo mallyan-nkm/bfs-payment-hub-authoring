@@ -212,3 +212,23 @@ describe('test coverage of outcomes', () => {
     expect(rows.every((r) => r.untested.every((o: string) => r.outcomes.includes(o)))).toBe(true);
   });
 });
+
+
+describe('simulator conversation state (R-07-05)', () => {
+  it('answers each new request of a simulator keyed by message id, not only the first', async () => {
+    const { runTest } = await import('../src/testing/runner.js');
+    const bench = ['core-banking', 'sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' }))
+      .concat([{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'accept' }, { port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' }]);
+    const r = await runTest(env, { kind: 'test', id: 'X-E2E', title: 'x', target: 'p.wf.corporate.v1', level: 'end-to-end', evaluationDate: '2026-11-17', tenant: 'example-bank', bench, given: { inbound: 'samples/wps-sif-valid.sif', message: 'uae.wps.sif' }, expect: { outcome: 'settled' } });
+    // Reserve, post and verify each send core banking a request; each is answered.
+    expect(r.trace).toEqual(expect.arrayContaining(['reserve:reserved', 'leg:settled', 'post:posted', 'verify:verified', 'end:settled']));
+    expect(r.passed).toBe(true);
+  });
+
+  it('refuses a channel file named as a message that starts nothing', async () => {
+    const { runTest } = await import('../src/testing/runner.js');
+    const r = await runTest(env, { kind: 'test', id: 'X-E2E-2', title: 'x', target: 'p.wf.corporate.v1', level: 'end-to-end', evaluationDate: '2026-11-17', bench: [], given: { inbound: 'samples/wps-sif-valid.sif', message: 'uae.wps.ack' }, expect: { outcome: 'settled' } });
+    expect(r.passed).toBe(false);
+    expect(r.error).toContain('R-07-14');
+  });
+});

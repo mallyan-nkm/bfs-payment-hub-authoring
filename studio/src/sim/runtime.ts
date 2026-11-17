@@ -96,6 +96,9 @@ export class SimulatorInstance {
       }
       return conv.response ?? { kind: 'no-reply' };
     }
+    // A simulator that keys its state (by message id, say) holds one conversation per key: a new
+    // key after the scenario has played out starts the scenario again.
+    if (this.cursor >= this.steps.length && this.sim.state?.keyedBy && this.steps.some((x: any) => x.expect)) this.cursor = this.steps.findIndex((x: any) => x.expect);
     const st = this.steps[this.cursor];
     if (!st || !st.expect || (st.expect && m.type && !typeMatches(st.expect, m.type))) {
       this.unexpected.push(m);

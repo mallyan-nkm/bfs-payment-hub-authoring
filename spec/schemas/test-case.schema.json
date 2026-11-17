@@ -83,7 +83,12 @@
         },
         "inbound": {
           "type": "string",
-          "description": "A source message or file that an inward simulator injects."
+          "description": "A source message or file that an inward simulator injects, or, with message, that the bank's channel hands to the front door."
+        },
+        "message": {
+          "description": "The catalogue message the inbound file is, when no inward simulator sends it: a file from the bank's own channel, such as an employer's salary file. It MUST be a start message in a scheme's dispatch table (R-07-14).",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
         },
         "parameters": {
           "type": "object"

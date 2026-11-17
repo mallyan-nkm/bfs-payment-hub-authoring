@@ -48,7 +48,8 @@ export interface RunConfig {
   stubs?: Record<string, StubSpec>;
   values?: { parameter: string; value: any; validFrom: string; validTo?: string }[];
   documents?: Record<string, any>; // extra documents by name@release or name (kit content, drafts under test)
-  inbound?: { payload?: any; malformed?: boolean };
+  /** The inbound payload; with `message`, the front door receives it as that catalogue message, as from the bank's own channel. */
+  inbound?: { payload?: any; malformed?: boolean; message?: string };
   limit?: string;
   bindings?: any[]; // hook bindings, in place of the tenant's configuration set
   availableFrom?: Record<string, string>; // name@release -> virtual time it is published
@@ -1393,6 +1394,12 @@ export async function runInbound(cfg: RunConfig, opts: { stopAfterFirst?: boolea
   attachIntake(run);
   let conv = 0;
   for (const [, sim] of run.sims) if (sim.sim.direction === 'inward') sim.start(`conv-${++conv}`);
+  // A file from the bank's customer (an employer's salary file) reaches the front door directly.
+  if (cfg.inbound?.message) {
+    if (!run.catalogueEntry(cfg.inbound.message)?.disposition?.start) throw new Error(`${cfg.inbound.message} is not a start message in any dispatch table (R-07-14)`);
+    const m: Message = { id: run.newId('in'), type: cfg.inbound.message, port: '', from: 'simulator', at: run.clock.now, correlation: {}, payload: cfg.inbound.payload, conversation: `conv-${++conv}`, ...(cfg.inbound.malformed ? { malformed: true } : {}) } as Message;
+    run.clock.at(run.clock.now, () => run.frontDoor(m), `channel sends ${m.type}`);
+  }
   const status = await run.drive(() => {
     const roots = [...run.instances, ...run.handlerRuns];
     return roots.length > 0 && roots.every((i) => i.ended) && run.clock.pending() === 0;

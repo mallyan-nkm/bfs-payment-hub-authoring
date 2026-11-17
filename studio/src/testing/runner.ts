@@ -149,7 +149,7 @@ export function baseConfig(env: RunnerEnv, test: any, extra: Partial<RunConfig> 
   };
   if (test.given?.inbound) {
     const s = loadSample(env, test.given.inbound);
-    cfg.inbound = { payload: s.payload };
+    cfg.inbound = { payload: s.payload, ...(test.given.message ? { message: test.given.message } : {}) };
   }
   return cfg;
 }
