@@ -4,7 +4,7 @@ name: uae.wps.wf.salary-file-out.v1
 release: 1.0.0
 dsl: 1.0.0
 title: WPS salary file, bank as the employer's bank
-description: Sets the business date, validates the file and each record, submits the file to WPS and waits for the acknowledgement. A long wait on a business calendar.
+description: Sets the business date, validates the file and each record, and submits the file to WPS. The submit step is a composite. It sends, waits for the acknowledgement and reads it.
 direction: outward
 implements:
   slot: scheme-leg
@@ -14,11 +14,6 @@ entry:
 exit:
   writes: [status, messages]
   outcomes: [settled, rejected, returned, pending]
-parameters:
-  ackWait:
-    type: duration
-    default: P1D
-    description: Placeholder. How long to wait for the WPS acknowledgement before operations look at it.
 do:
   - id: business-date
     call: uae.p.enrich.business-date.v1
@@ -46,21 +41,10 @@ do:
     handle:
       unmappable: { end: rejected }
   - id: submit
-    call: uae.wps.exchange.send-salary-file.v1
+    call: uae.wps.exchange.submit-salary-file.v1
     handle:
       rejected: { end: rejected }
-      unknown: { end: pending }
-  - id: await-ack
-    await:
-      message: uae.wps.ack
-      correlateBy: header.fileId
-      timeout: P1D
-      calendar: business
-      onTimeout: { end: pending }
-  - id: read-ack
-    call: uae.wps.map.ack-in.v1
-    handle:
-      nak: { end: rejected }
+      pending: { end: pending }
   - end: settled
 provenance:
   origin: factory

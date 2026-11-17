@@ -2,7 +2,7 @@
 
 # Build backlog
 
-Status: draft 0.1. 26 components, 126 stories, 505 story points. Phase 1 is this specification; the backlog starts at phase 2.
+Status: draft 0.1. 26 components, 130 stories, 523 story points. Phase 1 is this specification; the backlog starts at phase 2.
 
 ## How to use it
 
@@ -22,8 +22,8 @@ The backlog names no stack beyond what the design fixes: scripts-behind in TypeS
 | Phase | Name | Gate | What the gate shows | Stories | Points |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Spec | G1 | This set, reviewed and accepted |  |  |
-| 2 | Walking skeleton | G2 | One thin slice of every artefact kind runs in the studio and on Temporal | 54 | 213 |
-| 3 | Catalogue, AI and hooks | G3 | The factory pack is complete and tested; AI authoring works in both languages; one hook of each type runs in a test tenant | 51 | 203 |
+| 2 | Walking skeleton | G2 | One thin slice of every artefact kind runs in the studio and on Temporal | 56 | 223 |
+| 3 | Catalogue, AI and hooks | G3 | The factory pack is complete and tested; AI authoring works in both languages; one hook of each type runs in a test tenant | 53 | 211 |
 | 4 | Portability | G4 | The conformance kit is green on Temporal, DTFx and Flowable | 11 | 51 |
 | 5 | Governance | G5 | Maker-checker, packs, configuration sets, the compatibility run, retirement and supersession | 10 | 38 |
 
@@ -34,17 +34,17 @@ The backlog names no stack beyond what the design fixes: scripts-behind in TypeS
 | [C01](C01-artefact-store-and-naming.md) | Artefact store and naming | Core | 2 | 5 | 11 | none |
 | [C02](C02-schema-validation.md) | Schema validation | Core | 2 | 3 | 7 | C01 |
 | [C03](C03-canonical-model-and-type-generation.md) | Canonical model and type generation | Core | 2, 3 | 5 | 21 | C01, C02 |
-| [C04](C04-static-checks.md) | Static checks | Core | 2, 3 | 5 | 19 | C01, C02 |
+| [C04](C04-static-checks.md) | Static checks | Core | 2, 3 | 6 | 24 | C01, C02 |
 | [C05](C05-pins-manifests-and-semver.md) | Pins, manifests and semver | Core | 2, 3, 5 | 4 | 16 | C01, C04, C11 |
 | [C06](C06-rule-service.md) | Rule service | Execution | 2 | 6 | 27 | C03 |
 | [C07](C07-script-sandbox-typescript.md) | Script sandbox, TypeScript | Execution | 2 | 4 | 17 | C03 |
 | [C08](C08-script-sandbox-python.md) | Script sandbox, Python | Execution | 3 | 4 | 15 | C03, C07 |
-| [C09](C09-studio-interpreter.md) | Studio interpreter | Execution | 2, 3 | 11 | 47 | C04, C06, C07, C10, C23 |
+| [C09](C09-studio-interpreter.md) | Studio interpreter | Execution | 2, 3 | 12 | 52 | C04, C06, C07, C10, C23 |
 | [C10](C10-simulator-runtime.md) | Simulator runtime | Execution | 2 | 5 | 17 | C07, C06 |
 | [C11](C11-test-runner-and-test-bench.md) | Test runner and test bench | Execution | 2, 3 | 5 | 17 | C09, C10 |
 | [C12](C12-catalogue-and-iso-data-browser.md) | Catalogue and ISO data browser | Authoring UI | 2, 3 | 4 | 18 | C01, C03, C04, C06, C17 |
-| [C13](C13-artefact-editors.md) | Artefact editors | Authoring UI | 3 | 5 | 21 | C02, C06, C10, C12 |
-| [C14](C14-workflow-designer.md) | Workflow designer | Authoring UI | 2, 3 | 5 | 20 | C04, C05, C12 |
+| [C13](C13-artefact-editors.md) | Artefact editors | Authoring UI | 3 | 6 | 26 | C02, C06, C10, C12, C14 |
+| [C14](C14-workflow-designer.md) | Workflow designer | Authoring UI | 2, 3 | 6 | 23 | C04, C05, C12 |
 | [C15](C15-test-bench-ui.md) | Test bench UI | Authoring UI | 2, 3 | 4 | 16 | C09, C10, C11 |
 | [C16](C16-ai-authoring-assistant.md) | AI authoring assistant | Authoring UI | 3 | 5 | 19 | C07, C08, C10, C11, C13 |
 | [C17](C17-tenants-roles-and-maker-checker.md) | Tenants, roles and maker-checker | Tenancy and governance | 2, 3, 5 | 5 | 19 | C01 |
@@ -96,6 +96,7 @@ Within a phase the order respects every `Done first` line. Stories with no line 
 | C04-S2 | Data-flow check | 5 | C04-S1 |
 | C04-S3 | Effects and budgets | 3 | C04-S1 |
 | C04-S5 | Incremental results for the designer | 3 | C04-S1 |
+| C04-S6 | Expand composites | 5 | C04-S1 |
 | C05-S1 | Closure and the artefacts block | 3 |  |
 | C05-S2 | Pack manifest | 3 | C05-S1 |
 | C06-S1 | Expression language | 5 |  |
@@ -134,6 +135,7 @@ Within a phase the order respects every `Done first` line. Stories with no line 
 | C09-S5 | Try, compensate, finally and deadline | 5 | C09-S3 |
 | C09-S6 | Slots, legs and dispatch | 5 | C09-S1 |
 | C09-S11 | Trace, deltas and claim-check | 3 | C09-S1 |
+| C09-S12 | Blocks, returns and the two traces | 5 | C09-S2, C04-S6 |
 
 ### Phase 3, catalogue, ai and hooks
 
@@ -160,9 +162,11 @@ Within a phase the order respects every `Done first` line. Stories with no line 
 | C13-S4 | Map editor and round trip | 5 | C13-S3 |
 | C13-S5 | Simulator editor | 3 | C13-S3, C10-S1 |
 | C14-S2 | Compose steps | 8 | C14-S1 |
+| C13-S6 | Composite and subflow editor | 5 | C13-S3, C14-S2 |
 | C14-S3 | Slots, hook points and finally | 3 | C14-S2 |
 | C14-S4 | Checks on the canvas | 3 | C14-S2, C04-S5 |
 | C14-S5 | Effective policy | 3 | C14-S2 |
+| C14-S6 | Composite steps on the canvas | 3 | C14-S2, C04-S6 |
 | C15-S3 | Timeline and context diff | 5 | C15-S2, C11-S3 |
 | C15-S4 | Assertions and saved tests | 3 | C15-S2 |
 | C16-S1 | Authoring loop and gates | 5 |  |

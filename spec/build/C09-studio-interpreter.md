@@ -2,7 +2,7 @@
 
 # C09 Studio interpreter
 
-Group: Execution. Phase: 2, 3. Stories: 11. Size: 47 SP.
+Group: Execution. Phase: 2, 3. Stories: 12. Size: 52 SP.
 
 ## Purpose
 
@@ -35,7 +35,7 @@ A story MAY start before its decision closes if it isolates the choice behind an
 
 ## Success for the component
 
-The interpreter produces the expected trace for all 43 scenarios of the conformance kit.
+The interpreter produces the expected trace for all 46 scenarios of the conformance kit.
 
 ## Stories
 
@@ -277,3 +277,27 @@ Size: 3 SP. Phase 2. Branch: `story/c09-s11-trace-deltas-and-claim-check`.
 **Definition of Success**
 
 - CK-CLAIM-01, CK-DELTA-01 and CK-TRACE-01 pass.
+
+### C09-S12 Blocks, returns and the two traces
+
+Size: 5 SP. Phase 2. Branch: `story/c09-s12-blocks-returns-and-the-two-traces`.
+
+**Story.** As a designer, I want a composite step to be one line in my trace and to open into its inner steps, so that I read the business flow and can still see what happened underneath.
+
+**Definition of Ready**
+
+- Read: `design/05-workflow-dsl.md`, `design/06-tenants-hooks-configuration.md`, `design/annex-c-conformance-kit.md`; `schemas/workflow.schema.json`, `schemas/hook.schema.json`, `schemas/configuration-set.schema.json`, `schemas/test-case.schema.json`.
+- Done first: `C09-S2`, `C04-S6`.
+- Fixtures: `factory/`, `examples/` and `conformance/kit.yaml`.
+
+**Definition of Done**
+
+- The interpreter runs the expanded form only. A block is a frame; a return leaves it with an outcome; handle then applies as on a call.
+- The business trace has one entry per authored step. The detail has the steps inside each block, with prefixed ids.
+- An await inside a block uses the timeout that expansion resolved from the calling step.
+- A composite can be run alone, as an activity-level test.
+- The common Definition of Done in `CLAUDE.md` holds.
+
+**Definition of Success**
+
+- CK-BLOCK-01 to 03 pass, and WPS-EXC-001, WPS-EXC-002, AANI-EXC-001 and AANI-EXC-002 pass.

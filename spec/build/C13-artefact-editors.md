@@ -2,7 +2,7 @@
 
 # C13 Artefact editors
 
-Group: Authoring UI. Phase: 3. Stories: 5. Size: 21 SP.
+Group: Authoring UI. Phase: 3. Stories: 6. Size: 26 SP.
 
 ## Purpose
 
@@ -27,6 +27,7 @@ Let the designer define rules, tables, activities, maps and simulators in forms,
 - C06 Rule service
 - C10 Simulator runtime
 - C12 Catalogue and ISO data browser
+- C14 Workflow designer
 
 ## Success for the component
 
@@ -141,3 +142,26 @@ Size: 3 SP. Phase 3. Branch: `story/c13-s5-simulator-editor`.
 **Definition of Success**
 
 - A new simulator for uae.p.port.participant-directory.v1 publishes only when all eight standard scenarios exist.
+
+### C13-S6 Composite and subflow editor
+
+Size: 5 SP. Phase 3. Branch: `story/c13-s6-composite-and-subflow-editor`.
+
+**Story.** As a scheme owner, I want to define a composite activity and the subflow behind it, so that designers get one block for an exchange that sends, waits and reads.
+
+**Definition of Ready**
+
+- Read: `design/10-studio-functions.md`, `design/03-activity-contract-and-types.md`, `design/04-rule-model.md`, `design/07-simulator-model.md`; `schemas/activity.schema.json`, `schemas/rule.schema.json`, `schemas/simulator.schema.json`, `schemas/port.schema.json`, `schemas/extension.schema.json`.
+- Done first: `C13-S3`, `C14-S2`.
+- Fixtures: `factory/`, `examples/`.
+
+**Definition of Done**
+
+- A composite is defined in the contract form with the subflow binding. Its subflow is composed on the canvas, where await and return are offered.
+- L30, L31 and L32 show on the step they concern.
+- The composite is tested alone, with its inner steps asserted in detail.
+- The common Definition of Done in `CLAUDE.md` holds.
+
+**Definition of Success**
+
+- uae.wps.exchange.submit-salary-file.v1 and its subflow are rebuilt in the studio with no change to either hash, and WPS-EXC-001 passes.

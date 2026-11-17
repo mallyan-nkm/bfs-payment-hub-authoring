@@ -1,6 +1,6 @@
 # Part 1. Concepts, scopes, names and versions
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119. Every MUST names the check that enforces it.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119. Every MUST names the check that enforces it.
 
 ## 1.1 Purpose
 
@@ -36,7 +36,7 @@ This part fixes the vocabulary every other part uses: what an artefact is, where
 | Id | Requirement | Check |
 | --- | --- | --- |
 | R-01-01 | An artefact name MUST match `<scope>.<type>.<name>.v<major>`. | Schema `common#artefactName` (L00) |
-| R-01-02 | `<type>` MUST be one of the eleven activity types, or `rule`, `ruleset`, `table`, `sim`, `wf`, `seg`, `handler`, `hook`, `port`, `ext`. | Schema (L00) |
+| R-01-02 | `<type>` MUST be one of the eleven activity types, or `rule`, `ruleset`, `table`, `sim`, `wf`, `seg`, `sub`, `handler`, `hook`, `port`, `ext`. | Schema (L00) |
 | R-01-03 | A cluster code MUST be 2 to 8 lower-case letters and a scheme code 2 to 12 lower-case letters or digits. `p` and `b` are reserved. | Schema (L00) |
 | R-01-04 | An artefact MUST NOT depend on a scope its own scope may not depend on (table 1.3). | Lint L02 |
 | R-01-05 | Every reference MUST resolve to a published artefact. | Lint L03 |

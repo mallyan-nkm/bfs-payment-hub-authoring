@@ -110,8 +110,12 @@ def refs_of(d):
         if isinstance(d.get(k), str) and kind != "port":
             out.add(d[k])
     out.update((d.get("map") or {}).get("edgeRules") or [])
+    if (d.get("implementation") or {}).get("subflow"):
+        out.add(d["implementation"]["subflow"])
     if kind in ("workflow", "hook"):
         imp = d.get("implements") or {}
+        if imp.get("activity"):
+            out.add(imp["activity"])
         of = imp.get("of")
         out.update(of if isinstance(of, list) else [of] if of else [])
         for hp in d.get("hookPoints") or []:
@@ -167,6 +171,22 @@ for path, d in docs:
             err("L04", path, "name says v%s but release is %s" % (name.rsplit(".v", 1)[1], d["release"]))
 
 
+def waits(a, seen=()):
+    """True when calling this activity can park the workflow: a hold, or a composite whose subflow awaits."""
+    if a.get("type") == "hold":
+        return True
+    sub = by_name.get((a.get("implementation") or {}).get("subflow"))
+    if not sub or a["name"] in seen:
+        return False
+    for st in all_steps(sub):
+        if "await" in st or "wait" in st:
+            return True
+        inner = by_name.get(st.get("call"))
+        if inner and inner.get("kind") == "activity" and waits(inner, seen + (a["name"],)):
+            return True
+    return False
+
+
 # ------------------------------------------------------- workflow checks
 def hook_points(d, seen=None):
     pts = {h["name"]: h for h in d.get("hookPoints") or []}
@@ -211,7 +231,7 @@ for path, d in docs:
             if "call" in st and st["call"] in by_name:
                 a = by_name[st["call"]]
                 ok = a["effect"] in ("pure", "read") or (a["type"] == "exchange" and a.get("mode") == "respond")
-                if not ok or a["type"] == "hold":
+                if not ok or a["type"] == "hold" or waits(a):
                     err("L07", path, "handler calls %s, which waits or writes" % st["call"])
     if d["kind"] == "workflow" and d["wfKind"] == "leg":
         # L08 a leg fills a declared slot and returns only what the slot allows
@@ -232,6 +252,75 @@ for path, d in docs:
                 hit = [m for m in (sch or {}).get("messages", []) if m["id"] == msg]
                 if not hit or "deliver" not in hit[0]["disposition"]:
                     err("L16", path, "awaited message %s is not a deliver message in the scheme catalogue" % msg)
+
+# ------------------------------------------- composites and subflows
+def composite(a):
+    return bool(a) and a.get("kind") == "activity" and (a.get("implementation") or {}).get("binding") == "subflow"
+
+
+def actions(d):
+    """Every single-action object in a workflow: handle entries and await timeouts that are not step lists."""
+    for st in all_steps(d):
+        for a in (st.get("handle") or {}).values():
+            if isinstance(a, dict):
+                yield a
+        if "await" in st and isinstance(st["await"]["onTimeout"], dict):
+            yield st["await"]["onTimeout"]
+
+
+def returns(d):
+    return {st["return"] for st in all_steps(d) if "return" in st} | {a["return"] for a in actions(d) if "return" in a}
+
+
+for path, d in docs:
+    if composite(d):
+        # L30 a composite and its subflow agree
+        sub = by_name.get(d["implementation"]["subflow"])
+        if not sub or sub.get("wfKind") != "subflow":
+            err("L30", path, "%s is not a subflow" % d["implementation"]["subflow"])
+        elif (sub.get("implements") or {}).get("activity") != d["name"]:
+            err("L30", path, "%s does not implement %s" % (sub["name"], d["name"]))
+        else:
+            outs = {o["name"] for o in d["outcomes"]}
+            for o in sorted(returns(sub) - outs):
+                err("L30", path, "its subflow returns %r, which the activity does not declare" % o)
+            for o in sorted(outs - returns(sub)):
+                err("L30", path, "declares outcome %r, which its subflow never returns" % o)
+        for k in sorted(set(d.get("policy") or {}) - {"replyTimeout", "replyCalendar"}):
+            err("L30", path, "a composite carries no %s; attempts and retries belong to the steps of its subflow" % k)
+    if d.get("kind") != "workflow":
+        continue
+    sub = d["wfKind"] == "subflow"
+    if sub:
+        act = by_name.get(d["implements"]["activity"])
+        if not composite(act) or act["implementation"]["subflow"] != d["name"]:
+            err("L30", path, "%s is not a composite activity bound to this subflow" % d["implements"]["activity"])
+        for st in all_steps(d):
+            for k in sorted({"end", "slot", "hook", "use"} & set(st)):
+                err("L30", path, "a subflow may not contain %s; it returns an outcome" % k)
+        for a in actions(d):
+            if "end" in a:
+                err("L30", path, "a subflow may not end the workflow; it returns an outcome")
+    for st in all_steps(d):
+        # L30 a step that calls a composite has an id, so its inner steps can be named
+        if "call" in st and composite(by_name.get(st["call"])) and "id" not in st:
+            err("L30", path, "a step that calls the composite %s needs an id" % st["call"])
+        # L31 the designer's workflow shows no wait for a message; the expanded form is never stored as authored
+        if "await" in st and not sub:
+            err("L31", path, "step %s awaits %s; an await belongs in the subflow of a composite activity" % (st.get("id", "?"), st["await"]["message"]))
+        if "block" in st:
+            err("L31", path, "a block appears only in the expanded form")
+        if "return" in st and not sub:
+            err("L31", path, "return appears only in a subflow")
+        # L32 an await with no timeout takes the reply time of the calling step, so the composite must declare one
+        if "await" in st and "timeout" not in st["await"] and sub:
+            act = by_name.get(d["implements"]["activity"]) or {}
+            if "replyTimeout" not in (act.get("policy") or {}):
+                err("L32", path, "await %s has no timeout and %s declares no replyTimeout" % (st.get("id", "?"), act.get("name")))
+    if not sub:
+        for a in actions(d):
+            if "return" in a:
+                err("L31", path, "return appears only in a subflow")
 
 # ------------------------------------------------------------ hook checks
 for path, d in docs:

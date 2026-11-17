@@ -1,6 +1,6 @@
 # TransactHub Designer Studio: specification set
 
-Status: draft 0.1, 17 November 2026. For review at gate G1.
+Status: draft 0.2, 17 November 2026. For review at gate G1. What changed since draft 0.1 is in `delta/DELTA-0.2.md`.
 
 The Designer Studio is where a payments workflow designer sees the whole ISO 20022 data capability, the rules, the activities, the schemes and the simulators, and builds, tests and exports a payment workflow. This repository is its specification, written to be read by people and worked by Claude Code.
 
@@ -14,22 +14,25 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | Build specs | `build/` | One file per component. Each story is a prompt: user story, Definition of Ready, Done and Success | Claude Code, the delivery lead |
 | Factory pack | `factory/` | Default content for `p`, `uae.p`, `uae.wps` and `uae.aani`. The worked example and the fixture set | Designers, Claude Code |
 | Examples | `examples/` | An example bank tenant, engine bindings, a supersession | The same |
+| Expanded forms | `expanded/` | What an engine runs for each workflow that calls a composite. Generated | Platform engineers, Claude Code |
 | Conformance kit | `conformance/` | The scenarios every engine must pass | Platform engineers |
+| Deltas | `delta/` | What changed between drafts, written for a build already under way | Claude Code, the delivery lead |
 | Tools | `tools/` | Generator, validator, mutation tests, document renderer | Everyone |
 
 <!-- COUNTS -->
 | What | Count |
 | --- | --- |
 | Design parts and annexes | 12 and 4 |
-| Numbered requirements | 208 |
+| Numbered requirements | 223 |
 | Schemas | 14 |
-| Factory artefacts in `p`, `uae.p`, `uae.wps`, `uae.aani` | 157 |
+| Factory artefacts in `p`, `uae.p`, `uae.wps`, `uae.aani` | 171 |
 | Example bank artefacts | 15 |
-| Test cases in the packs | 26 |
-| Conformance scenarios | 43 |
-| Checks in `tools/validate.py` | 20 (L00 to L27) |
-| Mutation cases that prove them | 21 |
-| Build components, stories, story points | 26, 126, 505 |
+| Composite activities, each with a subflow | 5 |
+| Test cases in the packs | 30 |
+| Conformance scenarios | 46 |
+| Checks in `tools/validate.py` | 23 (L00 to L32) |
+| Mutation cases that prove them | 24 |
+| Build components, stories, story points | 26, 130, 523 |
 <!-- /COUNTS -->
 
 ## Reading order
@@ -37,7 +40,7 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 1. `design/01-concepts-scopes-names-versions.md`: scopes, names, versions, pins, hot update.
 2. `design/05-workflow-dsl.md`: the DSL and the check catalogue.
 3. `design/12-factory-pack.md`, then one annex: A for WPS, B for Aani, D for the platform.
-4. One workflow and its tests: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml` and `factory/uae.aani/tests/`.
+4. One workflow, the subflow behind its send step, its expanded form and its tests: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml`, `uae.aani.sub.submit-credit.v1.yaml` beside it, `expanded/`, and `factory/uae.aani/tests/`.
 5. `build/00-backlog.md`: the components, the phases and the build order.
 
 The other parts are reference: canonical context (2), activities (3), rules (4), tenants and hooks (6), simulators (7), scripts and AI authoring (8), export (9), studio functions (10), packs and governance (11), the conformance kit (Annex C).
@@ -56,11 +59,12 @@ The other parts are reference: canonical context (2), activities (3), rules (4),
 pip install -r tools/requirements.txt
 python3 tools/build_factory.py
 python3 tools/validate.py
+python3 tools/expand.py --check
 python3 tools/mutation_tests.py
 python3 tools/build_docs.py
 ```
 
-As delivered: the validator reports no error and two warnings (the planned messages of the two schemes), every mutation is caught, and the backlog renders with no error.
+As delivered: the validator reports no error and two warnings (the planned messages of the two schemes), the expanded forms are up to date, every mutation is caught, and the backlog renders with no error.
 
 ## What is confirmed and what is not
 

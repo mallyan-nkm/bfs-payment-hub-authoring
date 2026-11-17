@@ -2,7 +2,7 @@
 
 # C14 Workflow designer
 
-Group: Authoring UI. Phase: 2, 3. Stories: 5. Size: 20 SP.
+Group: Authoring UI. Phase: 2, 3. Stories: 6. Size: 23 SP.
 
 ## Purpose
 
@@ -132,3 +132,26 @@ Size: 3 SP. Phase 3. Branch: `story/c14-s5-effective-policy`.
 **Definition of Success**
 
 - For the send step of uae.aani.wf.credit-out.v1 the panel shows each value with its source, and the longest path against the PT8S deadline.
+
+### C14-S6 Composite steps on the canvas
+
+Size: 3 SP. Phase 3. Branch: `story/c14-s6-composite-steps-on-the-canvas`.
+
+**Story.** As a designer, I want an exchange that waits for its reply to be one block, so that I model the business flow and not the plumbing.
+
+**Definition of Ready**
+
+- Read: `design/05-workflow-dsl.md`, `design/10-studio-functions.md`; `schemas/workflow.schema.json`.
+- Done first: `C14-S2`, `C04-S6`.
+- Fixtures: `factory/`, `examples/`.
+
+**Definition of Done**
+
+- A composite is placed, handled and given a reply time like any block. Await and return are not offered outside a subflow.
+- The block opens read-only to show the steps it expands to, and the whole workflow can be viewed in its expanded form.
+- The reply time and where it came from show in the effective policy panel.
+- The common Definition of Done in `CLAUDE.md` holds.
+
+**Definition of Success**
+
+- uae.wps.wf.salary-file-out.v1 shows submit as one block, and its expanded view equals the file of the same name under expanded/.

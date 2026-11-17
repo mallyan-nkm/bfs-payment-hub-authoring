@@ -63,7 +63,7 @@ BUILTIN = {"validate": "rule-service", "decide": "rule-service"}
 
 def act(name, title, reads, writes, outcomes, effect, *, level=None, mode=None, ports=None,
         rule_sets=None, policy=None, comp=None, params=None, map_=None, service=None,
-        lang="typescript", p=None, base=FACTORY, invoked_by=None):
+        lang="typescript", p=None, base=FACTORY, invoked_by=None, sub=None):
     typ = name.split(".")[-3]
     doc = {"kind": "activity", "name": name, "release": REL, "title": title, "type": typ}
     if mode:
@@ -95,7 +95,7 @@ def act(name, title, reads, writes, outcomes, effect, *, level=None, mode=None, 
     if map_:
         doc["map"] = map_
     svc = service or BUILTIN.get(typ)
-    doc["implementation"] = ({"binding": "builtin", "service": svc} if svc
+    doc["implementation"] = {"binding": "subflow", "subflow": sub} if sub else ({"binding": "builtin", "service": svc} if svc
                              else {"binding": "script", "language": lang, "script": "scripts/%s.%s" % (name, "ts" if lang == "typescript" else "py")})
     doc["provenance"] = prov(**(p or {}))
     return emit(doc, base)
@@ -224,6 +224,24 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
 
 # Aani (provisional)
 AP = PROVISIONAL_AANI
+
+# composite exchanges: one block to the designer, a subflow underneath (design/05, section 5.6)
+WPS_PORT = ["uae.wps.port.wps.v1"]
+act("uae.wps.exchange.submit-salary-file.v1", "Submit the salary file and get the acknowledgement", ["header", "messages"], ["status", "messages"],
+    ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.submit-salary-file.v1", p=WP)
+act("uae.wps.exchange.confirm-receipt.v1", "Confirm receipt of the payment file and get the acknowledgement", ["header", "messages"],
+    ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="report", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.confirm-receipt.v1", p=WP)
+act("uae.wps.exchange.request-refund.v1", "Request a refund and wait for its settlement", ["header", "messages"],
+    ["status", "facts.settlement", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.request-refund.v1", p=WP)
+act("uae.wps.exchange.receive-supplement.v1", "Wait for the supplementary file that pairs with the payment file", ["header"], ["messages"],
+    ["received", "missing"], "read", mode="receive", ports=WPS_PORT, policy={"replyTimeout": "PT2H"},
+    sub="uae.wps.sub.receive-supplement.v1", p=WP)
+act("uae.aani.exchange.submit-credit.v1", "Send the credit transfer and learn its outcome", ["header", "messages"], ["status", "messages"],
+    ["accepted", "rejected", "pending"], "external", mode="send", ports=["uae.aani.port.switch.v1"],
+    policy={"replyTimeout": "PT4S"}, sub="uae.aani.sub.submit-credit.v1", p=AP)
 
 
 def amap(name, title, direction, model, reads, writes, outcomes=("mapped", "unmappable")):
@@ -696,27 +714,33 @@ test("AANI-OUT-002", "Rejected by the scheme with a reason", "uae.aani.wf.credit
      {"outcome": "rejected", "reasonCode": "AC04", "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:rejected", "end:rejected"]},
      bench_=bench((SW, SWSIM, "reject"), LQ, PD))
 test("AANI-OUT-003", "Transient failure is retried and one message is accepted", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "settled", "attempts": {"send": 3}, "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 3}]},
+     {"outcome": "settled", "attempts": {"send.send": 3}, "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 3}]},
      bench_=bench((SW, SWSIM, "fail-twice-then-accept"), LQ, PD))
 test("AANI-OUT-004", "Unknown outcome leads to an inquiry, never a blind re-send", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
      {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.status-request", "count": 1}],
-      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:unknown", "inquire:accepted", "end:settled"]},
+      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:accepted", "end:settled"],
+      "detail": ["send.send:unknown", "send.inquire:accepted"]},
      bench_=bench((SW, SWSIM, "no-reply-then-status-accepted"), LQ, PD))
 test("AANI-OUT-005", "No reply at all ends pending for operations", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
      {"outcome": "pending"}, bench_=bench((SW, SWSIM, "no-reply"), LQ, PD))
 test("AANI-OUT-006", "A pending reply is settled by the status report that follows", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
      {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 1}],
-      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:pending", "await-status:received",
-                "read-status:accepted", "end:settled"]},
+      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:accepted", "end:settled"],
+      "detail": ["send.send:pending", "send.await-status:received", "send.read-status:accepted"]},
      bench_=bench((SW, SWSIM, "pending-then-final-in-time"), LQ, PD))
 test("AANI-OUT-007", "A pending reply with no final status in time ends pending for operations", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "pending", "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:pending",
-                                      "await-status:timeout", "end:pending"]},
+     {"outcome": "pending", "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:pending", "end:pending"],
+      "detail": ["send.send:pending", "send.await-status:timeout"]},
      bench_=bench((SW, SWSIM, "pending-then-final"), LQ, PD))
 test("AANI-OUT-008", "An unknown creditor agent is rejected before anything is sent", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
      {"outcome": "rejected", "reasonCode": "RC01", "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 0}],
       "trace": ["scheme-checks:pass", "participants:unknown", "end:rejected"]},
      bench_=bench((SW, SWSIM, "accept"), LQ, ("uae.p.port.participant-directory.v1", "uae.p.sim.participant-directory.v1", "reject")))
+test("AANI-EXC-001", "The composite alone: a pending reply is settled by the status report", "uae.aani.exchange.submit-credit.v1", "activity", AANI_CTX,
+     {"outcome": "accepted", "detail": ["send:pending", "await-status:received", "read-status:accepted"]},
+     bench_=bench((SW, SWSIM, "pending-then-final-in-time")), conformance=True)
+test("AANI-EXC-002", "The composite alone: no reply leads to three inquiries, then pending", "uae.aani.exchange.submit-credit.v1", "activity", AANI_CTX,
+     {"outcome": "pending", "attempts": {"inquire": 3}}, bench_=bench((SW, SWSIM, "no-reply")), conformance=True)
 test("AANI-RULE-001", "Amount at the scheme limit passes", "uae.aani.validate.credit.v1", "activity", aani_amount(50000),
      {"outcome": "pass", "findings": []}, conformance=True)
 test("AANI-RULE-002", "Amount just over the scheme limit is rejected", "uae.aani.validate.credit.v1", "activity", aani_amount(50000.01),
@@ -739,14 +763,14 @@ WPS, WSIM = "uae.wps.port.wps.v1", "uae.wps.sim.wps-outward.v1"
 WPS_FILE = {"inbound": "samples/wps-sif-valid.sif"}
 test("WPS-OUT-001", "Salary file acknowledged", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 1}],
-      "trace": ["business-date:set", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped", "submit:accepted",
-                "await-ack:received", "read-ack:ack", "end:settled"]},
+      "trace": ["business-date:set", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped", "submit:accepted", "end:settled"],
+      "detail": ["submit.send:accepted", "submit.await-ack:received", "submit.read-ack:ack"]},
      bench_=bench((WPS, WSIM, "accept"), CAL))
 test("WPS-OUT-002", "Salary file refused by WPS", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "AM10"}, bench_=bench((WPS, WSIM, "reject"), CAL))
 test("WPS-OUT-003", "No acknowledgement within the wait ends pending", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
-     {"outcome": "pending", "virtualElapsed": "P1D", "trace": ["business-date:set", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped", "submit:accepted",
-                                                        "await-ack:timeout", "end:pending"]},
+     {"outcome": "pending", "virtualElapsed": "P1D", "trace": ["business-date:set", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped", "submit:pending", "end:pending"],
+                                                        "detail": ["submit.send:accepted", "submit.await-ack:timeout"]},
      bench_=bench((WPS, WSIM, "no-reply"), CAL))
 test("WPS-OUT-004", "A control total that does not match is rejected before anything is sent", "uae.wps.wf.salary-file-out.v1", "leg",
      {"inbound": "samples/wps-sif-bad-control-total.sif"},
@@ -757,6 +781,11 @@ test("WPS-OUT-005", "A salary record with an invalid IBAN is rejected by the clu
      {"outcome": "rejected", "reasonCode": "AC03", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
       "trace": ["business-date:set", "file-checks:pass", "record-checks:pass", "record-iban:reject", "end:rejected"]},
      bench_=bench((WPS, WSIM, "accept"), CAL))
+test("WPS-EXC-001", "The composite alone: sent, acknowledged, read", "uae.wps.exchange.submit-salary-file.v1", "activity", WPS_FILE,
+     {"outcome": "accepted", "detail": ["send:accepted", "await-ack:received", "read-ack:ack"]}, bench_=bench((WPS, WSIM, "accept")), conformance=True)
+test("WPS-EXC-002", "The composite alone: no acknowledgement within the reply time is pending", "uae.wps.exchange.submit-salary-file.v1", "activity",
+     WPS_FILE, {"outcome": "pending", "virtualElapsed": "P1D", "detail": ["send:accepted", "await-ack:timeout"]},
+     bench_=bench((WPS, WSIM, "no-reply")), conformance=True)
 test("WPS-MAP-001", "Salary file maps in and back out unchanged", "uae.wps.map.sif-in.v1", "activity", WPS_FILE,
      {"outcome": "mapped"}, conformance=True)
 test("WPS-MAP-002", "The SCR-last channel variant maps to the same canonical batch", "uae.wps.map.sif-in.v1", "activity",

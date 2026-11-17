@@ -47,7 +47,9 @@ expect:
     - participants:found
     - prefund:sufficient
     - render:mapped
-    - send:pending
-    - await-status:received
-    - read-status:accepted
+    - send:accepted
     - end:settled
+  detail:
+    - send.send:pending
+    - send.await-status:received
+    - send.read-status:accepted

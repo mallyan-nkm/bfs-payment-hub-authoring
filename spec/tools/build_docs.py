@@ -362,6 +362,7 @@ def counts_block():
             "| Schemas | %d |" % len(list((ROOT / "schemas").glob("*.schema.json"))),
             "| Factory artefacts in `p`, `uae.p`, `uae.wps`, `uae.aani` | %d |" % shared,
             "| Example bank artefacts | %d |" % sum(p["total"] for p in inventory["packs"] if p["packType"] == "bank"),
+            "| Composite activities, each with a subflow | %d |" % len(list((ROOT / "factory").rglob("*.sub.*.yaml"))),
             "| Test cases in the packs | %d |" % len(tests),
             "| Conformance scenarios | %d |" % len(scenarios),
             "| Checks in `tools/validate.py` | %d (%s to %s) |" % (len(in_validator), in_validator[0], in_validator[-1]),

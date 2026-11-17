@@ -12,7 +12,7 @@
     "artefactName": {
       "description": "<scope>.<type>.<name>.v<major>. The major is part of the name.",
       "type": "string",
-      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})\\.(map|validate|enrich|screen|decide|reserve|exchange|post|notify|hold|reconcile|rule|ruleset|table|sim|wf|seg|handler|hook|port|ext)\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$"
+      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})\\.(map|validate|enrich|screen|decide|reserve|exchange|post|notify|hold|reconcile|rule|ruleset|table|sim|wf|seg|sub|handler|hook|port|ext)\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$"
     },
     "release": {
       "description": "major.minor.patch. Major for an interface change, minor for improved function, patch for a bug fix.",
@@ -48,97 +48,240 @@
     },
     "pin": {
       "type": "object",
-      "required": ["release", "hash"],
+      "required": [
+        "release",
+        "hash"
+      ],
       "additionalProperties": false,
       "properties": {
-        "release": { "$ref": "#/$defs/release" },
-        "hash": { "$ref": "#/$defs/hash" }
+        "release": {
+          "$ref": "#/$defs/release"
+        },
+        "hash": {
+          "$ref": "#/$defs/hash"
+        }
       }
     },
     "pins": {
       "description": "Exact release and content hash of every artefact used. Filled by the studio at publish.",
       "type": "object",
-      "propertyNames": { "$ref": "#/$defs/artefactName" },
-      "additionalProperties": { "$ref": "#/$defs/pin" }
+      "propertyNames": {
+        "$ref": "#/$defs/artefactName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/pin"
+      }
     },
     "retry": {
       "type": "object",
-      "required": ["maxAttempts"],
+      "required": [
+        "maxAttempts"
+      ],
       "additionalProperties": false,
       "properties": {
-        "maxAttempts": { "type": "integer", "minimum": 1 },
-        "firstInterval": { "$ref": "#/$defs/duration" },
-        "backoff": { "type": "number", "minimum": 1 },
-        "maxInterval": { "$ref": "#/$defs/duration" },
-        "nonRetryable": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "firstInterval": {
+          "$ref": "#/$defs/duration"
+        },
+        "backoff": {
+          "type": "number",
+          "minimum": 1
+        },
+        "maxInterval": {
+          "$ref": "#/$defs/duration"
+        },
+        "nonRetryable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
       }
     },
     "policy": {
-      "description": "Timeout and retry policy. Resolved type default, then block default, then step override.",
+      "description": "Timeout, retry and reply-wait policy. Resolved type default, then block default, then step override.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "attemptTimeout": { "$ref": "#/$defs/duration" },
-        "totalTimeout": { "$ref": "#/$defs/duration" },
-        "retry": { "$ref": "#/$defs/retry" }
+        "attemptTimeout": {
+          "$ref": "#/$defs/duration"
+        },
+        "totalTimeout": {
+          "$ref": "#/$defs/duration"
+        },
+        "retry": {
+          "$ref": "#/$defs/retry"
+        },
+        "replyTimeout": {
+          "description": "How long the workflow waits for a reply that comes later as its own message. Used by an await in the subflow of a composite activity.",
+          "$ref": "#/$defs/duration"
+        },
+        "replyCalendar": {
+          "description": "Whether replyTimeout counts elapsed time or business days.",
+          "enum": [
+            "elapsed",
+            "business"
+          ]
+        }
       }
     },
     "parameter": {
       "description": "A named value a rule, table, activity or workflow exposes. Values are set in configuration sets, inside the bounds.",
       "type": "object",
-      "required": ["type", "default"],
+      "required": [
+        "type",
+        "default"
+      ],
       "additionalProperties": false,
       "properties": {
-        "type": { "enum": ["amount", "integer", "decimal", "boolean", "string", "duration", "code", "list"] },
+        "type": {
+          "enum": [
+            "amount",
+            "integer",
+            "decimal",
+            "boolean",
+            "string",
+            "duration",
+            "code",
+            "list"
+          ]
+        },
         "default": {},
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
         "bounds": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "min": {},
             "max": {},
-            "allowed": { "type": "array" }
+            "allowed": {
+              "type": "array"
+            }
           }
         },
-        "lookupDate": { "enum": ["step-time", "payment-date"] },
-        "description": { "type": "string" }
+        "lookupDate": {
+          "enum": [
+            "step-time",
+            "payment-date"
+          ]
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "parameters": {
       "type": "object",
-      "propertyNames": { "pattern": "^[a-z][A-Za-z0-9]*$" },
-      "additionalProperties": { "$ref": "#/$defs/parameter" }
+      "propertyNames": {
+        "pattern": "^[a-z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/parameter"
+      }
     },
     "provenance": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "origin": { "enum": ["factory", "authored"] },
-        "status": { "enum": ["confirmed", "provisional"] },
-        "clauses": { "type": "array", "items": { "type": "string" } },
+        "origin": {
+          "enum": [
+            "factory",
+            "authored"
+          ]
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "provisional"
+          ]
+        },
+        "clauses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "ai": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "model": { "type": "string" },
-            "promptRef": { "type": "string" },
-            "inputs": { "type": "array", "items": { "type": "string" } }
+            "model": {
+              "type": "string"
+            },
+            "promptRef": {
+              "type": "string"
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
-        "note": { "type": "string" }
+        "note": {
+          "type": "string"
+        }
       }
     },
     "implementation": {
       "type": "object",
-      "required": ["binding"],
+      "required": [
+        "binding"
+      ],
       "additionalProperties": false,
       "properties": {
-        "binding": { "enum": ["script", "native", "builtin"] },
-        "language": { "enum": ["python", "typescript"] },
-        "script": { "type": "string" },
-        "service": { "type": "string" }
-      }
+        "binding": {
+          "enum": [
+            "script",
+            "native",
+            "builtin",
+            "subflow"
+          ]
+        },
+        "language": {
+          "enum": [
+            "python",
+            "typescript"
+          ]
+        },
+        "script": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "subflow": {
+          "description": "binding subflow only: the subflow that implements this activity. The activity is then a composite.",
+          "$ref": "#/$defs/artefactName"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "binding": {
+                "const": "subflow"
+              }
+            },
+            "required": [
+              "binding"
+            ]
+          },
+          "then": {
+            "required": [
+              "subflow"
+            ]
+          }
+        }
+      ]
     }
   }
 }

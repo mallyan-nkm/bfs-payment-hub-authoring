@@ -97,11 +97,12 @@ Size: 5 SP. Phase 3. Branch: `story/c25-s3-salary-file-out-end-to-end`.
 **Definition of Done**
 
 - Scripts for the leg's map and exchange activities; tests for acknowledged, refused by WPS, no acknowledgement within the wait, a control total that does not match and a record with an invalid IBAN.
+- The submit composite and its subflow are tested alone.
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- WPS-OUT-001 to 005 pass with p.wf.corporate.v1.
+- WPS-OUT-001 to 005 pass with p.wf.corporate.v1, and WPS-EXC-001 and 002 pass.
 
 ### C25-S4 Agent payment in and returns
 

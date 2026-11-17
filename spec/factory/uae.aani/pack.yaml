@@ -31,6 +31,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:dfd3b513634d8bc350803e20c93216e62f0907904ae43e7d52694ab133ab934b
     path: activities/uae.aani.exchange.send-credit.v1.yaml
+  - name: uae.aani.exchange.submit-credit.v1
+    kind: activity
+    release: 1.0.0
+    hash: sha256:adf4eeb8a613a59379cc29ed72816ad613fae3adb172eea92044244ae805b901
+    path: activities/uae.aani.exchange.submit-credit.v1.yaml
   - name: uae.aani.map.credit-in.v1
     kind: activity
     release: 1.0.0
@@ -111,6 +116,16 @@ artefacts:
     release: 1.0.0
     hash: sha256:d766afcfa486c205153cac31f4aa55cdfd3f441dc6d1e33b1bba0c149cec470f
     path: simulators/uae.aani.sim.switch-outward.v1.yaml
+  - name: AANI-EXC-001
+    kind: test
+    release: 1.0.0
+    hash: sha256:292c8b393ed4a25e12666e54f45af5606f33337c6a62c2546b7328bb75844f0f
+    path: tests/AANI-EXC-001.yaml
+  - name: AANI-EXC-002
+    kind: test
+    release: 1.0.0
+    hash: sha256:534238d3dc4bca6de20b1e1c59793cfc4073e8d065bd56c3d41b0345d91db3b7
+    path: tests/AANI-EXC-002.yaml
   - name: AANI-HND-001
     kind: test
     release: 1.0.0
@@ -134,12 +149,12 @@ artefacts:
   - name: AANI-OUT-003
     kind: test
     release: 1.0.0
-    hash: sha256:8dea5affac22051023a3e7df7336c57f1efdc8e2f97dbc54b20385c63bfb7d11
+    hash: sha256:48fe4a31bba9f12521fc7d98524373451f9920090db479667e033ea55c26a157
     path: tests/AANI-OUT-003.yaml
   - name: AANI-OUT-004
     kind: test
     release: 1.0.0
-    hash: sha256:03421039eeeb256dddb718ab57d97804db9548d8f34c2c6d6783a1596523e742
+    hash: sha256:edb0b62f4efe33ab8fd0a51ddc5bdfce60367c78deedd9535bd44eb6fab23bc4
     path: tests/AANI-OUT-004.yaml
   - name: AANI-OUT-005
     kind: test
@@ -149,12 +164,12 @@ artefacts:
   - name: AANI-OUT-006
     kind: test
     release: 1.0.0
-    hash: sha256:07c14d28b3887956d5c27ba1b4d2c70b7b400b93ce2c22138e1e72d357c6e141
+    hash: sha256:181259d51ad0c06fad47642e4491d90880d6161da72055164271d3b3e1497b88
     path: tests/AANI-OUT-006.yaml
   - name: AANI-OUT-007
     kind: test
     release: 1.0.0
-    hash: sha256:4c768dd353a34ef3ec40f298455d425c874099021276dececdccf2cc283e8a7b
+    hash: sha256:18c8151b4062020030d64eabf56cfa547a981ca3e3d514b99b48db3f0d0d770f
     path: tests/AANI-OUT-007.yaml
   - name: AANI-OUT-008
     kind: test
@@ -191,6 +206,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:503adec3f7feedbb6f99c41c2163ec585aad76030e79a686e7c368740d817440
     path: workflows/uae.aani.handler.status-inquiry-in.v1.yaml
+  - name: uae.aani.sub.submit-credit.v1
+    kind: workflow
+    release: 1.0.0
+    hash: sha256:d589dc92b9ce571359e09b522e2944c8f1d2a8496a0ceb2139375becb701eb65
+    path: workflows/uae.aani.sub.submit-credit.v1.yaml
   - name: uae.aani.wf.credit-in.v1
     kind: workflow
     release: 1.0.0
@@ -199,7 +219,7 @@ artefacts:
   - name: uae.aani.wf.credit-out.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:75fe8a323a596b734972302bc9329382fe9b7c8ccd30f3515337ec53fa3ed94c
+    hash: sha256:2a2b2f07f3611bb0ee7e0a2e63b94788f525b697ce540b7adbbe33e0af98e064
     path: workflows/uae.aani.wf.credit-out.v1.yaml
   - name: uae.aani.wf.credit-refuse.v1
     kind: workflow

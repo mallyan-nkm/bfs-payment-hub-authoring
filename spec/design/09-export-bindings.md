@@ -1,6 +1,6 @@
 # Part 9. Export bindings
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 9.1 Purpose
 
@@ -29,6 +29,8 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx a
 | Loop | Interpreter loop with timer | Interpreter loop with durable timer | Modelled loop with timer event |
 | Await | Signal and timer; signals received early are kept in workflow state | External event and durable timer; events received early are kept in orchestration state | Message catch event with timer boundary; early messages are held by the binding |
 | Wait | Timer | Durable timer | Timer event |
+| Block | A frame in the interpreter; no engine construct | A frame in the interpreter; no engine construct | Embedded sub-process whose end events set the outcome, then an exclusive gateway |
+| Return | Leaves the frame with an outcome | Leaves the frame with an outcome | An end event of the sub-process |
 | Try, compensate | Interpreter runs compensations in reverse | Interpreter runs compensations in reverse | Compensation boundary events and handlers |
 | Signals | Signals | External events | Signal or message events |
 | Hold | Activity creates the item; await a signal | Task creates the item; await an external event | User task or receive task |
@@ -64,6 +66,7 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx a
 | R-09-14 | Handlers MUST be exported as plain request handlers at the interop boundary, outside the durable engine. | Conformance CK-HANDLER-01 |
 | R-09-15 | A generated BPMN document MUST be reproducible: the same input gives the same bytes. | Generator test (C22) |
 | R-09-16 | A binding MUST keep a message that reaches an instance before its `await` starts, and MUST hand a message that finds no waiting instance to operations as unmatched. Where an engine delivers a message only to an execution that is already waiting, the binding holds the message until it is. | Conformance CK-AWAIT-03, CK-AWAIT-04 |
+| R-09-17 | An engine binding MUST receive the expanded form only. It MUST NOT resolve a composite activity at run time. | Conformance CK-BLOCK-01 |
 
 ## 9.6 Core and extension profiles
 

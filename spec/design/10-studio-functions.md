@@ -1,6 +1,6 @@
 # Part 10. Studio functions
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 10.1 Purpose
 
@@ -46,6 +46,10 @@ Define, script, test, publish, compose, export. Every artefact kind follows it.
 | F-30 | Export | Export a pack: shared, bank or test | The export passes `tools/validate.py` and carries pins |
 | F-31 | Export | Choose a target engine and get the package and binding for it | The conformance kit passes on that target |
 | F-32 | Audit | See who changed what, when, and who approved it | Every publish has a maker and a different checker |
+| F-33 | Workflows | Place a composite as one block, handle its business outcomes, and set how long it waits for its reply | The WPS leg shows `submit` as one step with `replyTimeout` in its policy panel |
+| F-34 | Workflows | Open a composite read-only to see the steps it expands to, and view a whole workflow in its expanded form | The expanded view equals `expanded/uae.wps.wf.salary-file-out.v1.yaml` |
+| F-35 | Test bench | See the steps inside a composite nested under it in the timeline | `WPS-OUT-001` shows send, await and read under `submit` |
+| F-36 | Activities | As a scheme owner: author a composite and its subflow, and test it alone | `WPS-EXC-001` and `WPS-EXC-002` pass |
 
 ## 10.4 Requirements
 

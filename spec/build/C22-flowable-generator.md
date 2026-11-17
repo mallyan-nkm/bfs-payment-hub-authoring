@@ -64,13 +64,14 @@ Size: 8 SP. Phase 4. Branch: `story/c22-s2-core-constructs-to-bpmn`.
 **Definition of Done**
 
 - call maps to an external worker task, handle and switch to gateways, parallel to parallel gateways, forEach to multi-instance, slot to a call activity.
+- block maps to an embedded sub-process whose end events set the outcome, followed by an exclusive gateway.
 - Generation is reproducible; the model carries step ids as element ids.
 - The Flowable adapter for the kit runner (C23-S2) is part of this story.
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- The sequence, handle, switch, parallel, for each and slot scenarios of the kit pass on Flowable.
+- The sequence, handle, switch, parallel, for each, block and slot scenarios of the kit pass on Flowable.
 
 ### C22-S3 Policy as boundary events and retry loops
 

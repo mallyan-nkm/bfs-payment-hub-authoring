@@ -86,6 +86,7 @@ Size: 5 SP. Phase 3. Branch: `story/c15-s3-timeline-and-context-diff`.
 **Definition of Done**
 
 - The timeline is on virtual time; each step opens its delta with personal data masked.
+- The steps inside a composite are nested under it and closed by default.
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**

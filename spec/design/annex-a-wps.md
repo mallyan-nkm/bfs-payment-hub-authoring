@@ -1,6 +1,6 @@
 # Annex A. WPS authored on paper
 
-Status: draft 0.1, 17 November 2026. Provisional: built from the 2018 CBUAE responsibility guide and public bank guides. Confirm every item against the current CBUAE WPS rulebook (decision D10).
+Status: draft 0.2, 17 November 2026. Provisional: built from the 2018 CBUAE responsibility guide and public bank guides. Confirm every item against the current CBUAE WPS rulebook (decision D10).
 
 ## A.1 The scheme in one paragraph
 
@@ -44,11 +44,20 @@ Public bank guides disagree on whether the SCR is the first or the last line, an
 
 | Leg | Role | Fills | Steps |
 | --- | --- | --- | --- |
-| `uae.wps.wf.salary-file-out.v1` | Employer's bank | `scheme-leg` of `p.wf.corporate.v1` | Set the business date; file checks; per item, record checks and the cluster IBAN check; render SIF; submit; await acknowledgement; read it |
-| `uae.wps.wf.agent-payment-in.v1` | Agent | `scheme-leg` of `p.wf.inward.v1` | Await the PSI that pairs with the PIF; file checks; send PRC; await acknowledgement; credit each employee; send DIF |
-| `uae.wps.wf.refund-out.v1` | Employer's bank | `scheme-leg` of `p.wf.request.v1` | Render RFR; submit; await acknowledgement; await RSU; credit the employer |
+| `uae.wps.wf.salary-file-out.v1` | Employer's bank | `scheme-leg` of `p.wf.corporate.v1` | Set the business date; file checks; per item, record checks and the cluster IBAN check; render SIF; submit (composite) |
+| `uae.wps.wf.agent-payment-in.v1` | Agent | `scheme-leg` of `p.wf.inward.v1` | Receive the PSI that pairs with the PIF (composite); file checks; render PRC; confirm receipt (composite); credit each employee; send DIF |
+| `uae.wps.wf.refund-out.v1` | Employer's bank | `scheme-leg` of `p.wf.request.v1` | Render RFR; request the refund (composite); credit the employer |
 | `uae.wps.wf.return-in.v1` | Employer's bank | `scheme-leg` of `p.wf.inward.v1` | Credit the employer |
 | `uae.wps.wf.inward-refuse.v1` | Agent | `scheme-refuse` of `p.wf.inward.v1` | Hand to operations; nothing is sent |
+
+Each exchange that waits is one block to the designer. The steps underneath are a subflow (Part 5, section 5.6).
+
+| Composite | The designer handles | Underneath |
+| --- | --- | --- |
+| `uae.wps.exchange.submit-salary-file.v1` | `rejected`, `pending` | Send the SIF; await the acknowledgement for the reply time of the step; read ACK or NAK |
+| `uae.wps.exchange.confirm-receipt.v1` | `rejected`, `pending` | Send the PRC; await the acknowledgement; read it |
+| `uae.wps.exchange.request-refund.v1` | `rejected`, `pending` | Send the RFR; await and read the acknowledgement; await the RSU for up to ten business days; read it |
+| `uae.wps.exchange.receive-supplement.v1` | `missing` | Await the PSI for the reply time of the step |
 
 ## A.5 Dispatch table
 
@@ -72,16 +81,16 @@ Generated from `factory/inventory.yaml`.
 <!-- INVENTORY:uae.wps -->
 | Kind | Count | Artefacts |
 | --- | --- | --- |
-| Activity | 17 | `uae.wps.exchange.send-disbursement-file.v1`, `uae.wps.exchange.send-receipt-confirmation.v1`, `uae.wps.exchange.send-refund-request.v1`, `uae.wps.exchange.send-salary-file.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.dif-out.v1`, `uae.wps.map.pif-in.v1`, `uae.wps.map.prc-out.v1`, `uae.wps.map.refund-order-in.v1`, `uae.wps.map.rfr-out.v1`, `uae.wps.map.rsu-in.v1`, `uae.wps.map.rtc-in.v1`, `uae.wps.map.sif-in.v1`, `uae.wps.map.sif-out.v1`, `uae.wps.validate.payment-file.v1`, `uae.wps.validate.salary-file.v1`, `uae.wps.validate.salary-record.v1` |
+| Activity | 21 | `uae.wps.exchange.confirm-receipt.v1`, `uae.wps.exchange.receive-supplement.v1`, `uae.wps.exchange.request-refund.v1`, `uae.wps.exchange.send-disbursement-file.v1`, `uae.wps.exchange.send-receipt-confirmation.v1`, `uae.wps.exchange.send-refund-request.v1`, `uae.wps.exchange.send-salary-file.v1`, `uae.wps.exchange.submit-salary-file.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.dif-out.v1`, `uae.wps.map.pif-in.v1`, `uae.wps.map.prc-out.v1`, `uae.wps.map.refund-order-in.v1`, `uae.wps.map.rfr-out.v1`, `uae.wps.map.rsu-in.v1`, `uae.wps.map.rtc-in.v1`, `uae.wps.map.sif-in.v1`, `uae.wps.map.sif-out.v1`, `uae.wps.validate.payment-file.v1`, `uae.wps.validate.salary-file.v1`, `uae.wps.validate.salary-record.v1` |
 | Rule | 11 | `uae.wps.rule.agent-is-this-bank.v1`, `uae.wps.rule.amounts-non-negative.v1`, `uae.wps.rule.control-total-matches.v1`, `uae.wps.rule.currency-aed.v1`, `uae.wps.rule.employer-id-format.v1`, `uae.wps.rule.employer-routing-code-format.v1`, `uae.wps.rule.file-name-matches-control.v1`, `uae.wps.rule.net-pay-positive.v1`, `uae.wps.rule.pay-period-valid.v1`, `uae.wps.rule.person-id-format.v1`, `uae.wps.rule.record-count-matches.v1` |
 | Ruleset | 3 | `uae.wps.ruleset.payment-file.v1`, `uae.wps.ruleset.salary-file.v1`, `uae.wps.ruleset.salary-record.v1` |
 | Port | 2 | `uae.wps.port.employer-channel.v1`, `uae.wps.port.wps.v1` |
 | Simulator | 3 | `uae.wps.sim.employer-channel.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1` |
-| Workflow | 5 | `uae.wps.wf.agent-payment-in.v1`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
+| Workflow | 9 | `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.receive-supplement.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.submit-salary-file.v1`, `uae.wps.wf.agent-payment-in.v1`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
 | Scheme | 1 | `uae.wps.scheme` |
 | Extension | 1 | `uae.wps.ext.salary.v1` |
-| Test | 8 | `WPS-IN-001`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005` |
-| Total | 51 | |
+| Test | 10 | `WPS-EXC-001`, `WPS-EXC-002`, `WPS-IN-001`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005` |
+| Total | 61 | |
 <!-- /INVENTORY:uae.wps -->
 
 ## A.7 Open points

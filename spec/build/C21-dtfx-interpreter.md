@@ -47,7 +47,7 @@ Size: 8 SP. Phase 4. Branch: `story/c21-s1-interpreter-orchestration`.
 
 **Definition of Success**
 
-- The sequence, handle, switch, parallel, for each and loop scenarios of the kit pass on DTFx.
+- The sequence, handle, switch, parallel, for each, loop and block scenarios of the kit pass on DTFx.
 
 ### C21-S2 Timers, awaits and policy
 

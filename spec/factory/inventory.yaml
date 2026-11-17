@@ -162,17 +162,23 @@ packs:
   - scope: uae.wps
     packType: shared
     counts:
-      activity: 17
+      activity: 21
       extension: 1
       port: 2
       rule: 11
       ruleset: 3
       scheme: 1
       simulator: 3
-      test: 8
-      workflow: 5
-    total: 51
+      test: 10
+      workflow: 9
+    total: 61
     artefacts:
+      - name: uae.wps.exchange.confirm-receipt.v1
+        kind: activity
+      - name: uae.wps.exchange.receive-supplement.v1
+        kind: activity
+      - name: uae.wps.exchange.request-refund.v1
+        kind: activity
       - name: uae.wps.exchange.send-disbursement-file.v1
         kind: activity
       - name: uae.wps.exchange.send-receipt-confirmation.v1
@@ -180,6 +186,8 @@ packs:
       - name: uae.wps.exchange.send-refund-request.v1
         kind: activity
       - name: uae.wps.exchange.send-salary-file.v1
+        kind: activity
+      - name: uae.wps.exchange.submit-salary-file.v1
         kind: activity
       - name: uae.wps.map.ack-in.v1
         kind: activity
@@ -249,6 +257,10 @@ packs:
         kind: simulator
       - name: uae.wps.sim.wps-outward.v1
         kind: simulator
+      - name: WPS-EXC-001
+        kind: test
+      - name: WPS-EXC-002
+        kind: test
       - name: WPS-IN-001
         kind: test
       - name: WPS-MAP-001
@@ -265,6 +277,14 @@ packs:
         kind: test
       - name: WPS-OUT-005
         kind: test
+      - name: uae.wps.sub.confirm-receipt.v1
+        kind: workflow
+      - name: uae.wps.sub.receive-supplement.v1
+        kind: workflow
+      - name: uae.wps.sub.request-refund.v1
+        kind: workflow
+      - name: uae.wps.sub.submit-salary-file.v1
+        kind: workflow
       - name: uae.wps.wf.agent-payment-in.v1
         kind: workflow
       - name: uae.wps.wf.inward-refuse.v1
@@ -278,15 +298,15 @@ packs:
   - scope: uae.aani
     packType: shared
     counts:
-      activity: 11
+      activity: 12
       port: 2
       rule: 2
       ruleset: 1
       scheme: 1
       simulator: 3
-      test: 14
-      workflow: 5
-    total: 39
+      test: 16
+      workflow: 6
+    total: 43
     artefacts:
       - name: uae.aani.enrich.proxy-resolve.v1
         kind: activity
@@ -295,6 +315,8 @@ packs:
       - name: uae.aani.exchange.respond-status.v1
         kind: activity
       - name: uae.aani.exchange.send-credit.v1
+        kind: activity
+      - name: uae.aani.exchange.submit-credit.v1
         kind: activity
       - name: uae.aani.map.credit-in.v1
         kind: activity
@@ -328,6 +350,10 @@ packs:
         kind: simulator
       - name: uae.aani.sim.switch-outward.v1
         kind: simulator
+      - name: AANI-EXC-001
+        kind: test
+      - name: AANI-EXC-002
+        kind: test
       - name: AANI-HND-001
         kind: test
       - name: AANI-IN-001
@@ -359,6 +385,8 @@ packs:
       - name: uae.aani.handler.proxy-lookup.v1
         kind: workflow
       - name: uae.aani.handler.status-inquiry-in.v1
+        kind: workflow
+      - name: uae.aani.sub.submit-credit.v1
         kind: workflow
       - name: uae.aani.wf.credit-in.v1
         kind: workflow

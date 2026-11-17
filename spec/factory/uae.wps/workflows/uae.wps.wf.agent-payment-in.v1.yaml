@@ -15,12 +15,11 @@ exit:
   writes: [status, facts.posting, messages]
   outcomes: [settled, rejected, returned, pending]
 do:
-  - id: await-supplement
-    await:
-      message: uae.wps.psi
-      correlateBy: header.fileId
-      timeout: PT4H
-      onTimeout: { end: pending }
+  - id: supplement
+    call: uae.wps.exchange.receive-supplement.v1
+    policy: { replyTimeout: PT4H }
+    handle:
+      missing: { end: pending }
   - id: file-checks
     call: uae.wps.validate.payment-file.v1
     handle:
@@ -30,21 +29,10 @@ do:
     handle:
       unmappable: { end: pending }
   - id: confirm-receipt
-    call: uae.wps.exchange.send-receipt-confirmation.v1
+    call: uae.wps.exchange.confirm-receipt.v1
     handle:
       rejected: { end: pending }
-      unknown: { end: pending }
-  - id: await-receipt-ack
-    await:
-      message: uae.wps.ack
-      correlateBy: header.fileId
-      timeout: P1D
-      calendar: business
-      onTimeout: { end: pending }
-  - id: read-receipt-ack
-    call: uae.wps.map.ack-in.v1
-    handle:
-      nak: { end: pending }
+      pending: { end: pending }
   - forEach:
       in: "items[]"
       onItemFailure: continue

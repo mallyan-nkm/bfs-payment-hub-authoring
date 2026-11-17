@@ -154,7 +154,7 @@ components:
         sp: 5
         story: As a designer, I want every check that tools/validate.py implements to run in the studio, so that what the reference validator proves is proven on every edit.
         dod:
-          - L02 to L18 and L27 are implemented against the loaded model, not against raw files.
+          - Every check marked Yes in the catalogue of Part 5 is implemented against the loaded model, not against raw files.
           - Each finding carries the check code, the artefact and the step id.
         dos: No error on factory/ and examples/; every case of tools/mutation_tests.py is caught with the same code.
       - id: C04-S2
@@ -195,6 +195,17 @@ components:
           - Results are recomputed for the edited artefact and for artefacts that depend on it.
           - A finding that is fixed disappears without a full run.
         dos: Editing one handle entry updates only that workflow's findings and those of legs that fill its slots.
+      - id: C04-S6
+        title: Expand composites
+        sp: 5
+        story: As a platform engineer, I want one pure function that expands an authored workflow into the form an engine runs, so that the designer's view and the engine's view cannot drift.
+        needs: [C04-S1]
+        dod:
+          - Expansion follows the four rules of Part 5, section 5.6, in any depth, and refuses a composite that reaches itself.
+          - The same input gives the same bytes. The result validates against workflow.schema.json and carries form and expandedFrom.
+          - L19, L20, L21, L24 and L29 run on the expanded form and report at the authored step, naming the inner step.
+          - L30, L31 and L32 run on the authored form.
+        dos: The expansion of every factory workflow that calls a composite equals the file of the same name under expanded/, byte for byte.
 
   - id: C05
     title: Pins, manifests and semver

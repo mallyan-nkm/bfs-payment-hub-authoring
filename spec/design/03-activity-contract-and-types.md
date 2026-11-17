@@ -1,6 +1,6 @@
 # Part 3. Activity contract and types
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 3.1 Purpose
 
@@ -45,7 +45,7 @@ A block MAY name its outcomes differently where the business meaning differs; th
 | R-03-06 | An activity MUST reach outside the sandbox only through its declared ports. | Sandbox test (C07, C08) |
 | R-03-07 | An activity MUST read and write only its declared paths. A read or write outside them fails the run. | Sandbox test (C07, C08) |
 | R-03-08 | A `validate` or `decide` activity MUST name its rule sets and MUST NOT carry rule logic in its script. | Schema (L00) |
-| R-03-09 | An `exchange` activity MUST declare a mode (`send`, `respond`, `inquire`, `report`) and at least one port. | Schema (L00) |
+| R-03-09 | An `exchange` activity MUST declare a mode (`send`, `respond`, `inquire`, `report`, `receive`) and at least one port. | Schema (L00) |
 | R-03-10 | A `map` activity MUST declare direction and source model. An inward map SHOULD round-trip. | Schema (L00); map tests |
 | R-03-11 | After a send whose outcome is `unknown`, a workflow MUST NOT send again with a new id. It inquires with the original ids, then decides. | Conformance CK-UNKNOWN-01 |
 | R-03-12 | A `write` activity that can be undone SHOULD name its compensation. | Lint L20 |
@@ -75,9 +75,25 @@ Values are placeholders. They are parameters of the engine binding, set per envi
 | `script` | The script-behind, in a sandboxed worker | Maps, low-volume blocks, bank hooks |
 | `native` | Code-behind in the platform language | Hot-path and regulated blocks |
 | `builtin` | An existing platform service behind the contract | Screening, reservation, accounting, rules |
+| `subflow` | A subflow written in the workflow DSL. The activity is then a composite (section 3.7) | An exchange that sends, waits for its reply and reads it |
 
-## 3.7 Examples
+## 3.7 Composite activities
 
+A composite activity is one block to the designer and several steps underneath. Its contract is an ordinary contract: reads, writes, outcomes, ports. Its implementation is a subflow (Part 5, section 5.6). Use one wherever a block must send something and then wait: for a reply that comes later, for a paired file, or for the answer to an inquiry. The designer handles business outcomes such as `accepted`, `rejected` and `pending`. She does not see the send, the wait or the read.
+
+| Id | Requirement | Check |
+| --- | --- | --- |
+| R-03-19 | An activity whose work includes waiting for a message MUST be a composite: binding `subflow`, naming the subflow that implements it. | Lint L30, L31 |
+| R-03-20 | The outcomes of a composite MUST be exactly the outcomes its subflow returns. | Lint L30 |
+| R-03-21 | A composite MUST declare `replyTimeout` when an await in its subflow has no timeout of its own. Its policy holds only `replyTimeout` and `replyCalendar`; attempts and retries belong to the steps inside. | Lint L30, L32 |
+| R-03-22 | A composite that sends MUST deal with the unknown outcome of its send inside its subflow, by inquiry with the original ids. It SHOULD NOT hand `unknown` to the designer. | Review; conformance CK-UNKNOWN-01 |
+| R-03-23 | A composite MUST be tested alone like any activity: one test per outcome, with the inner steps asserted in `detail`. | Publish check (C11) |
+
+A `hold` block already works this way: one block that creates an item and waits for a person. Composites give exchanges the same treatment.
+
+## 3.8 Examples
+
+- Composite exchange: `factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml`, with its subflow `factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml`.
 - External block with a short budget: `factory/uae.aani/activities/uae.aani.exchange.send-credit.v1.yaml`.
 - Write block with compensation: `factory/p/activities/p.reserve.funds.v1.yaml`.
 - Item-level validate block: `factory/uae.wps/activities/uae.wps.validate.salary-record.v1.yaml`.

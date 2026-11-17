@@ -22,7 +22,7 @@ Run test cases at every level against a bench of simulators and assert on outcom
 
 ## Success for the component
 
-All 26 factory and example tests run green once their scripts exist, and a changed trace turns a test red.
+All 30 factory and example tests run green once their scripts exist, and a changed trace or detail turns a test red.
 
 ## Stories
 
@@ -61,7 +61,7 @@ Size: 5 SP. Phase 2. Branch: `story/c11-s2-leg-and-end-to-end-tests`.
 
 **Definition of Done**
 
-- expect compares outcome, reason code, messages per port with counts, trace and virtual elapsed time.
+- expect compares outcome, reason code, messages per port with counts, the business trace, the detail of composite steps where given, and virtual elapsed time.
 - An inbound sample is injected through an inward simulator.
 - The common Definition of Done in `CLAUDE.md` holds.
 

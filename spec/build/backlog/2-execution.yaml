@@ -155,7 +155,7 @@ components:
     design: [Part 5, Part 6, Annex C]
     schemas: [workflow, hook, configuration-set, test-case]
     dependsOn: [C04, C06, C07, C10, C23]
-    dos: The interpreter produces the expected trace for all 43 scenarios of the conformance kit.
+    dos: The interpreter produces the expected trace for all 46 scenarios of the conformance kit.
     stories:
       - id: C09-S1
         title: Core flow
@@ -257,6 +257,17 @@ components:
         dod:
           - State holds header, facts and references only; each step's delta and the release that ran are recorded.
         dos: CK-CLAIM-01, CK-DELTA-01 and CK-TRACE-01 pass.
+      - id: C09-S12
+        title: Blocks, returns and the two traces
+        sp: 5
+        story: As a designer, I want a composite step to be one line in my trace and to open into its inner steps, so that I read the business flow and can still see what happened underneath.
+        needs: [C09-S2, C04-S6]
+        dod:
+          - The interpreter runs the expanded form only. A block is a frame; a return leaves it with an outcome; handle then applies as on a call.
+          - The business trace has one entry per authored step. The detail has the steps inside each block, with prefixed ids.
+          - An await inside a block uses the timeout that expansion resolved from the calling step.
+          - A composite can be run alone, as an activity-level test.
+        dos: CK-BLOCK-01 to 03 pass, and WPS-EXC-001, WPS-EXC-002, AANI-EXC-001 and AANI-EXC-002 pass.
 
   - id: C10
     title: Simulator runtime
@@ -316,7 +327,7 @@ components:
     design: [Part 8, Part 7]
     schemas: [test-case]
     dependsOn: [C09, C10]
-    dos: All 26 factory and example tests run green once their scripts exist, and a changed trace turns a test red.
+    dos: All 30 factory and example tests run green once their scripts exist, and a changed trace or detail turns a test red.
     stories:
       - id: C11-S1
         title: Rule set and activity tests
@@ -331,7 +342,7 @@ components:
         story: As a designer, I want to test a leg, or a platform workflow with a leg, so that the whole payment is proven on the virtual clock.
         needs: [C11-S1]
         dod:
-          - expect compares outcome, reason code, messages per port with counts, trace and virtual elapsed time.
+          - expect compares outcome, reason code, messages per port with counts, the business trace, the detail of composite steps where given, and virtual elapsed time.
           - An inbound sample is injected through an inward simulator.
         dos: AANI-OUT-001 to 008, WPS-OUT-001 to 005, AANI-IN-001 and WPS-IN-001 pass.
       - id: C11-S3

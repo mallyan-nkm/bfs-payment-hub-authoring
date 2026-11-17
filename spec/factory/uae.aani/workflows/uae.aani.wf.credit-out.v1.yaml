@@ -4,7 +4,7 @@ name: uae.aani.wf.credit-out.v1
 release: 1.0.0
 dsl: 1.0.0
 title: Aani credit transfer, outward
-description: Scheme checks, participant lookup, prefund check and send. A pending reply waits for the status report; an unknown outcome leads to a status inquiry. A short budget; never a blind re-send.
+description: Scheme checks, participant lookup, prefund check and send. The send step is a composite. It waits for a status report after a pending reply and inquires after an unknown outcome. A short budget; never a blind re-send.
 direction: outward
 synchronous: true
 implements:
@@ -37,43 +37,10 @@ do:
     handle:
       unmappable: { end: rejected }
   - id: send
-    call: uae.aani.exchange.send-credit.v1
+    call: uae.aani.exchange.submit-credit.v1
     handle:
       rejected: { end: rejected }
-      pending:
-        - id: await-status
-          await:
-            message: uae.aani.status-report
-            correlateBy: header.endToEndId
-            timeout: PT4S
-            onTimeout: { end: pending }
-        - id: read-status
-          call: uae.aani.map.status-in.v1
-          handle:
-            rejected: { end: rejected }
-            pending: { end: pending }
-        - end: settled
-      unknown:
-        - loop:
-            max: 3
-            every: PT2S
-            until: { outcomeOf: inquire, in: [accepted, rejected] }
-            do:
-              - id: inquire
-                call: uae.aani.exchange.inquire-status.v1
-                handle:
-                  rejected: { continue: true }
-                  pending: { continue: true }
-                  unknown: { continue: true }
-        - switch:
-            by: { outcomeOf: inquire }
-            cases:
-              accepted:
-                - end: settled
-              rejected:
-                - end: rejected
-            default:
-              - end: pending
+      pending: { end: pending }
   - end: settled
 provenance:
   origin: factory

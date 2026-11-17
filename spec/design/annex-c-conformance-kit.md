@@ -1,6 +1,6 @@
 # Annex C. Conformance kit
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## C.1 Purpose
 
@@ -21,7 +21,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 43 scenarios in draft 0.1.
+The machine-readable list is `conformance/kit.yaml`. It holds 46 scenarios in draft 0.2.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 43 scenarios in dr
 | Waiting | CK-AWAIT-01 to 05, CK-WAIT-01, CK-DEADLINE-01 | Messages, timers, business calendar, deadlines; early, late and duplicate messages |
 | Undo and close | CK-COMP-01, CK-FINALLY-01 | Compensation in reverse; finally on every end |
 | Composition | CK-SLOT-01 and 02, CK-HANDLER-01 | Slots and legs; handlers without durable state |
+| Composite steps | CK-BLOCK-01 to 03 | Blocks and returns; the reply time of the calling step; the business trace and the detail |
 | Signals | CK-SIGNAL-01 to 03 | Pause, resume, cancel, re-screen |
 | Hooks | CK-HOOK-01 to 04 | Halt, transform, notify, unbound |
 | Versions | CK-PIN-01 and 02, CK-LOOKUP-01, CK-SUP-01 | Exact pins, lookup by date, supersession |
@@ -48,6 +49,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 43 scenarios in dr
 | Loop | CK-LOOP-01, CK-LOOP-02 |
 | Await, wait | CK-AWAIT-01 to 05, CK-WAIT-01 |
 | Slot | CK-SLOT-01, CK-SLOT-02 |
+| Block, return | CK-BLOCK-01 to 03 |
 | Use | Covered inside CK-SEQ-01, which inlines a segment |
 | Try, compensate | CK-COMP-01 |
 | Hook | CK-HOOK-01 to 04 |

@@ -1,6 +1,6 @@
 # Part 7. Simulator model
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 7.1 Purpose
 

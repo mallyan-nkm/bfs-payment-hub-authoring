@@ -6,7 +6,7 @@ Group: Export. Phase: 2, 4. Stories: 3. Size: 11 SP.
 
 ## Purpose
 
-Hold the 43 scenarios as content, run them on any target through an adapter, and report the result so a release can be gated on it.
+Hold the 46 scenarios as content, run them on any target through an adapter, and report the result so a release can be gated on it.
 
 ## Read first
 
@@ -41,7 +41,7 @@ Size: 5 SP. Phase 2. Branch: `story/c23-s1-kit-content`.
 
 **Definition of Done**
 
-- All 43 scenarios of conformance/kit.yaml have their artefacts under scope ck and validate.
+- All 46 scenarios of conformance/kit.yaml have their artefacts under scope ck and validate.
 - The ck scope is refused in any shared or bank pack.
 - The common Definition of Done in `CLAUDE.md` holds.
 
@@ -64,13 +64,13 @@ Size: 5 SP. Phase 2. Branch: `story/c23-s2-runner-adapter-and-trace-comparison`.
 **Definition of Done**
 
 - An adapter interface starts an instance, delivers a message, sends a signal, advances time and reads the trace.
-- The comparison is on step id, outcome, attempts and messages, never on engine history.
+- The comparison is on the business trace, the detail of composite steps, attempts and messages, never on engine history.
 - A reference adapter replays the expected traces, so the runner is tested before any target exists.
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- The runner reports 43 of 43 on the reference adapter, and a trace with one changed outcome is reported at the step that differs.
+- The runner reports 46 of 46 on the reference adapter, and a trace with one changed outcome is reported at the step that differs.
 
 ### C23-S3 Report for the release gate
 

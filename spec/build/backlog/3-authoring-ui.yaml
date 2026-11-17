@@ -52,7 +52,7 @@ components:
     purpose: Let the designer define rules, tables, activities, maps and simulators in forms, with no code.
     design: [Part 10, Part 3, Part 4, Part 7]
     schemas: [activity, rule, simulator, port, extension]
-    dependsOn: [C02, C06, C10, C12]
+    dependsOn: [C02, C06, C10, C12, C14]
     dos: Functions F-06 to F-11 pass their acceptance lines, and every document an editor saves validates.
     stories:
       - id: C13-S1
@@ -96,6 +96,16 @@ components:
         dod:
           - Scenarios are built from steps; the standard set is offered as a starting point and is required before publish.
         dos: A new simulator for uae.p.port.participant-directory.v1 publishes only when all eight standard scenarios exist.
+      - id: C13-S6
+        title: Composite and subflow editor
+        sp: 5
+        story: As a scheme owner, I want to define a composite activity and the subflow behind it, so that designers get one block for an exchange that sends, waits and reads.
+        needs: [C13-S3, C14-S2]
+        dod:
+          - A composite is defined in the contract form with the subflow binding. Its subflow is composed on the canvas, where await and return are offered.
+          - L30, L31 and L32 show on the step they concern.
+          - The composite is tested alone, with its inner steps asserted in detail.
+        dos: uae.wps.exchange.submit-salary-file.v1 and its subflow are rebuilt in the studio with no change to either hash, and WPS-EXC-001 passes.
 
   - id: C14
     title: Workflow designer
@@ -147,6 +157,16 @@ components:
         dod:
           - The panel shows type default, activity default and step override per field, and the budget of the longest path against the deadline.
         dos: For the send step of uae.aani.wf.credit-out.v1 the panel shows each value with its source, and the longest path against the PT8S deadline.
+      - id: C14-S6
+        title: Composite steps on the canvas
+        sp: 3
+        story: As a designer, I want an exchange that waits for its reply to be one block, so that I model the business flow and not the plumbing.
+        needs: [C14-S2, C04-S6]
+        dod:
+          - A composite is placed, handled and given a reply time like any block. Await and return are not offered outside a subflow.
+          - The block opens read-only to show the steps it expands to, and the whole workflow can be viewed in its expanded form.
+          - The reply time and where it came from show in the effective policy panel.
+        dos: uae.wps.wf.salary-file-out.v1 shows submit as one block, and its expanded view equals the file of the same name under expanded/.
 
   - id: C15
     title: Test bench UI
@@ -182,6 +202,7 @@ components:
         needs: [C15-S2, C11-S3]
         dod:
           - The timeline is on virtual time; each step opens its delta with personal data masked.
+          - The steps inside a composite are nested under it and closed by default.
         dos: The timeline of AANI-OUT-003 shows three attempts and the backoff between them.
       - id: C15-S4
         title: Assertions and saved tests

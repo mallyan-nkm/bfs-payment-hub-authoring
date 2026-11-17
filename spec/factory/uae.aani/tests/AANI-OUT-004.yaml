@@ -47,6 +47,8 @@ expect:
     - participants:found
     - prefund:sufficient
     - render:mapped
-    - send:unknown
-    - inquire:accepted
+    - send:accepted
     - end:settled
+  detail:
+    - send.send:unknown
+    - send.inquire:accepted

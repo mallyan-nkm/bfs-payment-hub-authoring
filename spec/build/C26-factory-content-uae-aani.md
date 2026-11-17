@@ -77,11 +77,12 @@ Size: 5 SP. Phase 3. Branch: `story/c26-s2-credit-transfer-out-end-to-end`.
 
 - Scripts for map, send and status inquiry; tests for accepted, rejected, retried then accepted, unknown then settled by inquiry, no reply at all, pending then settled by the status report, pending with no final status in time, and an unknown creditor agent.
 - A test for the returned exit outcome is added, or the outcome is removed from the leg.
+- The send composite and its subflow are tested alone.
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- AANI-OUT-001 to 008 pass with p.wf.commercial.v1, each within the declared deadline on the virtual clock.
+- AANI-OUT-001 to 008 pass with p.wf.commercial.v1, each within the declared deadline on the virtual clock, and AANI-EXC-001 and 002 pass.
 
 ### C26-S3 Credit transfer in and refuse
 

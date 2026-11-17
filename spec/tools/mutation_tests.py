@@ -19,7 +19,6 @@ COPY = ("schemas", "factory", "examples", "conformance", "tools")
 
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
 SAL = "factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml"
-OUT = "factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml"
 
 # (id, expected line prefix, file, old text, new text, what it breaks)
 CASES = [
@@ -32,7 +31,7 @@ CASES = [
     ("M04", "ERROR L04", "factory/p/activities/p.reserve.funds.v1.yaml",
      "release: 1.0.0", "release: 2.0.0", "the release major disagrees with the name"),
     ("M05", "ERROR L05", SAL,
-     "      unknown: { end: pending }\n", "", "an outcome is left unhandled"),
+     "      pending: { end: pending }\n", "", "an outcome is left unhandled"),
     ("M06", "ERROR L06", WF,
      "- hook: before-release", "- hook: not-declared", "a hook step names an undeclared hook point"),
     ("M07", "ERROR L07", "factory/uae.aani/workflows/uae.aani.handler.proxy-lookup.v1.yaml",
@@ -41,7 +40,7 @@ CASES = [
      "  slot: scheme-leg", "  slot: no-such-slot", "a leg fills a slot that is not declared"),
     ("M09", "ERROR L09", "factory/p/ports/p.port.channel.v1.yaml",
      "title: Originating channel", "title: Originating channel of example-bank", "shared content names a tenant"),
-    ("M10", "ERROR L10", OUT,
+    ("M10", "ERROR L10", "factory/uae.aani/workflows/uae.aani.sub.submit-credit.v1.yaml",
      "message: uae.aani.status-report", "message: uae.aani.status-request-in", "a deliver message is awaited by nobody"),
     ("M11", "WARN  L11", "factory/p/activities/p.reconcile.scheme-report.v1.yaml",
      "invokedBy: schedule\n", "", "a block that nothing calls stops saying what runs it"),
@@ -54,8 +53,8 @@ CASES = [
     ("M15", "ERROR L15", "factory/uae.aani/tests/AANI-OUT-001.yaml",
      "    scenario: accept\n  - port: p.port.liquidity.v1", "    scenario: no-such-scenario\n  - port: p.port.liquidity.v1",
      "a test bench names a scenario the simulator lacks"),
-    ("M16", "ERROR L16", SAL,
-     "message: uae.wps.ack", "message: uae.wps.pif", "a workflow awaits a message that is not a deliver message"),
+    ("M16", "ERROR L16", "factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml",
+     "message: uae.wps.ack", "message: uae.wps.pif", "a subflow awaits a message that is not a deliver message"),
     ("M17", "ERROR L17", "factory/uae.aani/rules/uae.aani.rule.amount-within-limit.v1.yaml",
      "      as: maxAmount\n", "      as: otherParam\n", "a rule uses a parameter it does not declare"),
     ("M18", "ERROR L18", "examples/bank/activities/b.enrich.cost-centre.v1.yaml",
@@ -66,6 +65,12 @@ CASES = [
      "with: 1.0.1", "with: 2.0.0", "a supersession crosses a major line"),
     ("M21", "ERROR L22", "factory/uae.p/simulators/uae.p.sim.calendar.v1.yaml",
      "port: uae.p.port.calendar.v1", "port: uae.p.port.participant-directory.v1", "a port is left with no simulator"),
+    ("M22", "ERROR L30", "factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml",
+     "  - return: accepted\n", "  - return: settled\n", "a subflow returns an outcome its activity does not declare"),
+    ("M23", "ERROR L31", "factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml",
+     "wfKind: subflow", "wfKind: segment", "an await is written outside a subflow"),
+    ("M24", "ERROR L32", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
+     "  replyTimeout: P1D\n", "", "an await with no timeout has no reply time to take"),
 ]
 
 

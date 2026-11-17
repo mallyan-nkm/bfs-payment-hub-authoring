@@ -23,6 +23,8 @@ expect:
     - record-checks:pass
     - record-iban:pass
     - render:mapped
-    - submit:accepted
-    - await-ack:timeout
+    - submit:pending
     - end:pending
+  detail:
+    - submit.send:accepted
+    - submit.await-ack:timeout

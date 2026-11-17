@@ -54,7 +54,8 @@
         "send",
         "respond",
         "inquire",
-        "report"
+        "report",
+        "receive"
       ]
     },
     "level": {

@@ -51,6 +51,7 @@ Size: 3 SP. Phase 2. Branch: `story/c20-s1-export-package-and-binding`.
 **Definition of Done**
 
 - The package holds the pack, its manifest (C05-S2) and a binding that validates against engine-binding.schema.json.
+- The package holds the expanded form of every workflow, with the authored release and hash it came from. An engine is never given a composite to resolve.
 - Task names follow name@release.
 - The common Definition of Done in `CLAUDE.md` holds.
 
@@ -79,7 +80,7 @@ Size: 8 SP. Phase 2. Branch: `story/c20-s2-interpreter-workflow-on-temporal`.
 
 **Definition of Success**
 
-- The sequence, handle, switch, parallel, for each, loop, wait, await and slot scenarios of the kit pass on Temporal with the business trace equal to the studio's.
+- The sequence, handle, switch, parallel, for each, loop, wait, await, block and slot scenarios of the kit pass on Temporal, with the business trace and the detail equal to the studio's.
 
 ### C20-S3 Policy mapping and activity workers
 

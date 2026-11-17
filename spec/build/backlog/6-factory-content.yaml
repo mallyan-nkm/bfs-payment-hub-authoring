@@ -85,7 +85,8 @@ components:
         needs: [C25-S2]
         dod:
           - Scripts for the leg's map and exchange activities; tests for acknowledged, refused by WPS, no acknowledgement within the wait, a control total that does not match and a record with an invalid IBAN.
-        dos: WPS-OUT-001 to 005 pass with p.wf.corporate.v1.
+          - The submit composite and its subflow are tested alone.
+        dos: WPS-OUT-001 to 005 pass with p.wf.corporate.v1, and WPS-EXC-001 and 002 pass.
       - id: C25-S4
         title: Agent payment in and returns
         sp: 5
@@ -136,7 +137,8 @@ components:
         dod:
           - Scripts for map, send and status inquiry; tests for accepted, rejected, retried then accepted, unknown then settled by inquiry, no reply at all, pending then settled by the status report, pending with no final status in time, and an unknown creditor agent.
           - A test for the returned exit outcome is added, or the outcome is removed from the leg.
-        dos: AANI-OUT-001 to 008 pass with p.wf.commercial.v1, each within the declared deadline on the virtual clock.
+          - The send composite and its subflow are tested alone.
+        dos: AANI-OUT-001 to 008 pass with p.wf.commercial.v1, each within the declared deadline on the virtual clock, and AANI-EXC-001 and 002 pass.
       - id: C26-S3
         title: Credit transfer in and refuse
         sp: 5

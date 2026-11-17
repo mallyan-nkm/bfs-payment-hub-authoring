@@ -1,6 +1,6 @@
 # Part 5. Workflow DSL
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 5.1 Purpose
 
@@ -14,6 +14,7 @@ The DSL is the single definition of a workflow. It is block-structured and engin
 | `leg` | The part unique to one scheme and one direction. Fills a slot. Runs as a child workflow. | Yes |
 | `segment` | A reusable run of steps, inlined at publish. | Not on its own |
 | `handler` | A stateless request and response. No await, timer, hold or write. | No |
+| `subflow` | The steps behind one composite activity. Returns an outcome to the step that called it. Expanded in place. | Not on its own |
 
 ## 5.3 Constructs (the portable core)
 
@@ -26,28 +27,32 @@ The DSL is the single definition of a workflow. It is block-structured and engin
 | Parallel | `parallel: { branches, join: all }` | Run branches together; wait for all |
 | For each | `forEach: { in, do, concurrency, onItemFailure }` | Run steps per batch item |
 | Loop | `loop: { max, every, until, do }` | A bounded loop, for business retry |
-| Await | `await: { message, correlateBy, timeout, calendar, onTimeout }` | Wait for a message, with a timeout |
+| Await | `await: { message, correlateBy, timeout, calendar, onTimeout }` | Subflows only: wait for a message, with a timeout |
 | Wait | `wait: <duration>` | A timer |
 | Slot | `slot: <name>` with `handle` | Run the leg that fills the slot |
 | Use | `use: <segment>` | Inline a segment |
 | Try | `try: [...]` with `catch` and `compensate: all` | Scope for errors and compensation |
 | Hook | `hook: <hook point>` | Run the tenant's hook, if one is bound |
 | End | `end: <outcome>` with optional `compensate: all` | End with an exit outcome |
+| Return | `return: <outcome>` | Subflows only: give the composite activity its outcome |
+| Block | `block: { of, by, do }` with `id` and `handle` | Expanded form only: one composite step with the steps of its subflow inside |
 
 Top-level blocks: `entry`, `exit`, `slots`, `hookPoints`, `signals`, `parameters`, `deadline`, `finally`, `synchronous`, `artefacts`, `do`.
 
 ### Sending and waiting for a reply
 
-An activity never sits waiting for a reply that comes later. It sends and returns; the workflow waits. Four forms cover every case.
+An activity never sits waiting for a reply that comes later, and the designer never models the wait. A composite activity does both jobs (section 5.6): it is one block on her canvas, and underneath it takes one of four forms.
 
-| The reply comes | Form | Example |
+| The reply comes | Underneath the block | Example |
 | --- | --- | --- |
-| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply; no reply is the outcome `unknown` | `uae.aani.exchange.send-credit.v1` |
-| Later, as its own message | A send step, then an `await` step on that message, with a timeout and a timeout branch | `submit` then `await-ack` in `uae.wps.wf.salary-file-out.v1` |
-| Only when asked | A `loop` with `every` around an inquiry activity | The status inquiry in `uae.aani.wf.credit-out.v1` |
-| From a person | A `hold` activity, which creates the item and waits for the decision | `p.hold.repair.v1` |
+| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply | `uae.aani.exchange.send-credit.v1`, inside the Aani send composite |
+| Later, as its own message | A send step, then an `await` on that message, then a map that reads it | `uae.wps.sub.submit-salary-file.v1` |
+| Only when asked | A `loop` with `every` around an inquiry activity | The inquiry in `uae.aani.sub.submit-credit.v1` |
+| From a person | A `hold` block, which was always one block | `p.hold.repair.v1` |
 
 The reply reaches the workflow through the front door, not through the activity that sent the request. The scheme's dispatch table marks the message `deliver` and names its correlation key; the front door finds the instance and hands it the message. On an engine that hand-over is a signal or an external event (Part 9). In this DSL the word signal is kept for the four operator controls.
+
+What stays in the designer's hands: the business outcomes of the block, and how long it waits (`policy.replyTimeout` on her step). `wait`, `loop` and `hold` remain her constructs. Only `await` moves out of her view.
 
 ## 5.4 Requirements
 
@@ -85,6 +90,15 @@ The reply reaches the workflow through the front door, not through the activity 
 | R-05-30 | A message delivered to an instance before the matching `await` starts MUST be kept and consumed by that `await`. | Conformance CK-AWAIT-04 |
 | R-05-31 | A `deliver` message that finds no instance waiting for it, because none exists, the instance has ended or the `await` has timed out, MUST be recorded against the payment and handed to operations as unmatched. It MUST NOT start a workflow, resume one, or be dropped. | Conformance CK-AWAIT-03 |
 | R-05-32 | A second copy of a message that an `await` has already consumed MUST be recorded and ignored. | Conformance CK-AWAIT-05 |
+| R-05-33 | A platform workflow, leg, segment or handler MUST NOT contain an `await`. A wait for a message lives in the subflow of a composite activity. | Lint L31 |
+| R-05-34 | A subflow MUST implement exactly one composite activity, MUST return only outcomes that activity declares, and MUST NOT contain `end`, `slot`, `hook` or `use`. | Lint L30 |
+| R-05-35 | Expansion MUST be a pure function of the authored workflow and its pinned artefacts: the same input gives the same bytes. The expanded form MUST NOT be edited, and MUST NOT be stored as authored. | `tools/expand.py --check`; lint L31 |
+| R-05-36 | The studio interpreter and every engine binding MUST run the expanded form, and MUST record the authored release and hash it came from. | Conformance CK-BLOCK-01 |
+| R-05-37 | An `await` with no timeout MUST take the reply time of the calling step: the step's policy, else the activity's. | Lint L32; conformance CK-BLOCK-03 |
+| R-05-38 | A run MUST yield two traces: the business trace of authored step ids, in which a composite step is one entry, and the detail of the steps inside each block. Tests and conformance compare both. | Conformance CK-BLOCK-01, CK-BLOCK-02 |
+| R-05-39 | A static check that needs the whole flow (data flow, effects, budgets, portability, step ids) MUST run on the expanded form and MUST report its finding at the authored step, naming the inner step. | Studio test (C04) |
+| R-05-40 | A step that calls a composite MUST have an id. | Lint L30 |
+| R-05-41 | The pins of a workflow MUST include each composite it calls, that composite's subflow, and everything the subflow reaches. | Lint L23 |
 
 ## 5.5 Messages that are not payments
 
@@ -99,7 +113,65 @@ The reply reaches the workflow through the front door, not through the activity 
 
 An inward platform workflow MAY declare a second slot, `scheme-refuse`, so that a leg always answers the scheme when the platform refuses a payment.
 
-## 5.6 The check catalogue
+## 5.6 Composite steps: the authored form and the expanded form
+
+A designer places one block, for example "submit the salary file", and handles its business outcomes. What the block does underneath is the subflow of that composite activity, written once by the scheme's owner. A workflow therefore has two forms.
+
+| Form | What it is | Who works with it |
+| --- | --- | --- |
+| Authored | What the designer writes and the studio stores, versions and pins. A composite is one `call` step. There is no `await`. | The designer, reviewers, tests |
+| Expanded | Derived from the authored form. Each composite step is a `block` holding the steps of its subflow. Only the portable core is left. | The studio interpreter, every engine binding, and the checks that need the whole flow |
+
+Expansion does four things for each step that calls a composite. `tools/expand.py` is the reference.
+
+1. It takes the subflow of the composite at its pinned release, expanded in its turn.
+2. It prefixes each inner step id, and each `outcomeOf` that names one, with the calling step's id and a dot: `submit.await-ack`.
+3. It gives each `await` that has no timeout the reply time of the calling step: the step's `policy.replyTimeout`, else the activity's. The same holds for `replyCalendar`.
+4. It wraps the result in a `block` that carries the calling step's id and its `handle`. A `return` inside gives the block its outcome; `handle` then applies as on any call.
+
+What the designer writes:
+
+```yaml
+- id: submit
+  call: uae.wps.exchange.submit-salary-file.v1
+  handle:
+    rejected: { end: rejected }
+    pending: { end: pending }
+```
+
+What an engine runs:
+
+```yaml
+- id: submit
+  block:
+    of: uae.wps.exchange.submit-salary-file.v1
+    by: uae.wps.sub.submit-salary-file.v1
+    do:
+      - id: submit.send
+        call: uae.wps.exchange.send-salary-file.v1
+        handle:
+          rejected: { return: rejected }
+          unknown: { return: pending }
+      - id: submit.await-ack
+        await:
+          message: uae.wps.ack
+          correlateBy: header.fileId
+          timeout: P1D            # from the reply time of the calling step
+          calendar: business
+          onTimeout: { return: pending }
+      - id: submit.read-ack
+        call: uae.wps.map.ack-in.v1
+        handle:
+          nak: { return: rejected }
+      - return: accepted
+  handle:
+    rejected: { end: rejected }
+    pending: { end: pending }
+```
+
+Her trace has one line, `submit:accepted`. The detail has three: `submit.send:accepted`, `submit.await-ack:received`, `submit.read-ack:ack`. The same authored step expands differently when the scheme changes how it answers: only the subflow gets a new release, and her workflow gets a new pin.
+
+## 5.7 The check catalogue
 
 Every check that `tools/validate.py` implements has at least one case in `tools/mutation_tests.py` that breaks the repository and expects the check to fire. A check with no mutation case MUST NOT be marked Yes.
 
@@ -134,18 +206,25 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L27 | Supersession: forward within one major line; every workflow release in scope uses the artefact; evidence stays in scope; maker and checker differ | Yes |
 | L28 | Script determinism | To build (C07, C08) |
 | L29 | Step ids unique after inlining | To build (C04) |
+| L30 | A composite and its subflow agree: binding, outcomes, policy; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
+| L31 | `await` and `return` appear only in a subflow; `block` appears only in the expanded form | Yes |
+| L32 | An `await` with no timeout has a reply time to take | Yes |
 
-## 5.7 Examples
+## 5.8 Examples
 
 - Platform workflow with a slot, hook points and `finally`: `factory/p/workflows/p.wf.corporate.v1.yaml`.
 - Inward platform workflow with a refuse slot: `factory/p/workflows/p.wf.inward.v1.yaml`.
-- Leg with a short budget, a bounded inquiry loop and a deadline: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml`.
-- Leg with long awaits on a business calendar: `factory/uae.wps/workflows/uae.wps.wf.refund-out.v1.yaml`.
+- Leg with a short budget and a deadline, as the designer writes it: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml`.
+- Subflow with a wait for a later reply and a bounded inquiry loop: `factory/uae.aani/workflows/uae.aani.sub.submit-credit.v1.yaml`.
+- Subflow with two waits on a business calendar: `factory/uae.wps/workflows/uae.wps.sub.request-refund.v1.yaml`.
+- Expanded forms: `expanded/`.
 - Handler: `factory/uae.aani/workflows/uae.aani.handler.status-inquiry-in.v1.yaml`.
 - Dispatch table: `factory/uae.wps/scheme.yaml`.
 
-## 5.8 Open decisions touching this part
+## 5.9 Open decisions touching this part
 
 D9 (synchronous segment for instant rails; the `synchronous` marker is carried now), D17 (where handlers run).
 
 Open point: an `await` names one catalogue message. Where a scheme answers with different files or message types, the dispatch table maps them to one catalogue message that carries a status, as `uae.wps.ack` does for ACK and NAK. Waiting for the first of several different messages is not in the portable core. Add it only when a scheme needs it, with a mapping for each engine and a conformance scenario.
+
+Open point: composites cover scheme exchanges. A bank-side port (core banking, screening) is request and reply at the interop boundary; an adapter bridges a queue within the attempt timeout. A bank-side reply that can take longer than an attempt timeout needs port-level messages and dispatch, which this draft does not define.

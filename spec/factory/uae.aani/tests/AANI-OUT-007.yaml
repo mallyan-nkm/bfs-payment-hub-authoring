@@ -44,5 +44,7 @@ expect:
     - prefund:sufficient
     - render:mapped
     - send:pending
-    - await-status:timeout
     - end:pending
+  detail:
+    - send.send:pending
+    - send.await-status:timeout

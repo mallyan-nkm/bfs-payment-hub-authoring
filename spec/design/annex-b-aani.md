@@ -1,6 +1,6 @@
 # Annex B. Aani authored on paper
 
-Status: draft 0.1, 17 November 2026. Provisional: AEP publishes Aani's design principles but not its message set. Message identifiers, time limits and reason codes here follow common ISO 20022 instant-payment practice. Confirm every item against the AEP participant specification (decision D10).
+Status: draft 0.2, 17 November 2026. Provisional: AEP publishes Aani's design principles but not its message set. Message identifiers, time limits and reason codes here follow common ISO 20022 instant-payment practice. Confirm every item against the AEP participant specification (decision D10).
 
 ## B.1 The scheme in one paragraph
 
@@ -24,11 +24,13 @@ Aani is the UAE instant payments platform operated by Al Etihad Payments. It run
 
 | Artefact | Fills | Steps |
 | --- | --- | --- |
-| `uae.aani.wf.credit-out.v1` | `scheme-leg` of `p.wf.commercial.v1` | Scheme checks; participant lookup in the cluster directory; prefund check; render; send. On pending, await the status report and read it. On unknown, up to three status inquiries; end by the last inquiry |
+| `uae.aani.wf.credit-out.v1` | `scheme-leg` of `p.wf.commercial.v1` | Scheme checks; participant lookup in the cluster directory; prefund check; render; send (composite) |
 | `uae.aani.wf.credit-in.v1` | `scheme-leg` of `p.wf.inward.v1` | Scheme checks; credit; render the status; answer. Each refusal path answers too. |
 | `uae.aani.wf.credit-refuse.v1` | `scheme-refuse` of `p.wf.inward.v1` | Render the rejection; answer |
 | `uae.aani.handler.status-inquiry-in.v1` | Handler | Read the request; read the payment record; render; answer |
 | `uae.aani.handler.proxy-lookup.v1` | Handler | Resolve the proxy for a channel |
+
+The send step is the composite `uae.aani.exchange.submit-credit.v1`. The designer handles `rejected` and `pending`. Underneath, `uae.aani.sub.submit-credit.v1` sends; on a pending reply it awaits the status report and reads it; on an unknown outcome it inquires up to three times with the original ids and ends by the last inquiry.
 
 ## B.4 Dispatch table
 
@@ -63,15 +65,15 @@ Generated from `factory/inventory.yaml`.
 <!-- INVENTORY:uae.aani -->
 | Kind | Count | Artefacts |
 | --- | --- | --- |
-| Activity | 11 | `uae.aani.enrich.proxy-resolve.v1`, `uae.aani.exchange.inquire-status.v1`, `uae.aani.exchange.respond-status.v1`, `uae.aani.exchange.send-credit.v1`, `uae.aani.map.credit-in.v1`, `uae.aani.map.credit-out.v1`, `uae.aani.map.status-in.v1`, `uae.aani.map.status-out.v1`, `uae.aani.map.status-request-in.v1`, `uae.aani.reserve.prefund-check.v1`, `uae.aani.validate.credit.v1` |
+| Activity | 12 | `uae.aani.enrich.proxy-resolve.v1`, `uae.aani.exchange.inquire-status.v1`, `uae.aani.exchange.respond-status.v1`, `uae.aani.exchange.send-credit.v1`, `uae.aani.exchange.submit-credit.v1`, `uae.aani.map.credit-in.v1`, `uae.aani.map.credit-out.v1`, `uae.aani.map.status-in.v1`, `uae.aani.map.status-out.v1`, `uae.aani.map.status-request-in.v1`, `uae.aani.reserve.prefund-check.v1`, `uae.aani.validate.credit.v1` |
 | Rule | 2 | `uae.aani.rule.amount-within-limit.v1`, `uae.aani.rule.creditor-iban-or-proxy.v1` |
 | Ruleset | 1 | `uae.aani.ruleset.credit.v1` |
 | Port | 2 | `uae.aani.port.proxy.v1`, `uae.aani.port.switch.v1` |
 | Simulator | 3 | `uae.aani.sim.proxy.v1`, `uae.aani.sim.switch-inward.v1`, `uae.aani.sim.switch-outward.v1` |
-| Workflow | 5 | `uae.aani.handler.proxy-lookup.v1`, `uae.aani.handler.status-inquiry-in.v1`, `uae.aani.wf.credit-in.v1`, `uae.aani.wf.credit-out.v1`, `uae.aani.wf.credit-refuse.v1` |
+| Workflow | 6 | `uae.aani.handler.proxy-lookup.v1`, `uae.aani.handler.status-inquiry-in.v1`, `uae.aani.sub.submit-credit.v1`, `uae.aani.wf.credit-in.v1`, `uae.aani.wf.credit-out.v1`, `uae.aani.wf.credit-refuse.v1` |
 | Scheme | 1 | `uae.aani.scheme` |
-| Test | 14 | `AANI-HND-001`, `AANI-IN-001`, `AANI-OUT-001`, `AANI-OUT-002`, `AANI-OUT-003`, `AANI-OUT-004`, `AANI-OUT-005`, `AANI-OUT-006`, `AANI-OUT-007`, `AANI-OUT-008`, `AANI-RULE-001`, `AANI-RULE-002`, `AANI-RULE-003`, `AANI-RULE-004` |
-| Total | 39 | |
+| Test | 16 | `AANI-EXC-001`, `AANI-EXC-002`, `AANI-HND-001`, `AANI-IN-001`, `AANI-OUT-001`, `AANI-OUT-002`, `AANI-OUT-003`, `AANI-OUT-004`, `AANI-OUT-005`, `AANI-OUT-006`, `AANI-OUT-007`, `AANI-OUT-008`, `AANI-RULE-001`, `AANI-RULE-002`, `AANI-RULE-003`, `AANI-RULE-004` |
+| Total | 43 | |
 <!-- /INVENTORY:uae.aani -->
 
 ## B.7 Open points

@@ -41,10 +41,10 @@ The table is generated from `factory/inventory.yaml`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `factory/p/` | shared | 19 | 7 | 2 | 3 | 8 | 8 | 5 |  |  |  | 2 | 54 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 13 |
-| `factory/uae.wps/` | shared | 17 | 11 | 3 |  | 2 | 3 | 5 | 1 | 1 |  | 8 | 51 |
-| `factory/uae.aani/` | shared | 11 | 2 | 1 |  | 2 | 3 | 5 | 1 |  |  | 14 | 39 |
+| `factory/uae.wps/` | shared | 21 | 11 | 3 |  | 2 | 3 | 9 | 1 | 1 |  | 10 | 61 |
+| `factory/uae.aani/` | shared | 12 | 2 | 1 |  | 2 | 3 | 6 | 1 |  |  | 16 | 43 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 2 | 15 |
-| Total | | 53 | 26 | 8 | 3 | 16 | 18 | 15 | 2 | 2 | 3 | 26 | 172 |
+| Total | | 58 | 26 | 8 | 3 | 16 | 18 | 20 | 2 | 2 | 3 | 30 | 186 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack

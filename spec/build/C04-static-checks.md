@@ -2,7 +2,7 @@
 
 # C04 Static checks
 
-Group: Core. Phase: 2, 3. Stories: 5. Size: 19 SP.
+Group: Core. Phase: 2, 3. Stories: 6. Size: 24 SP.
 
 ## Purpose
 
@@ -44,7 +44,7 @@ Size: 5 SP. Phase 2. Branch: `story/c04-s1-port-the-reference-checks`.
 
 **Definition of Done**
 
-- L02 to L18 and L27 are implemented against the loaded model, not against raw files.
+- Every check marked Yes in the catalogue of Part 5 is implemented against the loaded model, not against raw files.
 - Each finding carries the check code, the artefact and the step id.
 - The common Definition of Done in `CLAUDE.md` holds.
 
@@ -140,3 +140,27 @@ Size: 3 SP. Phase 2. Branch: `story/c04-s5-incremental-results-for-the-designer`
 **Definition of Success**
 
 - Editing one handle entry updates only that workflow's findings and those of legs that fill its slots.
+
+### C04-S6 Expand composites
+
+Size: 5 SP. Phase 2. Branch: `story/c04-s6-expand-composites`.
+
+**Story.** As a platform engineer, I want one pure function that expands an authored workflow into the form an engine runs, so that the designer's view and the engine's view cannot drift.
+
+**Definition of Ready**
+
+- Read: `design/05-workflow-dsl.md`, `design/06-tenants-hooks-configuration.md`; `schemas/workflow.schema.json`, `schemas/activity.schema.json`, `schemas/hook.schema.json`, `schemas/configuration-set.schema.json`, `schemas/scheme.schema.json`.
+- Done first: `C04-S1`.
+- Fixtures: `factory/`, `examples/`.
+
+**Definition of Done**
+
+- Expansion follows the four rules of Part 5, section 5.6, in any depth, and refuses a composite that reaches itself.
+- The same input gives the same bytes. The result validates against workflow.schema.json and carries form and expandedFrom.
+- L19, L20, L21, L24 and L29 run on the expanded form and report at the authored step, naming the inner step.
+- L30, L31 and L32 run on the authored form.
+- The common Definition of Done in `CLAUDE.md` holds.
+
+**Definition of Success**
+
+- The expansion of every factory workflow that calls a composite equals the file of the same name under expanded/, byte for byte.

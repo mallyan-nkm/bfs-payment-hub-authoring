@@ -27,6 +27,8 @@ expect:
     - record-iban:pass
     - render:mapped
     - submit:accepted
-    - await-ack:received
-    - read-ack:ack
     - end:settled
+  detail:
+    - submit.send:accepted
+    - submit.await-ack:received
+    - submit.read-ack:ack

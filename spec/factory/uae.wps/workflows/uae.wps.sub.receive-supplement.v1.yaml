@@ -1,0 +1,23 @@
+kind: workflow
+wfKind: subflow
+name: uae.wps.sub.receive-supplement.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Wait for the supplementary file
+description: What the receive-supplement block does underneath. Nothing is sent. The block waits for the file that pairs with the payment file.
+implements:
+  activity: uae.wps.exchange.receive-supplement.v1
+exit:
+  outcomes: [received, missing]
+do:
+  - id: await-supplement
+    await:
+      message: uae.wps.psi
+      correlateBy: header.fileId
+      onTimeout: { return: missing }
+  - return: received
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [CBUAE WPS responsibility guide 2018]
+  note: From public sources. The supplementary file is held by reference; its map and the wait are to be confirmed.

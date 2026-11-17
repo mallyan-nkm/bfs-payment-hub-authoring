@@ -39,7 +39,7 @@ given:
 expect:
   outcome: settled
   attempts:
-    send: 3
+    send.send: 3
   messages:
     - port: uae.aani.port.switch.v1
       message: uae.aani.credit-transfer

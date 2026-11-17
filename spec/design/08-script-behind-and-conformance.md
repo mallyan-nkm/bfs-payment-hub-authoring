@@ -1,6 +1,6 @@
 # Part 8. Script-behind and conformance
 
-Status: draft 0.1, 17 November 2026. Normative words follow RFC 2119.
+Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 8.1 Purpose
 
@@ -37,7 +37,7 @@ Both languages get the same interface, injected. Nothing else is reachable.
 | R-08-04 | Canonical types MUST be generated for both languages from the one model. | Type generation test (C03) |
 | R-08-05 | The two sandboxes MUST behave identically. One test suite runs against both. | Sandbox parity suite (C07, C08) |
 | R-08-06 | A script MUST stop at its attempt timeout. A script that does not stop is killed and the attempt fails as transient. | Sandbox test |
-| R-08-07 | An activity MUST declare its binding: `script`, `native` or `builtin`. | Schema `common#implementation` (L00) |
+| R-08-07 | An activity MUST declare its binding: `script`, `native`, `builtin` or `subflow`. A `subflow` binding has no script; its steps have their own bindings. | Schema `common#implementation` (L00) |
 | R-08-08 | A conformance pack is the set of an artefact's tests marked `conformance: true`. It is language-neutral. | Schema `test-case` (L00) |
 | R-08-09 | A code-behind MUST pass the conformance pack of its major line before a manifest may name it. | Release check (C19) |
 | R-08-10 | Script and code-behind carry the same release number. A change to the conformance pack is a release of the artefact. | Release check (C19) |
