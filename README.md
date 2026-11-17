@@ -17,6 +17,10 @@ cd studio && npm install && npm run web:build && npm start
 
 Then open http://localhost:4317. Choose the tenant (`owner` for shared content, `example-bank`) and the user you act as in the header; roles are enforced.
 
+## Learn it
+
+`docs/guide/studio-guide.html` is the user guide: setting up and deploying, every feature, a training path, and a full workflow built from scratch in the web app. Its walk-through is also a browser test (`studio/test/blackbox/ui-build.test.ts`). `docs/TRAINING.md` has the training path as plain text.
+
 ## What runs today
 
 | Evidence | Result |

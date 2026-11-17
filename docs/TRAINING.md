@@ -1,5 +1,7 @@
 # Training: the TransactHub Designer Studio, step by step
 
+The complete guide, with every feature, setting up and deploying, this training path, and a full workflow built from scratch in the web app, is `docs/guide/studio-guide.html` (built from `docs/guide/template.html` by `docs/guide/build.ts`). This file is the training path as plain text.
+
 This guide teaches the studio by doing. Work through the exercises in order: each builds on the one before. Every step says what to click or type and what you should see. Allow about four hours for the whole guide; Part A and the first five exercises take about an hour.
 
 All data here is synthetic. Never type real names, account numbers or other personal data into the studio, its tests or its samples.
