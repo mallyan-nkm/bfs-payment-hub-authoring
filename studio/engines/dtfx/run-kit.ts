@@ -1,6 +1,8 @@
 import { openEnv } from '../../src/env.js';
 import { runKit } from '../../src/conformance/kit.js';
-import { buildHarness, dtfxAdapter } from './adapter.js';
+import { spawnSync } from 'node:child_process';
+import { blockedByWindows } from '../../src/deploy/blocked.js';
+import { buildHarness, dtfxAdapter, HARNESS_DLL } from './adapter.js';
 
 // Run the conformance kit on DTFx: `npx tsx engines/dtfx/run-kit.ts [CK-ID...]` from studio/.
 // The comparison is the kit runner's own (compareObservation); only the adapter differs.
@@ -9,6 +11,13 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const verbose = process.argv.includes('--verbose');
 const env = openEnv({ dataRoot: '' });
 buildHarness();
+// One start of the harness with no input: if Windows refuses to load it, stop here with the reason.
+const probe = spawnSync('dotnet', [HARNESS_DLL], { encoding: 'utf8', timeout: 60000 });
+const blocked = blockedByWindows(`${probe.stdout ?? ''}${probe.stderr ?? ''}`);
+if (blocked) {
+  console.error(blocked);
+  process.exit(1);
+}
 const adapter = dtfxAdapter(env);
 const t0 = Date.now();
 const res = await runKit(env, args, adapter);

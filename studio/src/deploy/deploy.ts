@@ -8,6 +8,7 @@ import { unzip } from '../export/zip.js';
 import { startEntryFor } from '../testing/runner.js';
 import { runTable } from '../rules/service.js';
 import { routeOf } from '../interp/interpreter.js';
+import { blockedByWindows } from './blocked.js';
 
 // Deploy an export package and run it (Part 9). The package's workers start as separate processes,
 // one per task queue, each serving only its own tasks. The engine harness runs the exported, expanded
@@ -211,7 +212,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
     if (!obsLine) {
       const err = lines.find((l) => l.startsWith('ERROR '));
-      throw new Error(err ? JSON.parse(err.slice(6)) : `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
+      throw new Error(err ? JSON.parse(err.slice(6)) : blockedByWindows(r.stderr) ?? `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
     }
     const obs = JSON.parse(obsLine.slice('OBSERVATION '.length));
     for (const l of r.stderr.split('\n').map((x) => x.trim()).filter(Boolean)) log.push(`[engine] ${l}`);

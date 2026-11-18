@@ -241,6 +241,13 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
   <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>46 of 46 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
   <div class="note">If the build fails with <code>error NU1100: Unable to resolve 'Microsoft.Azure.DurableTask.Core'</code>, NuGet cannot reach a package source. The harness folder names nuget.org in its own <code>nuget.config</code>, so take the latest code with <code>git pull</code>. If it still fails, your network blocks <code>api.nuget.org</code>: on a company network, ask for your proxy settings or an internal NuGet mirror, and add the mirror with <code>dotnet nuget add source &lt;url&gt; -n company</code>.</div>
+  <div class="note">On Windows, if the kit or a deploy says <code>An Application Control policy has blocked this file (0x800711C7)</code>, Windows is refusing to load the harness the studio just built, because it is not signed. The cause is either Smart App Control (Windows 11, personal PCs) or an App Control or AppLocker policy set by your organisation. Event Viewer, under Applications and Services Logs, Microsoft, Windows, CodeIntegrity, Operational, names the policy. Ways forward:
+  <ul>
+    <li><b>A company PC:</b> ask IT to allow the folder <code>studio\engines\dtfx\harness\bin</code>, or to give you a developer exception. Do not try to get round the policy.</li>
+    <li><b>Any PC with WSL:</b> run the studio inside WSL (Ubuntu), where Linux programs are not subject to this policy. Install Node.js and the .NET 8 SDK inside WSL and follow the Linux steps of this guide.</li>
+    <li><b>A personal Windows 11 PC:</b> in Windows Security, App and browser control, Smart App Control settings, choose Off. It cannot be turned back on without resetting Windows, so decide with care.</li>
+  </ul>
+  Everything else in the studio works without DTFx: the interpreter, the test bench, the kit on the studio and the export.</div>
 
   <h3 id="install-java">Install Java 17, for Flowable</h3>
   <p>Only the conformance kit on Flowable needs Java. Check first: if <code>java -version</code> shows 17 or later, skip this. Any OpenJDK build works; Eclipse Temurin is a common one.</p>
@@ -780,6 +787,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>hook:hold</code> then <code>hold:declined</code></td><td>The bank's limit held the payment and operations declined it</td></tr>
       <tr><td><code>No start message in the package's dispatch tables</code></td><td>Give <code>--message</code> for a whole payment, or check the scheme names the leg</td></tr>
       <tr><td><code>dotnet build failed</code>, or <code>dotnet</code> not found</td><td><a href="#install-dotnet">Install the .NET 8 SDK</a> and open a new terminal; the first deploy builds the DTFx harness. Everything except deploying works without it</td></tr>
+      <tr><td><code>An Application Control policy has blocked this file</code></td><td>Windows refuses the unsigned harness. On a company PC ask IT to allow it; or use WSL; on a personal PC, Smart App Control can be turned off. See <a href="#install-dotnet">Install .NET 8</a></td></tr>
       <tr><td><code>error NU1100</code> when DTFx builds</td><td>NuGet cannot reach a package source. <code>git pull</code> for the harness's <code>nuget.config</code>; check <code>dotnet nuget list source</code>; on a company network, use its proxy or NuGet mirror</td></tr>
       <tr><td><code>java</code> not found, or <code>setup.sh</code> will not run</td><td><a href="#install-java">Install Java 17</a>; on Windows run the setup script from Git Bash</td></tr>
       <tr><td>A Python script fails to start</td><td>Check <code>python --version</code> shows 3. Or point the studio at your interpreter with <code>TH_PYTHON</code></td></tr>
