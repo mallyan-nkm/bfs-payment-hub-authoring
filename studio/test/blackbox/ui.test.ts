@@ -92,6 +92,23 @@ describe('the web app', () => {
     await p.close();
   }, 150000);
 
+  it('offers prompt templates in the assistant, and holds the request until every blank is filled', async () => {
+    const { p, problems } = await page();
+    await p.goto(`${server.url}/#/assistant`);
+    await p.getByLabel('Draft kind').selectOption('rule');
+    const options = await p.getByLabel('Prompt template').locator('option').allTextContents();
+    expect(options.length).toBeGreaterThanOrEqual(5);
+    await p.getByLabel('Prompt template').selectOption('rule-limit');
+    const text = await p.getByLabel('Instruction').inputValue();
+    expect(text).toContain('<scope>.rule.<name>.v1');
+    await expect.poll(async () => (await p.locator('[role="status"]').allTextContents()).join(' ')).toContain('Still to fill');
+    expect(await p.getByRole('button', { name: 'Ask for a draft' }).isDisabled()).toBe(true);
+    await p.getByLabel('Instruction').fill('Write a policy rule named b.rule.file-limit.v1 comparing each line and the file total with a parameter fileLimit, default 100000, which the bank sets. Above it, reject with AM02.');
+    expect(await p.getByRole('button', { name: 'Ask for a draft' }).isDisabled()).toBe(false);
+    expect(problems).toEqual([]);
+    await p.close();
+  });
+
   it('marks a user who may not author or approve', async () => {
     const { p } = await page();
     await p.goto(`${server.url}/#/catalogue`);

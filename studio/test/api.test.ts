@@ -289,3 +289,17 @@ describe('change sets', () => {
   });
 
 });
+
+describe('assistant prompt templates', () => {
+  it('serves templates for every draft kind, each with parts to fill and a source hint', async () => {
+    const all = (await get('/api/ai/templates')).body;
+    for (const kind of ['rule', 'activity', 'script', 'simulator']) expect(all.filter((t: any) => t.kind === kind).length).toBeGreaterThanOrEqual(2);
+    const { unfilled } = await import('../src/ai/templates.js');
+    for (const t of all) {
+      expect(unfilled(t.instruction).length, t.id).toBeGreaterThan(0);
+      expect(t.sourceHint, t.id).toBeTruthy();
+    }
+    expect((await get('/api/ai/templates?kind=simulator')).body.every((t: any) => t.kind === 'simulator')).toBe(true);
+    expect(unfilled('Write a rule uae.demo.rule.x.v1 where the amount < 10 and the total > 5')).toEqual([]);
+  });
+});

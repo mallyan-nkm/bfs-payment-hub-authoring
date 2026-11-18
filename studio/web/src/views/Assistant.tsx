@@ -27,6 +27,20 @@ export function Assistant() {
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<any>();
   const [draftKey, setDraftKey] = useState<string>();
+  const [templateId, setTemplateId] = useState('');
+  const templates = useLoad(() => get<any[]>('/api/ai/templates'), []);
+  const forKind = (templates.data ?? []).filter((t) => t.kind === kind);
+  const chosen = forKind.find((t) => t.id === templateId);
+  // The parts of the instruction still to fill: anything in <angle brackets>.
+  // A comparison such as "amount < 10 and total > 5" has spaces inside the brackets, so it is not a blank.
+  const blanks = [...instruction.matchAll(/<(?=\S)([^<>\n]{1,80})(?<=\S)>/g)].map((m) => m[1]);
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const t = forKind.find((x) => x.id === id);
+    if (!t) return;
+    setInstruction(t.instruction);
+    if (t.language) setLanguage(t.language);
+  };
   const activities = useCatalogue('activity');
   const ports = useCatalogue('port');
   const targets = kind === 'script' ? activities : kind === 'simulator' ? ports : [];
@@ -66,7 +80,7 @@ export function Assistant() {
             <div className="form-grid">
               <label className="field">
                 <span>Kind</span>
-                <select value={kind} onChange={(e) => { setKind(e.target.value as Kind); setTarget(''); }} aria-label="Draft kind">
+                <select value={kind} onChange={(e) => { setKind(e.target.value as Kind); setTarget(''); setTemplateId(''); }} aria-label="Draft kind">
                   <option value="activity">activity contract</option>
                   <option value="rule">rule</option>
                   <option value="script">script-behind</option>
@@ -94,16 +108,25 @@ export function Assistant() {
             </div>
             <p className="muted small">{HINT[kind]}</p>
             <label className="field">
+              <span>Start from a template</span>
+              <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} aria-label="Prompt template">
+                <option value="">None: write the instruction yourself</option>
+                {forKind.map((t) => <option key={t.id} value={t.id}>{t.title}: {t.use}</option>)}
+              </select>
+            </label>
+            {chosen && <p className="muted small">Fill in every part in &lt;angle brackets&gt;, and remove the choices you do not want. Source text: {chosen.sourceHint}</p>}
+            <label className="field">
               <span>Instruction</span>
-              <textarea className="code-input" rows={3} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="What you want, in a sentence or two" aria-label="Instruction" />
+              <textarea className="code-input" rows={chosen ? 8 : 3} value={instruction} onChange={(e) => setInstruction(e.target.value)} placeholder="What you want, in a sentence or two" aria-label="Instruction" />
             </label>
             <label className="field">
               <span>Source text</span>
-              <textarea className="code-input" rows={7} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder="Paste a public rulebook clause or guide extract. Use synthetic values; never paste personal data." aria-label="Source text" />
+              <textarea className="code-input" rows={7} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder={chosen?.sourceHint ?? 'Paste a public rulebook clause or guide extract. Use synthetic values; never paste personal data.'} aria-label="Source text" />
             </label>
+            {blanks.length > 0 && <div className="alert warn small" role="status">Still to fill: {blanks.map((b) => `<${b}>`).join(', ')}</div>}
             <ErrorBox error={error} />
             <div className="row-actions">
-              <button className="primary" disabled={busy || !instruction.trim() || ((kind === 'script' || kind === 'simulator') && !target)} onClick={ask}>{busy ? 'Drafting…' : 'Ask for a draft'}</button>
+              <button className="primary" disabled={busy || !instruction.trim() || blanks.length > 0 || ((kind === 'script' || kind === 'simulator') && !target)} onClick={ask}>{busy ? 'Drafting…' : 'Ask for a draft'}</button>
               {!configured && status.data && <span className="muted small">The server will answer that it has no credentials.</span>}
             </div>
           </Section>

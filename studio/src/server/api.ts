@@ -15,6 +15,7 @@ import { assistantConfigured, draft } from '../ai/assistant.js';
 import { modelOf } from '../core/model.js';
 import { typescriptTypes, pythonTypes } from '../core/types.js';
 import * as authoring from '../governance/authoring.js';
+import { TEMPLATES } from '../ai/templates.js';
 import { CodeRegistry, RegistryError } from '../core/registry.js';
 import { expandWorkflow } from '../core/expand.js';
 import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
@@ -675,6 +676,7 @@ route('GET', '/api/bindings', (env) => compareBindings(env));
 // --------------------------------------------------------------------- AI (C16)
 
 route('GET', '/api/ai/status', () => assistantConfigured());
+route('GET', '/api/ai/templates', (_env, req) => TEMPLATES.filter((t) => !req.query.kind || t.kind === req.query.kind));
 route('POST', '/api/ai/draft', async (env, req) => {
   const st = assistantConfigured();
   if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);

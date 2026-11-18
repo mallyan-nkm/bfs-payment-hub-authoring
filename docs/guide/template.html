@@ -412,7 +412,18 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>An activity or map bound to a script (<code>implementation.binding: script</code>) shows a <span class="ui">Script-behind</span> section. Save the activity as a draft first, then write the script and <span class="ui">Save the script</span>. A script uses only what is injected (<code>ctx</code>, <code>ports</code>, <code>rules</code>, <code>params</code>, <code>clock</code>, <code>ids</code>, <code>log</code>); a call to the clock, randomness, the network or files is refused. Once the activity is published, its script is fixed.</p>
 
   <h3 id="f-assistant">AI assistant</h3>
-  <p>Drafts a rule, activity, simulator or script from an instruction and public scheme text, using Claude. Set <code>ANTHROPIC_API_KEY</code> for the studio server to turn it on. Choose a <span class="ui">Draft kind</span>, a <span class="ui">Target</span> where it applies, a <span class="ui">Language</span> for a script, write the <span class="ui">Instruction</span> and optionally the <span class="ui">Source text</span>, then <span class="ui">Ask for a draft</span>. What comes back: the <span class="ui">Draft</span>, its <span class="ui">Questions</span>, the <span class="ui">Clauses</span> it relied on, its <span class="ui">Provenance</span> and the gate <span class="ui">Status</span>. A draft never publishes itself: <span class="ui">Save as a draft</span> and follow maker-checker.</p>
+  <p>Drafts a rule, activity, simulator or script from an instruction and public scheme text, using Claude. Set <code>ANTHROPIC_API_KEY</code> for the studio server to turn it on. Choose a <span class="ui">Draft kind</span>, a <span class="ui">Target</span> where it applies, and a <span class="ui">Language</span> for a script. Then pick a prompt from <span class="ui">Start from a template</span>, or write the <span class="ui">Instruction</span> yourself, add the <span class="ui">Source text</span>, and <span class="ui">Ask for a draft</span>.</p>
+  <p>A template fills the instruction in the studio's own terms, with the parts you must supply in <code>&lt;angle brackets&gt;</code>. Until every one is filled, the page lists them under <i>Still to fill</i> and the request waits. Each template also says what to paste as source text.</p>
+  <div class="table"><table>
+    <thead><tr><th>Kind</th><th>Templates</th></tr></thead>
+    <tbody>
+      <tr><td>Rule</td><td>Field check; cross-field or batch total; limit with a bank parameter (per payment, per line, per file total); decision</td></tr>
+      <tr><td>Activity contract</td><td>Validate with a rule set; send and wait for a reply (composite); inward map from a file or message; enrich from a port</td></tr>
+      <tr><td>Script-behind</td><td>Parse a file for an inward map; call a port and decide</td></tr>
+      <tr><td>Simulator</td><td>A party that answers the bank (with the eight standard scenarios); a party that sends to the bank</td></tr>
+    </tbody>
+  </table></div>
+  <p>The same templates are served at <code>GET /api/ai/templates</code>, optionally <code>?kind=rule</code>. What comes back: the <span class="ui">Draft</span>, its <span class="ui">Questions</span>, the <span class="ui">Clauses</span> it relied on, its <span class="ui">Provenance</span> and the gate <span class="ui">Status</span>. A draft never publishes itself: <span class="ui">Save as a draft</span> and follow maker-checker.</p>
 
   <h3 id="f-bench">Test bench</h3>
   <p>Two tabs. <span class="ui">Tests</span> lists every test the tenant can see: filter, <span class="ui">Run</span> one or <span class="ui">Run all</span>. <span class="ui">Ad hoc bench</span> runs anything you choose:</p>
@@ -575,7 +586,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   </ol>
 
   <h3>12. The AI assistant (optional, needs a key)</h3>
-  <p>Restart the studio with <code>ANTHROPIC_API_KEY</code> set. In <span class="ui">AI assistant</span>, ask for a rule: <i>The salary month must be a valid month, else reject with DT01.</i> Read the draft, its questions, its clauses and its gates, then save it as a draft and follow maker-checker as in exercise 6.</p>
+  <p>Restart the studio with <code>ANTHROPIC_API_KEY</code> set. In <span class="ui">AI assistant</span>, choose <span class="ui">Draft kind</span> rule and the template <i>Field check</i>. Fill its blanks: name <code>uae.wps.rule.salary-month-valid.v1</code>, level batch, the path <code>ext.uae.wps.salaryMonth</code>, the condition <i>is a month from 01 to 12 followed by a four-digit year</i>, a reject finding, reason code <code>DT01</code>. Watch <i>Still to fill</i> empty and the button come on, then ask. Read the draft, its questions, its clauses and its gates, then save it as a draft and follow maker-checker as in exercise 6.</p>
 </section>
 
 <!-- ============================================================ 6 -->
