@@ -37,8 +37,8 @@ export function scenes(d: Director): Scene[] {
     throw new Error(`No status matching ${re}`);
   };
   /** Wait until the page shows the text; a step that does not produce it stops the recording. */
-  const expectText = async (re: RegExp) => {
-    for (let i = 0; i < 80; i++) {
+  const expectText = async (re: RegExp, seconds = 20) => {
+    for (let i = 0; i < seconds * 4; i++) {
       if (re.test(await main().innerText())) return;
       await p().waitForTimeout(250);
     }
@@ -347,22 +347,32 @@ export function scenes(d: Director): Scene[] {
         await d.point(p().getByRole('button', { name: 'Ask for a draft' }), 1500);
       },
     },
-    AI_LIVE ? {
-      say: 'We ask for the draft. It comes back with the rule, its examples, the clauses it used, and questions about anything the text did not say. The gates have already run on it.',
+    ...(AI_LIVE ? [{
+      say: 'We ask for the draft. The model takes about half a minute. Nothing is saved while it works. When the draft comes back, the studio runs it through the gates before we see it.',
       do: async () => {
         await d.click(p().getByRole('button', { name: 'Ask for a draft' }));
-        await expectText(/every gate green|red at/);
-        await main().getByText('Draft').first().scrollIntoViewIfNeeded();
-        await d.wait(2500);
+        // A live draft takes about half a minute; give the model up to three.
+        await expectText(/every gate green|red at/, 180);
       },
-    } : {
+    }, {
+      say: 'Here is the draft. At the top, the result of the gates. Below it, the rule itself, with its examples. On the right, each gate in turn. Further down, any questions the text did not answer, and the clause each part came from.',
+      do: async () => {
+        const panel = (title: RegExp) => main().locator('section.panel', { has: p().locator('h3', { hasText: title }) }).first();
+        const draftPanel = panel(/^Draft$/);
+        await d.point(draftPanel.locator('.panel-head'), 2500);
+        await d.point(draftPanel.locator('pre.code'), 3500);
+        await d.point(panel(/^Gates/), 3000);
+        await d.point(panel(/^Questions/), 2500);
+        await d.point(panel(/^Clauses/), 2500);
+      },
+    }] : [{
       say: 'We ask for the draft. In this recording the studio has no model key, so it says so plainly. It never invents a draft in place of a real one. With a key set for the server, the rule comes back with its examples, the clauses it used, and its questions.',
       do: async () => {
         await d.click(p().getByRole('button', { name: 'Ask for a draft' }));
         await d.wait(2000);
         await d.point(main().locator('.alert').first(), 2500);
       },
-    },
+    }]),
     {
       say: 'Whatever the assistant writes, you test it exactly like the rule we built by hand. Read the examples. Add the edge case, here day one and day thirty one. Break one on purpose. Answer its questions. Only then save it, and a checker publishes it.',
       do: async () => { await d.scroll(-400); await d.point(main().getByText('What comes back').first().locator('..'), 3000); },
