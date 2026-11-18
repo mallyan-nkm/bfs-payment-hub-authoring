@@ -21,7 +21,7 @@ const PLATFORM: [string, string, string?][] = [
   ['p.port.sanctions.v1', 'p.sim.sanctions.v1'],
   ['p.port.fraud.v1', 'p.sim.fraud.v1'],
 ];
-const AI_LIVE = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+const AI_LIVE = !!(process.env.ANTHROPIC_API_KEY || process.env.TH_ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
 export function scenes(d: Director): Scene[] {
   const p = () => d.page;
