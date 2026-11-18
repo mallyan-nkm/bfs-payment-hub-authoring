@@ -1,0 +1,207 @@
+1
+00:00:00,025 --> 00:00:13,550
+Welcome. This video explains the ideas behind the TransactHub Designer Studio, without showing any screens. You do not need to know anything about banking or payments. We will use one picture all the way through: a kitchen.
+
+2
+00:00:15,161 --> 00:00:25,593
+Think of a payment as an order in a restaurant. Before a restaurant opens, its recipes are written down and tried out in a test kitchen. The studio is that test kitchen.
+
+3
+00:00:27,203 --> 00:00:39,832
+When the recipes are ready, they are sent to the restaurant's real kitchen, which cooks every order during service. In payments, that real kitchen is called the engine. The studio never cooks a real order itself.
+
+4
+00:00:41,443 --> 00:00:48,611
+Let us follow one order through the kitchen. Our order is a file from a company, asking to pay its staff their salaries.
+
+5
+00:00:50,215 --> 00:00:59,367
+First, the order is read and checked. Then the ingredients are set aside. For a payment, that means putting the money aside, so it cannot be spent twice.
+
+6
+00:01:00,975 --> 00:01:10,276
+Then the order goes out to a partner, the payment network, and we wait for its answer. When the answer comes back, the order is written into the books, and it is done.
+
+7
+00:01:11,885 --> 00:01:18,050
+Watch the order travel. Everything in the rest of this video is a closer look at one part of this journey.
+
+8
+00:01:20,220 --> 00:01:29,884
+A kitchen has stations, and each station does one job. One checks, one weighs, one cooks, one plates. In the studio, a station is called an activity.
+
+9
+00:01:31,493 --> 00:01:40,559
+Every activity says what it reads from the order, and what it writes onto it. A checking station might read the amount, and write down whether it passed.
+
+10
+00:01:42,168 --> 00:01:53,709
+The ways a job can end are called outcomes. A checking station might end with pass, or with reject. Every outcome must lead somewhere in the recipe, so an order is never left hanging.
+
+11
+00:01:55,319 --> 00:02:04,791
+There are a few kinds of station: checking, looking something up, translating, sending to a partner, holding for a person to approve, and writing into the books.
+
+12
+00:02:06,399 --> 00:02:18,921
+How does a checking station know what to check? It follows quality checks. A quality check is one simple question, such as: is the amount in dirhams? In the studio, a quality check is called a rule.
+
+13
+00:02:20,534 --> 00:02:28,256
+If the answer is no, the rule writes a finding: what is wrong, and a short reason code that everyone in payments understands.
+
+14
+00:02:29,863 --> 00:02:35,751
+Rules are grouped into a checklist, called a rule set. A checking station runs its checklist.
+
+15
+00:02:37,356 --> 00:02:46,209
+Some choices are easier as a chart. For example, which delivery service to use for which kind of order. A chart like that is a decision table.
+
+16
+00:02:47,817 --> 00:02:59,977
+And some numbers are left as dials, such as the largest amount allowed. A dial has a safe range, and each restaurant can set its own value within that range. These dials are called parameters.
+
+17
+00:03:01,588 --> 00:03:13,342
+Every rule comes with worked examples: one that passes, one that fails, and one right at the edge. The studio runs them every time the rule changes, so a broken rule is caught at once.
+
+18
+00:03:14,953 --> 00:03:25,875
+Stations do nothing on their own. A recipe puts them in order: first this, then that, and for each outcome, what happens next. In the studio, a recipe is called a workflow.
+
+19
+00:03:27,485 --> 00:03:37,554
+A recipe can branch, repeat a step for every item on the order, run steps side by side, wait for a while, and always tidy up at the end, whatever happened.
+
+20
+00:03:39,165 --> 00:03:56,210
+There are a few kinds of recipe. The house recipe, which every payment follows, is the platform workflow. The part that depends on the partner is a leg. A reusable part, used in several recipes, is a segment. And a quick answer at the counter, with no cooking at all, is a handler.
+
+21
+00:03:57,824 --> 00:04:09,386
+Some steps are really a small routine. Getting fresh stock means: place the order with the supplier, wait for the delivery, and check what arrived. The recipe shows all of that as one step.
+
+22
+00:04:10,998 --> 00:04:21,451
+Inside, that routine is its own small recipe, called a subflow: send, wait for the answer, and read it. You see one step. The kitchen follows the routine inside.
+
+23
+00:04:23,061 --> 00:04:34,666
+When the recipes go to the real kitchen, every such step is opened up into its routine. That opened-up version is called the expanded form. It is what the engine actually follows.
+
+24
+00:04:36,277 --> 00:04:46,943
+A kitchen deals with people outside it: suppliers, the bank's own accounts, a delivery service. Each one is reached through its own door. In the studio, a door is called a port.
+
+25
+00:04:48,553 --> 00:05:00,073
+When we practise, we do not call the real supplier. A stand-in actor plays the supplier, following a script: say yes, say no, say nothing, or answer late. That stand-in is a simulator.
+
+26
+00:05:01,685 --> 00:05:12,138
+Suppliers speak their own language. A translator turns their delivery notes into our kitchen's language, and turns our orders into theirs. That translator is a map.
+
+27
+00:05:13,747 --> 00:05:29,747
+Inside the kitchen, every order is written on the same kind of ticket, whatever it looked like when it arrived. For payments, that ticket follows an international standard called I S O twenty oh twenty two. In the studio, the ticket is called the canonical context.
+
+28
+00:05:31,361 --> 00:05:41,302
+Some details on the ticket are private, like a person's name. They are marked, like allergens on a menu, and they must never appear in logs, tests or examples.
+
+29
+00:05:42,911 --> 00:05:55,177
+Orders do not only come from the dining room. They come through partners, each with its own rules: a salary payment system, an instant payment system. In payments, such a partner is called a scheme.
+
+30
+00:05:56,789 --> 00:06:09,013
+Every partner has an order desk. For each kind of message that arrives, the desk says what it is, which translator reads it, and which recipe to start. That desk is the scheme's dispatch table.
+
+31
+00:06:10,623 --> 00:06:17,065
+The house recipe has a gap in the middle that says: now do the partner's part. That gap is called a slot.
+
+32
+00:06:18,666 --> 00:06:28,820
+Each partner provides the piece that fills the gap. That piece is its leg. So one house recipe works for every partner: only the piece in the gap changes.
+
+33
+00:06:30,424 --> 00:06:41,623
+Now imagine the cookbook is shared by many restaurants in a franchise. Each restaurant has its own space that only its own people can see. In the studio, each bank is a tenant.
+
+34
+00:06:43,230 --> 00:06:53,918
+A restaurant cannot rewrite the shared recipes. But it can set its own dials: which partners it works with, and its own limits. These settings are its configuration.
+
+35
+00:06:55,529 --> 00:07:07,518
+The house recipe also has marked spots where a restaurant may add a step of its own, like its house garnish before a dish goes out. These spots are hook points, and the restaurant's own step is a hook.
+
+36
+00:07:09,130 --> 00:07:18,090
+A hook can hold an order for a person to approve, add a detail, or simply let someone know. It can never change the shared recipe itself.
+
+37
+00:07:19,699 --> 00:07:32,968
+Not everyone may change a recipe. People have roles: some write, some approve, and some only read. And the person who writes a change never approves it. A second person checks it. This is called maker and checker.
+
+38
+00:07:34,580 --> 00:07:46,164
+Every recipe card is printed in numbered editions. A printed edition is never changed: a change means a new edition. Orders already cooking keep the edition they started with.
+
+39
+00:07:47,777 --> 00:07:56,993
+Some recipes depend on each other, like a dish and its sauce. They are approved together, as one change set, so the kitchen never has one without the other.
+
+40
+00:07:58,603 --> 00:08:06,155
+And every change, every approval and every refusal is written in the kitchen log. The log cannot be quietly edited.
+
+41
+00:08:07,762 --> 00:08:18,876
+Before a recipe reaches the restaurant, it is tried in the test kitchen with the stand-in suppliers. A test says: given this order, and these stand-ins, I expect this result.
+
+42
+00:08:20,486 --> 00:08:29,765
+The test kitchen has a fast-forward clock. If the recipe says wait two days for an answer, the test skips straight to it. So long waits take a moment.
+
+43
+00:08:31,375 --> 00:08:40,847
+Every test prints a trip report: one line for each station, saying how each step ended. If the report is not what was expected, the test fails.
+
+44
+00:08:42,455 --> 00:08:53,569
+There is also a fixed set of tastings that every real kitchen must pass, called the conformance kit. It proves that each engine cooks a recipe exactly the way the studio does.
+
+45
+00:08:55,180 --> 00:09:00,769
+When the recipes are approved, they are packed up for the real kitchen. This is called the export.
+
+46
+00:09:02,374 --> 00:09:18,054
+In the real kitchen, the engine runs every order. The work is shared between cooks, each at their own station, doing only their own jobs: one for the house recipe, one for each partner, and one for the restaurant's own steps. These cooks are called workers.
+
+47
+00:09:19,668 --> 00:09:25,769
+Because each worker does only its own jobs, a problem in one partner's part cannot touch another's.
+
+48
+00:09:27,374 --> 00:09:29,187
+Let us put it all together.
+
+49
+00:09:30,788 --> 00:09:42,094
+An order arrives through a partner's order desk, the dispatch table. A translator, the map, writes it onto our standard ticket. The desk starts the house recipe, the platform workflow.
+
+50
+00:09:43,702 --> 00:09:56,267
+The recipe's stations are activities, and its checking stations follow checklists of rules. In its gap, the partner's leg does the partner's part, talking through a door, the port, to the partner, the scheme.
+
+51
+00:09:57,878 --> 00:10:12,491
+Each bank sets its own dials, its configuration, and adds its own hooks. Everything is tried first in the test kitchen with stand-ins, approved by a second person, and then exported to the engine, where the workers cook it for real.
+
+52
+00:10:14,094 --> 00:10:26,403
+That is every idea in the studio. In the next video, we will build each of these pieces in the studio itself, step by step: a rule, an activity, a workflow, and a bank's own rules and hooks.

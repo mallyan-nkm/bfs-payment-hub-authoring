@@ -7,25 +7,46 @@ import * as path from 'node:path';
 import { startServer, STUDIO, type Server } from '../test/blackbox/server.js';
 
 // Records a narrated demo of the studio: a real browser session on a fresh workspace, driven click
-// by click, with a visible cursor and captions, and a voice-over laid at the time each scene starts.
+// by click, with a visible cursor, a highlight before each click, captions, chapter cards, and a
+// voice-over laid at the time each scene starts.
 //
-//   npx tsx demo/record.ts concepts|build [--out ../docs/demo]
+//   npx tsx demo/run.ts concepts|build|ideas|hands-on [--out dir]
 //
 // The voice comes from a text-to-speech command: TH_TTS="<python> <say.py> <model> <voices> <voice>"
-// reads the text on stdin and writes a WAV to the path given last (see demo/README.md). Without it,
-// the video is recorded silent, with captions.
+// reads the text on stdin, writes a WAV to the path given last, and prints {"seconds": n}
+// (see demo/README.md). TH_TTS_SPEED sets the speaking speed (default 1). Without TH_TTS the video is
+// recorded silent, with captions. TH_DEMO_DRY=1 runs the same steps at full speed with no video and
+// no voice: the training test uses it to prove every step before anything is recorded.
 
 const require = createRequire(import.meta.url);
-export type Scene = { say: string; do?: (d: Director) => Promise<void> };
+export type Scene = { say: string; card?: [string, string?]; do?: (d: Director) => Promise<void> };
+
+export interface Pace {
+  steps: number; // cursor movement steps
+  settle: number; // ms after reaching a control
+  after: number; // ms after a click or a choice
+  highlight: number; // ms a control is outlined before it is used
+  typeDelay: number; // ms between keys
+  tail: number; // s of quiet after each scene's voice
+}
+export const NORMAL: Pace = { steps: 18, settle: 180, after: 350, highlight: 0, typeDelay: 45, tail: 0.6 };
+export const SLOW: Pace = { steps: 40, settle: 450, after: 900, highlight: 700, typeDelay: 85, tail: 1.6 };
+const DRY = process.env.TH_DEMO_DRY === '1';
 
 export class Director {
   page: any;
   server!: Server;
   private t0 = 0;
   marks: { at: number; wav?: string; seconds: number; text: string }[] = [];
+  pace: Pace;
 
-  constructor(private ttsCmd: string | undefined, private cache: string) {}
+  constructor(private ttsCmd: string | undefined, private cache: string, pace: Pace = NORMAL) {
+    this.pace = DRY ? { steps: 1, settle: 0, after: 0, highlight: 0, typeDelay: 0, tail: 0 } : pace;
+  }
 
+  get dry() {
+    return DRY;
+  }
   now() {
     return (Date.now() - this.t0) / 1000;
   }
@@ -33,32 +54,44 @@ export class Director {
     this.page = page;
     this.t0 = Date.now();
   }
+  async wait(ms: number) {
+    if (!DRY) await this.page.waitForTimeout(ms);
+  }
 
-  /** Synthesise a line of narration once; cached by its text. */
+  /** Synthesise a line of narration once; cached by its text and speed. */
   voice(text: string): { wav?: string; seconds: number } {
+    if (DRY) return { seconds: 0 };
     const words = text.split(/\s+/).length;
-    if (!this.ttsCmd) return { seconds: Math.max(2.5, words / 2.6) };
-    const id = createHash('sha256').update(text).digest('hex').slice(0, 16);
+    if (!this.ttsCmd) return { seconds: Math.max(2.5, words / 2.4) };
+    const speed = process.env.TH_TTS_SPEED ?? '1';
+    const id = createHash('sha256').update(`${speed}|${text}`).digest('hex').slice(0, 16);
     const wav = path.join(this.cache, `${id}.wav`);
     const meta = `${wav}.json`;
     if (!fs.existsSync(meta)) {
       const [cmd, ...args] = this.ttsCmd.split(' ');
-      const r = spawnSync(cmd, [...args, wav], { input: text, encoding: 'utf8' });
+      const r = spawnSync(cmd, [...args, wav], { input: text, encoding: 'utf8', env: { ...process.env, TH_TTS_SPEED: speed } });
       if (r.status !== 0) throw new Error(`Text to speech failed: ${r.stderr}`);
       fs.writeFileSync(meta, r.stdout.trim().split('\n').pop()!);
     }
     return { wav, seconds: JSON.parse(fs.readFileSync(meta, 'utf8')).seconds };
   }
 
-  /** One scene: the caption and voice start, the actions run, and the scene lasts as long as both. */
+  /** One scene: a chapter card if any, the caption and voice, the actions; it lasts as long as both. */
   async scene(s: Scene) {
     const v = this.voice(s.say);
     const at = this.now();
     this.marks.push({ at, wav: v.wav, seconds: v.seconds, text: s.say });
+    if (s.card) await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [s.card[0], s.card[1] ?? '']);
     await this.page.evaluate((t: string) => (window as any).__caption?.(t), s.say);
+    // A card over a scene with actions shows for a moment, then lifts so the viewer sees the clicks.
+    if (s.card && s.do) {
+      await this.wait(4000);
+      await this.page.evaluate(() => (window as any).__card?.());
+    }
     await s.do?.(this);
-    const left = at + v.seconds + 0.6 - this.now();
-    if (left > 0) await this.page.waitForTimeout(left * 1000);
+    const left = at + v.seconds + this.pace.tail - this.now();
+    if (left > 0 && !DRY) await this.page.waitForTimeout(left * 1000);
+    if (s.card && !s.do) await this.page.evaluate(() => (window as any).__card?.());
   }
 
   // ------------------------------------------------------------- actions a viewer can follow
@@ -66,44 +99,67 @@ export class Director {
   async go(hash: string) {
     await this.page.goto(`${this.server.url}/#/${hash}`);
     await this.page.waitForLoadState('networkidle');
-    await this.page.waitForTimeout(400);
+    await this.wait(this.pace.after);
   }
   private async moveTo(loc: any) {
     await loc.scrollIntoViewIfNeeded();
+    if (DRY) return;
     const b = await loc.boundingBox();
     if (!b) return;
-    await this.page.mouse.move(b.x + Math.min(b.width / 2, 60), b.y + b.height / 2, { steps: 18 });
-    await this.page.waitForTimeout(180);
+    await this.page.mouse.move(b.x + Math.min(b.width / 2, 60), b.y + b.height / 2, { steps: this.pace.steps });
+    if (this.pace.highlight) {
+      await this.page.evaluate((r: any) => (window as any).__mark?.(r), { x: b.x, y: b.y, w: b.width, h: b.height });
+      await this.page.waitForTimeout(this.pace.highlight);
+      await this.page.evaluate(() => (window as any).__mark?.());
+    }
+    await this.page.waitForTimeout(this.pace.settle);
   }
   async click(loc: any) {
     await this.moveTo(loc);
     await loc.click();
-    await this.page.waitForTimeout(350);
+    await this.wait(this.pace.after);
   }
   async select(loc: any, value: any) {
     await this.moveTo(loc);
     await loc.selectOption(value);
-    await this.page.waitForTimeout(300);
+    await this.wait(this.pace.after);
   }
-  async type(loc: any, text: string, delay = 45) {
+  async check(loc: any) {
+    await this.moveTo(loc);
+    await loc.check();
+    await this.wait(this.pace.after);
+  }
+  async type(loc: any, text: string, delay = this.pace.typeDelay) {
     await this.moveTo(loc);
     await loc.click();
     await loc.fill('');
-    await loc.pressSequentially(text, { delay });
-    await this.page.waitForTimeout(250);
+    if (DRY) await loc.fill(text);
+    else await loc.pressSequentially(text, { delay });
+    await this.wait(this.pace.after / 2);
   }
   async paste(loc: any, text: string) {
     await this.moveTo(loc);
     await loc.fill(text);
-    await this.page.waitForTimeout(400);
+    await this.wait(this.pace.after);
   }
-  async hover(loc: any, ms = 600) {
+  async hover(loc: any, ms = 900) {
     await this.moveTo(loc);
+    await this.wait(ms);
+  }
+  /** Outline a part of the page while the voice talks about it. */
+  async point(loc: any, ms = 1500) {
+    await loc.scrollIntoViewIfNeeded();
+    if (DRY) return;
+    const b = await loc.boundingBox();
+    if (!b) return;
+    await this.page.mouse.move(b.x + Math.min(b.width / 2, 60), b.y + Math.min(b.height / 2, 20), { steps: this.pace.steps });
+    await this.page.evaluate((r: any) => (window as any).__mark?.(r), { x: b.x, y: b.y, w: b.width, h: b.height });
     await this.page.waitForTimeout(ms);
+    await this.page.evaluate(() => (window as any).__mark?.());
   }
   async scroll(px: number) {
     await this.page.mouse.wheel(0, px);
-    await this.page.waitForTimeout(500);
+    await this.wait(this.pace.after);
   }
   async as(tenant: string, actor: string) {
     await this.select(this.page.getByLabel('Tenant', { exact: true }), tenant);
@@ -118,19 +174,25 @@ export class Director {
   }
 }
 
-// The cursor, click ripple, captions and terminal, drawn into every page the browser opens.
+// The cursor, click ripple, highlight, captions, chapter cards and terminal, drawn into every page.
 const OVERLAY = `
 (() => {
   const css = document.createElement('style');
   css.textContent = \`
-    #__cur { position: fixed; z-index: 2147483647; width: 18px; height: 18px; margin: -3px 0 0 -3px; pointer-events: none;
-      background: no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18'><path d='M2 1 L2 15 L6 11 L9 17 L11 16 L8 10 L14 10 Z' fill='white' stroke='black' stroke-width='1.2'/></svg>"); transition: left .02s, top .02s; }
-    .__ripple { position: fixed; z-index: 2147483646; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
-      border: 3px solid #0f6b5c; pointer-events: none; animation: __r .55s ease-out forwards; }
-    @keyframes __r { from { transform: scale(.3); opacity: 1 } to { transform: scale(1.4); opacity: 0 } }
-    #__cap { position: fixed; z-index: 2147483645; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: 1000px; width: calc(100% - 80px);
-      background: rgba(15, 20, 26, .86); color: #fff; font: 500 19px/1.4 system-ui, sans-serif; padding: 10px 18px; border-radius: 6px; pointer-events: none; text-align: center; }
+    #__cur { position: fixed; z-index: 2147483647; width: 22px; height: 22px; margin: -3px 0 0 -3px; pointer-events: none;
+      background: no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><path d='M2 1 L2 18 L7 13.5 L10.5 21 L13 20 L9.6 12.6 L17 12.6 Z' fill='white' stroke='black' stroke-width='1.3'/></svg>"); }
+    .__ripple { position: fixed; z-index: 2147483646; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%;
+      border: 3px solid #0f6b5c; pointer-events: none; animation: __r .6s ease-out forwards; }
+    @keyframes __r { from { transform: scale(.3); opacity: 1 } to { transform: scale(1.5); opacity: 0 } }
+    #__mark { position: fixed; z-index: 2147483643; border: 3px solid #e8a33d; border-radius: 6px; pointer-events: none;
+      box-shadow: 0 0 0 4000px rgba(10, 15, 20, .18); transition: all .25s ease; }
+    #__cap { position: fixed; z-index: 2147483645; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: 1060px; width: calc(100% - 80px);
+      background: rgba(15, 20, 26, .88); color: #fff; font: 500 19px/1.4 system-ui, sans-serif; padding: 10px 18px; border-radius: 6px; pointer-events: none; text-align: center; }
     #__cap:empty { display: none; }
+    #__card { pointer-events: none; position: fixed; inset: 0; z-index: 2147483644; background: #0f3d36; color: #fff; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; font-family: system-ui, sans-serif; text-align: center; padding: 0 80px; }
+    #__card h1 { font: 700 46px/1.15 system-ui, sans-serif; margin: 0; letter-spacing: .01em; }
+    #__card p { font: 400 23px/1.4 system-ui, sans-serif; margin: 0; color: #cfe9e3; max-width: 900px; }
     #__term { position: fixed; z-index: 2147483644; left: 40px; right: 40px; top: 60px; bottom: 110px; background: #0d1117; color: #d6e2ee;
       font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 16px 20px; border-radius: 8px; overflow: hidden; white-space: pre-wrap; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
     #__term b { color: #4fc2ad; }
@@ -141,8 +203,22 @@ const OVERLAY = `
     const cur = document.createElement('div'); cur.id = '__cur'; cur.style.left = '-40px'; cur.style.top = '-40px'; document.body.appendChild(cur);
     const cap = document.createElement('div'); cap.id = '__cap'; document.body.appendChild(cap);
     addEventListener('mousemove', (e) => { cur.style.left = e.clientX + 'px'; cur.style.top = e.clientY + 'px'; }, true);
-    addEventListener('mousedown', (e) => { const r = document.createElement('div'); r.className = '__ripple'; r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px'; document.body.appendChild(r); setTimeout(() => r.remove(), 600); }, true);
+    addEventListener('mousedown', (e) => { const r = document.createElement('div'); r.className = '__ripple'; r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px'; document.body.appendChild(r); setTimeout(() => r.remove(), 650); }, true);
     window.__caption = (t) => { cap.textContent = t || ''; };
+    window.__mark = (r) => {
+      let m = document.getElementById('__mark');
+      if (!r) { m && m.remove(); return; }
+      if (!m) { m = document.createElement('div'); m.id = '__mark'; document.body.appendChild(m); }
+      m.style.left = (r.x - 5) + 'px'; m.style.top = (r.y - 5) + 'px'; m.style.width = (r.w + 10) + 'px'; m.style.height = (r.h + 10) + 'px';
+    };
+    window.__card = (t, s) => {
+      let c = document.getElementById('__card');
+      if (!t) { c && c.remove(); return; }
+      if (!c) { c = document.createElement('div'); c.id = '__card'; document.body.appendChild(c); }
+      c.innerHTML = '';
+      const h = document.createElement('h1'); h.textContent = t; c.appendChild(h);
+      if (s) { const p = document.createElement('p'); p.textContent = s; c.appendChild(p); }
+    };
     window.__terminal = (c, o) => {
       let t = document.getElementById('__term');
       if (!c) { t && t.remove(); return; }
@@ -156,50 +232,68 @@ const OVERLAY = `
 })();
 `;
 
-export async function record(name: string, title: string, scenes: (d: Director) => Scene[], outDir: string) {
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), `th-demo-${name}-`));
+export interface Production {
+  NAME: string;
+  TITLE: string;
+  PACE?: Pace;
+  scenes: (d: Director) => Scene[];
+  /** Before the first scene: open the first page. Default: the studio's catalogue. */
+  open?: (d: Director) => Promise<void>;
+}
+
+/** Runs a production: recorded with voice, or, with TH_DEMO_DRY=1, as a fast check of every step. */
+export async function record(prod: Production, outDir: string) {
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), `th-demo-${prod.NAME}-`));
   const cache = path.join(outDir, '.voice');
   fs.mkdirSync(cache, { recursive: true });
-  const d = new Director(process.env.TH_TTS, cache);
+  const d = new Director(process.env.TH_TTS, cache, prod.PACE ?? NORMAL);
+  const list = prod.scenes(d);
   // Voice every line first, so that a failing voice stops the run before the recording.
-  const list = scenes(d);
   for (const s of list) d.voice(s.say);
 
   if (!fs.existsSync(path.join(STUDIO, 'web', 'dist', 'index.html'))) spawnSync('npm', ['run', 'web:build'], { cwd: STUDIO, stdio: 'inherit' });
   d.server = await startServer();
   const browser = await require('playwright').chromium.launch();
   const size = { width: 1280, height: 720 };
-  const context = await browser.newContext({ viewport: size, recordVideo: { dir: work, size }, acceptDownloads: true });
+  const context = await browser.newContext({ viewport: size, ...(DRY ? {} : { recordVideo: { dir: work, size } }), acceptDownloads: true });
   await context.addInitScript(OVERLAY);
   const page = await context.newPage();
   d.start(page);
   let length = 0;
   try {
+    if (prod.open) await prod.open(d);
+    else await d.go('catalogue');
     for (const [i, s] of list.entries()) {
       process.stdout.write(`scene ${i + 1}/${list.length} at ${d.now().toFixed(1)}s\n`);
       await d.scene(s);
     }
-    await page.waitForTimeout(1500);
+    await d.wait(1500);
     length = d.now();
   } finally {
     await context.close();
     await browser.close();
     d.server.stop();
   }
+  if (DRY) {
+    console.log(`${prod.NAME}: ${list.length} scenes ran, dry`);
+    return { scenes: list.length };
+  }
   const webm = fs.readdirSync(work).find((f) => f.endsWith('.webm'))!;
   const video = path.join(work, webm);
 
   // The voice: each line at the time its scene started, mixed into one track.
-  const out = path.join(outDir, `${name}.mp4`);
+  const out = path.join(outDir, `${prod.NAME}.mp4`);
   const voiced = d.marks.filter((m) => m.wav);
   const args = ['-y', '-i', video];
   for (const m of voiced) args.push('-i', m.wav!);
   if (voiced.length) {
     const delays = voiced.map((m, i) => `[${i + 1}:a]adelay=${Math.round(m.at * 1000)}|${Math.round(m.at * 1000)}[a${i}]`);
     const mix = `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0,apad[aout]`;
-    args.push('-filter_complex', [...delays, mix].join(';'), '-map', '0:v', '-map', '[aout]', '-shortest');
+    const graph = path.join(work, 'mix.txt');
+    fs.writeFileSync(graph, [...delays, mix].join(';'));
+    args.push('-filter_complex_script', graph, '-map', '0:v', '-map', '[aout]', '-shortest');
   }
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-metadata', `title=${title}`);
+  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-metadata', `title=${prod.TITLE}`);
   if (voiced.length) args.push('-c:a', 'aac', '-b:a', '128k');
   args.push(out);
   const ff = spawnSync('ffmpeg', args, { encoding: 'utf8' });
@@ -210,18 +304,5 @@ export async function record(name: string, title: string, scenes: (d: Director) 
   const srt = d.marks.map((m, i) => `${i + 1}\n${ts(m.at)} --> ${ts(m.at + m.seconds)}\n${m.text}\n`).join('\n');
   fs.writeFileSync(out.replace(/\.mp4$/, '.srt'), srt);
   console.log(`${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB, ${Math.floor(length / 60)} min ${Math.round(length % 60)} s, ${list.length} scenes`);
-}
-
-// ------------------------------------------------------------------------------- entry
-const which = process.argv[2];
-if (which) {
-  const outArg = process.argv.indexOf('--out');
-  const outDir = path.resolve(outArg > 0 ? process.argv[outArg + 1] : path.join(STUDIO, '..', 'docs', 'demo'));
-  fs.mkdirSync(outDir, { recursive: true });
-  const mod = which === 'concepts' ? await import('./concepts.js') : which === 'build' ? await import('./build.js') : undefined;
-  if (!mod) {
-    console.error('Usage: npx tsx demo/record.ts concepts|build [--out dir]');
-    process.exit(2);
-  }
-  await record(mod.NAME, mod.TITLE, mod.scenes, outDir);
+  return { scenes: list.length, out };
 }
