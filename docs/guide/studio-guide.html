@@ -112,6 +112,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <ol>
         <li><a href="#start">1. Start here</a></li>
         <li><a href="#setup">2. Set up and run</a></li>
+        <li class="sub"><a href="#get-code">Get the source code</a></li>
+        <li class="sub"><a href="#install-dotnet">Install .NET 8</a></li>
+        <li class="sub"><a href="#install-java">Install Java 17</a></li>
         <li><a href="#ideas">3. The ideas you need</a></li>
         <li><a href="#features">4. Every feature</a></li>
         <li class="sub"><a href="#f-catalogue">Catalogue and artefact pages</a></li>
@@ -153,7 +156,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 <!-- ============================================================ 2 -->
 <section class="part" id="setup">
   <h2>2. Set up and run</h2>
-  <p class="lede">The studio is a Node.js server with a web app. It reads the specification repository beside it, and keeps your own work in a workspace folder.</p>
+  <p class="lede">The studio is a Node.js server with a web app. It reads the specification repository beside it, and keeps your own work in a workspace folder. Without .NET and Java, everything works except deploying on a real engine; install them when you reach part 7.</p>
 
   <h3>What you need</h3>
   <div class="table"><table>
@@ -162,17 +165,23 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td>Node.js 22 or later, and npm</td><td>The studio, its tests, the command line</td><td><code>node --version</code> shows v22 or later</td></tr>
       <tr><td>Git</td><td>Getting the source code</td><td><code>git --version</code></td></tr>
       <tr><td>A current browser</td><td>The web app</td><td>Any of Chrome, Edge, Firefox, Safari</td></tr>
-      <tr><td>.NET SDK 8</td><td>Deploying and running on DTFx (part 7)</td><td><code>dotnet --version</code> shows 8</td></tr>
-      <tr><td>Java 17 or later</td><td>The conformance kit on Flowable (optional)</td><td><code>java -version</code></td></tr>
+      <tr><td>.NET SDK 8 (optional)</td><td>Deploying and running on DTFx (part 7, and step 11 of part 6). <a href="#install-dotnet">How to install it</a></td><td><code>dotnet --version</code> shows 8</td></tr>
+      <tr><td>Java 17 or later (optional)</td><td>The conformance kit on Flowable. <a href="#install-java">How to install it</a></td><td><code>java -version</code> shows 17 or later</td></tr>
       <tr><td>Python 3.10 or later</td><td>The example bank's Python scripts, and the specification's own checks. The studio uses <code>python3</code>, or <code>python</code> when there is no <code>python3</code></td><td><code>python --version</code> shows 3</td></tr>
     </tbody>
   </table></div>
 
-  <h3>Get the source code</h3>
-  <p>Clone the repository and switch to the branch the studio is on:</p>
+  <h3 id="get-code">Get the source code</h3>
+  <p>The code is public on GitHub, on the branch <code>claude/cool-ptolemy-js3lcz</code>. Take either route.</p>
+  <h4>With Git</h4>
   <div class="block"><pre class="cmd">git clone -b claude/cool-ptolemy-js3lcz https://github.com/mallyan-nkm/bfs-payment-hub-authoring.git</pre></div>
   <div class="block"><pre class="cmd">cd bfs-payment-hub-authoring</pre></div>
-  <p>Or, on GitHub, choose that branch, then <span class="ui">Code</span>, <span class="ui">Download ZIP</span>, and unzip it. The repository is private, so sign in to GitHub with an account that has access.</p>
+  <p>To take later changes, run <code>git pull</code> in that folder.</p>
+  <h4>Without Git: a ZIP file</h4>
+  <p>Download the branch as a ZIP file and unzip it:</p>
+  <div class="block"><pre class="cmd">https://github.com/mallyan-nkm/bfs-payment-hub-authoring/archive/refs/heads/claude/cool-ptolemy-js3lcz.zip</pre></div>
+  <p>Or open <code>https://github.com/mallyan-nkm/bfs-payment-hub-authoring</code>, switch the branch selector to <code>claude/cool-ptolemy-js3lcz</code>, and choose <span class="ui">Code</span>, then <span class="ui">Download ZIP</span>. The unzipped folder is called <code>bfs-payment-hub-authoring-claude-cool-ptolemy-js3lcz</code>; open a terminal in it.</p>
+  <p>The folder holds <code>spec/</code> (the specification), <code>studio/</code> (the studio), <code>docs/</code> (this guide and the issues log) and the README.</p>
 
   <h3>Install</h3>
   <p>From the root of the repository:</p>
@@ -211,16 +220,50 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     </tbody>
   </table></div>
 
-  <h3>Set up the engines (for part 7)</h3>
-  <p>DTFx needs only the .NET SDK: the first deploy builds its harness. To check it, run the conformance kit on DTFx:</p>
+  <h3 id="install-dotnet">Install .NET 8, for DTFx</h3>
+  <p>Check first: if <code>dotnet --list-sdks</code> lists an SDK starting <code>8.</code>, skip this. You need the <b>SDK</b>, not only the runtime. Install it one of these ways, then open a new terminal.</p>
+  <div class="table"><table>
+    <thead><tr><th>Your system</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>Windows</td><td><code>winget install Microsoft.DotNet.SDK.8</code></td></tr>
+      <tr><td>Ubuntu 22.04 or later</td><td><code>sudo apt-get update &amp;&amp; sudo apt-get install -y dotnet-sdk-8.0</code></td></tr>
+      <tr><td>macOS, or Linux without admin rights</td><td>Microsoft's install script, into your home folder (below)</td></tr>
+      <tr><td>Any system, by hand</td><td>The installer from <a href="https://dotnet.microsoft.com/download/dotnet/8.0">dotnet.microsoft.com/download/dotnet/8.0</a>: choose the SDK for your system</td></tr>
+    </tbody>
+  </table></div>
+  <p>The install script, on macOS or Linux:</p>
+  <div class="block"><pre class="cmd">curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh</pre></div>
+  <div class="block"><pre class="cmd">bash dotnet-install.sh --channel 8.0</pre></div>
+  <p>It installs into <code>$HOME/.dotnet</code>. Add that folder to your path, in your shell profile to keep it:</p>
+  <div class="block"><pre class="cmd">export DOTNET_ROOT=$HOME/.dotnet; export PATH=$PATH:$HOME/.dotnet</pre></div>
+  <p>Then check it, and run the conformance kit on DTFx from <code>studio/</code>. The first run builds the DTFx harness, which takes a minute and needs the internet once for its packages.</p>
+  <div class="block"><pre class="cmd">dotnet --version</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
-  <p>Flowable needs Java; its setup script fetches the libraries once:</p>
-  <div class="block"><pre class="cmd">engines/flowable/setup.sh &amp;&amp; npx tsx engines/flowable/run-kit.ts</pre></div>
-  <div class="see"><code>46 of 46 conformance scenarios pass on DTFx</code>, and the same on Flowable.</div>
+  <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>46 of 46 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
+
+  <h3 id="install-java">Install Java 17, for Flowable</h3>
+  <p>Only the conformance kit on Flowable needs Java. Check first: if <code>java -version</code> shows 17 or later, skip this. Any OpenJDK build works; Eclipse Temurin is a common one.</p>
+  <div class="table"><table>
+    <thead><tr><th>Your system</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>Windows</td><td><code>winget install EclipseAdoptium.Temurin.17.JDK</code></td></tr>
+      <tr><td>macOS with Homebrew</td><td><code>brew install --cask temurin@17</code></td></tr>
+      <tr><td>Ubuntu or Debian</td><td><code>sudo apt-get update &amp;&amp; sudo apt-get install -y openjdk-17-jdk</code></td></tr>
+      <tr><td>Any system, by hand</td><td>The JDK 17 installer from <a href="https://adoptium.net/temurin/releases/?version=17">adoptium.net</a></td></tr>
+    </tbody>
+  </table></div>
+  <p>Open a new terminal and check it:</p>
+  <div class="block"><pre class="cmd">java -version</pre></div>
+  <p>The Flowable setup script is a bash script: it downloads Maven into <code>engines/flowable/.bin</code> and builds the Flowable harness, so it needs the internet the first time. On Windows, run it from <b>Git Bash</b>, which comes with Git for Windows. From <code>studio/</code>:</p>
+  <div class="block"><pre class="cmd">bash engines/flowable/setup.sh</pre></div>
+  <div class="block"><pre class="cmd">npx tsx engines/flowable/run-kit.ts</pre></div>
+  <div class="see"><code>46 of 46 conformance scenarios pass on Flowable</code>.</div>
 
   <h3>Start again</h3>
-  <p>Stop the studio and delete the workspace. The factory content and the example bank live in <code>spec/</code> and the studio never changes them.</p>
+  <p>Stop the studio and delete the workspace. The factory content and the example bank live in <code>spec/</code> and the studio never changes them. On macOS or Linux:</p>
   <div class="block"><pre class="cmd">rm -rf $HOME/th-training</pre></div>
+  <p>On Windows, in PowerShell:</p>
+  <div class="block"><pre class="cmd">Remove-Item -Recurse -Force "$HOME\th-training"</pre></div>
 </section>
 
 <!-- ============================================================ 3 -->
@@ -1179,7 +1222,7 @@ provenance:
   <div class="see">A worker <code>th-uae-demo</code> serving only <code>uae.demo</code> tasks, beside <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code> and <code>th-uae-wps</code>. The change sets you approved, listed by id.</div>
 
   <h3>Step 11. Deploy and run on DTFx</h3>
-  <p>Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample in your training workspace:</p>
+  <p>This step needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample in your training workspace:</p>
   <div class="block"><pre class="cmd">npm run studio -- deploy corporate.zip --workflow p.wf.corporate.v1 --message uae.demo.credit-file --inbound $HOME/th-training/samples/demo-credit-file-valid.csv --tenant example-bank --bench p.port.core-banking.v1=p.sim.core-banking.v1:accept --bench p.port.sanctions.v1=p.sim.sanctions.v1:accept --bench p.port.fraud.v1=p.sim.fraud.v1:accept --bench uae.demo.port.demo.v1=uae.demo.sim.demo-outward.v1:accept --bench uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept</pre></div>
   <div class="see"><code>worker th-uae-demo up</code> with its own pid, <code>configuration example-bank@1.1.0 from the package</code>, <code>outcome settled</code>.</div>
   <p>You have built a scheme, routed it from its dispatch table into the corporate payment workflow, approved it through maker-checker, enabled it as a bank, and run it on a real engine with a separate worker per queue.</p>
@@ -1230,7 +1273,7 @@ provenance:
     </tbody>
   </table></div>
   <p>Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command. Set <code>TH_WORKER_LOG=/tmp/workers.log</code> to see every attempt each worker served.</p>
-  <div class="note">The deploy runner drives DTFx. Temporal packages are built and tested, but the conformance kit has not been run on Temporal yet.</div>
+  <div class="note">The deploy runner drives DTFx, so it needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Temporal packages are built and tested, but the conformance kit has not been run on Temporal yet.</div>
 </section>
 
 <!-- ============================================================ 8 -->
@@ -1265,7 +1308,8 @@ provenance:
       <tr><td><code>route:no-match</code></td><td>The tenant's configuration does not enable that rail</td></tr>
       <tr><td><code>hook:hold</code> then <code>hold:declined</code></td><td>The bank's limit held the payment and operations declined it</td></tr>
       <tr><td><code>No start message in the package's dispatch tables</code></td><td>Give <code>--message</code> for a whole payment, or check the scheme names the leg</td></tr>
-      <tr><td><code>dotnet build failed</code>, or <code>dotnet</code> not found</td><td>Install the .NET 8 SDK; the first deploy builds the DTFx harness. Everything except deploying works without it</td></tr>
+      <tr><td><code>dotnet build failed</code>, or <code>dotnet</code> not found</td><td><a href="#install-dotnet">Install the .NET 8 SDK</a> and open a new terminal; the first deploy builds the DTFx harness. Everything except deploying works without it</td></tr>
+      <tr><td><code>java</code> not found, or <code>setup.sh</code> will not run</td><td><a href="#install-java">Install Java 17</a>; on Windows run the setup script from Git Bash</td></tr>
       <tr><td>A Python script fails to start</td><td>Check <code>python --version</code> shows 3. Or point the studio at your interpreter with <code>TH_PYTHON</code></td></tr>
       <tr><td>The assistant says it has no credentials</td><td>Set <code>ANTHROPIC_API_KEY</code> for the studio server</td></tr>
     </tbody>
