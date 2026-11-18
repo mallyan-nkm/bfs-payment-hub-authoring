@@ -39,7 +39,14 @@ TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
 
 The hands-on video's AI chapter makes a live call only when the studio server has a model key
 (`ANTHROPIC_API_KEY` in its environment); without one it shows the studio saying so, and the voice
-says so too. Record it again once a key is set for the server to show a real draft.
+says so too. The recorded video was made with a key set, so it shows a real draft. The server takes
+its environment from the recorder, so set the key on the command:
+
+```bash
+ANTHROPIC_API_KEY=... TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
+```
+
+A live draft takes about half a minute; the recording waits up to three.
 
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
 hands-on production also checks its results as it goes. `test/blackbox/demo-videos.test.ts` runs all

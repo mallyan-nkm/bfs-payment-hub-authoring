@@ -37,8 +37,8 @@ export function scenes(d: Director): Scene[] {
     throw new Error(`No status matching ${re}`);
   };
   /** Wait until the page shows the text; a step that does not produce it stops the recording. */
-  const expectText = async (re: RegExp) => {
-    for (let i = 0; i < 80; i++) {
+  const expectText = async (re: RegExp, seconds = 20) => {
+    for (let i = 0; i < seconds * 4; i++) {
       if (re.test(await main().innerText())) return;
       await p().waitForTimeout(250);
     }
@@ -349,7 +349,8 @@ export function scenes(d: Director): Scene[] {
       say: 'We ask for the draft. It comes back with the rule, its examples, the clauses it used, and questions about anything the text did not say. The gates have already run on it.',
       do: async () => {
         await d.click(p().getByRole('button', { name: 'Ask for a draft' }));
-        await expectText(/every gate green|red at/);
+        // A live draft takes about half a minute; give the model up to three.
+        await expectText(/every gate green|red at/, 180);
         await main().getByText('Draft').first().scrollIntoViewIfNeeded();
         await d.wait(2500);
       },
