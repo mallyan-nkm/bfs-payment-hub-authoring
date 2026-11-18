@@ -240,6 +240,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="block"><pre class="cmd">dotnet --version</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
   <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>46 of 46 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
+  <div class="note">If the build fails with <code>error NU1100: Unable to resolve 'Microsoft.Azure.DurableTask.Core'</code>, NuGet cannot reach a package source. The harness folder names nuget.org in its own <code>nuget.config</code>, so take the latest code with <code>git pull</code>. If it still fails, your network blocks <code>api.nuget.org</code>: on a company network, ask for your proxy settings or an internal NuGet mirror, and add the mirror with <code>dotnet nuget add source &lt;url&gt; -n company</code>.</div>
 
   <h3 id="install-java">Install Java 17, for Flowable</h3>
   <p>Only the conformance kit on Flowable needs Java. Check first: if <code>java -version</code> shows 17 or later, skip this. Any OpenJDK build works; Eclipse Temurin is a common one.</p>
@@ -1309,6 +1310,7 @@ provenance:
       <tr><td><code>hook:hold</code> then <code>hold:declined</code></td><td>The bank's limit held the payment and operations declined it</td></tr>
       <tr><td><code>No start message in the package's dispatch tables</code></td><td>Give <code>--message</code> for a whole payment, or check the scheme names the leg</td></tr>
       <tr><td><code>dotnet build failed</code>, or <code>dotnet</code> not found</td><td><a href="#install-dotnet">Install the .NET 8 SDK</a> and open a new terminal; the first deploy builds the DTFx harness. Everything except deploying works without it</td></tr>
+      <tr><td><code>error NU1100</code> when DTFx builds</td><td>NuGet cannot reach a package source. <code>git pull</code> for the harness's <code>nuget.config</code>; check <code>dotnet nuget list source</code>; on a company network, use its proxy or NuGet mirror</td></tr>
       <tr><td><code>java</code> not found, or <code>setup.sh</code> will not run</td><td><a href="#install-java">Install Java 17</a>; on Windows run the setup script from Git Bash</td></tr>
       <tr><td>A Python script fails to start</td><td>Check <code>python --version</code> shows 3. Or point the studio at your interpreter with <code>TH_PYTHON</code></td></tr>
       <tr><td>The assistant says it has no credentials</td><td>Set <code>ANTHROPIC_API_KEY</code> for the studio server</td></tr>
