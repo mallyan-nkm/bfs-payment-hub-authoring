@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { coveredByAny, diff } from '../core/paths.js';
@@ -9,7 +9,16 @@ import { ContractViolation, ScriptError, type ScriptApi, type ScriptResult } fro
 // the same simulators, rule service and virtual clock as a TypeScript one.
 
 const HARNESS = process.env.TH_PY_HARNESS ?? path.join(path.dirname(fileURLToPath(typeof __filename !== 'undefined' ? 'file://' + __filename : import.meta.url)), 'py_harness.py');
-export const PYTHON = process.env.TH_PYTHON ?? 'python3';
+/** The Python 3 interpreter: TH_PYTHON if set, else `python3`, else `python` (as on Windows). */
+export const PYTHON = process.env.TH_PYTHON ?? findPython();
+
+function findPython(): string {
+  for (const cmd of ['python3', 'python']) {
+    const r = spawnSync(cmd, ['-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout.trim() === '3') return cmd;
+  }
+  return 'python3';
+}
 
 export async function runPythonScript(
   source: string,

@@ -1,3 +1,4 @@
+import { PYTHON } from '../interp/pysandbox.js';
 import ts from 'typescript';
 import { spawnSync } from 'node:child_process';
 import type { CanonicalModel, Element } from './model.js';
@@ -123,7 +124,7 @@ class V(ast.NodeVisitor):
 V().visit(ast.parse(src))
 print(json.dumps(out))
 `;
-  const r = spawnSync(process.env.TH_PYTHON ?? 'python3', ['-I', '-c', prog], { input: source, encoding: 'utf8' });
+  const r = spawnSync(PYTHON, ['-I', '-c', prog], { input: source, encoding: 'utf8' });
   if (r.status !== 0) return [{ path: '', line: 0 }];
   return JSON.parse(r.stdout);
 }

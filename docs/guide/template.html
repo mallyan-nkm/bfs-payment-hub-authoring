@@ -159,13 +159,20 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="table"><table>
     <thead><tr><th>Tool</th><th>Needed for</th><th>Check</th></tr></thead>
     <tbody>
-      <tr><td>Node.js 22 and npm</td><td>The studio, its tests, the command line</td><td><code>node --version</code> shows v22</td></tr>
+      <tr><td>Node.js 22 or later, and npm</td><td>The studio, its tests, the command line</td><td><code>node --version</code> shows v22 or later</td></tr>
+      <tr><td>Git</td><td>Getting the source code</td><td><code>git --version</code></td></tr>
       <tr><td>A current browser</td><td>The web app</td><td>Any of Chrome, Edge, Firefox, Safari</td></tr>
       <tr><td>.NET SDK 8</td><td>Deploying and running on DTFx (part 7)</td><td><code>dotnet --version</code> shows 8</td></tr>
       <tr><td>Java 17 or later</td><td>The conformance kit on Flowable (optional)</td><td><code>java -version</code></td></tr>
-      <tr><td>Python 3.10 or later</td><td>The specification's own checks (optional)</td><td><code>python3 --version</code></td></tr>
+      <tr><td>Python 3.10 or later</td><td>The example bank's Python scripts, and the specification's own checks. The studio uses <code>python3</code>, or <code>python</code> when there is no <code>python3</code></td><td><code>python --version</code> shows 3</td></tr>
     </tbody>
   </table></div>
+
+  <h3>Get the source code</h3>
+  <p>Clone the repository and switch to the branch the studio is on:</p>
+  <div class="block"><pre class="cmd">git clone -b claude/cool-ptolemy-js3lcz https://github.com/mallyan-nkm/bfs-payment-hub-authoring.git</pre></div>
+  <div class="block"><pre class="cmd">cd bfs-payment-hub-authoring</pre></div>
+  <p>Or, on GitHub, choose that branch, then <span class="ui">Code</span>, <span class="ui">Download ZIP</span>, and unzip it. The repository is private, so sign in to GitHub with an account that has access.</p>
 
   <h3>Install</h3>
   <p>From the root of the repository:</p>
@@ -175,7 +182,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 
   <h3>Start on a training workspace</h3>
   <p>The workspace holds your drafts, releases, scripts, sample files, configuration changes and the audit log. Keep a separate one for training so you can throw it away.</p>
+  <p>On macOS or Linux:</p>
   <div class="block"><pre class="cmd">TH_DATA_ROOT=$HOME/th-training npm start</pre></div>
+  <p>On Windows, in PowerShell:</p>
+  <div class="block"><pre class="cmd">$env:TH_DATA_ROOT="$HOME\th-training"; npm start</pre></div>
   <p>Open <code>http://localhost:4317</code>.</p>
   <div class="see">The catalogue, with about 200 documents counted at the foot of the left menu.</div>
   <div class="table"><table>
@@ -705,7 +715,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>npm run test:blackbox</code></td><td>The studio as separate processes: the HTTP API, the command line, the web app in Chromium, this guide's walk-through, and the end-to-end tests for a new scheme and for WPS by configuration. <code>TH_ENGINES=1</code> adds the kit on DTFx and Flowable</td></tr>
     </tbody>
   </table></div>
-  <p>From <code>spec/</code>, the specification's own checks: <code>python3 tools/validate.py</code>, <code>python3 tools/expand.py --check</code>, <code>python3 tools/mutation_tests.py</code>, <code>python3 tools/build_docs.py</code>.</p>
+  <p>From <code>spec/</code>, the specification's own checks, after <code>pip install -r tools/requirements.txt</code> once: <code>python tools/validate.py</code>, <code>python tools/expand.py --check</code>, <code>python tools/mutation_tests.py</code>, <code>python tools/build_docs.py</code>. Use <code>python3</code> where that is your command.</p>
 </section>
 
 <!-- ============================================================ 9 -->
@@ -725,7 +735,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>route:no-match</code></td><td>The tenant's configuration does not enable that rail</td></tr>
       <tr><td><code>hook:hold</code> then <code>hold:declined</code></td><td>The bank's limit held the payment and operations declined it</td></tr>
       <tr><td><code>No start message in the package's dispatch tables</code></td><td>Give <code>--message</code> for a whole payment, or check the scheme names the leg</td></tr>
-      <tr><td><code>dotnet build failed</code></td><td>Install the .NET 8 SDK; the first deploy builds the DTFx harness</td></tr>
+      <tr><td><code>dotnet build failed</code>, or <code>dotnet</code> not found</td><td>Install the .NET 8 SDK; the first deploy builds the DTFx harness. Everything except deploying works without it</td></tr>
+      <tr><td>A Python script fails to start</td><td>Check <code>python --version</code> shows 3. Or point the studio at your interpreter with <code>TH_PYTHON</code></td></tr>
       <tr><td>The assistant says it has no credentials</td><td>Set <code>ANTHROPIC_API_KEY</code> for the studio server</td></tr>
     </tbody>
   </table></div>
