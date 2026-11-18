@@ -12,6 +12,7 @@ import { Export } from './views/Export';
 import { Governance } from './views/Governance';
 import { Editors } from './views/Editors';
 import { Assistant } from './views/Assistant';
+import { AssistantDock } from './views/AssistantDock';
 
 const NAV: { id: string; label: string; hint: string }[] = [
   { id: 'catalogue', label: 'Catalogue', hint: 'F-01, F-02' },
@@ -160,6 +161,7 @@ export function App() {
           )}
           {body}
         </main>
+        <AssistantDock />
       </div>
     </Studio.Provider>
   );

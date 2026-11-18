@@ -78,6 +78,8 @@ async function designerDraft(wfKind: string, doc: any) {
   await page.getByLabel('Name', { exact: true }).fill(doc.name);
   await page.getByLabel('Title', { exact: true }).fill(doc.title);
   await page.getByRole('button', { name: 'Create' }).click();
+  // The blank starter loads from the server; paste only once it is in, or it overwrites the paste.
+  await expect.poll(() => page.getByLabel('Workflow YAML').inputValue()).toContain(doc.name);
   await page.getByLabel('Workflow YAML').fill(toYaml(doc));
   await page.waitForTimeout(800);
   await page.getByRole('button', { name: /^Save draft as / }).click();

@@ -3,6 +3,7 @@ import { get, post, refusal, type Issue, type Summary, type TestRunReport } from
 import { Badge, ErrorBox, Issues, Loading, PassFail, Section, useLoad, useStudio } from '../ui';
 import { StringList, toYamlText } from '../authoring';
 import { RunReport } from './RunReport';
+import { useAssist } from '../assist';
 
 // The test bench (F-16 to F-19): stored tests with run and run-all, and an ad hoc bench.
 
@@ -152,6 +153,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
   const [expect, setExpect] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [lastRun, setLastRun] = useState<any>();
 
   const targets = useLoad(async () => {
     const kinds = ['workflow', 'hook', 'activity'];
@@ -210,6 +212,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       if (body.inbound) given.inbound = body.inbound;
       if (body.message) given.message = body.message;
       if (body.signals.length) given.signals = body.signals;
+      setLastRun({ outcome: r.outcome, trace: r.trace, reasonCode: (r as any).reasonCode, error: (r as any).error });
       onReport(r, { target, level: r.level, evaluationDate: date, tenant: runTenant !== 'owner' ? runTenant : undefined, bench: body.bench, given });
     } catch (e: any) {
       setError(e.message);
@@ -217,6 +220,22 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       setBusy(false);
     }
   };
+
+  // The bench set-up as one document, for the assistant: it may read it and propose a new one.
+  let ctxDoc: any = context;
+  try { ctxDoc = context.trim() ? JSON.parse(context) : undefined; } catch { /* keep the text */ }
+  useAssist({
+    surface: 'bench', kind: 'bench', topic: 'bench', report: lastRun,
+    doc: { target, level: level || undefined, evaluationDate: date, tenant: runTenant, bench, input, context: input === 'context' ? ctxDoc : undefined, inbound: input === 'inbound' ? inbound : undefined, message: message || undefined, expect: expect.trim() || undefined },
+    setDoc: (d: any) => {
+      if (!d) return;
+      setTarget(d.target ?? ''); setLevel(d.level ?? ''); if (d.evaluationDate) setDate(d.evaluationDate); if (d.tenant) setRunTenant(d.tenant);
+      setBench((d.bench ?? []).map((b: any) => ({ port: b.port ?? '', simulator: b.simulator ?? '', scenario: b.scenario ?? '' })));
+      if (d.inbound) { setInput('inbound'); setInbound(d.inbound); setMessage(d.message ?? ''); }
+      else { setInput('context'); setContext(d.context === undefined ? '' : typeof d.context === 'string' ? d.context : JSON.stringify(d.context, null, 2)); }
+      setExpect(d.expect === undefined ? '' : typeof d.expect === 'string' ? d.expect : JSON.stringify(d.expect, null, 2));
+    },
+  });
 
   const setRow = (i: number, patch: Partial<BenchRow>) => setBench((b) => b.map((x, n) => (n === i ? { ...x, ...patch } : x)));
   const setSig = (i: number, patch: Partial<SignalRow>) => setSignals((b) => b.map((x, n) => (n === i ? { ...x, ...patch } : x)));

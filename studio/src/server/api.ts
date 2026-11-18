@@ -12,6 +12,9 @@ import { exportPackage, exportZip, type Target } from '../export/exporter.js';
 import { templates } from './templates.js';
 import { runGates } from '../ai/gates.js';
 import { assistantConfigured, draft } from '../ai/assistant.js';
+import { agentTurn, anthropicAgentModel, replayModel, type AgentModel } from '../ai/agent.js';
+import { explainBench, explainDoc } from '../explain/explain.js';
+import { FIELD_HELP, fieldHelp } from '../explain/fields.js';
 import { modelOf } from '../core/model.js';
 import { typescriptTypes, pythonTypes } from '../core/types.js';
 import * as authoring from '../governance/authoring.js';
@@ -675,8 +678,38 @@ route('GET', '/api/bindings', (env) => compareBindings(env));
 
 // --------------------------------------------------------------------- AI (C16)
 
-route('GET', '/api/ai/status', () => assistantConfigured());
+route('GET', '/api/ai/status', () => (process.env.TH_AI_REPLAY ? { configured: true, how: 'replay' } : assistantConfigured()));
 route('GET', '/api/ai/templates', (_env, req) => TEMPLATES.filter((t) => !req.query.kind || t.kind === req.query.kind));
+// The inline assistant beside every surface (I-29). It needs credentials, or, for tests and offline
+// demonstrations, a recorded conversation in TH_AI_REPLAY (a JSON list of model turns), which it
+// labels as a replay.
+route('POST', '/api/ai/agent', async (env, req) => {
+  const body = req.body ?? {};
+  const ctx = { ...(body.context ?? {}), tenant: tenantOf(req), actor: body.context?.actor ?? '' };
+  if (!ctx.surface) throw new HttpError(400, 'Send context.surface');
+  const replay = process.env.TH_AI_REPLAY;
+  let model: AgentModel;
+  if (replay) model = replayModel(JSON.parse(nodefs.readFileSync(replay, 'utf8')));
+  else {
+    const st = assistantConfigured();
+    if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);
+    model = anthropicAgentModel();
+  }
+  const inner = (method: string, path: string, b: any = {}) => dispatch(env, { method, path, query: { tenant: ctx.tenant }, body: { tenant: ctx.tenant, ...b } });
+  return agentTurn(env, { ...body, context: ctx }, model, inner);
+});
+
+// "What is happening": plain words, a checklist and the next step, with no model (I-29).
+route('GET', '/api/help/fields', (_env, req) => (req.query.label ? fieldHelp(req.query.label) ?? null : FIELD_HELP));
+route('POST', '/api/explain', async (env, req) => {
+  const { surface, doc, selected, report } = req.body ?? {};
+  const tenant = tenantOf(req);
+  if (surface === 'bench') return explainBench(env, doc, report);
+  if (doc?.kind === 'configuration-set') return explainDoc(env, doc, { issues: gov.checkConfiguration(env, tenant, doc) });
+  const gates = doc?.kind ? (await runGates(env, { doc, tenant })).gates : undefined;
+  return explainDoc(env, doc, { gates, selected });
+});
+
 route('POST', '/api/ai/draft', async (env, req) => {
   const st = assistantConfigured();
   if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);

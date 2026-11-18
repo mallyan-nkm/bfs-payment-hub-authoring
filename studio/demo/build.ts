@@ -56,6 +56,8 @@ export function scenes(d: Director): Scene[] {
     await d.type(p().getByLabel('Name', { exact: true }), doc.name, 25);
     await d.type(p().getByLabel('Title', { exact: true }), doc.title, 15);
     await d.click(p().getByRole('button', { name: 'Create' }));
+    // The blank starter loads from the server; paste only once it is in, or it overwrites the paste.
+    for (let i = 0; i < 80 && !(await p().getByLabel('Workflow YAML').inputValue()).includes(doc.name); i++) await p().waitForTimeout(100);
     await d.paste(p().getByLabel('Workflow YAML'), toYaml(doc));
     await p().waitForTimeout(900);
   };

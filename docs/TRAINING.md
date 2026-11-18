@@ -339,6 +339,18 @@ Why a new leg in WPS would not run on its own: the WPS dispatch table names one 
 6. Tab **Bindings and stubs**: the engine bindings regenerate from the packs. Download a simulator's deployable stub.
 7. Tab **Audit log**: filter by your user, and **Verify the chain**.
 
+### Exercise 11a. The assistant beside the editor (15 minutes)
+
+1. Open **Artefact editors**, **Rule**, **Start new**. The panel on the right shows **What is happening**. (If it is closed, click the **Assistant** tab on the right edge.)
+2. Click into **Rule kind**, then **Level**. The panel says what each field means, the values it takes, an example and the usual mistake.
+3. Change the name and the title. Watch the plain-words explanation, the picture and the checklist follow your edits.
+4. With a key set for the studio server, open **Ask** and type: *Build a rule that the days in the pay period are 1 to 31, with a passing, a failing and a boundary example.*
+5. The assistant looks around first: you see each thing it read. When it wants to change the rule, a card shows what it would change and its checks. Choose **Allow once**. The form fills in.
+6. Ask it to shorten the title, and choose **Allow always**. Then click **Undo** beside that change in the list: the title goes back.
+7. Save the draft yourself, and publish it with a checker as in exercise 6. The assistant never publishes.
+
+The same panel is beside the workflow designer, a bank's configuration and the test bench.
+
 ### Exercise 12. The AI assistant (optional, needs a key)
 
 The assistant drafts a rule, activity, simulator or script from a plain-language instruction and public scheme text. It needs `ANTHROPIC_API_KEY` set for the studio server; without it, the view says how to set it.

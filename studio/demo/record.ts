@@ -257,6 +257,8 @@ export async function record(prod: Production, outDir: string) {
   const size = { width: 1280, height: 720 };
   const context = await browser.newContext({ viewport: size, ...(DRY ? {} : { recordVideo: { dir: work, size } }), acceptDownloads: true });
   await context.addInitScript(OVERLAY);
+  // The recordings show the studio without the assistant panel, unless a production opens it.
+  await context.addInitScript(() => { try { if (localStorage.getItem('th.dock') === null) localStorage.setItem('th.dock', '0'); } catch { /* no storage */ } });
   const page = await context.newPage();
   d.start(page);
   let length = 0;

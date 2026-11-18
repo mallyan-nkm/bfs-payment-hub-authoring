@@ -4,6 +4,7 @@ import { downloadUrl, get, post, refusal, type Issue, type Summary, type TestRun
 import { ArtefactLink, Badge, ErrorBox, Issues, Loading, PassFail, Section, Tabs, useDebounced, useLoad, useStudio } from '../ui';
 import { DraftActions, Gates, JsonField, Sel, StringList, Txt, clean, orNone, resolves, scalar, toYamlText, useCatalogue, useDocs, useGates, useModel } from '../authoring';
 import { useResolver } from '../expand';
+import { useAssist } from '../assist';
 import { Canvas, getIn, setIn } from './Canvas';
 
 // The artefact editors (C13, F-06 to F-11, F-36): forms that write valid documents for a rule,
@@ -169,6 +170,7 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
 
   const set: Set = (p, v) => setDoc((d: any) => setIn(d, p, v));
   const gates = useGates(doc);
+  useAssist({ surface: 'editor', kind, doc, setDoc, topic: kind });
 
   let form: ReactNode;
   switch (kind) {

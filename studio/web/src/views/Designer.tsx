@@ -6,6 +6,7 @@ import { DraftActions, toYamlText } from '../authoring';
 import { expandWorkflow, sameDoc, useResolver } from '../expand';
 import { Canvas } from './Canvas';
 import { Outline } from './Outline';
+import { useAssist } from '../assist';
 
 // The workflow designer (F-12 to F-14, F-22): create or open, edit with checks on every edit,
 // see the outline, the interface diff and the proposed release, save, publish.
@@ -132,6 +133,7 @@ export function Designer({ query }: { query: URLSearchParams }) {
   const doc = local.doc ?? lastDoc;
   const resolver = useResolver(doc, tenant);
   const onCanvas = (next: any) => setYaml(toYamlText(next));
+  useAssist({ surface: 'designer', kind: doc?.kind, doc: yaml ? doc : undefined, setDoc: (d) => setYaml(toYamlText(d)), selected, topic: 'designer' });
 
   return (
     <div className="view">

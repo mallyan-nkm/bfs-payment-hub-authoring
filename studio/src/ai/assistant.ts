@@ -109,7 +109,7 @@ export function buildPrompt(env: StudioEnv, req: DraftRequest): { system: string
 /** The model call. Injected so tests can run the loop and the gates without a live model. */
 export type Drafter = (system: string, user: string) => Promise<{ json: any; stopReason?: string; model?: string }>;
 
-export function anthropicDrafter(client = new Anthropic()): Drafter {
+export function anthropicDrafter(client = new Anthropic(process.env.TH_ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY ? { apiKey: process.env.TH_ANTHROPIC_API_KEY } : {})): Drafter {
   return async (system, user) => {
     const response = await client.beta.messages.create({
       model: MODEL,
@@ -156,8 +156,8 @@ export async function draft(env: StudioEnv, req: DraftRequest, drafter: Drafter 
 /** Whether the assistant can reach a model: an API key, an auth token, or an `ant` profile. */
 export function assistantConfigured(): { configured: boolean; how: string } {
   const env = process.env;
-  if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_PROFILE) return { configured: true, how: 'environment' };
+  if (env.ANTHROPIC_API_KEY || env.TH_ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_PROFILE) return { configured: true, how: 'environment' };
   const home = env.HOME ?? '';
   if (home && fs.existsSync(path.join(home, '.config', 'anthropic'))) return { configured: true, how: 'ant profile' };
-  return { configured: false, how: 'Set ANTHROPIC_API_KEY for the studio server, or run `ant auth login` on its host.' };
+  return { configured: false, how: 'Set ANTHROPIC_API_KEY (or TH_ANTHROPIC_API_KEY) for the studio server, or run `ant auth login` on its host.' };
 }

@@ -122,6 +122,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
         <li class="sub"><a href="#f-designer">Workflow designer</a></li>
         <li class="sub"><a href="#f-editors">Artefact editors</a></li>
         <li class="sub"><a href="#f-assistant">AI assistant</a></li>
+        <li class="sub"><a href="#f-dock">The assistant beside every page</a></li>
         <li class="sub"><a href="#f-bench">Test bench</a></li>
         <li class="sub"><a href="#f-kit">Conformance kit</a></li>
         <li class="sub"><a href="#f-tenant">Tenant</a></li>
@@ -204,7 +205,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>PORT</code></td><td>The web port</td><td><code>4317</code></td></tr>
       <tr><td><code>TH_DATA_ROOT</code></td><td>The workspace folder</td><td><code>studio/data</code></td></tr>
       <tr><td><code>TH_SPEC_ROOT</code></td><td>The specification repository</td><td><code>../spec</code></td></tr>
-      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Turns on the AI assistant</td><td>Not set: the assistant explains how to set it</td></tr>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Turns on the AI assistant and the Ask tab beside every page</td><td>Not set: the assistant explains how to set it</td></tr>
+      <tr><td><code>TH_ANTHROPIC_API_KEY</code></td><td>The same key under another name, for hosts that keep <code>ANTHROPIC_API_KEY</code> for themselves</td><td>Not set</td></tr>
+      <tr><td><code>TH_AI_REPLAY</code></td><td>Replays a recorded conversation instead of a live model, for tests and offline demonstrations. The panel says it is a replay.</td><td>Not set</td></tr>
       <tr><td><code>TH_WORKER_LOG</code></td><td>Each deployed worker logs every task it serves to this file</td><td>Not set</td></tr>
     </tbody>
   </table></div>
@@ -426,6 +429,14 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   </table></div>
   <p>The same templates are served at <code>GET /api/ai/templates</code>, optionally <code>?kind=rule</code>. What comes back: the <span class="ui">Draft</span>, its <span class="ui">Questions</span>, the <span class="ui">Clauses</span> it relied on, its <span class="ui">Provenance</span> and the gate <span class="ui">Status</span>. A draft never publishes itself: <span class="ui">Save as a draft</span> and follow maker-checker.</p>
 
+  <h3 id="f-dock">The assistant beside every page</h3>
+  <p>Beside the editors, the workflow designer, a bank's configuration and the test bench sits a panel with two tabs. Close it with <span class="ui">×</span>; open it again with the <span class="ui">Assistant</span> tab on the right edge.</p>
+  <ul>
+    <li><b>What is happening</b> needs no key. Click into any field and the panel says what it means, the values it takes, an example and the usual mistake. Below that, the document is told in plain words as you build it, with a small picture (for a rule: what it looks at, the condition, the outcome; for an activity: reads, the station, its outcomes; for a workflow: its steps as a story). A checklist shows what is left before it can be published, and the next step. On the bench it tells the last run step by step.</li>
+    <li><b>Ask</b> is Claude, working beside you. It sees the page, the document as it stands, its checks, the field you are in and the step you selected. Ask a question, or ask it to build: <i>build a rule that checks the days in the pay period are 1 to 31, with tests</i>. It looks around freely (the document, the catalogue, the checks, a bench run). Before it changes anything it asks: <span class="ui">Allow once</span>, <span class="ui">Allow always</span> (for that kind of change on that page, until you reset it) or <span class="ui">Deny</span>. Each change is listed with an <span class="ui">Undo</span>; it can undo its own changes too, while the document is still as it left it.</li>
+  </ul>
+  <p>What it may change: the document on the page, a draft saved as you, a test saved as a draft, a sample file. It never publishes: a checker who is not the maker still does that. A document it changed records the model and a reference to its prompt in its provenance. The conversation stays in your browser. Never type personal data.</p>
+
   <h3 id="f-bench">Test bench</h3>
   <p>Two tabs. <span class="ui">Tests</span> lists every test the tenant can see: filter, <span class="ui">Run</span> one or <span class="ui">Run all</span>. <span class="ui">Ad hoc bench</span> runs anything you choose:</p>
   <ul>
@@ -586,7 +597,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <li>In <span class="ui">Audit log</span>, filter by your user and verify the chain.</li>
   </ol>
 
-  <h3>12. The AI assistant (optional, needs a key)</h3>
+  <h3>11a. The assistant beside the editor (15 minutes)</h3>
+  <p>Open <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, <span class="ui">Start new</span>. In the panel on the right, <span class="ui">What is happening</span>: click into <span class="ui">Rule kind</span>, then <span class="ui">Level</span>, and read what each means. Watch the explanation and the checklist change as you edit. With a key set, open <span class="ui">Ask</span> and type <i>Build a rule that the days in the pay period are 1 to 31, with a passing, a failing and a boundary example</i>. Read what it wants to change, its checks, and choose <span class="ui">Allow once</span>. Then ask it to shorten the title, choose <span class="ui">Allow always</span>, and use <span class="ui">Undo</span> on that change. Save the draft yourself and publish it with a checker.</p>
+
+  <h3>12. The AI assistant page (optional, needs a key)</h3>
   <p>Restart the studio with <code>ANTHROPIC_API_KEY</code> set. In <span class="ui">AI assistant</span>, choose <span class="ui">Draft kind</span> rule and the template <i>Field check</i>. Fill its blanks: name <code>uae.wps.rule.salary-month-valid.v1</code>, level batch, the path <code>ext.uae.wps.salaryMonth</code>, the condition <i>is a month from 01 to 12 followed by a four-digit year</i>, a reject finding, reason code <code>DT01</code>. Watch <i>Still to fill</i> empty and the button come on, then ask. Read the draft, its questions, its clauses and its gates, then save it as a draft and follow maker-checker as in exercise 6.</p>
 </section>
 

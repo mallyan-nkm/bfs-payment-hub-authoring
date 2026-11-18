@@ -3,6 +3,7 @@ import YAML from 'yaml';
 import { get, isDesigner, post, refusal, type Issue, type User } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Issues, KV, Loading, PassFail, Section, Val, useDebounced, useLoad, useStudio } from '../ui';
 import { toYamlText } from '../authoring';
+import { useAssist } from '../assist';
 
 // The tenant view (F-26 to F-29): the configuration set, its parameters and hook points,
 // an editor with checks, and the compatibility run.
@@ -46,6 +47,13 @@ export function Tenant() {
     };
   }, [dYaml, who, cfg.data]);
 
+  let cfgDoc: any;
+  try {
+    cfgDoc = yaml ? YAML.parse(yaml) : undefined;
+  } catch {
+    cfgDoc = undefined;
+  }
+  useAssist({ surface: 'tenant', kind: 'configuration-set', doc: cfgDoc, setDoc: (d) => setYaml(toYamlText(d)), tenant: who || undefined, topic: who });
   const [candidates, setCandidates] = useState('');
   const bankUsers = useLoad(() => (who ? get<User[]>('/api/users', who) : Promise.resolve([])), [who]);
   const [saveAs, setSaveAs] = useState('');

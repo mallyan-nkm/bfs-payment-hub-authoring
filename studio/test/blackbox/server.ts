@@ -10,10 +10,10 @@ export const STUDIO = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 
 export interface Server { url: string; dataRoot: string; child: ChildProcess; stop(): void }
 
-export async function startServer(): Promise<Server> {
+export async function startServer(extraEnv: Record<string, string> = {}): Promise<Server> {
   const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'th-bb-'));
   const port = 5100 + Math.floor(Math.random() * 800);
-  const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/server/main.ts'], { cwd: STUDIO, env: { ...process.env, PORT: String(port), TH_DATA_ROOT: dataRoot }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/server/main.ts'], { cwd: STUDIO, env: { ...process.env, PORT: String(port), TH_DATA_ROOT: dataRoot, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
   const url = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 200; i++) {
     try {
