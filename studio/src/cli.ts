@@ -3,7 +3,7 @@ import { runAllTests, runTest } from './testing/runner.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
 
-const USAGE = 'Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
+const USAGE = 'Usage: studio test [ID...] | kit [CK-ID...] | check | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
@@ -86,6 +86,46 @@ async function main() {
     console.log(`trace  ${r.trace.join(' | ')}`);
     console.log(`detail ${r.detail.join(' | ')}`);
     process.exitCode = r.failed ? 1 : 0;
+    return;
+  }
+  if (cmd === 'import' || cmd === 'import-sample') {
+    // studio import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json]
+    const fs = await import('node:fs');
+    const { readBundle, readBundleDir, analyse, apply } = await import('./import/bundle.js');
+    const { bundleZip, wpsTrainingBundle } = await import('./import/sample.js');
+    const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
+    if (cmd === 'import-sample') {
+      need(args[0], 'import-sample needs the zip to write');
+      fs.writeFileSync(args[0], bundleZip(wpsTrainingBundle(env)));
+      console.log(`${args[0]}: the training extraction bundle (WPS as uae.wpsx)`);
+      return;
+    }
+    need(args[0] && !args[0].startsWith('--'), 'import needs a bundle: a .zip or a directory');
+    const bundle = fs.statSync(args[0]).isDirectory() ? readBundleDir(args[0]) : readBundle(fs.readFileSync(args[0]));
+    // Applying writes drafts into the studio's workspace (TH_DATA_ROOT, or the studio's own).
+    const ienv = args.includes('--apply') ? openEnv({ dataRoot: process.env.TH_DATA_ROOT || undefined }) : env;
+    const base = { tenant: opt('tenant') ?? 'owner', bankTenant: opt('bank-tenant') };
+    const out: any = args.includes('--apply')
+      ? await apply(ienv, bundle, { ...base, actor: opt('actor') ?? 'shared.designer', bankActor: opt('bank-actor'), force: args.includes('--force') })
+      : { report: await analyse(ienv, bundle, base) };
+    const r = out.report;
+    if (args.includes('--json')) { console.log(JSON.stringify(out, null, 2)); process.exitCode = r.ok ? 0 : 1; return; }
+    console.log(`bundle   ${r.manifest.scope} from ${r.manifest.source?.system ?? '?'} ${r.manifest.source?.repository ?? ''}@${r.manifest.source?.revision ?? ''}`);
+    console.log(`content  ${Object.entries(r.summary).filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+    const sf = r.inventory.sourceFiles;
+    console.log(`source   ${sf.total} files: ${sf.inventoried} inventoried, ${sf.excluded} excluded, ${sf.missing.length} missing; ${r.inventory.total} items: ${Object.entries(r.inventory.byTarget).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+    for (const t of r.tests) console.log(`test     ${t.passed ? 'PASS' : 'FAIL'}  ${t.id}  ${t.outcome ?? ''}${t.passed ? '' : '  ' + (t.error ?? t.failed?.join('; ') ?? '')}`);
+    const all = [...r.issues, ...r.items.flatMap((i: any) => i.issues), ...r.scripts.flatMap((s: any) => s.issues), ...r.samples.flatMap((s: any) => s.issues)];
+    for (const i of all.filter((x: any) => x.severity === 'error')) console.log(`error    ${i.code} ${i.where}: ${i.message}`);
+    for (const i of all.filter((x: any) => x.severity === 'warning')) console.log(`warning  ${i.code} ${i.where}: ${i.message}`);
+    for (const u of r.inventory.unmapped) console.log(`unmapped ${u.id} ${u.source?.path}${u.source?.lines ? ':' + u.source.lines : ''}: ${u.note}`);
+    if (out.applied) {
+      console.log(`saved    ${out.saved.length} as drafts; ${out.skipped.length} unchanged and reused`);
+      for (const cs of out.changeSets) console.log(`set      ${cs.join(', ')}`);
+      console.log('Nothing is published: a checker approves each change set in Governance.');
+    } else if (args.includes('--apply')) console.log('Not imported: the bundle has errors. Fix them, or pass --force to import with them.');
+    else console.log(r.ok ? 'The bundle may be imported: run again with --apply.' : 'The bundle has errors.');
+    process.exitCode = r.ok ? 0 : 1;
     return;
   }
   if (cmd === 'export-zip') {

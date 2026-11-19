@@ -17,6 +17,7 @@ cd studio && npm run studio -- kit    # the conformance kit
 cd studio && npx tsx engines/dtfx/run-kit.ts   # the kit on DTFx (needs .NET 8)
 cd studio && npx tsx engines/elsa/run-kit.ts   # the kit on Elsa Workflows (needs .NET 8)
 cd studio && npm run studio -- check  # schemas and static checks
+cd studio && npm run studio -- import <bundle.zip|dir> [--bank-tenant b] [--apply]   # import an extraction bundle (docs/import/EXTRACTION-PROMPT.md)
 cd studio && npm run web:build && npm start   # the studio on http://localhost:4317
 cd spec && python3 tools/validate.py && python3 tools/mutation_tests.py   # the spec's own checks
 ```

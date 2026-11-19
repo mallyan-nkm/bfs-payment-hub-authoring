@@ -142,6 +142,11 @@ export class ScriptRegistry {
     return undefined;
   }
 
+  /** The same registry, with one more folder searched first: an import's scripts, before it saves them. */
+  withFirst(dir: string): ScriptRegistry {
+    return new ScriptRegistry([dir, ...this.dirs]);
+  }
+
   list(): string[] {
     const out: string[] = [];
     for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.py')));

@@ -15,6 +15,8 @@ import { assistantConfigured, draft } from '../ai/assistant.js';
 import { agentTurn, anthropicAgentModel, replayModel, type AgentModel } from '../ai/agent.js';
 import { explainBench, explainDoc } from '../explain/explain.js';
 import { FIELD_HELP, fieldHelp } from '../explain/fields.js';
+import { analyse as analyseImport, apply as applyImport, readBundle } from '../import/bundle.js';
+import { bundleZip, wpsTrainingBundle } from '../import/sample.js';
 import { modelOf } from '../core/model.js';
 import { typescriptTypes, pythonTypes } from '../core/types.js';
 import * as authoring from '../governance/authoring.js';
@@ -700,6 +702,25 @@ route('POST', '/api/ai/agent', async (env, req) => {
   }
   const inner = (method: string, path: string, b: any = {}) => dispatch(env, { method, path, query: { tenant: ctx.tenant }, body: { tenant: ctx.tenant, ...b } });
   return agentTurn(env, { ...body, context: ctx }, model, inner);
+});
+
+// Import (I-33): an extraction bundle, as a zip in base64, previewed and then saved as drafts. The
+// import never publishes. The training bundle and the extraction prompt are served for download.
+const bundleOf = (body: any) => {
+  if (!body?.bundle) throw new HttpError(400, 'Send bundle: the extraction bundle zip, in base64');
+  return readBundle(Buffer.from(String(body.bundle), 'base64'));
+};
+route('POST', '/api/import/preview', async (env, req) => analyseImport(env, bundleOf(req.body), { tenant: tenantOf(req), bankTenant: req.body?.bankTenant || undefined, runTests: req.body?.runTests !== false }));
+route('POST', '/api/import/apply', async (env, req) => {
+  const actor = req.body?.actor ?? '';
+  if (!actor) throw new HttpError(400, 'Send actor: the designer the drafts are saved as');
+  return applyImport(env, bundleOf(req.body), { tenant: tenantOf(req), actor, bankTenant: req.body?.bankTenant || undefined, bankActor: req.body?.bankActor || undefined, force: !!req.body?.force });
+});
+route('GET', '/api/import/sample', (env) => ({ __binary: true, data: bundleZip(wpsTrainingBundle(env)), contentType: 'application/zip', filename: 'extraction-uae.wpsx-training.zip' }));
+route('GET', '/api/import/prompt', (env) => {
+  const f = pathmod.join(env.studioRoot, '..', 'docs', 'import', 'EXTRACTION-PROMPT.md');
+  if (!nodefs.existsSync(f)) throw new HttpError(404, 'docs/import/EXTRACTION-PROMPT.md is not here');
+  return { __binary: true, data: nodefs.readFileSync(f), contentType: 'text/markdown; charset=utf-8', filename: 'EXTRACTION-PROMPT.md' };
 });
 
 // "What is happening": plain words, a checklist and the next step, with no model (I-29).

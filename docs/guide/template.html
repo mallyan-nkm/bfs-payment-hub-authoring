@@ -123,6 +123,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
         <li class="sub"><a href="#f-editors">Artefact editors</a></li>
         <li class="sub"><a href="#f-assistant">AI assistant</a></li>
         <li class="sub"><a href="#f-dock">The assistant beside every page</a></li>
+        <li class="sub"><a href="#f-import">Import</a></li>
         <li class="sub"><a href="#f-bench">Test bench</a></li>
         <li class="sub"><a href="#f-debug">The debugger</a></li>
         <li class="sub"><a href="#f-kit">Conformance kit</a></li>
@@ -440,6 +441,14 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <li><b>Ask</b> is Claude, working beside you. It sees the page, the document as it stands, its checks, the field you are in and the step you selected. Ask a question, or ask it to build: <i>build a rule that checks the days in the pay period are 1 to 31, with tests</i>. It looks around freely (the document, the catalogue, the checks, a bench run). Before it changes anything it asks: <span class="ui">Allow once</span>, <span class="ui">Allow always</span> (for that kind of change on that page, until you reset it) or <span class="ui">Deny</span>. Each change is listed with an <span class="ui">Undo</span>; it can undo its own changes too, while the document is still as it left it.</li>
   </ul>
   <p>What it may change: the document on the page, a draft saved as you, a test saved as a draft, a sample file. It never publishes: a checker who is not the maker still does that. A document it changed records the model and a reference to its prompt in its provenance. The conversation stays in your browser. Never type personal data.</p>
+
+  <h3 id="f-import">Import</h3>
+  <p>Brings a scheme in from its source code. An AI coding agent, given the source and the <b>extraction prompt</b> (<span class="ui">Download the extraction prompt</span> on the page, or <code>docs/import/EXTRACTION-PROMPT.md</code>), writes an <b>extraction bundle</b>: the studio's own documents, scripts-behind, synthetic samples, tests, a bank's configuration, an inventory of every file and every unit of the source with where each went, and findings (differences between code and spec, questions, error scenarios). The agent checks its bundle with <code>npm run studio -- import &lt;bundle&gt;</code> until it reports no errors.</p>
+  <ul>
+    <li><span class="ui">Choose a bundle zip</span>, or <span class="ui">Use the training bundle</span> (the factory WPS scheme extracted as <code>uae.wpsx</code>). Choose the <span class="ui">Bank tenant</span> if the bundle has bank content.</li>
+    <li><span class="ui">Preview</span> shows what the bundle holds; the coverage of the source (every file inventoried or excluded with a reason; a file in neither is an error); what was retired, sent to infrastructure, or left unmapped for the expert; the findings; every check (schemas, the static checks, no personal data, no bank name in shared content, scripts inside the injected interface, every document explained by the source, a changed published block given a new release); and the bundle's tests, run against the bundle itself before anything is saved.</li>
+    <li><span class="ui">Import as drafts</span> saves everything as drafts (an unchanged block is reused, not saved again), with provenance naming the source and its revision. Nothing is published: a checker approves each change set in <span class="ui">Governance</span>. An actor who may not author is refused before anything is saved.</li>
+  </ul>
 
   <h3 id="f-bench">Test bench</h3>
   <p>Two tabs. <span class="ui">Tests</span> lists every test the tenant can see: filter, <span class="ui">Run</span> one or <span class="ui">Run all</span>. <span class="ui">Ad hoc bench</span> runs anything you choose:</p>

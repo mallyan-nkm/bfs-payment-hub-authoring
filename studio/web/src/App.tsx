@@ -13,6 +13,7 @@ import { Governance } from './views/Governance';
 import { Editors } from './views/Editors';
 import { Assistant } from './views/Assistant';
 import { AssistantDock } from './views/AssistantDock';
+import { Import } from './views/Import';
 
 const NAV: { id: string; label: string; hint: string }[] = [
   { id: 'catalogue', label: 'Catalogue', hint: 'F-01, F-02' },
@@ -20,6 +21,7 @@ const NAV: { id: string; label: string; hint: string }[] = [
   { id: 'designer', label: 'Workflow designer', hint: 'F-12 to F-15, F-22, F-33, F-34' },
   { id: 'editors', label: 'Artefact editors', hint: 'F-06 to F-11, F-36' },
   { id: 'assistant', label: 'AI assistant', hint: 'F-20, F-21' },
+  { id: 'import', label: 'Import', hint: 'I-33' },
   { id: 'tests', label: 'Test bench', hint: 'F-16 to F-19, F-35' },
   { id: 'kit', label: 'Conformance kit', hint: 'Annex C' },
   { id: 'tenant', label: 'Tenant', hint: 'F-26 to F-29' },
@@ -105,6 +107,7 @@ export function App() {
     case 'governance': body = <Governance key={tenant} query={route.query} />; break;
     case 'editors': body = <Editors key={tenant} query={route.query} />; break;
     case 'assistant': body = <Assistant key={tenant} />; break;
+    case 'import': body = <Import key={tenant} />; break;
     default: body = <Catalogue key={tenant} query={route.query} />;
   }
 
