@@ -9,7 +9,7 @@ in plain words for someone new to payments, with one picture throughout: a resta
 | --- | --- |
 | `01-concepts-and-walkthrough.mp4` | Tenants and roles, names, the catalogue, an activity, the corporate payment workflow, the canonical model and code sets, a scheme's dispatch table, the designer and the expanded form, the editors, a test and its traces, a whole payment end to end, the conformance kit, a bank's configuration, export, the audit log, the AI assistant's templates |
 | `training/training-1-the-ideas.mp4` | Training 1, about ten minutes, no screens: every idea of the studio drawn as a kitchen. Stations (activities), quality checks (rules, rule sets, decision tables, parameters), recipes (workflows, legs, subflows, composites), doors, stand-ins and translators (ports, simulators, maps), the standard ticket (the canonical context), partners (schemes, dispatch tables, slots), franchises (tenants, configuration, hooks), who may change what (maker and checker), tasting (tests and the bench), and service (export, workers, engines) |
-| `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; a rule from the AI assistant's template; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved |
+| `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; the assistant beside the editor: help on a field, the rule in plain words, then a rule built by asking, allowed once, a change allowed always and undone; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved |
 | `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
 
 ## Record them again
@@ -37,16 +37,13 @@ TH_TTS_SPEED=0.85 npx tsx demo/run.ts ideas --out ../docs/demo/training
 TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
 ```
 
-The hands-on video's AI chapter makes a live call only when the studio server has a model key
-(`ANTHROPIC_API_KEY` in its environment); without one it shows the studio saying so, and the voice
-says so too. The recorded video was made with a key set, so it shows a real draft. The server takes
-its environment from the recorder, so set the key on the command:
-
-```bash
-ANTHROPIC_API_KEY=... TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
-```
-
-A live draft takes about half a minute; the recording waits up to three.
+The hands-on video's assistant chapter asks the live model only when the studio server has a model key
+(`ANTHROPIC_API_KEY` or `TH_ANTHROPIC_API_KEY` in its environment). Without one, it shows **What is
+happening**, which needs no model, and the **Ask** tab saying it has no credentials, and the voice
+says so too. The recorded video was made with a key set, so it shows the agent at work. The server
+takes its environment from the recorder, so a key set in the shell that runs the recorder reaches it.
+The agent takes from a few seconds to a minute to answer; the recording waits up to four minutes
+each time.
 
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
 hands-on production also checks its results as it goes. `test/blackbox/demo-videos.test.ts` runs all

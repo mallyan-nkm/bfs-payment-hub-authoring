@@ -5,7 +5,7 @@ import { SLOW, type Director, type Scene } from './record.js';
 // Training video 2: hands-on. One long recording, at the slow pace, in six parts:
 //   1. a rule, built in the form and tested by its examples;
 //   2. an activity that runs the rule, tested on the bench;
-//   3. the AI assistant, from a prompt template;
+//   3. the assistant beside the editor: what is happening, and a rule built by asking;
 //   4. a leg composed on the canvas from blocks that already exist;
 //   5. what to build when nothing exists (the scheme from scratch, in outline);
 //   6. a bank's own rule and hook, its configuration, and a payment held for approval.
@@ -51,6 +51,24 @@ export function scenes(d: Director): Scene[] {
       await p().waitForTimeout(250);
     }
     throw new Error(`Expected ${n} of ${loc}, found ${await loc.count()}`);
+  };
+  const dock = () => p().getByRole('complementary', { name: 'Assistant' });
+  const panel = (title: RegExp) => main().locator('section.panel', { has: p().locator('h3', { hasText: title }) }).first();
+  /** Wait until the assistant has stopped working: a live model takes from seconds to a minute or two. */
+  const agentSettled = async () => {
+    const working = () => dock().getByText('Working…').count();
+    for (let i = 0; i < 6; i++) { if (await working()) break; await p().waitForTimeout(250); }
+    for (let i = 0; i < 4 * 240; i++) {
+      if (!(await working())) {
+        await p().waitForTimeout(600);
+        if (!(await working())) {
+          if (await dock().getByRole('alert').count()) throw new Error(`The assistant failed: ${await dock().getByRole('alert').first().innerText()}`);
+          return;
+        }
+      }
+      await p().waitForTimeout(250);
+    }
+    throw new Error('The assistant was still working after four minutes');
   };
   const startNew = async (kind: string) => {
     await d.go(`editors?kind=${kind}`);
@@ -153,7 +171,7 @@ export function scenes(d: Director): Scene[] {
       do: async () => { await d.go('catalogue'); },
     },
     {
-      say: 'We will build six things. A rule. An activity that runs the rule. A rule drafted with the AI assistant. A workflow composed from parts that already exist. What to do when nothing exists. And last, a bank\'s own rule and hook.',
+      say: 'We will build six things. A rule. An activity that runs the rule. A rule built with the assistant beside the editor. A workflow composed from parts that already exist. What to do when nothing exists. And last, a bank\'s own rule and hook.',
       do: async () => { await d.point(main().locator('.view-head').first(), 2500); },
     },
 
@@ -325,58 +343,100 @@ export function scenes(d: Director): Scene[] {
       },
     },
 
-    // ------------------------------------------------------------ part 3: the AI assistant
+    // ------------------------------------------------------------ part 3: the assistant beside the editor
     {
-      card: ['Part 3: the AI assistant', 'A first draft from a template, judged by its behaviour'],
-      say: 'Part three: the AI assistant. It writes a first draft for you, from the text of a rulebook. It never publishes anything. Its draft goes through the same gates as yours, and the same maker and checker.',
-      do: async () => { await d.go('assistant'); await d.point(main().getByText('Status').first().locator('..'), 2500); },
-    },
-    {
-      say: 'We ask for a rule. The easiest start is a prompt template. We choose field check. The template is a sentence with blanks in angle brackets, and the studio will not send it until every blank is filled.',
+      card: ['Part 3: the assistant beside you', 'It explains as you work, and builds with you when you ask'],
+      say: 'Part three: the assistant. It sits beside every editor, the workflow designer, a bank\'s configuration and the test bench. Think of a senior cook at your elbow. It explains what you are doing, and it can build with you. It never publishes anything.',
       do: async () => {
-        await d.select(p().getByLabel('Draft kind'), 'rule');
-        await d.select(p().getByLabel('Prompt template'), 'rule-field');
-        await expectText(/Still to fill/);
-        await d.point(main().getByText('Still to fill').first(), 2500);
+        await startNew('rule');
+        await d.click(p().getByRole('button', { name: 'Open the assistant' }));
+        await expectCount(dock(), 1);
       },
     },
     {
-      say: 'We fill the blanks: the name, the level, the value it checks, days in the pay period, which must be from one to thirty one, and the reason code. Then the source text, the part of the rulebook it should follow. Here a made up extract.',
+      say: 'The first tab, what is happening, needs no model. Click into any field and it says what the field means, the values it takes, an example, and the usual mistake. Here, the level.',
       do: async () => {
-        await d.paste(p().getByLabel('Instruction'), D.AI_INSTRUCTION);
-        await d.paste(p().getByLabel('Source text'), D.AI_SOURCE);
-        await d.point(p().getByRole('button', { name: 'Ask for a draft' }), 1500);
+        await d.point(p().getByLabel('Rule level'), 1200);
+        await p().getByLabel('Rule level').focus();
+        for (let i = 0; i < 80 && !(await dock().getByTestId('field-help').count()); i++) await p().waitForTimeout(250);
+        await d.point(dock().getByTestId('field-help'), 4000);
       },
+    },
+    {
+      say: 'Below it, the rule in plain words, a small picture, a checklist of what is left before it can be published, and the next step. It follows every edit you make.',
+      do: async () => { await d.point(dock().getByTestId('explanation'), 4500); },
     },
     ...(AI_LIVE ? [{
-      say: 'We ask for the draft. The model takes about half a minute. Nothing is saved while it works. When the draft comes back, the studio runs it through the gates before we see it.',
+      say: 'The second tab is ask. This is Claude, with tools. We ask it to build our rule: the days in the pay period, from one to thirty one, with a passing, a failing and a boundary example.',
       do: async () => {
-        await d.click(p().getByRole('button', { name: 'Ask for a draft' }));
-        // A live draft takes about half a minute; give the model up to three.
-        await expectText(/every gate green|red at/, 180);
+        await d.click(dock().getByRole('tab', { name: 'Ask' }));
+        await d.paste(dock().getByLabel('Ask the assistant'), D.AI_ASK);
+        await d.point(dock().getByRole('button', { name: 'Send' }), 1500);
       },
     }, {
-      say: 'Here is the draft. At the top, the result of the gates. Below it, the rule itself, with its examples. On the right, each gate in turn. Further down, any questions the text did not answer, and the clause each part came from.',
+      say: 'We send it. It looks around first, and you see each thing it reads: the document, the catalogue, and rules like ours. That takes a little while. It changes nothing yet.',
       do: async () => {
-        const panel = (title: RegExp) => main().locator('section.panel', { has: p().locator('h3', { hasText: title }) }).first();
-        const draftPanel = panel(/^Draft$/);
-        await d.point(draftPanel.locator('.panel-head'), 2500);
-        await d.point(draftPanel.locator('pre.code'), 3500);
-        await d.point(panel(/^Gates/), 3000);
-        await d.point(panel(/^Questions/), 2500);
-        await d.point(panel(/^Clauses/), 2500);
+        await d.click(dock().getByRole('button', { name: 'Send' }));
+        await agentSettled();
+        await expectCount(dock().getByTestId('pending'), 1);
+      },
+    }, {
+      say: 'Now it wants to change the rule. A card says what it would change, and how its version does on the checks. The form has not changed. We choose allow once.',
+      do: async () => {
+        await d.point(dock().getByTestId('pending'), 4000);
+        await d.click(dock().getByTestId('pending').getByRole('button', { name: 'Allow once' }));
+        await agentSettled();
+        // A second request to change something is allowed once too; the request asked for one rule.
+        for (let i = 0; i < 3 && (await dock().getByTestId('pending').count()); i++) {
+          await d.click(dock().getByTestId('pending').getByRole('button', { name: 'Allow once' }));
+          await agentSettled();
+        }
+        await expectText(/every gate green|red at/);
+      },
+    }, {
+      say: 'The form fills in: the name, the level, the condition, and its examples, every one tested. At the end it says what it did, and asks about anything we did not tell it. Answer those, as you would a colleague.',
+      do: async () => {
+        await d.point(p().getByLabel('Name', { exact: true }), 2000);
+        await d.point(panel(/^Gates/), 3500);
+        await d.point(dock().locator('.bubble.assistant').last(), 4000);
+      },
+    }, {
+      say: 'We ask for a shorter title, and this time choose allow always. From now on, on this page, it makes that kind of change without asking. Each change it made is listed, with an undo button.',
+      do: async () => {
+        await d.paste(dock().getByLabel('Ask the assistant'), D.AI_SHORTER);
+        await d.click(dock().getByRole('button', { name: 'Send' }));
+        await agentSettled();
+        if (await dock().getByTestId('pending').count()) {
+          await d.point(dock().getByTestId('pending'), 2000);
+          await d.click(dock().getByTestId('pending').getByRole('button', { name: 'Allow always' }));
+          await agentSettled();
+        }
+        await expectCount(dock().locator('.dock-changes li'), 2);
+        await d.point(dock().locator('.dock-changes'), 3000);
+      },
+    }, {
+      say: 'We prefer our own title, so we undo that change, and the title goes back. You can undo any change it made, and so can it.',
+      do: async () => {
+        const before = await p().getByLabel('Title', { exact: true }).inputValue();
+        await d.click(dock().locator('.dock-changes li').last().getByRole('button', { name: 'Undo' }));
+        for (let i = 0; i < 40 && (await p().getByLabel('Title', { exact: true }).inputValue()) === before; i++) await p().waitForTimeout(250);
+        if ((await p().getByLabel('Title', { exact: true }).inputValue()) === before) throw new Error('The undo did not put the title back');
+        await d.point(p().getByLabel('Title', { exact: true }), 2500);
       },
     }] : [{
-      say: 'We ask for the draft. In this recording the studio has no model key, so it says so plainly. It never invents a draft in place of a real one. With a key set for the server, the rule comes back with its examples, the clauses it used, and its questions.',
+      say: 'The second tab is ask, where Claude builds with you. It needs a model key on the studio server. In this recording there is none, so it says so plainly, and what is happening still works.',
       do: async () => {
-        await d.click(p().getByRole('button', { name: 'Ask for a draft' }));
-        await d.wait(2000);
-        await d.point(main().locator('.alert').first(), 2500);
+        await d.click(dock().getByRole('tab', { name: 'Ask' }));
+        await d.point(dock().locator('.alert').first(), 3000);
       },
     }]),
     {
-      say: 'Whatever the assistant writes, you test it exactly like the rule we built by hand. Read the examples. Add the edge case, here day one and day thirty one. Break one on purpose. Answer its questions. Only then save it, and a checker publishes it.',
-      do: async () => { await d.scroll(-400); await d.point(main().getByText('What comes back').first().locator('..'), 3000); },
+      say: 'It never saves or publishes on its own. You save the draft yourself, and a checker publishes it, exactly as in part one. We close the panel. The assistant tab on the right edge opens it again.',
+      do: async () => {
+        await d.point(p().getByRole('button', { name: /^Save draft as / }).first(), 2000);
+        await d.click(dock().getByRole('button', { name: 'Close the assistant' }));
+        await d.point(p().getByRole('button', { name: 'Open the assistant' }), 2000);
+      },
     },
 
     // ------------------------------------------------------------ part 4: compose from existing blocks
@@ -534,7 +594,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       card: ['That is the hands-on training', 'Rule, activity, assistant, composing, building, and the bank\'s own touch'],
-      say: 'That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A draft from the assistant. A leg composed from existing parts. And a bank\'s own rule and hook, held a payment for approval. The guide has every step in writing.',
+      say: 'That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A rule built with the assistant. A leg composed from existing parts. And a bank\'s own rule and hook, held a payment for approval. The guide has every step in writing.',
       do: async () => { await d.wait(1500); await d.go('catalogue'); },
     },
   ];
