@@ -244,10 +244,13 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="block"><pre class="cmd">dotnet --version</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
   <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>46 of 46 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
+  <p>The same .NET 8 runs the kit on Elsa Workflows 3, the fourth engine target. Its first run builds the Elsa harness and fetches Elsa's packages:</p>
+  <div class="block"><pre class="cmd">npx tsx engines/elsa/run-kit.ts</pre></div>
+  <div class="see">The kit ends <code>46 of 46 conformance scenarios pass on Elsa</code>. A package exported for the target <code>elsa</code> deploys with the same <code>npm run studio -- deploy</code> command.</div>
   <div class="note">If the build fails with <code>error NU1100: Unable to resolve 'Microsoft.Azure.DurableTask.Core'</code>, NuGet cannot reach a package source. The harness folder names nuget.org in its own <code>nuget.config</code>, so take the latest code with <code>git pull</code>. If it still fails, your network blocks <code>api.nuget.org</code>: on a company network, ask for your proxy settings or an internal NuGet mirror, and add the mirror with <code>dotnet nuget add source &lt;url&gt; -n company</code>.</div>
   <div class="note">On Windows, if the kit or a deploy says <code>An Application Control policy has blocked this file (0x800711C7)</code>, Windows is refusing to load the harness the studio just built, because it is not signed. The cause is either Smart App Control (Windows 11, personal PCs) or an App Control or AppLocker policy set by your organisation. Event Viewer, under Applications and Services Logs, Microsoft, Windows, CodeIntegrity, Operational, names the policy. Ways forward:
   <ul>
-    <li><b>A company PC:</b> ask IT to allow the folder <code>studio\engines\dtfx\harness\bin</code>, or to give you a developer exception. Do not try to get round the policy.</li>
+    <li><b>A company PC:</b> ask IT to allow the folders <code>studio\engines\dtfx\harness\bin</code> and <code>studio\engines\elsa\harness\bin</code>, or to give you a developer exception. Do not try to get round the policy.</li>
     <li><b>Any PC with WSL:</b> run the studio inside WSL (Ubuntu), where Linux programs are not subject to this policy. Install Node.js and the .NET 8 SDK inside WSL and follow the Linux steps of this guide.</li>
     <li><b>A personal Windows 11 PC:</b> in Windows Security, App and browser control, Smart App Control settings, choose Off. It cannot be turned back on without resetting Windows, so decide with care.</li>
   </ul>
@@ -461,8 +464,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   </ul>
 
   <h3 id="f-export">Export</h3>
-  <p>Builds the package an engine runs. Tick the <span class="ui">Workflows</span>, choose the <span class="ui">Target</span> (temporal, dtfx, flowable) and the <span class="ui">Tenant</span>, optionally tick <span class="ui">With simulators</span> for a test deployment, then <span class="ui">Preview</span> and <span class="ui">Download the zip</span>.</p>
-  <p>The manifest lists: the <b>workers</b>, one per task queue, each with the tasks it serves; the <b>tasks</b>, each named <code>name@release</code>; the <b>flows</b> in expanded form with their pins; the <b>change sets</b> the artefacts came from; and every file with its hash. Flowable packages carry generated BPMN and a portability report. A package with simulators is marked not promotable. The same request gives the same bytes.</p>
+  <p>Builds the package an engine runs. Tick the <span class="ui">Workflows</span>, choose the <span class="ui">Target</span> (temporal, dtfx, flowable or elsa) and the <span class="ui">Tenant</span>, optionally tick <span class="ui">With simulators</span> for a test deployment, then <span class="ui">Preview</span> and <span class="ui">Download the zip</span>.</p>
+  <p>The manifest lists: the <b>workers</b>, one per task queue, each with the tasks it serves; the <b>tasks</b>, each named <code>name@release</code>; the <b>flows</b> in expanded form with their pins; the <b>change sets</b> the artefacts came from; and every file with its hash. Flowable packages carry generated BPMN and a portability report. DTFx and Elsa packages are the same but for their binding: both run the documents with one generic interpreter. A package with simulators is marked not promotable. The same request gives the same bytes.</p>
 
   <h3 id="f-governance">Governance</h3>
   <div class="table"><table>

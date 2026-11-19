@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STUDIO } from './server.js';
 
-// Black box, opt in (TH_ENGINES=1): the conformance kit on the real engines. DTFx needs dotnet-sdk-8.0;
+// Black box, opt in (TH_ENGINES=1): the conformance kit on the real engines. DTFx and Elsa need dotnet-sdk-8.0;
 // Flowable needs Java and `engines/flowable/setup.sh` to have fetched its jars.
 
 const on = process.env.TH_ENGINES === '1';
@@ -13,6 +13,11 @@ describe.skipIf(!on)('the conformance kit on real engines', () => {
   it('passes 46 of 46 on DTFx', () => {
     const r = run('engines/dtfx/run-kit.ts');
     expect(r.stdout).toContain('46 of 46 conformance scenarios pass on DTFx');
+  }, 1500000);
+
+  it('passes 46 of 46 on Elsa', () => {
+    const r = run('engines/elsa/run-kit.ts');
+    expect(r.stdout).toContain('46 of 46 conformance scenarios pass on Elsa');
   }, 1500000);
 
   it('passes 46 of 46 on Flowable', () => {

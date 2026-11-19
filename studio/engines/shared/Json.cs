@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
-namespace DtfxHarness;
+namespace TransactHub.Engines;
 
 /// <summary>Helpers for the DSL documents and the context, held as JSON nodes.</summary>
 public static class J

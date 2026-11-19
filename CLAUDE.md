@@ -14,6 +14,8 @@ cd studio && npm install
 cd studio && npm test                 # the automated suite
 cd studio && npm run studio -- test   # factory and bank tests on the studio interpreter
 cd studio && npm run studio -- kit    # the conformance kit
+cd studio && npx tsx engines/dtfx/run-kit.ts   # the kit on DTFx (needs .NET 8)
+cd studio && npx tsx engines/elsa/run-kit.ts   # the kit on Elsa Workflows (needs .NET 8)
 cd studio && npm run studio -- check  # schemas and static checks
 cd studio && npm run web:build && npm start   # the studio on http://localhost:4317
 cd spec && python3 tools/validate.py && python3 tools/mutation_tests.py   # the spec's own checks

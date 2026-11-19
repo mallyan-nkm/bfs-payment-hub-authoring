@@ -189,7 +189,7 @@ describe('the AI assistant, with a fake client', () => {
   it('knows when it has credentials', () => {
     const saved = { ...process.env };
     try {
-      delete process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_AUTH_TOKEN; delete process.env.ANTHROPIC_PROFILE;
+      delete process.env.ANTHROPIC_API_KEY; delete process.env.TH_ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_AUTH_TOKEN; delete process.env.ANTHROPIC_PROFILE;
       process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'th-home-'));
       expect(assistantConfigured().configured).toBe(false);
       fs.mkdirSync(path.join(process.env.HOME, '.config', 'anthropic'), { recursive: true });

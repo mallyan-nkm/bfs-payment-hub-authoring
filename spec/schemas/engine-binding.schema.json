@@ -8,7 +8,7 @@
   "additionalProperties": false,
   "properties": {
     "kind": { "const": "engine-binding" },
-    "target": { "enum": ["temporal", "dtfx", "flowable"] },
+    "target": { "enum": ["temporal", "dtfx", "flowable", "elsa"] },
     "strategy": { "enum": ["interpreter", "generation"] },
     "queues": {
       "description": "Worker queue or topic per scope.",

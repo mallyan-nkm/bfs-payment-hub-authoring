@@ -4,6 +4,8 @@ using DurableTask.Core;
 using DurableTask.Core.History;
 using Newtonsoft.Json.Linq;
 
+using TransactHub.Engines;
+
 namespace DtfxHarness;
 
 // The DTFx harness for one conformance scenario (C21, C23-S2). It deploys the expanded documents,

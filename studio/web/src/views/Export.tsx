@@ -4,7 +4,7 @@ import { Badge, ErrorBox, Issues, KV, Loading, Section, Tabs, useLoad, useStudio
 
 // Export (F-30, F-31): choose workflows, target and tenant; preview; download the zip.
 
-const TARGETS = ['temporal', 'dtfx', 'flowable'] as const;
+const TARGETS = ['temporal', 'dtfx', 'flowable', 'elsa'] as const;
 
 export function Export({ query }: { query: URLSearchParams }) {
   const { tenant, meta } = useStudio();

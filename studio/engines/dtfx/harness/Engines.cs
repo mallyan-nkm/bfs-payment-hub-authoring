@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using DurableTask.Core;
 
+using TransactHub.Engines;
+
 namespace DtfxHarness;
 
 /// <summary>The interpreter's engine operations on a DTFx orchestration context.</summary>
@@ -22,7 +24,11 @@ public sealed class DtfxEngine : IEngine
     public async Task<JsonObject> Child(string instanceId, JsonObject input) =>
         (JsonObject)J.Parse(await ctx.CreateSubOrchestrationInstance<string>(OrchestrationName, "", instanceId, J.Str(input)))!;
 
-    public async Task<T> WithRetry<T>(RetryOptions options, Func<Task<T>> call) => (await new RetryInterceptor<T>(ctx, options, call).Invoke())!;
+    public async Task<T> WithRetry<T>(RetryPlan p, Func<Task<T>> call)
+    {
+        var options = new RetryOptions(p.FirstRetryInterval, p.MaxNumberOfAttempts) { BackoffCoefficient = p.BackoffCoefficient, MaxRetryInterval = p.MaxRetryInterval, RetryTimeout = p.RetryTimeout, Handle = p.Handle };
+        return (await new RetryInterceptor<T>(ctx, options, call).Invoke())!;
+    }
 
     public void SendEvent(string instanceId, string name, JsonObject data) => ctx.SendEvent(new OrchestrationInstance { InstanceId = instanceId }, name, J.Str(data));
 
@@ -59,7 +65,7 @@ public sealed class PlainEngine : IEngine
     public Task<JsonObject> Child(string instanceId, JsonObject input) => throw new NotSupportedException("a handler starts no sub-orchestration");
 
     /// <summary>The same retry rule as RetryInterceptor, without durable timers.</summary>
-    public async Task<T> WithRetry<T>(RetryOptions o, Func<Task<T>> call)
+    public async Task<T> WithRetry<T>(RetryPlan o, Func<Task<T>> call)
     {
         Exception? last = null;
         var first = Now;

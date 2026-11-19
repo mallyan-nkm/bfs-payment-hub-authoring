@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
-using DurableTask.Core;
 
-namespace DtfxHarness;
+namespace TransactHub.Engines;
 
 // The DSL interpreter that runs inside the generic DTFx orchestration (C21-S1). It is a port of
 // the studio interpreter (studio/src/interp/interpreter.ts) onto the engine operations in IEngine:
@@ -101,6 +100,29 @@ public sealed class Frame
 }
 
 /// <summary>The operations the interpreter needs from an engine.</summary>
+/// <summary>
+/// A retry plan, engine-neutral: the first interval, the number of attempts, the backoff, the total
+/// time allowed and which failures to retry. DTFx runs it as RetryOptions with its RetryInterceptor;
+/// Elsa runs it as journalled timers. The defaults are DTFx's.
+/// </summary>
+public sealed class RetryPlan
+{
+    public RetryPlan(TimeSpan firstRetryInterval, int maxNumberOfAttempts) { FirstRetryInterval = firstRetryInterval; MaxNumberOfAttempts = maxNumberOfAttempts; }
+    public TimeSpan FirstRetryInterval { get; }
+    public int MaxNumberOfAttempts { get; }
+    public double BackoffCoefficient { get; set; } = 1;
+    public TimeSpan MaxRetryInterval { get; set; } = TimeSpan.MaxValue;
+    public TimeSpan RetryTimeout { get; set; } = TimeSpan.MaxValue;
+    public Func<Exception, bool> Handle { get; set; } = _ => true;
+
+    /// <summary>The wait before retry number n (0 for the first retry), as RetryInterceptor computes it.</summary>
+    public TimeSpan Delay(int n)
+    {
+        var ms = FirstRetryInterval.TotalMilliseconds * Math.Pow(BackoffCoefficient, n);
+        return TimeSpan.FromMilliseconds(Math.Min(ms, MaxRetryInterval == TimeSpan.MaxValue ? double.MaxValue : MaxRetryInterval.TotalMilliseconds));
+    }
+}
+
 public interface IEngine
 {
     long Now { get; }
@@ -109,7 +131,7 @@ public interface IEngine
     Task<JsonObject> Activity(string name, JsonObject input);
     Task Timer(long at, CancellationToken ct);
     Task<JsonObject> Child(string instanceId, JsonObject input);
-    Task<T> WithRetry<T>(RetryOptions options, Func<Task<T>> call);
+    Task<T> WithRetry<T>(RetryPlan options, Func<Task<T>> call);
     void SendEvent(string instanceId, string name, JsonObject data);
     void ContinueAsNew(JsonObject input);
 }
@@ -693,7 +715,7 @@ public sealed partial class Interp
         var callNo = callCounts.GetValueOrDefault(id) + 1;
         callCounts[id] = callNo;
         var attempt = 0;
-        var options = new RetryOptions(TimeSpan.FromMilliseconds(Duration.Ms(pol.FirstInterval.v)), max)
+        var options = new RetryPlan(TimeSpan.FromMilliseconds(Duration.Ms(pol.FirstInterval.v)), max)
         {
             BackoffCoefficient = pol.Backoff.v,
             RetryTimeout = total == long.MaxValue ? TimeSpan.MaxValue : TimeSpan.FromMilliseconds(total - startAt),

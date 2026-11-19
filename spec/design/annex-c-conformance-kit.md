@@ -14,7 +14,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 | R-C-02 | A scenario MUST be self-contained: its own workflow, its own activities, its own simulators, in the reserved cluster `ck`. | Kit validates under `tools/validate.py` |
 | R-C-03 | A business trace is the ordered list of step id and outcome, plus markers for joins, awaits, hooks, signals, compensation and end. | Runner (C23) |
 | R-C-04 | Two traces are equal when they match exactly, except where a scenario marks an order as free. | Runner (C23) |
-| R-C-05 | The kit MUST run on the studio interpreter, Temporal, DTFx and Flowable. A red scenario on any target blocks the release. | Release gate (C19) |
+| R-C-05 | The kit MUST run on the studio interpreter, Temporal, DTFx, Flowable and Elsa. A red scenario on any target blocks the release. | Release gate (C19) |
 | R-C-06 | A scenario that needs time MUST use the virtual clock in the studio and the target's own time control on an engine. | Runner (C23) |
 | R-C-07 | The kit carries its own `major.minor.patch`. A new construct adds scenarios and is a minor. | Kit manifest |
 | R-C-08 | Extension constructs are outside the kit. | Lint L24 |

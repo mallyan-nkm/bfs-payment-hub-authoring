@@ -252,7 +252,8 @@ export async function record(prod: Production, outDir: string) {
   for (const s of list) d.voice(s.say);
 
   if (!fs.existsSync(path.join(STUDIO, 'web', 'dist', 'index.html'))) spawnSync('npm', ['run', 'web:build'], { cwd: STUDIO, stdio: 'inherit' });
-  d.server = await startServer();
+  // A recording may show the live assistant; a dry run never calls a model.
+  d.server = await startServer({}, { keepAiKeys: !DRY });
   const browser = await require('playwright').chromium.launch();
   const size = { width: 1280, height: 720 };
   const context = await browser.newContext({ viewport: size, ...(DRY ? {} : { recordVideo: { dir: work, size } }), acceptDownloads: true });

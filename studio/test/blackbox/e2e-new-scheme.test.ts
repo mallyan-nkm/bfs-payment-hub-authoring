@@ -220,4 +220,37 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.workers.find((w) => w.queue === 'th-uae-demo')!.served[`${SEND.name}@1.0.0`]).toBeUndefined();
   }, 300000);
+  // The same payment workflow, exported for Elsa Workflows 3 and deployed the same way (I-30): the
+  // package is the same but for its binding; the engine harness is Elsa's.
+  let elsaZip = '';
+  it('exports the same workflow for Elsa: the same workers, an Elsa binding', async () => {
+    const r = await api.get(`/api/export/download?workflows=p.wf.corporate.v1&target=elsa&withSimulators=true&tenant=${BANK}`);
+    expect(r.status).toBe(200);
+    elsaZip = path.join(work, 'corporate-demo-elsa.zip');
+    fs.writeFileSync(elsaZip, r.data);
+    const files = new Map(unzip(fs.readFileSync(elsaZip)).map((e) => [e.name, e.content.toString('utf8')]));
+    const binding = parseYaml(files.get('binding.yaml')!);
+    expect(binding.target).toBe('elsa');
+    expect(binding.strategy).toBe('interpreter');
+    expect(binding.queues[S]).toBe('th-uae-demo');
+    expect(parseYaml(files.get('manifest.yaml')!).workers.map((w: any) => w.queue)).toEqual(expect.arrayContaining(['th-bank', 'th-p', 'th-uae-p', 'th-uae-demo']));
+  });
+
+  it('deployed on Elsa: the credit file is paid end to end, each worker a separate process serving only its queue', () => {
+    const d = deploy(elsaZip, 'accept', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    expect(d.out).toContain('front door: workflow-select chose p.wf.corporate.v1 for payment outward corporate');
+    expect(d.outcome, d.out.slice(-1500)).toBe('settled');
+    expect(d.trace).toEqual(expect.arrayContaining(['route:decided', 'leg:settled', 'post:posted', 'verify:verified', 'end:settled']));
+    expect(new Set(d.workers.map((w) => w.pid)).size).toBe(d.workers.length);
+    for (const w of d.workers) expect(w.refused).toBe(0);
+    const demo = d.workers.find((w) => w.queue === 'th-uae-demo')!;
+    expect(demo.served[`${SEND.name}@1.0.0`]).toBe(1);
+    expect(d.workers.find((w) => w.queue === 'th-uae-p')!.served['uae.p.validate.iban.v1@1.0.0']).toBe(2);
+  }, 300000);
+
+  it('deployed on Elsa: refused by the clearing house, the payment is rejected and its reservation undone', () => {
+    const d = deploy(elsaZip, 'reject', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
+    expect(d.trace).toEqual(expect.arrayContaining(['leg:rejected', 'undo:reserve', 'end:rejected']));
+  }, 300000);
 });

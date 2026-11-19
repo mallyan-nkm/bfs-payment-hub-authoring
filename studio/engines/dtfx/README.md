@@ -22,11 +22,11 @@ npx tsx engines/dtfx/run-kit.ts CK-AWAIT-04 CK-SIGNAL-02 --verbose
 | --- | --- |
 | `adapter.ts` | The `KitAdapter`. Expands every workflow and hook (`expandWorkflow`), reads the DTFx binding, runs the harness per scenario, parses its `KitObservation` |
 | `run-kit.ts` | The runner. It prints `N of 46 conformance scenarios pass on DTFx` |
-| `harness/Interpreter.cs` | The interpreter, ported from `src/interp/interpreter.ts` onto engine operations |
+| `../shared/Interpreter.cs` | The interpreter, ported from `src/interp/interpreter.ts` onto engine operations. Shared with the Elsa harness (`../elsa`) |
 | `harness/Engines.cs` | `InterpreterOrchestration` (the one `TaskOrchestration`), `PartyActivity`, the DTFx engine and the plain engine used for handlers |
-| `harness/VirtualTime.cs` | The virtual clock and the in-process orchestration service |
+| `harness/VirtualTime.cs` | The in-process orchestration service with virtual time (the clock itself is `../shared/Clock.cs`) |
 | `harness/Harness.cs` | Worker set-up, the front door, signals, activity attempts and the observation |
-| `harness/Deployment.cs` | Deployed documents, the claim-check store, the party client |
+| `../shared/Deployment.cs` | Deployed documents, the claim-check store, the party client and the worker router. Shared with the Elsa harness |
 
 ## Mapping implemented (Part 9, DTFx column)
 

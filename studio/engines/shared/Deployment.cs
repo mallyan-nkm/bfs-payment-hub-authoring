@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 
-namespace DtfxHarness;
+namespace TransactHub.Engines;
 
 /// <summary>
 /// What is deployed with the worker: the exported documents (workflows in their expanded form only,

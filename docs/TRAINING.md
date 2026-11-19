@@ -227,7 +227,7 @@ Check yourself: change **Tenant for the run** to `owner` and run again. What hap
 1. Open **Conformance kit** and click **Run all 46**. All 46 pass.
 2. Open one scenario, for example `CK-RETRY-01`, and read what it proves: the expected trace and the checks on attempts.
 
-The same 46 scenarios run on DTFx and Flowable; see Part D.
+The same 46 scenarios run on DTFx, Elsa and Flowable; see Part D.
 
 ### Exercise 6. Author and publish a rule, with maker and checker (25 minutes)
 
@@ -429,6 +429,10 @@ npx tsx engines/dtfx/run-kit.ts
 ```
 
 ```bash
+npx tsx engines/elsa/run-kit.ts
+```
+
+```bash
 engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts
 ```
 
@@ -472,7 +476,7 @@ npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps.test.ts
 npm run test:blackbox
 ```
 
-API, command line, the web app in a browser, and both end-to-end tests. Add `TH_ENGINES=1` to run the kit on DTFx and Flowable too.
+API, command line, the web app in a browser, and both end-to-end tests. Add `TH_ENGINES=1` to run the kit on DTFx, Elsa and Flowable too.
 
 ---
 

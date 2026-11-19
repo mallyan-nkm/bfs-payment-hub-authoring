@@ -13,7 +13,7 @@ import type { StudioEnv } from '../env.js';
 // engine binding, the test pack and the conformance pack (R-09-01). Temporal and DTFx run the
 // documents on an interpreter; Flowable gets generated BPMN. The same input gives the same bytes.
 
-export type Target = 'temporal' | 'dtfx' | 'flowable';
+export type Target = 'temporal' | 'dtfx' | 'flowable' | 'elsa';
 
 export interface ExportRequest {
   workflows: string[];

@@ -21,7 +21,8 @@ const PLATFORM: [string, string, string?][] = [
   ['p.port.sanctions.v1', 'p.sim.sanctions.v1'],
   ['p.port.fraud.v1', 'p.sim.fraud.v1'],
 ];
-const AI_LIVE = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+// The same rule as the studio server's (assistantConfigured); a dry run never calls a model.
+const AI_LIVE = process.env.TH_DEMO_DRY !== '1' && !!(process.env.ANTHROPIC_API_KEY || process.env.TH_ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
 export function scenes(d: Director): Scene[] {
   const p = () => d.page;

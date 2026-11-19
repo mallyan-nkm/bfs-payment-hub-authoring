@@ -4,7 +4,7 @@ Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 9.1 Purpose
 
-The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx and Flowable are all delivery targets, and together they are the proof of independence. This part defines what is exported and how each engine runs it.
+The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, Flowable and Elsa are all delivery targets, and together they are the proof of independence. This part defines what is exported and how each engine runs it.
 
 ## 9.2 Strategies
 
@@ -13,38 +13,39 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx a
 | Temporal | Interpreter | The workflow documents as data, the manifest, task registrations by exact release | Exists today; extend |
 | DTFx | Interpreter | The same documents; one generic orchestration interprets them | To build |
 | Flowable | Generation | BPMN 2.0 XML per workflow, plus worker topics by exact release | To build; least certain |
+| Elsa | Interpreter | The same documents; one generic Elsa activity interprets them, its journal kept in the workflow state | Built on Elsa 3.10.2 (I-30) |
 
 ## 9.3 Construct mapping
 
-| Construct | Temporal | DTFx | Flowable |
-| --- | --- | --- | --- |
-| Call | Activity on a task queue | Task activity | External worker task |
-| Slot, use of a leg | Child workflow | Sub-orchestration | Call activity |
-| Handler | Plain request handler; no workflow | Plain request handler; no orchestration | Plain request handler; no process |
-| Hook | Child workflow or activity from the tenant binding | Sub-orchestration or task from the tenant binding | Call activity or service task from the tenant binding |
-| Rule evaluation | Activity calling the rule service | Task calling the rule service | Service task calling the rule service |
-| Switch | Interpreter branch | Interpreter branch | Exclusive gateway |
-| Parallel | Concurrent activities, await all | `Task.WhenAll` | Parallel gateway |
-| For each | Loop or child workflows; continue-as-new for large batches | Loop or sub-orchestrations; continue-as-new | Multi-instance, sequential or parallel |
-| Loop | Interpreter loop with timer | Interpreter loop with durable timer | Modelled loop with timer event |
-| Await | Signal and timer; signals received early are kept in workflow state | External event and durable timer; events received early are kept in orchestration state | Message catch event with timer boundary; early messages are held by the binding |
-| Wait | Timer | Durable timer | Timer event |
-| Block | A frame in the interpreter; no engine construct | A frame in the interpreter; no engine construct | Embedded sub-process whose end events set the outcome, then an exclusive gateway |
-| Return | Leaves the frame with an outcome | Leaves the frame with an outcome | An end event of the sub-process |
-| Try, compensate | Interpreter runs compensations in reverse | Interpreter runs compensations in reverse | Compensation boundary events and handlers |
-| Signals | Signals | External events | Signal or message events |
-| Hold | Activity creates the item; await a signal | Task creates the item; await an external event | User task or receive task |
-| Deadline | Timer and cancellation scope | Timer race | Timer boundary on the sub-process |
-| Finally | Interpreter runs it on every end | Interpreter runs it on every end | End-path sub-process on every end event |
+| Construct | Temporal | DTFx | Flowable | Elsa |
+| --- | --- | --- | --- | --- |
+| Call | Activity on a task queue | Task activity | External worker task | Operation run on the task's worker queue; the bookmark is resumed with the result |
+| Slot, use of a leg | Child workflow | Sub-orchestration | Call activity | Child workflow instance of the same activity |
+| Handler | Plain request handler; no workflow | Plain request handler; no orchestration | Plain request handler; no process | Plain request handler; no workflow instance |
+| Hook | Child workflow or activity from the tenant binding | Sub-orchestration or task from the tenant binding | Call activity or service task from the tenant binding | Child workflow instance or operation from the tenant binding |
+| Rule evaluation | Activity calling the rule service | Task calling the rule service | Service task calling the rule service | Operation calling the rule service |
+| Switch | Interpreter branch | Interpreter branch | Exclusive gateway | Interpreter branch |
+| Parallel | Concurrent activities, await all | `Task.WhenAll` | Parallel gateway | `Task.WhenAll` over the branches, in one episode |
+| For each | Loop or child workflows; continue-as-new for large batches | Loop or sub-orchestrations; continue-as-new | Multi-instance, sequential or parallel | Loop or child instances; continue-as-new for large batches |
+| Loop | Interpreter loop with timer | Interpreter loop with durable timer | Modelled loop with timer event | Interpreter loop with a journalled timer |
+| Await | Signal and timer; signals received early are kept in workflow state | External event and durable timer; events received early are kept in orchestration state | Message catch event with timer boundary; early messages are held by the binding | A bookmark resumed by the message, raced with a journalled timer; early messages are kept in the journal |
+| Wait | Timer | Durable timer | Timer event | Journalled timer |
+| Block | A frame in the interpreter; no engine construct | A frame in the interpreter; no engine construct | Embedded sub-process whose end events set the outcome, then an exclusive gateway | A frame in the interpreter; no engine construct |
+| Return | Leaves the frame with an outcome | Leaves the frame with an outcome | An end event of the sub-process | Leaves the frame with an outcome |
+| Try, compensate | Interpreter runs compensations in reverse | Interpreter runs compensations in reverse | Compensation boundary events and handlers | Interpreter runs compensations in reverse |
+| Signals | Signals | External events | Signal or message events | Events delivered at the bookmark |
+| Hold | Activity creates the item; await a signal | Task creates the item; await an external event | User task or receive task | Operation creates the item; await an event |
+| Deadline | Timer and cancellation scope | Timer race | Timer boundary on the sub-process | Timer race |
+| Finally | Interpreter runs it on every end | Interpreter runs it on every end | End-path sub-process on every end event | Interpreter runs it on every end |
 
 ## 9.4 Policy mapping
 
-| Policy | Temporal | DTFx | Flowable |
-| --- | --- | --- | --- |
-| `attemptTimeout` | Start-To-Close | Durable timer raced against the task | Timer boundary on the external worker task |
-| `totalTimeout` | Schedule-To-Close | `RetryOptions.RetryTimeout` | Timer boundary on the enclosing sub-process |
-| `retry` | Retry Policy | `RetryOptions` with `ScheduleWithRetry` | A modelled loop in a sub-process per call, for fixed and growing backoff alike (proved in C22-S1) |
-| Queue timeout, heartbeat | Schedule-To-Start, Heartbeat; from the binding | Not available | Not available |
+| Policy | Temporal | DTFx | Flowable | Elsa |
+| --- | --- | --- | --- | --- |
+| `attemptTimeout` | Start-To-Close | Durable timer raced against the task | Timer boundary on the external worker task | Journalled timer raced against the operation; a late result is abandoned |
+| `totalTimeout` | Schedule-To-Close | `RetryOptions.RetryTimeout` | Timer boundary on the enclosing sub-process | The retry plan's total time |
+| `retry` | Retry Policy | `RetryOptions` with `ScheduleWithRetry` | A modelled loop in a sub-process per call, for fixed and growing backoff alike (proved in C22-S1) | The retry plan, each backoff a journalled timer |
+| Queue timeout, heartbeat | Schedule-To-Start, Heartbeat; from the binding | Not available | Not available | Not available |
 
 ## 9.5 Requirements
 
@@ -60,13 +61,14 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx a
 | R-09-08 | The conformance kit MUST gate every release on every target. | Release check (C19) |
 | R-09-09 | A workflow that uses an extension construct MUST name the targets it supports. | Lint L24 |
 | R-09-10 | Engine state MUST carry references, never the payment payload. | Conformance CK-CLAIM-01 |
-| R-09-11 | On DTFx, an attempt timeout abandons the late result; it does not cancel the running task. The activity MUST therefore be idempotent. | Conformance CK-TIMEOUT-01 |
+| R-09-11 | On DTFx and Elsa, an attempt timeout abandons the late result; it does not cancel the running task. The activity MUST therefore be idempotent. | Conformance CK-TIMEOUT-01 |
 | R-09-12 | On Flowable, an activity MUST be exported as a wait state (external worker task) so that timer boundaries apply. | Generator test (C22) |
 | R-09-13 | Large batches MUST be chunked on history-based engines. The chunk size comes from the binding. | Conformance CK-FOREACH-02 |
 | R-09-14 | Handlers MUST be exported as plain request handlers at the interop boundary, outside the durable engine. | Conformance CK-HANDLER-01 |
 | R-09-15 | A generated BPMN document MUST be reproducible: the same input gives the same bytes. | Generator test (C22) |
 | R-09-16 | A binding MUST keep a message that reaches an instance before its `await` starts, and MUST hand a message that finds no waiting instance to operations as unmatched. Where an engine delivers a message only to an execution that is already waiting, the binding holds the message until it is. | Conformance CK-AWAIT-03, CK-AWAIT-04 |
 | R-09-17 | An engine binding MUST receive the expanded form only. It MUST NOT resolve a composite activity at run time. | Conformance CK-BLOCK-01 |
+| R-09-18 | On Elsa, the interpreter MUST keep its journal (the instance input and every result, in the order it arrived) in the workflow state Elsa persists, and MUST resume only from a bookmark. A resumed run MUST reach the same operations in the same order; a journal entry the replay does not reach MUST fail the run. | Conformance kit on Elsa (`studio/engines/elsa`); replay check in the harness |
 
 ## 9.6 Core and extension profiles
 
@@ -98,7 +100,24 @@ Two engine gaps in Flowable 7.1.0, worked around in the binding:
 
 Limits that remain: compensation runs in reverse document order, which in parallel branches is not always reverse completion order; chunked concurrency puts a barrier between chunks; external worker tasks are non-exclusive, as exclusive jobs were not acquired while parallel branches waited.
 
+### Proved on Elsa 3.10.2 (I-30)
+
+The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 46 of 46 scenarios pass, and two runs give the same traces.
+
+| Who does what | |
+| --- | --- |
+| Elsa | Each engine instance is an Elsa workflow instance of one generic activity. Elsa keeps its state, suspends it at a bookmark while it waits, and resumes it with input. Its own serialiser writes the state the host keeps between runs |
+| The interpreter | Runs again from the start on each resume, against the journal in the workflow state: an operation whose result is in the journal returns it; one that is not becomes pending |
+| The host | Carries out pending operations (an activity attempt on the worker of its queue, a timer, a child instance, an event to another instance) on the virtual clock, and resumes the bookmark with each result |
+
+Limits that remain:
+
+- Elsa does not replay code, so the replay is the interpreter's own. Each resume reruns the journal; large batches stay small by the binding's chunk size and continue-as-new (CK-FOREACH-02: 10,000 items, 21 executions).
+- Timers and retries are journalled operations run by the host's clock, not Elsa's scheduler or its activities, so that the kit can run on virtual time (R-C-06). A production host would hand timers to Elsa's scheduler.
+- The state is kept by the host in memory between runs. A production host would use an Elsa persistence provider.
+- Workflows are not shown in Elsa's designer: the documents stay the source, as for every target.
+
 ## 9.8 Examples
 
-- Three bindings: `examples/bindings/bindings.yaml`.
+- Four bindings: `examples/bindings/bindings.yaml`.
 - Pins as they appear in a manifest: `factory/p/pack.yaml`.

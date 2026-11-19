@@ -26,7 +26,7 @@ export interface DeployEnvironment {
 
 export interface DeployRequest {
   packagePath: string; // a .zip from the studio's export, or the folder it unpacks to
-  engine?: 'dtfx';
+  engine?: 'dtfx' | 'elsa';
   workflow: string;
   environment: DeployEnvironment;
   inbound?: { message?: string; payload: string };
@@ -87,7 +87,10 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   const dir = unpack(req.packagePath);
   const manifest = parseYaml(fs.readFileSync(path.join(dir, 'manifest.yaml'), 'utf8'));
   const binding = parseYaml(fs.readFileSync(path.join(dir, 'binding.yaml'), 'utf8'));
-  if ((req.engine ?? 'dtfx') !== 'dtfx' || binding.target !== 'dtfx') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx`);
+  // The package's binding says which engine runs it; the deploy runner drives DTFx and Elsa.
+  const engine = binding.target as 'dtfx' | 'elsa';
+  if (engine !== 'dtfx' && engine !== 'elsa') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx and elsa`);
+  if (req.engine && req.engine !== engine) throw new Error(`This package is for ${engine}, not ${req.engine}`);
   const log: string[] = [];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-run-'));
   // The tenant's configuration set travels in the package (R-09-02); an environment may override it.
@@ -184,7 +187,9 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     }
 
     // 4. The engine.
-    const harnessDll = path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
+    const harnessDll = engine === 'elsa'
+      ? path.join(req.studioRoot, 'engines', 'elsa', 'harness', 'bin', 'Release', 'net8.0', 'ElsaHarness.dll')
+      : path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
     if (!fs.existsSync(harnessDll)) {
       const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.dirname(path.dirname(path.dirname(path.dirname(harnessDll)))), encoding: 'utf8' });
       if (b.status !== 0) throw new Error(`dotnet build failed: ${b.stdout}`);
@@ -212,7 +217,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
     if (!obsLine) {
       const err = lines.find((l) => l.startsWith('ERROR '));
-      throw new Error(err ? JSON.parse(err.slice(6)) : blockedByWindows(r.stderr) ?? `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
+      throw new Error(err ? JSON.parse(err.slice(6)) : blockedByWindows(r.stderr, engine) ?? `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
     }
     const obs = JSON.parse(obsLine.slice('OBSERVATION '.length));
     for (const l of r.stderr.split('\n').map((x) => x.trim()).filter(Boolean)) log.push(`[engine] ${l}`);

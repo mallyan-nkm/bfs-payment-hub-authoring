@@ -9,6 +9,7 @@ const TARGETS: Record<string, { strategy: string; defaults?: any; extensions?: a
   temporal: { strategy: 'interpreter', defaults: { queueTimeout: 'PT30S', heartbeat: 'PT10S', forEachChunk: 500, historyLimit: 10000 } },
   dtfx: { strategy: 'interpreter', defaults: { forEachChunk: 500 }, extensions: { attemptTimeout: 'timer-race' } },
   flowable: { strategy: 'generation', extensions: { activityTask: 'external-worker', retry: 'modelled-loop' } },
+  elsa: { strategy: 'interpreter', defaults: { forEachChunk: 500 }, extensions: { suspension: 'bookmark', replay: 'journal-in-workflow-state', attemptTimeout: 'timer-race' } },
 };
 
 export function queueName(scope: string): string {
@@ -29,7 +30,7 @@ export function generateBinding(env: StudioEnv, target: string): any {
 
 /** Regenerate each binding and compare it with the example (C20-S1, C21-S4 success). */
 export function compareBindings(env: StudioEnv) {
-  return ['temporal', 'dtfx', 'flowable'].map((target) => {
+  return ['temporal', 'dtfx', 'flowable', 'elsa'].map((target) => {
     const want = env.store.byKind('engine-binding').find((e) => e.doc.target === target)?.doc;
     const got = generateBinding(env, target);
     return { target, equal: !!want && canonicalJson(want) === canonicalJson(got), generated: got };

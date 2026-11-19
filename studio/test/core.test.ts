@@ -66,7 +66,7 @@ describe('durations and the business calendar', () => {
 describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
-    expect(env.store.all().length).toBe(198);
+    expect(env.store.all().length).toBe(199); // 198, and the Elsa engine binding (I-30)
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

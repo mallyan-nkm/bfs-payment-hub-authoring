@@ -1005,12 +1005,13 @@ export function portabilityReport(flows: any[], target: string): PortabilityItem
         if (target === 'flowable') add('await', 'A message that arrives before the catch event is held by the binding until the catch is waiting (R-09-16).', 'warning', sid);
         if (target === 'temporal') add('await', 'A signal with a timer; early signals are kept in workflow state.');
         if (target === 'dtfx') add('await', 'An external event raced with a durable timer; early events are kept in orchestration state.');
+        if (target === 'elsa') add('await', 'The instance waits at an Elsa bookmark, raced with a timer; early messages are kept in its journal, in the workflow state.');
         if (st.await.calendar === 'business') add('await', 'Business calendar: the binding converts the timeout to business days.', 'warning', target === 'flowable' ? sid : undefined);
         if (target === 'flowable' && inParallel) add('await', 'Two awaits for one message type in parallel branches cannot be told apart by the binding.', 'warning', sid, 'Await in sequence, or await distinct message types.');
       }
-      if (st.forEach && (target === 'temporal' || target === 'dtfx')) add('forEach', 'Large batches are chunked with continue-as-new; the chunk size comes from the binding (R-09-13).');
+      if (st.forEach && (target === 'temporal' || target === 'dtfx' || target === 'elsa')) add('forEach', 'Large batches are chunked with continue-as-new; the chunk size comes from the binding (R-09-13).');
       if (st.forEach && target === 'flowable' && (st.forEach.concurrency ?? 1) > 1) add('forEach', `Step ${sid ?? 'forEach'}: concurrency ${st.forEach.concurrency} becomes a parallel multi-instance; Flowable starts every item at once and has no concurrency bound.`, 'warning', sid, 'Set concurrency 1 for a sequential multi-instance, or chunk the batch in the binding.');
-      if (st.call && st.policy?.attemptTimeout && target === 'dtfx') add('policy', `Step ${sid}: an attempt timeout abandons the late result; it does not cancel the task (R-09-11).`, 'warning');
+      if (st.call && st.policy?.attemptTimeout && (target === 'dtfx' || target === 'elsa')) add('policy', `Step ${sid}: an attempt timeout abandons the late result; it does not cancel the task (R-09-11).`, 'warning');
       if (st.call && target === 'flowable') {
         add('policy', `Step ${sid}: attempts, backoff and total timeout are a modelled loop in an embedded sub-process, with timer boundaries.`, 'info', sid);
         if (inItem && inParallel) add('policy', `Step ${sid}: a step inside a parallel for each in a parallel branch shares outcome variables.`, 'warning', sid, 'Move the parallel branches into the item, or the item into a branch.');
