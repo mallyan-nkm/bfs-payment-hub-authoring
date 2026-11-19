@@ -36,7 +36,7 @@ const TURNS = [
   { content: [text('First I look at what is there.'), tool('t1', 'get_document'), tool('t2', 'search_catalogue', { query: 'wps', kind: 'rule' })] },
   { content: [tool('t3', 'edit_document', { yaml: toYaml(RULE), summary: 'Write the days-in-period rule with three examples' })] },
   { content: [tool('t4', 'check_document')] },
-  { content: [text('Done. The rule and its three examples pass. Save it as a draft; a checker publishes it.')] },
+  { content: [text('**Done.** The rule `uae.wps.rule.days-in-period.v1` and its three examples pass.\n\n- Save it as a draft\n- a checker publishes it.')] },
   { content: [tool('t5', 'edit_document', { yaml: toYaml({ ...RULE, title: 'Days in the period: 1 to 31' }), summary: 'A shorter title' })] },
   { content: [text('The title is shorter now.')] },
 ];
@@ -84,6 +84,12 @@ describe('the assistant beside every surface', () => {
     await pending.getByRole('button', { name: 'Allow once' }).click();
     await expect.poll(() => page.getByLabel('Name', { exact: true }).inputValue()).toBe(RULE.name);
     await expect.poll(async () => (await dock().textContent()) ?? '').toMatch(/a checker publishes it/);
+    // The reply's markdown is rendered, not shown as marks (I-31).
+    const reply = dock().locator('.bubble.assistant', { hasText: 'a checker publishes it' });
+    expect(await reply.locator('b', { hasText: 'Done.' }).count()).toBe(1);
+    expect(await reply.locator('code', { hasText: 'uae.wps.rule.days-in-period.v1' }).count()).toBe(1);
+    expect(await reply.locator('li').count()).toBe(2);
+    expect(await dock().locator('.ask-log').textContent()).not.toMatch(/\*\*|`/);
     await expect.poll(() => page.locator('.example.ex-pass').count()).toBe(3);
     await expect.poll(async () => (await dock().textContent()) ?? '').toMatch(/c1\s*Write the days-in-period rule/);
   }, 60000);

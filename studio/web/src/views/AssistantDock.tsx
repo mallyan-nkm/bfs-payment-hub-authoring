@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { get, post, refusal } from '../api';
 import { useAssistReg, type AssistReg } from '../assist';
+import { Markdown } from '../markdown';
 import { Badge, useDebounced, useStudio } from '../ui';
 
 // The assistant beside every surface (I-29). Two tabs:
@@ -299,10 +300,15 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
   );
 }
 
+/** A message's text. The assistant's replies use a little markdown; the designer's text is shown as typed. */
+function Bubble({ role, text }: { role: string; text: string }) {
+  return <div className={`bubble ${role}`}>{role === 'assistant' ? <Markdown text={text} /> : text}</div>;
+}
+
 function Message({ m }: { m: any }) {
-  if (typeof m.content === 'string') return <div className={`bubble ${m.role}`}>{m.content}</div>;
+  if (typeof m.content === 'string') return <Bubble role={m.role} text={m.content} />;
   const parts = (m.content ?? []).map((b: any, i: number) => {
-    if (b.type === 'text' && !b.text.startsWith('<context>')) return <div key={i} className={`bubble ${m.role}`}>{b.text}</div>;
+    if (b.type === 'text' && !b.text.startsWith('<context>')) return <Bubble key={i} role={m.role} text={b.text} />;
     if (b.type === 'tool_use') return <div key={i} className="activity small muted">• {(ACTIVITY[b.name] ?? (() => b.name))(b.input ?? {})}</div>;
     if (b.type === 'tool_result' && b.is_error && /did not allow/.test(String(b.content))) return <div key={i} className="activity small muted">• You did not allow it</div>;
     return null;
