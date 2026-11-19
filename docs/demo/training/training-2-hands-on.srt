@@ -1,251 +1,283 @@
 1
-00:00:01,483 --> 00:00:16,331
+00:00:01,504 --> 00:00:16,352
 Welcome to the second training video. In the first one, we met the ideas: stations, quality checks, recipes, doors and the franchise. Now we use them, slowly, one click at a time. Every value you will see is made up for training.
 
 2
-00:00:17,941 --> 00:00:33,322
-We will build six things. A rule. An activity that runs the rule. A rule built with the assistant beside the editor. A workflow composed from parts that already exist. What to do when nothing exists. And last, a bank's own rule and hook.
+00:00:17,956 --> 00:00:36,537
+We will do seven things. Build a rule. An activity that runs the rule. A rule built with the assistant beside the editor. A workflow composed from parts that already exist. What to do when nothing exists. A bank's own rule and hook. And last, the debugger, to watch a whole payment step by step.
 
 3
-00:00:34,934 --> 00:00:52,384
+00:00:38,152 --> 00:00:55,602
 Part one: a rule. A rule is one quality check that answers yes or no. Like a kitchen check that says: the date on this label must be a real date. Our rule checks the salary month on a salary file. It is written as month and year, six digits, and month thirteen does not exist.
 
 4
-00:00:53,993 --> 00:01:06,857
+00:00:57,211 --> 00:01:10,075
 The editor starts from a sample rule, and we change it. First the name. A name has a scope, here U A E W P S, the kind of thing, rule, a short name, and a version. Then a title in plain words.
 
 5
-00:01:08,457 --> 00:01:19,870
+00:01:11,675 --> 00:01:23,088
 The rule kind says what sort of check it is. Field means it looks at one value on its own. The level says where the value lives: on the whole file, which is a batch, rather than on each line.
 
 6
-00:01:21,472 --> 00:01:37,258
+00:01:24,690 --> 00:01:40,476
 Now the When part: what the rule looks for. A pattern finds a fact. Here the fact is the salary file's own details, called W P S batch, and we call it w for short. The sample rule had a second condition. We do not need it, so we remove it.
 
 7
-00:01:38,865 --> 00:01:51,622
+00:01:42,084 --> 00:01:54,841
 The where part is the question itself. Read it like this: the salary month does not match the shape of a real month. Zero one to twelve, then a four digit year. When that is true, the rule has found a problem.
 
 8
-00:01:53,223 --> 00:02:07,943
+00:01:56,443 --> 00:02:11,163
 The Then part says what happens when the problem is found. We reject the file. The path points at the value that is wrong. And the reason code is a short standard code that every bank understands. D T zero one means an invalid date.
 
 9
-00:02:09,544 --> 00:02:23,752
+00:02:12,765 --> 00:02:26,972
 Now the most important part: the examples. An example is a small test. It gives the rule some made up facts and says what should happen. The first example, passes, has October twenty twenty six. We expect no problem.
 
 10
-00:02:25,352 --> 00:02:34,824
+00:02:28,573 --> 00:02:38,045
 The second example, fails, has month thirteen. We expect the rule to reject it with D T zero one. So we remove the sample code and add ours.
 
 11
-00:02:36,426 --> 00:02:45,386
+00:02:39,646 --> 00:02:48,606
 A good habit: test the edge. December is month twelve, the last real month, so it must pass. We add a third example, give it December, and name it.
 
 12
-00:02:46,986 --> 00:02:56,628
+00:02:50,207 --> 00:02:59,849
 Look at the gates on the right. They run on every change: the shape of the document, the static checks, and every example. All green. Each example shows pass.
 
 13
-00:02:58,233 --> 00:03:11,801
+00:03:01,454 --> 00:03:15,022
 Let us break it on purpose, to see what a failure looks like. We change the passing example to month zero zero. The rule now rejects it, but we said it should pass, so the example turns red and shows what actually happened.
 
 14
-00:03:13,402 --> 00:03:26,841
+00:03:16,623 --> 00:03:30,063
 Month zero zero really is wrong, so here the example was wrong, not the rule. We put October back, and everything is green again. That is how you test a rule: examples that pass, examples that fail, and the edge.
 
 15
-00:03:28,442 --> 00:03:41,924
+00:03:31,664 --> 00:03:45,146
 We save it as a draft. A draft is ours alone. Nothing uses it until it is published, and publishing needs a second person, the checker. The person who made it can never approve it. That is called maker and checker.
 
 16
-00:03:43,528 --> 00:03:58,162
+00:03:46,750 --> 00:04:01,384
 A rule does not run on its own. It goes into a rule set: a list of rules that run together, in stages. A rule set is a short document, so we write it in the YAML pane: its name, its stage, field, and its one rule, ours.
 
 17
-00:03:59,764 --> 00:04:01,982
+00:04:02,986 --> 00:04:05,204
 Saved, and published by the checker.
 
 18
-00:04:09,389 --> 00:04:21,186
+00:04:12,590 --> 00:04:24,387
 Part two: an activity. If a rule is a quality check, an activity is a station in the kitchen: one job, with a clear way in and a clear way out. Our station runs the salary month check.
 
 19
-00:04:22,789 --> 00:04:32,965
+00:04:25,991 --> 00:04:36,167
 A name and a title. The type is validate, because it checks things. The level is batch, the whole file. The effect is pure: it only looks, and changes nothing outside.
 
 20
-00:04:38,042 --> 00:04:50,585
+00:04:41,169 --> 00:04:53,712
 Reads are what the station is allowed to see. It only needs the W P S part of the file, so we remove the sample reads and add that one. Writes are what it may change: here, only its findings.
 
 21
-00:04:52,186 --> 00:05:05,306
+00:04:55,313 --> 00:05:08,433
 The outcomes are the ways out: pass, the normal way, and reject. The workflow that uses this station must say what to do on reject. And the station runs our rule set, through the studio's built in rule service.
 
 22
-00:05:06,906 --> 00:05:08,548
+00:05:10,033 --> 00:05:11,675
 Saved, and published.
 
 23
-00:05:16,516 --> 00:05:29,060
+00:05:19,623 --> 00:05:32,167
 Now we test the activity on the bench. The bench runs one thing on its own, with made up input. We choose our activity as the target, and give it a small context: a file whose salary month is October.
 
 24
-00:05:31,263 --> 00:05:35,892
+00:05:34,340 --> 00:05:38,969
 Run. The outcome is pass, and the business trace says so: validate, pass.
 
 25
-00:05:37,496 --> 00:05:41,847
+00:05:40,573 --> 00:05:44,924
 Now month thirteen. Run again. This time the outcome is reject.
 
 26
-00:05:46,769 --> 00:06:00,038
+00:05:49,855 --> 00:06:03,124
 A run you like can become a test that is kept. Below the result, save the run as a test: give it an id and a title. From now on, if anyone changes the rule and this result changes, the test turns red.
 
 27
-00:06:01,641 --> 00:06:16,382
+00:06:04,727 --> 00:06:19,468
 Part three: the assistant. It sits beside every editor, the workflow designer, a bank's configuration and the test bench. Think of a senior cook at your elbow. It explains what you are doing, and it can build with you. It never publishes anything.
 
 28
-00:06:17,985 --> 00:06:28,737
+00:06:21,072 --> 00:06:31,824
 The first tab, what is happening, needs no model. Click into any field and it says what the field means, the values it takes, an example, and the usual mistake. Here, the level.
 
 29
-00:06:30,341 --> 00:06:39,834
+00:06:33,427 --> 00:06:42,920
 Below it, the rule in plain words, a small picture, a checklist of what is left before it can be published, and the next step. It follows every edit you make.
 
 30
-00:06:41,438 --> 00:06:52,723
+00:06:44,524 --> 00:06:55,809
 The second tab is ask. This is Claude, with tools. We ask it to build our rule: the days in the pay period, from one to thirty one, with a passing, a failing and a boundary example.
 
 31
-00:06:54,324 --> 00:07:04,884
+00:06:57,411 --> 00:07:07,971
 We send it. It looks around first, and you see each thing it reads: the document, the catalogue, and rules like ours. That takes a little while. It changes nothing yet.
 
 32
-00:07:18,080 --> 00:07:27,573
+00:07:19,587 --> 00:07:29,080
 Now it wants to change the rule. A card says what it would change, and how its version does on the checks. The form has not changed. We choose allow once.
 
 33
-00:07:33,598 --> 00:07:46,078
+00:07:33,569 --> 00:07:46,049
 The form fills in: the name, the level, the condition, and its examples, every one tested. At the end it says what it did, and asks about anything we did not tell it. Answer those, as you would a colleague.
 
 34
-00:07:47,681 --> 00:07:59,457
+00:07:47,653 --> 00:07:59,429
 We ask for a shorter title, and this time choose allow always. From now on, on this page, it makes that kind of change without asking. Each change it made is listed, with an undo button.
 
 35
-00:08:10,787 --> 00:08:18,445
+00:08:11,004 --> 00:08:18,662
 We prefer our own title, so we undo that change, and the title goes back. You can undo any change it made, and so can it.
 
 36
-00:08:20,046 --> 00:08:32,547
+00:08:20,264 --> 00:08:32,765
 It never saves or publishes on its own. You save the draft yourself, and a checker publishes it, exactly as in part one. We close the panel. The assistant tab on the right edge opens it again.
 
 37
-00:08:34,150 --> 00:08:49,638
+00:08:34,369 --> 00:08:49,857
 Part four: a workflow, built only from parts that already exist. This is a recipe made from stations the kitchen already has. Our recipe is a W P S salary file leg, the scheme's part of a payment, with our new salary month check added.
 
 38
-00:08:51,248 --> 00:09:04,154
+00:08:51,466 --> 00:09:04,372
 We start a blank leg and paste its header. The header says three things: it fills the scheme leg slot of the corporate payment workflow, what it may read, and how it can end: settled, rejected, returned or pending.
 
 39
-00:09:13,084 --> 00:09:28,849
+00:09:13,333 --> 00:09:29,098
 On the canvas, the recipe has one step: end, settled. We insert a step before it. The palette offers the kinds of step. Call means: use a station. We search the catalogue for business date, and pick the block that sets the business date. We name the step.
 
 40
-00:09:30,451 --> 00:09:42,056
+00:09:30,700 --> 00:09:42,305
 The next station checks the whole salary file. It has two other ways out, repair and reject, and each one shows red until we say what to do. For both, we end the workflow as rejected.
 
 41
-00:09:50,749 --> 00:09:57,725
+00:09:50,973 --> 00:09:57,949
 Then our own new station, the salary month check, from part two. If it rejects, the workflow ends as rejected.
 
 42
-00:10:08,379 --> 00:10:20,539
+00:10:08,502 --> 00:10:20,661
 The rest is built the same way: for each line of the file, check the record and its IBAN; render the file for the scheme; submit it and wait for the answer. To save time, we paste the finished steps.
 
 43
-00:10:22,140 --> 00:10:31,996
+00:10:22,263 --> 00:10:32,119
 The checks under the canvas say there is no error: every outcome is handled, and every block exists and is published. We save the leg and the checker publishes it.
 
 44
-00:10:33,598 --> 00:10:44,499
+00:10:33,723 --> 00:10:44,624
 Now we taste the recipe on the bench. The leg runs against simulators: stand ins for the W P S system and the bank calendar. First a good file with two lines.
 
 45
-00:11:10,335 --> 00:11:19,721
+00:11:10,463 --> 00:11:19,849
 Run. Each station in order: business date, file checks, our month check passes, both lines pass, the file is rendered and accepted. The leg settles.
 
 46
-00:11:21,326 --> 00:11:31,224
+00:11:21,454 --> 00:11:31,352
 Now a file with month thirteen. Run. The file checks pass, but our month check rejects it, and the leg ends as rejected. Nothing was sent to the scheme.
 
 47
-00:11:32,827 --> 00:11:43,707
+00:11:32,956 --> 00:11:43,836
 Part five: when nothing exists. For a new scheme, there are no stations, no checks and no door yet. You build them, in an order where each part only uses parts already built.
 
 48
-00:11:45,312 --> 00:12:04,725
+00:11:45,441 --> 00:12:04,854
 The order is: sample files first, so you can test. Then the port, the door to the scheme, and its simulator, the stand in. Then the rules, the rule set and the check activity. Then the maps that translate files. Then the send, and the composite that sends and waits. Then the leg. Last, the scheme and its dispatch table.
 
 49
-00:12:06,339 --> 00:12:22,659
+00:12:06,468 --> 00:12:22,788
 The dispatch table is the scheme's routing map. It says: this kind of file starts an outward corporate payment, read by this intake map, with this leg in the slot. Our first demo video builds such a scheme, step by step, and the guide lists every click.
 
 50
-00:12:24,270 --> 00:12:37,816
+00:12:24,394 --> 00:12:37,940
 Part six: a bank's own touch. The shared recipes belong to the platform. A bank cannot change them. But it can set its own values, and plug its own steps into hook points: places the recipe leaves open for it.
 
 51
-00:12:39,418 --> 00:12:54,671
+00:12:39,541 --> 00:12:54,794
 We now act as the example bank, as its maker. Here is what it may set: parameters with their bounds, and the hook points it may use. One hook point sits right after a payment is validated. A bank can hold or reject a valid payment there.
 
 52
-00:12:56,282 --> 00:13:12,943
+00:12:56,402 --> 00:13:13,063
 The bank's policy: a salary file with more lines than it allows needs a person to approve it. First the rule. It has a parameter, max lines, with a default and bounds, so each bank sets its own value. And three examples: under, exactly at, and over the limit.
 
 53
-00:13:14,544 --> 00:13:21,733
+00:13:14,665 --> 00:13:21,854
 The bank's own maker saves it, and the bank's own checker publishes it. Its name starts with b, the bank's scope.
 
 54
-00:13:24,182 --> 00:13:29,494
+00:13:24,302 --> 00:13:29,614
 The same steps as before: a rule set with the rule, and a check activity that runs it.
 
 55
-00:14:07,394 --> 00:14:20,428
+00:14:07,593 --> 00:14:20,627
 Now the hook: a small recipe that plugs into the hook point. It runs the file size check. If the check rejects, the hook ends as hold, and the payment waits for a person. Otherwise it ends as continue.
 
 56
-00:14:29,585 --> 00:14:32,102
+00:14:29,873 --> 00:14:32,390
 Saved and published by the bank's checker.
 
 57
-00:14:39,193 --> 00:14:51,630
+00:14:39,495 --> 00:14:51,932
 Now the bank's configuration. We bind the hook to the hook point, and set max lines. Watch the bounds: if we type zero, below the minimum of one, the check refuses it, and the save button stays off.
 
 58
-00:14:53,232 --> 00:15:03,536
+00:14:53,534 --> 00:15:03,838
 For training we set it to one line, so our two line sample file goes over the limit. The set passes every check. We save it as a new release of the configuration.
 
 59
-00:15:05,137 --> 00:15:15,462
+00:15:05,439 --> 00:15:15,764
 Before a bank accepts a new shared release, it runs the compatibility run: each bound hook point must still exist and fit, and each of its hook tests must pass.
 
 60
-00:15:17,066 --> 00:15:27,903
+00:15:17,366 --> 00:15:28,203
 Now a whole payment, for the bank. The salary file arrives from the bank's channel. The operations simulator plays the person who decides a hold. In this run, they decline.
 
 61
-00:16:40,790 --> 00:16:52,246
+00:16:41,073 --> 00:16:52,529
 Run. The payment is validated. Then our hook runs, finds two lines over a limit of one, and holds it. The person declines, so the payment ends as rejected, and nothing was sent.
 
 62
-00:16:53,852 --> 00:17:03,942
+00:16:54,135 --> 00:17:04,225
 Once more, and this time the person approves. The hold is released, the payment is screened, the funds are reserved, the W P S leg runs, and the payment settles.
 
 63
-00:17:05,546 --> 00:17:23,679
-That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A rule built with the assistant. A leg composed from existing parts. And a bank's own rule and hook, held a payment for approval. The guide has every step in writing.
+00:17:05,829 --> 00:17:18,522
+Part seven: the debugger. The bench told us how the payment ended. The debugger shows how it got there, one step at a time, like watching the kitchen through a window. Instead of run, we choose debug step by step.
+
+64
+00:17:20,124 --> 00:17:33,052
+On the left, where the run is: which workflow, and its steps, each ticked with its outcome as the run reaches it. On the right, what just happened, what it decided, what data changed, and all the data as it stands.
+
+65
+00:17:34,657 --> 00:17:44,811
+Step into moves one event forward. First the front door reads the salary file. Then the corporate workflow starts, and its first checks run. Watch the data fill in.
+
+66
+00:17:52,101 --> 00:18:02,767
+We do not have to step through everything. We set a breakpoint on the bank's hook point, after validate, and choose continue. The run stops there. The bank's hook answered hold.
+
+67
+00:18:04,370 --> 00:18:16,828
+Why? Step back, and we are inside the hook. Its file size check found a problem: the file has two lines, and this bank allows one without approval. The finding is A M eighteen, on the number of lines.
+
+68
+00:18:18,429 --> 00:18:28,605
+Step out takes us back up to the payment. Step over then moves on at this level: the hold, where a person approves. Here, they approve, so the payment goes on to screening.
+
+69
+00:18:30,647 --> 00:18:42,167
+A second breakpoint, on the route, where the payment chooses its rail. Continue. The decision is the W P S rail, and the data changed: the route is written into the payment's facts.
+
+70
+00:18:43,769 --> 00:19:02,222
+Step into goes inside the W P S leg when the payment reaches its slot. Step over would pass the whole leg at once. Continue runs to the end: posted, verified, and settled. Every run here is on the studio's own clock, so stepping back is exact, and no real payment is ever touched.
+
+71
+00:19:14,496 --> 00:19:35,274
+That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A rule built with the assistant. A leg composed from existing parts. A bank's own rule and hook, held a payment for approval. And the debugger showed us why, step by step. The guide has every step in writing.
