@@ -40,8 +40,8 @@ export const HEADER = { paymentId: 'P-1', endToEndId: 'E2E-1', kind: 'payment', 
 export const contextWithMonth = (month: string) => JSON.stringify({ header: HEADER, ext: { uae: { wps: { salaryMonth: month } } } }, null, 2);
 
 // 2.3: what the AI assistant is asked for.
-export const AI_INSTRUCTION = 'Write a field rule named uae.wps.rule.salary-days-valid.v1 at level item. It checks that each salary line\'s days in the period is between 1 and 31. When it does not hold, yield a reject finding on items[].ext.uae.wps.daysInPeriod with ISO reason code DT01. Include a passing example and a failing example. Cite the clause each part comes from. Anything the source text does not say, ask as a question; do not guess.';
-export const AI_SOURCE = 'Synthetic training extract. Each employee record in a salary information file states the number of days in the pay period. The value is a whole number from 1 to 31. A record outside that range makes the file invalid.';
+export const AI_ASK = 'Build a rule that the days in the pay period are 1 to 31, with a passing, a failing and a boundary example. Name it uae.wps.rule.salary-days-valid.v1, level item, the value at items[].ext.uae.wps.daysInPeriod, reject with ISO reason code DT01.';
+export const AI_SHORTER = 'Make the title shorter.';
 
 // 2.4: a leg composed from blocks that already exist. Only its header is written as text; the steps
 // are added on the canvas.
