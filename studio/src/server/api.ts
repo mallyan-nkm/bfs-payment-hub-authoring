@@ -395,8 +395,11 @@ route('POST', '/api/tests/run-all', async (env, req) => {
 });
 
 /** Run an ad hoc bench: any target, any bench, any context (F-16). */
-route('POST', '/api/bench/run', async (env, req) => {
-  const b = req.body ?? {};
+route('POST', '/api/bench/run', async (env, req) => benchRun(env, req.body ?? {}, false));
+// The debugger (F-17): the same run, with the data after every event and what each step decided.
+route('POST', '/api/debug/run', async (env, req) => benchRun(env, req.body ?? {}, true));
+
+async function benchRun(env: StudioEnv, b: any, debug: boolean) {
   const target = env.store.latest(b.target)?.doc;
   if (!target) throw new HttpError(404, `No ${b.target}`);
   const level = b.level ?? (target.kind === 'activity' ? 'activity' : target.kind === 'hook' ? 'hook' : target.wfKind === 'handler' ? 'handler' : target.wfKind === 'leg' ? 'leg' : target.wfKind === 'platform' ? (b.inbound ? 'end-to-end' : 'leg') : 'activity');
@@ -406,8 +409,8 @@ route('POST', '/api/bench/run', async (env, req) => {
     given: { ...(b.context ? { context: b.context } : {}), ...(b.inbound ? { inbound: b.inbound } : {}), ...(b.message ? { message: b.message } : {}), ...(b.signals?.length ? { signals: b.signals } : {}) },
     expect: b.expect ?? {},
   };
-  return runTest(env, test, b.supersessions ? { supersessions: b.supersessions } : {});
-});
+  return runTest(env, test, { ...(b.supersessions ? { supersessions: b.supersessions } : {}), ...(debug ? { debug: true } : {}) });
+}
 
 route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => !req.query.port || s.doc.port === req.query.port).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
 

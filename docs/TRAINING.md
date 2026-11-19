@@ -222,6 +222,16 @@ This runs the path in B5: front door, intake, workflow-select, the corporate wor
 
 Check yourself: change **Tenant for the run** to `owner` and run again. What happens and why? (The route finds no enabled rail, because the owner has no configuration set enabling `uae.wps`: `route:no-match`, `undo:reserve`, `end:rejected`.)
 
+### Exercise 4a. The same payment in the debugger (15 minutes)
+
+1. With the same set-up as exercise 4 (tenant `example-bank` again), click **Debug step by step**. The debugger opens below the bench.
+2. Click **Step into ▶** a few times. The front door reads the file; then the corporate workflow starts. On the right, **Data changed by this event** shows each value before and after, and **All the data now** marks what changed.
+3. On the left, click the dot beside `route` to set a breakpoint, then **Continue ⏭**. The run stops after the route step: **Decisions and rules** shows the decision `rail: "uae.wps"` and the table `p.table.rail-choice.v1` that made it.
+4. Click **Step into ▶** until **Where the run is** shows a bank hook or the WPS leg, then **Step out ⤴** to go back up. Try **Step over ⤼** at the slot: it passes the whole leg at once.
+5. Click **Step back** a few times, then **Continue ⏭** to the end.
+
+Check yourself: what is the last event, and why is it after the payment ended? (The bank's notify hook at `on-close`: a notify hook runs alongside and never delays the payment, R-06-09.)
+
 ### Exercise 5. The conformance kit (5 minutes)
 
 1. Open **Conformance kit** and click **Run all 46**. All 46 pass.

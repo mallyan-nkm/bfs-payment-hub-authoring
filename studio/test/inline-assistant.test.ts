@@ -11,7 +11,7 @@ import { freshEnv } from './helpers.js';
 // The inline assistant and the "What is happening" panel (docs/ISSUES.md I-29).
 
 const WEB = path.join(__dirname, '..', 'web', 'src', 'views');
-const SURFACES = ['Editors.tsx', 'Canvas.tsx', 'Designer.tsx', 'Tenant.tsx', 'TestBench.tsx'];
+const SURFACES = ['Editors.tsx', 'Canvas.tsx', 'Designer.tsx', 'Tenant.tsx', 'TestBench.tsx', 'Debugger.tsx'];
 
 describe('field help', () => {
   it('every field on every authoring surface has help, or is an action', () => {

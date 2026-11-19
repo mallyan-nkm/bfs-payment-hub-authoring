@@ -70,6 +70,14 @@ export function scenes(d: Director): Scene[] {
     }
     throw new Error('The assistant was still working after four minutes');
   };
+  const dbgBar = () => p().getByRole('toolbar', { name: 'Debugger controls' });
+  const expectDbg = async (re: RegExp) => {
+    for (let i = 0; i < 40; i++) {
+      if (re.test((await p().getByTestId('dbg-now').textContent()) ?? '')) return;
+      await p().waitForTimeout(150);
+    }
+    throw new Error(`The debugger does not show ${re}: ${await p().getByTestId('dbg-now').textContent()}`);
+  };
   const startNew = async (kind: string) => {
     await d.go(`editors?kind=${kind}`);
     await d.click(p().getByRole('button', { name: 'Start new' }));
@@ -166,12 +174,12 @@ export function scenes(d: Director): Scene[] {
 
   return [
     {
-      card: ['Training 2: hands-on', 'Six parts. Pause at any time and follow along in your own studio.'],
+      card: ['Training 2: hands-on', 'Seven parts. Pause at any time and follow along in your own studio.'],
       say: 'Welcome to the second training video. In the first one, we met the ideas: stations, quality checks, recipes, doors and the franchise. Now we use them, slowly, one click at a time. Every value you will see is made up for training.',
       do: async () => { await d.go('catalogue'); },
     },
     {
-      say: 'We will build six things. A rule. An activity that runs the rule. A rule built with the assistant beside the editor. A workflow composed from parts that already exist. What to do when nothing exists. And last, a bank\'s own rule and hook.',
+      say: 'We will do seven things. Build a rule. An activity that runs the rule. A rule built with the assistant beside the editor. A workflow composed from parts that already exist. What to do when nothing exists. A bank\'s own rule and hook. And last, the debugger, to watch a whole payment step by step.',
       do: async () => { await d.point(main().locator('.view-head').first(), 2500); },
     },
 
@@ -592,9 +600,83 @@ export function scenes(d: Director): Scene[] {
         await run(/hold:approved/);
       },
     },
+    // ------------------------------------------------------------ part 7: the debugger
     {
-      card: ['That is the hands-on training', 'Rule, activity, assistant, composing, building, and the bank\'s own touch'],
-      say: 'That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A rule built with the assistant. A leg composed from existing parts. And a bank\'s own rule and hook, held a payment for approval. The guide has every step in writing.',
+      card: ['Part 7: the debugger', 'Watch a whole payment, one step at a time'],
+      say: 'Part seven: the debugger. The bench told us how the payment ended. The debugger shows how it got there, one step at a time, like watching the kitchen through a window. Instead of run, we choose debug step by step.',
+      do: async () => {
+        await main().getByText('Input').first().scrollIntoViewIfNeeded();
+        await d.click(p().getByRole('button', { name: 'Debug step by step' }));
+        await dbgBar().waitFor();
+        await dbgBar().scrollIntoViewIfNeeded();
+        await d.point(dbgBar(), 2000);
+      },
+    },
+    {
+      say: 'On the left, where the run is: which workflow, and its steps, each ticked with its outcome as the run reaches it. On the right, what just happened, what it decided, what data changed, and all the data as it stands.',
+      do: async () => {
+        await d.point(main().getByLabel('Workflow steps'), 2500);
+        await d.point(p().getByTestId('dbg-now'), 1500);
+        await d.point(p().getByTestId('dbg-data'), 2000);
+      },
+    },
+    {
+      say: 'Step into moves one event forward. First the front door reads the salary file. Then the corporate workflow starts, and its first checks run. Watch the data fill in.',
+      do: async () => {
+        for (let i = 0; i < 4; i++) { await d.click(dbgBar().getByRole('button', { name: 'Step into ▶' })); await d.wait(900); }
+        await d.point(p().getByTestId('dbg-changed'), 2000);
+      },
+    },
+    {
+      say: 'We do not have to step through everything. We set a breakpoint on the bank\'s hook point, after validate, and choose continue. The run stops there. The bank\'s hook answered hold.',
+      do: async () => {
+        await d.click(main().getByRole('button', { name: 'Breakpoint at after-validate' }));
+        await d.click(dbgBar().getByRole('button', { name: 'Continue ⏭' }));
+        await expectDbg(/Hook point after-validate: the bank's hook b\.hook\.large-file-approval\.v1 \(halt\) answered hold/);
+        await d.point(p().getByTestId('dbg-now'), 2000);
+      },
+    },
+    {
+      say: 'Why? Step back, and we are inside the hook. Its file size check found a problem: the file has two lines, and this bank allows one without approval. The finding is A M eighteen, on the number of lines.',
+      do: async () => {
+        for (let i = 0; i < 6 && !/b\.validate\.file-size\.v1/.test((await p().getByTestId('dbg-now').textContent()) ?? ''); i++) { await d.click(dbgBar().getByRole('button', { name: 'Step back' })); await d.wait(700); }
+        await expectDbg(/Step file-size ran b\.validate\.file-size\.v1/);
+        await d.point(p().getByTestId('dbg-decisions'), 2500);
+      },
+    },
+    {
+      say: 'Step out takes us back up to the payment. Step over then moves on at this level: the hold, where a person approves. Here, they approve, so the payment goes on to screening.',
+      do: async () => {
+        await d.click(dbgBar().getByRole('button', { name: 'Step out ⤴' }));
+        for (let i = 0; i < 8 && !/approved/.test((await p().getByTestId('dbg-now').textContent()) ?? ''); i++) { await d.click(dbgBar().getByRole('button', { name: 'Step over ⤼' })); await d.wait(700); }
+        await expectDbg(/approved/);
+        await d.point(p().getByTestId('dbg-now'), 1800);
+      },
+    },
+    {
+      say: 'A second breakpoint, on the route, where the payment chooses its rail. Continue. The decision is the W P S rail, and the data changed: the route is written into the payment\'s facts.',
+      do: async () => {
+        await d.click(main().getByRole('button', { name: 'Breakpoint at route' }));
+        await d.click(dbgBar().getByRole('button', { name: 'Continue ⏭' }));
+        await expectDbg(/Step route ran p\.decide\.rail\.v1/);
+        await d.point(p().getByTestId('dbg-decisions'), 1800);
+        await d.point(p().getByTestId('dbg-changed'), 1800);
+      },
+    },
+    {
+      say: 'Step into goes inside the W P S leg when the payment reaches its slot. Step over would pass the whole leg at once. Continue runs to the end: posted, verified, and settled. Every run here is on the studio\'s own clock, so stepping back is exact, and no real payment is ever touched.',
+      do: async () => {
+        for (let i = 0; i < 10 && !/salary-file-out/.test((await p().locator('.dbg-chain').textContent()) ?? ''); i++) { await d.click(dbgBar().getByRole('button', { name: 'Step into ▶' })); await d.wait(500); }
+        await d.point(p().locator('.dbg-chain'), 1500);
+        await d.click(dbgBar().getByRole('button', { name: 'Continue ⏭' }));
+        await d.wait(800);
+        await d.click(p().locator('.dbg-events summary'));
+        await d.point(p().locator('.dbg-events'), 1800);
+      },
+    },
+    {
+      card: ['That is the hands-on training', 'Rule, activity, assistant, composing, building, the bank\'s own touch, and the debugger'],
+      say: 'That is the end of the hands-on training. You built a rule and tested it with examples. An activity, tested on the bench. A rule built with the assistant. A leg composed from existing parts. A bank\'s own rule and hook, held a payment for approval. And the debugger showed us why, step by step. The guide has every step in writing.',
       do: async () => { await d.wait(1500); await d.go('catalogue'); },
     },
   ];

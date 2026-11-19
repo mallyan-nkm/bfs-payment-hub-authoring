@@ -124,6 +124,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
         <li class="sub"><a href="#f-assistant">AI assistant</a></li>
         <li class="sub"><a href="#f-dock">The assistant beside every page</a></li>
         <li class="sub"><a href="#f-bench">Test bench</a></li>
+        <li class="sub"><a href="#f-debug">The debugger</a></li>
         <li class="sub"><a href="#f-kit">Conformance kit</a></li>
         <li class="sub"><a href="#f-tenant">Tenant</a></li>
         <li class="sub"><a href="#f-export">Export</a></li>
@@ -449,6 +450,16 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <li>Optionally write what you <span class="ui">Expect</span>, then <span class="ui">Run the bench</span>.</li>
   </ul>
   <p>The run report: <span class="ui">Checks</span>, <span class="ui">Business trace</span>, <span class="ui">Detail</span> (<span class="ui">Open every composite</span>), <span class="ui">Release trace</span>, <span class="ui">Timeline on the virtual clock</span>, <span class="ui">Instances</span>, <span class="ui">Messages in and out</span>, <span class="ui">Steps and context deltas</span>, <span class="ui">Rule traces</span>, <span class="ui">Bench and bindings</span>, and any duplicate or unmatched messages. <span class="ui">Save the run as a test</span> turns a run into a test, with the assertions you tick.</p>
+
+  <h3 id="f-debug">The debugger</h3>
+  <p>On the bench, <span class="ui">Debug step by step</span> runs the same thing end to end, on the studio's virtual clock, and opens the debugger instead of the report. A saved test has a <span class="ui">Debug</span> button beside <span class="ui">Run</span>. Nothing it does touches a running payment.</p>
+  <ul>
+    <li><b>Where the run is</b>, on the left: the workflow (and, inside it, the leg or hook it is in), and its steps. A shared segment shows its own steps. Each step is ticked with its outcome as the run reaches it, and the current one is outlined.</li>
+    <li><b>What happened</b>, on the right, in plain words; then <b>Decisions and rules</b> (the decisions a step took, its findings with reason codes, the rules and tables that ran); <b>Data changed by this event</b>, before and after; and <b>All the data now</b>, with what changed marked.</li>
+    <li><span class="ui">Step into ▶</span> moves one event forward, into a leg or hook when the run goes there. <span class="ui">Step over ⤼</span> moves on at the same level, past a leg or hook at one go. <span class="ui">Step out ⤴</span> goes back up to the workflow that started this one. <span class="ui">Step back</span> and <span class="ui">Restart</span> go backwards: a run is the same every time, so stepping back is exact.</li>
+    <li>Click the dot beside a step to set a breakpoint; <span class="ui">Continue ⏭</span> runs to the next one, or to the end. Tick <span class="ui">every event</span> to stop on attempts, replies and the rest too. <span class="ui">The whole run, event by event</span> lists every stop; click one to jump there. <span class="ui">Show the run report</span> gives the usual report.</li>
+  </ul>
+  <div class="note">The debugger keeps the data after every event. For a very large batch it stops keeping it after a limit and says so; debug a smaller sample to see every step.</div>
 
   <h3 id="f-kit">Conformance kit</h3>
   <p>The 46 scenarios every engine must reproduce, one per construct of the language: sequence, handlers, switch, parallel, loops, retry, timeouts, awaits, composites, hooks, signals, pins, supersession and more. <span class="ui">Run all 46</span>, filter by <span class="ui">Construct</span>, or run one and read its expected and actual traces.</p>

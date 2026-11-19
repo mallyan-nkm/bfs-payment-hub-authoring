@@ -252,7 +252,7 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
 };
 
 /** Labels that are actions, not fields: they need no help. */
-export const NO_HELP = ['Move up', 'Move row up', 'Filter parameters', 'Filter tests', 'Cut ', 'Delete ', 'Remove ', 'Move ', 'Count of ', 'Open a published '];
+export const NO_HELP = ['Move up', 'Move row up', 'Filter parameters', 'Filter tests', 'Cut ', 'Delete ', 'Remove ', 'Move ', 'Count of ', 'Open a published ', 'Debug ', 'Debugger controls', 'Workflow steps', 'Breakpoint at ', 'Picture'];
 
 export function fieldHelp(label: string | undefined): (FieldHelp & { label: string }) | undefined {
   if (!label) return undefined;

@@ -53,6 +53,8 @@ export interface RunConfig {
   limit?: string;
   bindings?: any[]; // hook bindings, in place of the tenant's configuration set
   availableFrom?: Record<string, string>; // name@release -> virtual time it is published
+  /** The debugger (F-17): each event also carries the instance's data after it, and each step what it decided. */
+  debug?: boolean;
 }
 
 export interface TimelineEvent {
@@ -61,7 +63,14 @@ export interface TimelineEvent {
   step?: string;
   type: string;
   detail?: any;
+  /** Debug runs: the instance's data after the event, or `same` when it did not change. */
+  data?: any;
+  same?: boolean;
+  omitted?: boolean;
 }
+
+/** A debug run keeps at most this much data, in characters, across its snapshots; beyond, events say so. */
+export const DEBUG_DATA_LIMIT = 20_000_000;
 
 export interface StepRecord {
   step: string;
@@ -159,8 +168,21 @@ export class Instance {
     return this.doc?.name ?? this.doc?.id ?? this.kind;
   }
 
+  private lastData?: string;
+
   event(type: string, step?: string, detail?: any) {
     const e: TimelineEvent = { at: this.run.clock.elapsed, instance: this.id, step, type, detail };
+    if (this.run.cfg.debug) {
+      // The data after this event, kept only when it changed since this instance's last event.
+      const s = JSON.stringify(this.ctx ?? {});
+      if (s === this.lastData) e.same = true;
+      else if (this.run.debugData + s.length > DEBUG_DATA_LIMIT) e.omitted = true;
+      else {
+        e.data = JSON.parse(s);
+        this.run.debugData += s.length;
+        this.lastData = s;
+      }
+    }
     this.timeline.push(e);
     this.run.timeline.push(e);
   }
@@ -195,6 +217,7 @@ export class Run {
   instances: Instance[] = [];
   handlerRuns: Instance[] = [];
   timeline: TimelineEvent[] = [];
+  debugData = 0;
   messages: Message[] = [];
   unmatched: { message: Message; reason: string }[] = [];
   duplicates: Message[] = [];
@@ -757,7 +780,15 @@ async function runActivityStep(st: any, frame: Frame, opts: { silent?: boolean }
   if (result.reasonCode) inst.reasonCode = result.reasonCode;
   inst.engineStates.push(inst.engineState());
   if (!opts.silent) record(frame, frame.inFinally ? `finally:${id}` : `${label(frame, id)}:${outcome}`);
-  inst.event('outcome', label(frame, id), { outcome, attempts, reasonCode: result.reasonCode });
+  inst.event('outcome', label(frame, id), {
+    outcome, attempts, reasonCode: result.reasonCode,
+    // What the step decided and found, for the debugger (F-17).
+    ...(run.cfg.debug ? {
+      activity: act.name, release: resolved.release, delta,
+      decisions: result.decisions, worst: result.ruleTrace?.worst, findings: result.ruleTrace?.findings,
+      rulesFired: (result.ruleTrace?.trace ?? []).map((t: any) => t.rule ?? t.name).filter(Boolean),
+    } : {}),
+  });
   return { outcome, act };
 }
 
@@ -1045,7 +1076,9 @@ async function execSwitch(st: any, frame: Frame) {
   if (sw.by?.outcomeOf) value = frame.inst.outcomes.get(sw.by.outcomeOf);
   else if (sw.by?.decision) value = frame.inst.decisions[sw.by.decision];
   const key = value === undefined || value === null ? undefined : String(value);
+  const chosen = key !== undefined && sw.cases && key in sw.cases ? key : sw.default ? 'default' : undefined;
   const steps = key !== undefined && sw.cases && key in sw.cases ? sw.cases[key] : sw.default;
+  if (frame.inst.run.cfg.debug) frame.inst.event('branch', st.id, { by: sw.by, value: value ?? null, case: chosen ?? 'none' });
   if (steps) await execSteps(steps, frame);
 }
 

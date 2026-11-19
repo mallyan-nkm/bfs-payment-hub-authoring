@@ -3,6 +3,7 @@ import { get, post, refusal, type Issue, type Summary, type TestRunReport } from
 import { Badge, ErrorBox, Issues, Loading, PassFail, Section, useLoad, useStudio } from '../ui';
 import { StringList, toYamlText } from '../authoring';
 import { RunReport } from './RunReport';
+import { DebugHint, Debugger } from './Debugger';
 import { useAssist } from '../assist';
 
 // The test bench (F-16 to F-19): stored tests with run and run-all, and an ad hoc bench.
@@ -24,18 +25,21 @@ export function TestBench({ query }: { query: URLSearchParams }) {
   const [filter, setFilter] = useState('');
   const reportRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<'tests' | 'bench'>(query.get('bench') ? 'bench' : 'tests');
+  const [debugging, setDebugging] = useState(false);
 
   const show = (r: TestRunReport, src?: any) => {
     setReport(r);
     setSource(src);
+    // A debug run keeps the documents each instance ran: open it in the debugger.
+    setDebugging(!!(r.record as any)?.docs);
     setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
-  const run = async (id: string) => {
+  const run = async (id: string, debug = false) => {
     setRunning(id);
     setError(undefined);
     try {
-      const [r, t] = await Promise.all([post<TestRunReport>(`/api/tests/${encodeURIComponent(id)}/run`, {}), get(`/api/tests/${encodeURIComponent(id)}`).catch(() => undefined)]);
+      const [r, t] = await Promise.all([post<TestRunReport>(`/api/tests/${encodeURIComponent(id)}/run`, debug ? { config: { debug: true } } : {}), get(`/api/tests/${encodeURIComponent(id)}`).catch(() => undefined)]);
       show(r, t?.test);
       tests.reload();
     } catch (e: any) {
@@ -122,7 +126,7 @@ export function TestBench({ query }: { query: URLSearchParams }) {
                       <td className="mono small break"><a href={`#/artefact/${encodeURIComponent(t.target)}`}>{t.target}</a></td>
                       <td>{t.tenant ?? <span className="muted">shared</span>}</td>
                       <td>{t.lastResult ? <PassFail passed={t.lastResult === 'pass'} /> : <span className="muted small">not run</span>}</td>
-                      <td><button onClick={() => run(t.id)} disabled={!!running}>{running === t.id ? 'Running…' : 'Run'}</button></td>
+                      <td className="nowrap"><button onClick={() => run(t.id)} disabled={!!running}>{running === t.id ? 'Running…' : 'Run'}</button> <button onClick={() => run(t.id, true)} disabled={!!running} aria-label={`Debug ${t.id}`}>Debug</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -133,7 +137,10 @@ export function TestBench({ query }: { query: URLSearchParams }) {
       ) : (
         <AdHocBench key={benchParam} initialTarget={query.get('bench') ?? ''} tests={tests.data ?? []} onReport={show} />
       )}
-      <div ref={reportRef}>{report && <RunReport key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} footer={<SaveAsTest report={report} source={source} />} />}</div>
+      <div ref={reportRef}>
+        {report && debugging && <Debugger key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} onClose={() => setDebugging(false)} />}
+        {report && !debugging && <RunReport key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} footer={<SaveAsTest report={report} source={source} />} />}
+      </div>
     </div>
   );
 }
@@ -187,7 +194,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
     }).catch((e) => setError(e.message));
   };
 
-  const runBench = async () => {
+  const runBench = async (debug = false) => {
     setError(undefined);
     let ctx: any;
     let exp: any;
@@ -206,7 +213,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
         message: input === 'inbound' && inbound && message ? message : undefined,
         expect: exp,
       };
-      const r = await post<TestRunReport>('/api/bench/run', body, tenant);
+      const r = await post<TestRunReport>(debug ? '/api/debug/run' : '/api/bench/run', body, tenant);
       const given: any = {};
       if (body.context) given.context = body.context;
       if (body.inbound) given.inbound = body.inbound;
@@ -344,8 +351,10 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       <textarea className="code-input" rows={4} value={expect} onChange={(e) => setExpect(e.target.value)} spellCheck={false} placeholder='{ "outcome": "settled", "attempts": { "send": 3 } }' aria-label="Expectation JSON" />
       <ErrorBox error={error} />
       <div className="row-actions">
-        <button className="primary" disabled={!target || busy} onClick={runBench}>{busy ? 'Running…' : 'Run the bench'}</button>
+        <button className="primary" disabled={!target || busy} onClick={() => runBench()}>{busy ? 'Running…' : 'Run the bench'}</button>
+        <button disabled={!target || busy} onClick={() => runBench(true)}>Debug step by step</button>
       </div>
+      <DebugHint />
     </Section>
   );
 }

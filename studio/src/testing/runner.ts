@@ -56,6 +56,8 @@ export interface RunRecord {
   defaultBindings: any[];
   elapsedMs: number;
   startedAt: string;
+  /** Debug runs: the document each instance ran, by instance id. */
+  docs?: Record<string, any>;
 }
 
 export interface InstanceView {
@@ -108,7 +110,25 @@ export function recordOf(r: RunResult, cfg: RunConfig): RunRecord {
     defaultBindings: run.defaultBindings,
     elapsedMs: run.clock.elapsed,
     startedAt: run.clock.iso(run.clock.start),
+    ...(cfg.debug ? { docs: debugDocs(run) } : {}),
   };
+}
+
+/** The documents a debug run shows: what each instance ran, and each segment it uses, as `use:<name>`. */
+function debugDocs(run: RunResult['run']): Record<string, any> {
+  const out: Record<string, any> = {};
+  const uses = (steps: any[]): string[] => (steps ?? []).flatMap((s: any) => [
+    ...(s?.use ? [s.use] : []),
+    ...uses(s?.forEach?.do), ...uses(s?.loop?.do), ...uses(s?.try), ...uses(s?.block?.do),
+    ...Object.values<any>(s?.switch?.cases ?? {}).flatMap((c) => uses(c)), ...uses(s?.switch?.default),
+    ...(s?.parallel?.branches ?? []).flatMap((b: any[]) => uses(b)),
+    ...Object.values<any>(s?.handle ?? {}).flatMap((a) => (Array.isArray(a) ? uses(a) : [])),
+  ]);
+  for (const i of [...run.allInstances(), ...run.handlerRuns]) {
+    out[i.id] = i.doc;
+    for (const u of uses([...(i.doc?.do ?? []), ...(i.doc?.finally ?? [])])) if (!out[`use:${u}`]) out[`use:${u}`] = run.resolveDoc(u);
+  }
+  return out;
 }
 
 export interface RunnerEnv {
