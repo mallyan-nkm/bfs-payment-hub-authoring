@@ -507,6 +507,11 @@ body.with-dock .main { margin-right: var(--dock-w); }
 .bubble { border-radius: var(--radius); padding: 6px 9px; white-space: pre-wrap; }
 .bubble.user { background: var(--accent-soft); align-self: flex-end; max-width: 90%; }
 .bubble.assistant { background: var(--surface-2); border: 1px solid var(--border); }
+.bubble.assistant { white-space: normal; }
+.bubble .md > * { margin: 0; }
+.bubble .md > * + * { margin-top: 6px; }
+.bubble .md ul, .bubble .md ol { padding-left: 18px; }
+.bubble .md li + li { margin-top: 2px; }
 .activity { padding-left: 4px; }
 .dock-changes ul { list-style: none; padding: 0; margin: 4px 0 8px; }
 .dock-changes li.undone { text-decoration: line-through; color: var(--muted); }

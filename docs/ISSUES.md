@@ -266,6 +266,21 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **Open.** The live model was not exercised in this change: the session had no key. The replayed conversations test the loop, the permissions and the undo; a run against the live model should follow once a key is set.
 
+## I-30. The assistant's replies show markdown as marks
+
+**Issue.** Against the live model, the agent's replies in the panel beside every surface (I-29) use markdown: `**bold**` labels, `- ` lists and `` `code` `` for artefact names. The panel showed them as plain text, so the designer saw the asterisks, dashes and backticks. It looked broken in training video 2. The spec is silent on how the assistant's replies are shown.
+
+**Recommendation.** Render a small, safe subset of markdown in the assistant's replies, and nothing more. Asking the model for plain text alone would not be enough: a model does not always follow it, and recorded conversations already hold markdown.
+
+**Decision.** The panel renders paragraphs, `- ` and `1. ` lists, `#` headings as a bold line, `**bold**` and `` `code` ``. Anything else stays text.
+
+**What changed.**
+- `studio/web/src/markdown.tsx`: a hand-written renderer, no new dependency (ADR 0001). It builds React elements and never sets HTML, so a tag in a reply is shown as text. It makes no links: a URL or `[text](url)` stays text, so nothing in a reply navigates away.
+- The assistant's bubbles use it. The designer's own messages are shown as typed.
+- `test/markdown.test.ts` checks bold, code, lists and paragraphs, and that `<script>` is escaped. `test/blackbox/ui-assistant.test.ts` replays a reply with `**bold**`, `` `code` `` and a list, and checks no `**` or backtick reaches the page.
+
+**Found, not fixed.** `test/units.test.ts` "knows when it has credentials" fails where `TH_ANTHROPIC_API_KEY` is set in the environment: it clears `ANTHROPIC_API_KEY` but not `TH_ANTHROPIC_API_KEY`.
+
 ## Not done, and why
 
 | Story | Why |
