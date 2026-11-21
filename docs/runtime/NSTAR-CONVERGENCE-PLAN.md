@@ -138,6 +138,11 @@ content-configurations/      what the studio publishes and what a bank configure
   - Pin it to one Temporal server version and re-prove it on each upgrade.
 - This is a fork-like maintenance burden that Temporal will not support. The alternative is to keep Temporal on PostgreSQL and SQL Server for everything else.
 - The runtime's own data is on SQL Server or PostgreSQL either way (W2).
+- **Spike done (P4 sizing).** Results are in `runtime/tools/temporal-sqlserver/README.md`, measured against Temporal v1.32.2 and SQL Server 2022:
+  - The plugin registers from our own module, so no fork is needed.
+  - It is about 4,500 lines and 157 store methods.
+  - The persistence schema fits, using a UTF-8 binary collation. One table, `chasm_node_maps`, needs a hashed key, and that fix was proved.
+  - Visibility does not translate and should stay on PostgreSQL or Elasticsearch for now.
 
 ### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
 - **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):
@@ -159,6 +164,12 @@ content-configurations/      what the studio publishes and what a bank configure
   - **Exchange-rate reply shape:** an adapter.
   - **Queues:** queue pins and default tenants go. A tenant is always given, never defaulted.
 - **The four copies of one validation rule** (record count, total within balance, MOHRE status) become one `uae.wps` rule.
+- **Progress (P5).**
+  - **The check.** `BankConfigurationTests.No_shared_code_names_a_bank` fails the build if a bank is named in shared code: the runtime, the studio and the engine harnesses, in the shapes the source used (`Dib`, `DIB`, `ADIB`, `Enbd`, `FAB` and the full names). A second test proves the check finds them.
+  - **The port.** Core banking is a port, `TransactHub.Ports.ICoreBanking`, with adapters `simulator` and `gateway-rest`. It is bound per tenant by effective-dated port bindings, in `content-configurations/banks/<bank>/*.yaml` (kind `port-bindings`). The 13 `CoreBanking:*` settings the bank fork read are settings of the binding; `core-banking.yaml` maps each one.
+  - **The switch.** The example bank moves from the simulator to the gateway on 2026-12-01 by a binding alone, and the tests show it.
+  - **The four bank sets.** Under D5 they are not in this repository. Each bank keeps its set in its own copy, and `example-bank` holds every knob with synthetic values.
+  - **Not yet.** WPS posting and balance activities do not call `ICoreBanking` yet. That comes with P2's inward flows, which post.
 - **ADIB RTC** becomes a `uae.wps` RTC flow, with the ADIB posting as a hook.
 - **ENBD and FAB** are thin stubs with no tests today. They become configuration sets only.
 - **Real bank values** (routing code, GL accounts, host ids) are not committed. The repository keeps synthetic placeholders, and the bank's own set lives in its private copy of `content-configurations/banks/<bank>/` (D5).

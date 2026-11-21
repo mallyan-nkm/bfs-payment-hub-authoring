@@ -7,6 +7,7 @@
     <Project Path="src/TransactHub.Interpreter/TransactHub.Interpreter.csproj" />
     <Project Path="src/TransactHub.Model/TransactHub.Model.csproj" />
     <Project Path="src/TransactHub.Native/TransactHub.Native.csproj" />
+    <Project Path="src/TransactHub.Ports/TransactHub.Ports.csproj" />
     <Project Path="src/TransactHub.Store.Migrations.PostgreSql/TransactHub.Store.Migrations.PostgreSql.csproj" />
     <Project Path="src/TransactHub.Store.Migrations.SqlServer/TransactHub.Store.Migrations.SqlServer.csproj" />
     <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />

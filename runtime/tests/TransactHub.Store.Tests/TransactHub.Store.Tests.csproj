@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Ports\TransactHub.Ports.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,40 @@
+# The example bank's core banking, as a port binding (plan W6, P5). All values are synthetic.
+#
+# The source's bank fork read these settings from CoreBanking:* in its appsettings. Each one is now a
+# setting of the binding, and nothing in shared code knows a bank:
+#   Mode, PostingMode, BalanceEnquiryMode, ReversalMode  -> which adapter is bound (no mode switches in code)
+#   PostingVariant                                       -> the adapter (one adapter per wire shape)
+#   ServiceCode, ExternalHostId, TxnFlag                 -> serviceCode, externalHostId, txnFlag
+#   UploadBranch, BalanceFlag, AuthStatus                -> uploadBranch, balanceFlag, authStatus
+#   BalanceEnquiryPath, SalaryPostingPath                -> balancePath, postingPath
+#   XREFPREFIX                                           -> referencePrefix
+#   SimulatorRejectAccountNumber                         -> a simulator scenario, not a setting
+#   WpsBusinessTimeZone, SifFileLocalPath                -> the calendar port and the file transport, not core banking
+#
+# Switching core banking is a new binding with a later validFrom: no release, no deployment.
+kind: port-bindings
+tenant: example-bank
+bindings:
+  - port: p.port.core-banking.v1
+    adapter: simulator
+    validFrom: 2026-01-01T00:00:00Z
+    settings:
+      openingBalance: "1000000"
+      currency: AED
+  - port: p.port.core-banking.v1
+    adapter: gateway-rest
+    validFrom: 2026-12-01T00:00:00Z
+    settings:
+      baseUrl: https://core-banking.example.invalid/
+      balancePath: api/v1/balance
+      postingPath: api/v1/postings
+      balanceFunctionId: "0301"
+      postingFunctionId: "0332"
+      serviceCode: EXSVC01
+      externalHostId: EXHOST
+      txnFlag: N
+      uploadBranch: "001"
+      balanceFlag: N
+      authStatus: A
+      referencePrefix: EX
+      successCode: "0"
