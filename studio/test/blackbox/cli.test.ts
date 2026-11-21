@@ -8,7 +8,7 @@ import { STUDIO } from './server.js';
 // Black box: the studio's command line, by output and exit code.
 
 function studio(...args: string[]) {
-  const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', ...args], { cwd: STUDIO, encoding: 'utf8', env: { ...process.env, TH_DATA_ROOT: '' }, timeout: 300000 });
+  const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', ...args], { cwd: STUDIO, encoding: 'utf8', env: { ...process.env }, timeout: 300000 });
   return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' };
 }
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-cli-'));
@@ -17,7 +17,7 @@ describe('studio command line', () => {
   it('prints its usage, and exits 2 for an unknown command', () => {
     const help = studio('help');
     expect(help.code).toBe(0);
-    expect(help.out).toContain('Usage: studio [--bank <name|dir> ...] test');
+    expect(help.out).toContain('Usage: studio [--bank <name> ...] test');
     const bad = studio('frobnicate');
     expect(bad.code).toBe(2);
     expect(bad.err).toContain('Unknown command frobnicate');
@@ -47,10 +47,18 @@ describe('studio command line', () => {
     expect(one.out).toContain('1 of 1 conformance scenarios pass');
   }, 300000);
 
-  it('checks every artefact with no errors', () => {
+  it('checks every artefact with no errors, and says which content it read', () => {
     const r = studio('check');
     expect(r.code).toBe(0);
     expect(r.out).toMatch(/^0 error\(s\), \d+ warning\(s\)$/m);
+    // Not connected: an in-memory fake GitHub seeded from content-configurations/ (R-11-21).
+    expect(r.err).toMatch(/^content: an in-memory branch seeded from .*content-configurations/m);
+  }, 120000);
+
+  it('reports the seed current in content-configurations/ (R-11-25)', () => {
+    const r = studio('seed-content');
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/^(\d+) of \1 seeded files are current/m);
   }, 120000);
 
   it('prints an export manifest and writes the same zip twice', () => {

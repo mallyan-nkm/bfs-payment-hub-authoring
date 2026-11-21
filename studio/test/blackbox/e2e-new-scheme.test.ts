@@ -78,7 +78,7 @@ async function runAll(tests: any[]) {
 }
 function deploy(zip: string, scenario: string, sample: string) {
   const args = ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', `${S}.credit-file`, '--inbound', sample, '--tenant', BANK, ...bench(scenario, true).flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
-  const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, encoding: 'utf8', env: { ...process.env, TH_DATA_ROOT: '' }, timeout: 300000 });
+  const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, encoding: 'utf8', env: { ...process.env }, timeout: 300000 });
   const out = (r.stdout ?? '') + (r.stderr ?? '');
   const workers = [...out.matchAll(/worker (th-[\w-]+) \(pid (\d+)\) served (\{.*\}), refused (\d+)/g)].map((m) => ({ queue: m[1], pid: m[2], served: JSON.parse(m[3]), refused: Number(m[4]) }));
   return { out, workers, code: r.status, outcome: /^outcome (\w+)/m.exec(out)?.[1], trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [] };
@@ -190,7 +190,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   });
 
   it('deployed on DTFx: the credit file is paid end to end, each worker a separate process serving only its queue', () => {
-    const d = deploy(zip, 'accept', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    const d = deploy(zip, 'accept', server.contentFile('samples/demo-credit-file-valid.csv'));
     expect(d.out).toContain('intake uae.demo.map.file-in.v1 on th-uae-demo: mapped');
     expect(d.out).toContain('front door: workflow-select chose p.wf.corporate.v1 for payment outward corporate');
     expect(d.out).toContain(`front door: ${LEG.name} fills scheme-leg`);
@@ -210,13 +210,13 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   }, 300000);
 
   it('deployed on DTFx: refused by the clearing house, the payment is rejected and its reservation undone', () => {
-    const d = deploy(zip, 'reject', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    const d = deploy(zip, 'reject', server.contentFile('samples/demo-credit-file-valid.csv'));
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(expect.arrayContaining(['leg:rejected', 'undo:reserve', 'end:rejected']));
   }, 300000);
 
   it('deployed on DTFx: a file in dollars stops at the file checks and sends nothing', () => {
-    const d = deploy(zip, 'accept', path.join(server.dataRoot, 'samples', 'demo-credit-file-usd.csv'));
+    const d = deploy(zip, 'accept', server.contentFile('samples/demo-credit-file-usd.csv'));
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.workers.find((w) => w.queue === 'th-uae-demo')!.served[`${SEND.name}@1.0.0`]).toBeUndefined();
   }, 300000);
@@ -237,7 +237,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   });
 
   it('deployed on Elsa: the credit file is paid end to end, each worker a separate process serving only its queue', () => {
-    const d = deploy(elsaZip, 'accept', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    const d = deploy(elsaZip, 'accept', server.contentFile('samples/demo-credit-file-valid.csv'));
     expect(d.out).toContain('front door: workflow-select chose p.wf.corporate.v1 for payment outward corporate');
     expect(d.outcome, d.out.slice(-1500)).toBe('settled');
     expect(d.trace).toEqual(expect.arrayContaining(['route:decided', 'leg:settled', 'post:posted', 'verify:verified', 'end:settled']));
@@ -249,7 +249,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   }, 300000);
 
   it('deployed on Elsa: refused by the clearing house, the payment is rejected and its reservation undone', () => {
-    const d = deploy(elsaZip, 'reject', path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv'));
+    const d = deploy(elsaZip, 'reject', server.contentFile('samples/demo-credit-file-valid.csv'));
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(expect.arrayContaining(['leg:rejected', 'undo:reserve', 'end:rejected']));
   }, 300000);

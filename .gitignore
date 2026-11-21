@@ -1,5 +1,4 @@
 node_modules/
-studio/data/
 studio/web/dist/
 *.log
 docs/demo/.voice/

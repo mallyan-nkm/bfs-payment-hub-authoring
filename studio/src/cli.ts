@@ -1,39 +1,97 @@
-import { openEnv } from './env.js';
+import { CONTENT_DIR, openReadEnv, type StudioEnv } from './env.js';
 import { runAllTests, runTest } from './testing/runner.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
-// `--bank <name|dir>` (repeatable, any command) adds a bank pack from its own folder (Issue I-43).
+// `--bank <name>` (repeatable, any command) adds a bank pack from its folder on the branch (Issue I-43).
+//
+// Content (R-11-21): the connected branch when TH_CONTENT_REPO is set (with TH_CONTENT_BRANCH,
+// TH_GITHUB_TOKEN, TH_GITHUB_API); otherwise an in-memory fake GitHub seeded from this repository's
+// content-configurations/. Either way nothing is written to disk, and the command says which it read.
 
-const USAGE = 'Usage: studio [--bank <name|dir> ...] test [ID...] | kit [CK-ID...] | check | bank-pack <name|dir> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
+const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
+
+const COMMANDS = ['test', 'kit', 'check', 'seed-content', 'bank-pack', 'export', 'export-zip', 'import', 'import-sample', 'deploy'];
 
 async function main() {
   const argv = process.argv.slice(2);
   const banks = argv.flatMap((a, i) => (argv[i - 1] === '--bank' ? [a] : []));
   const [cmd, ...args] = argv.filter((a, i) => a !== '--bank' && argv[i - 1] !== '--bank');
+  if (cmd === 'help' || cmd === '--help' || !cmd) {
+    console.log(USAGE);
+    return;
+  }
+  if (!COMMANDS.includes(cmd)) {
+    console.error(`Unknown command ${cmd}`);
+    console.log(USAGE);
+    process.exitCode = 2;
+    return;
+  }
+  if (cmd === 'seed-content' && args.includes('--write-local')) {
+    // Regenerate this repository's content-configurations/ as the seed publishes it: the seed runs as a
+    // change set against an in-memory fake seeded from the folder, and the fake's tree is copied back.
+    const { writeLocalSeed } = await import('./content/seed-local.js');
+    const r = await writeLocalSeed(opt(args, 'actor'));
+    console.log(r.status === 'unchanged' ? `content-configurations/ is current: ${r.unchanged} seeded files, nothing to write` : `content-configurations/: ${r.written.length} file(s) written by change set ${r.changeSet}${r.replaced.length ? `; ${r.replaced.length} regenerated from a changed source` : ''}`);
+    return;
+  }
+  const { env, where, stop } = await openReadEnv(banks.length ? { banks } : {});
+  console.error(`content: ${where}`);
+  try {
+    await run(cmd, args, env, where);
+    await env.store.flush();
+  } finally {
+    await stop();
+  }
+}
+
+const opt = (args: string[], k: string) => {
+  const i = args.indexOf(`--${k}`);
+  return i >= 0 ? args[i + 1] : undefined;
+};
+
+async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
   const need = (ok: unknown, what: string) => {
     if (!ok) throw new UsageError(what);
   };
+  const local = where.startsWith('an in-memory');
+  if (cmd === 'seed-content') {
+    const { seedContent, seedPlan } = await import('./content/seed.js');
+    if (local) {
+      // Not connected: say whether this repository's content-configurations/ holds the seed as it is now.
+      const plan = seedPlan(env);
+      for (const f of plan.clash) console.log(`differs  ${f.path} (from ${f.source})`);
+      for (const f of plan.add) console.log(`missing  ${f.path} (from ${f.source})`);
+      console.log(`${plan.same} of ${plan.files.length} seeded files are current in ${where}${plan.add.length + plan.clash.length ? '; run `npm run studio -- seed-content --write-local`' : ''}`);
+      process.exitCode = plan.add.length + plan.clash.length ? 1 : 0;
+      return;
+    }
+    const r = await seedContent(env, opt(args, 'actor'));
+    console.log(r.status === 'unchanged' ? `unchanged: all ${r.unchanged} seeded files are on ${r.branch}` : `committed ${r.commit} on ${r.branch}: change set ${r.changeSet}, ${r.added.length} file(s) added, ${r.unchanged} already there`);
+    return;
+  }
   if (cmd === 'bank-pack') {
-    // studio bank-pack <name|dir> [--write]: the lock file of a bank pack in its own folder, as tools/build_factory.py writes the example bank's.
-    need(args[0] && !args[0].startsWith('--'), 'bank-pack needs a bank: a folder name under content-configurations/banks, or a path');
+    // studio bank-pack <name> [--write]: the lock file of a bank pack, as tools/build_factory.py writes the example bank's.
+    need(args[0] && !args[0].startsWith('--'), 'bank-pack needs a bank: a folder name under content-configurations/banks');
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const { resolveBankPack } = await import('./env.js');
     const { packManifest } = await import('./governance/packs.js');
-    const { parseYaml, toYaml } = await import('./core/yaml.js');
-    const dir = resolveBankPack(args[0]);
-    const tenant = parseYaml(fs.readFileSync(path.join(dir, 'pack.yaml'), 'utf8')).tenant;
-    const text = '# Generated by `npm run studio -- bank-pack`. The lock file of this pack.\n' + toYaml(packManifest(openEnv({ dataRoot: '', banks: [dir] }), 'b', tenant));
+    const { toYaml } = await import('./core/yaml.js');
+    const { SEED_HEADER } = await import('./core/store.js');
+    const tenant = [...env.store.bankPacks].find(([, folder]) => folder === args[0])?.[0];
+    if (!tenant) throw new Error(`No bank pack ${args[0]} is loaded: pass --bank ${args[0]}`);
+    const text = '# Generated by `npm run studio -- bank-pack`. The lock file of this pack.\n' + toYaml(packManifest(env, 'b', tenant));
     if (args.includes('--write')) {
-      fs.writeFileSync(path.join(dir, 'pack.yaml'), text);
-      console.log(`${path.join(dir, 'pack.yaml')}: written`);
+      // A repository authoring step, like tools/build_factory.py: it writes this repository's folder, not the studio's store.
+      const file = path.join(CONTENT_DIR, 'banks', args[0], 'pack.yaml');
+      if (SEED_HEADER.test(fs.readFileSync(file, 'utf8'))) throw new Error(`${file} is seeded from spec/: run tools/build_factory.py and seed again`);
+      fs.writeFileSync(file, text);
+      console.log(`${file}: written`);
     } else process.stdout.write(text);
     return;
   }
-  const env = openEnv({ dataRoot: process.env.TH_DATA_ROOT ?? '', ...(banks.length ? { banks } : {}) });
   if (cmd === 'test') {
     const reports = args.length
       ? await Promise.all(args.map(async (id) => { const t = env.store.test(id); if (!t) throw new Error(`No test ${id}`); return runTest(env, t.doc); }))
@@ -122,8 +180,8 @@ async function main() {
     }
     need(args[0] && !args[0].startsWith('--'), 'import needs a bundle: a .zip or a directory');
     const bundle = fs.statSync(args[0]).isDirectory() ? readBundleDir(args[0]) : readBundle(fs.readFileSync(args[0]));
-    // Applying writes drafts into the studio's workspace (TH_DATA_ROOT, or the studio's own).
-    const ienv = args.includes('--apply') ? openEnv({ dataRoot: process.env.TH_DATA_ROOT || undefined, ...(banks.length ? { banks } : {}) }) : env;
+    // Applying saves drafts on their change set branches: on the connected branch's repository, or in memory only.
+    const ienv = env;
     const base = { tenant: opt('tenant') ?? 'owner', bankTenant: opt('bank-tenant') };
     const out: any = args.includes('--apply')
       ? await apply(ienv, bundle, { ...base, actor: opt('actor') ?? 'shared.designer', bankActor: opt('bank-actor'), force: args.includes('--force') })
@@ -141,6 +199,7 @@ async function main() {
     for (const u of r.inventory.unmapped) console.log(`unmapped ${u.id} ${u.source?.path}${u.source?.lines ? ':' + u.source.lines : ''}: ${u.note}`);
     if (out.applied) {
       console.log(`saved    ${out.saved.length} as drafts; ${out.skipped.length} unchanged and reused`);
+      if (local) console.log(`note     Saved to ${where}: gone when this command ends. Set TH_CONTENT_REPO to save the drafts on the content branch.`);
       for (const cs of out.changeSets) console.log(`set      ${cs.join(', ')}`);
       console.log('Nothing is published: a checker approves each change set in Governance.');
     } else if (args.includes('--apply')) console.log('Not imported: the bundle has errors. Fix them, or pass --force to import with them.');
@@ -157,10 +216,8 @@ async function main() {
     console.log(`${args[2]}: ${Object.keys(pkg.files).length} files, workers ${pkg.manifest.workers.map((w: any) => w.queue).join(', ')}`);
     return;
   }
-  if (cmd && cmd !== 'help' && cmd !== '--help') {
-    console.error(`Unknown command ${cmd}`);
-    process.exitCode = 2;
-  }
+  console.error(`Unknown command ${cmd}`);
+  process.exitCode = 2;
   console.log(USAGE);
 }
 

@@ -5,7 +5,7 @@
 name: engines
 on:
   push:
-    paths: [runtime/**, studio/engines/**, studio/src/**, spec/**, .github/workflows/engines.yml]
+    paths: [runtime/**, studio/engines/**, studio/src/**, spec/**, content-configurations/**, .github/workflows/engines.yml]
   workflow_dispatch:
 jobs:
   blackbox:
@@ -43,6 +43,8 @@ jobs:
         run: |
           docker pull mcr.microsoft.com/mssql/server:2022-latest
           docker pull postgres:16-alpine
+      # The studio servers run on the fake GitHub API the suites start in memory (R-11-21); the kit
+      # runners read an in-memory one seeded from content-configurations/.
       - name: Black-box suites (the narrated videos are left out)
         working-directory: studio
         run: npx vitest run --config vitest.blackbox.config.ts --exclude test/blackbox/demo-videos.test.ts --exclude test/blackbox/e2e-wps-engines-store.test.ts

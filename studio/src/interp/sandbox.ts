@@ -128,9 +128,14 @@ export async function runScript(
   return { outcome, reasonCode, changes, ctx: view, logs };
 }
 
-/** Script-behinds live in studio/scripts/<activity name>.ts. */
+export interface InMemoryScript { name: string; language: 'typescript' | 'python'; source: string; file: string }
+
+/**
+ * Script-behinds: the factory's in studio/scripts/<activity name>.ts, then a designer's, which are files
+ * on the content branch read into memory (R-11-24).
+ */
 export class ScriptRegistry {
-  constructor(private dirs: string[]) {}
+  constructor(private dirs: string[], private memory: () => Iterable<InMemoryScript> = () => []) {}
 
   find(name: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
     for (const d of this.dirs) {
@@ -139,18 +144,29 @@ export class ScriptRegistry {
         if (fs.existsSync(f)) return { file: f, source: fs.readFileSync(f, 'utf8'), language };
       }
     }
+    for (const s of this.memory()) if (s.name === name) return { file: s.file, source: s.source, language: s.language };
     return undefined;
   }
 
-  /** The same registry, with one more folder searched first: an import's scripts, before it saves them. */
-  withFirst(dir: string): ScriptRegistry {
-    return new ScriptRegistry([dir, ...this.dirs]);
+  /** The same registry, with more scripts searched first: an import's, before it saves them. */
+  withFirst(scripts: InMemoryScript[]): ScriptRegistry {
+    const outer = this;
+    return new (class extends ScriptRegistry {
+      find(name: string) {
+        const s = scripts.find((x) => x.name === name);
+        return s ? { file: s.file, source: s.source, language: s.language } : outer.find(name);
+      }
+      list() {
+        return [...new Set([...scripts.map((x) => `${x.name}.${x.language === 'python' ? 'py' : 'ts'}`), ...outer.list()])].sort();
+      }
+    })([]);
   }
 
   list(): string[] {
     const out: string[] = [];
     for (const d of this.dirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f) => f.endsWith('.ts') || f.endsWith('.js') || f.endsWith('.py')));
-    return out.sort();
+    for (const s of this.memory()) out.push(`${s.name}.${s.language === 'python' ? 'py' : 'ts'}`);
+    return [...new Set(out)].sort();
   }
 }
 

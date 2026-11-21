@@ -1,13 +1,6 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { openEnv, type StudioEnv } from '../src/env.js';
-
-/** A studio environment over the spec, with an empty, private workspace. */
-export function freshEnv(): StudioEnv {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-studio-'));
-  return openEnv({ dataRoot: dir });
-}
+// A studio environment over its own fork of the seeded content repository in the fake GitHub
+// (test/support/content.ts): an empty, private branch space, in memory only.
+export { freshEnv, restart, fake, repoOf } from './support/content.js';
 
 export function clone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x));

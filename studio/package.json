@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server/main.ts",
     "start": "tsx src/server/main.ts",
+    "studio:dev": "tsx src/content/dev.ts",
     "test": "vitest run",
     "test:blackbox": "vitest run --config vitest.blackbox.config.ts",
     "test:coverage": "vitest run --coverage",

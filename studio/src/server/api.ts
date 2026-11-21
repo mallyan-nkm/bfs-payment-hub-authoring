@@ -6,10 +6,12 @@ import { Checker, CHECK_CATALOGUE, checkAll, checkDocument, interfaceDiff, propo
 import { analyseTable, runExamples } from '../rules/service.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { missingStandardScenarios } from '../sim/runtime.js';
-import { runTest, runAllTests, type TestRunReport } from '../testing/runner.js';
+import { runTest, runAllTests, sampleNames, type TestRunReport } from '../testing/runner.js';
 import { runKit, loadKit } from '../conformance/kit.js';
 import { exportPackage, exportZip, type Target } from '../export/exporter.js';
 import * as gitExport from '../export/git.js';
+import { ContentError } from '../content/content-store.js';
+import { GitHubError } from '../content/github.js';
 import { templates } from './templates.js';
 import { runGates } from '../ai/gates.js';
 import { assistantConfigured, draft } from '../ai/assistant.js';
@@ -70,9 +72,22 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
     const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
     try {
       const body = await r.handler(env, req, params);
+      // A change is on the branch before the answer goes back (R-11-21): wait for its commits.
+      if (req.method !== 'GET') await env.store.flush();
       if (body && body.__binary) return { status: 200, body: body.data, contentType: body.contentType, filename: body.filename };
       return { status: 200, body };
     } catch (e: any) {
+      // A write that did not reach the branch leaves memory ahead of it: read the branch again.
+      let wrote: any = e;
+      try {
+        await env.store.flush();
+      } catch (w) {
+        wrote = w;
+      }
+      if (wrote instanceof ContentError || wrote instanceof GitHubError) {
+        await env.store.reload().catch(() => undefined);
+        return { status: 409, body: { error: wrote.message, code: wrote instanceof ContentError ? wrote.code : 'github' } };
+      }
       if (e instanceof HttpError) return { status: e.status, body: { error: e.message, ...(e.body ?? {}) } };
       if (e instanceof StoreError) return { status: 409, body: { error: e.message, code: e.code } };
       return { status: 500, body: { error: String(e?.message ?? e) } };
@@ -320,9 +335,9 @@ route('POST', '/api/publish', async (env, req) => {
   const keys: string[] = Array.isArray(req.body?.keys) ? req.body.keys : req.body?.key ? [req.body.key] : [];
   for (const k of keys) if (!env.store.entries.get(k)) throw new HttpError(404, `No draft ${k}`);
   const r = await gov.approveChangeSet(env, tenant, req.body?.checker, keys);
-  // A connected branch gets the change set as one commit (R-09-20); a failed export never undoes the publish.
-  const git = await gitExport.afterPublish(env, req.body?.checker, r.changeSet.id);
-  return { changeSet: r.changeSet, published: r.published.map(summary), ...(git ? { git } : {}) };
+  // The change set is one commit on the content branch, or in pull-request mode one on its own branch and a pull request (R-11-22, R-09-22).
+  const git = r.write ? await r.write : undefined;
+  return { changeSet: r.changeSet, published: r.published.map(summary), ...(git ? { git: { changeSet: r.changeSet.id, skipped: r.skipped, ...git } } : {}) };
 });
 
 route('GET', '/api/change-set', (env, req) => {
@@ -421,17 +436,9 @@ route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filt
 
 route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: req.body?.actor, activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
 route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: req.body?.actor, name: req.body?.name, content: req.body?.content }));
-route('GET', '/api/samples', (env) => {
-  const fs = require_fs();
-  const out: string[] = [];
-  for (const d of env.samplesDirs) if (fs.existsSync(d)) out.push(...fs.readdirSync(d).filter((f: string) => !f.endsWith('.md')).map((f: string) => `samples/${f}`));
-  return out.sort();
-});
+route('GET', '/api/samples', (env) => sampleNames(env).map((f) => `samples/${f}`));
 
 import * as nodefs from 'node:fs';
-function require_fs() {
-  return nodefs;
-}
 
 // ------------------------------------------------------- conformance kit
 
@@ -516,16 +523,19 @@ route('GET', '/api/export/download', (env, req) => {
 
 // ------------------------------------------------------- export to a Git branch (W8)
 
+// The connection comes from the environment; what can change is how the studio publishes (R-09-19).
 route('GET', '/api/git', (env) => gitExport.gitStatus(env));
-route('PUT', '/api/git', (env, req) => ({ connection: gitExport.connect(env, req.body?.actor ?? '', req.body ?? {}) }));
-route('DELETE', '/api/git', (env, req) => {
-  gitExport.disconnect(env, req.query.actor ?? req.body?.actor ?? '');
-  return { ok: true };
+route('PUT', '/api/git', (env, req) => ({ settings: gitExport.changeSettings(env, req.body?.actor ?? '', req.body ?? {}) }));
+route('POST', '/api/git/reload', async (env) => {
+  await env.store.reload();
+  return gitExport.gitStatus(env);
 });
-route('POST', '/api/git/export', async (env, req) => {
-  if (!req.body?.changeSet) throw new HttpError(400, 'Name the change set: { changeSet, actor }');
-  return gitExport.exportChangeSet(env, req.body.actor ?? '', req.body.changeSet);
-});
+
+// ------------------------------------------------- users and roles (R-11-23)
+
+route('GET', '/api/users/proposals', (env) => env.store.extra.userProposals ?? []);
+route('POST', '/api/users/proposals', (env, req) => gov.proposeUsers(env, req.body?.actor ?? '', req.body?.users));
+route('POST', '/api/users/proposals/:id/approve', (env, req, { id }) => gov.approveUsers(env, req.body?.checker ?? '', id));
 
 void keyOf;
 
@@ -670,8 +680,7 @@ route('GET', '/api/tenants/:tenant/export', (env, _req, { tenant }) => gov.tenan
 
 route('GET', '/api/conformance/report', async (env, req) => gov.conformanceReport(env, req.query.target ?? 'studio'));
 route('POST', '/api/conformance/waivers', (env, req) => {
-  gov.addWaiver(env, req.body.actor, { target: req.body.target ?? 'studio', scenario: req.body.scenario, reason: req.body.reason, approver: req.body.actor });
-  return { ok: true };
+  return { ok: true, ...gov.addWaiver(env, req.body.actor, { target: req.body.target ?? 'studio', scenario: req.body.scenario, reason: req.body.reason, approver: req.body.actor }) };
 });
 
 // ------------------------------------------------------------------ simulators (C10)

@@ -1,10 +1,12 @@
-# The studio: the spec's own checks, the type check and the automated suite.
+# The studio: the spec's own checks, the type check and the automated suite. The studio's store is a
+# GitHub branch (R-11-21); here every test and command runs on the fake GitHub API, in memory, seeded
+# from content-configurations/. No TH_CONTENT_REPO is set, so nothing reaches a real repository.
 name: studio
 on:
   push:
-    paths: [studio/**, spec/**, .github/workflows/studio.yml]
+    paths: [studio/**, spec/**, content-configurations/**, .github/workflows/studio.yml]
   pull_request:
-    paths: [studio/**, spec/**]
+    paths: [studio/**, spec/**, content-configurations/**]
   workflow_dispatch:
 jobs:
   test:
@@ -38,3 +40,6 @@ jobs:
       - name: Studio checks
         working-directory: studio
         run: npm run studio -- check
+      - name: The seeded content is current (R-11-25)
+        working-directory: studio
+        run: npm run studio -- seed-content

@@ -160,7 +160,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 <!-- ============================================================ 2 -->
 <section class="part" id="setup">
   <h2>2. Set up and run</h2>
-  <p class="lede">The studio is a Node.js server with a web app. It reads the specification repository beside it, and keeps your own work in a workspace folder. Without .NET and Java, everything works except deploying on a real engine; install them when you reach part 7.</p>
+  <p class="lede">The studio is a Node.js server with a web app. It reads its schemas and conformance kit from the specification repository beside it, and keeps everything else, your own work included, as files on a GitHub branch, read into memory. Nothing is kept on disk. Without .NET and Java, everything works except deploying on a real engine; install them when you reach part 7.</p>
 
   <h3>What you need</h3>
   <div class="table"><table>
@@ -193,19 +193,20 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="block"><pre class="cmd">npm install</pre></div>
   <div class="block"><pre class="cmd">npm run web:build</pre></div>
 
-  <h3>Start on a training workspace</h3>
-  <p>The workspace holds your drafts, releases, scripts, sample files, configuration changes and the audit log. Keep a separate one for training so you can throw it away.</p>
-  <p>On macOS or Linux:</p>
-  <div class="block"><pre class="cmd">TH_DATA_ROOT=$HOME/th-training npm start</pre></div>
-  <p>On Windows, in PowerShell:</p>
-  <div class="block"><pre class="cmd">$env:TH_DATA_ROOT="$HOME\th-training"; npm start</pre></div>
+  <h3>Start on a training branch</h3>
+  <p>Your drafts, releases, scripts, sample files, configuration changes and the audit log are files on a GitHub branch. For training, start the studio on an in-memory fake GitHub seeded from <code>content-configurations/</code>. What you do is gone when you stop it, so you can start again.</p>
+  <div class="block"><pre class="cmd">npm run studio:dev</pre></div>
+  <p>On the real branch, set the connection first: <code>TH_CONTENT_REPO=&lt;owner&gt;/&lt;repo&gt; TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=&lt;token&gt; npm start</code>. Without <code>TH_CONTENT_REPO</code>, <code>npm start</code> stops and says so.</p>
   <p>Open <code>http://localhost:4317</code>.</p>
   <div class="see">The catalogue, with about 200 documents counted at the foot of the left menu.</div>
   <div class="table"><table>
     <thead><tr><th>Setting</th><th>What it changes</th><th>Default</th></tr></thead>
     <tbody>
       <tr><td><code>PORT</code></td><td>The web port</td><td><code>4317</code></td></tr>
-      <tr><td><code>TH_DATA_ROOT</code></td><td>The workspace folder</td><td><code>studio/data</code></td></tr>
+      <tr><td><code>TH_CONTENT_REPO</code></td><td>The GitHub repository that is the studio's only store, <code>owner/repo</code></td><td>Not set: <code>npm start</code> does not start</td></tr>
+      <tr><td><code>TH_CONTENT_BRANCH</code></td><td>The content branch</td><td><code>main</code></td></tr>
+      <tr><td><code>TH_GITHUB_TOKEN</code></td><td>The token, read at each request and never stored or shown</td><td>Not set</td></tr>
+      <tr><td><code>TH_GITHUB_API</code></td><td>The GitHub API base</td><td><code>https://api.github.com</code></td></tr>
       <tr><td><code>TH_SPEC_ROOT</code></td><td>The specification repository</td><td><code>../spec</code></td></tr>
       <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Turns on the AI assistant and the Ask tab beside every page</td><td>Not set: the assistant explains how to set it</td></tr>
       <tr><td><code>TH_ANTHROPIC_API_KEY</code></td><td>The same key under another name, for hosts that keep <code>ANTHROPIC_API_KEY</code> for themselves</td><td>Not set</td></tr>
@@ -277,10 +278,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="see"><code>46 of 46 conformance scenarios pass on Flowable</code>.</div>
 
   <h3>Start again</h3>
-  <p>Stop the studio and delete the workspace. The factory content and the example bank live in <code>spec/</code> and the studio never changes them. On macOS or Linux:</p>
-  <div class="block"><pre class="cmd">rm -rf $HOME/th-training</pre></div>
-  <p>On Windows, in PowerShell:</p>
-  <div class="block"><pre class="cmd">Remove-Item -Recurse -Force "$HOME\th-training"</pre></div>
+  <p>Stop <code>npm run studio:dev</code> and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete. The factory content and the example bank are seeded from <code>spec/</code> into <code>content-configurations/</code>, and the studio never rewrites a published file.</p>
 </section>
 
 <!-- ============================================================ 3 -->
@@ -1279,8 +1277,8 @@ provenance:
   <div class="see">A worker <code>th-uae-demo</code> serving only <code>uae.demo</code> tasks, beside <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code> and <code>th-uae-wps</code>. The change sets you approved, listed by id.</div>
 
   <h3>Step 11. Deploy and run on DTFx</h3>
-  <p>This step needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample in your training workspace:</p>
-  <div class="block"><pre class="cmd">npm run studio -- deploy corporate.zip --workflow p.wf.corporate.v1 --message uae.demo.credit-file --inbound $HOME/th-training/samples/demo-credit-file-valid.csv --tenant example-bank --bench p.port.core-banking.v1=p.sim.core-banking.v1:accept --bench p.port.sanctions.v1=p.sim.sanctions.v1:accept --bench p.port.fraud.v1=p.sim.fraud.v1:accept --bench uae.demo.port.demo.v1=uae.demo.sim.demo-outward.v1:accept --bench uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept</pre></div>
+  <p>This step needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample you added saved beside it as <code>demo-credit-file-valid.csv</code> (it is <code>content-configurations/samples/demo-credit-file-valid.csv</code> on the branch):</p>
+  <div class="block"><pre class="cmd">npm run studio -- deploy corporate.zip --workflow p.wf.corporate.v1 --message uae.demo.credit-file --inbound demo-credit-file-valid.csv --tenant example-bank --bench p.port.core-banking.v1=p.sim.core-banking.v1:accept --bench p.port.sanctions.v1=p.sim.sanctions.v1:accept --bench p.port.fraud.v1=p.sim.fraud.v1:accept --bench uae.demo.port.demo.v1=uae.demo.sim.demo-outward.v1:accept --bench uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept</pre></div>
   <div class="see"><code>worker th-uae-demo up</code> with its own pid, <code>configuration example-bank@1.1.0 from the package</code>, <code>outcome settled</code>.</div>
   <p>You have built a scheme, routed it from its dispatch table into the corporate payment workflow, approved it through maker-checker, enabled it as a bank, and run it on a real engine with a separate worker per queue.</p>
 </section>
@@ -1306,7 +1304,7 @@ provenance:
 
   <h3>Export from the command line</h3>
   <div class="block"><pre class="cmd">npm run studio -- export-zip p.wf.corporate.v1 dtfx corporate.zip --with-simulators --tenant example-bank</pre></div>
-  <p>This uses the content in <code>spec/</code>. Content you built in the web app is in your workspace, so export it from the web app, or run the command with <code>TH_DATA_ROOT</code> set to that workspace.</p>
+  <p>This reads the connected branch when <code>TH_CONTENT_REPO</code> is set, and otherwise an in-memory copy of <code>content-configurations/</code>. Content you built on a training branch is gone with it, so export that from the web app.</p>
 
   <h3>Deploy a leg on its own</h3>
   <div class="block"><pre class="cmd">npm run studio -- export-zip uae.wps.wf.salary-file-out.v1 dtfx wps-leg.zip --with-simulators</pre></div>

@@ -59,12 +59,8 @@ export async function proveSample(env: StudioEnv, s: Sample) {
   const entry = env.store.scheme(scope)?.messages?.find((m: any) => m.id === s.message);
   const map = entry?.disposition?.start?.intakeMap;
   if (!map) throw new Error(`${s.message} has no intake map`);
-  const fs = await import('node:fs');
-  const path = await import('node:path');
-  const os = await import('node:os');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-sample-'));
-  fs.writeFileSync(path.join(dir, s.fileName), s.content);
-  const r = await runTest({ ...env, samplesDirs: [dir, ...env.samplesDirs] }, { kind: 'test', id: 'SAMPLE', target: map, level: 'activity', evaluationDate: '2026-11-17', given: { inbound: `samples/${s.fileName}` }, expect: {} });
+  // In memory: the sample is searched first and nothing is written (R-11-24).
+  const r = await runTest({ ...env, sampleOverlay: { ...(env.sampleOverlay ?? {}), [s.fileName]: s.content } }, { kind: 'test', id: 'SAMPLE', target: map, level: 'activity', evaluationDate: '2026-11-17', given: { inbound: `samples/${s.fileName}` }, expect: {} });
   const inst = r.record?.instances.find((i) => i.kind === 'activity');
   const ctx = inst?.context ?? {};
   const findings: any[] = [];
@@ -78,7 +74,6 @@ export async function proveSample(env: StudioEnv, s: Sample) {
   const blocking = findings.filter((f) => f.severity === 'reject' || f.severity === 'repair');
   const mapped = inst?.outcome === 'mapped';
   const ok = s.valid ? mapped && blocking.length === 0 : !mapped || blocking.some((f) => f.reasonCode === s.breaks!.reasonCode && f.rule === s.breaks!.rule);
-  fs.rmSync(dir, { recursive: true, force: true });
   return { name: s.name, valid: s.valid, breaks: s.breaks, mapped, findings: findings.map((f) => ({ rule: f.rule, reasonCode: f.reasonCode, severity: f.severity })), proved: ok };
 }
 

@@ -16,14 +16,17 @@ function scopeOfName(n: string): string {
   return parts[0] === 'p' || parts[0] === 'b' ? parts[0] : parts.slice(0, 2).join('.');
 }
 
-/** The pack an entry belongs to: spec content its folder; a bank's own folder its bank pack; else its scope. */
+/**
+ * The pack an entry belongs to: seeded content the folder of its source in spec/ (R-11-25); a bank's
+ * own folder on the branch its bank pack; else its scope.
+ */
 export function packScopeOf(e: Entry): string {
   if (e.source === 'spec') {
-    const parts = e.path.split(path.sep);
+    const parts = e.path.split(/[\\/]/);
     if (parts[0] === 'examples' && parts[1] === 'bank') return 'b';
     if (parts[0] === 'factory' && parts[1]) return parts[1];
     // A bank pack loaded from its own folder (Store.loadBankPack): everything in it is the bank's.
-    if (parts[0] === '..' && e.tenant !== OWNER_TENANT) return 'b';
+    if (parts[0] === 'banks' && e.tenant !== OWNER_TENANT) return 'b';
   }
   return e.scope;
 }

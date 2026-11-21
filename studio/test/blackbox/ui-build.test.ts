@@ -214,9 +214,9 @@ describe('the guide: build a full workflow in the web app', () => {
   }, 60000);
 
   it('step 11: deploy on DTFx with a separate worker per queue, and run the payment', () => {
-    const sample = path.join(server.dataRoot, 'samples', 'demo-credit-file-valid.csv');
+    const sample = server.contentFile('samples/demo-credit-file-valid.csv');
     const bench = [...PLATFORM_PORTS, ...DEMO_PORTS].flatMap(([p, s, sc]) => ['--bench', `${p}=${s}:${sc}`]);
-    const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', 'uae.demo.credit-file', '--inbound', sample, '--tenant', 'example-bank', ...bench], { cwd: STUDIO, encoding: 'utf8', env: { ...process.env, TH_DATA_ROOT: '' }, timeout: 300000 });
+    const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', 'uae.demo.credit-file', '--inbound', sample, '--tenant', 'example-bank', ...bench], { cwd: STUDIO, encoding: 'utf8', env: { ...process.env }, timeout: 300000 });
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     expect(out, out.slice(-1500)).toMatch(/^outcome settled/m);
     expect(out).toContain('worker th-uae-demo');

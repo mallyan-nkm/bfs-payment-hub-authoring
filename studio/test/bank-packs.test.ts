@@ -1,30 +1,33 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BANKS_ROOT, bankPackDirs, openEnv, type StudioEnv } from '../src/env.js';
+import { envFor, type StudioEnv } from '../src/env.js';
 import { checkAll, checkDocument } from '../src/checks/checks.js';
 import { buildPack, compareManifest } from '../src/governance/packs.js';
 import * as gov from '../src/governance/governance.js';
-import { Store, StoreError } from '../src/core/store.js';
+import { StoreError } from '../src/core/store.js';
+import { ContentStore } from '../src/content/content-store.js';
 import { runTest } from '../src/testing/runner.js';
+import { freshEnv } from './helpers.js';
+import { connection, fake, forkRepo } from './support/content.js';
 
-// A bank pack in its own folder, content-configurations/banks/<bank>/ (plan W6; D5 as amended 2026-11-21;
-// Issue I-43). The studio loads it with its tenant, validates it as it does the example bank, and runs its tests.
+// A bank pack in its own folder on the content branch, content-configurations/banks/<bank>/ (plan W6; D5
+// as amended 2026-11-21; Issue I-43). The studio loads it with its tenant, validates it as it does the
+// example bank, and runs its tests.
 
 const BANK = 'dib';
 const TENANT = 'dib';
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'th-bank-'));
 let shared: StudioEnv | undefined;
-const env = () => (shared ??= openEnv({ dataRoot: tmp(), banks: [BANK] }));
+const env = () => (shared ??= freshEnv({ banks: [BANK] }));
 const own = (e: StudioEnv) => e.store.all().filter((x) => x.tenant === TENANT);
+const ROOT = 'content-configurations';
 
 describe('a bank pack from content-configurations/banks (I-43)', () => {
-  it('is found by its pack.yaml; a folder without one is not a pack', () => {
-    const dirs = bankPackDirs().map((d) => path.basename(d));
-    expect(dirs).toContain(BANK);
-    expect(dirs).not.toContain('example-bank'); // runtime values only, no pack
-    expect(() => openEnv({ dataRoot: tmp(), banks: ['example-bank'] })).toThrow(/No bank pack/);
+  it('is found by its pack.yaml on the branch; a name without one is not a pack', () => {
+    const packs = [...env().store.content!.files.keys()].filter((p) => /^banks\/[^/]+\/pack\.yaml$/.test(p)).map((p) => p.split('/')[1]);
+    expect(packs).toContain(BANK);
+    // The example bank's pack is seeded beside its runtime values (R-11-25), and always loaded.
+    expect(packs).toContain('example-bank');
+    expect(env().store.bankPacks.get('example-bank')).toBe('example-bank');
+    expect(() => freshEnv({ banks: ['no-such-bank'] })).toThrow(/No bank pack no-such-bank/);
   });
 
   it('loads every document as the tenant of its pack, and leaves the runtime formats out', () => {
@@ -36,16 +39,17 @@ describe('a bank pack from content-configurations/banks (I-43)', () => {
     expect(kinds).not.toContain('configuration-values');
     expect(own(e).every((x) => x.scope === 'b' || x.kind === 'test')).toBe(true);
     // Not loaded unless asked for: the shared studio sees only the example bank.
-    expect(openEnv({ dataRoot: tmp() }).store.tenants()).not.toContain(TENANT);
+    expect(freshEnv().store.tenants()).not.toContain(TENANT);
   });
 
-  it('refuses a document that names another tenant, and a pack that is not a bank pack', () => {
-    const dir = tmp();
-    fs.cpSync(path.join(BANKS_ROOT, BANK), dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'configuration-set.yaml'), fs.readFileSync(path.join(dir, 'configuration-set.yaml'), 'utf8').replace(`tenant: ${TENANT}`, 'tenant: other-bank'));
-    expect(() => Store.open(env().specRoot, '', [], [dir])).toThrow(StoreError);
-    fs.writeFileSync(path.join(dir, 'pack.yaml'), 'kind: pack\nscope: uae.wps\nrelease: 1.0.0\npackType: shared\n');
-    expect(() => Store.open(env().specRoot, '', [], [dir])).toThrow(/not a bank pack/);
+  it('refuses a document that names another tenant, and a pack that is not a bank pack', async () => {
+    const full = forkRepo();
+    const cs = fake().files(full, 'main')[`${ROOT}/banks/${BANK}/configuration-set.yaml`];
+    fake().commitFiles(full, 'main', { [`${ROOT}/banks/${BANK}/configuration-set.yaml`]: cs.replace(`tenant: ${TENANT}`, 'tenant: other-bank') });
+    const read = async () => envFor(await ContentStore.open(connection(fake(), full)), { banks: [BANK] });
+    await expect(read()).rejects.toThrow(StoreError);
+    fake().commitFiles(full, 'main', { [`${ROOT}/banks/${BANK}/pack.yaml`]: 'kind: pack\nscope: uae.wps\nrelease: 1.0.0\npackType: shared\n' });
+    await expect(read()).rejects.toThrow(/not a bank pack/);
   });
 
   it('passes the schemas and the static checks: bounds, hook contracts, bindings, pins', () => {

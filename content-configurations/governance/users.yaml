@@ -1,0 +1,38 @@
+kind: studio-users
+users:
+  - id: shared.designer
+    tenant: owner
+    roles:
+      - shared designer
+  - id: shared.checker
+    tenant: owner
+    roles:
+      - shared checker
+  - id: shared.auditor
+    tenant: owner
+    roles:
+      - auditor
+  - id: service.operations
+    tenant: owner
+    roles:
+      - service operations
+  - id: example.maker
+    tenant: example-bank
+    roles:
+      - bank designer
+  - id: example.checker
+    tenant: example-bank
+    roles:
+      - bank checker
+  - id: example.auditor
+    tenant: example-bank
+    roles:
+      - auditor
+  - id: second.maker
+    tenant: second-bank
+    roles:
+      - bank designer
+  - id: second.checker
+    tenant: second-bank
+    roles:
+      - bank checker

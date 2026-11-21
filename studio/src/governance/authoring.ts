@@ -6,19 +6,12 @@ import { lintScript } from '../interp/sandbox.js';
 import type { StudioEnv } from '../env.js';
 import { enforce } from './governance.js';
 
-// Scripts-behind and sample files a designer writes while authoring (C07, C12-S4). Both live in the
-// workspace beside the drafts. A script belongs to an activity draft: once the activity is
-// published its behaviour is fixed, so its script is too (R-01-10).
+// Scripts-behind and sample files a designer writes while authoring (C07, C12-S4). A script belongs
+// to an activity draft: it is a file on the draft's change set branch and is published with it; once
+// the activity is published its behaviour is fixed, so its script is too (R-01-10). A sample is a file
+// on the content branch. Neither is written to disk (R-11-24).
 
 const PY_FORBIDDEN = [/\bimport\s+(os|sys|time|random|socket|subprocess|datetime)\b/, /\bfrom\s+(os|sys|time|random|socket|subprocess|datetime)\b/, /\bopen\(/];
-
-function workspace(env: StudioEnv, sub: string): string {
-  const root = env.store.dataRoot;
-  if (!root || root === path.resolve('')) throw new StoreError('workspace', 'The studio has no workspace to write to (TH_DATA_ROOT)');
-  const d = path.join(root, sub);
-  fs.mkdirSync(d, { recursive: true });
-  return d;
-}
 
 export function saveScript(env: StudioEnv, inp: { tenant: string; actor: string; activity: string; language?: 'typescript' | 'python'; source: string }) {
   const parsed = parseName(inp.activity);
@@ -37,10 +30,8 @@ export function saveScript(env: StudioEnv, inp: { tenant: string; actor: string;
     env.store.record({ tenant: inp.tenant, actor: inp.actor, action: 'save-script', key: inp.activity, outcome: 'refused', detail: problems.join('; ') });
     throw new StoreError('C07', problems.join('; '));
   }
-  const file = path.join(workspace(env, 'scripts'), `${inp.activity}.${language === 'python' ? 'py' : 'ts'}`);
-  fs.writeFileSync(file, inp.source);
-  env.store.record({ tenant: inp.tenant, actor: inp.actor, action: 'save-script', key: inp.activity, detail: path.basename(file) });
-  return { activity: inp.activity, language, file: path.basename(file) };
+  const file = env.store.saveScriptSource(inp.tenant, inp.actor, inp.activity, language, inp.source);
+  return { activity: inp.activity, language, file: file.split('/').pop()! };
 }
 
 const SAMPLE_NAME = /^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
@@ -50,9 +41,7 @@ export function saveSample(env: StudioEnv, inp: { tenant: string; actor: string;
   enforce(env, inp.actor, inp.tenant, 'author', `sample:${inp.name}`);
   if (!SAMPLE_NAME.test(inp.name ?? '')) throw new StoreError('C12', 'A sample name is lower case, digits and hyphens, with an extension, for example demo-file-valid.csv');
   if (typeof inp.content !== 'string' || !inp.content.length || inp.content.length > 1_000_000) throw new StoreError('C12', 'A sample is text of at most 1 MB');
-  const dir = workspace(env, 'samples');
-  for (const d of env.samplesDirs) if (path.resolve(d) !== path.resolve(dir) && fs.existsSync(path.join(d, inp.name))) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);
-  fs.writeFileSync(path.join(dir, inp.name), inp.content);
-  env.store.record({ tenant: inp.tenant, actor: inp.actor, action: 'save-sample', key: `samples/${inp.name}` });
+  for (const d of env.samplesDirs) if (fs.existsSync(path.join(d, inp.name))) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);
+  if (env.store.sampleFiles.get(inp.name) !== inp.content) env.store.saveSampleFile(inp.tenant, inp.actor, inp.name, inp.content);
   return { sample: `samples/${inp.name}` };
 }

@@ -1,18 +1,19 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store } from './core/store.js';
+import { Store, StoreError } from './core/store.js';
 import { SchemaValidator } from './core/schema.js';
 import { ScriptRegistry } from './interp/sandbox.js';
+import { ContentStore, NOT_CONNECTED, connectionFromEnv, type ContentConnection } from './content/content-store.js';
 import type { RunnerEnv } from './testing/runner.js';
 
-// Where things are. The spec repository sits beside the studio, at ../spec.
+// Where things are. The spec repository sits beside the studio, at ../spec: its schemas, its
+// conformance kit (the engines' test fixture) and its factory sources. The studio's content is not
+// here: it is read from a GitHub branch into memory (R-11-21), and nothing is written to disk.
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const STUDIO_ROOT = path.resolve(here, '..');
 export const SPEC_ROOT = process.env.TH_SPEC_ROOT ?? path.resolve(STUDIO_ROOT, '..', 'spec');
-export const DATA_ROOT = process.env.TH_DATA_ROOT ?? path.join(STUDIO_ROOT, 'data');
-/** A bank's configuration, one folder per bank (plan W6, D5 as amended 2026-11-21). */
-export const BANKS_ROOT = process.env.TH_BANKS_ROOT ?? path.resolve(STUDIO_ROOT, '..', 'content-configurations', 'banks');
+/** This repository's copy of the content branch's folder: what `npm run studio:dev` and the tests seed the fake GitHub from. */
+export const CONTENT_DIR = path.resolve(STUDIO_ROOT, '..', 'content-configurations');
 
 export interface StudioEnv extends RunnerEnv {
   schemas: SchemaValidator;
@@ -20,40 +21,45 @@ export interface StudioEnv extends RunnerEnv {
   studioRoot: string;
 }
 
-/** The bank folders under a banks root that hold a bank pack (a `pack.yaml`). */
-export function bankPackDirs(root = BANKS_ROOT): string[] {
-  if (!fs.existsSync(root)) return [];
-  return fs.readdirSync(root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && fs.existsSync(path.join(root, d.name, 'pack.yaml')))
-    .map((d) => path.join(root, d.name))
-    .sort();
+/** The bank packs named in `TH_BANKS` (comma separated). */
+export function banksFromEnv(): string[] {
+  return (process.env.TH_BANKS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-/** A bank pack folder, from a path or from a folder name under the banks root. */
-export function resolveBankPack(ref: string): string {
-  if (fs.existsSync(path.join(ref, 'pack.yaml'))) return path.resolve(ref);
-  const named = path.join(BANKS_ROOT, ref);
-  if (fs.existsSync(path.join(named, 'pack.yaml'))) return named;
-  throw new Error(`No bank pack at ${ref}, nor at ${named}`);
-}
-
-/**
- * A studio environment over the spec. `banks` adds bank packs from their own folders (names under the
- * banks root, or paths); without it, `TH_BANKS` (comma separated) names them. None is loaded by default.
- */
-export function openEnv(opts: { dataRoot?: string; banks?: string[] } = {}): StudioEnv {
-  const dataRoot = opts.dataRoot ?? DATA_ROOT;
-  const banks = (opts.banks ?? (process.env.TH_BANKS ?? '').split(',').map((s) => s.trim()).filter(Boolean)).map(resolveBankPack);
-  const store = Store.open(SPEC_ROOT, dataRoot, [], banks);
-  // Scripts and samples a designer writes live in the workspace, after the factory's own.
-  const ws = (sub: string) => (dataRoot ? [path.join(path.resolve(dataRoot), sub)] : []);
+/** A studio environment over a content store that is already read (R-11-21). `banks` adds bank packs by folder name. */
+export function envFor(content: ContentStore, opts: { banks?: string[] } = {}): StudioEnv {
+  const store = Store.fromContent(content, SPEC_ROOT, { banks: opts.banks ?? banksFromEnv() });
   return {
     store,
-    scripts: new ScriptRegistry([path.join(STUDIO_ROOT, 'scripts'), ...ws('scripts')]),
-    // A bank's tests read their synthetic samples from the bank's own folder.
-    samplesDirs: [path.join(STUDIO_ROOT, 'fixtures', 'samples'), ...banks.map((b) => path.join(b, 'tests', 'samples')), ...ws('samples')],
+    // The factory's scripts ship with the studio; a designer's are files on the branch, read into memory.
+    scripts: new ScriptRegistry([path.join(STUDIO_ROOT, 'scripts')], () => store.scriptSources.values()),
+    samplesDirs: [path.join(STUDIO_ROOT, 'fixtures', 'samples')],
     schemas: new SchemaValidator(path.join(SPEC_ROOT, 'schemas')),
     specRoot: SPEC_ROOT,
     studioRoot: STUDIO_ROOT,
   };
+}
+
+/**
+ * The studio environment over the connected content branch: `TH_CONTENT_REPO`, `TH_CONTENT_BRANCH`,
+ * `TH_GITHUB_TOKEN` and optionally `TH_GITHUB_API` (R-11-21, R-11-24). Without a connection it fails:
+ * the studio keeps no local copy.
+ */
+export async function openEnv(opts: { banks?: string[]; connection?: ContentConnection } = {}): Promise<StudioEnv> {
+  const conn = opts.connection ?? connectionFromEnv();
+  if (!conn) throw new StoreError('content', NOT_CONNECTED);
+  return envFor(await ContentStore.open(conn), opts);
+}
+
+/**
+ * For the commands that only read and run (check, test, kit, the engine adapters): the connected
+ * branch when `TH_CONTENT_REPO` is set, else an in-memory fake GitHub seeded from this repository's
+ * `content-configurations/`. Neither writes to disk. `where` says which, for the command's output.
+ */
+export async function openReadEnv(opts: { banks?: string[] } = {}): Promise<{ env: StudioEnv; where: string; stop: () => Promise<void> }> {
+  const conn = connectionFromEnv();
+  if (conn) return { env: await openEnv({ ...opts, connection: conn }), where: `${conn.owner}/${conn.repo} ${conn.branch}`, stop: async () => {} };
+  const { startLocalContent } = await import('./content/local.js');
+  const local = await startLocalContent({ unref: true });
+  return { env: envFor(await ContentStore.open(local.connection), opts), where: `an in-memory branch seeded from ${path.relative(process.cwd(), CONTENT_DIR) || CONTENT_DIR}`, stop: local.stop };
 }

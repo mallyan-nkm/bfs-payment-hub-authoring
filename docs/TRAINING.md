@@ -47,12 +47,12 @@ npm install
 npm run web:build
 ```
 
-### A3. Start the studio on a training workspace
+### A3. Start the studio on a training branch
 
-The workspace holds your drafts, releases, scripts, samples and the audit log. Use a separate one for training, so you can throw it away and start again.
+The studio keeps nothing on disk: its drafts, releases, scripts, samples and audit are files on a GitHub branch (R-11-21). For training, start it on an in-memory fake GitHub seeded from `content-configurations/`. Everything you do is gone when you stop it, so you can start again.
 
 ```bash
-TH_DATA_ROOT=$HOME/th-training npm start
+npm run studio:dev
 ```
 
 Open http://localhost:4317. You should see the catalogue, with about 200 documents listed in the footer of the left-hand menu. To use another port, set `PORT=4400` before `npm start`.
@@ -370,7 +370,7 @@ The assistant drafts a rule, activity, simulator or script from a plain-language
 1. Stop the studio, then start it with a key:
 
    ```bash
-   ANTHROPIC_API_KEY=<your key> TH_DATA_ROOT=$HOME/th-training npm start
+   ANTHROPIC_API_KEY=<your key> npm run studio:dev
    ```
 
 2. Open **AI assistant**. **Draft kind** `rule`. **Instruction**: `The salary month must be a valid month, else reject with DT01`.
@@ -496,13 +496,9 @@ API, command line, the web app in a browser, and both end-to-end tests. Add `TH_
 
 ### F1. Start again
 
-Stop the studio and delete the training workspace:
+Stop the studio started with `npm run studio:dev` and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete.
 
-```bash
-rm -rf $HOME/th-training
-```
-
-The factory content and the example bank live in `spec/` and are never changed by the studio.
+The factory content and the example bank are seeded from `spec/` into `content-configurations/`, and the studio never changes a published file.
 
 ### F2. Troubleshooting
 
@@ -521,7 +517,8 @@ The factory content and the example bank live in `spec/` and are never changed b
 
 | Command, from `studio/` | What it does |
 | --- | --- |
-| `npm start` | The studio on http://localhost:4317 (`PORT`, `TH_DATA_ROOT`, `TH_SPEC_ROOT`) |
+| `npm start` | The studio on http://localhost:4317, on the content branch `TH_CONTENT_REPO` (`TH_CONTENT_BRANCH`, `TH_GITHUB_TOKEN`, `TH_GITHUB_API`, `PORT`, `TH_SPEC_ROOT`) |
+| `npm run studio:dev` | The studio on an in-memory fake GitHub seeded from `content-configurations/`: for training, gone when it stops |
 | `npm test` | The white-box suite |
 | `npm run test:coverage` | The same with coverage |
 | `npm run test:blackbox` | The black-box suites |

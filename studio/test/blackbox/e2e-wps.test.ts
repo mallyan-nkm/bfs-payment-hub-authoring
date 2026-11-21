@@ -69,7 +69,7 @@ function deploy(label: string, sample = SAMPLE, extra: any[] = []) {
     const file = path.join(work, `${label}.zip`);
     fs.writeFileSync(file, z.data);
     const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...[...BENCH, ...extra].flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
-    const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, encoding: 'utf8', env: { ...process.env, TH_DATA_ROOT: '' }, timeout: 300000 });
+    const r = spawnSync(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, encoding: 'utf8', env: { ...process.env }, timeout: 300000 });
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     const workers = [...out.matchAll(/worker (th-[\w-]+) \(pid (\d+)\) served (\{.*\}), refused (\d+)/g)].map((m) => ({ queue: m[1], pid: m[2], served: JSON.parse(m[3]), refused: Number(m[4]) }));
     return { out, file, workers, trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [], outcome: /^outcome (\w+)/m.exec(out)?.[1] };

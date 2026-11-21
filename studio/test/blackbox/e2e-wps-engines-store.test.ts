@@ -80,7 +80,7 @@ async function deploy(engine: string, label: string, env: Record<string, string>
   const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', SAMPLE), '--tenant', TENANT, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   const out = await new Promise<string>((resolve) => {
     let text = '';
-    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '', ...env } });
+    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...env } });
     const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
     child.stdout.on('data', (d) => (text += d));
     child.stderr.on('data', (d) => (text += d));

@@ -210,11 +210,11 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'Finally, we deploy the package on D T F X. Each worker starts as its own process. The front door reads the file, the dispatch table routes it, and the payment settles on a real workflow engine.',
       do: async () => {
-        const sample = path.join(d.server.dataRoot, 'samples', 'demo-credit-file-valid.csv');
+        const sample = d.server.contentFile('samples/demo-credit-file-valid.csv');
         const bench = [...PLATFORM, ...DEMO].flatMap(([port, sim]) => ['--bench', `${port}=${sim}:accept`]);
         const args = ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', 'uae.demo.credit-file', '--inbound', sample, '--tenant', 'example-bank', ...bench];
         const out = await new Promise<string>((resolve) => {
-          const c = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '' } });
+          const c = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env } });
           let o = '';
           c.stdout.on('data', (b) => (o += b));
           c.stderr.on('data', (b) => (o += b));

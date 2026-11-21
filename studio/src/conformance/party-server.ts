@@ -1,5 +1,5 @@
 import * as readline from 'node:readline';
-import { openEnv } from '../env.js';
+import { openReadEnv } from '../env.js';
 import { build, loadKit } from './kit.js';
 import { PartyService } from './party.js';
 
@@ -10,7 +10,8 @@ import { PartyService } from './party.js';
 //   {"op":"attempt", ...AttemptRequest}                     -> AttemptResponse plus "deliveries"
 //   {"op":"sent"}                                           -> {"messages":[...]}
 
-const env = openEnv({ dataRoot: '' });
+// The content: the connected branch, or an in-memory fake seeded from content-configurations/ (R-11-21).
+const { env } = await openReadEnv();
 const kit = loadKit(env);
 let party: PartyService | undefined;
 const rl = readline.createInterface({ input: process.stdin });

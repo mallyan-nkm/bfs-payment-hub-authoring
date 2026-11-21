@@ -807,11 +807,13 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
 export function checkAll(env: StudioEnv): Issue[] {
   const c = Checker.fromEnv(env);
   const issues = c.checkAll();
-  const factoryDir = path.join(env.specRoot, 'factory');
-  if (fs.existsSync(factoryDir)) {
-    const spec = env.store.all().filter((e) => e.source === 'spec');
-    const folders = fs.readdirSync(factoryDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
-    const inventory = spec.find((e) => e.kind === 'inventory' && e.path.split(/[\\/]/)[0] === 'factory')?.doc;
+  // The factory as the seed published it (R-11-25): each entry names its source in spec/factory, so
+  // the pack folders are read from the branch, not from spec/ on disk.
+  const spec = env.store.all().filter((e) => e.source === 'spec');
+  const seeded = spec.filter((e) => e.path.split(/[\\/]/)[0] === 'factory');
+  if (seeded.length) {
+    const folders = [...new Set(seeded.map((e) => e.path.split(/[\\/]/)).filter((p) => p.length > 2).map((p) => p[1]))].sort();
+    const inventory = seeded.find((e) => e.kind === 'inventory')?.doc;
     issues.push(...factoryPackIssues(inventory, folders, spec.map((e) => ({ path: e.path, doc: e.doc }))));
   }
   for (const e of env.store.all().filter((x) => x.status === 'published')) {

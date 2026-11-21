@@ -135,15 +135,30 @@ export interface RunnerEnv {
   store: Store;
   scripts: ScriptRegistry;
   samplesDirs: string[];
+  /** Samples searched first, in memory: an import's own, before it saves them. */
+  sampleOverlay?: Record<string, string>;
 }
 
 export function loadSample(env: RunnerEnv, ref: string): { payload: string; name: string } {
   const name = ref.replace(/^samples\//, '');
+  const first = env.sampleOverlay?.[name];
+  if (first !== undefined) return { payload: first, name };
   for (const d of env.samplesDirs) {
     const f = path.join(d, name);
     if (fs.existsSync(f)) return { payload: fs.readFileSync(f, 'utf8'), name };
   }
+  // A designer's samples and a bank's own are files on the content branch, in memory (R-11-24).
+  const mem = env.store.sampleFiles?.get(name);
+  if (mem !== undefined) return { payload: mem, name };
   throw new Error(`Sample ${ref} does not exist`);
+}
+
+/** Every sample a test may name: the studio's fixtures, then the branch's. */
+export function sampleNames(env: RunnerEnv): string[] {
+  const out = new Set<string>(Object.keys(env.sampleOverlay ?? {}));
+  for (const d of env.samplesDirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d)) if (!f.endsWith('.md')) out.add(f);
+  for (const k of env.store.sampleFiles?.keys() ?? []) out.add(k);
+  return [...out].sort();
 }
 
 /** Trace equality (R-C-04). An item index is matched when the batch has one item. */

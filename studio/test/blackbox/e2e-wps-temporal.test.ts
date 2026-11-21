@@ -48,7 +48,7 @@ async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEn
   // Asynchronous, so the studio server's kept-alive connections stay open while Temporal runs.
   const out = await new Promise<string>((resolve) => {
     let text = '';
-    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '', ...extraEnv } });
+    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...extraEnv } });
     const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
     child.stdout.on('data', (d) => (text += d));
     child.stderr.on('data', (d) => (text += d));

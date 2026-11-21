@@ -4,13 +4,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadKit, runScenario, type KitResult } from '../../src/conformance/kit.js';
-import { openEnv } from '../../src/env.js';
+import { openReadEnv } from '../../src/env.js';
 import { FLOWABLE_DIR, buildHarness, flowableAdapter } from './adapter.js';
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
 const only = args.filter((a) => !a.startsWith('--'));
-const env = openEnv({ dataRoot: '' });
+// The content: the connected branch, or an in-memory fake seeded from content-configurations/ (R-11-21).
+const { env } = await openReadEnv();
 const kit = loadKit(env);
 buildHarness();
 const adapter = flowableAdapter(env);

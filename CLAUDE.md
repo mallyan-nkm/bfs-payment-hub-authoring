@@ -12,12 +12,16 @@ This repository holds the TransactHub Designer Studio: its specification in `spe
 ```
 cd studio && npm install
 cd studio && npm test                 # the automated suite
+cd studio && npm run studio:dev      # the studio on an in-memory fake GitHub seeded from content-configurations/
+cd studio && npm run studio -- seed-content [--write-local]   # publish the factory and the example bank to the content branch (or regenerate content-configurations/)
 cd studio && npm run studio -- test   # factory and bank tests on the studio interpreter
 cd studio && npm run studio -- kit    # the conformance kit
 cd studio && npx tsx engines/dtfx/run-kit.ts   # the kit on DTFx (needs .NET 8)
 cd studio && npx tsx engines/elsa/run-kit.ts   # the kit on Elsa Workflows (needs .NET 8)
 cd studio && npm run studio -- check  # schemas and static checks
 cd studio && npm run studio -- import <bundle.zip|dir> [--bank-tenant b] [--apply]   # import an extraction bundle (docs/import/EXTRACTION-PROMPT.md)
-cd studio && npm run web:build && npm start   # the studio on http://localhost:4317
+cd studio && npm run web:build && TH_CONTENT_REPO=owner/repo TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=... npm start   # the studio on http://localhost:4317
 cd spec && python3 tools/validate.py && python3 tools/mutation_tests.py   # the spec's own checks
 ```
+
+The studio's only store is the GitHub branch `TH_CONTENT_REPO`/`TH_CONTENT_BRANCH`, folder `content-configurations/` (R-11-21 to R-11-25). `check`, `test`, `kit` and the engine adapters read that branch when `TH_CONTENT_REPO` is set, and otherwise an in-memory fake GitHub seeded from this repository's `content-configurations/`. The conformance kit stays in `spec/conformance`. After `tools/build_factory.py` changes the factory, run `npm run studio -- seed-content --write-local`.

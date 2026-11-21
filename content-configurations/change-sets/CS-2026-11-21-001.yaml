@@ -1,0 +1,681 @@
+kind: change-set
+id: CS-2026-11-21-001
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-21T16:47:13.217Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/examples/bank
+  - spec/examples/bindings
+  - spec/examples/supersession
+  - spec/factory/inventory.yaml
+  - spec/factory/p
+  - spec/factory/uae.p
+  - spec/factory/uae.wps
+members:
+  - kind: engine-binding
+    name: binding:dtfx
+    release: ""
+    key: binding:dtfx
+  - kind: engine-binding
+    name: binding:elsa
+    release: ""
+    key: binding:elsa
+  - kind: engine-binding
+    name: binding:flowable
+    release: ""
+    key: binding:flowable
+  - kind: engine-binding
+    name: binding:temporal
+    release: ""
+    key: binding:temporal
+  - kind: activity
+    name: b.enrich.cost-centre.v1
+    release: 1.0.0
+    key: example-bank/b.enrich.cost-centre.v1@1.0.0
+  - kind: extension
+    name: b.ext.bank.v1
+    release: 1.0.0
+    key: example-bank/b.ext.bank.v1@1.0.0
+  - kind: hook
+    name: b.hook.add-cost-centre.v1
+    release: 1.0.0
+    key: example-bank/b.hook.add-cost-centre.v1@1.0.0
+  - kind: hook
+    name: b.hook.pre-release-approval.v1
+    release: 1.0.0
+    key: example-bank/b.hook.pre-release-approval.v1@1.0.0
+  - kind: hook
+    name: b.hook.treasury-notify.v1
+    release: 1.0.0
+    key: example-bank/b.hook.treasury-notify.v1@1.0.0
+  - kind: activity
+    name: b.notify.treasury.v1
+    release: 1.0.0
+    key: example-bank/b.notify.treasury.v1@1.0.0
+  - kind: port
+    name: b.port.reference-data.v1
+    release: 1.0.0
+    key: example-bank/b.port.reference-data.v1@1.0.0
+  - kind: port
+    name: b.port.treasury.v1
+    release: 1.0.0
+    key: example-bank/b.port.treasury.v1@1.0.0
+  - kind: rule
+    name: b.rule.internal-limit.v1
+    release: 1.0.0
+    key: example-bank/b.rule.internal-limit.v1@1.0.0
+  - kind: ruleset
+    name: b.ruleset.internal-limit.v1
+    release: 1.0.0
+    key: example-bank/b.ruleset.internal-limit.v1@1.0.0
+  - kind: simulator
+    name: b.sim.reference-data.v1
+    release: 1.0.0
+    key: example-bank/b.sim.reference-data.v1@1.0.0
+  - kind: simulator
+    name: b.sim.treasury.v1
+    release: 1.0.0
+    key: example-bank/b.sim.treasury.v1@1.0.0
+  - kind: activity
+    name: b.validate.internal-limit.v1
+    release: 1.0.0
+    key: example-bank/b.validate.internal-limit.v1@1.0.0
+  - kind: test
+    name: BANK-HOOK-001
+    release: ""
+    key: example-bank/BANK-HOOK-001
+  - kind: test
+    name: BANK-HOOK-002
+    release: ""
+    key: example-bank/BANK-HOOK-002
+  - kind: test
+    name: BANK-LIM-001
+    release: ""
+    key: example-bank/BANK-LIM-001
+  - kind: test
+    name: BANK-LIM-002
+    release: ""
+    key: example-bank/BANK-LIM-002
+  - kind: configuration-set
+    name: config:example-bank
+    release: 1.0.0
+    key: example-bank/config:example-bank@1.0.0
+  - kind: pack
+    name: pack:b:example-bank
+    release: 1.0.0
+    key: example-bank/pack:b:example-bank@1.0.0
+  - kind: test
+    name: WPS-IN-001
+    release: ""
+    key: example-bank/WPS-IN-001
+  - kind: test
+    name: WPS-IN-002
+    release: ""
+    key: example-bank/WPS-IN-002
+  - kind: test
+    name: WPS-IN-003
+    release: ""
+    key: example-bank/WPS-IN-003
+  - kind: test
+    name: WPS-IN-004
+    release: ""
+    key: example-bank/WPS-IN-004
+  - kind: inventory
+    name: inventory
+    release: ""
+    key: inventory
+  - kind: test
+    name: P-RES-001
+    release: ""
+    key: P-RES-001
+  - kind: test
+    name: P-RES-002
+    release: ""
+    key: P-RES-002
+  - kind: activity
+    name: p.decide.inward-disposition.v1
+    release: 1.0.0
+    key: p.decide.inward-disposition.v1@1.0.0
+  - kind: activity
+    name: p.decide.rail.v1
+    release: 1.0.0
+    key: p.decide.rail.v1@1.0.0
+  - kind: activity
+    name: p.decide.workflow.v1
+    release: 1.0.0
+    key: p.decide.workflow.v1@1.0.0
+  - kind: activity
+    name: p.enrich.payment-record.v1
+    release: 1.0.0
+    key: p.enrich.payment-record.v1@1.0.0
+  - kind: activity
+    name: p.hold.approval.v1
+    release: 1.0.0
+    key: p.hold.approval.v1@1.0.0
+  - kind: activity
+    name: p.hold.repair.v1
+    release: 1.0.0
+    key: p.hold.repair.v1@1.0.0
+  - kind: activity
+    name: p.notify.channel.v1
+    release: 1.0.0
+    key: p.notify.channel.v1@1.0.0
+  - kind: activity
+    name: p.notify.publish-fact.v1
+    release: 1.0.0
+    key: p.notify.publish-fact.v1@1.0.0
+  - kind: port
+    name: p.port.channel.v1
+    release: 1.0.0
+    key: p.port.channel.v1@1.0.0
+  - kind: port
+    name: p.port.core-banking.v1
+    release: 1.0.0
+    key: p.port.core-banking.v1@1.0.0
+  - kind: port
+    name: p.port.facts-out.v1
+    release: 1.0.0
+    key: p.port.facts-out.v1@1.0.0
+  - kind: port
+    name: p.port.fraud.v1
+    release: 1.0.0
+    key: p.port.fraud.v1@1.0.0
+  - kind: port
+    name: p.port.liquidity.v1
+    release: 1.0.0
+    key: p.port.liquidity.v1@1.0.0
+  - kind: port
+    name: p.port.operations-queue.v1
+    release: 1.0.0
+    key: p.port.operations-queue.v1@1.0.0
+  - kind: port
+    name: p.port.payment-record.v1
+    release: 1.0.0
+    key: p.port.payment-record.v1@1.0.0
+  - kind: port
+    name: p.port.sanctions.v1
+    release: 1.0.0
+    key: p.port.sanctions.v1@1.0.0
+  - kind: activity
+    name: p.post.accounting.v1
+    release: 1.0.0
+    key: p.post.accounting.v1@1.0.0
+  - kind: activity
+    name: p.post.reverse.v1
+    release: 1.0.0
+    key: p.post.reverse.v1@1.0.0
+  - kind: activity
+    name: p.post.verify.v1
+    release: 1.0.0
+    key: p.post.verify.v1@1.0.0
+  - kind: activity
+    name: p.reconcile.scheme-report.v1
+    release: 1.0.0
+    key: p.reconcile.scheme-report.v1@1.0.0
+  - kind: activity
+    name: p.reserve.funds.v1
+    release: 1.0.0
+    key: p.reserve.funds.v1@1.0.0
+  - kind: activity
+    name: p.reserve.release.v1
+    release: 1.0.0
+    key: p.reserve.release.v1@1.0.0
+  - kind: rule
+    name: p.rule.amount-positive.v1
+    release: 1.0.0
+    key: p.rule.amount-positive.v1@1.0.0
+  - kind: rule
+    name: p.rule.amount-within-platform-limit.v1
+    release: 1.0.0
+    key: p.rule.amount-within-platform-limit.v1@1.0.0
+  - kind: rule
+    name: p.rule.creditor-account-present.v1
+    release: 1.0.0
+    key: p.rule.creditor-account-present.v1@1.0.0
+  - kind: rule
+    name: p.rule.creditor-town-country.v1
+    release: 1.0.0
+    key: p.rule.creditor-town-country.v1@1.0.0
+  - kind: rule
+    name: p.rule.currency-present.v1
+    release: 1.0.0
+    key: p.rule.currency-present.v1@1.0.0
+  - kind: rule
+    name: p.rule.debtor-account-present.v1
+    release: 1.0.0
+    key: p.rule.debtor-account-present.v1@1.0.0
+  - kind: rule
+    name: p.rule.end-to-end-id-present.v1
+    release: 1.0.0
+    key: p.rule.end-to-end-id-present.v1@1.0.0
+  - kind: ruleset
+    name: p.ruleset.canonical.v1
+    release: 1.0.0
+    key: p.ruleset.canonical.v1@1.0.0
+  - kind: ruleset
+    name: p.ruleset.limits.v1
+    release: 1.0.0
+    key: p.ruleset.limits.v1@1.0.0
+  - kind: activity
+    name: p.screen.fraud.v1
+    release: 1.0.0
+    key: p.screen.fraud.v1@1.0.0
+  - kind: activity
+    name: p.screen.sanctions.v1
+    release: 1.0.0
+    key: p.screen.sanctions.v1@1.0.0
+  - kind: workflow
+    name: p.seg.check-and-screen.v1
+    release: 1.0.0
+    key: p.seg.check-and-screen.v1@1.0.0
+  - kind: simulator
+    name: p.sim.channel.v1
+    release: 1.0.0
+    key: p.sim.channel.v1@1.0.0
+  - kind: simulator
+    name: p.sim.core-banking.v1
+    release: 1.0.0
+    key: p.sim.core-banking.v1@1.0.0
+  - kind: simulator
+    name: p.sim.facts-out.v1
+    release: 1.0.0
+    key: p.sim.facts-out.v1@1.0.0
+  - kind: simulator
+    name: p.sim.fraud.v1
+    release: 1.0.0
+    key: p.sim.fraud.v1@1.0.0
+  - kind: simulator
+    name: p.sim.liquidity.v1
+    release: 1.0.0
+    key: p.sim.liquidity.v1@1.0.0
+  - kind: simulator
+    name: p.sim.operations.v1
+    release: 1.0.0
+    key: p.sim.operations.v1@1.0.0
+  - kind: simulator
+    name: p.sim.payment-record.v1
+    release: 1.0.0
+    key: p.sim.payment-record.v1@1.0.0
+  - kind: simulator
+    name: p.sim.sanctions.v1
+    release: 1.0.0
+    key: p.sim.sanctions.v1@1.0.0
+  - kind: table
+    name: p.table.inward-disposition.v1
+    release: 1.0.0
+    key: p.table.inward-disposition.v1@1.0.0
+  - kind: table
+    name: p.table.rail-choice.v1
+    release: 1.0.0
+    key: p.table.rail-choice.v1@1.0.0
+  - kind: table
+    name: p.table.workflow-select.v1
+    release: 1.0.0
+    key: p.table.workflow-select.v1@1.0.0
+  - kind: activity
+    name: p.validate.canonical.v1
+    release: 1.0.0
+    key: p.validate.canonical.v1@1.0.0
+  - kind: activity
+    name: p.validate.duplicate.v1
+    release: 1.0.0
+    key: p.validate.duplicate.v1@1.0.0
+  - kind: activity
+    name: p.validate.limits.v1
+    release: 1.0.0
+    key: p.validate.limits.v1@1.0.0
+  - kind: workflow
+    name: p.wf.commercial.v1
+    release: 1.0.0
+    key: p.wf.commercial.v1@1.0.0
+  - kind: workflow
+    name: p.wf.corporate.v1
+    release: 1.0.0
+    key: p.wf.corporate.v1@1.0.0
+  - kind: workflow
+    name: p.wf.inward.v1
+    release: 1.0.0
+    key: p.wf.inward.v1@1.0.0
+  - kind: workflow
+    name: p.wf.request.v1
+    release: 1.0.0
+    key: p.wf.request.v1@1.0.0
+  - kind: pack
+    name: pack:p
+    release: 1.0.0
+    key: pack:p@1.0.0
+  - kind: pack
+    name: pack:uae.p
+    release: 1.0.0
+    key: pack:uae.p@1.0.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.0.0
+    key: pack:uae.wps@1.0.0
+  - kind: scheme
+    name: scheme:uae.wps
+    release: 1.0.0
+    key: scheme:uae.wps@1.0.0
+  - kind: supersession
+    name: SUP-2026-001
+    release: ""
+    key: SUP-2026-001
+  - kind: activity
+    name: uae.p.enrich.business-date.v1
+    release: 1.0.0
+    key: uae.p.enrich.business-date.v1@1.0.0
+  - kind: activity
+    name: uae.p.enrich.participant.v1
+    release: 1.0.0
+    key: uae.p.enrich.participant.v1@1.0.0
+  - kind: port
+    name: uae.p.port.calendar.v1
+    release: 1.0.0
+    key: uae.p.port.calendar.v1@1.0.0
+  - kind: port
+    name: uae.p.port.participant-directory.v1
+    release: 1.0.0
+    key: uae.p.port.participant-directory.v1@1.0.0
+  - kind: rule
+    name: uae.p.rule.currency-aed.v1
+    release: 1.0.0
+    key: uae.p.rule.currency-aed.v1@1.0.0
+  - kind: rule
+    name: uae.p.rule.iban-checksum.v1
+    release: 1.0.0
+    key: uae.p.rule.iban-checksum.v1@1.0.0
+  - kind: rule
+    name: uae.p.rule.iban-country.v1
+    release: 1.0.0
+    key: uae.p.rule.iban-country.v1@1.0.0
+  - kind: rule
+    name: uae.p.rule.iban-length.v1
+    release: 1.0.0
+    key: uae.p.rule.iban-length.v1@1.0.0
+  - kind: rule
+    name: uae.p.rule.routing-code-format.v1
+    release: 1.0.0
+    key: uae.p.rule.routing-code-format.v1@1.0.0
+  - kind: ruleset
+    name: uae.p.ruleset.iban.v1
+    release: 1.0.0
+    key: uae.p.ruleset.iban.v1@1.0.0
+  - kind: simulator
+    name: uae.p.sim.calendar.v1
+    release: 1.0.0
+    key: uae.p.sim.calendar.v1@1.0.0
+  - kind: simulator
+    name: uae.p.sim.participant-directory.v1
+    release: 1.0.0
+    key: uae.p.sim.participant-directory.v1@1.0.0
+  - kind: activity
+    name: uae.p.validate.iban.v1
+    release: 1.0.0
+    key: uae.p.validate.iban.v1@1.0.0
+  - kind: activity
+    name: uae.wps.decide.returns.v1
+    release: 1.0.0
+    key: uae.wps.decide.returns.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.confirm-receipt.v1
+    release: 1.0.0
+    key: uae.wps.exchange.confirm-receipt.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.receive-supplement.v1
+    release: 1.0.0
+    key: uae.wps.exchange.receive-supplement.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.request-refund.v1
+    release: 1.0.0
+    key: uae.wps.exchange.request-refund.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.return-credits.v1
+    release: 1.0.0
+    key: uae.wps.exchange.return-credits.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-disbursement-file.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-disbursement-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-receipt-confirmation.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-receipt-confirmation.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-refund-request.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-refund-request.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-returns-file.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-returns-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-salary-file.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-salary-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.submit-salary-file.v1
+    release: 1.0.0
+    key: uae.wps.exchange.submit-salary-file.v1@1.0.0
+  - kind: extension
+    name: uae.wps.ext.salary.v1
+    release: 1.0.0
+    key: uae.wps.ext.salary.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.ack-in.v1
+    release: 1.0.0
+    key: uae.wps.map.ack-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.dif-out.v1
+    release: 1.0.0
+    key: uae.wps.map.dif-out.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.pif-in.v1
+    release: 1.0.0
+    key: uae.wps.map.pif-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.prc-out.v1
+    release: 1.0.0
+    key: uae.wps.map.prc-out.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.refund-order-in.v1
+    release: 1.0.0
+    key: uae.wps.map.refund-order-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.rfa-out.v1
+    release: 1.0.0
+    key: uae.wps.map.rfa-out.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.rfr-out.v1
+    release: 1.0.0
+    key: uae.wps.map.rfr-out.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.rsu-in.v1
+    release: 1.0.0
+    key: uae.wps.map.rsu-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.rtc-in.v1
+    release: 1.0.0
+    key: uae.wps.map.rtc-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.sif-in.v1
+    release: 1.0.0
+    key: uae.wps.map.sif-in.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.sif-out.v1
+    release: 1.0.0
+    key: uae.wps.map.sif-out.v1@1.0.0
+  - kind: port
+    name: uae.wps.port.employer-channel.v1
+    release: 1.0.0
+    key: uae.wps.port.employer-channel.v1@1.0.0
+  - kind: port
+    name: uae.wps.port.wps.v1
+    release: 1.0.0
+    key: uae.wps.port.wps.v1@1.0.0
+  - kind: activity
+    name: uae.wps.post.return.v1
+    release: 1.0.0
+    key: uae.wps.post.return.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.agent-is-this-bank.v1
+    release: 1.0.0
+    key: uae.wps.rule.agent-is-this-bank.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.amounts-non-negative.v1
+    release: 1.0.0
+    key: uae.wps.rule.amounts-non-negative.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.control-total-matches.v1
+    release: 1.0.0
+    key: uae.wps.rule.control-total-matches.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.currency-aed.v1
+    release: 1.0.0
+    key: uae.wps.rule.currency-aed.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.employer-id-format.v1
+    release: 1.0.0
+    key: uae.wps.rule.employer-id-format.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.employer-routing-code-format.v1
+    release: 1.0.0
+    key: uae.wps.rule.employer-routing-code-format.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.file-name-matches-control.v1
+    release: 1.0.0
+    key: uae.wps.rule.file-name-matches-control.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.net-pay-positive.v1
+    release: 1.0.0
+    key: uae.wps.rule.net-pay-positive.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.pay-period-valid.v1
+    release: 1.0.0
+    key: uae.wps.rule.pay-period-valid.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.person-id-format.v1
+    release: 1.0.0
+    key: uae.wps.rule.person-id-format.v1@1.0.0
+  - kind: rule
+    name: uae.wps.rule.record-count-matches.v1
+    release: 1.0.0
+    key: uae.wps.rule.record-count-matches.v1@1.0.0
+  - kind: ruleset
+    name: uae.wps.ruleset.payment-file.v1
+    release: 1.0.0
+    key: uae.wps.ruleset.payment-file.v1@1.0.0
+  - kind: ruleset
+    name: uae.wps.ruleset.salary-file.v1
+    release: 1.0.0
+    key: uae.wps.ruleset.salary-file.v1@1.0.0
+  - kind: ruleset
+    name: uae.wps.ruleset.salary-record.v1
+    release: 1.0.0
+    key: uae.wps.ruleset.salary-record.v1@1.0.0
+  - kind: simulator
+    name: uae.wps.sim.employer-channel.v1
+    release: 1.0.0
+    key: uae.wps.sim.employer-channel.v1@1.0.0
+  - kind: simulator
+    name: uae.wps.sim.wps-inward.v1
+    release: 1.0.0
+    key: uae.wps.sim.wps-inward.v1@1.0.0
+  - kind: simulator
+    name: uae.wps.sim.wps-outward.v1
+    release: 1.0.0
+    key: uae.wps.sim.wps-outward.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.confirm-receipt.v1
+    release: 1.0.0
+    key: uae.wps.sub.confirm-receipt.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.receive-supplement.v1
+    release: 1.0.0
+    key: uae.wps.sub.receive-supplement.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.request-refund.v1
+    release: 1.0.0
+    key: uae.wps.sub.request-refund.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.return-credits.v1
+    release: 1.0.0
+    key: uae.wps.sub.return-credits.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.submit-salary-file.v1
+    release: 1.0.0
+    key: uae.wps.sub.submit-salary-file.v1@1.0.0
+  - kind: table
+    name: uae.wps.table.returns.v1
+    release: 1.0.0
+    key: uae.wps.table.returns.v1@1.0.0
+  - kind: activity
+    name: uae.wps.validate.payment-file.v1
+    release: 1.0.0
+    key: uae.wps.validate.payment-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.validate.salary-file.v1
+    release: 1.0.0
+    key: uae.wps.validate.salary-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.validate.salary-record.v1
+    release: 1.0.0
+    key: uae.wps.validate.salary-record.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.agent-payment-in.v1
+    release: 1.0.0
+    key: uae.wps.wf.agent-payment-in.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.inward-refuse.v1
+    release: 1.0.0
+    key: uae.wps.wf.inward-refuse.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.refund-out.v1
+    release: 1.0.0
+    key: uae.wps.wf.refund-out.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.return-in.v1
+    release: 1.0.0
+    key: uae.wps.wf.return-in.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.salary-file-out.v1
+    release: 1.0.0
+    key: uae.wps.wf.salary-file-out.v1@1.0.0
+  - kind: test
+    name: WPS-EXC-001
+    release: ""
+    key: WPS-EXC-001
+  - kind: test
+    name: WPS-EXC-002
+    release: ""
+    key: WPS-EXC-002
+  - kind: test
+    name: WPS-MAP-001
+    release: ""
+    key: WPS-MAP-001
+  - kind: test
+    name: WPS-MAP-002
+    release: ""
+    key: WPS-MAP-002
+  - kind: test
+    name: WPS-OUT-001
+    release: ""
+    key: WPS-OUT-001
+  - kind: test
+    name: WPS-OUT-002
+    release: ""
+    key: WPS-OUT-002
+  - kind: test
+    name: WPS-OUT-003
+    release: ""
+    key: WPS-OUT-003
+  - kind: test
+    name: WPS-OUT-004
+    release: ""
+    key: WPS-OUT-004
+  - kind: test
+    name: WPS-OUT-005
+    release: ""
+    key: WPS-OUT-005

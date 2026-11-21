@@ -4,7 +4,6 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { initBareRepo } from '../../src/export/git.js';
 import { zip } from '../../src/export/zip.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
 
@@ -33,7 +32,6 @@ let api: ReturnType<typeof client>;
 let native: ChildProcess;
 let nativeUrl = '';
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-slice-'));
-const remote = initBareRepo(work);
 const containers: string[] = [];
 
 const freePort = () => new Promise<number>((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = (s.address() as any).port; s.close(() => resolve(p)); }); });
@@ -89,7 +87,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
 
   it('2. it publishes through maker-checker, and each change set lands on the connected branch', async () => {
     expect((await api.post('/api/drafts', {})).status).not.toBe(500);
-    const c = await fetch(`${server.url}/api/git`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actor: 'shared.checker', remote, branch: 'main', target: 'temporal', environment: 'test' }) });
+    const c = await fetch(`${server.url}/api/git`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actor: 'shared.checker', target: 'temporal', environment: 'test' }) });
     expect(c.status).toBe(200);
     const drafts = [...(await api.get('/api/drafts?tenant=owner')).data, ...(await api.get(`/api/drafts?tenant=${TENANT}`)).data];
     for (const set of changeSets) {
@@ -111,8 +109,14 @@ describe('the source WPS outward flow, through the north-star path', () => {
   }, 300000);
 
   it("4. the runtime takes the branch and the Temporal package carrying the new leg, on PostgreSQL, activated for test only", async () => {
+    // The pipeline's checkout of the content branch: the fake GitHub's tree, written where the runtime reads it.
     const look = path.join(work, 'look');
-    spawnSync('git', ['clone', '--quiet', remote, look]);
+    for (const [p, text] of Object.entries(server.fake.files(server.repo, 'main'))) {
+      if (!p.startsWith('content-configurations/')) continue;
+      const f = path.join(look, p.slice('content-configurations/'.length));
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, text);
+    }
     expect(fs.existsSync(path.join(look, 'artefacts', 'uae.wps', 'uae.wps.map.cb-sif-out.v1', '1.0.0.yaml'))).toBe(true);
     const name = `th-slice-pg-${process.pid}`;
     const pg = spawnSync('docker', ['run', '-d', '--name', name, '-e', `POSTGRES_PASSWORD=${PASSWORD}`, '-p', '127.0.0.1::5432', 'postgres:16-alpine'], { encoding: 'utf8' });
@@ -155,7 +159,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
     fs.writeFileSync(file, z.data);
     const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', 'uae.wps.sif', '--inbound', path.join(STUDIO, 'fixtures', 'samples', 'wps-sif-valid.sif'), '--tenant', TENANT, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
     const before = await (await fetch(`${nativeUrl}/health`)).json();
-    const out = await run(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '', TH_NATIVE_HOST: nativeUrl } });
+    const out = await run(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_NATIVE_HOST: nativeUrl } });
     expect(/^outcome (\w+)/m.exec(out)?.[1], out.slice(-2500)).toBe('settled');
     expect(out).toContain('uae.wps.map.cb-sif-out.v1@1.0.0');
     const after = await (await fetch(`${nativeUrl}/health`)).json();

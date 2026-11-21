@@ -1,4 +1,6 @@
-import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
+import { OWNER_TENANT, StoreError, identifiers, mentions, type Entry } from '../core/store.js';
+import { USERS_PATH, handedOverPath, inFlightPath } from '../content/layout.js';
+import { commitMessage, filesFor } from '../export/git.js';
 import { compareReleases, isShared, parseName } from '../core/names.js';
 import { toYaml, parseYaml } from '../core/yaml.js';
 import { Checker, checkDocument, interfaceDiff, pinnable, proposeRelease, refsOf } from '../checks/checks.js';
@@ -96,17 +98,6 @@ export async function approve(env: StudioEnv, tenant: string, checker: string, k
   return r.published.find((e) => e.name === name)!;
 }
 
-/** What other artefacts use to refer to a document: its name, or a scheme's scope and message ids. */
-function identifiers(doc: any): string[] {
-  if (doc?.kind === 'scheme') return [doc.scope, ...(doc.messages ?? []).map((m: any) => m.id)];
-  return [doc?.name ?? doc?.id].filter(Boolean);
-}
-
-function mentions(doc: any, ids: string[]): boolean {
-  const text = JSON.stringify(doc);
-  return ids.some((id) => text.includes(`"${id}"`));
-}
-
 /**
  * The change set the studio generates for a draft (R-11-19): the draft and every draft of the
  * tenant that refers to it or that it refers to, directly or through others. Drafts that refer to
@@ -145,6 +136,7 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
   const set = keys.map((key) => {
     const e = env.store.entries.get(key)!;
     if (e.tenant !== tenant || (e.status !== 'in-review' && e.status !== 'draft')) throw new StoreError('not-found', `No draft in review ${key}`);
+    if (e.awaitingMerge) throw new StoreError('R-09-22', `${key} is approved; its pull request from ${e.awaitingMerge} is waiting to merge`);
     enforce(env, checker, tenant, 'approve', key, e.scope);
     const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
     if (!maker || maker === checker) {
@@ -170,18 +162,22 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
     env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
     throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
   }
-  const published = set.map(({ key, maker }) => ({ e: env.store.publish(tenant, key, maker, checker), maker }));
-  const today = new Date().toISOString().slice(0, 10);
-  const all = (env.store.extra.changeSets ??= []) as any[];
-  const id = `CS-${today}-${String(all.filter((c) => c.id.startsWith(`CS-${today}-`)).length + 1).padStart(3, '0')}`;
-  const changeSet = {
-    id, tenant, checker, publishedAt: new Date().toISOString(),
-    makers: [...new Set(published.map((p) => p.maker))].sort(),
-    members: published.map(({ e }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key })).sort((a, b) => a.key.localeCompare(b.key)),
-  };
-  all.push(changeSet);
-  env.store.record({ tenant, actor: checker, action: 'publish-change-set', key: id, detail: changeSet.members.map((m) => m.key).join(', ') });
-  return { changeSet, published: published.map((p) => p.e) };
+  // One commit on the content branch, or in pull-request mode one on the change set's branch and a
+  // pull request (R-11-22, R-09-20, R-09-22). The change set keeps the id of its branch.
+  const id = env.store.changeSetIdFor(set.map((x) => x.e));
+  const branches = [...new Set(set.map((x) => x.e.changeSet).filter(Boolean) as string[])].sort((a, b) => (a === id ? -1 : b === id ? 1 : a.localeCompare(b)));
+  const pullRequest = env.store.settings.mode === 'pull-request';
+  return env.store.transaction(() => {
+    const published = set.map(({ key, maker }) => ({ e: env.store.promote(tenant, key, maker, checker, id), maker }));
+    const changeSet = {
+      id, tenant, checker, publishedAt: published[0]?.e.publishedAt ?? new Date().toISOString(),
+      makers: [...new Set(published.map((p) => p.maker))].sort(),
+      members: published.map(({ e }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key })).sort((a, b) => a.key.localeCompare(b.key)),
+    };
+    const { files, skipped } = filesFor(env, changeSet, env.store.settings);
+    const write = env.store.commitChangeSet(changeSet, branches, files, commitMessage(changeSet, skipped), { pullRequest });
+    return { changeSet, published: published.map((p) => p.e), write, skipped, pullRequest };
+  });
 }
 
 // ---------------------------------------------------------- retirement (C19-S3)
@@ -228,7 +224,8 @@ export function inFlight(env: StudioEnv, name: string, release: string): { count
 export function importInFlight(env: StudioEnv, actor: string, counts: Record<string, number>, asOf: string) {
   enforce(env, actor, OWNER_TENANT, 'retire', 'in-flight');
   env.store.extra.inFlight = { counts, asOf };
-  env.store.record({ tenant: OWNER_TENANT, actor, action: 'import-in-flight', key: 'in-flight', detail: `as of ${asOf}` });
+  // One file each, never rewritten; the latest applies (R-11-23).
+  env.store.addStateFile(inFlightPath(new Date().toISOString()), { kind: 'in-flight', inFlight: { counts, asOf } }, `In-flight counts as of ${asOf}\n\nSupplied by ${actor}.`, { tenant: OWNER_TENANT, actor, action: 'import-in-flight', key: 'in-flight', detail: `as of ${asOf}` });
 }
 
 export function retire(env: StudioEnv, actor: string, name: string, release: string) {
@@ -319,8 +316,9 @@ export function handOverSupersession(env: StudioEnv, doc: any, checker: string) 
   const final = { ...clean, approval: { maker: doc.approval.maker, checker } };
   const issues = env.schemas.validate(final);
   if (issues.length) throw new StoreError('L00', issues.map((i) => i.message).join('; '));
+  if ((env.store.extra.supersessions ?? []).some((x: any) => x.id === final.id)) throw new StoreError('R-11-23', `${final.id} is already handed over`);
   env.store.extra.supersessions = [...(env.store.extra.supersessions ?? []), final];
-  env.store.record({ tenant: OWNER_TENANT, actor: checker, action: 'hand-over-supersession', key: final.id, detail: `${final.artefact} ${final.replaces} to ${final.with}` });
+  env.store.addStateFile(handedOverPath(final.id), final, `Hand over supersession ${final.id}\n\n${final.artefact} ${final.replaces} to ${final.with}. Maker ${final.approval.maker}, checker ${checker}.`, { tenant: OWNER_TENANT, actor: checker, action: 'hand-over-supersession', key: final.id, detail: `${final.artefact} ${final.replaces} to ${final.with}` });
   return { document: final, yaml: toYaml(final) };
 }
 
@@ -369,11 +367,8 @@ export function saveConfiguration(env: StudioEnv, tenant: string, actor: string,
   if (issues.length) throw new StoreError('L14', issues.map((i) => i.message).join('; '));
   const prev = env.store.configurationSet(tenant);
   if (prev && compareReleases(doc.release, prev.release) <= 0) throw new StoreError('R-06-15', `A changed configuration set needs a later release than ${prev.release}`);
-  const e = env.store.add(doc, `studio:${tenant}`, 'studio', false, 'published', tenant);
-  e.maker = actor;
-  env.store.record({ tenant, actor, action: 'set-configuration', key: e.key, diff: prev ? { before: prev.release, after: doc.release } : { created: true } });
-  env.store.persist();
-  return e;
+  // A new file at its release on the content branch, with its event (R-11-23).
+  return env.store.publishDirect(doc, tenant, actor, { action: 'set-configuration', key: `${tenant}/config:${tenant}@${doc.release}`, diff: prev ? { before: prev.release, after: doc.release } : { created: true } });
 }
 
 // ---------------------------------------------------- compatibility run (C18-S3)
@@ -448,8 +443,60 @@ export async function conformanceReport(env: StudioEnv, target = 'studio') {
 export function addWaiver(env: StudioEnv, actor: string, w: Waiver) {
   enforce(env, actor, OWNER_TENANT, 'approve', `waiver:${w.scenario}`);
   if (!w.reason) throw new StoreError('C23-S3', 'A waiver names its reason');
-  env.store.extra.waivers = [...(env.store.extra.waivers ?? []), { ...w, approver: actor }];
-  env.store.record({ tenant: OWNER_TENANT, actor, action: 'waive', key: w.scenario, detail: `${w.target}: ${w.reason}` });
+  // A waiver is published with its change set: the record holds it (R-11-23).
+  const waiver = { ...w, approver: actor };
+  const id = env.store.changeSetIdFor([]);
+  const changeSet = { id, tenant: OWNER_TENANT, checker: actor, publishedAt: new Date().toISOString(), makers: [actor], members: [], waivers: [waiver] };
+  env.store.transaction(() => {
+    env.store.markPublishing(id);
+    env.store.record({ tenant: OWNER_TENANT, actor, action: 'waive', key: w.scenario, detail: `${w.target}: ${w.reason}`, changeSet: id });
+    env.store.commitChangeSet(changeSet, [], {}, `Waive ${w.scenario} on ${w.target} (${id})\n\n${w.reason}\n\nApprover: ${actor}`);
+  });
+  env.store.extra.waivers = [...(env.store.extra.waivers ?? []), waiver];
+  return { changeSet: id };
+}
+
+// ------------------------------------------------- users and roles, through maker-checker (R-11-23)
+
+const ROLES: Role[] = ['shared designer', 'shared checker', 'bank designer', 'bank checker', 'auditor', 'service operations'];
+
+function mayAdminister(env: StudioEnv, actor: string): string | undefined {
+  const u = users(env).find((x) => x.id === actor);
+  if (!u) return `${actor} is not a user of the studio`;
+  if (u.tenant !== OWNER_TENANT) return 'Only the owner changes the studio\'s users';
+  return u.roles.includes('shared checker') || u.roles.includes('service operations') ? undefined : `${actor} may not change the studio's users: a shared checker or service operations does`;
+}
+
+/** Propose a new list of users and roles: a change set whose branch holds the new `governance/users.yaml`. */
+export function proposeUsers(env: StudioEnv, maker: string, list: User[]) {
+  const why = mayAdminister(env, maker);
+  if (why) {
+    env.store.record({ tenant: OWNER_TENANT, actor: maker, action: 'propose-users', key: 'users', outcome: 'refused', detail: why });
+    throw new StoreError('R-06', why);
+  }
+  if (!Array.isArray(list) || !list.length) throw new StoreError('R-11-23', 'Send the whole list of users');
+  for (const u of list) {
+    if (!u || typeof u.id !== 'string' || !/^[a-z][a-z0-9.-]*$/.test(u.id) || typeof u.tenant !== 'string' || !Array.isArray(u.roles) || u.roles.some((r) => !ROLES.includes(r))) {
+      throw new StoreError('R-11-23', `Not a user: ${JSON.stringify(u)}. A user has an id (lower case, a role-shaped placeholder), a tenant and roles from ${ROLES.join(', ')}`);
+    }
+  }
+  const id = env.store.proposeStateFile(USERS_PATH, { kind: 'studio-users', users: list }, maker, 'propose-users', 'users');
+  return { changeSet: id };
+}
+
+/** Approve a proposed list of users: a different shared checker; the file is replaced in one commit with its change set. */
+export function approveUsers(env: StudioEnv, checker: string, id: string) {
+  const proposal = (env.store.extra.userProposals ?? []).find((p: any) => p.id === id);
+  if (!proposal) throw new StoreError('not-found', `No proposed change to the users with change set ${id}`);
+  enforce(env, checker, OWNER_TENANT, 'approve', `users:${id}`);
+  if (proposal.maker === checker) {
+    env.store.record({ tenant: OWNER_TENANT, actor: checker, action: 'approve-users', key: 'users', outcome: 'refused', detail: 'Maker and checker must differ (R-06-04)', changeSet: id });
+    throw new StoreError('R-06-04', 'Maker and checker must differ');
+  }
+  env.store.approveStateFile(id, USERS_PATH, { kind: 'studio-users', users: proposal.users }, proposal.maker, checker, 'approve-users');
+  env.store.extra.users = proposal.users;
+  env.store.extra.userProposals = (env.store.extra.userProposals ?? []).filter((p: any) => p.id !== id);
+  return { changeSet: id, users: proposal.users };
 }
 
 /** Release of a shared pack (C19-S2): checks, green tests, and a green conformance report on every target in the binding list. */

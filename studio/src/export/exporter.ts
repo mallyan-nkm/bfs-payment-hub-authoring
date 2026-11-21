@@ -209,7 +209,8 @@ function walkUse(d: any): string[] {
  * release. Every artefact file of the package is in exactly one.
  */
 function changeSetsOf(env: StudioEnv, files: Record<string, string | Buffer>) {
-  const recorded = (env.store.extra.changeSets ?? []) as any[];
+  // The seed's change set published content that came with the spec: that keeps its pack release (R-11-25).
+  const recorded = ((env.store.extra.changeSets ?? []) as any[]).filter((c) => c.origin !== 'seed');
   const sets = new Map<string, { id: string; kind: string; publishedAt?: string; checker?: string; makers?: string[]; members: string[] }>();
   const seen = new Set<string>();
   for (const f of Object.keys(files).sort()) {

@@ -1,4 +1,4 @@
-import { openEnv } from '../../src/env.js';
+import { openReadEnv } from '../../src/env.js';
 import { runKit } from '../../src/conformance/kit.js';
 import { spawnSync } from 'node:child_process';
 import { blockedByWindows } from '../../src/deploy/blocked.js';
@@ -9,7 +9,8 @@ import { buildElsaHarness, elsaAdapter, ELSA_HARNESS_DLL } from './adapter.js';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const verbose = process.argv.includes('--verbose');
-const env = openEnv({ dataRoot: '' });
+// The content: the connected branch, or an in-memory fake seeded from content-configurations/ (R-11-21).
+const { env } = await openReadEnv();
 buildElsaHarness();
 // One start of the harness with no input: if Windows refuses to load it, stop here with the reason.
 const probe = spawnSync('dotnet', [ELSA_HARNESS_DLL], { encoding: 'utf8', timeout: 60000 });

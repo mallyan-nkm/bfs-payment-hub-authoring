@@ -192,7 +192,7 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
 
   // A shadow of the catalogue, in memory only, with the bundle in it as if it were published: what
   // a bank's configuration and the tests will meet once a checker has approved it. Nothing is written.
-  const shadow = Store.open(env.store.specRoot, env.store.dataRoot);
+  const shadow = env.store.shadow();
   for (const { doc } of [...b.docs, ...b.tests, ...b.configuration]) {
     if (doc && typeof doc === 'object' && doc.kind) shadow.add(doc, 'import', 'studio', false, 'published', tenantFor(doc, opts) || opts.tenant);
   }
@@ -350,23 +350,17 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   // The bundle's tests, against its own documents, scripts and samples, before anything is saved.
   const tests: Report['tests'] = [];
   if (opts.runTests !== false && b.tests.length) {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-import-'));
-    try {
-      fs.mkdirSync(path.join(tmp, 'scripts'));
-      fs.mkdirSync(path.join(tmp, 'samples'));
-      for (const s of b.scripts) fs.writeFileSync(path.join(tmp, 'scripts', `${s.activity}.${s.language === 'python' ? 'py' : 'ts'}`), s.source);
-      for (const s of b.samples) if (/^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/.test(s.name)) fs.writeFileSync(path.join(tmp, 'samples', s.name), s.content);
-      const tenv: StudioEnv = { ...senv, scripts: env.scripts.withFirst(path.join(tmp, 'scripts')), samplesDirs: [path.join(tmp, 'samples'), ...env.samplesDirs] };
-      for (const { doc } of b.tests) {
-        try {
-          const r = await runTest(tenv, doc);
-          tests.push({ id: doc.id, target: doc.target, passed: r.passed, outcome: r.trace?.at(-1), error: r.error?.split('\n')[0] ?? (r.record?.instances ?? []).map((i: any) => i.failed).filter(Boolean)[0], failed: r.checks.filter((c: any) => !c.passed).map((c: any) => `${c.what}: expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(c.actual)}`) });
-        } catch (e: any) {
-          tests.push({ id: doc?.id, target: doc?.target, passed: false, error: String(e?.message ?? e) });
-        }
+    // In memory: the bundle's scripts and samples are searched first, nothing is written (R-11-24).
+    const bscripts = b.scripts.map((s) => ({ name: s.activity, language: s.language, source: s.source, file: `bundle:scripts/${s.activity}.${s.language === 'python' ? 'py' : 'ts'}` }));
+    const overlay = Object.fromEntries(b.samples.filter((s) => /^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/.test(s.name)).map((s) => [s.name, s.content]));
+    const tenv: StudioEnv = { ...senv, scripts: env.scripts.withFirst(bscripts), sampleOverlay: { ...(env.sampleOverlay ?? {}), ...overlay } };
+    for (const { doc } of b.tests) {
+      try {
+        const r = await runTest(tenv, doc);
+        tests.push({ id: doc.id, target: doc.target, passed: r.passed, outcome: r.trace?.at(-1), error: r.error?.split('\n')[0] ?? (r.record?.instances ?? []).map((i: any) => i.failed).filter(Boolean)[0], failed: r.checks.filter((c: any) => !c.passed).map((c: any) => `${c.what}: expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(c.actual)}`) });
+      } catch (e: any) {
+        tests.push({ id: doc?.id, target: doc?.target, passed: false, error: String(e?.message ?? e) });
       }
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
     }
     for (const t of tests) if (!t.passed) warn('I80', `test ${t.id}`, `Fails against the bundle's own documents: ${t.error ?? t.failed?.join('; ') ?? ''}`);
   }

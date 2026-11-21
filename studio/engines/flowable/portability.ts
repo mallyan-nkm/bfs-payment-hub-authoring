@@ -7,10 +7,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { callsComposite, expandWorkflow } from '../../src/core/expand.js';
 import { flowablePortable, generateBpmn, portabilityReport, safe } from '../../src/export/bpmn.js';
-import { openEnv } from '../../src/env.js';
+import { openReadEnv } from '../../src/env.js';
 import { FLOWABLE_DIR, buildHarness } from './adapter.js';
 
-const env = openEnv({ dataRoot: '' });
+// The content: the connected branch, or an in-memory fake seeded from content-configurations/ (R-11-21).
+const { env } = await openReadEnv();
 buildHarness();
 const dir = path.join(FLOWABLE_DIR, 'out', 'portability');
 fs.rmSync(dir, { recursive: true, force: true });

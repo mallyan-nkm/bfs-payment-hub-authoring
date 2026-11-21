@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     exclude: ['test/blackbox/**', 'node_modules/**'],
+    // The fake GitHub, seeded from content-configurations/: every test reads and writes it (R-11-21).
+    setupFiles: ['test/support/setup.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
