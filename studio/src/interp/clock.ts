@@ -128,6 +128,17 @@ export class VirtualClock {
     return this.timers.filter((t) => !t.dead).length;
   }
 
+  /** Work outside this process (a call to the native host): while any is outstanding, the run is not idle. */
+  private outside = 0;
+  async external<T>(work: () => Promise<T>): Promise<T> {
+    this.outside++;
+    try {
+      return await work();
+    } finally {
+      this.outside--;
+    }
+  }
+
   /**
    * Drive the clock until `done()` holds, no timer is left, or the limit is reached.
    * Returns 'done', 'idle' (nothing left to run) or 'limit'.
@@ -137,6 +148,11 @@ export class VirtualClock {
       await tick();
       await tick();
       if (done()) return 'done';
+      // Business time does not move while work outside the process is under way: wait for it.
+      if (this.outside > 0) {
+        await new Promise((r) => setTimeout(r, 1));
+        continue;
+      }
       this.timers = this.timers.filter((t) => !t.dead);
       if (this.timers.length === 0) return 'idle';
       this.timers.sort((a, b) => a.at - b.at || a.seq - b.seq);

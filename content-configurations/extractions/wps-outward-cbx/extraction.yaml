@@ -1,0 +1,27 @@
+kind: extraction
+format: 1
+scope: uae.wps
+title: 'WPS outward: the source''s Central Bank SIF writer (slice 1)'
+source:
+  system: TransactHub WPS (source)
+  repository: TransactHub-src.zip
+  revision: 666f1ee
+  engine: PaymentHub DSL 3 on Temporal and DTFx
+  languages:
+  - csharp
+  - json
+  files:
+  - dsl/workflows/dib-wps-outward.v1.workflow.json
+  - services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxFileNameRules.cs
+  - services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRecordRules.cs
+  - services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxScrRules.cs
+  - services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRuleSettings.cs
+  - services/activities/platform/PaymentHub.Activities.Platform.Wps/CbxSifWriter.cs
+  - spec/examples/bank/configuration-set.yaml
+  excluded: []
+extractedBy:
+  tool: docs/import/extract_wps_outward_cbx.py
+  model: none (a generator, reviewed by the designer)
+  date: '2026-11-21'
+  promptRef: docs/import/EXTRACTION-PROMPT.md
+dataPolicy: synthetic

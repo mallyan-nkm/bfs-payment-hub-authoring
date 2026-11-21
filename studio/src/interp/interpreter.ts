@@ -908,12 +908,42 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     if (!(act.outcomes ?? []).some((o: any) => o.name === res.outcome)) throw new ContractViolation('R-03-02', `${act.name} returned ${res.outcome}, which is not one of its outcomes`);
     return { outcome: res.outcome, reasonCode: res.reasonCode, writes, ruleTrace: (io as any).lastRuleTrace, decisions: (io as any).lastDecisions };
   }
+  // A native code-behind runs in the runtime's native host (R-08-14), with the same view and parameters a script gets.
+  if (act.implementation?.binding === 'native') {
+    const params: Record<string, any> = {};
+    for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
+    return run.clock.external(() => runNative(act, view, params, run.clock.iso()));
+  }
   try {
     return await reference(act, view, io);
   } catch (e) {
     if (e instanceof Hang) return scope.never();
     throw e;
   }
+}
+
+/** One attempt of a native code-behind on the runtime's native host (R-08-14). */
+async function runNative(act: any, view: any, params: Record<string, any>, now: string): Promise<ActivityResult> {
+  const host = process.env.TH_NATIVE_HOST;
+  if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
+  let res: any;
+  try {
+    const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now }),
+    });
+    res = await r.json();
+  } catch (e: any) {
+    throw new TransientFailure('NativeHostUnreachable');
+  }
+  if (res.kind === 'error') throw new ActivityFailure(res.name ?? 'NativeFailure', res.message ?? 'native failure', !!res.retryable);
+  if (!(act.outcomes ?? []).some((o: any) => o.name === res.outcome)) throw new ContractViolation('R-03-02', `${act.name} returned ${res.outcome}, which is not one of its outcomes`);
+  const writes: Record<string, any> = {};
+  for (const [k, v] of Object.entries(res.writes ?? {})) {
+    if (!coveredByAny(act.writes ?? [], k.replace(/\[\d+\]/g, '[]'))) throw new ContractViolation('R-08-14', `${act.name} wrote ${k}, outside its declared writes`);
+    writes[k] = v;
+  }
+  return { outcome: res.outcome, reasonCode: res.reasonCode ?? undefined, writes };
 }
 
 function scriptPorts(io: ActivityIO, act: any) {

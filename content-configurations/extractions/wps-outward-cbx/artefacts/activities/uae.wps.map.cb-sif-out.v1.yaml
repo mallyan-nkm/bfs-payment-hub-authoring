@@ -1,0 +1,40 @@
+kind: activity
+name: uae.wps.map.cb-sif-out.v1
+release: 1.0.0
+title: Canonical batch to the Central Bank SIF
+description: 'The source''s Central Bank SIF writer (CbxSifWriter), from the canonical
+  batch: each EDR, then the SCR. The file is kept by the native host; the context
+  keeps its name, hash and totals.'
+type: map
+reads:
+- header
+- batch
+- items[]
+- ext.uae.wps
+writes:
+- messages
+outcomes:
+- name: mapped
+  primary: true
+- name: unmappable
+effect: pure
+map:
+  direction: out
+  sourceModel: 'WPS SIF as the Central Bank receives it: EDR, EVP and SCR records'
+  roundTrip: false
+parameters:
+  bankRoutingCode:
+    type: code
+    default: '000000000'
+    description: This bank's own routing code (rule 66). The default matches no bank,
+      so a bank that has not set it refuses every file.
+implementation:
+  binding: native
+provenance:
+  origin: authored
+  status: provisional
+  clauses:
+  - TransactHub source 666f1ee
+  - UAEWPS SSM V2020-001
+  note: Extracted from the source's CbxSifWriter; its code is the runtime's port,
+    golden-tested byte for byte.

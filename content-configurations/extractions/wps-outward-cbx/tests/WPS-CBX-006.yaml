@@ -1,0 +1,25 @@
+kind: test
+id: WPS-CBX-006
+title: The leg renders the file with the source's writer and settles
+target: uae.wps.wf.salary-file-out.v1
+level: leg
+evaluationDate: '2026-11-17'
+given:
+  inbound: samples/wps-sif-valid.sif
+expect:
+  outcome: settled
+  trace:
+  - business-date:set
+  - file-checks:pass
+  - record-checks:pass
+  - record-iban:pass
+  - render:mapped
+  - submit:accepted
+  - end:settled
+bench:
+- port: uae.wps.port.wps.v1
+  simulator: uae.wps.sim.wps-outward.v1
+  scenario: accept
+- port: uae.p.port.calendar.v1
+  simulator: uae.p.sim.calendar.v1
+  scenario: accept

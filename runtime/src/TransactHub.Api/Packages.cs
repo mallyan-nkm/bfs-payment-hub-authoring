@@ -17,8 +17,30 @@ public sealed class Package
     public required JsonObject Manifest { get; init; }
 
     /// <summary>The workflow the package was exported for, at its release, and the engine it targets.</summary>
-    public string Workflow => (string?)Manifest["flows"]?[0]?["name"] ?? throw new PackageRejected("The manifest names no flow");
-    public string Release => (string?)Manifest["flows"]?[0]?["release"] ?? throw new PackageRejected("The manifest's flow has no release");
+    public string Workflow => (string?)Root["name"] ?? throw new PackageRejected("The manifest's root flow has no name");
+    public string Release => (string?)Root["release"] ?? throw new PackageRejected("The manifest's root flow has no release");
+
+    /// <summary>
+    /// The flow the package was exported for. The manifest lists every flow it carries in name order (the
+    /// legs, segments, subflows, handlers and bank hooks it needs too). The root is the one workflow that is
+    /// none of those; a package exported for a leg alone (a leg is a release of its own) has that leg as root.
+    /// No root, or two at the same tier, is refused.
+    /// </summary>
+    JsonObject Root
+    {
+        get
+        {
+            var flows = (Manifest["flows"] as JsonArray ?? throw new PackageRejected("The manifest names no flow")).OfType<JsonObject>().Where(f => (string?)f["kind"] == "workflow").ToList();
+            string[] parts = ["leg", "segment", "subflow", "handler"];
+            foreach (var tier in new Func<JsonObject, bool>[] { f => !parts.Contains((string?)f["wfKind"]), f => (string?)f["wfKind"] == "leg" })
+            {
+                var roots = flows.Where(tier).ToList();
+                if (roots.Count == 1) return roots[0];
+                if (roots.Count > 1) throw new PackageRejected($"The manifest has {roots.Count} root workflows; a package carries one: {string.Join(", ", roots.Select(r => (string?)r["name"]))}");
+            }
+            throw new PackageRejected("The manifest has no root workflow (only segments, subflows, handlers or hooks)");
+        }
+    }
     public string Target => (string?)Manifest["target"] ?? throw new PackageRejected("The manifest names no target");
     public bool Promotable => Manifest["promotable"]?.GetValue<bool>() == true && Manifest["containsSimulators"]?.GetValue<bool>() != true;
     /// <summary>The registry's scope for this package: one line per workflow and engine.</summary>

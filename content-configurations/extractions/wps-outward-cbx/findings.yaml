@@ -1,0 +1,21 @@
+findings:
+- kind: decision
+  text: The CBX checks apply only to files from the CBX channel (the source says so),
+    and validation is declarative in the studio (R-03-08). They become studio rules
+    of the CBX intake, proven against the runtime's port of the source with the golden
+    corpus (I-36); the leg keeps the factory checks.
+  source: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRecordRules.cs
+- kind: question
+  text: Rules 79 (empty line) and the EVP rules need the raw file, which the canonical
+    context does not keep. Run them at intake, before the map, or keep the raw lines
+    as a message the activity reads?
+  source: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRecordRules.cs
+- kind: question
+  text: 'Rules 82/83 need the corporate''s registered accounts: a lookup port the
+    platform does not have yet.'
+  source: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxScrRules.cs
+- kind: error-scenario
+  text: 'A bank that has not set bankRoutingCode gets 000000000 in the control record
+    of the file it sends: the Central Bank refuses it, as the source''s fail-closed
+    settings did.'
+  source: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRuleSettings.cs

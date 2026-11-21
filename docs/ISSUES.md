@@ -369,6 +369,32 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 - **Results due at the same business time are handed back in call order,** as the interpreter and DTFx do. Otherwise parallel branches swap places in the trace.
 - **A party's messages sent during an attempt are routed before the attempt ends.** Otherwise an early reply misses its await.
 
+## I-36. Native code-behind, and the source's rules as studio rules
+
+**Issue.** The plan's first vertical slice runs the TransactHub source's own WPS code inside a studio flow. The spec names a `native` binding ("code-behind in the platform language, for hot-path and regulated blocks") but says nothing of where it runs or how the studio tests it. It also requires validation to be declarative rule sets (R-03-08), while the source's CBX checks are C# classes.
+
+**Recommendation.**
+- **Where native code runs:** in the runtime's native host. The studio's interpreter and every deployed worker call it with the attempt's view, parameters and time. There is one implementation, the runtime's port of the source, which the golden corpus proves.
+- **Where validation goes:** the source's checks become studio rules, proven against the port with the same corpus, rather than a native validate activity.
+
+**Decision.** Agreed with the designer as step 2 of the plan.
+
+**What changed.**
+- **Spec:** R-08-14.
+- **Studio:** the interpreter runs a `native` activity on `TH_NATIVE_HOST`. The virtual clock waits for work outside the process, so a native call is not taken for an idle run. Deployed workers pass `TH_NATIVE_HOST` on.
+- **Runtime:**
+  - `runtime/src/TransactHub.Native` is the native host.
+  - `TransactHub.Activities.Wps/Native` holds the source's Central Bank SIF writer and its CBX checks, on the canonical context.
+  - The release API picks a package's root workflow by kind, not by position. The first flow listed was a bank hook.
+- **Extraction:** `docs/import/extract_wps_outward_cbx.py` turns the source's outward flow (`dib-wps-outward.v1`, 25 steps) and its rule and writer classes into an import bundle, kept in `content-configurations/extractions/wps-outward-cbx`. Every step and class is mapped or named as not done with the reason.
+- **Leg:** `uae.wps.wf.salary-file-out.v1` release 1.1.0 renders the file with the source's writer, behind the same interface.
+- **End to end:** `studio/test/blackbox/e2e-wps-source-slice.test.ts` covers extraction → import → maker-checker publish → branch → runtime release API (PostgreSQL) → Temporal deployment. The Central Bank SIF it produces is checked field by field.
+
+**Not done.**
+- The CBX, SSM, DE, DIF, RFA, PRC and RRI checks as studio rules.
+- Rule 79 and the EVP rules need the raw file lines, which the canonical context does not keep.
+- Rules 82 and 83 need a registered-accounts lookup.
+
 ## Not done, and why
 
 | Story | Why |

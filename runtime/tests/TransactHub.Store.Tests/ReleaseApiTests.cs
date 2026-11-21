@@ -36,7 +36,7 @@ public sealed class ReleaseApiTests(Databases dbs)
         };
         var sha = (string s) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(s)));
         var listed = string.Join("", files.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => $"  - path: {f.Key}\n    hash: {sha(f.Value)}\n"));
-        files["manifest.yaml"] = $"kind: export\ntarget: temporal\ncontainsSimulators: {(simulators ? "true" : "false")}\npromotable: {(simulators ? "false" : "true")}\nflows:\n  - name: p.wf.corporate.v1\n    release: {release}\nfiles:\n{listed}";
+        files["manifest.yaml"] = $"kind: export\ntarget: temporal\ncontainsSimulators: {(simulators ? "true" : "false")}\npromotable: {(simulators ? "false" : "true")}\nflows:\n  - name: b.hook.add-cost-centre.v1\n    kind: hook\n    release: 1.0.0\n  - name: p.wf.corporate.v1\n    kind: workflow\n    wfKind: platform\n    release: {release}\n  - name: uae.wps.wf.salary-file-out.v1\n    kind: workflow\n    wfKind: leg\n    release: 1.1.0\nfiles:\n{listed}";
         files["README.md"] = "# Export package\n";
         return files;
     }

@@ -36,9 +36,12 @@ public sealed class TemporalEngine : IEngine
     // Attempts in call order: when each is due (known once the party has answered) and whether its
     // result has been handed back. Results due at the same business time are handed back in call
     // order, as every engine does (parallel branches that end together keep their order).
+    // Kept so that each check is constant time: a batch has thousands of attempts in flight, and Temporal
+    // evaluates every waiting condition on every event.
     int calls;
+    readonly SortedSet<int> unknown = new();
+    readonly SortedSet<(long due, int seq)> pending = new();
     readonly Dictionary<int, long> dueAt = new();
-    readonly HashSet<int> released = new();
 
     public TemporalEngine(long offset, string frontDoor, Func<string, string> queueOf, long start)
     {
@@ -58,7 +61,10 @@ public sealed class TemporalEngine : IEngine
 
     async Task Until(long at, CancellationToken ct = default)
     {
-        await Workflow.DelayAsync(TimeSpan.FromMilliseconds(Math.Max(0, at - ServerNow)), ct);
+        // A time already reached needs no timer: on Temporal even a zero-length timer is a server round trip.
+        var wait = at - ServerNow;
+        if (wait > 0) await Workflow.DelayAsync(TimeSpan.FromMilliseconds(wait), ct);
+        else ct.ThrowIfCancellationRequested();
         logical = Math.Max(logical, at);
     }
     public string InstanceId => Workflow.Info.WorkflowId;
@@ -76,28 +82,50 @@ public sealed class TemporalEngine : IEngine
     {
         Log($"call {name} deadline={(J.Num(input, "deadline") is double dd ? Duration.Iso((long)dd) : "-")}");
         var seq = ++calls;
+        unknown.Add(seq);
         try { return await Attempt(name, input, seq); }
-        finally { released.Add(seq); dueAt.Remove(seq); }
+        finally
+        {
+            unknown.Remove(seq);
+            if (dueAt.Remove(seq, out var d)) pending.Remove((d, seq));
+        }
     }
 
     /// <summary>Wait until no earlier call can be due before or with this one, then until this one is due.</summary>
     async Task Release(int seq, long due)
     {
-        dueAt[seq] = due;
-        await Workflow.WaitConditionAsync(() => Enumerable.Range(1, seq - 1).All(j => released.Contains(j) || dueAt.ContainsKey(j)));
+        Known(seq, due);
+        // Every earlier call has answered (so its business time is known) ...
+        await Workflow.WaitConditionAsync(() => unknown.Count == 0 || unknown.Min > seq);
         await Until(due);
-        await Workflow.WaitConditionAsync(() => Enumerable.Range(1, seq - 1).All(j => released.Contains(j) || dueAt[j] > due));
+        // ... and nothing due before this one, or with it and called earlier, is still to be handed back.
+        await Workflow.WaitConditionAsync(() => pending.Min == (due, seq));
+    }
+
+    void Known(int seq, long due)
+    {
+        unknown.Remove(seq);
+        dueAt[seq] = due;
+        pending.Add((due, seq));
     }
 
     async Task<JsonObject> Attempt(string name, JsonObject input, int seq)
     {
         var called = logical;
-        var raw = await Workflow.ExecuteActivityAsync<string>(name, new object?[] { J.Str(input) }, new ActivityOptions
-        {
-            TaskQueue = queueOf(name),
-            StartToCloseTimeout = TimeSpan.FromHours(1),
-            RetryPolicy = new() { MaximumAttempts = 1 },
-        });
+        // The claim check is the host's own data operation, short and on this worker: a local activity, with
+        // no task-queue round trip. Every party attempt stays a full activity on its scope's task queue.
+        var raw = name == Interp.ClaimCheck
+            ? await Workflow.ExecuteLocalActivityAsync<string>(name, new object?[] { J.Str(input) }, new LocalActivityOptions
+            {
+                StartToCloseTimeout = TimeSpan.FromMinutes(5),
+                RetryPolicy = new() { MaximumAttempts = 1 },
+            })
+            : await Workflow.ExecuteActivityAsync<string>(name, new object?[] { J.Str(input) }, new ActivityOptions
+            {
+                TaskQueue = queueOf(name),
+                StartToCloseTimeout = TimeSpan.FromHours(1),
+                RetryPolicy = new() { MaximumAttempts = 1 },
+            });
         var res = (JsonObject)J.Parse(raw)!;
         if (J.P(res, "deliveries") is JsonArray d && d.Count > 0)
         {
@@ -118,7 +146,7 @@ public sealed class TemporalEngine : IEngine
                 await Release(seq, (long)dl + 1000);
                 return new JsonObject { ["kind"] = "error", ["name"] = "Timeout", ["retryable"] = true, ["message"] = "no answer before the attempt's own deadline", ["late"] = true, ["at"] = Now };
             }
-            dueAt[seq] = long.MaxValue;
+            Known(seq, long.MaxValue);
             await Workflow.WaitConditionAsync(() => false);
         }
         await Release(seq, due);

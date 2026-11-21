@@ -1,0 +1,377 @@
+items:
+- id: SRC-0001
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: decrypt_file
+    kind: activity
+  summary: 'decrypt_file: wps.DecryptSif'
+  target:
+    kind: unmapped
+  note: 'GnuPG decryption at intake: a p.* intake activity (plan P2). The studio''s
+    front door takes the file already decrypted.'
+  confidence: high
+- id: SRC-0002
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: validate_sif
+    kind: activity
+  summary: 'validate_sif: wps.ValidateSifFile'
+  target:
+    kind: artefact
+    name: uae.wps.validate.salary-file.v1
+  note: The factory file checks run here; the source's CBX and SSM checks are to become
+    studio rules (I-36).
+  confidence: high
+- id: SRC-0003
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: evaluate_approval_policy
+    kind: activity
+  summary: 'evaluate_approval_policy: wps.EvaluateApprovalPolicy'
+  target:
+    kind: artefact
+    name: p.hold.approval.v1
+  note: Approval is the platform hold; its policy rules are the bank's (P5).
+  confidence: high
+  reuse: as-is
+- id: SRC-0004
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_approval_required
+    kind: workflow
+  summary: 'check_approval_required: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0005
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: enter_payment_queue
+    kind: activity
+  summary: 'enter_payment_queue: wps.EnterPaymentQueue'
+  target:
+    kind: artefact
+    name: p.hold.approval.v1
+  note: The operations queue behind the hold.
+  confidence: high
+  reuse: as-is
+- id: SRC-0006
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: await_approval
+    kind: activity
+  summary: 'await_approval: wps.EvaluateApprovalQuorum'
+  target:
+    kind: artefact
+    name: p.hold.approval.v1
+  note: The hold waits for the decision.
+  confidence: high
+  reuse: as-is
+- id: SRC-0007
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_approval_outcome
+    kind: workflow
+  summary: 'check_approval_outcome: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0008
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: approval_not_approved
+    kind: workflow
+  summary: 'approval_not_approved: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: The lifecycle ends rejected and undoes the reservation.
+  confidence: high
+  reuse: as-is
+- id: SRC-0009
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: calculate_charges
+    kind: activity
+  summary: 'calculate_charges: wps.CalculateCharges'
+  target:
+    kind: unmapped
+  note: Charges are a p.* activity with the bank's slabs, VAT and narration as values
+    (P2, P5).
+  confidence: high
+- id: SRC-0010
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: balance_enquiry
+    kind: activity
+  summary: 'balance_enquiry: wps.BalanceEnquiry'
+  target:
+    kind: artefact
+    name: p.reserve.funds.v1
+  note: The source enquires and later posts; the lifecycle reserves funds (review
+    issue 3).
+  confidence: high
+  reuse: as-is
+- id: SRC-0011
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_balance
+    kind: workflow
+  summary: 'check_balance: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0012
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_balance_proceeded
+    kind: workflow
+  summary: 'check_balance_proceeded: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0013
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: core_posting
+    kind: activity
+  summary: 'core_posting: wps.CorePosting'
+  target:
+    kind: artefact
+    name: p.post.accounting.v1
+  note: Posting through the core-banking port; the bank's adapter is a port binding
+    (P5).
+  confidence: high
+  reuse: as-is
+- id: SRC-0014
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_posted
+    kind: workflow
+  summary: 'check_posted: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0015
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_posting_unknown
+    kind: workflow
+  summary: 'check_posting_unknown: NoOp'
+  target:
+    kind: artefact
+    name: p.post.verify.v1
+  note: An unknown posting is verified, never guessed.
+  confidence: high
+  reuse: as-is
+- id: SRC-0016
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: reconcile_posting
+    kind: activity
+  summary: 'reconcile_posting: wps.ReconcilePosting'
+  target:
+    kind: artefact
+    name: p.post.verify.v1
+  note: Verification of the posting.
+  confidence: high
+  reuse: as-is
+- id: SRC-0017
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_reconciled
+    kind: workflow
+  summary: 'check_reconciled: NoOp'
+  target:
+    kind: artefact
+    name: p.wf.corporate.v1
+  note: A branch of the platform lifecycle.
+  confidence: high
+  reuse: as-is
+- id: SRC-0018
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: end_reconciliation_required
+    kind: workflow
+  summary: 'end_reconciliation_required: NoOp'
+  target:
+    kind: artefact
+    name: p.hold.repair.v1
+  note: An unreconciled posting goes to repair.
+  confidence: high
+  reuse: as-is
+- id: SRC-0019
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: submit_to_cb
+    kind: activity
+  summary: 'submit_to_cb: wps.SubmitSifToCb'
+  target:
+    kind: artefact
+    name: uae.wps.map.cb-sif-out.v1
+  note: The SIF is rendered by the source's writer; it is sent by the factory composite
+    uae.wps.exchange.submit-salary-file.v1.
+  confidence: high
+- id: SRC-0020
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: project_cb_message
+    kind: activity
+  summary: 'project_cb_message: ProjectMessagePayload'
+  target:
+    kind: infrastructure
+  note: 'A projection for screens: in the runtime, facts in the store and their projection.'
+  confidence: high
+- id: SRC-0021
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: await_cb_response
+    kind: activity
+  summary: 'await_cb_response: wps.ProcessCbResponse'
+  target:
+    kind: artefact
+    name: uae.wps.exchange.submit-salary-file.v1
+  note: The composite sends, waits for the acknowledgement and reads it.
+  confidence: high
+  reuse: as-is
+- id: SRC-0022
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: check_cb_response
+    kind: workflow
+  summary: 'check_cb_response: NoOp'
+  target:
+    kind: artefact
+    name: uae.wps.wf.salary-file-out.v1
+  note: The leg handles the acknowledgement's outcomes.
+  confidence: high
+- id: SRC-0023
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: notify_rejection
+    kind: activity
+  summary: 'notify_rejection: wps.NotifyChannelRejected'
+  target:
+    kind: artefact
+    name: p.notify.channel.v1
+  note: The channel is told.
+  confidence: high
+  reuse: as-is
+- id: SRC-0024
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: reverse_posting
+    kind: activity
+  summary: 'reverse_posting: wps.ReverseCorePosting'
+  target:
+    kind: artefact
+    name: p.post.reverse.v1
+  note: Compensation of the posting.
+  confidence: high
+  reuse: as-is
+- id: SRC-0025
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: notify_acceptance
+    kind: activity
+  summary: 'notify_acceptance: wps.NotifyChannelAccepted'
+  target:
+    kind: artefact
+    name: p.notify.channel.v1
+  note: The channel is told.
+  confidence: high
+  reuse: as-is
+- id: SRC-0026
+  source:
+    path: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxFileNameRules.cs
+    symbol: CbxFileNameRules
+    kind: rule
+  summary: CbxFileNameRules
+  target:
+    kind: unmapped
+  note: 'File-name rules 1–3 and timestamp rules 5–7. To become studio rules of the
+    CBX intake (R-03-08: validation is declarative), proven against the runtime''s
+    port with the golden corpus (I-36).'
+  confidence: high
+- id: SRC-0027
+  source:
+    path: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRecordRules.cs
+    symbol: CbxRecordRules
+    kind: rule
+  summary: CbxRecordRules
+  target:
+    kind: unmapped
+  note: Employee record rules 4/5, 7, 14, 32, 36, 46/47, 54–60, 77, 79. To become
+    studio rules (I-36); EVP and rule 79 need the raw file lines, which the canonical
+    context does not keep.
+  confidence: high
+- id: SRC-0028
+  source:
+    path: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxScrRules.cs
+    symbol: CbxScrRules
+    kind: rule
+  summary: CbxScrRules
+  target:
+    kind: unmapped
+  note: Control record rules 66 and 81–83. To become studio rules (I-36); 82/83 need
+    the corporate's registered accounts, a lookup the platform does not have yet.
+  confidence: high
+- id: SRC-0029
+  source:
+    path: services/shared/dotnet/PaymentHub.Shared/Domain/Wps/CbxRuleSettings.cs
+    symbol: CbxRuleSettings
+    kind: rule
+  summary: CbxRuleSettings
+  target:
+    kind: unmapped
+  note: 'The bank''s values for those rules: parameters of the studio rules once they
+    exist (I-36).'
+  confidence: high
+- id: SRC-0030
+  source:
+    path: services/activities/platform/PaymentHub.Activities.Platform.Wps/CbxSifWriter.cs
+    symbol: CbxSifWriter
+    kind: map
+  summary: CbxSifWriter
+  target:
+    kind: artefact
+    name: uae.wps.map.cb-sif-out.v1
+  note: The Central Bank SIF writer
+  confidence: high
+- id: SRC-0031
+  source:
+    path: dsl/workflows/dib-wps-outward.v1.workflow.json
+    symbol: WPS-CBX-006
+    kind: test
+  summary: The flow renders and submits the file, as test WPS-CBX-006
+  target:
+    kind: test
+    name: WPS-CBX-006
+  note: The source's writer in the leg; the same files are in the golden corpus.
+  confidence: high
+- id: SRC-0032
+  source:
+    path: spec/examples/bank/configuration-set.yaml
+    symbol: values
+    kind: config
+  summary: The example bank's routing code for the new parameters
+  target:
+    kind: configuration
+    name: example-bank@1.1.0
+  note: 'Synthetic: the bank''s real values stay in its own repository (D5).'
+  confidence: high

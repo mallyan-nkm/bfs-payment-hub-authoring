@@ -44,6 +44,7 @@ Both languages get the same interface, injected. Nothing else is reachable.
 | R-08-11 | AI-authored content MUST record provenance: model, prompt reference, inputs and scheme clauses. | Schema `common#provenance` (L00) |
 | R-08-12 | AI output MUST pass every gate before a person reviews it: type check, sandbox lints, contract enforcement, its own tests, simulator self-check. | Authoring pipeline test (C16) |
 | R-08-13 | A person MUST approve every AI-authored rule and script. Approval is by behaviour: test results and context diffs. | Maker-checker (C17) |
+| R-08-14 | A `native` code-behind runs in the runtime's native host, never in the studio. The studio's interpreter, and every deployed worker, call it with the attempt's view (its reads only), its parameter values as configured and the engine's time, over the native protocol (`POST /native`, `TH_NATIVE_HOST`). Its outcome MUST be one of the activity's outcomes and its writes MUST be within its declared writes. Without a native host the attempt fails with `NativeHostUnavailable`, never with a guessed result. | Native tests (`studio/test/native.test.ts`, `runtime/tests/.../NativeHostTests.cs`) |
 
 ## 8.5 AI authoring loop
 
