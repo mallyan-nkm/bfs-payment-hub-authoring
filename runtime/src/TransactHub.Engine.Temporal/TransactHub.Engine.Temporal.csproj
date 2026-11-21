@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TransactHub.Interpreter\TransactHub.Interpreter.csproj" />
+    <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
   </ItemGroup>
 
   <ItemGroup>

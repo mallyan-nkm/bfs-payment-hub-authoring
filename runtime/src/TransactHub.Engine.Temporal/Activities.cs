@@ -12,15 +12,16 @@ namespace TransactHub.Engine.Temporal;
 /// </summary>
 public sealed class Host
 {
-    public readonly ClaimCheckStore Store = new();
+    public readonly IClaimCheck Store;
     public readonly IParty Party;
     public readonly Deployment Dep;
     public int ActivityRuns;
 
-    public Host(IParty party, Deployment dep)
+    public Host(IParty party, Deployment dep, IClaimCheck? store = null)
     {
         Party = party;
         Dep = dep;
+        Store = store ?? new MemoryClaimCheck();
     }
 
     /// <summary>The one activity type of every task queue: it serves `name@release`, the claim check and handlers.</summary>
@@ -31,7 +32,7 @@ public sealed class Host
         var name = ctx.Info.ActivityType;
         var input = (JsonObject)J.Parse(ctx.PayloadConverter.ToValue<string>(args[0]))!;
         Interlocked.Increment(ref ActivityRuns);
-        if (name == Interp.ClaimCheck) return J.Str(ClaimCheckOp(input));
+        if (name == Interp.ClaimCheck) return J.Str(await ClaimCheckOp(input));
         if (name == FrontDoorWorkflow.HandlerActivity) return J.Str(await RunHandler(input));
         return J.Str(await Attempt(input));
     }
@@ -75,7 +76,7 @@ public sealed class Host
                 ["kind"] = "result", ["outcome"] = J.S(res, "outcome"), ["reasonCode"] = J.S(res, "reasonCode"), ["stateWrites"] = stateWrites,
                 ["stagedPaths"] = J.Arr(staged.Select(w => w.Item1)), ["decisions"] = J.Clone(J.P(res, "decisions")),
             };
-            if (staged.Count > 0) outp["token"] = Store.Stage(payloadRef, staged);
+            if (staged.Count > 0) outp["token"] = await Store.Stage(payloadRef, staged);
             if (J.P(res, "ruleTrace") is JsonNode rt)
             {
                 lock (Store.RuleTraces) Store.RuleTraces[$"{payloadRef}|{step}|{J.Num(a, "call")}"] = J.Clone(rt);
@@ -87,13 +88,13 @@ public sealed class Host
         return outp;
     }
 
-    public JsonObject ClaimCheckOp(JsonObject a)
+    public async Task<JsonObject> ClaimCheckOp(JsonObject a)
     {
         switch (J.S(a, "op"))
         {
-            case "commit": Store.Commit(J.S(a, "token")!); return new JsonObject { ["ok"] = true };
-            case "fork": Store.Fork(J.S(a, "from")!, J.S(a, "to")!); return new JsonObject { ["ok"] = true };
-            case "copy": Store.Copy(J.S(a, "from")!, J.S(a, "to")!, J.Strings(J.P(a, "paths"))); return new JsonObject { ["ok"] = true };
+            case "commit": await Store.Commit(J.S(a, "token")!); return new JsonObject { ["ok"] = true };
+            case "fork": await Store.Fork(J.S(a, "from")!, J.S(a, "to")!); return new JsonObject { ["ok"] = true };
+            case "copy": await Store.Copy(J.S(a, "from")!, J.S(a, "to")!, J.Strings(J.P(a, "paths"))); return new JsonObject { ["ok"] = true };
             case "count": return new JsonObject { ["count"] = Store.Count(J.S(a, "ref")!, J.S(a, "path")!) };
             case "diff":
                 var x = Store.Full(J.P(a, "aState"), J.S(a, "aRef")!);
@@ -108,7 +109,7 @@ public sealed class Host
     {
         var id = J.S(req, "id")!;
         var (state, payload) = ClaimCheckStore.Split((JsonObject)J.Clone(J.P(req, "ctx"))!);
-        Store.Create($"{id}#ctx", payload);
+        await Store.Create($"{id}#ctx", payload);
         var inp = new JsonObject { ["kind"] = "handler", ["doc"] = J.S(req, "doc"), ["state"] = state, ["payloadRef"] = $"{id}#ctx", ["partyKey"] = id };
         var eng = new HandlerEngine(this, id, (long)J.Num(req, "now")!.Value);
         var interp = new Interp(eng, Dep);
@@ -133,7 +134,7 @@ public sealed class HandlerEngine(Host host, string id, long start) : IEngine
 
     public async Task<JsonObject> Activity(string name, JsonObject input)
     {
-        if (name == Interp.ClaimCheck) return host.ClaimCheckOp(input);
+        if (name == Interp.ClaimCheck) return await host.ClaimCheckOp(input);
         var res = await host.Attempt(input);
         foreach (var d in J.A(res, "deliveries")) Deliveries.Add(J.Clone(d));
         res.Remove("deliveries");

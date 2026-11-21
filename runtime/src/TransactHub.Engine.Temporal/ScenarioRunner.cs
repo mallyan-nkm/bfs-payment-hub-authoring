@@ -6,6 +6,7 @@ using Temporalio.Client;
 using Temporalio.Testing;
 using Temporalio.Worker;
 using TransactHub.Engines;
+using TransactHub.Store;
 
 namespace TransactHub.Engine.Temporal;
 
@@ -57,7 +58,15 @@ public sealed class ScenarioRunner
             ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)
             : new PartyClient(J.S(input, "studioRoot")!);
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
-        var host = new Host(party, dep);
+        // A deployment keeps every payload in the store (plan W2); a kit run keeps it in memory.
+        var storeOpts = StoreFromEnvironment();
+        var durable = storeOpts is null ? null : new DurableClaimCheck(storeOpts);
+        if (storeOpts is not null)
+        {
+            await using var db = StoreDbContext.Open(storeOpts);
+            await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+        }
+        var host = new Host(party, dep, durable);
 
         // A deployment puts each activity on the task queue of its scope (R-09-05); a kit run, on one.
         var queues = J.P(input, "queues") as JsonObject;
@@ -99,18 +108,21 @@ public sealed class ScenarioRunner
         var signals = new JsonArray();
         var deliveries = new JsonArray();
         var roots = new List<(string label, string id)>();
-        JsonObject rootInput(string id, string docKey, JsonObject c)
+        var tenant = J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant";
+        async Task<JsonObject> rootInput(string id, string docKey, JsonObject c)
         {
             var (state, payload) = ClaimCheckStore.Split(c);
-            host.Store.Create($"{id}#ctx", payload);
+            var header = J.P(state, "header");
+            var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
+            await host.Store.Create($"{id}#ctx", payload, new AcceptInfo(tenant, J.S(header, "scheme") ?? docKey.Split('.')[0], direction, docKey));
             var inp = new JsonObject { ["kind"] = "workflow", ["doc"] = docKey, ["state"] = state, ["payloadRef"] = $"{id}#ctx" };
             if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
             return inp;
         }
-        void root(string label, string id, string docKey, long at, JsonObject c)
+        async Task root(string label, string id, string docKey, long at, JsonObject c)
         {
             roots.Add((label, id));
-            starts.Add(new JsonObject { ["id"] = id, ["at"] = at, ["input"] = rootInput(id, docKey, c) });
+            starts.Add(new JsonObject { ["id"] = id, ["at"] = at, ["input"] = await rootInput(id, docKey, c) });
             foreach (var s in J.A(config, "signals"))
                 signals.Add(new JsonObject { ["id"] = id, ["at"] = start + Duration.Ms(J.S(s, "after")!), ["signal"] = J.S(s, "signal") });
         }
@@ -123,7 +135,7 @@ public sealed class ScenarioRunner
             foreach (var s in instances)
             {
                 var label = J.S(s, "label")!;
-                root(label, $"{label}-{++n}-{runId}", $"{workflow}@{J.S(s, "workflowRelease")}", start + Duration.Ms(J.S(s, "at") ?? "PT0S"), (JsonObject)J.Clone(ctx)!);
+                await root(label, $"{label}-{++n}-{runId}", $"{workflow}@{J.S(s, "workflowRelease")}", start + Duration.Ms(J.S(s, "at") ?? "PT0S"), (JsonObject)J.Clone(ctx)!);
             }
         }
         else if (handlerOnly)
@@ -134,7 +146,7 @@ public sealed class ScenarioRunner
         {
             firstMessages(await party.Call(new JsonObject { ["op"] = "start", ["now"] = start, ["conversation"] = J.S(J.P(ctx, "header"), "conversation") ?? "conv-1" }));
             var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
-            root("root", $"root-{runId}", $"{workflow}@{J.S(doc, "release")}", start, ctx);
+            await root("root", $"root-{runId}", $"{workflow}@{J.S(doc, "release")}", start, ctx);
         }
 
         var fdInput = new JsonObject
@@ -204,6 +216,8 @@ public sealed class ScenarioRunner
             }
         }
         var sent = await party.Call(new JsonObject { ["op"] = "sent" });
+        JsonObject? storeReport = null;
+        if (storeOpts is not null && durable is not null) storeReport = await StoreReport(storeOpts, durable);
         stop.Cancel();
         foreach (var (_, t) in workersRunning) { try { await t; } catch (OperationCanceledException) { } }
 
@@ -229,7 +243,43 @@ public sealed class ScenarioRunner
                 ["droppedMessages"] = 0,
                 ["virtualEnd"] = Duration.Iso((long)(J.Num(fdOut, "end") ?? start)),
                 ["log"] = J.Arr(log),
+                ["store"] = storeReport,
             },
+        };
+    }
+
+    /// <summary>The store a deployment uses: TH_STORE_PROVIDER (SqlServer or PostgreSql) and TH_STORE_CONNECTION.</summary>
+    public static StoreOptions? StoreFromEnvironment()
+    {
+        var p = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
+        var c = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
+        return string.IsNullOrEmpty(p) || string.IsNullOrEmpty(c) ? null : new StoreOptions(Enum.Parse<StoreProvider>(p, true), c);
+    }
+
+    /// <summary>What the store holds after the run: accepted payments, and every payload rebuilt from its facts with an unbroken chain.</summary>
+    static async Task<JsonObject> StoreReport(StoreOptions o, DurableClaimCheck cc)
+    {
+        await using var db = StoreDbContext.Open(o);
+        var facts = new FactLog(db);
+        var refs = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+            db.Facts.Where(f => f.SubjectKind == DurableClaimCheck.Kind).Select(f => f.SubjectId).Distinct());
+        var chains = new JsonArray();
+        var allOk = true;
+        foreach (var r in refs.Order(StringComparer.Ordinal))
+        {
+            var v = await facts.Verify(r);
+            var rebuilt = await DurableClaimCheck.Load(o, r);
+            var same = CanonicalJson.Of(rebuilt) == CanonicalJson.Of(cc.Full(null, r));
+            allOk &= v.Ok && same;
+            chains.Add(new JsonObject { ["ref"] = r, ["facts"] = v.Facts, ["chain"] = v.Ok, ["rebuilt"] = same });
+        }
+        return new JsonObject
+        {
+            ["provider"] = o.Provider.ToString(),
+            ["bulks"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Bulks),
+            ["payments"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Payments),
+            ["parties"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Parties),
+            ["payloads"] = chains, ["ok"] = allOk,
         };
     }
 

@@ -224,6 +224,9 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     }
     const obs = JSON.parse(obsLine.slice('OBSERVATION '.length));
     for (const l of r.stderr.split('\n').map((x) => x.trim()).filter(Boolean)) log.push(`[engine] ${l}`);
+    // A runtime engine with a store (Temporal with TH_STORE_PROVIDER): what the database holds after the run.
+    const st = obs.engine?.store;
+    if (st) log.push(`store: ${st.provider} holds ${st.bulks} bulk(s), ${st.payments} payment(s), ${st.parties} part(ies); ${st.payloads.length} payload(s) rebuilt from their facts, chains ${st.payloads.every((x: any) => x.chain) ? 'unbroken' : 'BROKEN'}, ${st.ok ? 'all match the run' : 'NOT the run'}`);
     const root = obs.instances?.[0] ?? {};
     const workers: DeployResult['workers'] = [];
     for (const pr of procs) {

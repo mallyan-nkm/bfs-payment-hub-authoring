@@ -39,7 +39,7 @@ beforeAll(async () => {
 }, 600000);
 afterAll(() => server?.stop());
 
-async function deploy(label: string, sample = SAMPLE, extra: any[] = []) {
+async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEnv: Record<string, string> = {}) {
   const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
   const file = path.join(work, `${label}.zip`);
@@ -48,7 +48,7 @@ async function deploy(label: string, sample = SAMPLE, extra: any[] = []) {
   // Asynchronous, so the studio server's kept-alive connections stay open while Temporal runs.
   const out = await new Promise<string>((resolve) => {
     let text = '';
-    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '' } });
+    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_DATA_ROOT: '', ...extraEnv } });
     const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
     child.stdout.on('data', (d) => (text += d));
     child.stderr.on('data', (d) => (text += d));
@@ -91,6 +91,46 @@ describe('the WPS salary file on Temporal', () => {
       const d = await deploy(what.replace(/\W+/g, '-'), sample, override);
       expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
       expect(d.outcome).toBe(expected.data.outcome);
+    }, 600000);
+  }
+
+  // The payments of a deployment live in the database (plan W2): the salary file is accepted into the
+  // ISO 20022 tables, and every change to its payload is a fact; rebuilt from the facts, each payload
+  // is what the run ended with. The same on PostgreSQL and on SQL Server.
+  const PASSWORD = 'Th-Test-Only-1234';
+  const docker = (...a: string[]) => spawnSync('docker', a, { encoding: 'utf8' });
+  const started: string[] = [];
+  afterAll(() => { for (const c of started) docker('rm', '-f', c); });
+  async function database(kind: 'PostgreSql' | 'SqlServer') {
+    const name = `th-e2e-${kind.toLowerCase()}-${process.pid}`;
+    const run = kind === 'PostgreSql'
+      ? docker('run', '-d', '--name', name, '-e', `POSTGRES_PASSWORD=${PASSWORD}`, '-p', '127.0.0.1::5432', 'postgres:16-alpine')
+      : docker('run', '-d', '--name', name, '-e', 'ACCEPT_EULA=Y', '-e', `MSSQL_SA_PASSWORD=${PASSWORD}`, '-p', '127.0.0.1::1433', 'mcr.microsoft.com/mssql/server:2022-latest');
+    if (run.status !== 0) throw new Error(run.stderr);
+    started.push(name);
+    const port = docker('port', name).stdout.split('\n')[0].split(':').pop()!.trim();
+    const connection = kind === 'PostgreSql'
+      ? `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_e2e`
+      : `Server=127.0.0.1,${port};User Id=sa;Password=${PASSWORD};TrustServerCertificate=true;Database=th_e2e`;
+    // Ready when the server answers a query.
+    for (let i = 0; i < 90; i++) {
+      const probe = kind === 'PostgreSql'
+        ? docker('exec', name, 'pg_isready', '-U', 'postgres')
+        : docker('exec', name, '/opt/mssql-tools18/bin/sqlcmd', '-C', '-S', 'localhost', '-U', 'sa', '-P', PASSWORD, '-Q', 'SELECT 1');
+      if (probe.status === 0) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return { TH_STORE_PROVIDER: kind, TH_STORE_CONNECTION: connection };
+  }
+
+  for (const kind of ['PostgreSql', 'SqlServer'] as const) {
+    it(`keeps the payment in the database on ${kind}: accepted as ISO 20022, every payload change a fact`, async () => {
+      const env = await database(kind);
+      const d = await deploy(`store-${kind}`, SAMPLE, [], env);
+      expect(d.outcome, d.out.slice(-2500)).toBe('settled');
+      expect(d.trace).toEqual(SETTLED);
+      const line = /^store: .*$/m.exec(d.out)?.[0] ?? '';
+      expect(line, d.out.slice(-2500)).toMatch(new RegExp(`^store: ${kind} holds 1 bulk\\(s\\), 1 payment\\(s\\), \\d+ part\\(ies\\); \\d+ payload\\(s\\) rebuilt from their facts, chains unbroken, all match the run$`));
     }, 600000);
   }
 });
