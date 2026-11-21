@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TransactHub.Model/TransactHub.Model.csproj" />
+    <Project Path="src/TransactHub.Store.Migrations.PostgreSql/TransactHub.Store.Migrations.PostgreSql.csproj" />
+    <Project Path="src/TransactHub.Store.Migrations.SqlServer/TransactHub.Store.Migrations.SqlServer.csproj" />
+    <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
+  </Folder>
+</Solution>
