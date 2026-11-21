@@ -4,6 +4,8 @@ Status: 17 November 2026. From draft 0.1 to draft 0.2. Normative words follow RF
 
 This file is for a build that has already started from draft 0.1. It says what changed, why, which files to replace, and what to do about work already done. Nothing outside this delta changed.
 
+Since this delta, plan phase P6 removed the instant-payments scheme from the factory (Issue I-37 in `docs/ISSUES.md`). The files of that scheme named below no longer exist; this record of draft 0.2 is kept as it was.
+
 ## 1. Why
 
 - **Issue.** In draft 0.1 a designer who placed "submit the salary file" also had to place the wait for the acknowledgement and the step that reads it. That is plumbing. It differs by scheme and by how a scheme answers, and a designer who forgets it, or forgets the inquiry after an unknown send, builds a wrong payment.

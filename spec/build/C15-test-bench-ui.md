@@ -47,7 +47,7 @@ Size: 3 SP. Phase 2. Branch: `story/c15-s1-bench-set-up`.
 
 **Definition of Success**
 
-- The bench of AANI-OUT-005, with the no-reply scenario, runs to its end on the virtual clock and ends pending.
+- The bench of WPS-OUT-003, with the no-reply scenario, runs to its end on the virtual clock and ends pending.
 
 ### C15-S2 Run and step
 
@@ -91,7 +91,7 @@ Size: 5 SP. Phase 3. Branch: `story/c15-s3-timeline-and-context-diff`.
 
 **Definition of Success**
 
-- The timeline of AANI-OUT-003 shows three attempts and the backoff between them.
+- The timeline of P-RES-001 shows three attempts and the backoff between them.
 
 ### C15-S4 Assertions and saved tests
 

@@ -94,7 +94,7 @@ Size: 3 SP. Phase 2. Branch: `story/c04-s3-effects-and-budgets`.
 
 **Definition of Success**
 
-- Raising the attempt timeout of uae.aani.exchange.send-credit.v1 above the PT8S deadline of uae.aani.wf.credit-out.v1 is flagged at the send step.
+- Raising the attempt timeout of the reserve step of p.wf.commercial.v1 above its PT10S deadline is flagged at the reserve step.
 
 ### C04-S4 Ports, portability and step ids
 

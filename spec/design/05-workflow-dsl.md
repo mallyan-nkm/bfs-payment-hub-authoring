@@ -45,9 +45,9 @@ An activity never sits waiting for a reply that comes later, and the designer ne
 
 | The reply comes | Underneath the block | Example |
 | --- | --- | --- |
-| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply | `uae.aani.exchange.send-credit.v1`, inside the Aani send composite |
+| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply | `uae.wps.exchange.send-salary-file.v1`, inside the WPS submit composite |
 | Later, as its own message | A send step, then an `await` on that message, then a map that reads it | `uae.wps.sub.submit-salary-file.v1` |
-| Only when asked | A `loop` with `every` around an inquiry activity | The inquiry in `uae.aani.sub.submit-credit.v1` |
+| Only when asked | A `loop` with `every` around an inquiry activity | Kit scenario CK-UNKNOWN-01. No factory scheme has one (Issue I-38 in `docs/ISSUES.md`) |
 | From a person | A `hold` block, which was always one block | `p.hold.repair.v1` |
 
 The reply reaches the workflow through the front door, not through the activity that sent the request. The scheme's dispatch table marks the message `deliver` and names its correlation key; the front door finds the instance and hands it the message. On an engine that hand-over is a signal or an external event (Part 9). In this DSL the word signal is kept for the four operator controls.
@@ -211,16 +211,17 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L31 | `await` and `return` appear only in a subflow; `block` appears only in the expanded form | Yes |
 | L32 | An `await` with no timeout has a reply time to take | Yes |
 | L33 | A start message routes: its kind, direction and segment select one platform workflow, and its leg fills that workflow's slot | Yes |
+| L34 | Factory packs: every folder under `factory/` is a pack the inventory lists, every listed pack has a folder, and every artefact sits in its own scope's folder | Yes |
 
 ## 5.8 Examples
 
 - Platform workflow with a slot, hook points and `finally`: `factory/p/workflows/p.wf.corporate.v1.yaml`.
 - Inward platform workflow with a refuse slot: `factory/p/workflows/p.wf.inward.v1.yaml`.
-- Leg with a short budget and a deadline, as the designer writes it: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml`.
-- Subflow with a wait for a later reply and a bounded inquiry loop: `factory/uae.aani/workflows/uae.aani.sub.submit-credit.v1.yaml`.
+- Leg that calls composites, as the designer writes it: `factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml`.
+- Subflow with a wait for a later reply: `factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml`.
 - Subflow with two waits on a business calendar: `factory/uae.wps/workflows/uae.wps.sub.request-refund.v1.yaml`.
 - Expanded forms: `expanded/`.
-- Handler: `factory/uae.aani/workflows/uae.aani.handler.status-inquiry-in.v1.yaml`.
+- Handler: none in the factory; kit scenario CK-HANDLER-01 (Issue I-38 in `docs/ISSUES.md`).
 - Dispatch table: `factory/uae.wps/scheme.yaml`.
 
 ## 5.9 Open decisions touching this part

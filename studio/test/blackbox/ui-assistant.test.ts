@@ -79,7 +79,7 @@ describe('the assistant beside every surface', () => {
     await expect.poll(async () => (await pending.textContent()) ?? '').toMatch(/Write the days-in-period rule with three examples/);
     await expect.poll(async () => (await pending.textContent()) ?? '').toMatch(/tests: pass/);
     // Nothing changed yet.
-    expect(await page.getByLabel('Name', { exact: true }).inputValue()).toBe('uae.aani.rule.new.v1');
+    expect(await page.getByLabel('Name', { exact: true }).inputValue()).toBe('uae.wps.rule.new.v1');
     await expect.poll(async () => (await dock().textContent()) ?? '').toMatch(/Searched the catalogue for "wps"/);
     await pending.getByRole('button', { name: 'Allow once' }).click();
     await expect.poll(() => page.getByLabel('Name', { exact: true }).inputValue()).toBe(RULE.name);

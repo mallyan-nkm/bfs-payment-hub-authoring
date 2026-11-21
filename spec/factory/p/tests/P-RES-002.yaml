@@ -15,22 +15,32 @@ given:
     header:
       paymentId: P-1
       endToEndId: E2E-1
+      fileId: F-1
       kind: payment
       direction: outward
-      segment: commercial
-      scheme: uae.aani
+      segment: corporate
+      scheme: uae.wps
     payment:
       instructedAmount:
         value: 1500
         currency: AED
       debtorAccount:
         iban: AE070331234567890123456
-      creditorAccount:
-        iban: AE070331234567890123456
       debtorAgent:
         clearingMemberId: '302620122'
-      creditorAgent:
-        clearingMemberId: '203320101'
+    batch:
+      id: F-1
+      numberOfTransactions: 1
+      controlSum: 1500
+    items:
+      - payment:
+          instructedAmount:
+            value: 1500
+            currency: AED
+          creditorAccount:
+            iban: AE070331234567890123456
+          creditorAgent:
+            clearingMemberId: '203320101'
 expect:
   outcome: insufficient
   attempts:

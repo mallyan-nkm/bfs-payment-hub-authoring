@@ -55,7 +55,7 @@ Size: 5 SP. Phase 3. Branch: `story/c13-s1-rule-editor`.
 
 **Definition of Success**
 
-- uae.aani.rule.amount-within-limit.v1 is rebuilt in the editor and saves to a document with the same hash.
+- uae.wps.rule.agent-is-this-bank.v1 is rebuilt in the editor and saves to a document with the same hash.
 
 ### C13-S2 Decision table editor
 

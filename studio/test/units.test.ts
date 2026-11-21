@@ -147,7 +147,7 @@ describe.skipIf(!dotnet)('the deploy runner, in process', () => {
   }, 300000);
 
   it('refuses a workflow that is not in the package, and a package with no workers', async () => {
-    await expect(deploy({ packagePath: zipPath, workflow: 'uae.aani.wf.credit-out.v1', studioRoot: env.studioRoot, environment: environment('accept'), inbound })).rejects.toThrow();
+    await expect(deploy({ packagePath: zipPath, workflow: 'uae.wps.wf.not-in-package.v1', studioRoot: env.studioRoot, environment: environment('accept'), inbound })).rejects.toThrow();
     const empty = path.join(dir, 'empty');
     fs.mkdirSync(empty);
     await expect(deploy({ packagePath: empty, workflow: 'x', studioRoot: env.studioRoot, environment: environment('accept') })).rejects.toThrow();

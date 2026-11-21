@@ -295,105 +295,6 @@ packs:
         kind: workflow
       - name: uae.wps.wf.salary-file-out.v1
         kind: workflow
-  - scope: uae.aani
-    packType: shared
-    counts:
-      activity: 12
-      port: 2
-      rule: 2
-      ruleset: 1
-      scheme: 1
-      simulator: 3
-      test: 16
-      workflow: 6
-    total: 43
-    artefacts:
-      - name: uae.aani.enrich.proxy-resolve.v1
-        kind: activity
-      - name: uae.aani.exchange.inquire-status.v1
-        kind: activity
-      - name: uae.aani.exchange.respond-status.v1
-        kind: activity
-      - name: uae.aani.exchange.send-credit.v1
-        kind: activity
-      - name: uae.aani.exchange.submit-credit.v1
-        kind: activity
-      - name: uae.aani.map.credit-in.v1
-        kind: activity
-      - name: uae.aani.map.credit-out.v1
-        kind: activity
-      - name: uae.aani.map.status-in.v1
-        kind: activity
-      - name: uae.aani.map.status-out.v1
-        kind: activity
-      - name: uae.aani.map.status-request-in.v1
-        kind: activity
-      - name: uae.aani.reserve.prefund-check.v1
-        kind: activity
-      - name: uae.aani.validate.credit.v1
-        kind: activity
-      - name: uae.aani.port.proxy.v1
-        kind: port
-      - name: uae.aani.port.switch.v1
-        kind: port
-      - name: uae.aani.rule.amount-within-limit.v1
-        kind: rule
-      - name: uae.aani.rule.creditor-iban-or-proxy.v1
-        kind: rule
-      - name: uae.aani.ruleset.credit.v1
-        kind: ruleset
-      - name: uae.aani.scheme
-        kind: scheme
-      - name: uae.aani.sim.proxy.v1
-        kind: simulator
-      - name: uae.aani.sim.switch-inward.v1
-        kind: simulator
-      - name: uae.aani.sim.switch-outward.v1
-        kind: simulator
-      - name: AANI-EXC-001
-        kind: test
-      - name: AANI-EXC-002
-        kind: test
-      - name: AANI-HND-001
-        kind: test
-      - name: AANI-IN-001
-        kind: test
-      - name: AANI-OUT-001
-        kind: test
-      - name: AANI-OUT-002
-        kind: test
-      - name: AANI-OUT-003
-        kind: test
-      - name: AANI-OUT-004
-        kind: test
-      - name: AANI-OUT-005
-        kind: test
-      - name: AANI-OUT-006
-        kind: test
-      - name: AANI-OUT-007
-        kind: test
-      - name: AANI-OUT-008
-        kind: test
-      - name: AANI-RULE-001
-        kind: test
-      - name: AANI-RULE-002
-        kind: test
-      - name: AANI-RULE-003
-        kind: test
-      - name: AANI-RULE-004
-        kind: test
-      - name: uae.aani.handler.proxy-lookup.v1
-        kind: workflow
-      - name: uae.aani.handler.status-inquiry-in.v1
-        kind: workflow
-      - name: uae.aani.sub.submit-credit.v1
-        kind: workflow
-      - name: uae.aani.wf.credit-in.v1
-        kind: workflow
-      - name: uae.aani.wf.credit-out.v1
-        kind: workflow
-      - name: uae.aani.wf.credit-refuse.v1
-        kind: workflow
   - scope: b
     packType: bank
     counts:
@@ -404,8 +305,8 @@ packs:
       rule: 1
       ruleset: 1
       simulator: 2
-      test: 2
-    total: 15
+      test: 4
+    total: 17
     artefacts:
       - name: b.enrich.cost-centre.v1
         kind: activity
@@ -436,4 +337,8 @@ packs:
       - name: BANK-HOOK-001
         kind: test
       - name: BANK-HOOK-002
+        kind: test
+      - name: BANK-LIM-001
+        kind: test
+      - name: BANK-LIM-002
         kind: test

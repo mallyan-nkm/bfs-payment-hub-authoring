@@ -45,7 +45,7 @@ Size: 5 SP. Phase 2. Branch: `story/c11-s1-rule-set-and-activity-tests`.
 
 **Definition of Success**
 
-- AANI-RULE-001 and 002 and P-RES-001 and 002 pass.
+- BANK-LIM-001 and 002 and P-RES-001 and 002 pass.
 
 ### C11-S2 Leg and end-to-end tests
 
@@ -67,7 +67,7 @@ Size: 5 SP. Phase 2. Branch: `story/c11-s2-leg-and-end-to-end-tests`.
 
 **Definition of Success**
 
-- AANI-OUT-001 to 008, WPS-OUT-001 to 005, AANI-IN-001 and WPS-IN-001 pass.
+- WPS-OUT-001 to 005 and WPS-IN-001 pass.
 
 ### C11-S3 Timeline and context diff data
 
@@ -88,7 +88,7 @@ Size: 3 SP. Phase 2. Branch: `story/c11-s3-timeline-and-context-diff-data`.
 
 **Definition of Success**
 
-- The record of AANI-OUT-003 shows three attempts and the two backoff waits between them.
+- The record of P-RES-001 shows three attempts and the two backoff waits between them.
 
 ### C11-S4 Conformance fixtures
 
@@ -130,4 +130,4 @@ Size: 1 SP. Phase 3. Branch: `story/c11-s5-publish-checks-on-tests`.
 
 **Definition of Success**
 
-- uae.aani.wf.credit-out.v1 is reported as lacking a test for returned until one is added or the outcome is removed.
+- uae.wps.wf.salary-file-out.v1 is reported as lacking a test for returned until one is added or the outcome is removed.

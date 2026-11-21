@@ -174,7 +174,7 @@ components:
         dod:
           - L20 flags retry on a write or external activity with no idempotency key, and a write inside a try with no compensation.
           - L21 sums attempt budgets on the longest path and compares them with the deadline.
-        dos: Raising the attempt timeout of uae.aani.exchange.send-credit.v1 above the PT8S deadline of uae.aani.wf.credit-out.v1 is flagged at the send step.
+        dos: Raising the attempt timeout of the reserve step of p.wf.commercial.v1 above its PT10S deadline is flagged at the reserve step.
       - id: C04-S4
         title: Ports, portability and step ids
         sp: 3
@@ -242,7 +242,7 @@ components:
         dod:
           - A change to reads, writes, outcomes, errors, ports, parameters, slots, hook points, entry or exit proposes a major.
           - Adding a hook point proposes a minor; any other change proposes a patch unless the designer raises it to a minor.
-        dos: Adding an outcome to uae.aani.exchange.send-credit.v1 proposes 2.0.0 and a new name ending in v2.
+        dos: Adding an outcome to uae.wps.exchange.send-salary-file.v1 proposes 2.0.0 and a new name ending in v2.
       - id: C05-S4
         title: Dependency release propagation
         sp: 5
@@ -252,4 +252,4 @@ components:
         dod:
           - The studio lists every workflow that pins the line, reruns its tests with the new release, and proposes a patch or a minor.
           - A red rerun blocks the proposal and names the failing test.
-        dos: A patch of uae.p.rule.iban-checksum.v1 proposes a patch release of uae.wps.wf.salary-file-out.v1 and of each Aani leg that validates a credit, each with the new pin.
+        dos: A patch of uae.p.rule.iban-checksum.v1 proposes a patch release of uae.wps.wf.salary-file-out.v1 and of each other workflow that reaches the rule, each with the new pin.

@@ -181,7 +181,7 @@ describe('running and exporting', () => {
     expect((await get('/api/types/uae.p.validate.iban.v1?lang=python')).body.language).toBe('python');
     expect((await get('/api/types/nope.x.y.v1')).status).toBe(404);
     expect((await get('/api/registry/lookup?set=ExternalStatusReason1Code&code=ZZ99')).status).toBeGreaterThanOrEqual(200);
-    expect((await get('/api/coverage/uae.aani')).body.rows.length).toBeGreaterThan(0);
+    expect((await get('/api/coverage/uae.wps')).body.rows.length).toBeGreaterThan(0);
     expect((await get('/api/simulators/nope/stub')).status).toBe(404);
     expect((await get('/api/tests/NOPE-1')).status).toBe(404);
     expect((await post('/api/tests/NOPE-1/run')).status).toBe(404);

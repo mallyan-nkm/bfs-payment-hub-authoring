@@ -30,7 +30,7 @@ Define, script, test, publish, compose, export. Every artefact kind follows it.
 | F-14 | Workflows | See every static check on every edit, with the step it concerns | Removing a `handle` entry shows L05 at that step |
 | F-15 | Workflows | See the effective policy of a step and where each value came from | Shows type default, block default and step override |
 | F-16 | Test bench | Bind simulators to ports, set the evaluation date and the tenant, and run | A run with `no-reply` ends at the timeout on the virtual clock |
-| F-17 | Test bench | Step through a run; see the timeline of attempts, waits and timers; see the context diff per step | Timeline of `AANI-OUT-003` shows three attempts and the backoff |
+| F-17 | Test bench | Step through a run; see the timeline of attempts, waits and timers; see the context diff per step | Timeline of `P-RES-001` shows three attempts and the backoff |
 | F-18 | Test bench | Send a fixed signal during a run | `cancel` runs compensation in reverse, then `finally` |
 | F-19 | Test bench | Assert on outcome, status, messages, postings and trace | A changed trace turns the test red |
 | F-20 | AI | Ask AI to draft a contract, rule, script, simulator or map from scheme text and samples | The draft arrives with tests and passes every gate, or shows the red gate |

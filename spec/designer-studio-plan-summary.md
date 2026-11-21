@@ -8,8 +8,8 @@ The Authoring view (Scheme Studio) of the TransactHub north star, re-ideated for
 
 ## Decisions given by Nitin
 
-- Scopes: `p.*` (platform, not `platform.*`), `<cluster>.p.*` (for example `uae.p.*`), `<cluster>.<scheme>.*` (for example `uae.wps.*`, `uae.aani.*`), and `b.*` for the bank scope (accepted).
-- There can be several named platform workflows, each versioned (for example corporate for RTGS and WPS, commercial for Aani). Creating a new workflow is a first-class act.
+- Scopes: `p.*` (platform, not `platform.*`), `<cluster>.p.*` (for example `uae.p.*`), `<cluster>.<scheme>.*` (for example `uae.wps.*`), and `b.*` for the bank scope (accepted).
+- There can be several named platform workflows, each versioned (for example corporate for RTGS and WPS, commercial for instant rails). Creating a new workflow is a first-class act.
 - Everything is versioned major.minor.patch: major for an interface change, minor for improved function, patch for a bug fix. The major is part of the name, and the exported DSL carries the version of each artefact.
 - A pinned workflow executes with fixed pinned versions. How hot update of rules, hooks and activities affects a workflow had to be determined; the plan's answer is below.
 - Intake maps convert any source model into the canonical ISO 20022 model; scheme legs map back out where needed.
@@ -19,7 +19,7 @@ The Authoring view (Scheme Studio) of the TransactHub north star, re-ideated for
 - Temporal, DTFx and Flowable (BPMN) are all delivery targets and the proof of portability.
 - Hooks are first-class targets, like schemes, specifically for banks. A bank is a tenant in the studio.
 - The app is multi-tenant per bank. Tenants share platform and scheme content; the only thing a bank authors is hooks. A bank cannot change a platform or scheme definition, but can change configuration such as rule values.
-- There is default content for the platform, `uae.wps` and `uae.aani`: a factory pack. The whole spec was to be built, including it.
+- There is default content for the platform and its schemes: a factory pack. The whole spec was to be built, including it. It first held `uae.wps` and an instant-payments scheme; the second was removed in plan phase P6, so `uae.wps` is the only scheme.
 
 ## Design positions in the plan and the spec (to confirm at G1)
 
@@ -53,11 +53,11 @@ A repository that Claude Code reads directly.
 
 | Layer | Where | Size |
 | --- | --- | --- |
-| Design spec | `design/` | 12 parts, 4 annexes (A WPS, B Aani, C conformance kit, D platform), 208 numbered requirements |
+| Design spec | `design/` | 12 parts, 4 annexes (A WPS, B the instant-payments scheme since removed, C conformance kit, D platform), 208 numbered requirements |
 | Schemas | `schemas/` | 14, JSON Schema 2020-12 |
 | Guard-rails | `CLAUDE.md` | One file, with the common Definition of Done |
 | Build specs | `build/` | 26 components, 126 stories as prompts (user story, DoR, DoD, DoS), 505 story points |
-| Factory pack | `factory/` | 157 artefacts: `p` 54, `uae.p` 13, `uae.wps` 51, `uae.aani` 39 |
+| Factory pack | `factory/` | 157 artefacts: `p` 54, `uae.p` 13, `uae.wps` 51, the instant-payments scheme 39 (since removed) |
 | Example bank tenant | `examples/bank/` | 15 artefacts: one hook of each type, a configuration set |
 | Conformance kit | `conformance/` | 43 scenarios |
 | Tools | `tools/` | Generator, validator (20 checks), 21 mutation cases, document renderer |
@@ -72,7 +72,6 @@ Review the spec set at G1. Choose the studio's own stack in a short decision rec
 
 ## Not verified
 
-- Aani message set, time limits and reason codes (the AEP participant specification is not public). `uae.aani` is provisional.
 - The current CBUAE WPS rulebook. `uae.wps` was written from the 2018 guide and public bank guides and is provisional.
 - ISO reason codes in rules were written from memory.
 - Scripts-behind, sample messages and the kit's own workflows do not exist yet. Tests name samples and expected traces; nothing has run them.

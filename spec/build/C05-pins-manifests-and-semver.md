@@ -93,7 +93,7 @@ Size: 5 SP. Phase 3. Branch: `story/c05-s3-interface-diff-and-semver`.
 
 **Definition of Success**
 
-- Adding an outcome to uae.aani.exchange.send-credit.v1 proposes 2.0.0 and a new name ending in v2.
+- Adding an outcome to uae.wps.exchange.send-salary-file.v1 proposes 2.0.0 and a new name ending in v2.
 
 ### C05-S4 Dependency release propagation
 
@@ -115,4 +115,4 @@ Size: 5 SP. Phase 5. Branch: `story/c05-s4-dependency-release-propagation`.
 
 **Definition of Success**
 
-- A patch of uae.p.rule.iban-checksum.v1 proposes a patch release of uae.wps.wf.salary-file-out.v1 and of each Aani leg that validates a credit, each with the new pin.
+- A patch of uae.p.rule.iban-checksum.v1 proposes a patch release of uae.wps.wf.salary-file-out.v1 and of each other workflow that reaches the rule, each with the new pin.

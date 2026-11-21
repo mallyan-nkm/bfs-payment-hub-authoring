@@ -194,7 +194,7 @@ artefacts:
   - name: p.table.rail-choice.v1
     kind: table
     release: 1.0.0
-    hash: sha256:d3648d976c1c5cd1bcd248a932f0af113fcd2263fa8dfa6ed676a588f5d8c12d
+    hash: sha256:8dc32c06ae876ab9a3f3d20fdb746c76d1c1d7879d941d6deeae87f502b6da89
     path: rules/p.table.rail-choice.v1.yaml
   - name: p.table.workflow-select.v1
     kind: table
@@ -244,12 +244,12 @@ artefacts:
   - name: P-RES-001
     kind: test
     release: 1.0.0
-    hash: sha256:7cf1bd2924a793b94943bc00002567fba2a858096b252e6e0591d318705721cb
+    hash: sha256:fab03b3decad997c3b1f680a6cdf7262a53b7e124ea6ff4bf41ecadf8fb087f5
     path: tests/P-RES-001.yaml
   - name: P-RES-002
     kind: test
     release: 1.0.0
-    hash: sha256:04f9aa9d0cda1243e0080395ee5a40578ab8c624906e0c56dbce8b30670eef5e
+    hash: sha256:d643185e9b0ace79baf8209c89cb90c6770a84bc170ec3a578071b71778b43e0
     path: tests/P-RES-002.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow

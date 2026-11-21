@@ -11,7 +11,7 @@ dependsOn:
     release: 1.0.0
   - scope: uae.p
     release: 1.0.0
-  - scope: uae.aani
+  - scope: uae.wps
     release: 1.0.0
 artefacts:
   - name: b.enrich.cost-centre.v1
@@ -62,7 +62,7 @@ artefacts:
   - name: b.rule.internal-limit.v1
     kind: rule
     release: 1.0.0
-    hash: sha256:c823250687f5fbaa4c91799bef4637d292165b7aebeb4ee26031e5ee49cf435b
+    hash: sha256:e036ba8e2f63f81a6517b6381f6a17c767d0432810f26d62e7f6519bdde2d97e
     path: rules/b.rule.internal-limit.v1.yaml
   - name: b.ruleset.internal-limit.v1
     kind: ruleset
@@ -82,12 +82,22 @@ artefacts:
   - name: BANK-HOOK-001
     kind: test
     release: 1.0.0
-    hash: sha256:95eb4f30d1e6a968dc619f6ee0c49f04ad71e3670bcd2f6e4648944500819d3b
+    hash: sha256:dc3e70ed9126ae9587b90d68892e88e22159c67ea3a385af0cb720a037923176
     path: tests/BANK-HOOK-001.yaml
   - name: BANK-HOOK-002
     kind: test
     release: 1.0.0
-    hash: sha256:a03b7223bea78c18683ea26fa99a1b32dac13e509800acc071841664557e5910
+    hash: sha256:d3eb54415b6596e9f70f0950b358118d1e43e172bfd5711874e2532be1f2bc2b
     path: tests/BANK-HOOK-002.yaml
+  - name: BANK-LIM-001
+    kind: test
+    release: 1.0.0
+    hash: sha256:9d4d80f8b7223c7d195629908305fdcb9efa9cbfc7e6431e285a5a6cfb6beb7a
+    path: tests/BANK-LIM-001.yaml
+  - name: BANK-LIM-002
+    kind: test
+    release: 1.0.0
+    hash: sha256:c60856512d4c6e8e8ec07edd5323cecc2bfaf3f18fd6cda2a57d9930a7c4df29
+    path: tests/BANK-LIM-002.yaml
 containsSimulators: true
 promotable: false

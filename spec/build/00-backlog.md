@@ -2,7 +2,7 @@
 
 # Build backlog
 
-Status: draft 0.1. 26 components, 130 stories, 523 story points. Phase 1 is this specification; the backlog starts at phase 2.
+Status: draft 0.1. 25 components, 125 stories, 502 story points. Phase 1 is this specification; the backlog starts at phase 2.
 
 ## How to use it
 
@@ -23,7 +23,7 @@ The backlog names no stack beyond what the design fixes: scripts-behind in TypeS
 | --- | --- | --- | --- | --- | --- |
 | 1 | Spec | G1 | This set, reviewed and accepted |  |  |
 | 2 | Walking skeleton | G2 | One thin slice of every artefact kind runs in the studio and on Temporal | 56 | 223 |
-| 3 | Catalogue, AI and hooks | G3 | The factory pack is complete and tested; AI authoring works in both languages; one hook of each type runs in a test tenant | 53 | 211 |
+| 3 | Catalogue, AI and hooks | G3 | The factory pack is complete and tested; AI authoring works in both languages; one hook of each type runs in a test tenant | 48 | 190 |
 | 4 | Portability | G4 | The conformance kit is green on Temporal, DTFx and Flowable | 11 | 51 |
 | 5 | Governance | G5 | Maker-checker, packs, configuration sets, the compatibility run, retirement and supersession | 10 | 38 |
 
@@ -56,7 +56,6 @@ The backlog names no stack beyond what the design fixes: scripts-behind in TypeS
 | [C23](C23-conformance-kit-and-runner.md) | Conformance kit and runner | Export | 2, 4 | 3 | 11 | C01, C02 |
 | [C24](C24-factory-content-p-and-uae-p.md) | Factory content, p and uae.p | Factory content | 3 | 5 | 21 | C06, C07, C09, C10, C11, C23 |
 | [C25](C25-factory-content-uae-wps.md) | Factory content, uae.wps | Factory content | 3 | 6 | 26 | C24, C13 |
-| [C26](C26-factory-content-uae-aani.md) | Factory content, uae.aani | Factory content | 3 | 5 | 21 | C24, C13 |
 
 ## Open decisions and the components they touch
 
@@ -64,8 +63,8 @@ The backlog names no stack beyond what the design fixes: scripts-behind in TypeS
 | --- | --- | --- |
 | D7 | Whether a script-behind may ever be a production runtime | C07, C08 |
 | D8 | Artefacts as files in a repository per tenant | C01, C17 |
-| D9 | A synchronous segment for instant rails | C20, C26 |
-| D10 | Access to the current scheme rulebooks | C25, C26 |
+| D9 | A synchronous segment for instant rails | C20 |
+| D10 | Access to the current scheme rulebooks | C25 |
 | D13 | NRules on .NET as the rule evaluator | C06 |
 | D14 | Where scripts run | C07, C08 |
 | D15 | Supersession policy: explicit only, even for a patch | C19 |
@@ -189,11 +188,6 @@ Within a phase the order respects every `Done first` line. Stories with no line 
 | C25-S4 | Agent payment in and returns | 5 | C25-S2 |
 | C25-S5 | Refund request and settlement | 3 | C25-S3 |
 | C25-S6 | Planned message groups | 3 | C25-S1 |
-| C26-S1 | Confirm the message set against the scheme rulebook | 5 |  |
-| C26-S2 | Credit transfer out, end to end | 5 | C26-S1 |
-| C26-S3 | Credit transfer in and refuse | 5 | C26-S1 |
-| C26-S4 | Handlers | 3 | C26-S1 |
-| C26-S5 | Planned message groups | 3 | C26-S1 |
 
 ### Phase 4, portability
 

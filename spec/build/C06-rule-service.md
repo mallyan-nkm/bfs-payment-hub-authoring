@@ -96,7 +96,7 @@ Size: 3 SP. Phase 2. Branch: `story/c06-s3-parameters-by-date-and-tenant`.
 
 **Definition of Success**
 
-- AANI-RULE-003 and AANI-RULE-004 pass, the same amount rejected on 2 January 2027 and accepted on 31 December 2026.
+- BANK-LIM-001 and BANK-LIM-002 pass, the same file rejected on 2 January 2027 and accepted on 31 December 2026.
 
 ### C06-S4 Decision tables
 
@@ -161,4 +161,4 @@ Size: 3 SP. Phase 2. Branch: `story/c06-s6-rule-trace`.
 
 **Definition of Success**
 
-- The trace of AANI-RULE-002 names uae.aani.rule.amount-within-limit.v1 at 1.0.0 and the value of maxAmount it used.
+- The trace of BANK-LIM-001 names b.rule.internal-limit.v1 at 1.0.0 and the value of internalLimit it used.

@@ -170,7 +170,7 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s6-slots-legs-and-dispatch`.
 
 **Definition of Success**
 
-- CK-SLOT-01 and 02 pass; WPS-OUT-001 and AANI-OUT-001 run end to end.
+- CK-SLOT-01 and 02 pass; WPS-OUT-001 and WPS-IN-001 run end to end.
 
 ### C09-S7 Signals
 
@@ -234,7 +234,7 @@ Size: 3 SP. Phase 3. Branch: `story/c09-s9-handlers`.
 
 **Definition of Success**
 
-- CK-HANDLER-01 and AANI-HND-001 pass.
+- CK-HANDLER-01 passes.
 
 ### C09-S10 Pins, lookup and supersession
 
@@ -300,4 +300,4 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s12-blocks-returns-and-the-two-traces`.
 
 **Definition of Success**
 
-- CK-BLOCK-01 to 03 pass, and WPS-EXC-001, WPS-EXC-002, AANI-EXC-001 and AANI-EXC-002 pass.
+- CK-BLOCK-01 to 03 pass, and WPS-EXC-001 and WPS-EXC-002 pass.

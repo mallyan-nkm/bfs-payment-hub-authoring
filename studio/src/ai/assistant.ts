@@ -69,7 +69,7 @@ export function buildPrompt(env: StudioEnv, req: DraftRequest): { system: string
   const guard = read(env, 'CLAUDE.md');
   const schemaFile = { activity: 'activity', rule: 'rule', script: 'activity', simulator: 'simulator' }[req.kind];
   const schema = read(env, `schemas/${schemaFile}.schema.json`);
-  const ex = { activity: example(env, 'activity', 'uae.p.validate.iban.v1'), rule: example(env, 'rule', 'uae.aani.rule.amount-within-limit.v1'), script: '', simulator: example(env, 'simulator', 'uae.p.sim.participant-directory.v1') }[req.kind];
+  const ex = { activity: example(env, 'activity', 'uae.p.validate.iban.v1'), rule: example(env, 'rule', 'p.rule.amount-within-platform-limit.v1'), script: '', simulator: example(env, 'simulator', 'uae.p.sim.participant-directory.v1') }[req.kind];
   const inputs: string[] = [];
   let targetDoc = '';
   let scriptExample = '';

@@ -57,6 +57,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L31: 'await and return only in a subflow; block only in the expanded form',
   L32: 'An await with no timeout has a reply time to take',
   L33: 'A start message routes: its kind, direction and segment select one platform workflow, and its leg fills its slot',
+  L34: 'The factory holds only the packs its inventory lists',
 };
 
 // ---------------------------------------------------------------- walking
@@ -779,9 +780,40 @@ export function semverIssue(prev: any | undefined, next: any): Issue | undefined
   return undefined;
 }
 
+/**
+ * L34 (R-12-11): the factory holds only the packs its inventory lists. Every folder under factory/ is a
+ * listed shared pack, every listed shared pack has a folder, and every artefact in a pack's folder is in
+ * that pack's scope. `files` are the spec documents with their paths relative to the spec root.
+ */
+export function factoryPackIssues(inventory: any | undefined, folders: string[], files: { path: string; doc: any }[]): Issue[] {
+  const out: Issue[] = [];
+  const err = (key: string, message: string, file?: string) => out.push({ code: 'L34', severity: 'error', key, message, file });
+  if (!inventory) {
+    err('factory', 'The factory has no inventory', 'factory/inventory.yaml');
+    return out;
+  }
+  const listed = new Set<string>((inventory.packs ?? []).filter((p: any) => p.packType === 'shared').map((p: any) => p.scope));
+  for (const f of [...folders].sort()) if (!listed.has(f)) err(f, `${f} is not a pack the factory inventory lists`, `factory/${f}/`);
+  for (const s of [...listed].sort()) if (!folders.includes(s)) err(s, `The inventory lists pack ${s}, which has no folder under factory/`, 'factory/inventory.yaml');
+  for (const { path: file, doc } of files) {
+    const parts = file.split(/[\\/]/);
+    if (parts[0] !== 'factory' || parts.length < 3 || !listed.has(parts[1])) continue;
+    const own = doc.kind === 'pack' || doc.kind === 'scheme' ? doc.scope : doc.kind === 'test' ? undefined : doc.name ? scopeOf(doc.name) : undefined;
+    if (own && own !== parts[1]) err(doc.name ?? doc.scope, `${own} content is in the folder of pack ${parts[1]}`, file);
+  }
+  return out;
+}
+
 export function checkAll(env: StudioEnv): Issue[] {
   const c = Checker.fromEnv(env);
   const issues = c.checkAll();
+  const factoryDir = path.join(env.specRoot, 'factory');
+  if (fs.existsSync(factoryDir)) {
+    const spec = env.store.all().filter((e) => e.source === 'spec');
+    const folders = fs.readdirSync(factoryDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+    const inventory = spec.find((e) => e.kind === 'inventory' && e.path.split(/[\\/]/)[0] === 'factory')?.doc;
+    issues.push(...factoryPackIssues(inventory, folders, spec.map((e) => ({ path: e.path, doc: e.doc }))));
+  }
   for (const e of env.store.all().filter((x) => x.status === 'published')) {
     for (const s of env.schemas.validate(e.doc)) issues.push({ code: 'L00', severity: 'error', key: e.name, message: s.message, file: e.path });
   }

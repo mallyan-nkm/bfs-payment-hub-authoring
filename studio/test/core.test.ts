@@ -45,7 +45,7 @@ describe('canonical JSON and the content hash (R-01-12)', () => {
       expect(e!.hash, a.name).toBe(a.hash);
       checked++;
     }
-    expect(checked).toBeGreaterThan(165);
+    expect(checked).toBeGreaterThan(140);
   });
 });
 
@@ -66,7 +66,7 @@ describe('durations and the business calendar', () => {
 describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
-    expect(env.store.all().length).toBe(199); // 198, and the Elsa engine binding (I-30)
+    expect(env.store.all().length).toBe(157); // 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37)
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

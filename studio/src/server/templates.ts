@@ -5,7 +5,7 @@ export function templates(kind: string, wfKind: string | undefined, name: string
   switch (kind) {
     case 'workflow': {
       const k = wfKind ?? 'leg';
-      const base: any = { kind: 'workflow', wfKind: k, name: name ?? (k === 'platform' ? 'p.wf.new.v1' : k === 'segment' ? 'p.seg.new.v1' : k === 'handler' ? 'uae.aani.handler.new.v1' : 'uae.aani.wf.new.v1'), release, dsl: '1.0.0', title: title ?? 'New workflow' };
+      const base: any = { kind: 'workflow', wfKind: k, name: name ?? (k === 'platform' ? 'p.wf.new.v1' : k === 'segment' ? 'p.seg.new.v1' : k === 'handler' ? 'uae.wps.handler.new.v1' : 'uae.wps.wf.new.v1'), release, dsl: '1.0.0', title: title ?? 'New workflow' };
       if (k === 'platform') Object.assign(base, {
         direction: 'outward',
         entry: { reads: ['header', 'payment'] },
@@ -25,13 +25,13 @@ export function templates(kind: string, wfKind: string | undefined, name: string
       });
       if (k === 'leg') Object.assign(base, {
         direction: 'outward',
-        implements: { slot: 'scheme-leg', of: ['p.wf.commercial.v1'] },
-        entry: { reads: ['header', 'payment'] },
+        implements: { slot: 'scheme-leg', of: ['p.wf.corporate.v1'] },
+        entry: { reads: ['header', 'batch', 'items[]', 'ext.uae.wps'] },
         exit: { writes: ['status', 'messages'], outcomes: ['settled', 'rejected', 'pending'] },
         do: full
           ? [
-              { id: 'scheme-checks', call: 'uae.aani.validate.credit.v1', handle: { reject: { end: 'rejected' } } },
-              { id: 'render', call: 'uae.aani.map.credit-out.v1', handle: { unmappable: { end: 'rejected' } } },
+              { id: 'scheme-checks', call: 'uae.wps.validate.salary-file.v1', handle: { repair: { end: 'rejected' }, reject: { end: 'rejected' } } },
+              { id: 'render', call: 'uae.wps.map.sif-out.v1', handle: { unmappable: { end: 'rejected' } } },
               { end: 'settled' },
             ]
           : [{ end: 'settled' }],
@@ -44,14 +44,14 @@ export function templates(kind: string, wfKind: string | undefined, name: string
     }
     case 'activity':
       return {
-        kind: 'activity', name: name ?? 'uae.aani.validate.new.v1', release, title: title ?? 'New activity', type: 'validate',
+        kind: 'activity', name: name ?? 'uae.wps.validate.new.v1', release, title: title ?? 'New activity', type: 'validate',
         reads: ['header', 'payment'], writes: ['facts.validation'],
-        outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'pure', ruleSets: ['uae.aani.ruleset.credit.v1'],
+        outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'pure', ruleSets: ['uae.wps.ruleset.salary-file.v1'],
         implementation: { binding: 'builtin', service: 'rule-service' }, provenance: { origin: 'factory', status: 'provisional' },
       };
     case 'rule':
       return {
-        kind: 'rule', name: name ?? 'uae.aani.rule.new.v1', release, title: title ?? 'New rule', ruleKind: 'field', repeatability: 'non-repeatable',
+        kind: 'rule', name: name ?? 'uae.wps.rule.new.v1', release, title: title ?? 'New rule', ruleKind: 'field', repeatability: 'non-repeatable',
         when: [{ match: { fact: 'Payment', as: 'p', where: "isBlank(p.purpose)" } }],
         then: [{ yield: { finding: { severity: 'repair', path: 'payment.purpose', reasonCode: 'NARR' } } }],
         examples: [

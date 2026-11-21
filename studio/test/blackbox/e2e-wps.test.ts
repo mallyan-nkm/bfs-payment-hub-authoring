@@ -93,17 +93,17 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(r.trace).toEqual(SETTLED);
   });
 
-  it('refuses configuration a bank may not set: a scheme limit above its bound, the same release again, a checker as author', async () => {
+  it('refuses configuration a bank may not set: a limit above its bound, the same release again, a checker as author', async () => {
     const over = JSON.parse(JSON.stringify(shipped));
     over.release = '1.0.1';
-    over.values.find((v: any) => v.parameter === 'uae.aani.rule.amount-within-limit.v1#maxAmount').value = 90000;
+    over.values.find((v: any) => v.parameter === 'b.rule.internal-limit.v1#internalLimit').value = 2000000;
     expect((await api.post(`/api/tenants/${TENANT}/configuration/validate`, { doc: over })).data.issues.some((i: any) => i.severity === 'error')).toBe(true);
     expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: MAKER, yaml: toYaml(shipped) })).status).toBe(409);
     expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: 'example.checker', yaml: toYaml({ ...shipped, release: '1.0.2' }) })).status).toBe(409);
   });
 
   it('1.1.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone', async () => {
-    await release('1.1.0', (c) => { c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value = ['uae.aani']; });
+    await release('1.1.0', (c) => { c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value = []; });
     const r = await bench();
     expect(r.outcome).toBe('rejected');
     expect(r.trace).toEqual(NO_WPS_RAIL);

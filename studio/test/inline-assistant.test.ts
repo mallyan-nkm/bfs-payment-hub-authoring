@@ -99,7 +99,7 @@ const RULE = {
   ],
   provenance: { origin: 'authored', status: 'provisional', clauses: ['Synthetic training extract'] },
 };
-const STARTER = { kind: 'rule', name: 'uae.aani.rule.new.v1', release: '1.0.0', title: 'New rule', ruleKind: 'field', when: [], then: [], examples: [] };
+const STARTER = { kind: 'rule', name: 'uae.wps.rule.new.v1', release: '1.0.0', title: 'New rule', ruleKind: 'field', when: [], then: [], examples: [] };
 
 function harness(turns: any[]) {
   const env = freshEnv();

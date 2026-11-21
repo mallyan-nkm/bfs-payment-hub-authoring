@@ -121,8 +121,9 @@ describe('import: what it refuses', () => {
     expect(item.issues.find((i) => i.code === 'R-01-10')?.message).toMatch(/Give this one release 1\.\d+\.\d+/);
     expect(r.inventory.reuse['with-change']).toBe(1);
 
-    const aani = [...wpsTrainingBundle(env), { name: 'artefacts/rules/x.yaml', content: toYaml({ ...env.store.doc('uae.aani.rule.amount-within-limit.v1') }) }];
-    expect(codes(await analyse(env, readBundle(aani), OPTS))).toContain('I22');
+    // a rule of a scheme outside the bundle: a synthetic copy under another scope
+    const other = [...wpsTrainingBundle(env), { name: 'artefacts/rules/x.yaml', content: toYaml({ ...env.store.doc('p.rule.amount-within-platform-limit.v1'), name: 'uae.other.rule.amount-within-limit.v1' }) }];
+    expect(codes(await analyse(env, readBundle(other), OPTS))).toContain('I22');
 
     expect(codes(await analyse(env, readBundle(wpsTrainingBundle(env).filter((f) => f.name !== 'extraction.yaml')), OPTS))).toContain('I10');
   });

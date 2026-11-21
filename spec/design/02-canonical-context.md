@@ -29,7 +29,7 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 | `header.kind` | Code | `payment`, `request` or `return`. |
 | `header.direction` | Code | `inward` or `outward`. |
 | `header.segment` | Code | `corporate` or `commercial`. Extensible by registry. |
-| `header.scheme` | Code | The scope of the scheme, for example `uae.aani`. Set at intake or by the route decision. |
+| `header.scheme` | Code | The scope of the scheme, for example `uae.wps`. Set at intake or by the route decision. |
 | `header.channel` | Code | Originating channel. |
 | `header.receivedAt` | ISODateTime | When the platform received the request. |
 | `header.businessDate` | ISODate | The business date the payment runs on. |

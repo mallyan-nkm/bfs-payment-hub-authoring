@@ -530,6 +530,33 @@ for path, d in docs:
     if d["approval"]["maker"] == d["approval"]["checker"]:
         err("L27", path, "maker and checker are the same person")
 
+# ------------------------------------------------------- factory packs
+# L34 the factory holds only the packs its inventory lists (R-12-11): every folder under factory/
+# is a listed shared pack with a manifest, every listed shared pack has a folder, and every
+# artefact in a pack's folder is in that pack's scope.
+inventory = next((d for _, d in docs if d.get("kind") == "inventory"), None)
+listed = {p["scope"] for p in (inventory or {}).get("packs", []) if p.get("packType") == "shared"}
+if inventory is None:
+    err("L34", "factory/inventory.yaml", "the factory has no inventory")
+folders = {f.name for f in (ROOT / "factory").iterdir() if f.is_dir()}
+for s in sorted(folders - listed):
+    err("L34", "factory/%s/" % s, "%s is not a pack the factory inventory lists" % s)
+for s in sorted(listed - folders):
+    err("L34", "factory/inventory.yaml", "lists pack %s, which has no folder under factory/" % s)
+for path, d in docs:
+    parts = pathlib.PurePath(path).parts
+    if parts[0] != "factory" or len(parts) < 3:
+        continue
+    folder, kind = parts[1], d.get("kind")
+    if kind == "pack" or kind == "scheme":
+        own = d.get("scope")
+    elif kind == "test":
+        own = None
+    else:
+        own = scope_of(d["name"]) if d.get("name") else None
+    if folder in listed and own and own != folder:
+        err("L34", path, "%s content is in the folder of pack %s" % (own, folder))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

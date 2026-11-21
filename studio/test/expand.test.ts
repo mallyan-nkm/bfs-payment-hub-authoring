@@ -10,7 +10,7 @@ describe('expansion of composite steps (C04-S6, R-05-35)', () => {
   const resolve = (n: string) => env.store.doc(n);
   const dir = path.join(env.specRoot, 'expanded');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.yaml'));
-  it('finds the four reference expansions', () => expect(files.length).toBe(4));
+  it('finds the three reference expansions', () => expect(files.length).toBe(3));
   for (const f of files) {
     it(`gives the same document as tools/expand.py for ${f}`, () => {
       const want = parseYaml(fs.readFileSync(path.join(dir, f), 'utf8'));
@@ -20,8 +20,8 @@ describe('expansion of composite steps (C04-S6, R-05-35)', () => {
     });
   }
   it('is a pure function', () => {
-    const a = expandWorkflow(env.store.doc('uae.aani.wf.credit-out.v1'), resolve);
-    const b = expandWorkflow(env.store.doc('uae.aani.wf.credit-out.v1'), resolve);
+    const a = expandWorkflow(env.store.doc('uae.wps.wf.salary-file-out.v1'), resolve);
+    const b = expandWorkflow(env.store.doc('uae.wps.wf.salary-file-out.v1'), resolve);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
   it('leaves a workflow with no composite as it is', () => {

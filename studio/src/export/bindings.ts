@@ -20,7 +20,7 @@ export function generateBinding(env: StudioEnv, target: string): any {
   const t = TARGETS[target];
   if (!t) throw new Error(`Unknown target ${target}`);
   const scopes = env.store.byKind('pack').map((e) => e.doc.scope as string);
-  const order = ['p', 'uae.p', 'uae.wps', 'uae.aani', 'b'];
+  const order = ['p', 'uae.p', 'uae.wps', 'b'];
   scopes.sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b));
   const b: any = { kind: 'engine-binding', target, strategy: t.strategy, queues: Object.fromEntries(scopes.map((s) => [s, queueName(s)])), taskNaming: '<name>@<release>' };
   if (t.defaults) b.defaults = t.defaults;
