@@ -143,6 +143,15 @@ content-configurations/      what the studio publishes and what a bank configure
   - It is about 4,500 lines and 157 store methods.
   - The persistence schema fits, using a UTF-8 binary collation. One table, `chasm_node_maps`, needs a hashed key, and that fix was proved.
   - Visibility does not translate and should stay on PostgreSQL or Elasticsearch for now.
+- **Built (P4).** D2 is accepted. The plugin is `runtime/temporal-mssql/` (README there), pinned to Temporal v1.32.2. Measured on 21 November 2026 against SQL Server 2022:
+  - Temporal's own persistence suites, wired as for PostgreSQL: 45 of 45 suites pass (479 test cases, none fail; the 2 skips are Temporal's Cassandra-only tests).
+  - Visibility is on SQL Server too: a computed column per search attribute, and a trigger-kept side table for keyword lists. It passes Temporal's visibility suites.
+  - The server runs on SQL Server. A workflow whose timer was running when the server was killed (SIGKILL) completes after the restart.
+  - The conformance kit on servers on SQL Server, in real time: 43 of 46 pass, none fails on its trace. The other 3 wait four business hours to three days, which a real server waits in real time (I-46). CK-FOREACH-02, the 10,000-item batch, passes in about three minutes.
+  - The WPS salary file settles on Temporal on SQL Server with the runtime's payments store on SQL Server too (`e2e-wps-temporal.test.ts`, "database on SqlServer", with `TH_TEMPORAL_ADDRESS`).
+  - CI job `temporal-sqlserver` runs all of it.
+- **P4 status: met, with one gap.** The plugin passes Temporal's persistence suites and runs the kit and the WPS salary file. The kit's scenarios that wait hours or days are proved on the time-skipping server, not on SQL Server, until I-46 is decided. CI runs the fast subset of 40.
+- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-43); Text search attributes are not indexed (I-44); what a bank's SQL Server must allow (I-45); the kit's long business waits on a real server (I-46).
 
 ### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
 - **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):
@@ -228,7 +237,7 @@ The results, pass by pass and project by project, with each failure classified (
 | P1 | Model, store, releases, interpreter, Temporal | WPS outward (SIF upload to CB ACK and the NAK reversal) runs on the new runtime on Temporal, on SQL Server and PostgreSQL. Its golden runs match the source. Releases are insert-only and pinned. |
 | P2 | WPS complete | Inward PIF/PSI, PRC, DIF, RFA, RRI, DE, RTC and posting windows. Every WPS line of the parity matrix is green. |
 | P3 | DTFx, Elsa, Flowable | The kit (46) and the WPS parity suite pass on all four engines × two databases in CI. |
-| P4 | Temporal on SQL Server | The plugin passes Temporal's persistence suite and the kit (if D2 is accepted). |
+| P4 | Temporal on SQL Server | The plugin passes Temporal's persistence suite and the kit (if D2 is accepted). Met on 21 November 2026, see W5. |
 | P5 | Banks | DIB, ADIB, ENBD and FAB are each a configuration set. No bank name is in shared code, and a check enforces it. Switching the example bank's core banking needs only a binding. |
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
 | P6 | Studio | Aani is removed. The WPS leg and the new inward flows are authored and published. The studio deploys a release to the runtime and hot-updates a rule value with no deployment, shown end to end. |
@@ -286,7 +295,7 @@ The decision table:
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | D1 | Amend N* "one runtime only" | Accept: the engine is chosen per installation, all four are proved equal by the kit. |
-| D2 | Temporal on SQL Server | Build the plugin, pinned to one Temporal version, as P4. If the maintenance cost is not acceptable, keep Temporal on PostgreSQL. |
+| D2 | Temporal on SQL Server | Accepted. The plugin is built, pinned to Temporal v1.32.2 and proved as P4 (W5). Each Temporal upgrade re-runs the proof. |
 | D3 | Flowable hosting | Accepted. Flowable 7 runs as its own server with its own database. .NET external workers poll it for jobs over REST. |
 | D4 | Where `spec/` lives | It stays at the root for now. Moving it under `studio/` is a separate change. |
 | D5 | Real bank values | Not in this repository: synthetic placeholders here, the bank's set in its private configuration repository. |
