@@ -1,0 +1,254 @@
+# TransactHub runtime: the north-star convergence plan
+
+Status: **proposed, for acceptance before any runtime code is built.**
+Input: `TransactHub-src.zip` (commit `666f1ee`), the N* architecture, the AI architecture review (21 issues), the competition view.
+Rule we keep: the source is never changed in place. The new runtime is built beside it, and the source stays as the reference and as the baseline we compare against.
+
+## 1. What the source is today
+
+| Area | Today | N* target |
+| --- | --- | --- |
+| Payment model | No ISO 20022 types. A flat `transaction_headers` table is copied into five scheme schemas. WPS has 64 tables of its own, plus 21 in the report database. | One ISO 20022 internal model (pacs.008 / pain.001 / pacs.002 / pacs.004 / camt.054 shapes) in the database and in the workflow context. |
+| Storage | Schemas per scheme (`wps`, `fts`, `npss`, `ipi`, `cbft`, `edda`, `xbdr`) and one per bank (`adib`). `RailSchemaResolver` picks a schema by scheme name and falls back to `ipi` without telling anyone. | One generalized store: scheme and bank are columns, never schemas. |
+| Database | SQL Server only. There are 102 raw `SqlConnection` uses, 24 stored procedures, about 30 table-valued parameter types, MERGE with HOLDLOCK, 36 files with lock hints, memory-optimised tables, and change data capture for the report database. | Database-neutral: SQL Server and PostgreSQL on the same code. |
+| Changes to records | MERGE/UPDATE on cycle states, hot caches, FTS inward tables and status columns. Some pieces are already insert-only: `TransactionStateLog`, `workflow_events`, the CB posting records and the hash-chained audit. | Insert-only facts with a hash chain. Current status is a projection. |
+| Workflow context | A `Dictionary<string,string>`, and the whole of it goes to every activity. The SIF upload puts email, account, CIF and IBAN into it, so they stay in engine history for good. | A typed context: the payment's id and release, plus the few facts the flow branches on. Personal data stays in the store. |
+| Engines | Temporal (on PostgreSQL) and DTFx (on SQL Server), behind `IWorkflowRuntime`. There is no Elsa and no Flowable. On DTFx `IsPatched` is always true. | Temporal, DTFx, Elsa and Flowable behind one seam. Each installation runs one engine, and all four pass one conformance kit. |
+| Workflow language | The step types are sequential, conditional, parallel, fan_out, hook and wait_for_signal. It has no timer, no leg or sub-workflow call and no rule step. `state_effect` is ignored, and the runner hard-codes step ids and one workflow name. | The studio's package format 0.2: the platform lifecycle, scheme legs as child workflows, segments, hooks, rule steps, timers and awaits on a business calendar. |
+| Versions | A running payment stays on its definition (it is loaded once and recorded in history). Activity code is **not** pinned: hot reload over MQTT replaces the code that runs in flight. Definitions can still be edited before Production and when moved to Deprecated. Rules are effective-dated, but the version is chosen before the date is filtered, and the date used is "now" (bug N1). | Releases are insert-only. Each payment is pinned to a release (workflow, activities with checksums, rules). Rules and lists are hot-updated by effective date, as of a date fixed for the payment. |
+| WPS | 112 activity names (about 95 behaviours, 58,700 lines). They contain the shared lifecycle as `wps.*` code: approval, charges, balance, posting, reversal, reconciliation, notification. | A short WPS leg (`uae.wps.*`) on the common lifecycle (`p.*`, `uae.p.*`). |
+| Banks | The DIB, ADIB, ENBD and FAB activity projects are forks. DIB has 17 activities and copies of the repository, transaction codes and posting legs. The same validation rule is copied four times. The default tenant is "DIB" in four option classes and three services. Workflow names carry the bank. | No bank name in shared content. A bank is a set of rule values, hooks and port bindings. |
+
+The surveys behind this table are in `docs/runtime/SURVEY.md`.
+
+## 2. Target structure
+
+```
+studio/                      the no-code studio (as now; spec/ stays at the root until decision D4)
+runtime/                     the new .NET 10 runtime (nothing in it is edited source; it is new code)
+  src/
+    TransactHub.Model/            ISO 20022 internal model, PaymentContext, money and party types
+    TransactHub.Store/            the generalized store: EF Core, SQL Server and PostgreSQL providers
+    TransactHub.Releases/         loads studio packages, checks their hashes, keeps the insert-only release registry
+    TransactHub.Interpreter/      one interpreter of package format 0.2 (from studio/engines/shared)
+    TransactHub.Engine.Temporal/  the adaptors, one per engine, behind IEngine
+    TransactHub.Engine.Dtfx/
+    TransactHub.Engine.Elsa/
+    TransactHub.Engine.Flowable/  a Flowable 7 sidecar (Java) worked by .NET external workers
+    TransactHub.Activities.Platform/   p.*: intake, decrypt, duplicate, approval, charges, funds, posting, reverse, reconcile, notify
+    TransactHub.Activities.Uae/        uae.p.*: IBAN and routing code, AED, UAE calendar, CB SFTP
+    TransactHub.Activities.Wps/        uae.wps.*: SIF/CBX, PIF/PSI, PRC, DIF, RFA, RRI, DE, RTC
+    TransactHub.Ports/                 core banking, screening, SFTP, notification: interfaces only
+    TransactHub.Ports.<Adapter>/       adapters, chosen per bank by a port binding (never by a bank fork)
+    TransactHub.FrontDoor/             one intake API; the file watchers call it
+    TransactHub.Host/                  worker and API hosts, one engine per installation
+  temporal-mssql/             the Temporal SQL Server persistence plugin (Go; decision D2)
+  tests/                      unit, contract, conformance (4 engines x 2 databases), parity, replay
+content-configurations/      what the studio publishes and what a bank configures
+  releases/<scope>/<release>/      released packages, written once, never changed
+  banks/<bank>/                    configuration sets: rule values, hook bindings, port bindings
+  environments/<env>/              which releases are active, from when (activation rows)
+```
+
+## 3. Workstreams
+
+### W1. ISO 20022 internal model and workflow context (N* items 1 and 2)
+- `TransactHub.Model` covers the parts of pacs.008, pain.001, pacs.002, pacs.004 and camt.054 that payments use:
+  - parties with structured postal address;
+  - agents (BIC, LEI, clearing system member id);
+  - instructed and interbank settlement amounts;
+  - charge bearer;
+  - payment identification (instruction id, end-to-end id, UETR, transaction id);
+  - purpose, remittance and supplementary data.
+- A bulk is a pain.001 payment information block with its transactions: a WPS salary file is one bulk, and each EDR line is one transaction.
+- Scheme fields with no ISO element go into `SupplementaryData`, typed per scheme and declared in the scheme's message schema. Examples: the MOL establishment id, the EVP fixed and variable pay, the salary month. They never become columns.
+- The workflow context holds only `PaymentContext`:
+  - the payment or bulk id;
+  - the release id and the as-of date;
+  - the scheme and leg;
+  - the facts the flow branches on, as declared by the package (e.g. `validationErrorCount`, `ackType`).
+- Activities read and write the payment through the store by id. Engine history then holds no personal data. A test scans each engine's history for any value from the party records.
+
+### W2. One generalized store (N* items 3 and 4)
+- **Tables:** `payment`, `payment_bulk`, `party`, `account`, `agent`, `payment_fact` (append-only, hash-chained per payment), `message` (raw files and messages in and out, with a content hash), `message_link`, `exception_item`, `release`, `release_activation`, `rule_version`, `list_version`, `config_value_version`, and `outbox`.
+- Scheme and bank are columns. There are no per-scheme or per-bank schemas.
+- **Current status** is a view or projection over `payment_fact`. Nothing is updated in place, so the `usp_UpsertCycleStates` MERGEs, the hot-cache upserts and the status columns go.
+- **Database independent, through an ORM.** EF Core 10 is the only way the runtime reaches its data.
+  - The same model, the same migrations source and the same queries run on SQL Server and PostgreSQL. The provider is chosen by configuration (`Store:Provider = SqlServer | PostgreSql`).
+  - Each provider has its own generated migrations assembly (`TransactHub.Store.Migrations.SqlServer`, `…PostgreSql`), both made from one model.
+  - The runtime has no raw SQL, `SqlConnection`, stored procedures, table-valued parameters, MERGE, lock hints, `OUTPUT INSERTED`, memory-optimised tables or change data capture.
+  - Types are portable: `decimal(19,4)` for money, `DateTimeOffset` in UTC, string ids, and JSON columns through EF's JSON mapping for `SupplementaryData`.
+  - Concurrency: the facts are insert-only, so there is no row locking to port. Ordering comes from a per-payment sequence number with a unique index, and a duplicate insert is a clean conflict on both databases.
+  - Bulk insert goes through EF Core batching (or EFCore.BulkExtensions, which supports both) behind one interface.
+  - Identity and time come from the application, not from `SYSUTCDATETIME`.
+  - **A build check fails the runtime** if it finds `Microsoft.Data.SqlClient`, `Npgsql` or `FromSqlRaw` outside the two provider registration files.
+- **Every store test runs twice**, once on SQL Server 2022 and once on PostgreSQL 16, in Testcontainers. CI runs the whole runtime suite (unit, store, conformance, WPS parity) against both. A test that passes on one database and not the other is a failed build.
+- **The report database** is fed from the `outbox`, not from change data capture.
+- **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
+
+### W3. Four engines behind one seam (N* item 5; the review's item 16)
+- We start from what the studio has already proved. The conformance kit (46 scenarios) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
+- The runtime turns that into a product:
+  - **Temporal:** the .NET SDK, with worker versioning by Build ID. Each release's activity versions run on their own versioned workers.
+  - **DTFx:** `Microsoft.DurableTask.SqlServer`. Task-queue routing is done by the host (one hub per release line). The source's "`IsPatched` is always true" is not carried over: versions come from releases, not patches.
+  - **Elsa 3.x:** journal replay inside one Elsa activity, with bookmarks, as the studio's harness does, now with Elsa's SQL Server and PostgreSQL persistence.
+  - **Flowable 7:** BPMN generated from the expanded workflow (`src/export/bpmn.ts`). It runs in a Java sidecar with its own database. .NET external workers take the jobs over REST.
+- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 46 scenarios plus the WPS parity suite on each engine.
+- The runtime's own data is always through EF Core (W2). Each engine also keeps its own state:
+
+| Engine | Its own state on SQL Server | Its own state on PostgreSQL |
+| --- | --- | --- |
+| Temporal | the new plugin (W5) | native |
+| DTFx | native (`DurableTask.SqlServer`) | **none today**: there is no supported PostgreSQL provider for DTFx. A DTFx installation needs SQL Server for the engine, while its payments data can still be on PostgreSQL. Building a provider is optional work, D7. |
+| Elsa 3 | native (EF Core) | native (EF Core) |
+| Flowable 7 | native | native |
+
+  - So "every engine on both databases" holds for the payments data in every cell. For the engine's own state, it holds in every cell but DTFx on PostgreSQL.
+- **N\* says "one runtime only".** The review recommends amending it, and so do we (D1): the engine is chosen per installation, each installation runs one, and all four are proved equal by the kit.
+
+### W4. How the studio deploys to the runtime (N* items 6 and 7)
+- **Package:** `studio export` writes a signed package.
+  - Its manifest lists every workflow@release, activity@release (with the checksum of its code or script), rule@release (with its effective dates), list, configuration set and binding target.
+  - It goes to `content-configurations/releases/<scope>/<release>/`.
+- **Insert, never update:**
+  - `POST /releases` stores a package once.
+  - The same id with a different hash is refused.
+  - There is no PUT and no DELETE. An old release is retired by an activation row, never by editing it.
+- **Activation** is a `release_activation` row (environment, scope, release, effective from), also insert-only.
+  - At acceptance, a new payment takes the release active at that moment and records the release id in its context.
+  - A payment already running finishes on its own release.
+  - Rollback is a new activation row pointing to an earlier release.
+- **Hot update, by kind:**
+  - **Workflows:** a new release, activated. New payments take it and running ones keep theirs. Engines run several definitions side by side.
+  - **Activities:** code is versioned as name@version with a checksum.
+    - Workers load each version in its own `AssemblyLoadContext` and keep old ones while any payment pinned to them is open.
+    - On Temporal, a release's activities run on a versioned task queue or Build ID.
+    - A payment never runs code its release did not name. This closes the review's item 11.
+  - **Rules, lists and configuration values:** effective-dated version rows, also insert-only.
+    - Each rule says whether it is evaluated as of the payment's acceptance or as of the step.
+    - The runtime fixes the source's bug N1 by filtering on date first, then taking the version.
+    - They change with no deployment, through maker-checker in the studio. The runtime only reads published versions.
+- **Running payments** can change only through declared operator actions (retry, repair, cancel, decide), each with a permission and a second approver where the package says so. `InjectState` and arbitrary key/value edits are not carried over. This closes the review's item 13.
+
+### W5. Temporal on SQL Server (N* item 8)
+- Temporal ships persistence for PostgreSQL, MySQL, SQLite and Cassandra, but not SQL Server.
+- Recommendation (D2):
+  - Write a SQL Server `sqlplugin` for the Temporal server in Go (`runtime/temporal-mssql/`), with the schema and its migrations.
+  - Prove it with Temporal's own persistence test suite, then the conformance kit.
+  - Pin it to one Temporal server version and re-prove it on each upgrade.
+- This is a fork-like maintenance burden that Temporal will not support. The alternative is to keep Temporal on PostgreSQL and SQL Server for everything else.
+- The runtime's own data is on SQL Server or PostgreSQL either way (W2).
+
+### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
+- **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):
+  - into `p.*`: intake, decrypt, duplicate, approval, payment queue, charges, balance and funds, posting, reverse, status, reconcile, notify, posting windows, exchange rate;
+  - into `uae.p.*`: IBAN and routing codes, AED, the UAE calendar, the CB SFTP transport;
+  - into `uae.wps.*`: SIF/CBX parse and generation, the MOL corporate match, ACK/NAK, PIF/PSI, PRC, DIF, RFA, RRI, DE bulk, RTC.
+- **The WPS leg:** only the scheme's own steps remain in the leg, roughly 5 of today's 36 outward steps. The rest is the common lifecycle.
+- **C# rules become declarative.** About 40 rule classes become studio rules and tables:
+  - SIF upload, CBX filename, record and SCR rules, and the SSM structure checks;
+  - DE, DIF, RFA, PRC and RRI rules;
+  - the approval and posting classifiers.
+  - Their error codes stay (00803, 00829 and the rest), so channel messages do not change.
+- **The DIB fork becomes configuration of the example bank:**
+  - **Core banking:** mode, variant, ServiceCode, ExternalHostId, TxnFlag, UploadBranch, AuthStatus and paths become a port binding for the core-banking adapter.
+  - **Accounting:** GL accounts, narration, transaction codes, VAT and charge slabs become bank rule values, with UAE defaults.
+  - **Routing code:** one neutral parameter, `BankRoutingCode`, replaces `{tenant}RoutingCode`.
+  - **CBX parameters:** bank values with UAE defaults.
+  - **AML check, MOHRE notify and SFTP:** hooks or port bindings.
+  - **Exchange-rate reply shape:** an adapter.
+  - **Queues:** queue pins and default tenants go. A tenant is always given, never defaulted.
+- **The four copies of one validation rule** (record count, total within balance, MOHRE status) become one `uae.wps` rule.
+- **ADIB RTC** becomes a `uae.wps` RTC flow, with the ADIB posting as a hook.
+- **ENBD and FAB** are thin stubs with no tests today. They become configuration sets only.
+- **Real bank values** (routing code, GL accounts, host ids) are not committed. The repository keeps synthetic placeholders, and the bank's own set lives in its private copy of `content-configurations/banks/<bank>/` (D5).
+
+### W7. The studio: WPS only, structure
+- **Remove Aani** from the studio's factory content, tests, guide, training and videos.
+- **Keep WPS as a leg** of the platform lifecycle.
+- **Add the leg's missing parts.** The studio adds the WPS flows the source has that the factory has not yet modelled: inward PIF/PSI, PRC, DIF, RFA, RRI, DE and RTC, plus posting windows as a schedule-gated await (review: repair policy on the block contract). They come in through the import function (I-33), from an extraction of the source.
+- **Spec changes** go with the code that needs them, each with a requirement id and a check, as `spec/CLAUDE.md` says.
+
+### W8. The studio connects to a GitHub branch and exports to it
+- **Connect.** In the studio's settings, an owner connects a repository and a branch, for example the `content-configurations` repository on `main`, or a branch per environment.
+  - The token comes from an environment variable (`TH_GITHUB_TOKEN`) or a GitHub App installation, never from the studio's documents or the browser.
+  - The studio checks that it can read the branch and write to it, and shows the last commit it wrote.
+- **Export after changes.** When a checker approves a change set and the release is published, the studio writes one commit to the branch. The commit contains:
+  - the new release folder `releases/<scope>/<release>/` (the package, its manifest and hashes);
+  - changed bank configuration sets under `banks/<bank>/`;
+  - an activation row under `environments/<env>/`, if the change set asks for one.
+  - The commit message names the change set, the maker, the checker and the requirement ids. The author is the studio's bot identity; the maker and checker are trailers.
+- **Insert-only on the branch too.** The studio never rewrites a folder it has written. Exporting a release that already exists with a different hash is refused, as it is in the runtime. A rule or list change is a new effective-dated version file, not an edit.
+- **Optional pull-request mode.** For banks that want their own review in GitHub, the studio pushes to a branch named after the change set and opens a pull request into the connected branch, instead of committing to it directly.
+- **Conflicts.** The studio fetches before it writes. If the branch moved and the new commit touches a file the studio would write, the export stops and says which file. It never force-pushes.
+- **The runtime side.** A pipeline on the connected branch runs the package checks and posts each new release to the runtime's `POST /releases` (W4). The branch is then the record of what was released and when, beside the runtime's own release table.
+- **Tests:**
+  - a local bare repository for the unit and black-box tests (connect, export, refuse a rewrite, conflict, pull-request mode);
+  - one test against a real GitHub branch, run only when `TH_GITHUB_TOKEN` is set.
+
+## 4. "No functionality is lost": how we prove it
+
+1. **The baseline.** The source's own test suite as it runs today, per project (section 5). Every source test is kept and classified as passing, failing because of missing inputs, or failing for real.
+2. **A parity matrix** in `runtime/docs/parity.md`. Each line maps a source item to where it went, and to a test that proves it:
+   - each of the 112 activities;
+   - about 40 rule classes;
+   - 15 signals;
+   - 29 definitions (once the missing files arrive);
+   - the 64 WPS tables;
+   - each endpoint.
+   No line may be left empty. "Dropped, because…" needs an accepted reason, for example `InjectState`.
+3. **Golden runs.** The same synthetic SIF, PIF, PRC, DIF, RFA and RRI files go through the source (on Temporal, from the docker compose) and the new runtime. The CB SIF generated, the core-banking requests, the posting legs, the channel responses and the error codes must match field by field, apart from ids and times.
+4. **Scenario ports.** The WPS scenarios of the source's integration tests (about 1,900 WPS and inward tests) are rewritten as runtime tests and studio tests. They run on all four engines.
+5. **Replay.** The source's recorded Temporal histories are kept as a regression input for the migration tool: what each payment did must be readable in the new store.
+
+## 5. Baseline (the source, run as is, before any change)
+
+- **Build:** .NET SDK 10.0.115, `services/PaymentHub.slnx`, 153 projects. 0 errors and 1 warning (xUnit1026), in 3 min 44 s.
+- **Tests:** _to be filled in when the full run finishes_.
+- **Missing inputs.** Many integration and workflow tests read `dsl/workflows/*.workflow.json`, for example `DifNakWorkflowRoutingTests` reads `dsl/workflows/dib-wps-inward-paf.v1.workflow.json`. That folder is empty in the zip, so those tests fail before they start. The review counts 29 definitions there. `dsl/registration/wf-dib-wps-outward-cbx/`, `dsl/schemas/` and the `.github/` docs that the package's CLAUDE.md imports are also missing.
+
+## 6. Phases and exit criteria
+
+| Phase | What | Done when |
+| --- | --- | --- |
+| P0 | Inputs and baseline | The missing `dsl/` and `.github/` files are added. The baseline is recorded with every failure classified. The parity matrix is listed, with targets still open. |
+| P1 | Model, store, releases, interpreter, Temporal | WPS outward (SIF upload to CB ACK and the NAK reversal) runs on the new runtime on Temporal, on SQL Server and PostgreSQL. Its golden runs match the source. Releases are insert-only and pinned. |
+| P2 | WPS complete | Inward PIF/PSI, PRC, DIF, RFA, RRI, DE, RTC and posting windows. Every WPS line of the parity matrix is green. |
+| P3 | DTFx, Elsa, Flowable | The kit (46) and the WPS parity suite pass on all four engines × two databases in CI. |
+| P4 | Temporal on SQL Server | The plugin passes Temporal's persistence suite and the kit (if D2 is accepted). |
+| P5 | Banks | DIB, ADIB, ENBD and FAB are each a configuration set. No bank name is in shared code, and a check enforces it. Switching the example bank's core banking needs only a binding. |
+| P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
+| P6 | Studio | Aani is removed. The WPS leg and the new inward flows are authored and published. The studio deploys a release to the runtime and hot-updates a rule value with no deployment, shown end to end. |
+
+## 7. Issues found while planning (beyond the review's 21)
+
+- **N1.** `RuleRepository.GetActiveEffectiveRulesAsync` takes the newest version, then filters by date. A future-dated rule therefore hides the rule in force. The date used is also "now", not a date fixed for the payment. This is a money risk (charges).
+- **N2.** On DTFx, `IsPatched` always returns true, so a payment started before a patch runs the new branch after a restart. The two engines behave differently.
+- **N3.** Personal data (email, account, CIF, IBAN) goes into workflow context and history from the SIF upload endpoints, and whole batch records go in as variables.
+- **N4.** The generic runner hard-codes the step ids `aml_hit_hold` and `validation_non_stp`, and the workflow name `WF_DIB_WPS_Outward_Channel_IB`.
+- **N5.** The default tenant is "DIB" in four option classes and three services, and the simulator reads DIB parameters directly. A misconfigured installation silently acts as DIB.
+- **N6.** `platform.Transactions.OriginalPayload` is never written.
+- **N7.** `RailSchemaResolver` falls back to `ipi` for an unknown scheme.
+- **N8.** The DSL's `state_effect` is ignored, so compensation intent is not checked.
+- **N9.** Definitions can be changed before Production and when deprecated, and Draft and Deprecated rows can be deleted.
+- **N10.** The same validation is copied in four bank projects. ENBD and FAB are identical stubs with no tests, and ADIB's RTC has no tests.
+- **N11.** The restore script needs SQL Server 2025, while the compose file runs 2022.
+- **N12.** The DTFx conformance lane needs an external SQL Server. There are no Testcontainers, so it does not run in CI by default.
+- **N13.** `WorkflowActivityUpdater` writes `_assembly_version` into step JSON, but nothing reads it, which gives a false sense that code is pinned.
+- **N14.** The zip is incomplete (section 5).
+
+## 8. Decisions needed
+
+| # | Decision | Recommendation |
+| --- | --- | --- |
+| D1 | Amend N* "one runtime only" | Accept: the engine is chosen per installation, all four are proved equal by the kit. |
+| D2 | Temporal on SQL Server | Build the plugin, pinned to one Temporal version, as P4. If the maintenance cost is not acceptable, keep Temporal on PostgreSQL. |
+| D3 | Flowable hosting | A Java sidecar (Flowable 7) with .NET external workers, its own database. |
+| D4 | Where `spec/` lives | It stays at the root for now. Moving it under `studio/` is a separate change. |
+| D5 | Real bank values | Not in this repository: synthetic placeholders here, the bank's set in its private configuration repository. |
+| D7 | DTFx on PostgreSQL | Do not build a provider now. A DTFx installation keeps SQL Server for the engine's own state, and its payments data can be on either database. |
+| D8 | Studio export to GitHub: direct commit or pull request | Direct commit to the connected branch by default (maker-checker already happened in the studio). Pull-request mode per connection for banks that want it. |
+| D6 | Scope of the first drop | WPS only (P1 to P2) on Temporal, then the other engines. FTS, IPI, NPSS, CBFT, EDDA and XBDR come later, on the same store and lifecycle. |
+
+## 9. Survey notes (where each finding is in the source)
+See `docs/runtime/SURVEY.md`: the data model and databases, the engines and deployment, and the WPS and bank inventory, with file paths.
