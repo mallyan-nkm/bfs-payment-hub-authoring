@@ -1,0 +1,36 @@
+# The runtime's tests: every store test on SQL Server 2022 and PostgreSQL 16 (Testcontainers), the
+# database-independence check, the release API, and the WPS port against the source's golden corpus.
+name: runtime
+on:
+  push:
+    paths: [runtime/**, studio/engines/shared/**, content-configurations/**, .github/workflows/runtime.yml]
+  pull_request:
+    paths: [runtime/**, studio/engines/shared/**, content-configurations/**]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Pull the database images once
+        run: |
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          docker pull postgres:16-alpine
+      - name: Build
+        working-directory: runtime
+        run: dotnet build TransactHub.Runtime.slnx -v q
+      - name: Test (SQL Server and PostgreSQL)
+        working-directory: runtime
+        run: dotnet test TransactHub.Runtime.slnx --no-build -v q --logger "trx;LogFileName=runtime.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-test-results
+          path: runtime/TestResults

@@ -1,0 +1,40 @@
+# The studio: the spec's own checks, the type check and the automated suite.
+name: studio
+on:
+  push:
+    paths: [studio/**, spec/**, .github/workflows/studio.yml]
+  pull_request:
+    paths: [studio/**, spec/**]
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Spec checks
+        working-directory: spec
+        run: |
+          pip install pyyaml jsonschema
+          python3 tools/validate.py
+          python3 tools/mutation_tests.py
+      - name: Install
+        working-directory: studio
+        run: npm ci
+      - name: Type check
+        working-directory: studio
+        run: npm run typecheck
+      - name: Test
+        working-directory: studio
+        run: npm test
+      - name: Studio checks
+        working-directory: studio
+        run: npm run studio -- check

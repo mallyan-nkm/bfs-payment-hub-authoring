@@ -4,9 +4,11 @@
 
 const BLOCKED = /Application Control policy has blocked|0x800711C7|blocked by group policy|0x800704EC/i;
 
-export function blockedByWindows(output: string, engine: 'dtfx' | 'elsa' = 'dtfx'): string | undefined {
-  const name = engine === 'elsa' ? 'Elsa' : 'DTFx';
-  const dll = engine === 'elsa' ? 'engines/elsa/harness/bin/Release/net8.0/ElsaHarness.dll' : 'engines/dtfx/harness/bin/Release/net8.0/DtfxHarness.dll';
+export function blockedByWindows(output: string, engine: 'dtfx' | 'elsa' | 'temporal' = 'dtfx'): string | undefined {
+  const name = engine === 'elsa' ? 'Elsa' : engine === 'temporal' ? 'Temporal' : 'DTFx';
+  const dll = engine === 'elsa' ? 'engines/elsa/harness/bin/Release/net8.0/ElsaHarness.dll'
+    : engine === 'temporal' ? '../runtime/tools/TransactHub.TemporalHarness/bin/Release/net10.0/TransactHub.TemporalHarness.dll'
+    : 'engines/dtfx/harness/bin/Release/net8.0/DtfxHarness.dll';
   if (!BLOCKED.test(output)) return undefined;
   return [
     `Windows blocked the ${name} harness this studio built (${dll}).`,

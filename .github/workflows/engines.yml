@@ -1,0 +1,83 @@
+# The engines: the studio's black-box suites in the browser and on deployed packages, the WPS salary
+# file end to end on Temporal against PostgreSQL and SQL Server, and the conformance kit on Temporal,
+# DTFx and Elsa. Heavier: on pushes to the runtime or the engines, and by hand.
+name: engines
+on:
+  push:
+    paths: [runtime/**, studio/engines/**, studio/src/**, spec/**, .github/workflows/engines.yml]
+  workflow_dispatch:
+jobs:
+  blackbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install the studio and Playwright
+        working-directory: studio
+        run: |
+          npm ci
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          npm run web:build
+      - name: Temporal's test server (Maven Central)
+        run: runtime/tools/temporal-test-server/setup.sh
+      - name: Pull the database images once
+        run: |
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          docker pull postgres:16-alpine
+      - name: Black-box suites (the narrated videos are left out)
+        working-directory: studio
+        run: npx vitest run --config vitest.blackbox.config.ts --exclude test/blackbox/demo-videos.test.ts
+  kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [temporal, dtfx, elsa]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      TH_KIT_TIMEOUT_MIN: "90"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install
+        working-directory: studio
+        run: npm ci
+      - name: Temporal's test server
+        if: matrix.engine == 'temporal'
+        run: runtime/tools/temporal-test-server/setup.sh
+      - name: Conformance kit on ${{ matrix.engine }}
+        working-directory: studio
+        run: npx tsx engines/${{ matrix.engine }}/run-kit.ts
