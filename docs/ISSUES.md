@@ -467,7 +467,7 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **What is built.** The pin is exact in `go.mod`, and the README says each upgrade must re-run the proof. The CI job runs the whole proof on every push to `runtime/**`.
 
-## I-43. Id length on SQL Server is in bytes, not characters
+## I-45. Id length on SQL Server is in bytes, not characters
 
 **Issue.** Temporal's key columns for ids (workflow, run, task queue, signal, timer) are VARCHAR(255). On MySQL and PostgreSQL that is 255 characters. On SQL Server the plugin needs a UTF-8 collation to keep the keys under the 900-byte limit, so VARCHAR(255) is 255 bytes: an id with non-ASCII characters is shorter. The spec does not say which characters a workflow id may hold.
 
@@ -475,7 +475,7 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **What is built.** The development dynamic config sets `limit.maxIDLength` to 255. An id over 255 bytes is refused by SQL Server on write.
 
-## I-44. Text search attributes on SQL Server are not indexed
+## I-46. Text search attributes on SQL Server are not indexed
 
 **Issue.** Temporal's Text search attributes use full-text search: a GIN index on PostgreSQL, FULLTEXT on MySQL. SQL Server's full-text search is a separate component that the Linux container image does not include, and that a bank's DBA may not enable. The plugin matches Text with `STRING_SPLIT` over the rows the other filters leave, which is correct but not indexed. The spec does not say whether operators search payments by free text in Temporal's visibility.
 
@@ -483,7 +483,7 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **What is built.** Keyword, Int, Double, Bool, Datetime and Keyword List attributes are indexed on SQL Server. Text is matched without an index and passes Temporal's visibility suites.
 
-## I-45. What a bank's SQL Server must allow for Temporal
+## I-47. What a bank's SQL Server must allow for Temporal
 
 **Issue.** The plugin needs each Temporal database created with the collation `Latin1_General_100_BIN2_UTF8` (SQL Server 2019 or later) and with `READ_COMMITTED_SNAPSHOT ON`. Some banks fix the collation of every database by policy, and some DBAs do not allow row versioning in tempdb. The deployment guide does not list these as prerequisites.
 
@@ -491,7 +491,7 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **What is built.** `temporal-sql-tool create-database` sets both. The server refuses to start on a database with another collation, with a message naming the one it needs.
 
-## I-46. The conformance kit on a real Temporal server waits in real time
+## I-48. The conformance kit on a real Temporal server waits in real time
 
 **Issue.** The Temporal harness runs on Temporal's time-skipping test server, which keeps no state in a database. With `TH_TEMPORAL_ADDRESS` it runs on a real server, whatever its database, in real time: business time is the server's time plus an offset. Six scenarios wait a long business time. On the server on SQL Server their open timers were: CK-AWAIT-02 three days, CK-LOOKUP-01 two days, CK-BLOCK-03 four hours, CK-WAIT-01, CK-AWAIT-03 and CK-BLOCK-02 one hour. With the harness's time limit (`TH_KIT_TIMEOUT_MIN`, 15 minutes) they cannot finish, so the whole kit cannot be shown in one run on a server that keeps its state in SQL Server, or in PostgreSQL. The whole kit one after another takes more than two hours even without them. Temporal v1.32.2 has a per-execution time-skipping option (`frontend.WorkflowTimeSkippingEnabled`), but it keeps one clock per execution, and the harness's front door and root workflows share one business clock.
 

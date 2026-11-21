@@ -196,7 +196,7 @@ jobs:
         working-directory: studio
         run: npm ci
       - name: The conformance kit on servers on SQL Server (40 of 46 scenarios, three shards)
-        # A real server runs the kit in real time (docs/ISSUES.md I-46). Six scenarios wait a business hour
+        # A real server runs the kit in real time (docs/ISSUES.md I-48). Six scenarios wait a business hour
         # or more (CK-WAIT-01, CK-AWAIT-03 and CK-BLOCK-02 one hour, CK-BLOCK-03 four hours, CK-LOOKUP-01
         # two days, CK-AWAIT-02 three), so this fast subset leaves them out. The other 40 take about an
         # hour and a half one after another, so they run on three servers side by side, in about 30 minutes.

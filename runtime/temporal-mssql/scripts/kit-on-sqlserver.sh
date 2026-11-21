@@ -5,7 +5,7 @@
 #   scripts/kit-on-sqlserver.sh                 all 46 scenarios
 #   KIT_EXCLUDE="CK-AWAIT-02 ..." scripts/kit-on-sqlserver.sh
 #
-# On a real server the kit runs in real time, so its business waits are real waits (I-46), and run one
+# On a real server the kit runs in real time, so its business waits are real waits (I-48), and run one
 # after another the scenarios take more than two hours. Each harness polls the same task queue, so two
 # harnesses cannot share a server. The script starts KIT_SERVERS servers (default 3), each with its own
 # databases (temporal_kit<N>, temporal_visibility_kit<N>) and ports (offset 1000 x N), deals the scenarios

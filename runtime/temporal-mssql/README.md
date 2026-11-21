@@ -100,7 +100,7 @@ Visibility is on SQL Server too. The design:
 - **One computed column per search attribute**, over `JSON_VALUE(search_attributes, '$.Name')`, as PostgreSQL and MySQL have one generated column each. A column that is indexed is `PERSISTED`. Keyword, Int, Double, Bool and Datetime attributes are indexed with the list order, as on PostgreSQL.
 - **The list order** `COALESCE(close_time, '9999-12-31 23:59:59')` is a persisted, indexed column, `close_time_or_max`.
 - **Keyword List attributes** (a JSON array, such as `BuildIds`) have no indexable column form. A trigger keeps one row per value in `executions_visibility_keyword_lists`, keyed on a SHA-256 of the value. `BuildIds = 'x'` becomes an indexed `EXISTS` on that table.
-- **Text attributes** match when any word of the query is a word of the text, as PostgreSQL's `tsvector` match does. SQL Server's Linux image has no full-text search, so this is a `STRING_SPLIT` over the rows the other filters leave. It is not indexed (see `docs/ISSUES.md` I-44).
+- **Text attributes** match when any word of the query is a word of the text, as PostgreSQL's `tsvector` match does. SQL Server's Linux image has no full-text search, so this is a `STRING_SPLIT` over the rows the other filters leave. It is not indexed (see `docs/ISSUES.md` I-46).
 - **The query converter** (`sqlplugin/sqlserver/query_converter.go`) plugs into Temporal's unified converter. It writes `1` and `0` for Bool, plain T-SQL string literals, the keyword list `EXISTS`, the text match, and `OFFSET ... FETCH`.
 
 Visibility passes Temporal's visibility suites (below), and the server's list and count queries work on it: `WorkflowType = 'x' AND ExecutionStatus = 'Completed'`, `WorkflowId STARTS_WITH 'x'`, and `BuildIds IN (...)`.
@@ -250,7 +250,7 @@ The shards ran side by side, so the whole kit took about 70 minutes of wall time
 
 CK-FOREACH-02, the 10,000-item batch in chunks that continue as new (some 20,000 activity runs), passes in about three minutes on SQL Server. The Java test server cannot run it at all.
 
-The scenarios that wait hours or days take that long in real time on any real server, whatever its database. When the harness stopped them, their workflows were waiting on these timers on the server on SQL Server: CK-AWAIT-02 259,198 s (three days, on the business calendar), CK-LOOKUP-01 172,798 s (two days), CK-BLOCK-03 14,398 s (four hours). CK-AWAIT-03 (two hours) passed when it was given the time. Their logic passes on the time-skipping server (`studio/engines/temporal/README.md`), and the store under them is what the persistence suites prove. `docs/ISSUES.md` I-46 asks how such scenarios should be proved on a real server.
+The scenarios that wait hours or days take that long in real time on any real server, whatever its database. When the harness stopped them, their workflows were waiting on these timers on the server on SQL Server: CK-AWAIT-02 259,198 s (three days, on the business calendar), CK-LOOKUP-01 172,798 s (two days), CK-BLOCK-03 14,398 s (four hours). CK-AWAIT-03 (two hours) passed when it was given the time. Their logic passes on the time-skipping server (`studio/engines/temporal/README.md`), and the store under them is what the persistence suites prove. `docs/ISSUES.md` I-48 asks how such scenarios should be proved on a real server.
 
 In CI the kit runs as a fast subset: the 40 scenarios that wait less than a business hour, on three servers, in about 30 minutes. The six long-wait scenarios are left out there, and the job says so.
 
@@ -276,7 +276,7 @@ The test checks that the payment settles with the full trace (validate to `end:s
 
 ### 5. CI
 
-The job `temporal-sqlserver` in `.github/workflows/engines.yml` builds the plugin, runs the unit tests and the persistence suites against a SQL Server 2022 service container, sets up the schemas with `temporal-sql-tool`, runs the durability check, then runs the kit's fast subset of 40 scenarios on three servers on SQL Server (`scripts/kit-on-sqlserver.sh`, about 30 minutes) and the WPS salary file. It leaves out the six scenarios that wait a business hour or more (`docs/ISSUES.md` I-46). The step name says so.
+The job `temporal-sqlserver` in `.github/workflows/engines.yml` builds the plugin, runs the unit tests and the persistence suites against a SQL Server 2022 service container, sets up the schemas with `temporal-sql-tool`, runs the durability check, then runs the kit's fast subset of 40 scenarios on three servers on SQL Server (`scripts/kit-on-sqlserver.sh`, about 30 minutes) and the WPS salary file. It leaves out the six scenarios that wait a business hour or more (`docs/ISSUES.md` I-48). The step name says so.
 
 ## What is not proved
 

@@ -147,11 +147,11 @@ content-configurations/      what the studio publishes and what a bank configure
   - Temporal's own persistence suites, wired as for PostgreSQL: 45 of 45 suites pass (479 test cases, none fail; the 2 skips are Temporal's Cassandra-only tests).
   - Visibility is on SQL Server too: a computed column per search attribute, and a trigger-kept side table for keyword lists. It passes Temporal's visibility suites.
   - The server runs on SQL Server. A workflow whose timer was running when the server was killed (SIGKILL) completes after the restart.
-  - The conformance kit on servers on SQL Server, in real time: 43 of 46 pass, none fails on its trace. The other 3 wait four business hours to three days, which a real server waits in real time (I-46). CK-FOREACH-02, the 10,000-item batch, passes in about three minutes.
+  - The conformance kit on servers on SQL Server, in real time: 43 of 46 pass, none fails on its trace. The other 3 wait four business hours to three days, which a real server waits in real time (I-48). CK-FOREACH-02, the 10,000-item batch, passes in about three minutes.
   - The WPS salary file settles on Temporal on SQL Server with the runtime's payments store on SQL Server too (`e2e-wps-temporal.test.ts`, "database on SqlServer", with `TH_TEMPORAL_ADDRESS`).
   - CI job `temporal-sqlserver` runs all of it.
-- **P4 status: met, with one gap.** The plugin passes Temporal's persistence suites and runs the kit and the WPS salary file. The kit's scenarios that wait hours or days are proved on the time-skipping server, not on SQL Server, until I-46 is decided. CI runs the fast subset of 40.
-- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-43); Text search attributes are not indexed (I-44); what a bank's SQL Server must allow (I-45); the kit's long business waits on a real server (I-46).
+- **P4 status: met, with one gap.** The plugin passes Temporal's persistence suites and runs the kit and the WPS salary file. The kit's scenarios that wait hours or days are proved on the time-skipping server, not on SQL Server, until I-48 is decided. CI runs the fast subset of 40.
+- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-45); Text search attributes are not indexed (I-46); what a bank's SQL Server must allow (I-47); the kit's long business waits on a real server (I-48).
 
 ### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
 - **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):
