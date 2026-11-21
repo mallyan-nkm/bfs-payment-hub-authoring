@@ -1,0 +1,248 @@
+using System.Text.Json.Nodes;
+using Temporalio.Workflows;
+using TransactHub.Engines;
+
+namespace TransactHub.Engine.Temporal;
+
+// The Temporal binding (plan W3; spec Part 9). One generic workflow interprets the expanded DSL
+// documents of a release, with the studio's own interpreter (studio/engines/shared). Each activity
+// release is a Temporal activity type `name@release` on the task queue of its scope, so two releases
+// run side by side and a payment calls only the code its release names. Timers, retries, children,
+// signals and continue-as-new are Temporal's own; nothing outside the engine keeps time.
+
+/// <summary>What every workflow input carries besides the interpreter's own: the virtual epoch.</summary>
+public static class Envelope
+{
+    /// <summary>
+    /// Workflows read Now as Temporal's time plus this offset (milliseconds), fixed in the input, so a run
+    /// can start at a business date that is not today and stay deterministic on replay.
+    /// </summary>
+    public static JsonObject Wrap(JsonObject inner, long offset, string frontDoor, long now) =>
+        new() { ["offset"] = offset, ["frontDoor"] = frontDoor, ["now"] = now, ["input"] = inner };
+}
+
+/// <summary>
+/// Business time is logical: it moves on a timer firing, a party's declared latency and an arrival
+/// (a message, a signal, a child's report), never on the time the engine takes to process. So a
+/// one-hour wait is one hour on Temporal as on every engine, and the clock is the same on replay.
+/// </summary>
+public sealed class TemporalEngine : IEngine
+{
+    readonly long offset;
+    readonly string frontDoor;
+    readonly Func<string, string> queueOf;
+    long logical;
+    int asked, acked;
+    // Attempts in call order: when each is due (known once the party has answered) and whether its
+    // result has been handed back. Results due at the same business time are handed back in call
+    // order, as every engine does (parallel branches that end together keep their order).
+    int calls;
+    readonly Dictionary<int, long> dueAt = new();
+    readonly HashSet<int> released = new();
+
+    public TemporalEngine(long offset, string frontDoor, Func<string, string> queueOf, long start)
+    {
+        this.offset = offset;
+        this.frontDoor = frontDoor;
+        this.queueOf = queueOf;
+        logical = start;
+    }
+
+    /// <summary>Temporal's own time on the business calendar: what timers are set against.</summary>
+    long ServerNow => new DateTimeOffset(Workflow.UtcNow, TimeSpan.Zero).ToUnixTimeMilliseconds() + offset;
+    public long Now => logical;
+    /// <summary>Something arrived at a business time (a message, a signal): the clock is at least there.</summary>
+    public void Arrived(long at) => logical = Math.Max(logical, at);
+    /// <summary>The front door has routed every delivery this run handed it up to number n.</summary>
+    public void Acked(int n) => acked = Math.Max(acked, n);
+
+    async Task Until(long at, CancellationToken ct = default)
+    {
+        await Workflow.DelayAsync(TimeSpan.FromMilliseconds(Math.Max(0, at - ServerNow)), ct);
+        logical = Math.Max(logical, at);
+    }
+    public string InstanceId => Workflow.Info.WorkflowId;
+    public bool Durable => true;
+
+    /// <summary>
+    /// One attempt as one Temporal activity with no retry of its own: the interpreter applies the
+    /// policy (R-05-16). What a party takes to answer, or never answering, is played here on
+    /// Temporal's timers, so the attempt timeout the interpreter races against it sees it.
+    /// </summary>
+    public static readonly bool Debug = Environment.GetEnvironmentVariable("TH_DEBUG") == "1";
+    void Log(string what) { if (Debug && !Workflow.Unsafe.IsReplaying) Console.Error.WriteLine($"[temporal] {Workflow.Info.WorkflowId} {what} logical={Duration.Iso(logical)} server={Duration.Iso(ServerNow)}"); }
+
+    public async Task<JsonObject> Activity(string name, JsonObject input)
+    {
+        Log($"call {name} deadline={(J.Num(input, "deadline") is double dd ? Duration.Iso((long)dd) : "-")}");
+        var seq = ++calls;
+        try { return await Attempt(name, input, seq); }
+        finally { released.Add(seq); dueAt.Remove(seq); }
+    }
+
+    /// <summary>Wait until no earlier call can be due before or with this one, then until this one is due.</summary>
+    async Task Release(int seq, long due)
+    {
+        dueAt[seq] = due;
+        await Workflow.WaitConditionAsync(() => Enumerable.Range(1, seq - 1).All(j => released.Contains(j) || dueAt.ContainsKey(j)));
+        await Until(due);
+        await Workflow.WaitConditionAsync(() => Enumerable.Range(1, seq - 1).All(j => released.Contains(j) || dueAt[j] > due));
+    }
+
+    async Task<JsonObject> Attempt(string name, JsonObject input, int seq)
+    {
+        var called = logical;
+        var raw = await Workflow.ExecuteActivityAsync<string>(name, new object?[] { J.Str(input) }, new ActivityOptions
+        {
+            TaskQueue = queueOf(name),
+            StartToCloseTimeout = TimeSpan.FromHours(1),
+            RetryPolicy = new() { MaximumAttempts = 1 },
+        });
+        var res = (JsonObject)J.Parse(raw)!;
+        if (J.P(res, "deliveries") is JsonArray d && d.Count > 0)
+        {
+            // What the party sent during this attempt is routed before the attempt ends, so a reply
+            // that is due now reaches its run before the run goes on to await it (CK-AWAIT-04).
+            var n = ++asked;
+            await Workflow.GetExternalWorkflowHandle(frontDoor).SignalAsync(FrontDoorWorkflow.Deliver,
+                new object?[] { J.Str(new JsonObject { ["deliveries"] = J.Clone(d), ["ackTo"] = Workflow.Info.WorkflowId, ["ack"] = n }) });
+            await Workflow.WaitConditionAsync(() => acked >= n);
+        }
+        res.Remove("deliveries");
+        var due = called + (long)(J.Num(res, "latency") ?? 0);
+        res.Remove("latency");
+        if (J.S(res, "kind") == "hang")
+        {
+            if (J.Num(input, "deadline") is double dl)
+            {
+                await Release(seq, (long)dl + 1000);
+                return new JsonObject { ["kind"] = "error", ["name"] = "Timeout", ["retryable"] = true, ["message"] = "no answer before the attempt's own deadline", ["late"] = true, ["at"] = Now };
+            }
+            dueAt[seq] = long.MaxValue;
+            await Workflow.WaitConditionAsync(() => false);
+        }
+        await Release(seq, due);
+        res["at"] = Now;
+        Log($"done {name} {J.S(res, "kind")} {J.S(res, "outcome")}");
+        return res;
+    }
+
+    public Task Timer(long at, CancellationToken ct)
+    {
+        Log($"timer {Duration.Iso(at)}");
+        return Until(at, ct);
+    }
+
+    public async Task<JsonObject> Child(string instanceId, JsonObject input)
+    {
+        var raw = await Workflow.ExecuteChildWorkflowAsync<string>(InterpreterWorkflow.Name, new object?[] { J.Str(Envelope.Wrap(input, offset, frontDoor, logical)) },
+            new ChildWorkflowOptions { Id = instanceId, TaskQueue = Workflow.Info.TaskQueue });
+        var o = (JsonObject)J.Parse(raw)!;
+        // The child's end is an arrival: the parent goes on from the business time the child ended at.
+        if (J.Num(o, "endedAt") is double ended) Arrived((long)ended);
+        return o;
+    }
+
+    /// <summary>The retry rule of RetryInterceptor (DTFx), on Temporal's timers.</summary>
+    public async Task<T> WithRetry<T>(RetryPlan o, Func<Task<T>> call)
+    {
+        Exception? last = null;
+        var first = Now;
+        for (var n = 0; n < o.MaxNumberOfAttempts; n++)
+        {
+            try { return await call(); }
+            catch (Exception e) when (e is not Cancelled) { last = e; }
+            if (n + 1 == o.MaxNumberOfAttempts) break;
+            var deadline = o.RetryTimeout == TimeSpan.MaxValue ? long.MaxValue : first + (long)o.RetryTimeout.TotalMilliseconds;
+            if (!o.Handle(last) || Now >= deadline) break;
+            await Until(Now + (long)o.Delay(n).TotalMilliseconds);
+        }
+        throw last!;
+    }
+
+    public void SendEvent(string instanceId, string name, JsonObject data) =>
+        _ = Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { J.Str(data), logical });
+
+    public void ContinueAsNew(JsonObject input) =>
+        throw Workflow.CreateContinueAsNewException((InterpreterWorkflow wf) => wf.RunAsync(J.Str(Envelope.Wrap(input, offset, frontDoor, logical))));
+}
+
+/// <summary>The one generic workflow: it interprets the expanded document its input names, at its exact release.</summary>
+[Workflow(Name)]
+public sealed class InterpreterWorkflow
+{
+    public const string Name = "transacthub.interpreter";
+    /// <summary>Which task queue serves an activity type; set by the host before its workers start, and never changed.</summary>
+    public static Func<string, string> QueueOf = _ => Workflow.Info.TaskQueue;
+
+    readonly Interp interp;
+    readonly TemporalEngine engine;
+    readonly JsonObject input;
+    readonly string frontDoor;
+
+    [WorkflowInit]
+    public InterpreterWorkflow(string envelope)
+    {
+        var e = (JsonObject)J.Parse(envelope)!;
+        input = (JsonObject)J.P(e, "input")!;
+        frontDoor = J.S(e, "frontDoor")!;
+        engine = new TemporalEngine((long)J.Num(e, "offset")!.Value, frontDoor, QueueOf, (long)J.Num(e, "now")!.Value);
+        interp = new Interp(engine, Deployment.Current);
+    }
+
+    [WorkflowRun]
+    public async Task<string> RunAsync(string envelope)
+    {
+        var fd = Workflow.GetExternalWorkflowHandle(frontDoor);
+        await fd.SignalAsync(FrontDoorWorkflow.Register, new object?[] { J.Str(new JsonObject { ["id"] = Workflow.Info.WorkflowId, ["kind"] = J.S(input, "kind"), ["header"] = J.Clone(J.Get(input, "state.header")) }) });
+        JsonObject o;
+        try
+        {
+            o = await interp.Run(input);
+        }
+        catch (ContinueAsNewException) { throw; }
+        catch (Exception e) when (e is not Temporalio.Exceptions.TemporalException || e is Temporalio.Exceptions.FailureException)
+        {
+            o = interp.Output();
+            o["failed"] = e.Message;
+            o["outcome"] ??= "failed";
+        }
+        await fd.SignalAsync(FrontDoorWorkflow.Completed, new object?[] { J.Str(new JsonObject { ["id"] = Workflow.Info.WorkflowId, ["consumed"] = J.Clone(J.P(o, "consumed")) }) });
+        return J.Str(o);
+    }
+
+    // Each signal carries the business time it was sent at, so the receiver's clock moves to it.
+    [WorkflowSignal("signal")]
+    public Task SignalAsync(string data, long at)
+    {
+        engine.Arrived(at);
+        interp.OnSignal(J.S((JsonObject)J.Parse(data)!, "signal")!);
+        return Task.CompletedTask;
+    }
+
+    [WorkflowSignal("message")]
+    public Task MessageAsync(string data, long at)
+    {
+        engine.Arrived(at);
+        interp.OnMessage((JsonObject)J.Parse(data)!);
+        return Task.CompletedTask;
+    }
+
+    [WorkflowSignal("ack")]
+    public Task AckAsync(int n)
+    {
+        engine.Acked(n);
+        return Task.CompletedTask;
+    }
+
+    [WorkflowSignal("chunk")]
+    public Task ChunkAsync(string data, long at)
+    {
+        engine.Arrived(at);
+        interp.OnChunk((JsonObject)J.Parse(data)!);
+        return Task.CompletedTask;
+    }
+
+    [WorkflowQuery("status")]
+    public string Status() => J.Str(new JsonObject { ["awaiting"] = interp.AwaitingType, ["ended"] = interp.Ended });
+}

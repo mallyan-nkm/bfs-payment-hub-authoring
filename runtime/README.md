@@ -7,6 +7,11 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `src/TransactHub.Model` | The internal payment model on ISO 20022 (pain.001 / pacs.008 shapes), and `PaymentContext`, which is what a workflow carries: ids, release, as-of date and branch facts, never personal data. |
 | `src/TransactHub.Store` | The generalized store, insert-only, through EF Core only: payments, bulks, parties, hash-chained facts, messages, exception items, releases and activations, effective-dated rules, lists and configuration values, the outbox. |
 | `src/TransactHub.Store.Migrations.SqlServer`, `…PostgreSql` | The migrations of each provider, generated from the one model. |
+| `src/TransactHub.Interpreter` | The studio's interpreter (`studio/engines/shared`), compiled into the runtime: one interpreter for every engine. |
+| `src/TransactHub.Engine.Temporal` | The Temporal binding: the generic interpreter workflow, the front-door workflow, and the host activities (attempts, claim check, handlers). See `studio/engines/temporal/README.md`. |
+| `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest, stored once), `POST /activations`, `GET /activations/active`, `POST /import-branch` (the branch the studio exports to). PUT, PATCH and DELETE are refused. |
+| `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
+| `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |
 | `tests/TransactHub.Store.Tests` | Every store test on SQL Server 2022 and PostgreSQL 16 (Testcontainers), and the database-independence check. |
 
 ## Commands

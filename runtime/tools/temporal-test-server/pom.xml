@@ -1,0 +1,15 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <!-- Temporal's time-skipping test server, from Maven Central, for the runtime's Temporal tests.
+       setup.sh resolves it and writes the classpath; run.sh starts it on a port. -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>transacthub</groupId>
+  <artifactId>temporal-test-server</artifactId>
+  <version>1</version>
+  <dependencies>
+    <dependency>
+      <groupId>io.temporal</groupId>
+      <artifactId>temporal-test-server</artifactId>
+      <version>1.31.0</version>
+    </dependency>
+  </dependencies>
+</project>

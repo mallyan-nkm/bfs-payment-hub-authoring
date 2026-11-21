@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- One interpreter: the studio's own, shared with its DTFx and Elsa harnesses (studio/engines/shared). -->
+    <Compile Include="../../../studio/engines/shared/*.cs" Link="shared/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

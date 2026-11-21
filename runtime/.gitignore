@@ -1,3 +1,4 @@
 bin/
 obj/
 TestResults/
+tools/temporal-test-server/classpath.txt

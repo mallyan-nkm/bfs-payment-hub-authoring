@@ -26,7 +26,7 @@ export interface DeployEnvironment {
 
 export interface DeployRequest {
   packagePath: string; // a .zip from the studio's export, or the folder it unpacks to
-  engine?: 'dtfx' | 'elsa';
+  engine?: 'dtfx' | 'elsa' | 'temporal';
   workflow: string;
   environment: DeployEnvironment;
   inbound?: { message?: string; payload: string };
@@ -87,9 +87,10 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   const dir = unpack(req.packagePath);
   const manifest = parseYaml(fs.readFileSync(path.join(dir, 'manifest.yaml'), 'utf8'));
   const binding = parseYaml(fs.readFileSync(path.join(dir, 'binding.yaml'), 'utf8'));
-  // The package's binding says which engine runs it; the deploy runner drives DTFx and Elsa.
-  const engine = binding.target as 'dtfx' | 'elsa';
-  if (engine !== 'dtfx' && engine !== 'elsa') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx and elsa`);
+  // The package's binding says which engine runs it; the deploy runner drives DTFx, Elsa and Temporal
+  // (Temporal through the runtime's harness, runtime/tools/TransactHub.TemporalHarness).
+  const engine = binding.target as 'dtfx' | 'elsa' | 'temporal';
+  if (engine !== 'dtfx' && engine !== 'elsa' && engine !== 'temporal') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx, elsa and temporal`);
   if (req.engine && req.engine !== engine) throw new Error(`This package is for ${engine}, not ${req.engine}`);
   const log: string[] = [];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-run-'));
@@ -189,7 +190,9 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     // 4. The engine.
     const harnessDll = engine === 'elsa'
       ? path.join(req.studioRoot, 'engines', 'elsa', 'harness', 'bin', 'Release', 'net8.0', 'ElsaHarness.dll')
-      : path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
+      : engine === 'temporal'
+        ? path.join(req.studioRoot, '..', 'runtime', 'tools', 'TransactHub.TemporalHarness', 'bin', 'Release', 'net10.0', 'TransactHub.TemporalHarness.dll')
+        : path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
     if (!fs.existsSync(harnessDll)) {
       const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.dirname(path.dirname(path.dirname(path.dirname(harnessDll)))), encoding: 'utf8' });
       if (b.status !== 0) throw new Error(`dotnet build failed: ${b.stdout}`);

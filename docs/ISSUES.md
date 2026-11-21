@@ -344,6 +344,31 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 **Not tested here.** Opening a pull request on GitHub itself needs a real repository and token; on any other remote the branch is pushed and the result says the review is to be opened in the repository host.
 
+## I-35. Temporal as a runtime engine
+
+**Issue.** The plan (W3) needs four engines behind one seam. The studio proved the conformance kit on DTFx, Flowable and Elsa; the Temporal binding existed only in the TransactHub source, behind its own DSL runner. The machine that builds here cannot download Temporal's native test server.
+
+**Recommendation.** Bind Temporal in the new runtime with the studio's own interpreter, to the same plan and observation as the other harnesses, so that the kit runner and the deploy runner compare it unchanged. Run Temporal's time-skipping test server from its Maven Central artifact.
+
+**Decision.** Accepted with the plan (D1, D3).
+
+**What changed.**
+- `runtime/src/TransactHub.Interpreter` compiles `studio/engines/shared`, so there is one interpreter.
+- `runtime/src/TransactHub.Engine.Temporal` holds the Temporal binding:
+  - the generic interpreter workflow;
+  - the front door as a long-running workflow, which handles root starts, signals, deliveries at their times and correlation;
+  - handlers as activities;
+  - one task queue per scope;
+  - a logical business clock.
+- `runtime/tools/TransactHub.TemporalHarness` and `runtime/tools/temporal-test-server` run a plan on Temporal.
+- `studio/engines/temporal` holds the kit adapter. `studio/src/deploy/deploy.ts` now drives Temporal packages too.
+- `studio/test/blackbox/e2e-wps-temporal.test.ts` covers the WPS salary file on Temporal: four task queues and four worker processes. For rejection, sanctions and holds, the trace must match the studio interpreter.
+
+**Found on the way.** Three rules apply to the binding:
+- **Business time cannot be Temporal's clock.** Processing time leaks into it, by 0.2 s over an hour's wait. Business time therefore moves only on timers, declared latencies and arrivals. A child's end is an arrival.
+- **Results due at the same business time are handed back in call order,** as the interpreter and DTFx do. Otherwise parallel branches swap places in the trace.
+- **A party's messages sent during an attempt are routed before the attempt ends.** Otherwise an early reply misses its await.
+
 ## Not done, and why
 
 | Story | Why |
