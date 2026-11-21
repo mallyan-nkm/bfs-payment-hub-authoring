@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Writes golden.json from the TransactHub source's own WPS rule classes:
+       dotnet run -p:SourceRoot=(unpacked TransactHub-src), then the output path
+       Not part of the runtime solution: it needs the source, which the runtime never references. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);SOURCE</DefineConstants>
+    <NoWarn>$(NoWarn);CS8604;CS8625</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup>
+    <Wps>$(SourceRoot)/services/shared/dotnet/PaymentHub.Shared/Domain/Wps</Wps>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(Wps)/CbxFileNameRules.cs;$(Wps)/CbxRecordRules.cs;$(Wps)/CbxScrRules.cs;$(Wps)/CbxRuleSettings.cs;$(Wps)/SifUploadRules.cs;$(Wps)/WpsVocabulary.cs" />
+    <Compile Include="$(SourceRoot)/services/shared/dotnet/PaymentHub.Shared/Security/AccountMasking.cs" />
+  </ItemGroup>
+</Project>

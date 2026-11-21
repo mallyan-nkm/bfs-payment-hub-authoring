@@ -1,0 +1,13 @@
+# The example bank's values for the WPS salary-file rules (synthetic). Parameter names are the source's
+# (wps.ParamConfiguration), so a bank's existing values carry over; BankRoutingCode replaces {tenant}RoutingCode.
+kind: configuration-values
+tenant: example-bank
+scope: uae.wps
+effectiveFrom: 2026-11-01T00:00:00Z
+values:
+  CbxMolIdLength: "13"
+  CbxFileDateMaxYearsBack: "1"
+  CbxScrDebitAccountRequired: "true"
+  CbxScrDebitAccountRegisteredCheck: "true"
+  CbxAccountMatchLength: "15"
+  BankRoutingCode: "302620122"

@@ -27,6 +27,12 @@
     <ProjectReference Include="..\..\src\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Api\TransactHub.Api.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The golden corpus, evaluated against the runtime's port (see tools/WpsGolden). -->
+    <Compile Include="../../tools/WpsGolden/Corpus.cs" Link="Golden/Corpus.cs" />
+    <None Include="Golden/*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
