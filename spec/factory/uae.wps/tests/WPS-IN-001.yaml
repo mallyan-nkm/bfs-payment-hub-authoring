@@ -30,3 +30,6 @@ expect:
     - port: uae.wps.port.wps.v1
       message: uae.wps.dif
       count: 1
+    - port: uae.wps.port.wps.v1
+      message: uae.wps.rfa
+      count: 0

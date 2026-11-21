@@ -101,7 +101,7 @@ messages:
     direction: out
     confirmed: false
     disposition:
-      planned: Agent-side returns leg
+      sentBy: uae.wps.exchange.send-returns-file.v1
   - id: uae.wps.rtc
     title: Return file to the employer's bank
     direction: in
@@ -128,4 +128,4 @@ provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: File types come from a 2018 guide. Four messages are planned, so this pack is not yet publishable.
+  note: File types come from a 2018 guide. Three messages are planned, so this pack is not yet publishable.

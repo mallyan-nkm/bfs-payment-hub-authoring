@@ -56,6 +56,18 @@ scenarios:
       - send: p.core.reply
         status: accepted
     malformed: true
+  - name: reject-first-then-accept
+    steps:
+      - expect: p.core.request
+      - send: p.core.reply
+        status: rejected
+        reasonCode: AC04
+      - expect: p.core.request
+      - send: p.core.reply
+        status: accepted
+      - expect: p.core.request
+      - send: p.core.reply
+        status: accepted
 implementation:
   binding: script
   language: typescript

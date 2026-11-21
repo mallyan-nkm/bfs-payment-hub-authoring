@@ -162,28 +162,35 @@ packs:
   - scope: uae.wps
     packType: shared
     counts:
-      activity: 21
+      activity: 26
       extension: 1
       port: 2
       rule: 11
       ruleset: 3
+      table: 1
       scheme: 1
       simulator: 3
-      test: 10
-      workflow: 9
-    total: 61
+      test: 13
+      workflow: 10
+    total: 71
     artefacts:
+      - name: uae.wps.decide.returns.v1
+        kind: activity
       - name: uae.wps.exchange.confirm-receipt.v1
         kind: activity
       - name: uae.wps.exchange.receive-supplement.v1
         kind: activity
       - name: uae.wps.exchange.request-refund.v1
         kind: activity
+      - name: uae.wps.exchange.return-credits.v1
+        kind: activity
       - name: uae.wps.exchange.send-disbursement-file.v1
         kind: activity
       - name: uae.wps.exchange.send-receipt-confirmation.v1
         kind: activity
       - name: uae.wps.exchange.send-refund-request.v1
+        kind: activity
+      - name: uae.wps.exchange.send-returns-file.v1
         kind: activity
       - name: uae.wps.exchange.send-salary-file.v1
         kind: activity
@@ -199,6 +206,8 @@ packs:
         kind: activity
       - name: uae.wps.map.refund-order-in.v1
         kind: activity
+      - name: uae.wps.map.rfa-out.v1
+        kind: activity
       - name: uae.wps.map.rfr-out.v1
         kind: activity
       - name: uae.wps.map.rsu-in.v1
@@ -208,6 +217,8 @@ packs:
       - name: uae.wps.map.sif-in.v1
         kind: activity
       - name: uae.wps.map.sif-out.v1
+        kind: activity
+      - name: uae.wps.post.return.v1
         kind: activity
       - name: uae.wps.validate.payment-file.v1
         kind: activity
@@ -249,6 +260,8 @@ packs:
         kind: ruleset
       - name: uae.wps.ruleset.salary-record.v1
         kind: ruleset
+      - name: uae.wps.table.returns.v1
+        kind: table
       - name: uae.wps.scheme
         kind: scheme
       - name: uae.wps.sim.employer-channel.v1
@@ -262,6 +275,12 @@ packs:
       - name: WPS-EXC-002
         kind: test
       - name: WPS-IN-001
+        kind: test
+      - name: WPS-IN-002
+        kind: test
+      - name: WPS-IN-003
+        kind: test
+      - name: WPS-IN-004
         kind: test
       - name: WPS-MAP-001
         kind: test
@@ -282,6 +301,8 @@ packs:
       - name: uae.wps.sub.receive-supplement.v1
         kind: workflow
       - name: uae.wps.sub.request-refund.v1
+        kind: workflow
+      - name: uae.wps.sub.return-credits.v1
         kind: workflow
       - name: uae.wps.sub.submit-salary-file.v1
         kind: workflow

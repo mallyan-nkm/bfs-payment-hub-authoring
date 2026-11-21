@@ -1,0 +1,32 @@
+kind: workflow
+wfKind: subflow
+name: uae.wps.sub.return-credits.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Send the returns file and read the acknowledgement
+description: What the return-credits block does underneath. Sends the returns file, waits for the acknowledgement for as long as the calling step allows, and reads it. An ACK accepts the returns file; a NAK refuses it.
+implements:
+  activity: uae.wps.exchange.return-credits.v1
+exit:
+  outcomes: [accepted, rejected, pending]
+do:
+  - id: send
+    call: uae.wps.exchange.send-returns-file.v1
+    handle:
+      rejected: { return: rejected }
+      unknown: { return: pending }
+  - id: await-ack
+    await:
+      message: uae.wps.ack
+      correlateBy: header.fileId
+      onTimeout: { return: pending }
+  - id: read-ack
+    call: uae.wps.map.ack-in.v1
+    handle:
+      nak: { return: rejected }
+  - return: accepted
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [CBUAE WPS responsibility guide 2018]
+  note: From public sources. The wait for the acknowledgement is a placeholder, and how the acknowledgement of a returns file is told apart from the one for the receipt confirmation is Issue I-41.

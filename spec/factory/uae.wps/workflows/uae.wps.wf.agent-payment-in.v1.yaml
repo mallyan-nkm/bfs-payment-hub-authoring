@@ -4,7 +4,7 @@ name: uae.wps.wf.agent-payment-in.v1
 release: 1.0.0
 dsl: 1.0.0
 title: WPS payment file, bank as the agent
-description: Waits for the supplementary file that pairs with the payment file, confirms receipt, credits each employee and reports disbursement. Reports are exchanges that move no money.
+description: Waits for the supplementary file that pairs with the payment file, confirms receipt, credits each employee and reports disbursement. Reports are exchanges that move no money. Credits that were refused go back to WPS in a returns file; once WPS accepts it, the return is recorded.
 direction: inward
 implements:
   slot: scheme-leg
@@ -52,9 +52,33 @@ do:
     handle:
       rejected: { end: pending }
       unknown: { end: pending }
+  - id: returns
+    call: uae.wps.decide.returns.v1
+    handle:
+      returns:
+        - id: render-returns
+          call: uae.wps.map.rfa-out.v1
+          handle:
+            unmappable: { end: pending }
+        - id: return-credits
+          call: uae.wps.exchange.return-credits.v1
+          handle:
+            rejected:
+              - id: returns-operations
+                call: p.hold.repair.v1
+                handle:
+                  rejected: { end: pending }
+                  expired: { end: pending }
+              - end: pending
+            pending: { end: pending }
+        - id: record-return
+          call: uae.wps.post.return.v1
+          handle:
+            rejected: { end: pending }
+            unknown: { end: pending }
   - end: settled
 provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: From public sources. Items that fail to credit are reported in the disbursement file; the returns leg is planned. The supplementary file is held by reference; its map and the wait are to be confirmed.
+  note: From public sources. Items that fail to credit are reported in the disbursement file. A credit the core system refused is returned in a returns file (RFA); on ACK the return is recorded, on NAK it goes to operations. Which credits are returned, and the leg's outcome after a return, are Issues I-39 and I-40. The supplementary file is held by reference; its map and the wait are to be confirmed.

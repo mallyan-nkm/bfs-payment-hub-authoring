@@ -202,7 +202,8 @@ export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfi
       case 'handler':
       case 'end-to-end':
         result = await runInbound(cfg);
-        root = [...result.run.instances, ...result.run.handlerRuns].find((i) => i.doc.name === test.target) ?? result.run.instances.find((i) => i.kind === 'platform') ?? result.root;
+        // The target may be the platform workflow, a handler, or a leg the platform ran in its slot (a child instance).
+        root = [...result.run.allInstances(), ...result.run.handlerRuns].find((i) => i.doc.name === test.target) ?? result.run.instances.find((i) => i.kind === 'platform') ?? result.root;
         break;
       default:
         throw new Error(`Unknown level ${test.level}`);

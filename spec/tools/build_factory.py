@@ -207,6 +207,9 @@ wmap("uae.wps.map.rsu-in.v1", "Refund settlement to status", "in", "WPS RSU", ["
 wmap("uae.wps.map.refund-order-in.v1", "Employer refund order to canonical request", "in", "Employer refund order",
      ["messages"], ["header", "batch", "items[]"])
 wmap("uae.wps.map.rtc-in.v1", "Return file to canonical return", "in", "WPS RTC", ["messages"], ["header", "batch", "items[]", "status"])
+# The returns file from the agent: one line per employee credit that is returned, then a control line (Issue I-39).
+wmap("uae.wps.map.rfa-out.v1", "Returns file", "out", "WPS RFA: one line per returned credit and a control line",
+     ["header", "batch", "items[]", W, "facts.returns"], ["messages"])
 act("uae.wps.validate.salary-file.v1", "Salary file checks", ["batch", "items[]", W], ["facts.validation"],
     ["pass", "repair", "reject"], "pure", level="batch", rule_sets=["uae.wps.ruleset.salary-file.v1"], p=WP)
 act("uae.wps.validate.salary-record.v1", "Salary record checks", ["items[]"], ["facts.validation"],
@@ -216,7 +219,8 @@ act("uae.wps.validate.payment-file.v1", "Inward payment file checks", ["batch", 
 for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "send"),
                       ("send-refund-request", "Submit a refund request to WPS", "send"),
                       ("send-receipt-confirmation", "Send the receipt confirmation", "report"),
-                      ("send-disbursement-file", "Send the disbursement file", "report")]:
+                      ("send-disbursement-file", "Send the disbursement file", "report"),
+                      ("send-returns-file", "Send the returns file to WPS", "send")]:
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
         ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
 
@@ -234,6 +238,18 @@ act("uae.wps.exchange.request-refund.v1", "Request a refund and wait for its set
 act("uae.wps.exchange.receive-supplement.v1", "Wait for the supplementary file that pairs with the payment file", ["header"], ["messages"],
     ["received", "missing"], "read", mode="receive", ports=WPS_PORT, policy={"replyTimeout": "PT2H"},
     sub="uae.wps.sub.receive-supplement.v1", p=WP)
+act("uae.wps.exchange.return-credits.v1", "Return the credits that failed and get the acknowledgement", ["header", "messages"],
+    ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.return-credits.v1", p=WP)
+
+# the agent's returns: which credits go back, and the posting once WPS has accepted the returns file
+act("uae.wps.decide.returns.v1", "Find the employee credits to return", ["items[]"], ["facts.returns"],
+    ["none", "returns"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
+act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the returns file", ["header", "batch", "facts.returns"],
+    ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
+    comp="p.post.reverse.v1", service="accounting", p=WP,
+    params={"template": {"type": "code", "default": "wps-return",
+                         "description": "Accounting template for a return. The bank sets the accounts the returned amount moves between."}})
 
 
 
@@ -439,12 +455,12 @@ ruleset("b.ruleset.internal-limit.v1", "Bank internal limit", "validation", ["b.
 
 
 # -------------------------------------------------------------------- tables
-def table(name, title, hit, inputs, outputs, rows, examples, params=None):
+def table(name, title, hit, inputs, outputs, rows, examples, params=None, p=None):
     doc = {"kind": "table", "name": name, "release": REL, "title": title, "hitPolicy": hit}
     if params:
         doc["parameters"] = params
     doc.update({"inputs": [{"name": n, "expression": e} for n, e in inputs], "outputs": outputs, "rows": rows,
-                "examples": examples, "provenance": prov()})
+                "examples": examples, "provenance": prov(**(p or {}))})
     return emit(doc)
 
 
@@ -479,6 +495,17 @@ table("p.table.rail-choice.v1", "Which rail carries a payment", "first",
        {"name": "requested rail disabled", "given": {"Header": {"scheme": "uae.wps"}, "Param": {"name": "enabledRails", "value": []}},
         "expect": {"decisions": [{"name": "rail", "value": "none"}]}}],
       params={"enabledRails": {"type": "list", "default": [], "description": "Rails this bank runs, in order of preference. A bank value."}})
+# WPS agent returns (provisional). A credit the core system refused is returned. A credit whose outcome is
+# unknown is not: it may have posted. Which failed credits a returns file carries is Issue I-39.
+RET = lambda *outs: {"Item": [{"facts": {"posting": {"outcome": o}}} for o in outs]}
+table("uae.wps.table.returns.v1", "Which employee credits go back to WPS in a returns file", "first",
+      [("refused", "sum(items, i => i.facts.posting.outcome == 'rejected')")], ["returns", "count"],
+      [{"when": {"refused": {"gt": 0}}, "then": {"returns": "returns", "count": "refused"}, "reason": "One or more credits were refused and are returned"},
+       {"when": {}, "then": {"returns": "none", "count": "refused"}, "reason": "Every credit posted, or its outcome is not yet known"}],
+      [{"name": "every credit posted", "given": RET("posted", "posted"), "expect": {"decisions": [{"name": "returns", "value": "none"}, {"name": "count", "value": 0}]}},
+       {"name": "one credit refused", "given": RET("rejected", "posted"), "expect": {"decisions": [{"name": "returns", "value": "returns"}, {"name": "count", "value": 1}]}},
+       {"name": "an unknown credit is not returned", "given": RET("posted", "unknown"), "expect": {"decisions": [{"name": "returns", "value": "none"}, {"name": "count", "value": 0}]}}],
+      p=WP)
 
 
 # --------------------------------------------------------------------- ports
@@ -537,7 +564,11 @@ def outward_set(req, ok, reject_code):
 
 
 sim("p.sim.core-banking.v1", "Core banking simulator", "outward", "p.port.core-banking.v1", "core banking system",
-    outward_set("p.core.request", "p.core.reply", "AM04"))
+    outward_set("p.core.request", "p.core.reply", "AM04")
+    # the first request is refused, the next two accepted: one credit of a file fails, the rest post
+    + [sc("reject-first-then-accept", {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "rejected", "reasonCode": "AC04"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"})])
 sim("p.sim.sanctions.v1", "Sanctions engine simulator", "outward", "p.port.sanctions.v1", "sanctions screening engine",
     outward_set("p.sanctions.request", "p.sanctions.reply", "RR04"))
 sim("p.sim.fraud.v1", "Fraud engine simulator", "outward", "p.port.fraud.v1", "fraud engine",
@@ -574,11 +605,21 @@ sim("uae.wps.sim.wps-outward.v1", "WPS simulator, replies to the bank", "outward
      sc("disbursement-accepted", {"expect": "uae.wps.dif"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
      sc("malformed-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack"}, malformed=True)],
     self_check=["uae.wps.ruleset.salary-file.v1"], p=WP)
+def payment_file():
+    """The agent's conversation for one payment file, up to the disbursement file. Fresh dicts, so YAML writes no aliases."""
+    return ({"send": "uae.wps.pif"}, {"send": "uae.wps.psi"},
+            {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"})
+
+
+
 sim("uae.wps.sim.wps-inward.v1", "WPS simulator, sends to the bank", "inward", "uae.wps.port.wps.v1",
     "central bank wages protection system",
-    [sc("payment-file", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"},
-        {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"}),
+    [sc("payment-file", *payment_file()),
      sc("payment-file-wrong-agent", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"}),
+     sc("payment-file-returns-accepted", *payment_file(), {"expect": "uae.wps.rfa"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
+     sc("payment-file-returns-refused", *payment_file(), {"expect": "uae.wps.rfa"},
+        {"send": "uae.wps.ack", "status": "rejected", "reasonCode": "FF01", "after": "PT10M"}),
+     sc("payment-file-returns-no-reply", *payment_file(), {"expect": "uae.wps.rfa"}, {"noReply": True}),
      sc("return-file", {"send": "uae.wps.rtc"})], self_check=["uae.wps.ruleset.payment-file.v1"], p=WP)
 sim("uae.wps.sim.employer-channel.v1", "Employer simulator", "inward", "uae.wps.port.employer-channel.v1", "employer file channel",
     [sc("valid-file", {"send": "uae.wps.sif"}),
@@ -686,9 +727,41 @@ test("WPS-MAP-002", "The SCR-last channel variant maps to the same canonical bat
      {"inbound": "samples/wps-sif-valid-scr-last.sif"}, {"outcome": "mapped"}, conformance=True)
 test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement reported", "p.wf.inward.v1", "end-to-end",
      {"inbound": "samples/wps-pif-valid.pif"},
-     {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1}]},
+     {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
+                                         {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
                   ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
+# The agent's returns file (RFA): one of the two credits is refused, so the leg returns it to WPS.
+PIF = {"inbound": "samples/wps-pif-valid.pif"}
+AGENT_LEG = "uae.wps.wf.agent-payment-in.v1"
+
+
+def returns_bench(wps_scenario):
+    return bench((WPS, "uae.wps.sim.wps-inward.v1", wps_scenario), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "reject-first-then-accept"),
+                 ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"),
+                 ("p.port.operations-queue.v1", "p.sim.operations.v1", "reject"))
+
+
+_RFA_HEAD = ["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:accepted", "credit[0]:rejected", "credit[1]:posted",
+             "render-disbursement:mapped", "report-disbursement:accepted", "returns:returns", "render-returns:mapped"]
+TRACE_RFA = {"ack": _RFA_HEAD + ["return-credits:accepted", "record-return:posted", "end:settled"],
+             "nak": _RFA_HEAD + ["return-credits:rejected", "returns-operations:rejected", "end:pending"],
+             "timeout": _RFA_HEAD + ["return-credits:pending", "end:pending"]}
+_RFA_DETAIL = ["supplement.await-supplement:received", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
+               "confirm-receipt.read-ack:ack", "return-credits.send:accepted"]
+DETAIL_RFA = {"ack": _RFA_DETAIL + ["return-credits.await-ack:received", "return-credits.read-ack:ack"],
+              "nak": _RFA_DETAIL + ["return-credits.await-ack:received", "return-credits.read-ack:nak"],
+              "timeout": _RFA_DETAIL + ["return-credits.await-ack:timeout"]}
+RFA_SENT = [{"port": WPS, "message": "uae.wps.dif", "count": 1}, {"port": WPS, "message": "uae.wps.rfa", "count": 1}]
+test("WPS-IN-002", "A refused credit is returned in a returns file; on ACK the return is recorded", AGENT_LEG, "end-to-end", PIF,
+     {"outcome": "settled", "messages": RFA_SENT, "trace": TRACE_RFA["ack"], "detail": DETAIL_RFA["ack"]},
+     bench_=returns_bench("payment-file-returns-accepted"), tenant="example-bank")
+test("WPS-IN-003", "A returns file that WPS refuses goes to operations and ends pending", AGENT_LEG, "end-to-end", PIF,
+     {"outcome": "pending", "messages": RFA_SENT, "trace": TRACE_RFA["nak"], "detail": DETAIL_RFA["nak"]},
+     bench_=returns_bench("payment-file-returns-refused"), tenant="example-bank")
+test("WPS-IN-004", "No acknowledgement of the returns file within the wait ends pending", AGENT_LEG, "end-to-end", PIF,
+     {"outcome": "pending", "messages": RFA_SENT, "virtualElapsed": "P1D", "trace": TRACE_RFA["timeout"], "detail": DETAIL_RFA["timeout"]},
+     bench_=returns_bench("payment-file-returns-no-reply"), tenant="example-bank")
 test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)

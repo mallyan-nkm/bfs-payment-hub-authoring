@@ -24,6 +24,44 @@ scenarios:
     steps:
       - send: uae.wps.pif
       - send: uae.wps.psi
+  - name: payment-file-returns-accepted
+    steps:
+      - send: uae.wps.pif
+      - send: uae.wps.psi
+      - expect: uae.wps.prc
+      - send: uae.wps.ack
+        status: accepted
+        after: PT10M
+      - expect: uae.wps.dif
+      - expect: uae.wps.rfa
+      - send: uae.wps.ack
+        status: accepted
+        after: PT10M
+  - name: payment-file-returns-refused
+    steps:
+      - send: uae.wps.pif
+      - send: uae.wps.psi
+      - expect: uae.wps.prc
+      - send: uae.wps.ack
+        status: accepted
+        after: PT10M
+      - expect: uae.wps.dif
+      - expect: uae.wps.rfa
+      - send: uae.wps.ack
+        status: rejected
+        reasonCode: FF01
+        after: PT10M
+  - name: payment-file-returns-no-reply
+    steps:
+      - send: uae.wps.pif
+      - send: uae.wps.psi
+      - expect: uae.wps.prc
+      - send: uae.wps.ack
+        status: accepted
+        after: PT10M
+      - expect: uae.wps.dif
+      - expect: uae.wps.rfa
+      - noReply: true
   - name: return-file
     steps:
       - send: uae.wps.rtc

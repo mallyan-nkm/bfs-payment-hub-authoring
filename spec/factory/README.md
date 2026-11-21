@@ -25,9 +25,9 @@ Each pack folder holds `activities/`, `rules/`, `ports/`, `simulators/`, `workfl
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `factory/p/` | shared | 19 | 7 | 2 | 3 | 8 | 8 | 5 |  |  |  | 2 | 54 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 13 |
-| `factory/uae.wps/` | shared | 21 | 11 | 3 |  | 2 | 3 | 9 | 1 | 1 |  | 10 | 61 |
+| `factory/uae.wps/` | shared | 26 | 11 | 3 | 1 | 2 | 3 | 10 | 1 | 1 |  | 13 | 71 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 46 | 24 | 7 | 3 | 14 | 15 | 14 | 1 | 2 | 3 | 16 | 145 |
+| Total | | 51 | 24 | 7 | 4 | 14 | 15 | 15 | 1 | 2 | 3 | 19 | 155 |
 <!-- /INVENTORY:summary -->
 
 ## What is written by hand and what is generated

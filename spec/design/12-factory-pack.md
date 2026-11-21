@@ -42,9 +42,9 @@ The table is generated from `factory/inventory.yaml`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `factory/p/` | shared | 19 | 7 | 2 | 3 | 8 | 8 | 5 |  |  |  | 2 | 54 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 13 |
-| `factory/uae.wps/` | shared | 21 | 11 | 3 |  | 2 | 3 | 9 | 1 | 1 |  | 10 | 61 |
+| `factory/uae.wps/` | shared | 26 | 11 | 3 | 1 | 2 | 3 | 10 | 1 | 1 |  | 13 | 71 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 46 | 24 | 7 | 3 | 14 | 15 | 14 | 1 | 2 | 3 | 16 | 145 |
+| Total | | 51 | 24 | 7 | 4 | 14 | 15 | 15 | 1 | 2 | 3 | 19 | 155 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack
@@ -64,7 +64,7 @@ The table is generated from `factory/inventory.yaml`.
 | Gap | Where | What closes it |
 | --- | --- | --- |
 | WPS file types come from a 2018 guide | `uae.wps`, all artefacts | The current CBUAE WPS rulebook (D10) |
-| Agent-side refund and return legs, and disbursement cancellation | `uae.wps` scheme manifest, four planned messages | Authoring after the rulebook is in hand |
+| Agent-side refund leg and disbursement cancellation | `uae.wps` scheme manifest, three planned messages | Authoring after the rulebook is in hand |
 | ISO reason codes were written from memory | Every rule | A check against the current ISO external code set |
 | Scripts-behind do not exist yet | Every script-bound activity and simulator | Build specs C24 and C25 |
 | Budgets and waits are placeholders | Policies, deadlines, awaits | Scheme rulebooks and the instant-rail benchmark |
