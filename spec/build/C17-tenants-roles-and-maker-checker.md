@@ -95,7 +95,7 @@ Size: 3 SP. Phase 3. Branch: `story/c17-s3-shared-content-is-read-only-to-banks`
 
 **Definition of Success**
 
-- An edit of uae.aani.wf.credit-out.v1 from tenant example-bank is refused with a reason that names the rule.
+- An edit of uae.wps.wf.salary-file-out.v1 from tenant example-bank is refused with a reason that names the rule.
 
 ### C17-S4 Maker-checker and audit
 

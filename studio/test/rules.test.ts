@@ -36,24 +36,28 @@ describe('rule sessions (C06-S2 to S5)', () => {
         n++;
       }
     }
-    expect(n).toBe(64);
+    expect(n).toBe(60);
   });
   it('stops at a stage with a blocking finding (R-04-14)', () => {
-    const res = runRuleSet('uae.aani.ruleset.credit.v1', { Payment: [{ instructedAmount: { value: 999999, currency: 'USD' }, creditorAccount: {} }] }, { resolve, evaluationDate: '2026-11-17' });
+    // a wrong currency (field stage) and a wrong control total (cross-field stage): the cross-field rule never runs
+    const facts = { Batch: [{ id: 'F-1', currency: 'USD', numberOfTransactions: 1, controlSum: 999, debtorAgent: { clearingMemberId: '302620122' } }],
+      Item: [{ batchId: 'F-1', payment: { instructedAmount: { value: 1, currency: 'USD' } } }], WpsBatch: [{ employerId: '1234567890123' }] };
+    const res = runRuleSet('uae.wps.ruleset.salary-file.v1', facts, { resolve, evaluationDate: '2026-11-17' });
     expect(res.stoppedAtStage).toBe('field');
-    expect(res.findings.map((f) => f.reasonCode)).not.toContain('AM02');
+    expect(res.findings.map((f) => f.reasonCode)).toContain('AM03');
+    expect(res.findings.map((f) => f.reasonCode)).not.toContain('AM10');
     expect(res.worst).toBe('reject');
   });
   it('reads a parameter value by date (R-01-17)', () => {
-    const lookup = (_o: string, p: string, decl: any, date: string) => (p === 'maxAmount' && date >= '2027-01-01' ? 25000 : decl.default);
-    const facts = { Payment: [{ instructedAmount: { value: 30000, currency: 'AED' }, creditorAccount: { iban: 'AE070331234567890123456' } }] };
-    expect(runRuleSet('uae.aani.ruleset.credit.v1', facts, { resolve, lookup, evaluationDate: '2026-12-31' }).worst).toBe('pass');
-    expect(runRuleSet('uae.aani.ruleset.credit.v1', facts, { resolve, lookup, evaluationDate: '2027-01-01' }).worst).toBe('reject');
+    const lookup = (_o: string, p: string, decl: any, date: string) => (p === 'internalLimit' && date >= '2027-01-01' ? 100000 : decl.default);
+    const facts = { Payment: [{ instructedAmount: { value: 150000, currency: 'AED' } }] };
+    expect(runRuleSet('b.ruleset.internal-limit.v1', facts, { resolve, lookup, evaluationDate: '2026-12-31' }).worst).toBe('pass');
+    expect(runRuleSet('b.ruleset.internal-limit.v1', facts, { resolve, lookup, evaluationDate: '2027-01-01' }).worst).toBe('reject');
   });
   it('takes the first matching row and resolves an output that names an input', () => {
     const t = env.store.doc('p.table.rail-choice.v1');
-    const res = runTable(t, { Header: [{ scheme: 'uae.aani' }] }, { resolve, evaluationDate: '2026-11-17' }, { enabledRails: ['uae.aani'] });
-    expect(res.decisions).toEqual([{ rule: 'p.table.rail-choice.v1', name: 'rail', value: 'uae.aani', reason: 'The requested rail is enabled for this bank' }]);
+    const res = runTable(t, { Header: [{ scheme: 'uae.wps' }] }, { resolve, evaluationDate: '2026-11-17' }, { enabledRails: ['uae.wps'] });
+    expect(res.decisions).toEqual([{ rule: 'p.table.rail-choice.v1', name: 'rail', value: 'uae.wps', reason: 'The requested rail is enabled for this bank' }]);
   });
   it('reports gaps and overlaps in a unique table (R-04-18)', () => {
     const t = env.store.doc('p.table.workflow-select.v1');

@@ -564,7 +564,7 @@ function Coverage() {
   const tc = useLoad(() => get<any[]>('/api/test-coverage'), []);
   const [onlyGaps, setOnlyGaps] = useState(true);
   const [kind, setKind] = useState('');
-  const [scope, setScope] = useState('uae.aani');
+  const [scope, setScope] = useState('uae.wps');
   const rc = useLoad(() => get(`/api/coverage/${encodeURIComponent(scope)}`), [scope]);
   const rows = (tc.data ?? []).filter((r) => (!onlyGaps || r.untested.length) && (!kind || r.kind === kind));
   const total = (tc.data ?? []).reduce((n, r) => n + r.outcomes.length, 0);
@@ -589,7 +589,7 @@ function Coverage() {
         </Section>
       </div>
       <div className="col side">
-        <Section title="Reason-code coverage per scheme" actions={<select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Scheme scope">{['uae.aani', 'uae.wps', 'uae.p', 'p'].map((s) => <option key={s}>{s}</option>)}</select>}>
+        <Section title="Reason-code coverage per scheme" actions={<select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Scheme scope">{['uae.wps', 'uae.p', 'p'].map((s) => <option key={s}>{s}</option>)}</select>}>
           <p className="muted small">Each reason code the scheme's rules can yield, and the simulator scenarios that make it happen in a test.</p>
           <ErrorBox error={rc.error} />
           {rc.data && (

@@ -114,4 +114,4 @@ Every story carries these lines as well as its own.
 
 ## Provisional content
 
-`uae.wps` and `uae.aani` are provisional. They were written from public sources, not from the scheme rulebooks. Treat every scheme fact in them as unconfirmed until `provenance.status` says `confirmed`. Do not present a provisional fact as a scheme rule in code, tests or messages to a user.
+`uae.wps` is provisional. It was written from public sources, not from the scheme rulebook. It is the only scheme in the factory. Treat every scheme fact in it as unconfirmed until `provenance.status` says `confirmed`. Do not present a provisional fact as a scheme rule in code, tests or messages to a user.

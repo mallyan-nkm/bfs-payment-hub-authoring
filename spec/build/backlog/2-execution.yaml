@@ -34,7 +34,7 @@ components:
         dod:
           - Values resolve default, then scope values, then the tenant's configuration set, by effective date, and are inserted as Param facts.
           - The lookup date is step time unless the parameter declares payment-date.
-        dos: AANI-RULE-003 and AANI-RULE-004 pass, the same amount rejected on 2 January 2027 and accepted on 31 December 2026.
+        dos: BANK-LIM-001 and BANK-LIM-002 pass, the same file rejected on 2 January 2027 and accepted on 31 December 2026.
       - id: C06-S4
         title: Decision tables
         sp: 5
@@ -60,7 +60,7 @@ components:
         needs: [C06-S2]
         dod:
           - The trace lists rule, release, bound facts and result, with personal data redacted.
-        dos: The trace of AANI-RULE-002 names uae.aani.rule.amount-within-limit.v1 at 1.0.0 and the value of maxAmount it used.
+        dos: The trace of BANK-LIM-001 names b.rule.internal-limit.v1 at 1.0.0 and the value of internalLimit it used.
 
   - id: C07
     title: Script sandbox, TypeScript
@@ -211,7 +211,7 @@ components:
         dod:
           - A leg runs as a child instance, pinned when it starts; its outcome returns to the slot step.
           - An inbound message is dispatched to start, deliver or handler as the scheme manifest says.
-        dos: CK-SLOT-01 and 02 pass; WPS-OUT-001 and AANI-OUT-001 run end to end.
+        dos: CK-SLOT-01 and 02 pass; WPS-OUT-001 and WPS-IN-001 run end to end.
       - id: C09-S7
         title: Signals
         sp: 3
@@ -239,7 +239,7 @@ components:
         needs: [C09-S1]
         dod:
           - A handler run creates no instance record and holds no timer.
-        dos: CK-HANDLER-01 and AANI-HND-001 pass.
+        dos: CK-HANDLER-01 passes.
       - id: C09-S10
         title: Pins, lookup and supersession
         sp: 3
@@ -267,7 +267,7 @@ components:
           - The business trace has one entry per authored step. The detail has the steps inside each block, with prefixed ids.
           - An await inside a block uses the timeout that expansion resolved from the calling step.
           - A composite can be run alone, as an activity-level test.
-        dos: CK-BLOCK-01 to 03 pass, and WPS-EXC-001, WPS-EXC-002, AANI-EXC-001 and AANI-EXC-002 pass.
+        dos: CK-BLOCK-01 to 03 pass, and WPS-EXC-001 and WPS-EXC-002 pass.
 
   - id: C10
     title: Simulator runtime
@@ -285,7 +285,7 @@ components:
         dod:
           - Scenario steps expect, send, after, noReply, failTimes and duplicate are supported, with state keyed by message id.
           - The standard scenario set is required before publish.
-        dos: All eight standard scenarios of uae.aani.sim.switch-outward.v1 run, and a later status request gets an answer consistent with the first.
+        dos: All eight standard scenarios of p.sim.core-banking.v1 run, and every scenario of uae.wps.sim.wps-outward.v1 runs, a duplicate reply included.
       - id: C10-S2
         title: Inward simulators
         sp: 3
@@ -310,7 +310,7 @@ components:
         needs: [C10-S1]
         dod:
           - A report lists each code of the scheme list with its scenarios or its waiver.
-        dos: The report for uae.aani lists AC04 as covered and every uncovered code as open.
+        dos: The report for uae.wps lists AM10 as covered and every uncovered code as open.
       - id: C10-S5
         title: Deployable stub
         sp: 3
@@ -335,7 +335,7 @@ components:
         story: As a designer, I want to test one rule set or one activity alone, so that a block is proven before it is composed.
         dod:
           - given builds the context; the bench binds simulators to ports; expect compares outcome, findings, writes and attempts.
-        dos: AANI-RULE-001 and 002 and P-RES-001 and 002 pass.
+        dos: BANK-LIM-001 and 002 and P-RES-001 and 002 pass.
       - id: C11-S2
         title: Leg and end-to-end tests
         sp: 5
@@ -344,7 +344,7 @@ components:
         dod:
           - expect compares outcome, reason code, messages per port with counts, the business trace, the detail of composite steps where given, and virtual elapsed time.
           - An inbound sample is injected through an inward simulator.
-        dos: AANI-OUT-001 to 008, WPS-OUT-001 to 005, AANI-IN-001 and WPS-IN-001 pass.
+        dos: WPS-OUT-001 to 005 and WPS-IN-001 pass.
       - id: C11-S3
         title: Timeline and context diff data
         sp: 3
@@ -352,7 +352,7 @@ components:
         needs: [C11-S2]
         dod:
           - The run record holds attempts with times, backoff waits, timers, awaits and deltas.
-        dos: The record of AANI-OUT-003 shows three attempts and the two backoff waits between them.
+        dos: The record of P-RES-001 shows three attempts and the two backoff waits between them.
       - id: C11-S4
         title: Conformance fixtures
         sp: 3
@@ -370,4 +370,4 @@ components:
         needs: [C11-S2]
         dod:
           - The check lists the outcomes with no test.
-        dos: uae.aani.wf.credit-out.v1 is reported as lacking a test for returned until one is added or the outcome is removed.
+        dos: uae.wps.wf.salary-file-out.v1 is reported as lacking a test for returned until one is added or the outcome is removed.

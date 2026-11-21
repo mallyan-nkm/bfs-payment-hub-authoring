@@ -46,8 +46,19 @@ describe('the debugger', () => {
   });
 
   it('records which branch a switch took', async () => {
+    // No factory workflow has a switch now (docs/ISSUES.md I-38), so the run uses a minimal synthetic leg.
     const env = freshEnv();
-    const r = await post(env, '/api/tests/AANI-OUT-004/run', { config: { debug: true } });
+    const leg = {
+      kind: 'workflow', wfKind: 'leg', name: 'uae.wps.wf.synthetic-switch.v1', release: '1.0.0', dsl: '1.0.0', title: 'Synthetic switch', direction: 'outward',
+      implements: { slot: 'scheme-leg', of: ['p.wf.corporate.v1'] }, entry: { reads: ['header'] }, exit: { writes: ['status'], outcomes: ['settled', 'pending'] },
+      do: [{ id: 'business-date', call: 'uae.p.enrich.business-date.v1' }, { switch: { by: { outcomeOf: 'business-date' }, cases: { set: [{ end: 'settled' }] }, default: [{ end: 'pending' }] } }],
+      provenance: { origin: 'factory', status: 'provisional' },
+    };
+    env.store.publish('owner', env.store.saveDraft('owner', 'maker', leg).key, 'maker', 'checker');
+    const r = await post(env, '/api/debug/run', {
+      target: leg.name, level: 'leg', bench: [{ port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' }],
+      context: { header: { paymentId: 'P-1', endToEndId: 'E2E-1', kind: 'payment', direction: 'outward', segment: 'corporate', scheme: 'uae.wps', receivedAt: '2026-11-17T06:00:00Z' } },
+    });
     const branch = r.body.record.timeline.find((e: any) => e.type === 'branch');
     expect(branch, JSON.stringify(r.body.trace)).toBeDefined();
     expect(branch.detail).toHaveProperty('case');

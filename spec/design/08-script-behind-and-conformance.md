@@ -69,8 +69,8 @@ AI proposes; the gates decide.
 
 ## 8.7 Examples
 
-- Conformance fixtures: `factory/uae.aani/tests/AANI-RULE-002.yaml`, `factory/p/tests/P-RES-001.yaml`.
-- A lookup test with a tenant and two dates: `factory/uae.aani/tests/AANI-RULE-003.yaml` and `AANI-RULE-004.yaml`.
+- Conformance fixtures: `factory/uae.wps/tests/WPS-EXC-001.yaml`, `factory/p/tests/P-RES-001.yaml`.
+- A lookup test with a tenant and two dates: `examples/bank/tests/BANK-LIM-001.yaml` and `BANK-LIM-002.yaml`.
 
 ## 8.8 Open decisions touching this part
 

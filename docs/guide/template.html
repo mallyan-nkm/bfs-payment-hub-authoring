@@ -221,7 +221,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <tbody>
       <tr><td><code>npm test</code></td><td>every test passed (about 165)</td></tr>
       <tr><td><code>npm run studio -- kit</code></td><td><code>46 of 46 conformance scenarios pass on the studio interpreter</code></td></tr>
-      <tr><td><code>npm run studio -- test</code></td><td><code>30 of 30 tests pass</code></td></tr>
+      <tr><td><code>npm run studio -- test</code></td><td><code>16 of 16 tests pass</code></td></tr>
       <tr><td><code>npm run studio -- check</code></td><td><code>0 error(s)</code> and some warnings</td></tr>
     </tbody>
   </table></div>
@@ -312,7 +312,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <tbody>
       <tr><td><code>p</code></td><td>The platform, the same everywhere</td><td><code>p.wf.corporate.v1</code></td></tr>
       <tr><td><code>uae.p</code></td><td>The cluster platform for the UAE</td><td><code>uae.p.validate.iban.v1</code></td></tr>
-      <tr><td><code>uae.wps</code>, <code>uae.aani</code></td><td>A scheme (both are provisional)</td><td><code>uae.wps.wf.salary-file-out.v1</code></td></tr>
+      <tr><td><code>uae.wps</code></td><td>A scheme, the only one in the factory (provisional)</td><td><code>uae.wps.wf.salary-file-out.v1</code></td></tr>
       <tr><td><code>b</code></td><td>A bank's own content</td><td><code>b.hook.pre-release-approval.v1</code></td></tr>
     </tbody>
   </table></div>
@@ -588,9 +588,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h3>8. Change a bank's configuration (25 minutes)</h3>
   <ol class="steps">
     <li>As <code>example-bank</code> / <code>example.maker</code>, open <span class="ui">Tenant</span>. Read the enabled rails, the hook bindings and the limits.</li>
-    <li><span class="ui">Bump the release</span> to <code>1.1.0</code>, set <code>p.table.rail-choice.v1#enabledRails</code> to <code>[uae.aani]</code>, <span class="ui">Save the configuration set</span>. Repeat exercise 4: rejected at the route.</li>
+    <li><span class="ui">Bump the release</span> to <code>1.1.0</code>, set <code>p.table.rail-choice.v1#enabledRails</code> to <code>[]</code>, <span class="ui">Save the configuration set</span>. Repeat exercise 4: rejected at the route.</li>
     <li>Bump to <code>1.2.0</code>, put <code>uae.wps</code> back and delete the <code>p.wf.corporate.v1#before-release</code> binding. Repeat exercise 4: settled, without <code>hook:continue</code>.</li>
-    <li>Try <code>uae.aani.rule.amount-within-limit.v1#maxAmount</code> at <code>90000</code>: refused, the scheme's bound is 50000.</li>
+    <li>Try <code>b.rule.internal-limit.v1#internalLimit</code> at <code>2000000</code>: refused, the rule's bound is 1000000.</li>
     <li>Bump to <code>1.3.0</code>, restore the <code>before-release</code> binding and set <code>b.rule.internal-limit.v1#internalLimit</code> to <code>1200</code>. Run exercise 4 with the sample <code>samples/wps-sif-two-lines.sif</code> (lines of 1000 and 500, total 1500) and also bind <code>p.port.operations-queue.v1</code> to <code>p.sim.operations.v1</code> with <code>decline</code>.</li>
     <li>Set the limit to <code>900</code>, then to <code>2000</code>, and run again each time.</li>
   </ol>
@@ -853,7 +853,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>docs/TRAINING.md</code></td><td>The training path as plain text</td></tr>
       <tr><td><code>docs/ISSUES.md</code></td><td>Where the specification was silent or contradictory, the decisions taken, and what the studio does</td></tr>
       <tr><td><code>spec/design/</code></td><td>The specification. Start with Part 1 (concepts), Part 5 (the workflow language) and Part 10 (studio functions)</td></tr>
-      <tr><td><code>spec/design/annex-a-wps.md</code>, <code>annex-b-aani.md</code></td><td>The two factory schemes and their dispatch tables</td></tr>
+      <tr><td><code>spec/design/annex-a-wps.md</code></td><td>The factory scheme and its dispatch table</td></tr>
     </tbody>
   </table></div>
 

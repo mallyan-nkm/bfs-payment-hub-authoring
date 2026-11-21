@@ -84,7 +84,7 @@ A small typed expression language: literals, paths on bound variables, compariso
 
 ## 4.6 Examples
 
-- Policy rule with a bounded parameter: `factory/uae.aani/rules/uae.aani.rule.amount-within-limit.v1.yaml`.
+- Policy rule with a bounded parameter: `examples/bank/rules/b.rule.internal-limit.v1.yaml`.
 - Cross-field batch rule with a query: `factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml`.
 - Decision table, `first` with a catch-all: `factory/p/rules/p.table.inward-disposition.v1.yaml`.
 - A bank value that tightens a scheme limit from a date: `examples/bank/configuration-set.yaml`.

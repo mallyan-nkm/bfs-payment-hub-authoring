@@ -42,7 +42,7 @@ describe('reading', () => {
   it('describes the content it was started on', async () => {
     const meta = (await api.get('/api/meta')).data;
     expect(meta.tenants).toEqual(expect.arrayContaining(['owner', 'example-bank']));
-    expect(meta.counts.activity).toBeGreaterThan(50);
+    expect(meta.counts.activity).toBeGreaterThan(40);
     const cat = (await api.get('/api/catalogue?q=iban')).data.items;
     expect(cat.every((i: any) => JSON.stringify(i).toLowerCase().includes('iban'))).toBe(true);
     const packs = (await api.get('/api/packs')).data;
@@ -156,7 +156,7 @@ describe('running', () => {
     expect(one.data.passed).toBe(true);
     const all = (await api.post('/api/tests/run-all')).data;
     const results = Array.isArray(all) ? all : all.results;
-    expect(results.length).toBeGreaterThanOrEqual(30);
+    expect(results.length).toBeGreaterThanOrEqual(16);
     expect(results.filter((r: any) => !r.passed).map((r: any) => r.id)).toEqual([]);
     const kit = (await api.post('/api/kit/run')).data;
     expect(kit.length).toBe(46);

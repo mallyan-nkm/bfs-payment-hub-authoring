@@ -30,24 +30,22 @@ examples:
   - name: requested rail enabled
     given:
       Header:
-        scheme: uae.aani
+        scheme: uae.wps
       Param:
         name: enabledRails
         value:
-          - uae.aani
           - uae.wps
     expect:
       decisions:
         - name: rail
-          value: uae.aani
+          value: uae.wps
   - name: requested rail disabled
     given:
       Header:
-        scheme: uae.aani
+        scheme: uae.wps
       Param:
         name: enabledRails
-        value:
-          - uae.wps
+        value: []
     expect:
       decisions:
         - name: rail

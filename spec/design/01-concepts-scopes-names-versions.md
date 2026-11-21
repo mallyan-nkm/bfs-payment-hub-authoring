@@ -74,7 +74,7 @@ A value change does not rerun past steps. Re-evaluation is the `re-screen` signa
 
 - Major line: `uae.p.validate.iban.v1`. Release: `1.0.0`. File: `factory/uae.p/activities/uae.p.validate.iban.v1.yaml`.
 - Supersession: `examples/supersession/SUP-2026-001.yaml`.
-- Pack manifest with pins: `factory/uae.aani/pack.yaml`.
+- Pack manifest with pins: `factory/uae.wps/pack.yaml`.
 
 ## 1.7 Open decisions touching this part
 

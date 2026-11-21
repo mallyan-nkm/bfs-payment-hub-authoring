@@ -25,18 +25,18 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 
 | Evidence | Result |
 | --- | --- |
-| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 2 expected warnings; `expand.py --check` up to date; 24 of 24 mutations caught; 130 stories render |
-| Spec documents valid against their schemas | 198 of 198 |
+| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 4 expected warnings (I-38); `expand.py --check` up to date; 28 of 28 mutations caught; 125 stories render |
+| Spec documents valid against their schemas | 157 of 157 |
 | Content hashes (RFC 8785) equal to the pack manifests | All; four of the five pack manifests also regenerate identically (Issue I-20 for the bank pack) |
-| Expansion of composite steps | Identical to `tools/expand.py` on the four reference workflows |
-| Rule and table examples | 64 of 64 |
-| Factory and bank test cases on the studio interpreter | 30 of 30 |
+| Expansion of composite steps | Identical to `tools/expand.py` on the three reference workflows |
+| Rule and table examples | 60 of 60 |
+| Factory and bank test cases on the studio interpreter | 16 of 16 |
 | Conformance kit, studio interpreter | 46 of 46 |
 | Conformance kit, DTFx (DurableTask.Core 3.11.3) | 46 of 46 |
 | Conformance kit, Flowable 7.1.0 with generated BPMN | 46 of 46 |
 | Conformance kit, Temporal | Not run: see below |
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
-| Generated samples, each proved valid or failing with its labelled code | 12 of 12 |
+| Generated samples, each proved valid or failing with its labelled code | 7 of 7 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
 | White-box suite (`cd studio && npm test`) | 161 tests, green; 90.7% of lines, 78.1% of branches, 91.7% of functions (`npm run test:coverage`) |
 | Black-box suites (`npm run test:blackbox`) | 123 tests, green: HTTP API 71, command line 8, web app in Chromium 24, end to end 20 (new scheme 12, WPS by configuration 8); the engine suite (2) runs with `TH_ENGINES=1` |
@@ -95,7 +95,7 @@ Running the kit on Temporal was started as a separate piece of work and was refu
 
 ## Not verified
 
-- `uae.wps` and `uae.aani` stay provisional. Nothing here confirms a scheme fact; samples and scripts follow the factory pack's own provisional reading.
+- `uae.wps` stays provisional, and it is the only factory scheme since plan phase P6 (I-37). Nothing here confirms a scheme fact; samples and scripts follow the factory pack's own provisional reading.
 - The ISO code-set registry was written from memory, like the factory's reason codes.
 - The AI assistant has not run against a live model in this environment.
 - The sandboxes keep honest scripts deterministic; they were not tested against hostile code.

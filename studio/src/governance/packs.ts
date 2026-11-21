@@ -70,7 +70,7 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string): an
       }
     }
   }
-  const order = ['p', 'uae.p', 'uae.wps', 'uae.aani'];
+  const order = ['p', 'uae.p', 'uae.wps'];
   const dependsOn = [...deps].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map((s) => ({ scope: s, release: '1.0.0' }));
   const pack: any = {
     kind: 'pack', scope, release: '1.0.0',

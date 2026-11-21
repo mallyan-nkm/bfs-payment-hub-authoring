@@ -131,7 +131,7 @@ Size: 3 SP. Phase 3. Branch: `story/c14-s5-effective-policy`.
 
 **Definition of Success**
 
-- For the send step of uae.aani.wf.credit-out.v1 the panel shows each value with its source, and the longest path against the PT8S deadline.
+- For the reserve step of p.wf.commercial.v1 the panel shows each value with its source, and the longest path against the PT10S deadline.
 
 ### C14-S6 Composite steps on the canvas
 

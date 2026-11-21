@@ -46,7 +46,7 @@ Size: 5 SP. Phase 2. Branch: `story/c10-s1-outward-simulators`.
 
 **Definition of Success**
 
-- All eight standard scenarios of uae.aani.sim.switch-outward.v1 run, and a later status request gets an answer consistent with the first.
+- All eight standard scenarios of p.sim.core-banking.v1 run, and every scenario of uae.wps.sim.wps-outward.v1 runs, a duplicate reply included.
 
 ### C10-S2 Inward simulators
 
@@ -110,7 +110,7 @@ Size: 3 SP. Phase 2. Branch: `story/c10-s4-coverage-against-reason-codes`.
 
 **Definition of Success**
 
-- The report for uae.aani lists AC04 as covered and every uncovered code as open.
+- The report for uae.wps lists AM10 as covered and every uncovered code as open.
 
 ### C10-S5 Deployable stub
 

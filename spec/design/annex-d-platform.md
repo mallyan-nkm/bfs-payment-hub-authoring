@@ -15,7 +15,7 @@ Status: draft 0.1, 17 November 2026. The factory content of `p` and `uae.p`.
 | Post, close | `p.post.accounting.v1`, `p.post.verify.v1`, `p.post.reverse.v1`, `p.notify.channel.v1`, `p.notify.publish-fact.v1`, `p.reconcile.scheme-report.v1`, run on a schedule | |
 | Any stage | `p.hold.repair.v1`, `p.hold.approval.v1`, `p.enrich.payment-record.v1` | |
 
-A `p` workflow cannot name a cluster, so the `uae.p` blocks are called by the legs: `uae.p.enrich.business-date.v1` and `uae.p.validate.iban.v1` (per salary record) by `uae.wps.wf.salary-file-out.v1`, and `uae.p.enrich.participant.v1` by `uae.aani.wf.credit-out.v1`. The `uae.p` rules are also reused one by one inside scheme rule sets. Both forms of reuse are deliberate: a block where the whole check applies, a rule where a scheme needs only part of it.
+A `p` workflow cannot name a cluster, so the `uae.p` blocks are called by the legs: `uae.p.enrich.business-date.v1` and `uae.p.validate.iban.v1` (per salary record) by `uae.wps.wf.salary-file-out.v1`. No leg calls `uae.p.enrich.participant.v1` now (Issue I-38 in `docs/ISSUES.md`). The `uae.p` rules are also reused one by one inside scheme rule sets. Both forms of reuse are deliberate: a block where the whole check applies, a rule where a scheme needs only part of it.
 
 ## D.2 How the north-star decisions show up
 
@@ -80,4 +80,4 @@ Generated from `factory/inventory.yaml`.
 | OP-D2 | `p.table.rail-choice.v1` only honours the requested rail if the bank has enabled it. Choice by amount, time, cost and cut-off is a bank's rail order, to be modelled as rows supplied by configuration. |
 | OP-D3 | Corporate and commercial differ only in budgets, the deadline and the synchronous marker. If they stay that close, one workflow with parameters may be enough. |
 | OP-D4 | Segment and cluster codes for `header.segment` and `header.scheme` need a registry. |
-| OP-D5 | A liquidity or prefund block at platform level was removed because no leg used it; Aani has its own prefund check. Add it back with the first rail that needs it. |
+| OP-D5 | A liquidity or prefund block at platform level was removed because no leg used it. Add it back with the first rail that needs it. |

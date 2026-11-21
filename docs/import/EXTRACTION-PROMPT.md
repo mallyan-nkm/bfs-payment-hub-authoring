@@ -31,7 +31,7 @@ You are extracting a payment scheme from its source code into the TransactHub De
 1. `STUDIO/spec/CLAUDE.md`: the guard-rails. They bind you.
 2. `STUDIO/spec/design/`: parts 01 (names, scopes, versions), 02 (the canonical context), 03 (activity contracts), 04 (rules), 05 (the workflow language), 06 (tenants, hooks, configuration), 07 (simulators), 08 (scripts-behind).
 3. `STUDIO/spec/schemas/`: every document you write must validate against its schema.
-4. `STUDIO/spec/factory/`: the platform (`p`), the UAE cluster platform (`uae.p`) and the factory schemes (`uae.wps`, `uae.aani`). Use them as the pattern for every document, and reuse their blocks wherever the source does the same thing.
+4. `STUDIO/spec/factory/`: the platform (`p`), the UAE cluster platform (`uae.p`) and the factory scheme (`uae.wps`). Use them as the pattern for every document, and reuse their blocks wherever the source does the same thing.
 5. `STUDIO/docs/import/EXTRACTION-PROMPT.md`, "The bundle": the format you write.
 
 ### Guard-rails (not negotiable)

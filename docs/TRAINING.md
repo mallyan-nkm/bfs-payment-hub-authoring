@@ -2,6 +2,8 @@
 
 The complete guide, with every feature, setting up and deploying, this training path, and a full workflow built from scratch in the web app, is `docs/guide/studio-guide.html` (built from `docs/guide/template.html` by `docs/guide/build.ts`). This file is the training path as plain text. To watch before you start: the training videos in `docs/demo/training/` (the ideas, as a kitchen; then hands-on, step by step), and the two shorter demos in `docs/demo/`.
 
+**The videos are out of date.** They were recorded before the Aani scheme (`uae.aani`) was removed from the studio in plan phase P6 (Issue I-37 in `docs/ISSUES.md`), and they still show it. `uae.wps` is now the only scheme. Where a video and this file differ, follow this file. The videos need re-recording.
+
 This guide teaches the studio by doing. Work through the exercises in order: each builds on the one before. Every step says what to click or type and what you should see. Allow about four hours for the whole guide; Part A and the first five exercises take about an hour.
 
 All data here is synthetic. Never type real names, account numbers or other personal data into the studio, its tests or its samples.
@@ -75,7 +77,7 @@ The last line should read `46 of 46 conformance scenarios pass on the studio int
 npm run studio -- test
 ```
 
-The last line should read `30 of 30 tests pass`. These are the factory's and the example bank's own tests.
+The last line should read `16 of 16 tests pass`. These are the factory's and the example bank's own tests.
 
 ```bash
 npm run studio -- check
@@ -122,7 +124,7 @@ Every artefact name is `<scope>.<type>.<name>.v<major>`, for example `uae.p.vali
 | --- | --- | --- |
 | `p` | The platform, the same everywhere | `p.wf.corporate.v1` |
 | `uae.p` | The cluster platform for the UAE | `uae.p.validate.iban.v1` |
-| `uae.wps`, `uae.aani` | A scheme | `uae.wps.wf.salary-file-out.v1` |
+| `uae.wps` | A scheme, the only one in the factory | `uae.wps.wf.salary-file-out.v1` |
 | `b` | A bank's own content | `b.hook.pre-release-approval.v1` |
 
 A release is `major.minor.patch`. A published release never changes. A change is a new release.
@@ -302,16 +304,16 @@ The same 46 scenarios run on DTFx, Elsa and Flowable; see Part D.
 ### Exercise 8. Change a bank's configuration (20 minutes)
 
 1. Act as `example-bank` / `example.maker`. Open **Tenant**.
-2. Read **Configuration set**, **Parameters** and **Hook points**. The bank enables the rails `uae.aani` and `uae.wps`, and binds three hooks.
-3. In **Edit the configuration set**, click **Bump the release** (it becomes `1.1.0`). In the YAML, change the value of `p.table.rail-choice.v1#enabledRails` to `[uae.aani]`.
+2. Read **Configuration set**, **Parameters** and **Hook points**. The bank enables the rail `uae.wps`, and binds three hooks.
+3. In **Edit the configuration set**, click **Bump the release** (it becomes `1.1.0`). In the YAML, change the value of `p.table.rail-choice.v1#enabledRails` to `[]`, so that the bank runs no rail.
 4. Click **Save the configuration set**. It is saved as release `1.1.0`.
 5. Repeat Exercise 4 with **Tenant for the run** `example-bank`. The payment is now rejected at `route:no-match`, and the reservation is undone (`undo:reserve`).
-6. Bump the release again to `1.2.0`. Set `enabledRails` back to `[uae.aani, uae.wps]`, and delete the binding whose `hookPoint` is `p.wf.corporate.v1#before-release`. Save.
+6. Bump the release again to `1.2.0`. Set `enabledRails` back to `[uae.wps]`, and delete the binding whose `hookPoint` is `p.wf.corporate.v1#before-release`. Save.
 7. Run Exercise 4 again. The payment settles, and the trace no longer has `hook:continue` before the leg: the bank's pre-release hook is unbound.
-8. Try to set `uae.aani.rule.amount-within-limit.v1#maxAmount` to `90000`. The check refuses it: the scheme's bound is 50000, and a bank may only lower it.
+8. Try to set `b.rule.internal-limit.v1#internalLimit` to `2000000`. The check refuses it: the rule's bound is 1000000, and the configuration may only lower it.
 9. Use **Compatibility run**, then **Run**. Before a bank accepts a new shared release, it checks that every bound hook point still exists with a compatible contract and that the bank's hook tests pass. Leave the box empty to run against the current releases.
 
-10. The bank's internal limit (`b.rule.internal-limit.v1#internalLimit`) holds a payment, each line of a file and the file total. Bump the release again, put back the `before-release` binding from the shipped configuration, and set the limit to `1200`. Save.
+10. The bank's internal limit (`b.rule.internal-limit.v1#internalLimit`) holds a payment, each line of a file and the file total. Bump the release again, put back the `before-release` binding from the shipped configuration, and set the limit in force in 2026 to `1200`. Save.
 11. Run Exercise 4 with the sample `samples/wps-sif-two-lines.sif` (lines of 1000 and 500, total 1500), and bind `p.port.operations-queue.v1` to `p.sim.operations.v1` with scenario `decline`. Every line is within the limit but the total is not. The trace shows `hook:hold`, then `hold:declined`, `undo:reserve`, and the payment is rejected. With scenario `approve` it settles after `hold:approved`.
 12. Set the limit to `900`: now the line of 1000 is above it, and the payment is held for that line. Set it to `2000`: nothing is held.
 
@@ -539,7 +541,7 @@ From `spec/`, the spec's own tools: `python3 tools/validate.py`, `python3 tools/
 | `README.md` | What runs today, with evidence |
 | `studio/README.md` | The studio's components, export, workers, deploy |
 | `spec/design/` | The specification, part by part. Start with Part 1 (concepts), Part 5 (the DSL) and Part 10 (studio functions) |
-| `spec/design/annex-a-wps.md`, `annex-b-aani.md` | The two factory schemes, with their dispatch tables |
+| `spec/design/annex-a-wps.md` | The factory scheme, with its dispatch table |
 | `docs/ISSUES.md` | Where the spec was silent or contradictory, and what the studio does |
 
 ### F5. Glossary

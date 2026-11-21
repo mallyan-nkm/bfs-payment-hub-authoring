@@ -15,10 +15,21 @@ describe('export (C05, C20, C22)', () => {
     for (const a of wf.artefacts) expect(a.hash).toBe(env.store.get(a.name, a.release)!.hash);
   });
   it('registers tasks as name@release on the queue of their scope (R-09-04, R-09-05)', () => {
-    const pkg = exportPackage(env, { workflows: ['p.wf.commercial.v1'], target: 'dtfx' });
-    const t = pkg.manifest.tasks.find((x: any) => x.task === 'uae.aani.exchange.send-credit.v1@1.0.0');
-    expect(t.queue).toBe('th-uae-aani');
-    expect(pkg.manifest.tasks.find((x: any) => x.kind === 'handler').endpoint).toBe('interop');
+    const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'dtfx' });
+    const t = pkg.manifest.tasks.find((x: any) => x.task === 'uae.wps.exchange.send-salary-file.v1@1.0.0');
+    expect(t.queue).toBe('th-uae-wps');
+  });
+  it('serves a handler on the interop endpoint (R-09-05)', () => {
+    // The factory has no handler now (docs/ISSUES.md I-38), so the export uses a minimal synthetic one.
+    const e = freshEnv();
+    const handler = {
+      kind: 'workflow', wfKind: 'handler', name: 'uae.wps.handler.synthetic.v1', release: '1.0.0', dsl: '1.0.0', title: 'Synthetic handler',
+      exit: { outcomes: ['answered', 'unknown'] }, do: [{ id: 'find', call: 'p.enrich.payment-record.v1', handle: { 'not-found': { end: 'unknown' } } }, { end: 'answered' }],
+      provenance: { origin: 'factory', status: 'provisional' },
+    };
+    e.store.publish('owner', e.store.saveDraft('owner', 'maker', handler).key, 'maker', 'checker');
+    const pkg = exportPackage(e, { workflows: [handler.name], target: 'dtfx' });
+    expect(pkg.manifest.tasks.find((x: any) => x.kind === 'handler')).toMatchObject({ task: 'uae.wps.handler.synthetic.v1@1.0.0', endpoint: 'interop' });
   });
   it('gives the same bytes for the same input (R-09-15)', () => {
     const a = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'flowable', tenant: 'example-bank' });
@@ -27,14 +38,14 @@ describe('export (C05, C20, C22)', () => {
     expect(packageHash(a)).toBe(packageHash(b));
   });
   it('generates BPMN with external worker tasks, timer boundaries and an event-based await (R-09-12)', () => {
-    const pkg = exportPackage(env, { workflows: ['p.wf.commercial.v1'], target: 'flowable' });
-    const x = pkg.files['bpmn/uae.aani.wf.credit-out.v1@1.0.0.bpmn20.xml'];
-    expect(x).toMatch(/flowable:type="external-worker" flowable:topic="th-uae-aani:uae.aani.exchange.send-credit.v1@1.0.0"/);
-    expect(x).toMatch(/<boundaryEvent id="deadline" attachedToRef="main"/);
+    const pkg = exportPackage(env, { workflows: ['p.wf.commercial.v1', 'p.wf.corporate.v1'], target: 'flowable' });
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    expect(x).toMatch(/flowable:type="external-worker" flowable:topic="th-uae-wps:uae.wps.exchange.send-salary-file.v1@1.0.0"/);
     expect(x).toMatch(/<eventBasedGateway/);
     expect((x.match(/<process /g) ?? []).length).toBe(1);
-    const corp = pkg.files['bpmn/p.wf.commercial.v1@1.0.0.bpmn20.xml'];
-    expect(corp).toMatch(/__finally/);
+    const com = pkg.files['bpmn/p.wf.commercial.v1@1.0.0.bpmn20.xml'];
+    expect(com).toMatch(/<boundaryEvent id="deadline" attachedToRef="main"/);
+    expect(com).toMatch(/__finally/);
   });
   it('carries a tenant configuration set and the hooks it binds (R-06-18)', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'temporal', tenant: 'example-bank' });

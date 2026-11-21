@@ -303,8 +303,8 @@ function NewPanel({ initialClone, onLoad }: { initialClone?: string; onLoad: (ya
       if (from !== 'clone' && kind === 'workflow' && wfKind === 'subflow') {
         // A subflow implements one composite and returns, never ends (R-05-34).
         const d = YAML.parse(r.yaml);
-        d.name = name || 'uae.aani.sub.new.v1';
-        d.implements = { activity: 'uae.aani.exchange.new.v1' };
+        d.name = name || 'uae.wps.sub.new.v1';
+        d.implements = { activity: 'uae.wps.exchange.new.v1' };
         delete d.entry; delete d.slots; delete d.hookPoints; delete d.signals; delete d.deadline; delete d.finally;
         d.exit = { outcomes: ['accepted', 'rejected'] };
         d.do = [{ return: 'accepted' }];
@@ -357,7 +357,7 @@ function NewPanel({ initialClone, onLoad }: { initialClone?: string; onLoad: (ya
         )}
         <label className="field wide">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={from === 'clone' ? 'Leave empty for a new release of the source' : 'scope.type.name.v1, for example uae.aani.wf.my-leg.v1'} className="mono" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={from === 'clone' ? 'Leave empty for a new release of the source' : 'scope.type.name.v1, for example uae.wps.wf.my-leg.v1'} className="mono" />
         </label>
         <label className="field wide">
           <span>Title</span>

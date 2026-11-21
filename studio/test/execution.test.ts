@@ -33,16 +33,16 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(30);
+    expect(reports.length).toBe(16);
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual([]);
   });
-  it('shows three attempts and the backoff for AANI-OUT-003 (F-17)', async () => {
+  it('shows three attempts and the backoff for P-RES-001 (F-17)', async () => {
     const env = freshEnv();
-    const r = await runTest(env, env.store.test('AANI-OUT-003')!.doc);
-    const send = r.record!.timeline.filter((e: any) => e.step === 'send.send');
+    const r = await runTest(env, env.store.test('P-RES-001')!.doc);
+    const send = r.record!.timeline.filter((e: any) => e.step === 'reserve');
     expect(send.filter((e: any) => e.type === 'attempt').length).toBe(3);
-    expect(send.filter((e: any) => e.type === 'retry-wait').map((e: any) => e.detail.ms)).toEqual([1000, 2000]);
+    expect(send.filter((e: any) => e.type === 'retry-wait').map((e: any) => e.detail.ms)).toEqual([2000, 4000]); // PT2S, backoff 2
   });
   it('ends a no-reply run at the timeout on the virtual clock (F-16)', async () => {
     const env = freshEnv();
@@ -52,15 +52,15 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   });
   it('turns a test red when the trace changes (F-19)', async () => {
     const env = freshEnv();
-    const t = env.store.test('AANI-OUT-001')!.doc;
+    const t = env.store.test('WPS-OUT-001')!.doc;
     const r = await runTest(env, { ...t, expect: { ...t.expect, trace: [...t.expect.trace].reverse() } });
     expect(r.passed).toBe(false);
   });
   it('records deltas with the release that ran, and keeps state to references (R-02-08, R-02-10)', async () => {
     const env = freshEnv();
-    const r = await runTest(env, env.store.test('AANI-OUT-001')!.doc);
-    const leg = r.record!.instances.find((i) => i.workflow === 'uae.aani.wf.credit-out.v1')!;
-    expect(leg.deltas.find((d: any) => d.step === 'scheme-checks')).toMatchObject({ release: '1.0.0' });
+    const r = await runTest(env, env.store.test('WPS-OUT-001')!.doc);
+    const leg = r.record!.instances.find((i) => i.workflow === 'uae.wps.wf.salary-file-out.v1')!;
+    expect(leg.deltas.find((d: any) => d.step === 'file-checks')).toMatchObject({ release: '1.0.0' });
     expect(Object.keys(leg.engineState)).toEqual(['header', 'facts', 'refs']);
   });
   it('applies a supersession to steps not yet started and records both releases (R-01-22)', async () => {

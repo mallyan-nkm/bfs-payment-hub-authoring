@@ -16,7 +16,7 @@ type Path = (string | number)[];
 type Set = (p: Path, v: any) => void;
 
 const KINDS: { id: Kind; label: string; catalogue: string; open: string }[] = [
-  { id: 'rule', label: 'Rule', catalogue: 'rule', open: 'uae.aani.rule.amount-within-limit.v1' },
+  { id: 'rule', label: 'Rule', catalogue: 'rule', open: 'uae.wps.rule.agent-is-this-bank.v1' },
   { id: 'ruleset', label: 'Rule set', catalogue: 'ruleset', open: 'uae.wps.ruleset.salary-file.v1' },
   { id: 'table', label: 'Decision table', catalogue: 'table', open: 'p.table.workflow-select.v1' },
   { id: 'activity', label: 'Activity contract', catalogue: 'activity', open: 'p.reserve.funds.v1' },
@@ -52,7 +52,7 @@ function starter(kind: Kind): any {
       };
     case 'rule':
       return {
-        kind: 'rule', name: 'uae.aani.rule.new.v1', release: '1.0.0', title: 'New rule', ruleKind: 'field', repeatability: 'non-repeatable',
+        kind: 'rule', name: 'uae.wps.rule.new.v1', release: '1.0.0', title: 'New rule', ruleKind: 'field', repeatability: 'non-repeatable',
         when: [{ match: { fact: 'Payment', as: 'p' } }, { having: 'isBlank(p.purpose)' }],
         then: [{ yield: { finding: { severity: 'repair', path: 'payment.purpose', reasonCode: 'NARR' } } }],
         examples: [
@@ -74,7 +74,7 @@ function starter(kind: Kind): any {
       };
     case 'activity':
       return {
-        kind: 'activity', name: 'uae.aani.validate.new.v1', release: '1.0.0', title: 'New activity', type: 'validate', reads: ['header', 'payment'], writes: ['facts.validation'],
+        kind: 'activity', name: 'uae.wps.validate.new.v1', release: '1.0.0', title: 'New activity', type: 'validate', reads: ['header', 'payment'], writes: ['facts.validation'],
         outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'read', implementation: { binding: 'builtin', service: 'rule-service' }, provenance: PROV,
       };
     case 'map':
@@ -92,10 +92,10 @@ function starter(kind: Kind): any {
       };
     case 'composite':
       return {
-        kind: 'activity', name: 'uae.aani.exchange.new.v1', release: '1.0.0', title: 'New composite exchange', type: 'exchange', mode: 'send',
+        kind: 'activity', name: 'uae.wps.exchange.new.v1', release: '1.0.0', title: 'New composite exchange', type: 'exchange', mode: 'send',
         reads: ['header', 'messages'], writes: ['status', 'messages'], outcomes: [{ name: 'accepted', primary: true }, { name: 'rejected' }, { name: 'pending' }],
-        errors: [{ name: 'TransientError', retryable: true }], effect: 'external', idempotencyKey: "concat(header.paymentId, ':new')", ports: ['uae.aani.port.switch.v1'],
-        policy: { replyTimeout: 'PT30S' }, implementation: { binding: 'subflow', subflow: 'uae.aani.sub.new.v1' }, provenance: PROV,
+        errors: [{ name: 'TransientError', retryable: true }], effect: 'external', idempotencyKey: "concat(header.paymentId, ':new')", ports: ['uae.wps.port.wps.v1'],
+        policy: { replyTimeout: 'PT30S' }, implementation: { binding: 'subflow', subflow: 'uae.wps.sub.new.v1' }, provenance: PROV,
       };
   }
 }
@@ -103,10 +103,10 @@ function starter(kind: Kind): any {
 function subflowStarter(act: any): any {
   const outs: string[] = (act?.outcomes ?? []).map((o: any) => o.name);
   return {
-    kind: 'workflow', wfKind: 'subflow', name: act?.implementation?.subflow ?? 'uae.aani.sub.new.v1', release: '1.0.0', dsl: '1.0.0', title: `What ${act?.name ?? 'the composite'} does underneath`,
+    kind: 'workflow', wfKind: 'subflow', name: act?.implementation?.subflow ?? 'uae.wps.sub.new.v1', release: '1.0.0', dsl: '1.0.0', title: `What ${act?.name ?? 'the composite'} does underneath`,
     implements: { activity: act?.name }, exit: { outcomes: outs },
     do: [
-      { id: 'send', call: 'uae.aani.exchange.send-credit.v1', handle: { rejected: { return: 'rejected' }, unknown: { return: 'pending' } } },
+      { id: 'send', call: 'uae.wps.exchange.send-salary-file.v1', handle: { rejected: { return: 'rejected' }, unknown: { return: 'pending' } } },
       { return: outs[0] ?? 'accepted' },
     ],
     provenance: PROV,

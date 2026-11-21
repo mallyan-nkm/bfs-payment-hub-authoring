@@ -39,8 +39,6 @@ def prov(status="confirmed", clauses=None, note=None):
 
 PROVISIONAL_WPS = dict(status="provisional", clauses=["CBUAE WPS responsibility guide 2018"],
                        note="From public sources. Confirm against the current CBUAE WPS rulebook.")
-PROVISIONAL_AANI = dict(status="provisional",
-                        note="Message set not public. Confirm against the AEP participant specification.")
 
 
 def make_iban(bban, country="AE"):
@@ -222,9 +220,6 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
         ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
 
-# Aani (provisional)
-AP = PROVISIONAL_AANI
-
 # composite exchanges: one block to the designer, a subflow underneath (design/05, section 5.6)
 WPS_PORT = ["uae.wps.port.wps.v1"]
 act("uae.wps.exchange.submit-salary-file.v1", "Submit the salary file and get the acknowledgement", ["header", "messages"], ["status", "messages"],
@@ -239,36 +234,9 @@ act("uae.wps.exchange.request-refund.v1", "Request a refund and wait for its set
 act("uae.wps.exchange.receive-supplement.v1", "Wait for the supplementary file that pairs with the payment file", ["header"], ["messages"],
     ["received", "missing"], "read", mode="receive", ports=WPS_PORT, policy={"replyTimeout": "PT2H"},
     sub="uae.wps.sub.receive-supplement.v1", p=WP)
-act("uae.aani.exchange.submit-credit.v1", "Send the credit transfer and learn its outcome", ["header", "messages"], ["status", "messages"],
-    ["accepted", "rejected", "pending"], "external", mode="send", ports=["uae.aani.port.switch.v1"],
-    policy={"replyTimeout": "PT4S"}, sub="uae.aani.sub.submit-credit.v1", p=AP)
 
 
-def amap(name, title, direction, model, reads, writes, outcomes=("mapped", "unmappable")):
-    return act(name, title, reads, writes, list(outcomes), "pure",
-               map_={"direction": direction, "sourceModel": model, "roundTrip": direction == "in"}, p=AP)
 
-
-amap("uae.aani.map.credit-out.v1", "Canonical to scheme credit transfer", "out", "ISO 20022 credit transfer, scheme usage guideline",
-     ["header", "payment"], ["messages"])
-amap("uae.aani.map.credit-in.v1", "Scheme credit transfer to canonical", "in", "ISO 20022 credit transfer, scheme usage guideline",
-     ["messages"], ["header", "payment"])
-amap("uae.aani.map.status-in.v1", "Scheme status report to status", "in", "ISO 20022 status report", ["messages"], ["status"],
-     outcomes=("accepted", "rejected", "pending"))
-amap("uae.aani.map.status-out.v1", "Status to scheme status report", "out", "ISO 20022 status report", ["header", "status"], ["messages"])
-amap("uae.aani.map.status-request-in.v1", "Scheme status request to canonical query", "in", "ISO 20022 status request", ["messages"], ["header"])
-act("uae.aani.validate.credit.v1", "Aani credit transfer checks", ["header", "payment"], ["facts.validation"],
-    ["pass", "reject"], "pure", rule_sets=["uae.aani.ruleset.credit.v1"], p=AP)
-act("uae.aani.enrich.proxy-resolve.v1", "Resolve a proxy to an account", ["payment.creditorAccount"], ["payment.creditorAccount", "payment.creditor"],
-    ["resolved", "not-found"], "read", ports=["uae.aani.port.proxy.v1"], policy={"attemptTimeout": "PT2S", "retry": {"maxAttempts": 2}}, p=AP)
-act("uae.aani.reserve.prefund-check.v1", "Prefund position check", ["facts.route", "payment.instructedAmount"], ["facts.liquidity"],
-    ["sufficient", "insufficient"], "read", ports=["p.port.liquidity.v1"], p=AP)
-act("uae.aani.exchange.send-credit.v1", "Send the credit transfer", ["header", "messages"], ["status", "messages"],
-    ["accepted", "rejected", "pending", "unknown"], "external", mode="send", ports=["uae.aani.port.switch.v1"], policy=SHORT, p=AP)
-act("uae.aani.exchange.inquire-status.v1", "Ask the scheme for the status of a payment we sent", ["header"], ["status", "messages"],
-    ["accepted", "rejected", "pending", "unknown"], "external", mode="inquire", ports=["uae.aani.port.switch.v1"], policy=SHORT, p=AP)
-act("uae.aani.exchange.respond-status.v1", "Answer the scheme with a status", ["header", "messages"], ["messages"],
-    ["responded"], "external", mode="respond", ports=["uae.aani.port.switch.v1"], policy=SHORT, p=AP)
 
 # example bank tenant
 act("b.validate.internal-limit.v1", "Bank internal limit, per payment, per line and per file", ["payment.instructedAmount", "batch", "items[]"], ["facts.validation"],
@@ -448,22 +416,6 @@ rule("uae.wps.rule.agent-is-this-bank.v1", "The payment file is addressed to thi
 ruleset("uae.wps.ruleset.payment-file.v1", "Inward payment file checks", "validation",
         ["uae.wps.rule.agent-is-this-bank.v1", "uae.wps.rule.currency-aed.v1"], stages=["field", "reference"], p=WP)
 
-# Aani rules (provisional)
-rule("uae.aani.rule.amount-within-limit.v1", "Amount is within the Aani limit", "policy",
-     [m("Payment", "p"), par("maxAmount"), {"having": "p.instructedAmount.value > maxAmount.value"}],
-     "payment.instructedAmount.value", "AM02",
-     {"Payment": {"instructedAmount": {"value": 50000}}, "Param": {"name": "maxAmount", "value": 50000}},
-     {"Payment": {"instructedAmount": {"value": 50000.01}}, "Param": {"name": "maxAmount", "value": 50000}},
-     params={"maxAmount": {"type": "amount", "currency": "AED", "default": 50000, "bounds": {"max": 50000},
-                           "description": "Scheme limit per transfer. A bank may lower it, never raise it."}},
-     p=dict(status="provisional", clauses=["AEP: transfers up to AED 50,000"], note="Limit is under review by AEP. It is a value, not logic."))
-rule("uae.aani.rule.creditor-iban-or-proxy.v1", "Creditor is identified by an IBAN or a proxy", "field",
-     [m("Payment", "p", "isBlank(p.creditorAccount.iban) and isBlank(p.creditorAccount.proxy)")], "payment.creditorAccount", "AC03",
-     pay(creditorAccount={"proxy": {"type": "mobile", "value": "+971500000000"}}), pay(creditorAccount={}), p=AP)
-ruleset("uae.aani.ruleset.credit.v1", "Aani credit transfer checks", "validation",
-        ["uae.p.rule.currency-aed.v1", "uae.aani.rule.creditor-iban-or-proxy.v1", "uae.p.rule.iban-length.v1", "uae.p.rule.iban-country.v1",
-         "uae.p.rule.iban-checksum.v1", "uae.aani.rule.amount-within-limit.v1"], stages=["field", "policy"], p=AP)
-
 # example bank rule
 # A payment, each line of a file and the file total are held against the one limit the bank sets
 # (Issue I-28, decided). A finding's path is fixed per rule, so the message says which amount.
@@ -481,7 +433,8 @@ rule("b.rule.internal-limit.v1", "A payment, each line of a file and the file to
            ("fails, one line of a file", {"Batch": {"id": "B1", "controlSum": 100}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 101}}}], **LIM}, True),
            ("fails, the file total with every line within", {"Batch": {"id": "B1", "controlSum": 150}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 80}}}, {"batchId": "B1", "payment": {"instructedAmount": {"value": 70}}}], **LIM}, True),
            ("passes, a file within on every line and in total", {"Batch": {"id": "B1", "controlSum": 100}, "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 60}}}, {"batchId": "B1", "payment": {"instructedAmount": {"value": 40}}}], **LIM}, False)],
-     params={"internalLimit": {"type": "amount", "default": 1000000}}, base=EXAMPLES)
+     params={"internalLimit": {"type": "amount", "currency": "AED", "default": 1000000, "bounds": {"max": 1000000},
+                               "description": "The bank's own limit. Its configuration set may lower it, never raise it."}}, base=EXAMPLES)
 ruleset("b.ruleset.internal-limit.v1", "Bank internal limit", "validation", ["b.rule.internal-limit.v1"], stages=["policy"], base=EXAMPLES)
 
 
@@ -521,9 +474,9 @@ table("p.table.rail-choice.v1", "Which rail carries a payment", "first",
       [("requested", "header.scheme"), ("enabled", "in(header.scheme, enabledRails.value)")], ["rail"],
       [{"when": {"enabled": True}, "then": {"rail": "requested"}, "reason": "The requested rail is enabled for this bank"},
        {"when": {}, "then": {"rail": "none"}, "reason": "No enabled rail accepts this payment"}],
-      [{"name": "requested rail enabled", "given": {"Header": {"scheme": "uae.aani"}, "Param": {"name": "enabledRails", "value": ["uae.aani", "uae.wps"]}},
-        "expect": {"decisions": [{"name": "rail", "value": "uae.aani"}]}},
-       {"name": "requested rail disabled", "given": {"Header": {"scheme": "uae.aani"}, "Param": {"name": "enabledRails", "value": ["uae.wps"]}},
+      [{"name": "requested rail enabled", "given": {"Header": {"scheme": "uae.wps"}, "Param": {"name": "enabledRails", "value": ["uae.wps"]}},
+        "expect": {"decisions": [{"name": "rail", "value": "uae.wps"}]}},
+       {"name": "requested rail disabled", "given": {"Header": {"scheme": "uae.wps"}, "Param": {"name": "enabledRails", "value": []}},
         "expect": {"decisions": [{"name": "rail", "value": "none"}]}}],
       params={"enabledRails": {"type": "list", "default": [], "description": "Rails this bank runs, in order of preference. A bank value."}})
 
@@ -549,9 +502,6 @@ port("uae.p.port.calendar.v1", "Business calendar", "business calendar service",
 port("uae.wps.port.wps.v1", "Wages protection system", "central bank wages protection system",
      [("submit-file", SEND), ("receive-file", RECV)], p=WP)
 port("uae.wps.port.employer-channel.v1", "Employer channel", "employer file channel", [("receive-file", RECV)], p=WP)
-port("uae.aani.port.switch.v1", "Instant payments switch", "instant payments platform operator",
-     [("send", SEND), ("receive", RECV), ("inquire", RR)], p=AP)
-port("uae.aani.port.proxy.v1", "Proxy directory", "proxy directory of the instant payments platform", [("resolve", RR)], p=AP)
 port("b.port.reference-data.v1", "Bank reference data", "bank reference data service", [("cost-centre", RR)], base=EXAMPLES)
 port("b.port.treasury.v1", "Bank treasury", "bank treasury system", [("notify", SEND)], base=EXAMPLES)
 
@@ -635,24 +585,6 @@ sim("uae.wps.sim.employer-channel.v1", "Employer simulator", "inward", "uae.wps.
      sc("valid-file-scr-last", {"send": "uae.wps.sif"}),
      sc("bad-control-total", {"send": "uae.wps.sif"}, malformed=True),
      sc("bad-file-name", {"send": "uae.wps.sif"}, malformed=True)], self_check=["uae.wps.ruleset.salary-file.v1"], p=WP)
-sim("uae.aani.sim.switch-outward.v1", "Aani switch simulator, replies to the bank", "outward", "uae.aani.port.switch.v1",
-    "instant payments platform operator",
-    outward_set("uae.aani.credit-transfer", "uae.aani.status-report", "AC04")
-    + [sc("pending-then-final-in-time", {"expect": "uae.aani.credit-transfer"}, {"send": "uae.aani.status-report", "status": "pending"},
-          {"send": "uae.aani.status-report", "status": "accepted", "after": "PT2S"}),
-       sc("no-reply-then-status-accepted", {"expect": "uae.aani.credit-transfer"}, {"noReply": True},
-          {"expect": "uae.aani.status-request"}, {"send": "uae.aani.status-report", "status": "accepted"}),
-       sc("no-reply-then-status-rejected", {"expect": "uae.aani.credit-transfer"}, {"noReply": True},
-          {"expect": "uae.aani.status-request"}, {"send": "uae.aani.status-report", "status": "rejected", "reasonCode": "AC04"})],
-    self_check=["uae.aani.ruleset.credit.v1"], p=AP)
-sim("uae.aani.sim.switch-inward.v1", "Aani switch simulator, sends to the bank", "inward", "uae.aani.port.switch.v1",
-    "instant payments platform operator",
-    [sc("inward-credit", {"send": "uae.aani.credit-transfer-in"}, {"expect": "uae.aani.status-report-out"}),
-     sc("inward-credit-duplicate", {"send": "uae.aani.credit-transfer-in", "duplicate": True}, {"expect": "uae.aani.status-report-out"}),
-     sc("inward-status-request", {"send": "uae.aani.status-request-in"}, {"expect": "uae.aani.status-report-out"})],
-    self_check=["uae.aani.ruleset.credit.v1"], p=AP)
-sim("uae.aani.sim.proxy.v1", "Proxy directory simulator", "outward", "uae.aani.port.proxy.v1",
-    "proxy directory of the instant payments platform", outward_set("uae.aani.proxy-request", "uae.aani.proxy-reply", "BE01"), p=AP)
 sim("b.sim.treasury.v1", "Bank treasury simulator", "outward", "b.port.treasury.v1", "bank treasury system",
     outward_set("b.treasury.notify", "b.treasury.ack", "NARR"), lang="python", base=EXAMPLES)
 sim("b.sim.reference-data.v1", "Bank reference data simulator", "outward", "b.port.reference-data.v1", "bank reference data service",
@@ -704,74 +636,22 @@ def test(tid, title, target_, level, given, expect, *, bench_=None, date=DATE, t
     return emit(doc, base)
 
 
-AANI_CTX = {"context": {"header": {"paymentId": "P-1", "endToEndId": "E2E-1", "kind": "payment", "direction": "outward", "segment": "commercial", "scheme": "uae.aani"},
-                        "payment": {"instructedAmount": {"value": 1500, "currency": "AED"}, "debtorAccount": {"iban": IBAN_OK},
-                                    "creditorAccount": {"iban": IBAN_OK}, "debtorAgent": {"clearingMemberId": "302620122"},
-                                    "creditorAgent": {"clearingMemberId": "203320101"}}}}
-SW, SWSIM = "uae.aani.port.switch.v1", "uae.aani.sim.switch-outward.v1"
-LQ = ("p.port.liquidity.v1", "p.sim.liquidity.v1", "accept")
-PD = ("uae.p.port.participant-directory.v1", "uae.p.sim.participant-directory.v1", "accept")
 CAL = ("uae.p.port.calendar.v1", "uae.p.sim.calendar.v1", "accept")
 
 
-def aani_amount(v):
-    d = json.loads(json.dumps(AANI_CTX))
-    d["context"]["payment"]["instructedAmount"]["value"] = v
-    return d
+def salary_file(*lines):
+    """A synthetic outward WPS salary file as a canonical context: one item per line, the batch carries the total."""
+    items = [{"payment": {"instructedAmount": {"value": v, "currency": "AED"}, "creditorAccount": {"iban": IBAN_OK},
+                          "creditorAgent": {"clearingMemberId": "203320101"}}} for v in lines]
+    return {"context": {"header": {"paymentId": "P-1", "endToEndId": "E2E-1", "fileId": "F-1", "kind": "payment", "direction": "outward",
+                                   "segment": "corporate", "scheme": "uae.wps"},
+                        "payment": {"instructedAmount": {"value": sum(lines), "currency": "AED"}, "debtorAccount": {"iban": IBAN_OK},
+                                    "debtorAgent": {"clearingMemberId": "302620122"}},
+                        "batch": {"id": "F-1", "numberOfTransactions": len(lines), "controlSum": sum(lines)},
+                        "items": items}}
 
 
-test("AANI-OUT-001", "Accepted by the scheme", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 1}],
-      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:accepted", "end:settled"]},
-     bench_=bench((SW, SWSIM, "accept"), LQ, PD))
-test("AANI-OUT-002", "Rejected by the scheme with a reason", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "rejected", "reasonCode": "AC04", "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:rejected", "end:rejected"]},
-     bench_=bench((SW, SWSIM, "reject"), LQ, PD))
-test("AANI-OUT-003", "Transient failure is retried and one message is accepted", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "settled", "attempts": {"send.send": 3}, "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 3}]},
-     bench_=bench((SW, SWSIM, "fail-twice-then-accept"), LQ, PD))
-test("AANI-OUT-004", "Unknown outcome leads to an inquiry, never a blind re-send", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.status-request", "count": 1}],
-      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:accepted", "end:settled"],
-      "detail": ["send.send:unknown", "send.inquire:accepted"]},
-     bench_=bench((SW, SWSIM, "no-reply-then-status-accepted"), LQ, PD))
-test("AANI-OUT-005", "No reply at all ends pending for operations", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "pending"}, bench_=bench((SW, SWSIM, "no-reply"), LQ, PD))
-test("AANI-OUT-006", "A pending reply is settled by the status report that follows", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 1}],
-      "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:accepted", "end:settled"],
-      "detail": ["send.send:pending", "send.await-status:received", "send.read-status:accepted"]},
-     bench_=bench((SW, SWSIM, "pending-then-final-in-time"), LQ, PD))
-test("AANI-OUT-007", "A pending reply with no final status in time ends pending for operations", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "pending", "trace": ["scheme-checks:pass", "participants:found", "prefund:sufficient", "render:mapped", "send:pending", "end:pending"],
-      "detail": ["send.send:pending", "send.await-status:timeout"]},
-     bench_=bench((SW, SWSIM, "pending-then-final"), LQ, PD))
-test("AANI-OUT-008", "An unknown creditor agent is rejected before anything is sent", "uae.aani.wf.credit-out.v1", "leg", AANI_CTX,
-     {"outcome": "rejected", "reasonCode": "RC01", "messages": [{"port": SW, "message": "uae.aani.credit-transfer", "count": 0}],
-      "trace": ["scheme-checks:pass", "participants:unknown", "end:rejected"]},
-     bench_=bench((SW, SWSIM, "accept"), LQ, ("uae.p.port.participant-directory.v1", "uae.p.sim.participant-directory.v1", "reject")))
-test("AANI-EXC-001", "The composite alone: a pending reply is settled by the status report", "uae.aani.exchange.submit-credit.v1", "activity", AANI_CTX,
-     {"outcome": "accepted", "detail": ["send:pending", "await-status:received", "read-status:accepted"]},
-     bench_=bench((SW, SWSIM, "pending-then-final-in-time")), conformance=True)
-test("AANI-EXC-002", "The composite alone: no reply leads to three inquiries, then pending", "uae.aani.exchange.submit-credit.v1", "activity", AANI_CTX,
-     {"outcome": "pending", "attempts": {"inquire": 3}}, bench_=bench((SW, SWSIM, "no-reply")), conformance=True)
-test("AANI-RULE-001", "Amount at the scheme limit passes", "uae.aani.validate.credit.v1", "activity", aani_amount(50000),
-     {"outcome": "pass", "findings": []}, conformance=True)
-test("AANI-RULE-002", "Amount just over the scheme limit is rejected", "uae.aani.validate.credit.v1", "activity", aani_amount(50000.01),
-     {"outcome": "reject", "findings": [{"reasonCode": "AM02", "path": "payment.instructedAmount.value"}]}, conformance=True)
-test("AANI-RULE-003", "A bank's lower limit applies from its effective date", "uae.aani.validate.credit.v1", "activity", aani_amount(30000),
-     {"outcome": "reject", "findings": [{"reasonCode": "AM02"}]}, date="2027-01-02", tenant="example-bank")
-test("AANI-RULE-004", "The same amount passes the day before the bank's lower limit starts", "uae.aani.validate.credit.v1", "activity",
-     aani_amount(30000), {"outcome": "pass", "findings": []}, date="2026-12-31", tenant="example-bank")
-test("AANI-IN-001", "Inward credit is credited and answered", "p.wf.inward.v1", "end-to-end",
-     {"inbound": "samples/aani-credit-in-valid.xml"},
-     {"outcome": "settled", "messages": [{"port": SW, "message": "uae.aani.status-report-out", "count": 1}]},
-     bench_=bench((SW, "uae.aani.sim.switch-inward.v1", "inward-credit"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
-                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), scope="uae.aani")
-test("AANI-HND-001", "Inward status inquiry is answered from the record", "uae.aani.handler.status-inquiry-in.v1", "handler",
-     {"inbound": "samples/aani-status-request-in.xml"},
-     {"outcome": "answered", "messages": [{"port": SW, "message": "uae.aani.status-report-out", "count": 1}]},
-     bench_=bench((SW, "uae.aani.sim.switch-inward.v1", "inward-status-request"), ("p.port.payment-record.v1", "p.sim.payment-record.v1", "accept")))
+PAY_CTX = salary_file(1500)
 
 WPS, WSIM = "uae.wps.port.wps.v1", "uae.wps.sim.wps-outward.v1"
 WPS_FILE = {"inbound": "samples/wps-sif-valid.sif"}
@@ -809,15 +689,19 @@ test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement rep
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1}]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
                   ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
-test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", AANI_CTX,
+test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)
-test("P-RES-002", "Insufficient funds is a business outcome and is not retried", "p.reserve.funds.v1", "activity", AANI_CTX,
+test("P-RES-002", "Insufficient funds is a business outcome and is not retried", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "insufficient", "attempts": {"reserve": 1}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "reject")), conformance=True)
-test("BANK-HOOK-001", "A payment over the bank's internal limit is held before release", "b.hook.pre-release-approval.v1", "hook",
-     aani_amount(300000), {"outcome": "hold"}, tenant="example-bank", base=EXAMPLES)
-test("BANK-HOOK-002", "A payment under the bank's internal limit continues", "b.hook.pre-release-approval.v1", "hook",
-     aani_amount(100), {"outcome": "continue"}, tenant="example-bank", base=EXAMPLES)
+test("BANK-HOOK-001", "A salary file whose total is over the bank's internal limit is held before release", "b.hook.pre-release-approval.v1", "hook",
+     salary_file(150000, 150000), {"outcome": "hold"}, tenant="example-bank", base=EXAMPLES)
+test("BANK-HOOK-002", "A salary file under the bank's internal limit continues", "b.hook.pre-release-approval.v1", "hook",
+     salary_file(60, 40), {"outcome": "continue"}, tenant="example-bank", base=EXAMPLES)
+test("BANK-LIM-001", "The bank's lower limit applies from its effective date", "b.validate.internal-limit.v1", "activity",
+     salary_file(150000), {"outcome": "reject", "findings": [{"reasonCode": "AM02"}]}, date="2027-01-02", tenant="example-bank", base=EXAMPLES)
+test("BANK-LIM-002", "The same file passes the day before the bank's lower limit starts", "b.validate.internal-limit.v1", "activity",
+     salary_file(150000), {"outcome": "pass", "findings": []}, date="2026-12-31", tenant="example-bank", base=EXAMPLES)
 
 # ------------------------------------------------------------------- writing
 def canon_hash(doc):
@@ -842,6 +726,9 @@ def target(base, doc):
     return base / folder / FOLDER[doc["kind"]] / (name + ".yaml")
 
 
+# The shared packs of the factory, in dependency order. tools/validate.py (L34) holds factory/ to this list,
+# through the inventory written below: a folder that is not a pack here is not factory content.
+SHARED_PACKS = ("p", "uae.p", "uae.wps")
 HEADER = "# Generated by tools/build_factory.py. Edit the generator, not this file."
 
 
@@ -858,7 +745,7 @@ def main():
                 f.unlink()
                 print("removed stale", f.relative_to(ROOT))
     inventory = {"kind": "inventory", "date": DATE, "packs": []}
-    packs = [(FACTORY / s, s, "shared") for s in ("p", "uae.p", "uae.wps", "uae.aani")] + [(EXAMPLES / "bank", "b", "bank")]
+    packs = [(FACTORY / s, s, "shared") for s in SHARED_PACKS] + [(EXAMPLES / "bank", "b", "bank")]
     for folder, scope, ptype in packs:
         arts, has_sim = [], False
         for f in sorted(folder.rglob("*.yaml")):
@@ -876,7 +763,7 @@ def main():
                 "packType": ptype, "origin": "factory" if ptype == "shared" else "authored"}
         if ptype == "bank":
             pack["tenant"] = "example-bank"
-        deps = {"p": [], "uae.p": ["p"], "uae.wps": ["p", "uae.p"], "uae.aani": ["p", "uae.p"], "b": ["p", "uae.p", "uae.aani"]}[scope]
+        deps = {"p": [], "uae.p": ["p"], "uae.wps": ["p", "uae.p"], "b": ["p", "uae.p", "uae.wps"]}[scope]
         if deps:
             pack["dependsOn"] = [{"scope": d, "release": REL} for d in deps]
         pack["artefacts"] = arts

@@ -9,27 +9,21 @@ accepts:
   release: 1.0.0
 - scope: uae.wps
   release: 1.0.0
-- scope: uae.aani
-  release: 1.0.0
 values:
-- parameter: uae.aani.rule.amount-within-limit.v1#maxAmount
-  value: 50000
+- parameter: b.rule.internal-limit.v1#internalLimit
+  value: 250000
   validFrom: '2026-01-01'
   validTo: '2026-12-31'
-- parameter: uae.aani.rule.amount-within-limit.v1#maxAmount
-  value: 25000
+- parameter: b.rule.internal-limit.v1#internalLimit
+  value: 100000
   validFrom: '2027-01-01'
 - parameter: p.table.rail-choice.v1#enabledRails
   value:
-  - uae.aani
   - uae.wps
   validFrom: '2026-01-01'
 - parameter: uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes
   value:
   - '302620122'
-  validFrom: '2026-01-01'
-- parameter: b.rule.internal-limit.v1#internalLimit
-  value: 250000
   validFrom: '2026-01-01'
 - parameter: uae.wps.map.cb-sif-out.v1#bankRoutingCode
   value: '302620122'

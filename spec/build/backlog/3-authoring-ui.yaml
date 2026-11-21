@@ -62,7 +62,7 @@ components:
         dod:
           - Patterns are picked from the canonical model; expressions are checked as typed.
           - Examples run on save; fewer than two examples blocks publish.
-        dos: uae.aani.rule.amount-within-limit.v1 is rebuilt in the editor and saves to a document with the same hash.
+        dos: uae.wps.rule.agent-is-this-bank.v1 is rebuilt in the editor and saves to a document with the same hash.
       - id: C13-S2
         title: Decision table editor
         sp: 3
@@ -156,7 +156,7 @@ components:
         needs: [C14-S2]
         dod:
           - The panel shows type default, activity default and step override per field, and the budget of the longest path against the deadline.
-        dos: For the send step of uae.aani.wf.credit-out.v1 the panel shows each value with its source, and the longest path against the PT8S deadline.
+        dos: For the reserve step of p.wf.commercial.v1 the panel shows each value with its source, and the longest path against the PT10S deadline.
       - id: C14-S6
         title: Composite steps on the canvas
         sp: 3
@@ -184,7 +184,7 @@ components:
         story: As a designer, I want to bind a simulator and scenario to each port and set the date and the tenant, so that a run is fully described.
         dod:
           - Every port a run can reach must be bound before it starts; the bench is saved with the test.
-        dos: The bench of AANI-OUT-005, with the no-reply scenario, runs to its end on the virtual clock and ends pending.
+        dos: The bench of WPS-OUT-003, with the no-reply scenario, runs to its end on the virtual clock and ends pending.
       - id: C15-S2
         title: Run and step
         sp: 5
@@ -203,7 +203,7 @@ components:
         dod:
           - The timeline is on virtual time; each step opens its delta with personal data masked.
           - The steps inside a composite are nested under it and closed by default.
-        dos: The timeline of AANI-OUT-003 shows three attempts and the backoff between them.
+        dos: The timeline of P-RES-001 shows three attempts and the backoff between them.
       - id: C15-S4
         title: Assertions and saved tests
         sp: 3

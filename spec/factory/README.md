@@ -1,6 +1,6 @@
 # Factory pack
 
-The default content that ships with the studio. It is ordinary shared content: the same schemas, the same checks, read-only to banks. Part 12 of the design spec says what it is for; Annexes A, B and D describe what is in it.
+The default content that ships with the studio. It is ordinary shared content: the same schemas, the same checks, read-only to banks. Part 12 of the design spec says what it is for; Annexes A and D describe what is in it.
 
 ## Layout
 
@@ -9,8 +9,7 @@ factory/
   p/            the platform: lifecycle blocks, platform workflows, ports and simulators
   uae.p/        the UAE cluster platform: blocks and rules every UAE scheme can use
   uae.wps/      the Wages Protection System: legs, maps, rules, simulators, scheme manifest
-  uae.aani/     the Aani instant payments platform: legs, handlers, maps, rules, simulators, scheme manifest
-  inventory.yaml
+  inventory.yaml   the packs of the factory; check L34 holds `factory/` to this list
 examples/
   bank/         an example tenant: one hook of each type, its blocks, and a configuration set
   bindings/     one engine binding per target
@@ -27,9 +26,8 @@ Each pack folder holds `activities/`, `rules/`, `ports/`, `simulators/`, `workfl
 | `factory/p/` | shared | 19 | 7 | 2 | 3 | 8 | 8 | 5 |  |  |  | 2 | 54 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 13 |
 | `factory/uae.wps/` | shared | 21 | 11 | 3 |  | 2 | 3 | 9 | 1 | 1 |  | 10 | 61 |
-| `factory/uae.aani/` | shared | 12 | 2 | 1 |  | 2 | 3 | 6 | 1 |  |  | 16 | 43 |
-| `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 2 | 15 |
-| Total | | 58 | 26 | 8 | 3 | 16 | 18 | 20 | 2 | 2 | 3 | 30 | 186 |
+| `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
+| Total | | 46 | 24 | 7 | 3 | 14 | 15 | 14 | 1 | 2 | 3 | 16 | 145 |
 <!-- /INVENTORY:summary -->
 
 ## What is written by hand and what is generated
@@ -61,8 +59,8 @@ Every artefact carries `provenance.status`.
 | Status | Meaning | Where |
 | --- | --- | --- |
 | `confirmed` | Follows the north-star architecture and public ISO 20022 practice | `p`, `uae.p` |
-| `provisional` | Written from public sources. Not checked against the scheme rulebook | `uae.wps`, `uae.aani` |
+| `provisional` | Written from public sources. Not checked against the scheme rulebook | `uae.wps` |
 
-Both scheme manifests list messages as `planned`. A pack with a planned message is not publishable for that message group; the validator says so as a warning.
+The scheme manifest lists messages as `planned`. A pack with a planned message is not publishable for that message group; the validator says so as a warning.
 
 What does not exist yet: scripts-behind, sample messages, and the kit's own workflows. Tests name their samples and their expected traces; nothing has run them. Part 12, section 12.6 lists every known gap.

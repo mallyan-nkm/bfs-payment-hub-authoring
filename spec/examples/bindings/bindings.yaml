@@ -6,7 +6,6 @@ queues:
   p: th-p
   uae.p: th-uae-p
   uae.wps: th-uae-wps
-  uae.aani: th-uae-aani
   b: th-bank
 taskNaming: "<name>@<release>"
 defaults:
@@ -22,7 +21,6 @@ queues:
   p: th-p
   uae.p: th-uae-p
   uae.wps: th-uae-wps
-  uae.aani: th-uae-aani
   b: th-bank
 taskNaming: "<name>@<release>"
 defaults:
@@ -37,7 +35,6 @@ queues:
   p: th-p
   uae.p: th-uae-p
   uae.wps: th-uae-wps
-  uae.aani: th-uae-aani
   b: th-bank
 taskNaming: "<name>@<release>"
 extensions:
@@ -51,7 +48,6 @@ queues:
   p: th-p
   uae.p: th-uae-p
   uae.wps: th-uae-wps
-  uae.aani: th-uae-aani
   b: th-bank
 taskNaming: "<name>@<release>"
 defaults:

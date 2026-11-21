@@ -48,7 +48,7 @@ describe('C03 canonical model, types and registries', () => {
 describe('C05, C19 packs', () => {
   const env = freshEnv();
   it('regenerates the factory pack manifests exactly (C05-S2)', () => {
-    for (const s of ['p', 'uae.p', 'uae.wps', 'uae.aani']) expect(compareManifest(env, s), s).toEqual({ equal: true, differences: [] });
+    for (const s of ['p', 'uae.p', 'uae.wps']) expect(compareManifest(env, s), s).toEqual({ equal: true, differences: [] });
   });
   it('keeps simulators out of a promotable pack (C19-S1)', () => {
     const shared = buildPack(env, 'uae.wps', 'shared');
@@ -66,7 +66,7 @@ describe('C05, C19 packs', () => {
 describe('C17 roles, maker-checker, audit and isolation', () => {
   it('refuses a bank designer outside scope b with the rule named (C17-S2, S3)', () => {
     const env = freshEnv();
-    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', 'uae.aani')).toMatch(/R-06-03/);
+    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', 'uae.wps')).toMatch(/R-06-03/);
     expect(gov.permit(env, 'example.maker', 'example-bank', 'author', 'b')).toBeUndefined();
   });
   it('refuses a maker who approves their own publish, and logs the attempt in a chained audit (C17-S4)', async () => {
@@ -114,7 +114,7 @@ describe('C19 retirement, propagation and supersession; C18 configuration', () =
     const p = await gov.propagate(env, 'uae.p.rule.iban-checksum.v1', '1.0.1');
     const by = Object.fromEntries(p.workflows.map((w: any) => [w.workflow, w.proposed]));
     expect(by['uae.wps.wf.salary-file-out.v1']).toBe('1.0.1');
-    expect(by['uae.aani.wf.credit-out.v1']).toBe('1.0.1');
+    expect(Object.keys(by).every((w) => by[w] === '1.0.1')).toBe(true);
   });
   it('rebuilds a supersession, reruns it green, and hands it over with two approvers (C19-S4, S5)', async () => {
     const env = freshEnv();
@@ -131,7 +131,7 @@ describe('C19 retirement, propagation and supersession; C18 configuration', () =
   it('refuses a value above its bound and overlapping periods (C18-S2)', () => {
     const env = freshEnv();
     const cs = env.store.configurationSet('example-bank');
-    const bad = { ...cs, values: [...cs.values, { parameter: 'uae.aani.rule.amount-within-limit.v1#maxAmount', value: 60000, validFrom: '2026-06-01' }] };
+    const bad = { ...cs, values: [...cs.values, { parameter: 'b.rule.internal-limit.v1#internalLimit', value: 2000000, validFrom: '2026-06-01' }] };
     const msgs = gov.checkConfiguration(env, 'example-bank', bad).map((i) => i.message).join(' | ');
     expect(msgs).toMatch(/outside its bounds/);
     expect(msgs).toMatch(/overlaps/);
@@ -155,9 +155,9 @@ describe('C10 simulators, C11 tests, C12 samples', () => {
     const exempt = await runTest(env, { ...base, bench: [{ port: 'uae.wps.port.employer-channel.v1', simulator: 'uae.wps.sim.employer-channel.v1', scenario: 'bad-control-total' }], given: { inbound: 'samples/wps-sif-bad-control-total.sif' } });
     expect(exempt.checks.some((c) => c.what.startsWith('self-check'))).toBe(false);
   });
-  it('reports reason-code coverage: AC04 covered for uae.aani (C10-S4)', () => {
-    const r = reasonCodeCoverage(freshEnv(), 'uae.aani');
-    expect(r.covered).toContain('AC04');
+  it('reports reason-code coverage: AM10 covered for uae.wps (C10-S4)', () => {
+    const r = reasonCodeCoverage(freshEnv(), 'uae.wps');
+    expect(r.covered).toContain('AM10');
     expect(r.open.length).toBeGreaterThan(0);
   });
   it('runs the deployable stub of p.sim.core-banking.v1 outside the studio (C10-S5)', async () => {
@@ -180,8 +180,8 @@ describe('C10 simulators, C11 tests, C12 samples', () => {
       child.kill();
     }
   });
-  it('reports credit-out as lacking a test for returned (C11-S5)', () => {
-    expect(untestedOutcomes(freshEnv(), 'uae.aani.wf.credit-out.v1')?.untested).toEqual(['returned']);
+  it('reports the salary-file leg as lacking a test for returned (C11-S5)', () => {
+    expect(untestedOutcomes(freshEnv(), 'uae.wps.wf.salary-file-out.v1')?.untested).toEqual(['returned']);
   });
   it('generates valid and invalid samples, each proved (C12-S4, F-05)', async () => {
     const env = freshEnv();

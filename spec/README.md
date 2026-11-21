@@ -12,7 +12,7 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | Schemas | `schemas/` | JSON Schema 2020-12 for every artefact kind. The machine-readable half of the design | Tools, Claude Code |
 | Guard-rails | `CLAUDE.md` | The rules for any work in the repository, and the common Definition of Done | Claude Code, every session |
 | Build specs | `build/` | One file per component. Each story is a prompt: user story, Definition of Ready, Done and Success | Claude Code, the delivery lead |
-| Factory pack | `factory/` | Default content for `p`, `uae.p`, `uae.wps` and `uae.aani`. The worked example and the fixture set | Designers, Claude Code |
+| Factory pack | `factory/` | Default content for `p`, `uae.p` and `uae.wps`. The worked example and the fixture set | Designers, Claude Code |
 | Examples | `examples/` | An example bank tenant, engine bindings, a supersession | The same |
 | Expanded forms | `expanded/` | What an engine runs for each workflow that calls a composite. Generated | Platform engineers, Claude Code |
 | Conformance kit | `conformance/` | The scenarios every engine must pass | Platform engineers |
@@ -22,25 +22,25 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 <!-- COUNTS -->
 | What | Count |
 | --- | --- |
-| Design parts and annexes | 12 and 4 |
-| Numbered requirements | 228 |
+| Design parts and annexes | 12 and 3 |
+| Numbered requirements | 234 |
 | Schemas | 14 |
-| Factory artefacts in `p`, `uae.p`, `uae.wps`, `uae.aani` | 171 |
-| Example bank artefacts | 15 |
-| Composite activities, each with a subflow | 5 |
-| Test cases in the packs | 30 |
+| Factory artefacts in `p`, `uae.p`, `uae.wps` | 128 |
+| Example bank artefacts | 17 |
+| Composite activities, each with a subflow | 4 |
+| Test cases in the packs | 16 |
 | Conformance scenarios | 46 |
-| Checks in `tools/validate.py` | 24 (L00 to L33) |
-| Mutation cases that prove them | 26 |
-| Build components, stories, story points | 26, 130, 523 |
+| Checks in `tools/validate.py` | 25 (L00 to L34) |
+| Mutation cases that prove them | 28 |
+| Build components, stories, story points | 25, 125, 502 |
 <!-- /COUNTS -->
 
 ## Reading order
 
 1. `design/01-concepts-scopes-names-versions.md`: scopes, names, versions, pins, hot update.
 2. `design/05-workflow-dsl.md`: the DSL and the check catalogue.
-3. `design/12-factory-pack.md`, then one annex: A for WPS, B for Aani, D for the platform.
-4. One workflow, the subflow behind its send step, its expanded form and its tests: `factory/uae.aani/workflows/uae.aani.wf.credit-out.v1.yaml`, `uae.aani.sub.submit-credit.v1.yaml` beside it, `expanded/`, and `factory/uae.aani/tests/`.
+3. `design/12-factory-pack.md`, then one annex: A for WPS, D for the platform.
+4. One workflow, the subflow behind its submit step, its expanded form and its tests: `factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml`, `uae.wps.sub.submit-salary-file.v1.yaml` beside it, `expanded/`, and `factory/uae.wps/tests/`.
 5. `build/00-backlog.md`: the components, the phases and the build order.
 
 The other parts are reference: canonical context (2), activities (3), rules (4), tenants and hooks (6), simulators (7), scripts and AI authoring (8), export (9), studio functions (10), packs and governance (11), the conformance kit (Annex C).
@@ -64,7 +64,7 @@ python3 tools/mutation_tests.py
 python3 tools/build_docs.py
 ```
 
-As delivered: the validator reports no error and two warnings (the planned messages of the two schemes), the expanded forms are up to date, every mutation is caught, and the backlog renders with no error.
+As delivered: the validator reports no error and four warnings (the planned messages of the scheme, and three platform blocks that no leg calls, Issue I-38 in `docs/ISSUES.md`), the expanded forms are up to date, every mutation is caught, and the backlog renders with no error.
 
 ## What is confirmed and what is not
 
@@ -73,7 +73,6 @@ As delivered: the validator reports no error and two warnings (the planned messa
 | Design parts 1 to 12 | Draft for review | The north-star architecture and the decisions taken on 17 November 2026 |
 | `p`, `uae.p` | Confirmed against the north star | North-star architecture; public ISO 20022 practice |
 | `uae.wps` | Provisional | The 2018 CBUAE responsibility guide and public bank guides. Not the current rulebook |
-| `uae.aani` | Provisional | Public AEP material. The message set, time limits and reason codes are not public and are assumed |
 | ISO reason codes in rules | Not verified | Written from memory; check against the current external code set |
 | Test traces and samples | Not run | Tests name samples and expected traces. Nothing executes them until C09 and C11 exist |
 | Story sizes | Estimates | Made from the spec; revise after each component's first story |

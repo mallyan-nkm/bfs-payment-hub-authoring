@@ -33,7 +33,7 @@ components:
         needs: [C17-S2]
         dod:
           - Shared artefacts open read-only for a tenant; clone into scope b is refused for anything but a hook's own blocks.
-        dos: An edit of uae.aani.wf.credit-out.v1 from tenant example-bank is refused with a reason that names the rule.
+        dos: An edit of uae.wps.wf.salary-file-out.v1 from tenant example-bank is refused with a reason that names the rule.
       - id: C17-S4
         title: Maker-checker and audit
         sp: 5

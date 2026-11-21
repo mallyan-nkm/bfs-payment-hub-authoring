@@ -41,7 +41,7 @@ DECISIONS = {
     "D17": "Where handlers run",
 }
 TOUCHES = {"C01": ["D8"], "C06": ["D13", "D16"], "C07": ["D14", "D7"], "C08": ["D14", "D7"], "C09": ["D17"], "C17": ["D8"],
-           "C19": ["D15"], "C20": ["D9", "D17"], "C25": ["D10"], "C26": ["D10", "D9"]}
+           "C19": ["D15"], "C20": ["D9", "D17"], "C25": ["D10"]}
 SIZES = (1, 3, 5, 8)
 
 errors = []
@@ -131,10 +131,10 @@ for c in components:
             if other != c["id"] and other not in c["dependsOn"]:
                 err("%s needs %s, so %s must declare a dependency on %s" % (sid, n, c["id"], other))
         text = " ".join([s["title"], s["story"], s["dos"]] + s["dod"])
-        for name in re.findall(r"\b(?:p|b|uae\.p|uae\.wps|uae\.aani)\.[a-z]+\.[a-z0-9-]+\.v\d+\b", text):
+        for name in re.findall(r"\b(?:p|b|uae\.p|uae\.wps)\.[a-z]+\.[a-z0-9-]+\.v\d+\b", text):
             if name not in artefacts:
                 err("%s cites %s, which is not in the factory pack" % (sid, name))
-        for t in re.findall(r"\b(?:AANI|WPS|P|BANK)-[A-Z]+-\d{3}\b", text):
+        for t in re.findall(r"\b(?:WPS|P|BANK)-[A-Z]+-\d{3}\b", text):
             if t not in tests:
                 err("%s cites test %s, which does not exist" % (sid, t))
         for k in re.findall(r"\bCK-[A-Z]+-\d\d\b", text):
@@ -360,7 +360,7 @@ def counts_block():
             "| Design parts and annexes | %d and %d |" % (parts, annexes),
             "| Numbered requirements | %d |" % reqs,
             "| Schemas | %d |" % len(list((ROOT / "schemas").glob("*.schema.json"))),
-            "| Factory artefacts in `p`, `uae.p`, `uae.wps`, `uae.aani` | %d |" % shared,
+            "| Factory artefacts in %s | %d |" % (", ".join("`%s`" % p["scope"] for p in inventory["packs"] if p["packType"] == "shared"), shared),
             "| Example bank artefacts | %d |" % sum(p["total"] for p in inventory["packs"] if p["packType"] == "bank"),
             "| Composite activities, each with a subflow | %d |" % len(list((ROOT / "factory").rglob("*.sub.*.yaml"))),
             "| Test cases in the packs | %d |" % len(tests),

@@ -60,7 +60,7 @@ Every outward simulator carries these eight scenarios, so timeouts and retries c
 
 ## 7.6 Examples
 
-- Outward scheme simulator with inquiry scenarios: `factory/uae.aani/simulators/uae.aani.sim.switch-outward.v1.yaml`.
+- Outward scheme simulator with later replies and refund scenarios: `factory/uae.wps/simulators/uae.wps.sim.wps-outward.v1.yaml`.
 - Inward file simulator: `factory/uae.wps/simulators/uae.wps.sim.wps-inward.v1.yaml`.
 - An operator as an inward simulator: `factory/p/simulators/p.sim.operations.v1.yaml`.
-- A test with a bench: `factory/uae.aani/tests/AANI-OUT-004.yaml`.
+- A test with a bench: `factory/uae.wps/tests/WPS-OUT-003.yaml`.
