@@ -203,9 +203,11 @@ content-configurations/      what the studio publishes and what a bank configure
 
 ## 5. Baseline (the source, run as is, before any change)
 
-- **Build:** .NET SDK 10.0.115, `services/PaymentHub.slnx`, 153 projects. 0 errors and 1 warning (xUnit1026), in 3 min 44 s.
-- **Tests:** _to be filled in when the full run finishes_.
-- **Missing inputs.** Many integration and workflow tests read `dsl/workflows/*.workflow.json`, for example `DifNakWorkflowRoutingTests` reads `dsl/workflows/dib-wps-inward-paf.v1.workflow.json`. That folder is empty in the zip, so those tests fail before they start. The review counts 29 definitions there. `dsl/registration/wf-dib-wps-outward-cbx/`, `dsl/schemas/` and the `.github/` docs that the package's CLAUDE.md imports are also missing.
+The results, pass by pass and project by project, with each failure classified (missing input, this machine, finding), are in `docs/runtime/BASELINE.md`. In short:
+- **Build:** 153 projects, no errors.
+- **Restored inputs:** with `dsl.zip` restored and Temporal available, the source's WPS unit, workflow and engine-conformance tests pass. Engine conformance passes 223 of 226 on its own Temporal and DTFx lanes.
+- **Still missing:** two recorded histories and the `.github/` docs.
+- **Findings:** the largest is in the security suite (N15). `PaymentHub.UnitTests.Wps` never builds (N16).
 
 ## 6. Phases and exit criteria
 
@@ -236,6 +238,8 @@ content-configurations/      what the studio publishes and what a bank configure
 - **N12.** The DTFx conformance lane needs an external SQL Server. There are no Testcontainers, so it does not run in CI by default.
 - **N13.** `WorkflowActivityUpdater` writes `_assembly_version` into step JSON, but nothing reads it, which gives a false sense that code is pinned.
 - **N14.** The zip is incomplete (section 5).
+- **N15.** Security: 25 tests in the source's own security suite fail, mostly in `IamAuditActivityLogAccessTests`. A user who holds only `bankingops:page.admin-activity-log:view` is answered 200 OK, not 403 Forbidden, when proposing role, screen and mapping changes. One permission key is also registered outside `usp_RegisterPermissionKey`.
+- **N16.** `tests/PaymentHub.UnitTests.Wps` sets package versions that central package management forbids (NU1008), so it never builds. Its tests run only through `PaymentHub.UnitTests`, which links them.
 
 ## 8. Decisions
 
