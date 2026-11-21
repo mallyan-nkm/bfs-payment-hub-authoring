@@ -4,7 +4,7 @@ Build spec C22 (stories S1 to S5), with the kit adapter of C23-S2. The studio ge
 
 ## How to run
 
-Java 17 or later and Node 22 are needed. Maven is fetched into `.bin/`, which is gitignored.
+Java 21 or later and Node 22 are needed (the harness compiles for release 21). Maven is fetched into `.bin/`, which is gitignored.
 
 ```
 cd studio

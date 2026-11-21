@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fetch Maven into .bin/ (gitignored) and build the Flowable harness. Needs Java 17 or later.
+# Fetch Maven into .bin/ (gitignored) and build the Flowable harness. Needs Java 21 or later.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/.bin"
