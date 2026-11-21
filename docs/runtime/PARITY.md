@@ -8,13 +8,16 @@ Platform WPS activities: 101. Bank WPS activities: 46 (every one is removed: a b
 
 | Source | Runtime | Proof |
 | --- | --- | --- |
-| `CbxFileNameRules` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `CbxRecordRules` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `CbxScrRules` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `CbxRuleSettings` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `SifUploadRules (file name, date, corporate match)` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `CbxSifWriter` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
-| `AccountMasking` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |
+| `CbxFileNameRules` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `CbxRecordRules` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `CbxScrRules` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `CbxRuleSettings` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `SifUploadRules (file name, date, corporate match)` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `CbxSifWriter` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `WpsAckNakFile (ACK/NAK name, parse, build)` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `WpsEmployeeBankClassifier` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `WpsRoutingCode` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
+| `AccountMasking` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |
 
 Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, the DE, DIF, RFA, PRC and RRI rule classes, `WpsEmployeeBankClassifier`, `AccTxnDecisionRules`, `RbPostingClassifier`.
 
@@ -37,12 +40,12 @@ Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.c
 | `Wps.Hook.PreCorePosting` | `WpsHookActivities.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `Wps.Hook.PreFtsDispatch` | `WpsHookActivities.cs` | p hook points | workflow hook points with bank bindings | hooks run on Temporal (kit CK-HOOK-01..04) |
 | `Wps.Hook.PreReturnResult` | `WpsHookActivities.cs` | p hook points | workflow hook points with bank bindings | hooks run on Temporal (kit CK-HOOK-01..04) |
-| `wps.ApplyDifAck` | `WpsPlatformActivities.DifAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ApplyDifNak` | `WpsPlatformActivities.DifNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ApplyPrcAck` | `WpsPlatformActivities.PrcAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ApplyPrcNak` | `WpsPlatformActivities.PrcNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ApplyRfaAck` | `WpsPlatformActivities.RfaAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ApplyRfaNak` | `WpsPlatformActivities.RfaNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
+| `wps.ApplyDifAck` | `WpsPlatformActivities.DifAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ApplyDifNak` | `WpsPlatformActivities.DifNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ApplyPrcAck` | `WpsPlatformActivities.PrcAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ApplyPrcNak` | `WpsPlatformActivities.PrcNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ApplyRfaAck` | `WpsPlatformActivities.RfaAck.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ApplyRfaNak` | `WpsPlatformActivities.RfaNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | `wps.AwaitCbPostingWindow` | `WpsPlatformActivities.CbPostingAwait.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
 | `wps.AwaitDifResponse` | `WpsPlatformActivities.InwardDifAwait.cs` | uae.wps | uae.wps inward DIF flow | P2 |
 | `wps.AwaitPrcResponse` | `WpsPlatformActivities.InwardPrcAwait.cs` | uae.wps | uae.wps inward PRC flow | P2 |
@@ -84,18 +87,18 @@ Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.c
 | `wps.ParseSifControlRecordAndExtractMetadata` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.sif-in + uae.wps.validate.salary-file / salary-record | rules ported, golden; activity on the studio contract: P2 |
 | `wps.PostRestrictedBankPayment` | `WpsPlatformActivities.RbPost.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
 | `wps.PostRfaReversal` | `WpsPlatformActivities.RfaReversal.cs` | uae.wps | uae.wps RFA flow | P2 |
-| `wps.ProcessCbResponse` | `WpsPlatformActivities.Names.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ProcessCentralBankAcknowledgmentFilesAndUpdateSifStatus` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ProcessSifAckResponseAndNotifyChannelOfAcceptance` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
-| `wps.ProcessSifNakResponseAndNotifyChannelOfRejection` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
+| `wps.ProcessCbResponse` | `WpsPlatformActivities.Names.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ProcessCentralBankAcknowledgmentFilesAndUpdateSifStatus` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ProcessSifAckResponseAndNotifyChannelOfAcceptance` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
+| `wps.ProcessSifNakResponseAndNotifyChannelOfRejection` | `WpsPlatformActivities.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | `wps.QueryCorePostingStatus` | `WpsPlatformActivities.CoreBanking.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `wps.QueueSif` | `WpsPlatformActivities.Names.cs` | p (intake) + uae.wps (MOL) | front door intake; uae.wps MOL corporate match (SifUploadRules.MatchCorporate) | MatchCorporate ported, golden; intake: P2 |
 | `wps.RaiseCbPostingStuck` | `WpsPlatformActivities.CbPostingDispatch.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
-| `wps.RaiseDifNakItem` | `WpsPlatformActivities.DifNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
+| `wps.RaiseDifNakItem` | `WpsPlatformActivities.DifNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | `wps.RaiseInwardPifException` | `WpsPlatformActivities.InwardPifRaise.cs` | uae.wps | uae.wps.map.pif-in, inward leg | studio factory map exists; source parity: P2 |
 | `wps.RaiseInwardPsiException` | `WpsPlatformActivities.InwardPsiRaise.cs` | uae.wps | uae.wps.map.pif-in, inward leg | studio factory map exists; source parity: P2 |
 | `wps.RaiseRestrictedPostingStuck` | `WpsPlatformActivities.RbDispatch.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
-| `wps.RaiseRfaNakItem` | `WpsPlatformActivities.RfaNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
+| `wps.RaiseRfaNakItem` | `WpsPlatformActivities.RfaNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | `wps.ReconcilePosting` | `WpsPlatformActivities.Names.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `wps.RecordPostingIndeterminate` | `WpsPlatformActivities.CoreBanking.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `wps.RecordPostingStatus` | `WpsPlatformActivities.Names.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
@@ -105,7 +108,7 @@ Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.c
 | `wps.RetrieveBranchCodeAndPostingConfiguration` | `WpsPlatformActivities.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `wps.ReverseCorePosting` | `WpsPlatformActivities.CoreBanking.cs` | p via core-banking port; b binding | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking | studio factory activities run on Temporal; bank adapter binding: P5 |
 | `wps.ReviewCbPosting` | `WpsPlatformActivities.CbPostingReview.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
-| `wps.ReviewPrcNak` | `WpsPlatformActivities.PrcNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | studio factory flow runs on Temporal; source parity: P2 |
+| `wps.ReviewPrcNak` | `WpsPlatformActivities.PrcNak.cs` | uae.wps | uae.wps.map.ack-in and the leg's NAK path | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | `wps.ReviewRestrictedPosting` | `WpsPlatformActivities.RbReview.cs` | p scheduler; b values | schedule-gated await (posting windows) | P2 |
 | `wps.SaveToSalaryFileUploadQueueTableForProcessing` | `WpsPlatformActivities.cs` | p (intake) | front door intake; the file kept as a message in the store | store: messages and accepted bulk (DurableClaimCheck); intake: P2 |
 | `wps.SaveUiUploadedSifFileToLocalPath` | `WpsPlatformActivities.cs` | p (intake) + uae.wps (MOL) | front door intake; uae.wps MOL corporate match (SifUploadRules.MatchCorporate) | MatchCorporate ported, golden; intake: P2 |
@@ -130,15 +133,15 @@ Each becomes a bank value, hook or port binding of the shared flow; none survive
 
 | Bank | Activity | Becomes | Status |
 | --- | --- | --- | --- |
-| Adib | `AckPosting` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | studio factory flow runs on Temporal; source parity: P2 |
+| Adib | `AckPosting` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | Adib | `AdibDecryptSifFile` | p decrypt (file intake) (p) | P5 |
 | Adib | `AdibSftpDownloadSifFile` | file intake watcher (p) | P5 |
 | Adib | `AdibValidateWpsRules` | bank configuration (to decide) | P5 |
 | Adib | `AdibWpsEmployerAmlCheck` | p.screen.sanctions / p.screen.fraud (p) | studio factory activities run on Temporal |
 | Adib | `MohreNotification` | p.notify.channel; MOHRE notify as a bank hook (p.notify + uae.wps) | studio factory notify runs on Temporal; MOHRE: P5 |
-| Adib | `NakReversalPosting` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | studio factory flow runs on Temporal; source parity: P2 |
+| Adib | `NakReversalPosting` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | Adib | `ReceiveRtcFiles` | uae.wps RTC flow (ADIB posting as a hook) (uae.wps) | P5 |
-| Adib | `ReceiveSifAckNak` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | studio factory flow runs on Temporal; source parity: P2 |
+| Adib | `ReceiveSifAckNak` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | Adib | `ReverseWpsPosting` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
 | Adib | `RtcPosting` | uae.wps RTC flow (ADIB posting as a hook) (uae.wps) | P5 |
 | Adib | `UploadSifToCbSftp` | uae.wps.exchange.send-salary-file over the uae.p CB SFTP port (uae.p + uae.wps) | studio factory activity runs on Temporal; source transport: P2 |
@@ -155,7 +158,7 @@ Each becomes a bank value, hook or port binding of the shared flow; none survive
 | Dib | `dib.CorePosting` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
 | Dib | `dib.ExecuteBalanceEnquiryOnCorporateAccount` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
 | Dib | `dib.ExecuteMultiTransactionPostingToCoreBanking` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
-| Dib | `dib.ExecuteSifNakFinancialReversalPostingToCoreBankingSystem` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | studio factory flow runs on Temporal; source parity: P2 |
+| Dib | `dib.ExecuteSifNakFinancialReversalPostingToCoreBankingSystem` | uae.wps.map.ack-in and the leg's NAK path (uae.wps) | ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2 |
 | Dib | `dib.GenerateAndTransferSifFileToCentralBankViaSftp` | uae.wps.map.sif-out (CentralBankSif from the ISO 20022 store) (uae.wps) | ported, golden; generated from the store |
 | Dib | `dib.QueryCoreBankingPostingStatus` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
 | Dib | `dib.RecordPostingIndeterminateForManualReconciliation` | p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking (p via core-banking port; b binding) | studio factory activities run on Temporal; bank adapter binding: P5 |
@@ -184,7 +187,7 @@ Each becomes a bank value, hook or port binding of the shared flow; none survive
 | P2 | 32 |
 | studio factory activities run on Temporal | 14 |
 | rules ported | 13 |
-| studio factory flow runs on Temporal | 13 |
+| ACK/NAK file ported | 13 |
 | MatchCorporate ported | 6 |
 | studio factory map exists | 4 |
 | hooks run on Temporal (kit CK-HOOK-01..04) | 4 |

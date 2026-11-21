@@ -14,7 +14,7 @@
     <Wps>$(SourceRoot)/services/shared/dotnet/PaymentHub.Shared/Domain/Wps</Wps>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="$(Wps)/CbxFileNameRules.cs;$(Wps)/CbxRecordRules.cs;$(Wps)/CbxScrRules.cs;$(Wps)/CbxRuleSettings.cs;$(Wps)/SifUploadRules.cs;$(Wps)/WpsVocabulary.cs" />
+    <Compile Include="$(Wps)/CbxFileNameRules.cs;$(Wps)/CbxRecordRules.cs;$(Wps)/CbxScrRules.cs;$(Wps)/CbxRuleSettings.cs;$(Wps)/SifUploadRules.cs;$(Wps)/WpsVocabulary.cs;$(Wps)/WpsAckNakFile.cs;$(Wps)/WpsEmployeeBankClassifier.cs;$(Wps)/WpsRoutingCode.cs" />
     <Compile Include="$(SourceRoot)/services/shared/dotnet/PaymentHub.Shared/Security/AccountMasking.cs" />
     <Compile Include="$(SourceRoot)/services/activities/platform/PaymentHub.Activities.Platform.Wps/CbxSifWriter.cs" />
   </ItemGroup>

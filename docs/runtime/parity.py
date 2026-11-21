@@ -29,7 +29,7 @@ RULES = [
     (r'ParseSif|ValidateSif|InitiateSifFileParsing|ParseSifControl|ValidateWpsSifFile|ParseSifRecords|ParseAndQueueSifFile', 'uae.wps', 'uae.wps.map.sif-in + uae.wps.validate.salary-file / salary-record', 'rules ported, golden; activity on the studio contract: P2'),
     (r'GenerateCbxSif|GenerateSifFile|GenerateAndTransferSif', 'uae.wps', 'uae.wps.map.sif-out (CentralBankSif from the ISO 20022 store)', 'ported, golden; generated from the store'),
     (r'SubmitSifToCb|UploadSifToCbSftp|SftpUpload|TransferSif', 'uae.p + uae.wps', 'uae.wps.exchange.send-salary-file over the uae.p CB SFTP port', 'studio factory activity runs on Temporal; source transport: P2'),
-    (r'ProcessCbResponse|ReceiveSifAckNak|Ack|Nak', 'uae.wps', 'uae.wps.map.ack-in and the leg\'s NAK path', 'studio factory flow runs on Temporal; source parity: P2'),
+    (r'ProcessCbResponse|ReceiveSifAckNak|Ack|Nak', 'uae.wps', 'uae.wps.map.ack-in and the leg\'s NAK path', 'ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2'),
     (r'Duplicate', 'p (pattern) + uae.wps (keys)', 'p.validate.duplicate with uae.wps keys', 'studio factory activity; source keys: P2'),
     (r'Approval|Quorum|PaymentQueue', 'p', 'p.hold.approval / operations queue', 'studio factory activity; source policy rules: P2'),
     (r'Charge', 'p + b values', 'p charges activity, slabs/VAT/narration as bank values', 'P2'),
@@ -60,8 +60,8 @@ lines = ['# WPS parity matrix', '',
  'Generated from the TransactHub source by `docs/runtime/parity.py`. Every activity the source registers for WPS, on the platform and in each bank, with where it goes in the north-star layout and what proves it today. "Golden" means the runtime\'s port answers a corpus generated from the source\'s own code exactly (`runtime/tests/TransactHub.Store.Tests/Golden`).', '',
  f'Platform WPS activities: {len(plat)}. Bank WPS activities: {len(bank)} (every one is removed: a bank is configuration, hooks and port bindings).', '',
  '## Rule classes', '', '| Source | Runtime | Proof |', '| --- | --- | --- |']
-for c in ['CbxFileNameRules', 'CbxRecordRules', 'CbxScrRules', 'CbxRuleSettings', 'SifUploadRules (file name, date, corporate match)', 'CbxSifWriter', 'AccountMasking']:
-    lines.append(f'| `{c}` | `TransactHub.Activities.Wps` | golden, 1,878 cases in all |')
+for c in ['CbxFileNameRules', 'CbxRecordRules', 'CbxScrRules', 'CbxRuleSettings', 'SifUploadRules (file name, date, corporate match)', 'CbxSifWriter', 'WpsAckNakFile (ACK/NAK name, parse, build)', 'WpsEmployeeBankClassifier', 'WpsRoutingCode', 'AccountMasking']:
+    lines.append(f'| `{c}` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |')
 lines += ['', 'Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, the DE, DIF, RFA, PRC and RRI rule classes, `WpsEmployeeBankClassifier`, `AccTxnDecisionRules`, `RbPostingClassifier`.', '',
  '## Platform activities', '', '| Activity | Source file | Target layer | Target | Status |', '| --- | --- | --- | --- | --- |']
 for n in sorted(plat):

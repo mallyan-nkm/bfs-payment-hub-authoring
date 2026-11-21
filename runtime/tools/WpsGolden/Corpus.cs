@@ -76,6 +76,53 @@ public static class Corpus
         add("CbxSifWriter.Encode", new { s = "EDR,1\r\n" }, Convert.ToHexString(CbxSifWriter.Encode("EDR,1\r\n")));
     }
 
+    /// <summary>The Central Bank's acknowledgement (ACK/NAK): its name, its records, what is wrong with it; and the own/other bank split.</summary>
+    static void AckNak(Action<string, object, string> add, Func<Func<string>, string> guard)
+    {
+        var names = new[] { "0000001234567261117083000S26000000001.ACK", "0000001234567261117083000S26000000001.NAK", "/in/0000001234567261117083000S26000000001.ack",
+                            "C:\\in\\0000001234567261117083000S26000000001", "S26000000001", "S2600000000", "x.ACK", "", "00000012345672611170830001.ACK" };
+        foreach (var n in names)
+        {
+            add("WpsAckNakFile.TrySplitFileName", new { n }, guard(() => WpsAckNakFile.TrySplitFileName(n, out var p, out var id) ? Q(new { p, id }) : "false"));
+            add("WpsAckNakFile.TryDeriveSifFileName", new { n }, guard(() => WpsAckNakFile.TryDeriveSifFileName(n, out var s) ? s : "false"));
+        }
+        foreach (var (sif, id, ok) in new[] { ("0000001234567261117083000.SIF", "S26000000001", true), ("0000001234567261117083000.SIF", "S26000000001", false), ("0000001234567261117083000", "S26000000001", true), ("x.sif", "S2", true), ("", "", true) })
+            add("WpsAckNakFile.BuildFileName", new { sif, id, ok }, guard(() => WpsAckNakFile.BuildFileName(sif, id, ok)));
+        foreach (var (c, at, seq) in new[] { ('S', new DateTime(2026, 11, 17, 9, 0, 0, DateTimeKind.Utc), 1), ('A', new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), 999999999), ('S', new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), 1234567890), ('s', new DateTime(2099, 1, 1, 0, 0, 0, DateTimeKind.Utc), -1) })
+            add("WpsAckNakFile.GenerateWpsFileId", new { c = c.ToString(), at, seq }, guard(() => WpsAckNakFile.GenerateWpsFileId(c, at, seq)));
+        var der = new[] { new WpsAckDetailError(3, "00803", "Last record is not SCR"), new WpsAckDetailError(0, "00829", "More than one SCR, see line 9, 10") };
+        var contents = new[]
+        {
+            WpsAckNakFile.Build("0000001234567261117083000.SIF", true),
+            WpsAckNakFile.Build("0000001234567261117083000.SIF", false, der),
+            WpsAckNakFile.Build("0000001234567261117083000.SIF", true, der),
+            "AHR,ACCEPTED,0000001234567261117083000.SIF\r\nATR,ACCEPTED,2\r\n",
+            "ahr, accepted ,a,b.SIF\nATR,ACCEPTED,2\n",
+            "AHR,REJECTED,f.SIF\nDER,x,00803,desc, with comma\nDER,1\nATR,REJECTED,4\n",
+            "AHR,ACCEPTED,f.SIF\nATR,REJECTED,2\n",
+            "AHR,ACCEPTED,f.SIF\nATR,ACCEPTED,9\n",
+            "AHR,ACCEPTED,f.SIF\n",
+            "ATR,ACCEPTED,1\n",
+            "AHR,ACCEPTED\nATR\n",
+            "\n\n  \nXYZ,1\nAHR,ACCEPTED,f.SIF\nATR,ACCEPTED,x\n",
+            "AHR,ACCEPTED,f.SIF\rATR,ACCEPTED,2\r",
+            "",
+        };
+        foreach (var c in contents)
+            foreach (var src in new string?[] { null, "0000001234567261117083000S26000000001.ACK", "short" })
+                add("WpsAckNakFile.Parse", new { c, src }, guard(() =>
+                {
+                    var d = WpsAckNakFile.Parse(c, src);
+                    return Q(new { d.Status, d.ProcessedFileName, Details = d.DetailErrors.Select(e => $"{e.LineNumber}|{e.ErrorNumber}|{e.ErrorDescription}").ToList(), d.TrailerStatus, d.TrailerLineCount, d.ActualLineCount, d.SourceFileName, d.WpsFileId, d.DerivedSifFileName, d.ParseErrors });
+                }));
+        foreach (var c in contents.Take(3)) add("WpsAckNakFile.Build", new { c }, c);
+        foreach (var e in new[] { "302620122", " 302620122 ", "302620123", "30262012", "", null })
+            foreach (var conf in new[] { "302620122", " 302620122", "" })
+                add("WpsEmployeeBankClassifier.Classify", new { e, conf }, guard(() => WpsEmployeeBankClassifier.Classify(e, conf).ToString()));
+        foreach (var r in new[] { "302620122", "30262012", "3026201220", "30262012X", " 302620122", "", null, "000000000", "١٢٣٤٥٦٧٨٩" })
+            add("WpsRoutingCode.IsValid", new { r }, guard(() => WpsRoutingCode.IsValid(r, out var err) ? "valid" : $"invalid|{err}"));
+    }
+
     static CbxRuleSettings Settings(int mol, int years, bool req, bool reg, int match) => new(mol, years, req, reg, match);
 
     /// <summary>Every case, in a fixed order: the rule, its inputs as text, and its answer as text.</summary>
@@ -224,6 +271,7 @@ public static class Corpus
                     add("SifUploadRules.MatchCorporate", new { mol, corporate = c is not null, cif, acc, mail }, F(SifUploadRules.MatchCorporate(mol, c, cif, acc, mail)));
 
         SifGeneration(add, guard);
+        AckNak(add, guard);
 
         foreach (var a in new[] { null, "", "  ", "123456", "1234567", "AE070331234567890123456" })
             foreach (var k in new[] { 6, 4 })
