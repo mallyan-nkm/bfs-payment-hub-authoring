@@ -1,0 +1,25 @@
+# The bank's values for factory parameters, and its hook bindings (plan W6). Values, not definitions: each one
+# sets a parameter the factory declares, inside its bounds, from its validFrom. README.md gives the source of each.
+kind: configuration-set
+tenant: dib
+release: 1.0.0
+title: Bank configuration for WPS
+accepts:
+  - { scope: p, release: 1.0.0 }
+  - { scope: uae.p, release: 1.0.0 }
+  - { scope: uae.wps, release: 1.0.0 }
+values:
+  # The rails the bank is licensed for: WPS only (the source's LICENSE_RAILS=wps).
+  - parameter: p.table.rail-choice.v1#enabledRails
+    value: [uae.wps]
+    validFrom: "2026-11-21"
+  # The bank's 9-digit WPS routing code (the source's wps.ParamConfiguration, confirmed by the business on 2026-10-06).
+  - parameter: uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes
+    value: ["802420101"]
+    validFrom: "2026-11-21"
+# The employer AML check and the labour ministry notification are carried as hooks, not bound: no live
+# salary-file workflow of the source calls them. Binding one is a line here with its validFrom (README.md).
+bindings: []
+approval:
+  maker: bank.maker
+  checker: bank.checker

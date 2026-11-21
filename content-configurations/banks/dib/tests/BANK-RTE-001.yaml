@@ -1,0 +1,45 @@
+# A synthetic payment file addressed to the bank's own routing code. Under the bank's configuration set it is
+# this bank's file: confirmed, the employees credited and the disbursement reported. The file is invented.
+kind: test
+id: BANK-RTE-001
+title: A salary payment file addressed to the bank's routing code is taken and its employees credited
+target: p.wf.inward.v1
+level: end-to-end
+evaluationDate: "2026-11-24"
+tenant: dib
+bench:
+  - port: uae.wps.port.wps.v1
+    simulator: uae.wps.sim.wps-inward.v1
+    scenario: payment-file
+  - port: p.port.core-banking.v1
+    simulator: p.sim.core-banking.v1
+    scenario: accept
+  - port: p.port.sanctions.v1
+    simulator: p.sim.sanctions.v1
+    scenario: accept
+  - port: p.port.fraud.v1
+    simulator: p.sim.fraud.v1
+    scenario: accept
+  - port: p.port.operations-queue.v1
+    simulator: p.sim.operations.v1
+    scenario: release
+  - port: p.port.payment-record.v1
+    simulator: p.sim.payment-record.v1
+    scenario: accept
+  - port: p.port.channel.v1
+    simulator: p.sim.channel.v1
+    scenario: accept
+  - port: p.port.facts-out.v1
+    simulator: p.sim.facts-out.v1
+    scenario: accept
+given:
+  inbound: samples/wps-pif-to-this-bank.pif
+expect:
+  outcome: settled
+  messages:
+    - port: uae.wps.port.wps.v1
+      message: uae.wps.prc
+      count: 1
+    - port: uae.wps.port.wps.v1
+      message: uae.wps.dif
+      count: 1

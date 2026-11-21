@@ -17,7 +17,7 @@ describe('studio command line', () => {
   it('prints its usage, and exits 2 for an unknown command', () => {
     const help = studio('help');
     expect(help.code).toBe(0);
-    expect(help.out).toContain('Usage: studio test');
+    expect(help.out).toContain('Usage: studio [--bank <name|dir> ...] test');
     const bad = studio('frobnicate');
     expect(bad.code).toBe(2);
     expect(bad.err).toContain('Unknown command frobnicate');

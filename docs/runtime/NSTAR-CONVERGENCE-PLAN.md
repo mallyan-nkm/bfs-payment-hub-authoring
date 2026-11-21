@@ -168,11 +168,12 @@ content-configurations/      what the studio publishes and what a bank configure
   - **The check.** `BankConfigurationTests.No_shared_code_names_a_bank` fails the build if a bank is named in shared code: the runtime, the studio and the engine harnesses, in the shapes the source used (`Dib`, `DIB`, `ADIB`, `Enbd`, `FAB` and the full names). A second test proves the check finds them.
   - **The port.** Core banking is a port, `TransactHub.Ports.ICoreBanking`, with adapters `simulator` and `gateway-rest`. It is bound per tenant by effective-dated port bindings, in `content-configurations/banks/<bank>/*.yaml` (kind `port-bindings`). The 13 `CoreBanking:*` settings the bank fork read are settings of the binding; `core-banking.yaml` maps each one.
   - **The switch.** The example bank moves from the simulator to the gateway on 2026-12-01 by a binding alone, and the tests show it.
-  - **The four bank sets.** Under D5 they are not in this repository. Each bank keeps its set in its own copy, and `example-bank` holds every knob with synthetic values.
+  - **The four bank sets.** Under D5 as first decided they were not in this repository. Each bank keeps its set in its own copy, and `example-bank` holds every knob with synthetic values.
+  - **DIB's set (D5 as amended, 2026-11-21).** DIB's real configuration is in `content-configurations/banks/dib/`: its pack (hooks for the employer AML check and the labour ministry notification, carried but not bound), its configuration set (rails and routing code), its core-banking binding and its CBX values. Its `README.md` gives the source of each value and lists what is not yet carried. The studio loads it with `--bank dib` (Issue I-43); the runtime reads its bindings (`BankFolderConfigurationTests`).
   - **Not yet.** WPS posting and balance activities do not call `ICoreBanking` yet. That comes with P2's inward flows, which post.
 - **ADIB RTC** becomes a `uae.wps` RTC flow, with the ADIB posting as a hook.
 - **ENBD and FAB** are thin stubs with no tests today. They become configuration sets only.
-- **Real bank values** (routing code, GL accounts, host ids) are not committed. The repository keeps synthetic placeholders, and the bank's own set lives in its private copy of `content-configurations/banks/<bank>/` (D5).
+- **Real bank values** (routing code, GL accounts, host ids) are not committed, except DIB's: the owner decided on 2026-11-21 that DIB's live in `content-configurations/banks/dib/` (D5 as amended). Another bank's set still lives in its private copy of `content-configurations/banks/<bank>/`. Secrets are never committed, DIB's included: the folder names them by reference.
 
 ### W7. The studio: WPS only, structure
 - **Remove Aani** from the studio's factory content, tests, guide, training and videos.
@@ -289,7 +290,7 @@ The decision table:
 | D2 | Temporal on SQL Server | Build the plugin, pinned to one Temporal version, as P4. If the maintenance cost is not acceptable, keep Temporal on PostgreSQL. |
 | D3 | Flowable hosting | Accepted. Flowable 7 runs as its own server with its own database. .NET external workers poll it for jobs over REST. |
 | D4 | Where `spec/` lives | It stays at the root for now. Moving it under `studio/` is a separate change. |
-| D5 | Real bank values | Not in this repository: synthetic placeholders here, the bank's set in its private configuration repository. |
+| D5 | Real bank values | Not in this repository: synthetic placeholders here, the bank's set in its private configuration repository. **Amended 2026-11-21 by the owner, for DIB:** DIB's real configuration (rules, hooks, values and bindings, never secrets) lives here, in `content-configurations/banks/dib/`. Shared content (`spec/`, `runtime/src`, `studio/src`) still names no bank. Other banks are unchanged. |
 | D7 | DTFx on PostgreSQL | Do not build a provider now. A DTFx installation keeps SQL Server for the engine's own state, and its payments data can be on either database. |
 | D8 | Studio export to GitHub: direct commit or pull request | Direct commit to the connected branch by default (maker-checker already happened in the studio). Pull-request mode per connection for banks that want it. |
 | D6 | Scope of the first drop | WPS only (P1 to P2) on Temporal, then the other engines. FTS, IPI, NPSS, CBFT, EDDA and XBDR come later, on the same store and lifecycle. |

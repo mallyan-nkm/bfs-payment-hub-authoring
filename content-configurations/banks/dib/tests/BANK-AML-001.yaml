@@ -1,0 +1,53 @@
+# The bank's AML service refuses the employer: the hook rejects the salary file. The file is invented.
+kind: test
+id: BANK-AML-001
+title: A salary file whose employer the bank's AML service refuses is rejected
+target: b.hook.employer-aml-check.v1
+level: hook
+evaluationDate: "2026-11-24"
+tenant: dib
+bench:
+  - port: b.port.aml-screening.v1
+    simulator: b.sim.aml-screening.v1
+    scenario: reject
+given:
+  context:
+    header:
+      paymentId: P-1
+      endToEndId: E2E-1
+      fileId: F-1
+      kind: payment
+      direction: outward
+      segment: corporate
+      scheme: uae.wps
+    payment:
+      instructedAmount:
+        value: 3500
+        currency: AED
+      debtorAccount:
+        iban: AE070331234567890123456
+      debtorAgent:
+        clearingMemberId: "802420101"
+    batch:
+      id: F-1
+      numberOfTransactions: 2
+      controlSum: 3500
+    items:
+      - payment:
+          instructedAmount:
+            value: 1500
+            currency: AED
+          creditorAccount:
+            iban: AE070331234567890123456
+          creditorAgent:
+            clearingMemberId: "203320101"
+      - payment:
+          instructedAmount:
+            value: 2000
+            currency: AED
+          creditorAccount:
+            iban: AE070331234567890123456
+          creditorAgent:
+            clearingMemberId: "203320101"
+expect:
+  outcome: reject
