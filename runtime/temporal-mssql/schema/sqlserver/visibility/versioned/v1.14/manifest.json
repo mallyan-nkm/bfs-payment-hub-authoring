@@ -1,0 +1,8 @@
+{
+  "CurrVersion": "1.14",
+  "MinCompatibleVersion": "1.14",
+  "Description": "Temporal visibility schema 1.14 on SQL Server: the first SQL Server version, the whole schema at once",
+  "SchemaUpdateCqlFiles": [
+    "schema.sql"
+  ]
+}

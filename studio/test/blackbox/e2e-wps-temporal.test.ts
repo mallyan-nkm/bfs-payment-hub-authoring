@@ -10,6 +10,10 @@ import { client, startServer, STUDIO, type Server } from './server.js';
 // corporate payment workflow, the WPS leg in its slot, each activity on the Temporal task queue of
 // its scope, served by a separate worker process per queue. Temporal is the time-skipping test
 // server (runtime/tools/temporal-test-server), so the day's wait for the acknowledgement takes seconds.
+//
+// With TH_TEMPORAL_ADDRESS=host:port the runs go to that Temporal server instead, in real time (for
+// example the server on SQL Server, runtime/temporal-mssql): the test server is not set up, and a run
+// may take as long as the business time it waits (the scheme's acknowledgement comes after 10 minutes).
 
 const TENANT = 'example-bank';
 const SAMPLE = 'samples/wps-sif-valid.sif';
@@ -25,18 +29,22 @@ const SETTLED = ['validate:pass', 'duplicate:unique', 'hook:done', 'sanctions:cl
 const OPS = (scenario: string) => ({ port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario });
 const HARNESS = path.resolve(STUDIO, '..', 'runtime', 'tools', 'TransactHub.TemporalHarness');
 const TEST_SERVER = path.resolve(STUDIO, '..', 'runtime', 'tools', 'temporal-test-server');
+const EXTERNAL_TEMPORAL = process.env.TH_TEMPORAL_ADDRESS;
+// One deployment's run: minutes on the time-skipping test server, the business time it waits on a real one.
+const RUN_MS = EXTERNAL_TEMPORAL ? 45 * 60 * 1000 : 600000;
 
 let server: Server;
 let api: ReturnType<typeof client>;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-e2e-wps-temporal-'));
 
 beforeAll(async () => {
-  if (!fs.existsSync(path.join(TEST_SERVER, 'classpath.txt'))) spawnSync(path.join(TEST_SERVER, 'setup.sh'), { encoding: 'utf8' });
+  if (EXTERNAL_TEMPORAL) console.log(`Temporal: the server at ${EXTERNAL_TEMPORAL}, in real time`);
+  else if (!fs.existsSync(path.join(TEST_SERVER, 'classpath.txt'))) spawnSync(path.join(TEST_SERVER, 'setup.sh'), { encoding: 'utf8' });
   const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: HARNESS, encoding: 'utf8', env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' } });
   if (b.status !== 0) throw new Error(`dotnet build failed:\n${b.stdout}\n${b.stderr}`);
   server = await startServer();
   api = client(server.url);
-}, 600000);
+}, RUN_MS);
 afterAll(() => server?.stop());
 
 async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEnv: Record<string, string> = {}) {
@@ -49,7 +57,7 @@ async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEn
   const out = await new Promise<string>((resolve) => {
     let text = '';
     const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...extraEnv } });
-    const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
+    const timer = setTimeout(() => child.kill('SIGKILL'), RUN_MS);
     child.stdout.on('data', (d) => (text += d));
     child.stderr.on('data', (d) => (text += d));
     child.on('close', () => { clearTimeout(timer); resolve(text); });
@@ -73,7 +81,7 @@ describe('the WPS salary file on Temporal', () => {
     }
     // The salary file went to the scheme and its acknowledgement came back.
     expect(d.workers.find((w) => w.queue === 'th-uae-wps')!.served['uae.wps.exchange.send-salary-file.v1@1.0.0']).toBe(1);
-  }, 600000);
+  }, RUN_MS);
 
   // The same salary file and the same party behaviour give the same trace on Temporal as on the
   // studio's own interpreter (R-09-07), for each way the payment can end.
@@ -91,7 +99,7 @@ describe('the WPS salary file on Temporal', () => {
       const d = await deploy(what.replace(/\W+/g, '-'), sample, override);
       expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
       expect(d.outcome).toBe(expected.data.outcome);
-    }, 600000);
+    }, RUN_MS);
   }
 
   // The payments of a deployment live in the database (plan W2): the salary file is accepted into the
@@ -131,6 +139,6 @@ describe('the WPS salary file on Temporal', () => {
       expect(d.trace).toEqual(SETTLED);
       const line = /^store: .*$/m.exec(d.out)?.[0] ?? '';
       expect(line, d.out.slice(-2500)).toMatch(new RegExp(`^store: ${kind} holds 1 bulk\\(s\\), 1 payment\\(s\\), \\d+ part\\(ies\\); \\d+ payload\\(s\\) rebuilt from their facts, chains unbroken, all match the run$`));
-    }, 600000);
+    }, RUN_MS);
   }
 });

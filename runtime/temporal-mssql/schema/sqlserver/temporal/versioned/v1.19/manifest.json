@@ -1,0 +1,8 @@
+{
+  "CurrVersion": "1.19",
+  "MinCompatibleVersion": "1.19",
+  "Description": "Temporal persistence schema 1.19 on SQL Server: the first SQL Server version, the whole schema at once",
+  "SchemaUpdateCqlFiles": [
+    "schema.sql"
+  ]
+}

@@ -1,5 +1,7 @@
 # P4 spike: Temporal on SQL Server
 
+**Built since.** D2 was confirmed and the plugin is built in `runtime/temporal-mssql/`. Its README says what is proved. Two findings below changed on the way: visibility is on SQL Server too, with computed columns and a side table for keyword lists, and row locks for the queues take no key-range lock (no HOLDLOCK), because that deadlocked.
+
 Decision D2 asks for Temporal's persistence on SQL Server. Temporal supports MySQL, PostgreSQL, SQLite and Cassandra, and not SQL Server. This spike measures what a SQL Server plugin would take. Everything below was measured against Temporal server v1.32.2, the latest stable release on the Go module proxy on 2026-11-21, and SQL Server 2022 in Docker.
 
 ## How to repeat it

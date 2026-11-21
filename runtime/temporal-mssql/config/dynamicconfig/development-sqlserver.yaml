@@ -1,0 +1,20 @@
+# Dynamic config for the development server on SQL Server, after config/dynamicconfig/development-sql.yaml
+# of go.temporal.io/server v1.32.2.
+
+# Workflow, run, task queue and other ids are VARCHAR(255) key columns. On the UTF-8 collation that
+# is 255 bytes: an id of 255 ASCII characters fits; an id with non-ASCII characters is shorter.
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+frontend.workerVersioningDataAPIs:
+  - value: true
+frontend.workerVersioningWorkflowAPIs:
+  - value: true
+frontend.workerVersioningRuleAPIs:
+  - value: true
+system.enableDeploymentVersions:
+  - value: true
+system.enableDeployments:
+  - value: true
+history.hostLevelCacheMaxSize:
+  - value: 8192

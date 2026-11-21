@@ -130,3 +130,90 @@ jobs:
           else
             npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-engines-store.test.ts -t "${{ matrix.engine }} on ${{ matrix.database }}"
           fi
+  temporal-sqlserver:
+    # Temporal's persistence on SQL Server (plan W5, P4): build the plugin (runtime/temporal-mssql), run
+    # Temporal's own persistence suites against SQL Server 2022, start the server on SQL Server, prove a
+    # workflow survives a server kill, then run the full conformance kit and the WPS salary file on it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Th-Test-Only-1234   # a test-only password, as in the store tests
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Th-Test-Only-1234 -Q 'SELECT 1' -b"
+          --health-interval 10s --health-timeout 5s --health-retries 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      SQLSERVER_ADDR: 127.0.0.1:1433
+      SQLSERVER_PASSWORD: Th-Test-Only-1234
+      TEMPORAL_SQLSERVER_ADDR: 127.0.0.1:1433
+      TEMPORAL_SQLSERVER_PASSWORD: Th-Test-Only-1234
+      TH_KIT_TIMEOUT_MIN: "15"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: runtime/temporal-mssql/go.mod
+          cache-dependency-path: |
+            runtime/temporal-mssql/go.sum
+            runtime/temporal-mssql/tools/durability/go.sum
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Build the plugin, the server and the schema tool
+        working-directory: runtime/temporal-mssql
+        run: |
+          go vet ./...
+          go build -o bin/ ./cmd/...
+          (cd tools/durability && go build -o ../../bin/durability-worker .)
+          go test ./sqlplugin/...
+      - name: Temporal's persistence suites on SQL Server 2022
+        working-directory: runtime/temporal-mssql
+        run: |
+          go test ./tests/ -run 'TestSQLServer' -count=1 -v -timeout 30m | tee suites.log
+          scripts/suite-summary.sh suites.log
+      - name: Both schemas with temporal-sql-tool
+        working-directory: runtime/temporal-mssql
+        run: |
+          scripts/dev.sh schema
+          mkdir -p .dev
+          docker pull temporalio/temporal:1.5.1
+      - name: A workflow survives a server kill
+        working-directory: runtime/temporal-mssql
+        run: scripts/durability-check.sh
+      - name: Install the studio
+        working-directory: studio
+        run: npm ci
+      - name: The conformance kit on servers on SQL Server (40 of 46 scenarios, three shards)
+        # A real server runs the kit in real time (docs/ISSUES.md I-48). Six scenarios wait a business hour
+        # or more (CK-WAIT-01, CK-AWAIT-03 and CK-BLOCK-02 one hour, CK-BLOCK-03 four hours, CK-LOOKUP-01
+        # two days, CK-AWAIT-02 three), so this fast subset leaves them out. The other 40 take about an
+        # hour and a half one after another, so they run on three servers side by side, in about 30 minutes.
+        working-directory: runtime/temporal-mssql
+        env:
+          KIT_EXCLUDE: CK-AWAIT-02 CK-AWAIT-03 CK-WAIT-01 CK-LOOKUP-01 CK-BLOCK-02 CK-BLOCK-03
+        run: scripts/kit-on-sqlserver.sh
+      - name: The WPS salary file on it, with the payments store on SQL Server too
+        working-directory: studio
+        run: |
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          TH_TEMPORAL_ADDRESS=127.0.0.1:7233 npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-temporal.test.ts -t "database on SqlServer"
+      - name: Server log
+        if: always()
+        working-directory: runtime/temporal-mssql
+        run: |
+          grep -E '"level":"(error|fatal)"' .dev/server.log | tail -50 || true
+          kill "$(pgrep -f bin/temporal-server)" 2>/dev/null || true
