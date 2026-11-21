@@ -605,7 +605,7 @@ route('GET', '/api/expanded/:name', (env, req, { name }) => {
 // --------------------------------------------------------------- packs (C05-S2, C19)
 
 route('GET', '/api/packs', (env) => ['p', 'uae.p', 'uae.wps', 'b'].map((scope) => ({ scope, ...compareManifest(env, scope) })));
-route('GET', '/api/packs/:scope/manifest', (env, req, { scope }) => ({ manifest: packManifest(env, scope, req.query.tenant), compare: compareManifest(env, scope) }));
+route('GET', '/api/packs/:scope/manifest', (env, req, { scope }) => ({ manifest: packManifest(env, scope, req.query.tenant), compare: compareManifest(env, scope, req.query.tenant) }));
 route('POST', '/api/packs/build', (env, req) => {
   const { scope, kind, tenant } = req.body ?? {};
   const b = buildPack(env, scope, kind ?? 'shared', tenant);

@@ -1,0 +1,15 @@
+# The bank's values for the WPS salary-file rules (the CBX checks). Parameter names are the source's
+# (wps.ParamConfiguration, migration 20261006094046_ReseedWpsParametersWithIdentityIds); BankRoutingCode replaces
+# the source's {tenant}RoutingCode. Read by runtime/src/TransactHub.Activities.Wps/WpsRuleValues.cs; each value is
+# inside the bounds of runtime/src/TransactHub.Activities.Wps/Rules/CbxRuleSettings.cs.
+kind: configuration-values
+tenant: dib
+scope: uae.wps
+effectiveFrom: 2026-11-21T00:00:00Z
+values:
+  CbxMolIdLength: "13"
+  CbxFileDateMaxYearsBack: "1"
+  CbxScrDebitAccountRequired: "true"
+  CbxScrDebitAccountRegisteredCheck: "true"
+  CbxAccountMatchLength: "15"
+  BankRoutingCode: "802420101"

@@ -1,0 +1,47 @@
+# The same payment file checks, on a synthetic file addressed to another routing code (the factory sample's).
+# Under the bank's configuration set it is not this bank's file: the bank's routing code decides, not the
+# factory default or the example bank's value.
+kind: test
+id: BANK-RTE-002
+title: A salary payment file addressed to another bank's routing code fails the payment file checks
+target: uae.wps.validate.payment-file.v1
+level: activity
+evaluationDate: "2026-11-24"
+tenant: dib
+given:
+  context:
+    header:
+      paymentId: P-1
+      endToEndId: E2E-1
+      fileId: F-1
+      kind: payment
+      direction: inward
+      scheme: uae.wps
+    batch:
+      id: F-1
+      numberOfTransactions: 2
+      controlSum: 3500
+      currency: AED
+      creditorAgent:
+        clearingMemberId: "302620122"
+    items:
+      - payment:
+          instructedAmount:
+            value: 1500
+            currency: AED
+          creditorAccount:
+            iban: AE570330000000000000002
+          creditorAgent:
+            clearingMemberId: "302620122"
+      - payment:
+          instructedAmount:
+            value: 2000
+            currency: AED
+          creditorAccount:
+            iban: AE110260000000000000003
+          creditorAgent:
+            clearingMemberId: "302620122"
+expect:
+  outcome: reject
+  findings:
+    - reasonCode: RC01

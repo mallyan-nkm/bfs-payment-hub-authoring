@@ -1,0 +1,14 @@
+# The bank's own AML screening service, which the source's bank fork called for each employer of a salary file
+# (DibWpsActivities.DibWpsEmployerAmlCheck, named client AmlScreening, POST /api/aml/employer-check).
+kind: port
+name: b.port.aml-screening.v1
+release: 1.0.0
+title: Bank AML screening
+party: bank AML screening service
+operations:
+  - name: employer-check
+    style: request-reply
+provenance:
+  origin: authored
+  status: provisional
+  note: Mined from the source's bank fork. Where the service is, and how it is reached, is set at deployment.

@@ -1,0 +1,43 @@
+# The bank's core banking, as a port binding (plan W6, P5). Read by runtime/src/TransactHub.Ports/PortBindings.cs.
+#
+# The values are the bank's own, from the source: the CoreBanking:* settings of its WPS workers
+# (infra/docker/docker-compose.customer-dib.yml, platform-worker-dib and bank-worker-dib) and the function ids
+# of its core-banking contract (services/shared/dotnet/PaymentHub.Shared/Domain/Wps/WpsCoreBankingContract.cs).
+#   CoreBanking:ServiceCode IBSSYSTEM                          -> serviceCode
+#   CoreBanking:ExternalHostId IBMK                            -> externalHostId
+#   CoreBanking:TxnFlag Y                                      -> txnFlag
+#   CoreBanking:UploadBranch 997                               -> uploadBranch
+#   CoreBanking:BalanceFlag Y                                  -> balanceFlag
+#   CoreBanking:AuthStatus A                                   -> authStatus
+#   CoreBanking:BalanceEnquiryPath, SalaryPostingPath          -> balancePath, postingPath
+#   FunctionIdBalanceEnquiry 0301, FunctionIdSalaryPosting 0332 -> balanceFunctionId, postingFunctionId
+#   ErrorCodeSuccess 0, ChannelWps WPS                         -> successCode, channel
+#   XREFPREFIX unset, so the source used the tenant id in capitals -> referencePrefix
+#   CoreBanking:Mode, PostingMode, BalanceEnquiryMode, ReversalMode -> which adapter is bound
+#   CoreBanking:PostingVariant UatFccAccService                -> the adapter (one adapter per wire shape)
+#
+# baseUrl is set at deployment: the source's HttpClients:CoreBanking:BaseUrl is an internal host and is not
+# carried. The gateway's credentials are never here; a deployment supplies them by reference (README.md).
+kind: port-bindings
+tenant: dib
+bindings:
+  - port: p.port.core-banking.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-21T00:00:00Z
+    settings:
+      baseUrl: https://core-banking.dib.invalid/
+      balancePath: /api/v1/accounts/balance-enquiry
+      postingPath: /api/v1/accounts/transactions
+      balanceFunctionId: "0301"
+      postingFunctionId: "0332"
+      serviceCode: IBSSYSTEM
+      externalHostId: IBMK
+      txnFlag: "Y"
+      uploadBranch: "997"
+      balanceFlag: "Y"
+      authStatus: A
+      referencePrefix: DIB
+      successCode: "0"
+      channel: WPS
+      # The gateway's credential, by reference only. The source sent its service key (SERVICE_API_KEY) here.
+      secretRef: env:TH_DIB_CORE_BANKING_TOKEN
