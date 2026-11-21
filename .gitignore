@@ -4,3 +4,6 @@ studio/web/dist/
 *.log
 docs/demo/.voice/
 docs/demo/training/.voice/
+
+# Agent worktrees (local working copies, never committed)
+.claude/worktrees/
