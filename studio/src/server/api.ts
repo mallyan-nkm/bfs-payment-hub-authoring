@@ -9,6 +9,7 @@ import { missingStandardScenarios } from '../sim/runtime.js';
 import { runTest, runAllTests, type TestRunReport } from '../testing/runner.js';
 import { runKit, loadKit } from '../conformance/kit.js';
 import { exportPackage, exportZip, type Target } from '../export/exporter.js';
+import * as gitExport from '../export/git.js';
 import { templates } from './templates.js';
 import { runGates } from '../ai/gates.js';
 import { assistantConfigured, draft } from '../ai/assistant.js';
@@ -319,7 +320,9 @@ route('POST', '/api/publish', async (env, req) => {
   const keys: string[] = Array.isArray(req.body?.keys) ? req.body.keys : req.body?.key ? [req.body.key] : [];
   for (const k of keys) if (!env.store.entries.get(k)) throw new HttpError(404, `No draft ${k}`);
   const r = await gov.approveChangeSet(env, tenant, req.body?.checker, keys);
-  return { changeSet: r.changeSet, published: r.published.map(summary) };
+  // A connected branch gets the change set as one commit (R-09-20); a failed export never undoes the publish.
+  const git = await gitExport.afterPublish(env, req.body?.checker, r.changeSet.id);
+  return { changeSet: r.changeSet, published: r.published.map(summary), ...(git ? { git } : {}) };
 });
 
 route('GET', '/api/change-set', (env, req) => {
@@ -509,6 +512,19 @@ route('GET', '/api/export/download', (env, req) => {
   const tenant = req.query.tenant && req.query.tenant !== OWNER_TENANT ? req.query.tenant : undefined;
   const pkg = exportOr400(() => exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' }));
   return { __binary: true, data: exportZip(pkg), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
+});
+
+// ------------------------------------------------------- export to a Git branch (W8)
+
+route('GET', '/api/git', (env) => gitExport.gitStatus(env));
+route('PUT', '/api/git', (env, req) => ({ connection: gitExport.connect(env, req.body?.actor ?? '', req.body ?? {}) }));
+route('DELETE', '/api/git', (env, req) => {
+  gitExport.disconnect(env, req.query.actor ?? req.body?.actor ?? '');
+  return { ok: true };
+});
+route('POST', '/api/git/export', async (env, req) => {
+  if (!req.body?.changeSet) throw new HttpError(400, 'Name the change set: { changeSet, actor }');
+  return gitExport.exportChangeSet(env, req.body.actor ?? '', req.body.changeSet);
 });
 
 void keyOf;

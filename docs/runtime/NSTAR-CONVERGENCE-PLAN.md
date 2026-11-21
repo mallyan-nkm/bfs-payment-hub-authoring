@@ -237,13 +237,27 @@ content-configurations/      what the studio publishes and what a bank configure
 - **N13.** `WorkflowActivityUpdater` writes `_assembly_version` into step JSON, but nothing reads it, which gives a false sense that code is pinned.
 - **N14.** The zip is incomplete (section 5).
 
-## 8. Decisions needed
+## 8. Decisions
+
+All recommendations were accepted.
+
+**How the engines are deployed (D3).** Three of the four engines run as separate servers, with the workers connecting to them:
+
+| Engine | Server | How workers connect |
+| --- | --- | --- |
+| Temporal | The Temporal service: frontend, history and matching, with its own database. | Workers poll task queues over gRPC. |
+| Flowable | The Flowable REST application, a Java server, with its own database. | Workers fetch and complete external jobs over REST. |
+| Elsa | Elsa Server, an ASP.NET host, with its own database. | The interpreter runs inside Elsa; activities are dispatched to the workers' task queues. |
+| DTFx | None. DTFx is a library, and its "server" is its database. | Orchestration and activity workers are processes that share the SQL Server task hub. |
+
+The decision table:
+
 
 | # | Decision | Recommendation |
 | --- | --- | --- |
 | D1 | Amend N* "one runtime only" | Accept: the engine is chosen per installation, all four are proved equal by the kit. |
 | D2 | Temporal on SQL Server | Build the plugin, pinned to one Temporal version, as P4. If the maintenance cost is not acceptable, keep Temporal on PostgreSQL. |
-| D3 | Flowable hosting | A Java sidecar (Flowable 7) with .NET external workers, its own database. |
+| D3 | Flowable hosting | Accepted. Flowable 7 runs as its own server with its own database. .NET external workers poll it for jobs over REST. |
 | D4 | Where `spec/` lives | It stays at the root for now. Moving it under `studio/` is a separate change. |
 | D5 | Real bank values | Not in this repository: synthetic placeholders here, the bank's set in its private configuration repository. |
 | D7 | DTFx on PostgreSQL | Do not build a provider now. A DTFx installation keeps SQL Server for the engine's own state, and its payments data can be on either database. |

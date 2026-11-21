@@ -44,7 +44,7 @@ export function Governance({ query }: { query: URLSearchParams }) {
 }
 
 /** A local picker for an action that needs a particular role. Defaults to a user who holds it. */
-function AsUser({ value, onChange, prefer, label = 'As' }: { value: string; onChange: (v: string) => void; prefer: (u: User) => boolean; label?: string }) {
+export function AsUser({ value, onChange, prefer, label = 'As' }: { value: string; onChange: (v: string) => void; prefer: (u: User) => boolean; label?: string }) {
   const { users } = useStudio();
   useEffect(() => {
     if (!value || !users.some((u) => u.id === value)) onChange((users.find(prefer) ?? users[0])?.id ?? '');

@@ -45,6 +45,12 @@ export async function post<T = any>(path: string, body: any = {}, tenant?: strin
   return parse(res);
 }
 
+export async function put<T = any>(path: string, body: any = {}, tenant?: string): Promise<T> {
+  const t = tenant ?? currentTenant;
+  const res = await fetch(withTenant(path, t), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tenant: t, ...body }) });
+  return parse(res);
+}
+
 export async function del<T = any>(path: string, tenant?: string): Promise<T> {
   return parse(await fetch(withTenant(path, tenant), { method: 'DELETE' }));
 }

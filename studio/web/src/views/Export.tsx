@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { downloadUrl, get, post, type Summary } from '../api';
 import { Badge, ErrorBox, Issues, KV, Loading, Section, Tabs, useLoad, useStudio } from '../ui';
+import { GitBranch } from './GitBranch';
 
 // Export (F-30, F-31): choose workflows, target and tenant; preview; download the zip.
 
@@ -96,6 +97,7 @@ export function Export({ query }: { query: URLSearchParams }) {
         </div>
       </div>
       <ErrorBox error={error} />
+      <GitBranch />
       {res && (
         <>
           <Section title="Package" actions={<>{m?.promotable ? <Badge tone="pass">promotable</Badge> : <Badge tone="warn">not promotable</Badge>} {m?.containsSimulators ? <Badge tone="warn">contains simulators</Badge> : <Badge tone="pass">no simulators</Badge>}</>}>
