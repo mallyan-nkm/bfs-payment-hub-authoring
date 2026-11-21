@@ -110,7 +110,7 @@ export function wpsTrainingBundle(env: StudioEnv, to = 'uae.wpsx'): BundleFile[]
   };
   const findings = [
     { kind: 'question', text: 'The WPS content is provisional: it was written from public sources, not the CBUAE rulebook. Confirm each rule with the scheme expert before publishing.', source: `factory/${FROM}/scheme.yaml` },
-    { kind: 'decision', text: 'Four messages of the dispatch table are planned, not built (a disbursement correction, refunds and returns). They are retired from this release, each with its reason in the inventory, so that the scheme can be published; a later release builds them.', source: `factory/${FROM}/scheme.yaml` },
+    { kind: 'decision', text: 'Three messages of the dispatch table are planned, not built (a disbursement correction and refunds). They are retired from this release, each with its reason in the inventory, so that the scheme can be published; a later release builds them.', source: `factory/${FROM}/scheme.yaml` },
     { kind: 'error-scenario', text: 'The salary file submission is a composite: send, wait one business day for the acknowledgement, read it. No acknowledgement ends as pending; a status inquiry follows, never a resend.', source: `factory/${FROM}/workflows/${FROM}.sub.submit-salary-file.v1.yaml` },
   ];
   files.push({ name: 'extraction.yaml', content: toYaml(manifest) });
