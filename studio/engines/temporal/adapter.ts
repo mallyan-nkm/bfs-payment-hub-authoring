@@ -30,10 +30,36 @@ export function temporalBinding(env: StudioEnv): any {
   return b;
 }
 
+/**
+ * Scenarios the time-skipping test server cannot run, so the adapter runs them on Temporal's real dev server
+ * (its CLI image, in Docker), in real time. CK-FOREACH-02 (10,000 items in chunks that continue as new)
+ * makes the Java test server refuse a workflow task ("invalid history builder state for action") about
+ * 1,100 items in; the real server runs it in about two minutes. It waits for nothing, so real time is fine.
+ */
+export const REAL_SERVER_SCENARIOS = new Set(['CK-FOREACH-02']);
+
+let devServer: string | undefined;
+/** Start Temporal's dev server once per process (TH_TEMPORAL_ADDRESS, if set, is used instead). */
+function realServer(): string {
+  if (process.env.TH_TEMPORAL_ADDRESS) return process.env.TH_TEMPORAL_ADDRESS;
+  if (devServer) return devServer;
+  const name = `th-kit-temporal-${process.pid}`;
+  const r = spawnSync('docker', ['run', '-d', '--rm', '--name', name, '-p', '127.0.0.1::7233', 'temporalio/temporal:1.5.1', 'server', 'start-dev', '--ip', '0.0.0.0', '--headless'], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`Temporal's dev server did not start (Docker needed for ${[...REAL_SERVER_SCENARIOS].join(', ')}): ${r.stderr}`);
+  process.on('exit', () => spawnSync('docker', ['rm', '-f', name]));
+  const port = spawnSync('docker', ['port', name, '7233'], { encoding: 'utf8' }).stdout.trim().split(':').pop();
+  for (let i = 0; i < 60; i++) {
+    if (spawnSync('docker', ['exec', name, 'temporal', 'operator', 'cluster', 'health'], { encoding: 'utf8' }).stdout.includes('SERVING')) break;
+    spawnSync('sleep', ['1']);
+  }
+  devServer = `127.0.0.1:${port}`;
+  return devServer;
+}
+
 export function temporalAdapter(env: StudioEnv, opts: { chunkSize?: number; keepInputs?: boolean } = {}): KitAdapter & { engine: Record<string, any> } {
   const engine: Record<string, any> = {};
   const binding = temporalBinding(env);
-  const chunkSize = opts.chunkSize ?? binding.defaults?.forEachChunk ?? 500;
+  const chunkSize = opts.chunkSize ?? (process.env.TH_KIT_CHUNK ? Number(process.env.TH_KIT_CHUNK) : undefined) ?? binding.defaults?.forEachChunk ?? 500;
   return {
     target: 'temporal',
     engine,
@@ -49,7 +75,8 @@ export function temporalAdapter(env: StudioEnv, opts: { chunkSize?: number; keep
       };
       fs.writeFileSync(file, JSON.stringify(input));
       try {
-        const r = spawnSync('dotnet', [TEMPORAL_HARNESS_DLL, file], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, timeout: Number(process.env.TH_KIT_TIMEOUT_MIN ?? 15) * 60 * 1000 });
+        const env = REAL_SERVER_SCENARIOS.has(b.id) ? { ...process.env, TH_TEMPORAL_ADDRESS: realServer() } : process.env;
+        const r = spawnSync('dotnet', [TEMPORAL_HARNESS_DLL, file], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, timeout: Number(process.env.TH_KIT_TIMEOUT_MIN ?? 15) * 60 * 1000, env });
         const lines = (r.stdout ?? '').split('\n');
         const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
         if (!obsLine) {
@@ -60,7 +87,7 @@ export function temporalAdapter(env: StudioEnv, opts: { chunkSize?: number; keep
         engine[b.id] = obs.engine;
         return obs as KitObservation;
       } finally {
-        if (!opts.keepInputs) fs.rmSync(dir, { recursive: true, force: true });
+        if (!opts.keepInputs && !process.env.TH_KIT_KEEP) fs.rmSync(dir, { recursive: true, force: true });
       }
     },
   };

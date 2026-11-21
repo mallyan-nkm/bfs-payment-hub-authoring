@@ -3,7 +3,7 @@ using TransactHub.Engines;
 using TransactHub.Model;
 using TransactHub.Store;
 
-namespace TransactHub.Engine.Temporal;
+namespace TransactHub.Engines.Durable;
 
 /// <summary>
 /// Where the payload of a run lives while the engine holds only references (R-09-10): the parties,

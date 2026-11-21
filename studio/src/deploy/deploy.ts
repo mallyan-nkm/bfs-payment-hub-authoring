@@ -188,11 +188,17 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     }
 
     // 4. The engine.
-    const harnessDll = engine === 'elsa'
-      ? path.join(req.studioRoot, 'engines', 'elsa', 'harness', 'bin', 'Release', 'net8.0', 'ElsaHarness.dll')
-      : engine === 'temporal'
-        ? path.join(req.studioRoot, '..', 'runtime', 'tools', 'TransactHub.TemporalHarness', 'bin', 'Release', 'net10.0', 'TransactHub.TemporalHarness.dll')
-        : path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
+    // With a store (TH_STORE_PROVIDER), DTFx and Elsa run as the runtime builds them: the same harness code,
+    // its claim check journalled to the database (plan N4). Temporal always runs as the runtime builds it.
+    const runtimeTool = (name: string) => path.join(req.studioRoot, '..', 'runtime', 'tools', `TransactHub.${name}Harness`, 'bin', 'Release', 'net10.0', `TransactHub.${name}Harness.dll`);
+    const onStore = !!process.env.TH_STORE_PROVIDER;
+    const harnessDll = engine === 'temporal'
+      ? runtimeTool('Temporal')
+      : onStore
+        ? runtimeTool(engine === 'elsa' ? 'Elsa' : 'Dtfx')
+        : engine === 'elsa'
+          ? path.join(req.studioRoot, 'engines', 'elsa', 'harness', 'bin', 'Release', 'net8.0', 'ElsaHarness.dll')
+          : path.join(req.studioRoot, 'engines', 'dtfx', 'harness', 'bin', 'Release', 'net8.0', 'DtfxHarness.dll');
     if (!fs.existsSync(harnessDll)) {
       const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.dirname(path.dirname(path.dirname(path.dirname(harnessDll)))), encoding: 'utf8' });
       if (b.status !== 0) throw new Error(`dotnet build failed: ${b.stdout}`);
@@ -224,7 +230,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     }
     const obs = JSON.parse(obsLine.slice('OBSERVATION '.length));
     for (const l of r.stderr.split('\n').map((x) => x.trim()).filter(Boolean)) log.push(`[engine] ${l}`);
-    // A runtime engine with a store (Temporal with TH_STORE_PROVIDER): what the database holds after the run.
+    // A runtime engine with a store (TH_STORE_PROVIDER): what the database holds after the run.
     const st = obs.engine?.store;
     if (st) log.push(`store: ${st.provider} holds ${st.bulks} bulk(s), ${st.payments} payment(s), ${st.parties} part(ies); ${st.payloads.length} payload(s) rebuilt from their facts, chains ${st.payloads.every((x: any) => x.chain) ? 'unbroken' : 'BROKEN'}, ${st.ok ? 'all match the run' : 'NOT the run'}`);
     const root = obs.instances?.[0] ?? {};

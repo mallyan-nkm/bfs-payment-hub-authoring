@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using TransactHub.Engine.Temporal;
 using TransactHub.Engines;
+using TransactHub.Engines.Durable;
 using TransactHub.Model;
 using TransactHub.Store;
 using Xunit;

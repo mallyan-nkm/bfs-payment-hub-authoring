@@ -81,8 +81,30 @@ public sealed class Deployment
 /// the orchestration holds a reference. An attempt stages its writes; the orchestration commits them
 /// only when it accepts the result, so a late result that was abandoned never reaches the payment.
 /// </summary>
+/// <summary>
+/// What a durable store is told of every change to a payload, before the change is made (the runtime's
+/// store, plan W2). The studio's harnesses run without one; the runtime's builds of them install one.
+/// </summary>
+public interface IClaimCheckJournal
+{
+    /// <summary>A payload was created; `accept` (tenant, scheme, direction, release) when it is a root's, to accept its payments.</summary>
+    void Created(string reff, JsonObject payload, JsonObject? accept);
+    void Staged(string token, string reff, IReadOnlyList<(string path, JsonNode? value)> writes);
+    void Committed(string token, string reff);
+    void Forked(string from, string to, JsonObject payload);
+    void Copied(string from, string to, JsonObject values);
+    /// <summary>A store that reports to this journal was made; the journal checks what it rebuilds against it.</summary>
+    void Attached(ClaimCheckStore store);
+    /// <summary>What the journal's store holds after the run (the observation's engine.store), or null.</summary>
+    JsonObject? Report();
+}
+
 public sealed class ClaimCheckStore
 {
+    /// <summary>The journal every new store reports to, when one is installed (by the runtime's module initializer).</summary>
+    public static IClaimCheckJournal? DefaultJournal;
+    readonly IClaimCheckJournal? journal = DefaultJournal;
+    public ClaimCheckStore() { journal?.Attached(this); }
     static readonly string[] StateParts = { "header", "facts", "status", "messages" };
     readonly object gate = new();
     readonly Dictionary<string, JsonObject> payloads = new();
@@ -94,6 +116,13 @@ public sealed class ClaimCheckStore
     public static bool IsStatePath(string p) => StateParts.Contains(p.Split('.')[0].Replace("[]", ""));
 
     /// <summary>Split a context into what the engine holds and what the store holds.</summary>
+    /// <summary>What the store needs to accept a root's payments: the tenant, and the scheme and direction from the header.</summary>
+    public static JsonObject AcceptFor(JsonObject state, string? tenant, string docKey)
+    {
+        var header = J.P(state, "header");
+        return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = docKey };
+    }
+
     public static (JsonObject state, JsonObject payload) Split(JsonObject ctx)
     {
         var state = new JsonObject();
@@ -106,7 +135,14 @@ public sealed class ClaimCheckStore
         return (state, payload);
     }
 
-    public void Create(string r, JsonObject payload) { lock (gate) payloads[r] = payload; }
+    public void Create(string r, JsonObject payload, JsonObject? accept = null)
+    {
+        lock (gate)
+        {
+            journal?.Created(r, (JsonObject)J.Clone(payload)!, accept);
+            payloads[r] = payload;
+        }
+    }
 
     public JsonObject Payload(string r) { lock (gate) return (JsonObject)J.Clone(payloads.TryGetValue(r, out var p) ? p : new JsonObject())!; }
 
@@ -138,6 +174,7 @@ public sealed class ClaimCheckStore
         lock (gate)
         {
             var token = $"{r}!{++seq}";
+            journal?.Staged(token, r, writes);
             staged[token] = (r, writes);
             return token;
         }
@@ -147,21 +184,38 @@ public sealed class ClaimCheckStore
     {
         lock (gate)
         {
-            if (!committed.Add(token) || !staged.TryGetValue(token, out var s)) return;
+            if (committed.Contains(token) || !staged.TryGetValue(token, out var s)) return;
+            journal?.Committed(token, s.reff);
+            committed.Add(token);
             if (!payloads.TryGetValue(s.reff, out var p)) payloads[s.reff] = p = new JsonObject();
             foreach (var (path, v) in s.writes) J.Set(p, path, J.Clone(v));
         }
     }
 
-    public void Fork(string from, string to) { lock (gate) payloads[to] = (JsonObject)J.Clone(payloads.TryGetValue(from, out var p) ? p : new JsonObject())!; }
+    public void Fork(string from, string to)
+    {
+        lock (gate)
+        {
+            var copy = (JsonObject)J.Clone(payloads.TryGetValue(from, out var p) ? p : new JsonObject())!;
+            journal?.Forked(from, to, (JsonObject)J.Clone(copy)!);
+            payloads[to] = copy;
+        }
+    }
 
     public void Copy(string from, string to, IEnumerable<string> paths)
     {
         lock (gate)
         {
             var src = payloads.TryGetValue(from, out var a) ? a : new JsonObject();
+            var list = paths.ToList();
+            if (journal is not null)
+            {
+                var values = new JsonObject();
+                foreach (var p in list) values[p] = J.Clone(J.Get(src, p));
+                journal.Copied(from, to, values);
+            }
             if (!payloads.TryGetValue(to, out var dst)) payloads[to] = dst = new JsonObject();
-            foreach (var p in paths)
+            foreach (var p in list)
             {
                 var v = J.Get(src, p);
                 if (v is not null) J.Set(dst, p, J.Clone(v));

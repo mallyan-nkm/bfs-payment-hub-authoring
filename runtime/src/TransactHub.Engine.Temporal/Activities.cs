@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Temporalio.Activities;
 using Temporalio.Converters;
 using TransactHub.Engines;
+using TransactHub.Engines.Durable;
 
 namespace TransactHub.Engine.Temporal;
 
@@ -13,6 +14,10 @@ namespace TransactHub.Engine.Temporal;
 public sealed class Host
 {
     public readonly IClaimCheck Store;
+    public const string KeepOutput = "transacthub.keep-output";
+    /// <summary>Outputs of runs too large for engine history, by reference.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Outputs = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<int, string>> pieces = new();
     public readonly IParty Party;
     public readonly Deployment Dep;
     public int ActivityRuns;
@@ -30,7 +35,17 @@ public sealed class Host
     {
         var ctx = ActivityExecutionContext.Current;
         var name = ctx.Info.ActivityType;
-        var input = (JsonObject)J.Parse(ctx.PayloadConverter.ToValue<string>(args[0]))!;
+        var raw = ctx.PayloadConverter.ToValue<string>(args[0]);
+        if (name == KeepOutput)
+        {
+            var piece = (JsonObject)J.Parse(raw)!;
+            var key = J.S(piece, "key")!;
+            pieces.GetOrAdd(key, _ => new System.Collections.Concurrent.ConcurrentDictionary<int, string>())[(int)J.Num(piece, "piece")!.Value] = J.S(piece, "text")!;
+            var all = pieces[key];
+            Outputs[key] = string.Concat(Enumerable.Range(0, all.Count).Select(i => all.TryGetValue(i, out var t) ? t : ""));
+            return J.Str(JsonValue.Create(key));
+        }
+        var input = (JsonObject)J.Parse(raw)!;
         Interlocked.Increment(ref ActivityRuns);
         if (name == Interp.ClaimCheck) return J.Str(await ClaimCheckOp(input));
         if (name == FrontDoorWorkflow.HandlerActivity) return J.Str(await RunHandler(input));

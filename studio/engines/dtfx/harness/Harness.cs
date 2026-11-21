@@ -141,7 +141,7 @@ public sealed class Harness : IDisposable
     {
         var (state, payload) = ClaimCheckStore.Split(ctx);
         var r = $"{id}#ctx";
-        Store.Create(r, payload);
+        Store.Create(r, payload, ClaimCheckStore.AcceptFor(state, J.S(config, "tenant"), docKey));
         var inp = new JsonObject { ["kind"] = "workflow", ["doc"] = docKey, ["state"] = state, ["payloadRef"] = r };
         // The legs the front door chose from the dispatch table fill the platform workflow's slots (R-05-08).
         if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
@@ -436,6 +436,8 @@ public sealed class Harness : IDisposable
                 ["droppedMessages"] = Service.DroppedMessages,
                 ["virtualEnd"] = Duration.Iso(Clock.Now),
                 ["log"] = J.Arr(log),
+                // A runtime build of this harness journals the claim check to the store (TH_STORE_PROVIDER).
+                ["store"] = ClaimCheckStore.DefaultJournal?.Report(),
             },
         };
     }

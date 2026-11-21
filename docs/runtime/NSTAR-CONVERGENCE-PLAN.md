@@ -222,6 +222,21 @@ The results, pass by pass and project by project, with each failure classified (
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
 | P6 | Studio | Aani is removed. The WPS leg and the new inward flows are authored and published. The studio deploys a release to the runtime and hot-updates a rule value with no deployment, shown end to end. |
 
+### Progress on P3 (DTFx, Elsa, Flowable)
+
+- **Kit.** The kit runs in CI on all four engines (`.github/workflows/engines.yml`, job `kit`).
+- **Store, on three engines.** Temporal, DTFx and Elsa run on the store, each on PostgreSQL and SQL Server. CI job `store` is that matrix of 3 engines × 2 databases. With `TH_STORE_PROVIDER` set, the deploy runner runs the runtime's build of the DTFx and Elsa harnesses (`runtime/tools/TransactHub.{Dtfx,Elsa}Harness`). That build is the same engine code, with `StoreJournal` installed on the claim check:
+  - every create, staged write, commit, fork and copy is a fact on the payload's chain, written before memory changes;
+  - a root's payments are accepted into the ISO 20022 tables;
+  - the observation's `engine.store` shows each payload rebuilt from its facts and compared with what the engine held (`StoreReport`, the same for Temporal).
+- **Not yet: Flowable on the store.** The kit harness is embedded Flowable on H2, with its context in Java. Under D3 the runtime binding is the Flowable REST server, with .NET external workers that fetch and complete jobs over REST. Those workers would use `DurableClaimCheck` as Temporal does, so journalling the Java kit harness would be throwaway work. Remaining work:
+  - `TransactHub.Engine.Flowable`, the external-worker client;
+  - the BPMN from `src/export/bpmn.ts` deployed through `/repository/deployments`;
+  - Flowable in the deploy runner and in the `store` matrix.
+
+  Until then, P3's exit ("all four engines × two databases") is not met.
+- **Not yet: the WPS parity suite on DTFx and Elsa.** It runs on the interpreter and on Temporal.
+
 ## 7. Issues found while planning (beyond the review's 21)
 
 - **N1.** `RuleRepository.GetActiveEffectiveRulesAsync` takes the newest version, then filters by date. A future-dated rule therefore hides the rule in force. The date used is also "now", not a date fixed for the payment. This is a money risk (charges).

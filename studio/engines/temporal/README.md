@@ -16,6 +16,16 @@ npm run studio -- deploy <export-for-temporal.zip> --workflow p.wf.corporate.v1 
 
 With `TH_TEMPORAL_ADDRESS=host:7233` the harness runs on that Temporal server instead, in real time.
 
+`CK-FOREACH-02` (10,000 items, in chunks that continue as new) is the one scenario the Java test server cannot run: it refuses a workflow task with "invalid history builder state for action". The adapter runs that scenario on Temporal's real dev server (`temporalio/temporal:1.5.1`, started in Docker by the adapter, or the server at `TH_TEMPORAL_ADDRESS`), in real time. It takes about two minutes and some 20,000 activity runs. Without Docker it fails. The full kit is 46 of 46 in about 270 s.
+
+How large batches stay fast:
+
+- Ordering checks on results that arrive at the same time take constant time (sorted sets).
+- A timer that is already due is skipped.
+- Claim-check calls are local activities (`TH_LOCAL_CLAIMCHECK=0` turns that off).
+- Signals are flushed before continue-as-new and before a run ends.
+- An output larger than 256 KB is kept by the host in 512 KB pieces. The run returns a reference, because Temporal refuses payloads over about 2 MB.
+
 ## How it maps
 
 | DSL | Temporal |

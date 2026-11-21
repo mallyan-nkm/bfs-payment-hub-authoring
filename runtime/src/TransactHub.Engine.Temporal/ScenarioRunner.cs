@@ -6,6 +6,7 @@ using Temporalio.Client;
 using Temporalio.Testing;
 using Temporalio.Worker;
 using TransactHub.Engines;
+using TransactHub.Engines.Durable;
 using TransactHub.Store;
 
 namespace TransactHub.Engine.Temporal;
@@ -196,8 +197,7 @@ public sealed class ScenarioRunner
         {
             try
             {
-                var o = (JsonObject)J.Parse(await env.Client.GetWorkflowHandle(id).GetResultAsync<string>())!;
-                outputs.Add(o);
+                outputs.Add(Resolve(await env.Client.GetWorkflowHandle(id).GetResultAsync<string>()));
             }
             catch (Exception e) { log.Add($"{id} did not complete: {e.Message}"); }
         }
@@ -211,17 +211,22 @@ public sealed class ScenarioRunner
         {
             foreach (var (label, id) in roots)
             {
-                try { obsInstances.Add(Inst(label, (JsonObject)J.Parse(await env.Client.GetWorkflowHandle(id).GetResultAsync<string>())!)); }
+                try { obsInstances.Add(Inst(label, Resolve(await env.Client.GetWorkflowHandle(id).GetResultAsync<string>()))); }
                 catch (Exception e) { log.Add($"{label} ({id}) did not complete: {e.Message}"); }
             }
         }
         var sent = await party.Call(new JsonObject { ["op"] = "sent" });
         JsonObject? storeReport = null;
-        if (storeOpts is not null && durable is not null) storeReport = await StoreReport(storeOpts, durable);
+        if (storeOpts is not null && durable is not null) storeReport = await StoreReport.Of(storeOpts, r => durable.Full(null, r));
         stop.Cancel();
         foreach (var (_, t) in workersRunning) { try { await t; } catch (OperationCanceledException) { } }
 
         int sum(string k) => outputs.Sum(o => (int)(J.Num(o, k) ?? 0));
+        JsonObject Resolve(string result)
+        {
+            var o = (JsonObject)J.Parse(result)!;
+            return J.S(o, "outputRef") is string r && host.Outputs.TryGetValue(r, out var kept) ? (JsonObject)J.Parse(kept)! : o;
+        }
         return new JsonObject
         {
             ["target"] = "temporal",
@@ -254,33 +259,6 @@ public sealed class ScenarioRunner
         var p = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
         var c = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
         return string.IsNullOrEmpty(p) || string.IsNullOrEmpty(c) ? null : new StoreOptions(Enum.Parse<StoreProvider>(p, true), c);
-    }
-
-    /// <summary>What the store holds after the run: accepted payments, and every payload rebuilt from its facts with an unbroken chain.</summary>
-    static async Task<JsonObject> StoreReport(StoreOptions o, DurableClaimCheck cc)
-    {
-        await using var db = StoreDbContext.Open(o);
-        var facts = new FactLog(db);
-        var refs = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
-            db.Facts.Where(f => f.SubjectKind == DurableClaimCheck.Kind).Select(f => f.SubjectId).Distinct());
-        var chains = new JsonArray();
-        var allOk = true;
-        foreach (var r in refs.Order(StringComparer.Ordinal))
-        {
-            var v = await facts.Verify(r);
-            var rebuilt = await DurableClaimCheck.Load(o, r);
-            var same = CanonicalJson.Of(rebuilt) == CanonicalJson.Of(cc.Full(null, r));
-            allOk &= v.Ok && same;
-            chains.Add(new JsonObject { ["ref"] = r, ["facts"] = v.Facts, ["chain"] = v.Ok, ["rebuilt"] = same });
-        }
-        return new JsonObject
-        {
-            ["provider"] = o.Provider.ToString(),
-            ["bulks"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Bulks),
-            ["payments"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Payments),
-            ["parties"] = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Parties),
-            ["payloads"] = chains, ["ok"] = allOk,
-        };
     }
 
     /// <summary>Every payload in a history, decoded: what the engine actually holds.</summary>

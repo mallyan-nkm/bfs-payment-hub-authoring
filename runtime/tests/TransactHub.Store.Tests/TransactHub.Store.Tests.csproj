@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\TransactHub.Api\TransactHub.Api.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
   </ItemGroup>
 
   <ItemGroup>

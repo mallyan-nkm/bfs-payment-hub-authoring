@@ -76,6 +76,8 @@ public sealed class TemporalEngine : IEngine
     /// Temporal's timers, so the attempt timeout the interpreter races against it sees it.
     /// </summary>
     public static readonly bool Debug = Environment.GetEnvironmentVariable("TH_DEBUG") == "1";
+    /// <summary>Claim checks as local activities (default) or as regular ones (TH_LOCAL_CLAIMCHECK=0).</summary>
+    public static readonly bool LocalClaimCheck = Environment.GetEnvironmentVariable("TH_LOCAL_CLAIMCHECK") != "0";
     void Log(string what) { if (Debug && !Workflow.Unsafe.IsReplaying) Console.Error.WriteLine($"[temporal] {Workflow.Info.WorkflowId} {what} logical={Duration.Iso(logical)} server={Duration.Iso(ServerNow)}"); }
 
     public async Task<JsonObject> Activity(string name, JsonObject input)
@@ -114,7 +116,7 @@ public sealed class TemporalEngine : IEngine
         var called = logical;
         // The claim check is the host's own data operation, short and on this worker: a local activity, with
         // no task-queue round trip. Every party attempt stays a full activity on its scope's task queue.
-        var raw = name == Interp.ClaimCheck
+        var raw = name == Interp.ClaimCheck && LocalClaimCheck
             ? await Workflow.ExecuteLocalActivityAsync<string>(name, new object?[] { J.Str(input) }, new LocalActivityOptions
             {
                 StartToCloseTimeout = TimeSpan.FromMinutes(5),
@@ -188,8 +190,13 @@ public sealed class TemporalEngine : IEngine
         throw last!;
     }
 
+    // An event is sent at once, but the run does not end or continue as new until every event it sent has
+    // gone: a batch generation reports its chunk to the parent, then continues as new.
+    readonly List<Task> sent = new();
     public void SendEvent(string instanceId, string name, JsonObject data) =>
-        _ = Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { J.Str(data), logical });
+        sent.Add(Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { J.Str(data), logical }));
+
+    public Task Flush() => sent.Count == 0 ? Task.CompletedTask : Workflow.WhenAllAsync(sent.ToArray());
 
     public void ContinueAsNew(JsonObject input) =>
         throw Workflow.CreateContinueAsNewException((InterpreterWorkflow wf) => wf.RunAsync(J.Str(Envelope.Wrap(input, offset, frontDoor, logical))));
@@ -200,6 +207,8 @@ public sealed class TemporalEngine : IEngine
 public sealed class InterpreterWorkflow
 {
     public const string Name = "transacthub.interpreter";
+    /// <summary>The largest output a run returns as it is; a larger one is kept by the host.</summary>
+    public const int OutputInline = 256 * 1024;
     /// <summary>Which task queue serves an activity type; set by the host before its workers start, and never changed.</summary>
     public static Func<string, string> QueueOf = _ => Workflow.Info.TaskQueue;
 
@@ -228,15 +237,31 @@ public sealed class InterpreterWorkflow
         {
             o = await interp.Run(input);
         }
-        catch (ContinueAsNewException) { throw; }
+        catch (ContinueAsNewException)
+        {
+            await engine.Flush();
+            throw;
+        }
         catch (Exception e) when (e is not Temporalio.Exceptions.TemporalException || e is Temporalio.Exceptions.FailureException)
         {
             o = interp.Output();
             o["failed"] = e.Message;
             o["outcome"] ??= "failed";
         }
+        await engine.Flush();
         await fd.SignalAsync(FrontDoorWorkflow.Completed, new object?[] { J.Str(new JsonObject { ["id"] = Workflow.Info.WorkflowId, ["consumed"] = J.Clone(J.P(o, "consumed")) }) });
-        return J.Str(o);
+        // A run's output (its trace and step records) grows with its items; Temporal refuses a payload over
+        // about 2 MB. A large output is kept by the host and the run returns its reference (R-09-10).
+        var text = J.Str(o);
+        if (text.Length <= OutputInline) return text;
+        // In pieces: each call is itself a payload under the limit. The key is the run's own id, so a retried
+        // workflow task writes the same pieces again.
+        var r = $"{Workflow.Info.WorkflowId}/{Workflow.Info.RunId}";
+        const int Piece = 512 * 1024;
+        for (int i = 0, n = 0; i < text.Length; i += Piece, n++)
+            await Workflow.ExecuteLocalActivityAsync<string>(Host.KeepOutput, new object?[] { J.Str(new JsonObject { ["key"] = r, ["piece"] = n, ["text"] = text.Substring(i, Math.Min(Piece, text.Length - i)) }) },
+                new LocalActivityOptions { StartToCloseTimeout = TimeSpan.FromMinutes(5), RetryPolicy = new() { MaximumAttempts = 3 } });
+        return J.Str(new JsonObject { ["outputRef"] = r, ["consumed"] = J.Clone(J.P(o, "consumed")), ["endedAt"] = J.Clone(J.P(o, "endedAt")) });
     }
 
     // Each signal carries the business time it was sent at, so the receiver's clock moves to it.
