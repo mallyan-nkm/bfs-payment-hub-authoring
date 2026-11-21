@@ -3,11 +3,13 @@
 // to write golden.json; without, against the runtime's port, to check that every case gives the same
 // answer. The inputs are synthetic and generated here, deterministically.
 #if SOURCE
+using PaymentHub.Activities.Platform.Wps;
 using PaymentHub.Shared.Domain.Wps;
 using PaymentHub.Shared.Security;
 using Failure = PaymentHub.Shared.Domain.Wps.SifUploadRuleFailure;
 #else
 using TransactHub.Activities.Wps.Rules;
+using TransactHub.Activities.Wps.Sif;
 using Failure = TransactHub.Activities.Wps.Rules.WpsRuleFailure;
 #endif
 using System.Text.Json;
@@ -20,6 +22,59 @@ public static class Corpus
     static string F(Failure? f) => f is null ? "ok" : $"{f.ErrorCode}|{f.Message}";
     static string L(IReadOnlyList<string> xs) => xs.Count == 0 ? "ok" : string.Join("\n", xs);
     static string Q(object? x) => JsonSerializer.Serialize(x);
+
+    /// <summary>The Central Bank SIF the source generates from stored records: content, hash, totals, or why not.</summary>
+    static void SifGeneration(Action<string, object, string> add, Func<Func<string>, string> guard)
+    {
+        var created = new DateTime(2026, 11, 17, 9, 5, 0);
+        CbxSifEmployee E(long id, int order, string person, decimal fixedPay, decimal variablePay, string agent = "203320101", string account = "AE070331234567890123456", int days = 31, decimal leave = 0) =>
+            new(id, order, person, agent, account, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), days, fixedPay, variablePay, leave);
+        CbxSifVariablePay V(long id, string person, decimal housing, decimal other = 0, string routing = "203320101") =>
+            new(id, person, routing, housing, 10m, 0m, 0m, 0.005m, other, 0m);
+        var control = new CbxSifControl("1234567", "302620122", created, "102026", "AED", "CORP-0001");
+        var employees = new List<CbxSifEmployee> { E(10, 2, "1234567890", 1200m, 300.125m), E(11, 1, "00001234567891", 800.5m, 0m), E(12, 2, "1234567892", 100m, 0.004m) };
+        var pays = new List<CbxSifVariablePay> { V(5, "1234567890", 200m, 90.125m), V(6, "00001234567890", 1m), V(7, "1234567892", 0m) };
+
+        var variants = new List<(string what, List<CbxSifEmployee> e, List<CbxSifVariablePay> v, CbxSifControl c)>
+        {
+            ("valid", employees, pays, control),
+            ("no employees", new(), pays, control),
+            ("no variable pay", employees, new(), control),
+            ("one employee", employees.Take(1).ToList(), pays.Take(1).ToList(), control),
+            ("evp for nobody", employees, [.. pays, V(8, "99999999999999", 1m)], control),
+            ("comma in account", [.. employees, E(13, 3, "1234567893", 1m, 0m, account: "AE07,1")], pays, control),
+            ("line break in agent", [.. employees, E(13, 3, "1234567893", 1m, 0m, agent: "2033\n20101")], pays, control),
+            ("non-ascii person", [.. employees, E(13, 3, "١٢٣٤", 1m, 0m)], pays, control),
+            ("blank person", [.. employees, E(13, 3, " ", 1m, 0m)], pays, control),
+            ("negative fixed", [.. employees, E(13, 3, "1234567893", -1m, 0m)], pays, control),
+            ("negative days", [.. employees, E(13, 3, "1234567893", 1m, 0m, days: -1)], pays, control),
+            ("negative leave", [.. employees, E(13, 3, "1234567893", 1m, 0m, leave: -0.5m)], pays, control),
+            ("negative evp", employees, [.. pays, V(9, "1234567890", -2m)], control),
+            ("long person id", [.. employees, E(13, 3, "123456789012345678", 1m, 0m)], pays, control),
+            ("rounding", [E(1, 1, "1", 0.005m, 0.015m), E(2, 2, "2", 2.675m, 1.005m), E(3, 3, "3", 999999999999.995m, 0m)], new(), control),
+        };
+        foreach (var (field, c) in new (string, CbxSifControl)[]
+        {
+            ("month 13", control with { SalaryMonthYear = "132026" }), ("month 00", control with { SalaryMonthYear = "002026" }),
+            ("month short", control with { SalaryMonthYear = "10202" }), ("month letters", control with { SalaryMonthYear = "1O2026" }),
+            ("blank currency", control with { Currency = " " }), ("comma reference", control with { EmployerReference = "A,B" }),
+            ("blank routing", control with { BankRoutingCode = "" }), ("padded values", control with { BankRoutingCode = " 302620122 ", Currency = " AED ", SalaryMonthYear = " 102026 " }),
+            ("long establishment", control with { EstablishmentId = "12345678901234" }), ("midnight", control with { CreatedAt = new DateTime(2026, 11, 17, 0, 0, 59) }),
+        })
+            variants.Add((field, employees, pays, c));
+
+        foreach (var (what, e, v, c) in variants)
+            add("CbxSifWriter.Build", new { what }, guard(() =>
+            {
+                var (doc, failure) = CbxSifWriter.Build(e, v, c);
+                return doc is null ? $"{failure!.ErrorCode}|{failure.Message}" : Q(new { doc.Content, doc.Sha256, doc.EdrCount, doc.EvpCount, doc.TotalAmount });
+            }));
+        foreach (var n in new[] { "0000001234567261117083000.SIF", "0000001234567261117083000.sif", "0000001234567261117083000.SIF.GPG", "0000001234567261117083000.sif.gpg", ".SIF", "x.GPG", "x.txt", " " })
+            add("CbxSifWriter.FileNameFor", new { n }, guard(() => CbxSifWriter.FileNameFor(n)));
+        foreach (var m in new[] { "0000001234567", " 0000001234567 ", "ABC-1", "" })
+            add("CbxSifWriter.FallbackFileName", new { m }, guard(() => CbxSifWriter.FallbackFileName(m, created)));
+        add("CbxSifWriter.Encode", new { s = "EDR,1\r\n" }, Convert.ToHexString(CbxSifWriter.Encode("EDR,1\r\n")));
+    }
 
     static CbxRuleSettings Settings(int mol, int years, bool req, bool reg, int match) => new(mol, years, req, reg, match);
 
@@ -167,6 +222,8 @@ public static class Corpus
             foreach (var c in new[] { corp, null })
                 foreach (var (cif, acc, mail) in new (string?, string?, string?)[] { (null, null, null), ("cif0001", null, null), ("CIF9", null, null), (null, " 000000000000001 ", null), (null, "000000000000009", null), (null, null, "PAYROLL@example.com"), (null, null, "other@example.com"), ("", "", "") })
                     add("SifUploadRules.MatchCorporate", new { mol, corporate = c is not null, cif, acc, mail }, F(SifUploadRules.MatchCorporate(mol, c, cif, acc, mail)));
+
+        SifGeneration(add, guard);
 
         foreach (var a in new[] { null, "", "  ", "123456", "1234567", "AE070331234567890123456" })
             foreach (var k in new[] { 6, 4 })

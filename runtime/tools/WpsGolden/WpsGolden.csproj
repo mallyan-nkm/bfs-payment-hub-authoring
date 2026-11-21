@@ -16,5 +16,6 @@
   <ItemGroup>
     <Compile Include="$(Wps)/CbxFileNameRules.cs;$(Wps)/CbxRecordRules.cs;$(Wps)/CbxScrRules.cs;$(Wps)/CbxRuleSettings.cs;$(Wps)/SifUploadRules.cs;$(Wps)/WpsVocabulary.cs" />
     <Compile Include="$(SourceRoot)/services/shared/dotnet/PaymentHub.Shared/Security/AccountMasking.cs" />
+    <Compile Include="$(SourceRoot)/services/activities/platform/PaymentHub.Activities.Platform.Wps/CbxSifWriter.cs" />
   </ItemGroup>
 </Project>
