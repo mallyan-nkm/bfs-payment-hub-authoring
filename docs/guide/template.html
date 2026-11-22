@@ -221,7 +221,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <thead><tr><th>Command</th><th>Last line</th></tr></thead>
     <tbody>
       <tr><td><code>npm test</code></td><td>every test passed (about 165)</td></tr>
-      <tr><td><code>npm run studio -- kit</code></td><td><code>48 of 48 conformance scenarios pass on the studio interpreter</code></td></tr>
+      <tr><td><code>npm run studio -- kit</code></td><td><code>50 of 50 conformance scenarios pass on the studio interpreter</code></td></tr>
       <tr><td><code>npm run studio -- test</code></td><td><code>16 of 16 tests pass</code></td></tr>
       <tr><td><code>npm run studio -- check</code></td><td><code>0 error(s)</code> and some warnings</td></tr>
     </tbody>
@@ -246,10 +246,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>Then check it, and run the conformance kit on DTFx from <code>studio/</code>. The first run builds the DTFx harness, which takes a minute and needs the internet once for its packages.</p>
   <div class="block"><pre class="cmd">dotnet --version</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
-  <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>48 of 48 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
+  <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>50 of 50 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
   <p>The same .NET 8 runs the kit on Elsa Workflows 3, the fourth engine target. Its first run builds the Elsa harness and fetches Elsa's packages:</p>
   <div class="block"><pre class="cmd">npx tsx engines/elsa/run-kit.ts</pre></div>
-  <div class="see">The kit ends <code>48 of 48 conformance scenarios pass on Elsa</code>. A package exported for the target <code>elsa</code> deploys with the same <code>npm run studio -- deploy</code> command.</div>
+  <div class="see">The kit ends <code>50 of 50 conformance scenarios pass on Elsa</code>. A package exported for the target <code>elsa</code> deploys with the same <code>npm run studio -- deploy</code> command.</div>
   <div class="note">If the build fails with <code>error NU1100: Unable to resolve 'Microsoft.Azure.DurableTask.Core'</code>, NuGet cannot reach a package source. The harness folder names nuget.org in its own <code>nuget.config</code>, so take the latest code with <code>git pull</code>. If it still fails, your network blocks <code>api.nuget.org</code>: on a company network, ask for your proxy settings or an internal NuGet mirror, and add the mirror with <code>dotnet nuget add source &lt;url&gt; -n company</code>.</div>
   <div class="note">On Windows, if the kit or a deploy says <code>An Application Control policy has blocked this file (0x800711C7)</code>, Windows is refusing to load the harness the studio just built, because it is not signed. The cause is either Smart App Control (Windows 11, personal PCs) or an App Control or AppLocker policy set by your organisation. Event Viewer, under Applications and Services Logs, Microsoft, Windows, CodeIntegrity, Operational, names the policy. Ways forward:
   <ul>
@@ -275,7 +275,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>The Flowable setup script is a bash script: it downloads Maven into <code>engines/flowable/.bin</code> and builds the Flowable harness, so it needs the internet the first time. On Windows, run it from <b>Git Bash</b>, which comes with Git for Windows. From <code>studio/</code>:</p>
   <div class="block"><pre class="cmd">bash engines/flowable/setup.sh</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/flowable/run-kit.ts</pre></div>
-  <div class="see"><code>48 of 48 conformance scenarios pass on Flowable</code>.</div>
+  <div class="see"><code>50 of 50 conformance scenarios pass on Flowable</code>.</div>
 
   <h3>Start again</h3>
   <p>Stop <code>npm run studio:dev</code> and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete. The factory content and the example bank are seeded from <code>spec/</code> into <code>content-configurations/</code>, the factory's script-behinds and test samples from <code>studio/scripts/</code> and <code>studio/fixtures/samples/</code>, and the studio never rewrites a published file. A change set's branch, <code>studio/&lt;id&gt;</code>, is deleted once its change set is on the content branch.</p>
@@ -472,7 +472,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="note">The debugger keeps the data after every event. For a very large batch it stops keeping it after a limit and says so; debug a smaller sample to see every step.</div>
 
   <h3 id="f-kit">Conformance kit</h3>
-  <p>The 48 scenarios every engine must reproduce, one per construct of the language: sequence, handlers, switch, parallel, loops, retry, timeouts, awaits, composites, hooks, signals, pins, supersession and more. <span class="ui">Run all 48</span>, filter by <span class="ui">Construct</span>, or run one and read its expected and actual traces.</p>
+  <p>The 50 scenarios every engine must reproduce, one per construct of the language: sequence, handlers, switch, parallel, loops, retry, timeouts, awaits, composites, hooks, signals, pins, supersession and more. <span class="ui">Run all 50</span>, filter by <span class="ui">Construct</span>, or run one and read its expected and actual traces.</p>
 
   <h3 id="f-tenant">Tenant</h3>
   <p>A bank's own settings, for its Bank Configurator and Bank Approver. A Bank Configurator lands on the <span class="ui">Bank workspace</span>: its hooks, rules, dials, simulators, hook bindings, and the test bench for every workflow the bank can configure, run with the bank's configuration. A saved configuration set is a draft until the Bank Approver approves it as a version.</p>
@@ -564,7 +564,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="see">Seventeen lines ending <code>end:settled</code>. Run it again with <span class="ui">Tenant for the run</span> <code>owner</code>: the owner enables no rail, so <code>route:no-match</code>, <code>undo:reserve</code>, <code>end:rejected</code>.</div>
 
   <h3>5. The conformance kit (5 minutes)</h3>
-  <p>Open <span class="ui">Conformance kit</span> and click <span class="ui">Run all 48</span>. Open <code>CK-RETRY-01</code> and read what it proves.</p>
+  <p>Open <span class="ui">Conformance kit</span> and click <span class="ui">Run all 50</span>. Open <code>CK-RETRY-01</code> and read what it proves.</p>
 
   <h3>6. Author and publish a rule, with maker and checker (25 minutes)</h3>
   <ol class="steps">

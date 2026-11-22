@@ -2,7 +2,7 @@
 
 This folder runs the conformance kit on the Durable Task Framework (DTFx, `Microsoft.Azure.DurableTask.Core` 3.11.3, .NET 8). One generic orchestration interprets the expanded DSL document. Every activity attempt goes through the studio's party service. The kit runner compares the business trace exactly as it does for the studio.
 
-Result: **48 of 48 conformance scenarios pass on DTFx** (22 November 2026, with CK-AWAIT-06 and 07; the earlier CK-TRACE-01 failure under Limits no longer shows).
+Result: **50 of 50 conformance scenarios pass on DTFx** (22 November 2026, with CK-AWAIT-06 and 07; the earlier CK-TRACE-01 failure under Limits no longer shows).
 
 ## How to run
 
@@ -10,7 +10,7 @@ From `studio/`:
 
 ```
 apt-get install -y dotnet-sdk-8.0      # once; NuGet restores DurableTask.Core on the first build
-npx tsx engines/dtfx/run-kit.ts        # all 48 scenarios, about 5 minutes
+npx tsx engines/dtfx/run-kit.ts        # all 50 scenarios, about 5 minutes
 npx tsx engines/dtfx/run-kit.ts CK-AWAIT-04 CK-SIGNAL-02 --verbose
 ```
 

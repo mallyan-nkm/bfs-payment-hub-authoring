@@ -3,231 +3,25 @@ id: CS-2026-11-22-005
 tenant: owner
 origin: seed
 checker: service.operations
-publishedAt: 2026-11-22T09:05:29.225Z
+publishedAt: 2026-11-22T10:00:32.050Z
 makers:
   - tools/build_factory.py
 sources:
-  - spec/examples/bank
-  - spec/factory/inventory.yaml
-  - spec/factory/p
-  - spec/factory/uae.p
-  - spec/factory/uae.wps
-  - studio/fixtures/samples
-  - studio/scripts
+  - spec/examples/bindings
 members:
-  - kind: configuration-set
-    name: config:example-bank
-    release: 1.1.0
-    key: example-bank/config:example-bank@1.1.0
-  - kind: pack
-    name: pack:b:example-bank
-    release: 1.1.0
-    key: example-bank/pack:b:example-bank@1.1.0
-  - kind: test
-    name: WPS-IN-001
+  - kind: engine-binding
+    name: binding:dtfx
     release: ""
-    key: example-bank/WPS-IN-001
-  - kind: test
-    name: WPS-IN-002
+    key: binding:dtfx
+  - kind: engine-binding
+    name: binding:elsa
     release: ""
-    key: example-bank/WPS-IN-002
-  - kind: test
-    name: WPS-IN-003
+    key: binding:elsa
+  - kind: engine-binding
+    name: binding:flowable
     release: ""
-    key: example-bank/WPS-IN-003
-  - kind: test
-    name: WPS-IN-004
+    key: binding:flowable
+  - kind: engine-binding
+    name: binding:temporal
     release: ""
-    key: example-bank/WPS-IN-004
-  - kind: test
-    name: WPS-IN-005
-    release: ""
-    key: example-bank/WPS-IN-005
-  - kind: test
-    name: WPS-IN-006
-    release: ""
-    key: example-bank/WPS-IN-006
-  - kind: test
-    name: WPS-IN-007
-    release: ""
-    key: example-bank/WPS-IN-007
-  - kind: test
-    name: WPS-IN-008
-    release: ""
-    key: example-bank/WPS-IN-008
-  - kind: test
-    name: WPS-RTC-001
-    release: ""
-    key: example-bank/WPS-RTC-001
-  - kind: inventory
-    name: inventory
-    release: 1.1.0
-    key: inventory@1.1.0
-  - kind: test
-    name: P-RES-001
-    release: ""
-    key: P-RES-001
-  - kind: test
-    name: P-RES-002
-    release: ""
-    key: P-RES-002
-  - kind: activity
-    name: p.decide.await-posting-window.v1
-    release: 1.0.0
-    key: p.decide.await-posting-window.v1@1.0.0
-  - kind: activity
-    name: p.decide.posting-window.v1
-    release: 1.0.0
-    key: p.decide.posting-window.v1@1.0.0
-  - kind: activity
-    name: p.post.accounting.v1
-    release: 1.1.0
-    key: p.post.accounting.v1@1.1.0
-  - kind: simulator
-    name: p.sim.core-banking.v1
-    release: 1.1.0
-    key: p.sim.core-banking.v1@1.1.0
-  - kind: workflow
-    name: p.sub.await-posting-window.v1
-    release: 1.0.0
-    key: p.sub.await-posting-window.v1@1.0.0
-  - kind: pack
-    name: pack:p
-    release: 1.1.0
-    key: pack:p@1.1.0
-  - kind: pack
-    name: pack:uae.p
-    release: 1.1.0
-    key: pack:uae.p@1.1.0
-  - kind: pack
-    name: pack:uae.wps
-    release: 1.1.0
-    key: pack:uae.wps@1.1.0
-  - kind: scheme
-    name: scheme:uae.wps
-    release: 1.1.0
-    key: scheme:uae.wps@1.1.0
-  - kind: activity
-    name: uae.wps.decide.returns.v2
-    release: 2.0.0
-    key: uae.wps.decide.returns.v2@2.0.0
-  - kind: activity
-    name: uae.wps.exchange.return-credits.v1
-    release: 1.1.0
-    key: uae.wps.exchange.return-credits.v1@1.1.0
-  - kind: activity
-    name: uae.wps.exchange.submit-salary-file.v1
-    release: 1.1.0
-    key: uae.wps.exchange.submit-salary-file.v1@1.1.0
-  - kind: activity
-    name: uae.wps.map.ack-in.v1
-    release: 1.1.0
-    key: uae.wps.map.ack-in.v1@1.1.0
-  - kind: activity
-    name: uae.wps.map.dif-out.v2
-    release: 2.0.0
-    key: uae.wps.map.dif-out.v2@2.0.0
-  - kind: activity
-    name: uae.wps.map.pif-in.v1
-    release: 1.1.0
-    key: uae.wps.map.pif-in.v1@1.1.0
-  - kind: activity
-    name: uae.wps.map.prc-out.v2
-    release: 2.0.0
-    key: uae.wps.map.prc-out.v2@2.0.0
-  - kind: activity
-    name: uae.wps.map.psi-in.v1
-    release: 1.0.0
-    key: uae.wps.map.psi-in.v1@1.0.0
-  - kind: activity
-    name: uae.wps.map.rfa-out.v1
-    release: 1.1.0
-    key: uae.wps.map.rfa-out.v1@1.1.0
-  - kind: activity
-    name: uae.wps.map.rri-in.v1
-    release: 1.0.0
-    key: uae.wps.map.rri-in.v1@1.0.0
-  - kind: activity
-    name: uae.wps.map.rtc-in.v2
-    release: 2.0.0
-    key: uae.wps.map.rtc-in.v2@2.0.0
-  - kind: activity
-    name: uae.wps.post.return.v1
-    release: 1.1.0
-    key: uae.wps.post.return.v1@1.1.0
-  - kind: simulator
-    name: uae.wps.sim.wps-inward.v1
-    release: 1.1.0
-    key: uae.wps.sim.wps-inward.v1@1.1.0
-  - kind: simulator
-    name: uae.wps.sim.wps-outward.v1
-    release: 1.1.0
-    key: uae.wps.sim.wps-outward.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.sub.confirm-receipt.v1
-    release: 1.1.0
-    key: uae.wps.sub.confirm-receipt.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.sub.request-refund.v1
-    release: 1.1.0
-    key: uae.wps.sub.request-refund.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.sub.return-credits.v1
-    release: 1.1.0
-    key: uae.wps.sub.return-credits.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.sub.submit-salary-file.v1
-    release: 1.1.0
-    key: uae.wps.sub.submit-salary-file.v1@1.1.0
-  - kind: table
-    name: uae.wps.table.returns.v1
-    release: 1.1.0
-    key: uae.wps.table.returns.v1@1.1.0
-  - kind: operations-view
-    name: uae.wps.view.operations.v1
-    release: 1.1.0
-    key: uae.wps.view.operations.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.wf.agent-payment-in.v2
-    release: 2.0.0
-    key: uae.wps.wf.agent-payment-in.v2@2.0.0
-  - kind: workflow
-    name: uae.wps.wf.return-in.v1
-    release: 1.1.0
-    key: uae.wps.wf.return-in.v1@1.1.0
-  - kind: test
-    name: WPS-EXC-001
-    release: ""
-    key: WPS-EXC-001
-  - kind: test
-    name: WPS-EXC-002
-    release: ""
-    key: WPS-EXC-002
-  - kind: test
-    name: WPS-MAP-001
-    release: ""
-    key: WPS-MAP-001
-  - kind: test
-    name: WPS-MAP-002
-    release: ""
-    key: WPS-MAP-002
-  - kind: test
-    name: WPS-OUT-001
-    release: ""
-    key: WPS-OUT-001
-  - kind: test
-    name: WPS-OUT-002
-    release: ""
-    key: WPS-OUT-002
-  - kind: test
-    name: WPS-OUT-003
-    release: ""
-    key: WPS-OUT-003
-  - kind: test
-    name: WPS-OUT-004
-    release: ""
-    key: WPS-OUT-004
-  - kind: test
-    name: WPS-OUT-005
-    release: ""
-    key: WPS-OUT-005
+    key: binding:temporal

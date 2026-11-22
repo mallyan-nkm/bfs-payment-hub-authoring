@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.TreeMap;
 
 import static th.flowable.Support.F;
 import static th.flowable.Support.M;
@@ -117,7 +118,16 @@ public final class Harness {
         String pid, label, name, release, kind, key;
         Inst parent;
         ObjectNode ctx;
-        final List<String> trace = new ArrayList<>(), detail = new ArrayList<>(), releaseTrace = new ArrayList<>(), pending = new ArrayList<>();
+        private final List<String> trace = new ArrayList<>(), detail = new ArrayList<>();
+        final List<String> releaseTrace = new ArrayList<>(), pending = new ArrayList<>();
+        /** What the items of a forEach recorded, by item, while they ran side by side: put into the trace in item order (R-05-53). */
+        final TreeMap<Integer, List<String[]>> items = new TreeMap<>();
+        void flushItems() {
+            for (List<String[]> es : items.values()) for (String[] e : es) ("detail".equals(e[0]) ? detail : trace).add(e[1]);
+            items.clear();
+        }
+        List<String> trace() { flushItems(); return trace; }
+        List<String> detail() { flushItems(); return detail; }
         final List<ObjectNode> steps = new ArrayList<>();
         final Map<String, Integer> attempts = new LinkedHashMap<>(), calls = new HashMap<>();
         final Map<String, ObjectNode> openStep = new HashMap<>();
@@ -287,8 +297,8 @@ public final class Harness {
     ObjectNode observe(Inst i) {
         ObjectNode o = F.objectNode();
         o.put("label", i.label);
-        o.set("trace", Support.arr(i.trace));
-        o.set("detail", Support.arr(i.detail));
+        o.set("trace", Support.arr(i.trace()));
+        o.set("detail", Support.arr(i.detail()));
         o.set("releaseTrace", Support.arr(i.releaseTrace));
         ArrayNode steps = o.putArray("steps");
         i.steps.forEach(steps::add);
@@ -703,12 +713,12 @@ public final class Harness {
         if (root == null || root.ended) return;
         String aw = awaitingStep(root);
         if ("pause".equals(signal)) {
-            if (aw != null) { root.trace.add(aw + ":waiting"); root.trace.add("signal:pause"); } else root.pending.add("signal:pause");
+            if (aw != null) { root.trace().add(aw + ":waiting"); root.trace().add("signal:pause"); } else root.pending.add("signal:pause");
         } else {
-            if (aw != null) root.trace.add(aw + ":waiting");
-            root.trace.addAll(root.pending);
+            if (aw != null) root.trace().add(aw + ":waiting");
+            root.trace().addAll(root.pending);
             root.pending.clear();
-            root.trace.add("signal:" + signal);
+            root.trace().add("signal:" + signal);
         }
         String name = plan.path("signalMessages").path(signal).asText();
         List<EventSubscription> subs = rt.createEventSubscriptionQuery().processInstanceId(root.pid).eventType("message").eventName(name).list();
@@ -769,10 +779,17 @@ public final class Harness {
         i.releaseTrace.add(Support.shortName(i.name) + "@" + i.release);
     }
 
-    void record(Inst i, Map<String, String> a, String entry) {
+    void record(Inst i, Map<String, String> a, String entry) { record(i, a, entry, null); }
+
+    /** An item's entry waits with its item's others, so the trace is in item order (R-05-53). */
+    void record(Inst i, Map<String, String> a, String entry, ExecutionEntity ex) {
         String r = a.getOrDefault("record", "business");
-        if ("detail".equals(r)) i.detail.add(entry);
-        else i.trace.add(entry);
+        if (ex != null && "true".equals(a.get("item")) && ex.getVariable("th_item") instanceof Number n) {
+            i.items.computeIfAbsent(n.intValue(), k -> new ArrayList<>()).add(new String[] { r, entry });
+            return;
+        }
+        if ("detail".equals(r)) i.detail().add(entry);
+        else i.trace().add(entry);
     }
 
     String labelOf(ExecutionEntity ex, Map<String, String> a, String step) {
@@ -820,13 +837,13 @@ public final class Harness {
         switch (p.get("kind")) {
             case "gate" -> {
                 // A signal is seen at the next step boundary (the interpreter's gate).
-                if (!inst.pending.isEmpty()) { inst.trace.addAll(inst.pending); inst.pending.clear(); }
+                if (!inst.pending.isEmpty()) { inst.trace().addAll(inst.pending); inst.pending.clear(); }
             }
             case "call" -> {
                 String step = p.get("step");
                 Object o = ex.getVariable(p.get("var"));
                 String label = labelOf(ex, p, step);
-                record(inst, p, "finally".equals(p.get("record")) ? label : label + ":" + o);
+                record(inst, p, "finally".equals(p.get("record")) ? label : label + ":" + o, ex);
             }
             case "slot" -> {
                 String step = p.get("step");
@@ -846,25 +863,25 @@ public final class Harness {
             }
             case "awaitReceived" -> {
                 inst.awaited.add(p.get("message"));
-                record(inst, p, labelOf(ex, p, p.get("step")) + ":received");
+                record(inst, p, labelOf(ex, p, p.get("step")) + ":received", ex);
             }
             case "awaitTimeout" -> {
                 inst.awaited.add(p.get("message"));
                 inst.expired.add(p.get("message"));
-                record(inst, p, labelOf(ex, p, p.get("step")) + ":timeout");
+                record(inst, p, labelOf(ex, p, p.get("step")) + ":timeout", ex);
             }
-            case "undo" -> inst.trace.add("undo:" + p.get("step"));
+            case "undo" -> inst.trace().add("undo:" + p.get("step"));
             case "hookStart" -> {
-                inst.notifyAt.put(p.get("hookPoint"), inst.trace.size());
-                inst.trace.add("hook:pending");
+                inst.notifyAt.put(p.get("hookPoint"), inst.trace().size());
+                inst.trace().add("hook:pending");
             }
             case "hookResult" -> hookResult(inst, ex, p);
             case "end" -> {
                 Object o = ex.getVariable("th_outcome");
                 String outcome = o == null ? "done" : o.toString();
-                inst.trace.addAll(inst.pending);
+                inst.trace().addAll(inst.pending);
                 inst.pending.clear();
-                inst.trace.add("end:" + outcome);
+                inst.trace().add("end:" + outcome);
                 inst.releaseTrace.add("end:" + outcome);
                 inst.ended = true;
                 inst.endedAt = elapsed();
@@ -901,11 +918,11 @@ public final class Harness {
         if ("notify".equals(p.get("type"))) {
             Integer at = inst.notifyAt.get(key);
             String entry = "hook:" + raw;
-            if (at != null) inst.trace.set(at, entry);
-            else inst.trace.add(entry);
+            if (at != null) inst.trace().set(at, entry);
+            else inst.trace().add(entry);
             return;
         }
-        inst.trace.add("hook:" + raw);
+        inst.trace().add("hook:" + raw);
         String eff = raw;
         if ("failed".equals(raw)) eff = "fail-closed".equals(p.get("onFailure")) ? "hold" : "continue";
         ex.setVariable("th_hookEffect_" + Support.safe(name), eff);

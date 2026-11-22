@@ -13,20 +13,22 @@ namespace TransactHub.Engines.Durable;
 /// operator needs and the workflow state already holds without personal data: the step, the activity, the
 /// attempt, the outcome and reason code, the error's name, the header's ids and the facts the step wrote.
 /// Never the payload, never an error's text (it can quote a value).
+/// The facts of one payment go in order on its own lane, several in one save when the items of a large file answer side by
+/// side, and no payment waits for another's (I-78, <see cref="FactWriter"/>).
 /// </summary>
 public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
 {
     readonly ConcurrentDictionary<string, (string id, string kind)?> subjects = new();
-    readonly object gate = new();
+    readonly FactWriter writer = new(options, clock);
     static readonly string[] HeaderKeys = ["scheme", "direction", "kind", "segment", "fileId", "endToEndId", "leg", "slot"];
 
     /// <summary>Installs the recorder on every worker router of this process.</summary>
     public static StepFacts Install(StoreOptions options, TimeProvider? clock = null)
     {
         var s = new StepFacts(options, clock);
-        WorkerRouter.Answered = (req, res) =>
+        WorkerRouter.Answered = async (req, res) =>
         {
-            try { s.Record(req, res); }
+            try { await s.Record(req, res); }
             catch (Exception e) { Console.Error.WriteLine($"[store] a step fact was not recorded: {e.GetType().Name}"); }
         };
         return s;
@@ -47,19 +49,25 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
                 var d = JsonNode.Parse(f.DataJson) as JsonObject;
                 return J.S(d, "bulk") is string b ? (b, "bulk") : J.S(d, "payment") is string p ? (p, "payment") : null;
             });
-            if (hit is not null) return hit;
+            if (hit is not null)
+            {
+                // The instance's own answer from now on: a leg's attempts do not ask the database again for each one (I-78).
+                if (c != instance) subjects[instance] = hit;
+                return hit;
+            }
             subjects.TryRemove(c, out _); // not accepted yet: ask again next time
         }
         return null;
     }
 
-    public void Record(JsonObject req, JsonObject res)
+    public Task Record(JsonObject req, JsonObject res)
     {
         var instance = J.S(req, "instance") ?? "";
-        lock (gate)
         {
-            using var db = StoreDbContext.Open(options);
-            if (SubjectOf(db, instance) is not { } subject) return;
+            (string id, string kind)? found;
+            if (subjects.TryGetValue(instance, out var known) && known is not null) found = known;
+            else using (var db = StoreDbContext.Open(options)) found = SubjectOf(db, instance);
+            if (found is not { } subject) return Task.CompletedTask;
             var ctx = J.P(req, "ctx") as JsonObject;
             var header = new JsonObject();
             foreach (var k in HeaderKeys) if (J.S(J.P(ctx, "header"), k) is string v) header[k] = v;
@@ -86,7 +94,7 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
             }
             else if (kind == "error") data["error"] = new JsonObject { ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone() };
             var code = kind == "result" ? J.S(res, "outcome") ?? "result" : kind;
-            new FactLog(db, clock).Append(subject.id, subject.kind, new NewFact("step", code, data, Actor: "engine")).GetAwaiter().GetResult();
+            return writer.Append(subject.id, subject.kind, new NewFact("step", code, data, Actor: "engine"));
         }
     }
 }

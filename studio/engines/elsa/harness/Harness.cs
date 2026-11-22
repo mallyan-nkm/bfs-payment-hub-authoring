@@ -89,7 +89,7 @@ public sealed class Harness : IDisposable
     public async Task<JsonObject> Run()
     {
         var start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
-        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100));
+        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
         InterpreterActivity.Dep = dep;
         Clock = new VirtualClock(start);

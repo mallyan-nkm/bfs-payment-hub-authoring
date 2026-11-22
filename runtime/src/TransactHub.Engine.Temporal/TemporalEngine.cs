@@ -25,8 +25,11 @@ public static class Envelope
 /// Business time is logical: it moves on a timer firing, a party's declared latency and an arrival
 /// (a message, a signal, a child's report), never on the time the engine takes to process. So a
 /// one-hour wait is one hour on Temporal as on every engine, and the clock is the same on replay.
+/// An attempt's timeout measures that attempt's own execution only (R-05-54): the engine keeps the deadline
+/// itself (<see cref="IAttemptDeadlines"/>), from the party's declared time and, on a real server, from the
+/// activity's own Start-To-Close; it never races a timer that the engine's processing or queueing could spend.
 /// </summary>
-public sealed class TemporalEngine : IEngine
+public sealed class TemporalEngine : IEngine, IAttemptDeadlines
 {
     readonly long offset;
     readonly string frontDoor;
@@ -111,23 +114,46 @@ public sealed class TemporalEngine : IEngine
         pending.Add((due, seq));
     }
 
+    /// <summary>
+    /// Set by a host on a real Temporal server: an attempt's Start-To-Close is then its own budget (its attempt timeout, or what is
+    /// left of its total timeout), counted by Temporal from when a worker starts it, so time in the queue is not counted. On the
+    /// time-skipping test server it stays an hour: that server may skip time while an activity runs.
+    /// </summary>
+    public static bool RealServer;
+
+    /// <summary>A late attempt: its result, if one comes, is abandoned (R-09-11); the interpreter reads it as a Timeout.</summary>
+    JsonObject Late() => new() { ["kind"] = "error", ["name"] = "Timeout", ["retryable"] = true, ["message"] = "no answer within the attempt's own timeout", ["late"] = true, ["at"] = Now };
+
     async Task<JsonObject> Attempt(string name, JsonObject input, int seq)
     {
         var called = logical;
-        // The claim check is the host's own data operation, short and on this worker: a local activity, with
-        // no task-queue round trip. Every party attempt stays a full activity on its scope's task queue.
-        var raw = name == Interp.ClaimCheck && LocalClaimCheck
-            ? await Workflow.ExecuteLocalActivityAsync<string>(name, new object?[] { J.Str(input) }, new LocalActivityOptions
-            {
-                StartToCloseTimeout = TimeSpan.FromMinutes(5),
-                RetryPolicy = new() { MaximumAttempts = 1 },
-            })
-            : await Workflow.ExecuteActivityAsync<string>(name, new object?[] { J.Str(input) }, new ActivityOptions
-            {
-                TaskQueue = queueOf(name),
-                StartToCloseTimeout = TimeSpan.FromHours(1),
-                RetryPolicy = new() { MaximumAttempts = 1 },
-            });
+        long? deadline = J.Num(input, "deadline") is double dd ? (long)dd : null;
+        string raw;
+        try
+        {
+            // The claim check is the host's own data operation, short and on this worker: a local activity, with
+            // no task-queue round trip. Every party attempt stays a full activity on its scope's task queue.
+            raw = name == Interp.ClaimCheck && LocalClaimCheck
+                ? await Workflow.ExecuteLocalActivityAsync<string>(name, new object?[] { J.Str(input) }, new LocalActivityOptions
+                {
+                    StartToCloseTimeout = TimeSpan.FromMinutes(5),
+                    RetryPolicy = new() { MaximumAttempts = 1 },
+                })
+                : await Workflow.ExecuteActivityAsync<string>(name, new object?[] { J.Str(input) }, new ActivityOptions
+                {
+                    TaskQueue = queueOf(name),
+                    // The attempt's own execution (R-05-54); no Schedule-To-Close: time in the queue is the engine's, not the attempt's.
+                    StartToCloseTimeout = RealServer && deadline is long budgetAt ? TimeSpan.FromMilliseconds(Math.Max(1000, budgetAt - called)) : TimeSpan.FromHours(1),
+                    RetryPolicy = new() { MaximumAttempts = 1 },
+                });
+        }
+        catch (Temporalio.Exceptions.ActivityFailureException e) when (deadline is long dl && e.InnerException is Temporalio.Exceptions.TimeoutFailureException)
+        {
+            // The attempt ran longer than it may: a port that does not answer in time.
+            Log($"late {name}: its own execution passed {Duration.Iso(dl)}");
+            await Release(seq, dl);
+            return Late();
+        }
         var res = (JsonObject)J.Parse(raw)!;
         if (J.P(res, "deliveries") is JsonArray d && d.Count > 0)
         {
@@ -143,13 +169,20 @@ public sealed class TemporalEngine : IEngine
         res.Remove("latency");
         if (J.S(res, "kind") == "hang")
         {
-            if (J.Num(input, "deadline") is double dl)
+            if (deadline is long dl)
             {
-                await Release(seq, (long)dl + 1000);
-                return new JsonObject { ["kind"] = "error", ["name"] = "Timeout", ["retryable"] = true, ["message"] = "no answer before the attempt's own deadline", ["late"] = true, ["at"] = Now };
+                await Release(seq, dl);
+                return Late();
             }
             Known(seq, long.MaxValue);
             await Workflow.WaitConditionAsync(() => false);
+        }
+        // The party took longer than the attempt may (its declared time is the attempt's own execution): the attempt timed
+        // out at its deadline, and the result that came is abandoned.
+        if (deadline is long limit && due > limit)
+        {
+            await Release(seq, limit);
+            return Late();
         }
         await Release(seq, due);
         res["at"] = Now;
@@ -158,27 +191,40 @@ public sealed class TemporalEngine : IEngine
     }
 
     /// <summary>
-    /// TH_TEMPORAL_TIMERS=logical (off by default; the load harness's setting, docs/runtime/LOAD-TEST.md, I-77): a timer the
-    /// interpreter races (an attempt's deadline, an await's timeout) runs for its business length from the logical now,
-    /// so the time a real server spends processing does not use it up. Without it, a step's deadline is set on Temporal's
-    /// clock, and on a real server a file whose items take longer to process than the step's attempt timeout fails.
+    /// A business timer (an await's timeout, a wait, a deadline, a loop's interval, a retry's backoff) runs for its business
+    /// length from the logical now (R-05-54, I-77), so the time a real server spends processing never uses it up.
+    /// TH_TEMPORAL_TIMERS=server keeps the binding's behaviour before 22 November 2026, a timer set on Temporal's clock, for
+    /// a comparison run only (docs/runtime/LOAD-TEST.md).
     /// </summary>
-    public static readonly bool LogicalTimers = Environment.GetEnvironmentVariable("TH_TEMPORAL_TIMERS") == "logical";
+    public static readonly bool ServerTimers = Environment.GetEnvironmentVariable("TH_TEMPORAL_TIMERS") == "server";
 
     public async Task Timer(long at, CancellationToken ct)
     {
         Log($"timer {Duration.Iso(at)}");
-        if (!LogicalTimers || ServerNow <= logical) { await Until(at, ct); return; }
+        await Logical(at, ct);
+    }
+
+    async Task Logical(long at, CancellationToken ct = default)
+    {
+        if (ServerTimers || ServerNow <= logical) { await Until(at, ct); return; }
         var wait = at - logical;
         if (wait > 0) await Workflow.DelayAsync(TimeSpan.FromMilliseconds(wait), ct);
         else ct.ThrowIfCancellationRequested();
         logical = Math.Max(logical, at);
     }
 
+    // A child is known to the server only once its start is confirmed; an event this run sends it before then waits for that
+    // (a message the platform workflow hands to the leg it has just begun, R-09-16), rather than fail as sent to no workflow.
+    readonly Dictionary<string, Task> started = new();
+
     public async Task<JsonObject> Child(string instanceId, JsonObject input)
     {
-        var raw = await Workflow.ExecuteChildWorkflowAsync<string>(InterpreterWorkflow.Name, new object?[] { J.Str(Envelope.Wrap(input, offset, frontDoor, logical)) },
+        var envelope = J.Str(Envelope.Wrap(input, offset, frontDoor, logical));
+        var start = Workflow.StartChildWorkflowAsync((InterpreterWorkflow wf) => wf.RunAsync(envelope),
             new ChildWorkflowOptions { Id = instanceId, TaskQueue = Workflow.Info.TaskQueue });
+        started[instanceId] = start;
+        var handle = await start;
+        var raw = await handle.GetResultAsync();
         var o = (JsonObject)J.Parse(raw)!;
         // The child's end is an arrival: the parent goes on from the business time the child ended at.
         if (J.Num(o, "endedAt") is double ended) Arrived((long)ended);
@@ -197,7 +243,7 @@ public sealed class TemporalEngine : IEngine
             if (n + 1 == o.MaxNumberOfAttempts) break;
             var deadline = o.RetryTimeout == TimeSpan.MaxValue ? long.MaxValue : first + (long)o.RetryTimeout.TotalMilliseconds;
             if (!o.Handle(last) || Now >= deadline) break;
-            await Until(Now + (long)o.Delay(n).TotalMilliseconds);
+            await Logical(Now + (long)o.Delay(n).TotalMilliseconds);
         }
         throw last!;
     }
@@ -205,8 +251,13 @@ public sealed class TemporalEngine : IEngine
     // An event is sent at once, but the run does not end or continue as new until every event it sent has
     // gone: a batch generation reports its chunk to the parent, then continues as new.
     readonly List<Task> sent = new();
-    public void SendEvent(string instanceId, string name, JsonObject data) =>
-        sent.Add(Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { J.Str(data), logical }));
+    public void SendEvent(string instanceId, string name, JsonObject data) => sent.Add(Send(instanceId, name, J.Str(data), logical));
+
+    async Task Send(string instanceId, string name, string data, long at)
+    {
+        if (started.TryGetValue(instanceId, out var s)) await s;
+        await Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { data, at });
+    }
 
     public Task Flush() => sent.Count == 0 ? Task.CompletedTask : Workflow.WhenAllAsync(sent.ToArray());
 

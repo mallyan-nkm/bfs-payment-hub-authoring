@@ -184,7 +184,10 @@ public sealed class FrontDoorWorkflow
             return;
         }
         var candidates = runs.Where(r => r.Kind != "batch" && Correlates(r.Header, m)).ToList();
-        var target = candidates.LastOrDefault(c => !c.Done) ?? candidates.LastOrDefault();
+        // The payment's own runs (the platform workflow and its leg, the latest first) before a hook's run, which shares the
+        // payment's header but awaits none of its messages: a message the scheme sends for the payment reaches the leg, or the
+        // platform workflow, which hands it to its leg (R-09-16).
+        var target = candidates.LastOrDefault(c => !c.Done && c.Kind != "hook") ?? candidates.LastOrDefault(c => !c.Done) ?? candidates.LastOrDefault();
         if (target is null) { unmatched++; return; }
         if (target.Done)
         {

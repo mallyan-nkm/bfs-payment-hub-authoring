@@ -17,8 +17,9 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
 {
     readonly object gate = new();
     readonly List<ClaimCheckStore> stores = new();
+    readonly FactWriter writer = new(options, clock);
     /// <summary>What was accepted into the store, by payload reference.</summary>
-    public readonly Dictionary<string, (string subjectId, string kind, int payments)> Accepted = new();
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string subjectId, string kind, int payments)> Accepted = new();
 
     /// <summary>Installs a journal on every claim-check store this process makes, from TH_STORE_PROVIDER and TH_STORE_CONNECTION; migrates the database first.</summary>
     public static StoreJournal? InstallFromEnvironment()
@@ -36,14 +37,9 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
 
     // The engines call the claim check from their own threads and expect it to finish before they go on;
     // a fact is written before the in-memory store changes, so the database is never behind the engine.
-    void Fact(string r, string code, JsonObject data, string? release = null)
-    {
-        lock (gate)
-        {
-            using var db = StoreDbContext.Open(options);
-            new FactLog(db, clock).Append(r, DurableClaimCheck.Kind, new NewFact("payload", code, data, release, "claim-check")).GetAwaiter().GetResult();
-        }
-    }
+    // Each payload is its own lane (I-78): a fact waits only for the facts of its own payload.
+    void Fact(string r, string code, JsonObject data, string? release = null) =>
+        writer.Append(r, DurableClaimCheck.Kind, new NewFact("payload", code, data, release, "claim-check")).GetAwaiter().GetResult();
 
     public void Attached(ClaimCheckStore store) { lock (gate) stores.Add(store); }
 
@@ -52,23 +48,19 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
         Fact(reff, "create", new JsonObject { ["payload"] = J.Clone(payload) });
         if (accept is null) return;
         var a = new AcceptInfo(J.S(accept, "tenant") ?? "tenant", J.S(accept, "scheme") ?? "", J.S(accept, "direction") == "inward" ? Direction.Inward : Direction.Outward, J.S(accept, "release") ?? "");
-        lock (gate)
+        using var db = StoreDbContext.Open(options);
+        var store = new PaymentStore(db, clock);
+        if (CanonicalMapper.ToBulk(payload) is { } bulk)
         {
-            using var db = StoreDbContext.Open(options);
-            var store = new PaymentStore(db, clock);
-            var log = new FactLog(db, clock);
-            if (CanonicalMapper.ToBulk(payload) is { } bulk)
-            {
-                var b = store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId).GetAwaiter().GetResult();
-                Accepted[reff] = (b.BulkId, "bulk", b.PaymentIds.Count);
-                log.Append(reff, DurableClaimCheck.Kind, new NewFact("payload", "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, a.ReleaseId, "claim-check")).GetAwaiter().GetResult();
-            }
-            else if (CanonicalMapper.ToPayment(payload, null, 0) is { } t)
-            {
-                var id = store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId).GetAwaiter().GetResult();
-                Accepted[reff] = (id, "payment", 1);
-                log.Append(reff, DurableClaimCheck.Kind, new NewFact("payload", "accepted", new JsonObject { ["payment"] = id }, a.ReleaseId, "claim-check")).GetAwaiter().GetResult();
-            }
+            var b = store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId).GetAwaiter().GetResult();
+            Accepted[reff] = (b.BulkId, "bulk", b.PaymentIds.Count);
+            Fact(reff, "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, a.ReleaseId);
+        }
+        else if (CanonicalMapper.ToPayment(payload, null, 0) is { } t)
+        {
+            var id = store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId).GetAwaiter().GetResult();
+            Accepted[reff] = (id, "payment", 1);
+            Fact(reff, "accepted", new JsonObject { ["payment"] = id }, a.ReleaseId);
         }
     }
 

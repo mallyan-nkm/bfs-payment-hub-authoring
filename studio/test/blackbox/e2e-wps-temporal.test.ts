@@ -117,11 +117,10 @@ describe('the WPS salary file on Temporal', () => {
     ['every credit posted: confirmed, credited and reported', [{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file' }, { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'accept' }]],
     ['a refused credit returned, the returns file refused and handed to operations', []],
   ];
-  // Not yet on Temporal (Issue I-84): the PSI the inward simulator sends with the payment file does not reach the leg through the
-  // time-skipping front door, so the leg ends pending at the supplement. DTFx and Elsa take it (e2e-wps-parity). Run with
-  // TH_TEMPORAL_INWARD=1 to see it.
+  // The PSI the inward simulator sends with the payment file reaches the leg: the platform workflow hands a kept message to its
+  // leg once the leg has started (Issue I-84, R-09-16).
   for (const [what, override] of inwardCases) {
-    (process.env.TH_TEMPORAL_INWARD ? it : it.skip)(`the inward payment file, ${what}: the same trace as the studio interpreter`, async () => {
+    it(`the inward payment file, ${what}: the same trace as the studio interpreter`, async () => {
       const bench = [...INWARD.bench.filter((b) => !override.some((o) => o.port === b.port)), ...override];
       const expected = await api.post('/api/bench/run', { target: INWARD.platform, tenant: TENANT, inbound: INWARD.sample, message: INWARD.message, bench });
       expect(expected.status, JSON.stringify(expected.data).slice(0, 400)).toBe(200);

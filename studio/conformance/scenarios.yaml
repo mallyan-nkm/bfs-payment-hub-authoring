@@ -112,6 +112,20 @@ scenarios:
               - { id: item, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
         - end: done
 
+  # R-05-53: three items side by side, each two steps; the trace lists each item's steps together, in item order.
+  - id: CK-FOREACH-03
+    stubs: { "step:a": { latency: PT2S }, "step:b": { latency: PT1S } }
+    context: { items: [ { payment: { instructedAmount: { value: 1 } } }, { payment: { instructedAmount: { value: 2 } } }, { payment: { instructedAmount: { value: 3 } } } ] }
+    workflow:
+      do:
+        - forEach:
+            in: "items[]"
+            concurrency: 3
+            do:
+              - { id: a, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+              - { id: b, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
   - id: CK-LOOP-01
     stubs: { "step:q": { outcomes: [pending, pending, final] } }
     workflow:
@@ -174,6 +188,24 @@ scenarios:
           call: ck.kit.exchange.call.v1
           policy: { attemptTimeout: PT5S, totalTimeout: PT12S, retry: { maxAttempts: 10, firstInterval: PT1S, backoff: 1 } }
           handle: { rejected: { end: rejected }, pending: { end: pending }, unknown: { end: pending } }
+        - end: done
+
+  # R-05-54: 300 items one after another, each a decision with a five-second attempt timeout (the type default) and no declared
+  # time of its own, then a step that takes four seconds. On a real server the items take longer than five seconds to process;
+  # none of that is the attempts' own time, so none times out, and business time moves only by the four seconds of b.
+  # The Temporal adapter runs it on a real server (REAL_SERVER_SCENARIOS).
+  - id: CK-TIMEOUT-03
+    traceView: forEach-summary
+    generateItems: 300
+    stubs: { "step:b": { latency: PT4S } }
+    workflow:
+      do:
+        - forEach:
+            in: "items[]"
+            concurrency: 1
+            do:
+              - { id: item, call: ck.kit.decide.lane.v1, level: item, handle: { no-match: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
         - end: done
 
   - id: CK-UNKNOWN-01

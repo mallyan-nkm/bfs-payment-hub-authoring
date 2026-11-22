@@ -121,8 +121,10 @@ export interface SeedReport {
   branch: string;
 }
 
-/** A bank pack's lock file: the one seeded file a later release replaces, its place fixed by R-11-28. */
+/** A bank pack's lock file: a seeded file a later release replaces, its place fixed by R-11-28. */
 const BANK_LOCK = /^banks\/([^/]+)\/pack\.yaml$/;
+/** The engine bindings: no release, so a changed binding replaces the file; the ledger names the hash it replaces (R-11-36). */
+const BINDINGS = 'artefacts/bindings/bindings.yaml';
 const releaseOf = (text: string) => String(parseYamlAll(text).find((d: any) => d && typeof d === 'object')?.release ?? '');
 
 /**
@@ -135,7 +137,7 @@ export function seedPlan(env: StudioEnv) {
   const files = seedFiles(env.specRoot, env.studioRoot);
   const add: SeedFile[] = [];
   const clash: SeedFile[] = [];
-  const replace: { file: SeedFile; was: string; keptAt: string }[] = [];
+  const replace: { file: SeedFile; was: string; keptAt?: string }[] = [];
   let same = 0;
   for (const f of files) {
     const now = c.files.get(f.path);
@@ -145,6 +147,7 @@ export function seedPlan(env: StudioEnv) {
       const lock = BANK_LOCK.exec(f.path);
       const was = releaseOf(now);
       if (lock && was && compareReleases(releaseOf(f.text), was) > 0 && !c.has(`banks/${lock[1]}/packs/${was}.yaml`)) replace.push({ file: f, was: now, keptAt: `banks/${lock[1]}/packs/${was}.yaml` });
+      else if (f.path === BINDINGS) replace.push({ file: f, was: now });
       else clash.push(f);
     }
   }
@@ -169,16 +172,16 @@ export async function seedContent(env: StudioEnv, actor = SEED_ACTOR): Promise<S
   const extra: Record<string, string | { path: string; text: string; guard: 'replace'; expect: string }> = Object.fromEntries(plan.add.map((f) => [f.path, f.text]));
   // A bank pack's lock file a later release replaces: the earlier one is kept first, as it was (R-11-35).
   for (const r of plan.replace) {
-    extra[r.keptAt] = r.was;
+    if (r.keptAt) extra[r.keptAt] = r.was;
     extra[r.file.path] = { path: r.file.path, text: r.file.text, guard: 'replace', expect: r.was };
   }
   if (plan.users) extra[USERS_PATH] = toYaml({ kind: 'studio-users', users: DEFAULT_USERS });
   // The ledger (R-11-36): every file this change set publishes, with the SHA-256 of its text; a replaced lock file with where it is kept.
-  const ledger = [...plan.add.map((f) => ({ path: f.path, sha256: textSha(f.text) })), ...plan.replace.map((r) => ({ path: r.keptAt, sha256: textSha(r.was) })), ...plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.file.text) }))]
+  const ledger = [...plan.add.map((f) => ({ path: f.path, sha256: textSha(f.text) })), ...plan.replace.flatMap((r) => (r.keptAt ? [{ path: r.keptAt, sha256: textSha(r.was) }] : [])), ...plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.file.text) }))]
     .sort((a, b) => a.path.localeCompare(b.path));
   extra[ledgerPath(id)] = [
     `# The files change set ${id} published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.`,
-    toYaml({ kind: 'release-ledger', changeSet: id, files: ledger, ...(plan.replace.length ? { replaced: plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.was), keptAt: r.keptAt })) } : {}) }),
+    toYaml({ kind: 'release-ledger', changeSet: id, files: ledger, ...(plan.replace.length ? { replaced: plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.was), ...(r.keptAt ? { keptAt: r.keptAt } : {}) })) } : {}) }),
   ].join('\n');
   const message = [
     `Seed content ${id}: ${published.length} file${published.length === 1 ? '' : 's'} from spec/ and the studio's factory scripts and samples`,
@@ -198,5 +201,5 @@ export async function seedContent(env: StudioEnv, actor = SEED_ACTOR): Promise<S
   await env.store.flush();
   // Read the branch again, so the store holds what the seed published.
   await env.store.reload();
-  return { status: 'committed', changeSet: id, commit: r.commit, added: [...plan.add.map((f) => f.path), ...plan.replace.map((x) => x.keptAt)], replaced: plan.replace.map((x) => x.file.path), unchanged: plan.same, branch: c.conn.branch };
+  return { status: 'committed', changeSet: id, commit: r.commit, added: [...plan.add.map((f) => f.path), ...plan.replace.flatMap((x) => (x.keptAt ? [x.keptAt] : []))], replaced: plan.replace.map((x) => x.file.path), unchanged: plan.same, branch: c.conn.branch };
 }

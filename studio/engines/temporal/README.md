@@ -9,14 +9,16 @@ The Temporal binding lives in the runtime: `runtime/src/TransactHub.Engine.Tempo
 ```
 runtime/tools/temporal-test-server/setup.sh     # once: resolve the test server
 cd studio
-npx tsx engines/temporal/run-kit.ts             # all 48 scenarios, PASS or FAIL each
+npx tsx engines/temporal/run-kit.ts             # all 50 scenarios, PASS or FAIL each
 npx tsx engines/temporal/run-kit.ts CK-AWAIT-03 --verbose
 npm run studio -- deploy <export-for-temporal.zip> --workflow p.wf.corporate.v1 ...   # a deployment, a worker process per task queue
 ```
 
 With `TH_TEMPORAL_ADDRESS=host:7233` the harness runs on that Temporal server instead, in real time.
 
-`CK-FOREACH-02` (10,000 items, in chunks that continue as new) is the one scenario the Java test server cannot run: it refuses a workflow task with "invalid history builder state for action". The adapter runs that scenario on Temporal's real dev server (`temporalio/temporal:1.5.1`, started in Docker by the adapter, or the server at `TH_TEMPORAL_ADDRESS`), in real time. It takes about two minutes and some 20,000 activity runs. Without Docker it fails. The full kit is 48 of 48 in about 380 s (22 November 2026).
+`CK-FOREACH-02` (10,000 items, in chunks that continue as new) is the one scenario the Java test server cannot run: it refuses a workflow task with "invalid history builder state for action". The adapter runs that scenario on Temporal's real dev server (`temporalio/temporal:1.5.1`, started in Docker by the adapter, or the server at `TH_TEMPORAL_ADDRESS`), in real time. It takes about two minutes and some 20,000 activity runs. Without Docker it fails. The full kit is 50 of 50 in about 520 s on a shared machine (22 November 2026, after I-77).
+
+`CK-TIMEOUT-03` (R-05-54) runs there too: only on a real server does processing take time on the server's clock, so only there does it show that an attempt's timeout measures the attempt's own execution and not the item loop's. Since I-77 the binding keeps an attempt's deadline itself (`IAttemptDeadlines`): on a real server an activity's Start-To-Close is the attempt's own budget, and every other timer runs for its business length from the logical now. `TH_TEMPORAL_TIMERS=server` restores the old timers for a comparison run only.
 
 How large batches stay fast:
 

@@ -855,7 +855,8 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
 
 /**
  * L41 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
- * it; a path is published once, except a bank pack's lock file, which a later ledger replaces; every seeded file is in a ledger.
+ * it; a path is published once, except a bank pack's lock file and the engine bindings, which a later ledger replaces; every
+ * seeded file is in a ledger.
  * `files` are the content branch's files, path to text, relative to its root. The same check as tools/validate.py.
  */
 export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
@@ -869,7 +870,7 @@ export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
     const replaced = new Map<string, any>((led.replaced ?? []).map((r: any) => [r.path, r]));
     for (const row of led.files ?? []) {
       const prev = recorded.get(row.path);
-      if (prev && !(/^banks\/[^/]+\/pack\.yaml$/.test(row.path) && replaced.get(row.path)?.sha256 === prev.sha256)) err(lp, `publishes ${row.path} again; ${prev.ledger} published it, and a published file is never replaced`);
+      if (prev && !(/^(banks\/[^/]+\/pack|artefacts\/bindings\/bindings)\.yaml$/.test(row.path) && replaced.get(row.path)?.sha256 === prev.sha256)) err(lp, `publishes ${row.path} again; ${prev.ledger} published it, and a published file is never replaced`);
       recorded.set(row.path, { sha256: row.sha256, ledger: lp });
     }
   }

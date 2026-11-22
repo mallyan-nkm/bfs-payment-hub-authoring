@@ -67,14 +67,14 @@ Rules: [guidelines/store-and-migrations.md](guidelines/store-and-migrations.md).
 
 ## Four engines on one store
 
-All four run one interpreter of the expanded workflow, behind one seam (`IEngine` in `studio/engines/shared/Interpreter.cs`), and all four pass the kit's 48 scenarios.
+All four run one interpreter of the expanded workflow, behind one seam (`IEngine` in `studio/engines/shared/Interpreter.cs`), and all four pass the kit's 50 scenarios.
 
 | Engine | How it is hosted (D3) | Its own state | Kit | On the store |
 | --- | --- | --- | --- | --- |
-| Temporal | Temporal service; workers poll task queues | PostgreSQL, or SQL Server through `runtime/temporal-mssql` | 48 of 48 | Yes, both databases |
-| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 48 of 48 | Yes, payments data on both databases |
-| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 48 of 48 | Yes, both databases |
-| Flowable 7 | Flowable REST server; .NET external workers over REST | Both | 48 of 48 (embedded harness on H2) | Yes, both databases (the REST server, in virtual and in production mode) |
+| Temporal | Temporal service; workers poll task queues | PostgreSQL, or SQL Server through `runtime/temporal-mssql` | 50 of 50 | Yes, both databases |
+| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 50 of 50 | Yes, payments data on both databases |
+| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 50 of 50 | Yes, both databases |
+| Flowable 7 | Flowable REST server; .NET external workers over REST | Both | 50 of 50 (embedded harness on H2) | Yes, both databases (the REST server, in virtual and in production mode) |
 
 Each installation runs one engine (D1). The source's `IsPatched` ladder is not carried: versions come from releases, not patches.
 

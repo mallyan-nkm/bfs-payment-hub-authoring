@@ -176,6 +176,7 @@ public sealed class FlowableRest : IDisposable
     public Task<List<JsonObject>> Jobs(string? tenant, string? processInstanceId = null) =>
         List("jobs", $"{service}/management/jobs?{Q(tenant)}{(processInstanceId is null ? "" : $"&processInstanceId={processInstanceId}")}");
     public Task<List<JsonObject>> TimerJobs(string? tenant) => List("timers", $"{service}/management/timer-jobs?{Q(tenant)}");
+    public Task<List<JsonObject>> TimerJobsOf(string processInstanceId) => List("timers", $"{service}/management/timer-jobs?processInstanceId={Uri.EscapeDataString(processInstanceId)}");
     public Task<List<JsonObject>> DeadLetterJobs(string? tenant) => List("dead-letters", $"{service}/management/deadletter-jobs?{Q(tenant)}");
 
     /// <summary>Runs an executable job; the server's message when the job fails, else null.</summary>

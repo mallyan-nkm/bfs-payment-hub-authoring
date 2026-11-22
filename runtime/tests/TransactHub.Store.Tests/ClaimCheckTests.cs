@@ -71,6 +71,39 @@ public sealed class ClaimCheckTests(Databases dbs)
         Assert.Equal(["create", "staged", "commit", "staged", "copy"], (await facts.Of("r1#ctx")).Select(f => f.Code!).ToArray());
     }
 
+    // R-09-46 (I-78): the claim check locks per payload and writes the facts that queue for one payload in one save. Many
+    // payloads, each with many items staged and committed side by side: every chain is numbered without gaps and linked, the
+    // payload rebuilt from its facts is the one in memory, and the facts went in fewer saves than facts.
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task Many_payloads_and_many_items_side_by_side_keep_every_chain_whole(StoreProvider p)
+    {
+        var o = dbs.Fresh(p);
+        await using (var db = StoreDbContext.Open(o)) await db.Database.MigrateAsync();
+        var cc = new DurableClaimCheck(o);
+        const int payloads = 4, items = 60;
+        await Task.WhenAll(Enumerable.Range(0, payloads).Select(n => cc.Create($"p{n}#ctx", new JsonObject { ["items"] = new JsonArray(Enumerable.Range(0, items).Select(_ => (JsonNode?)new JsonObject()).ToArray()) })));
+        await Task.WhenAll(Enumerable.Range(0, payloads).SelectMany(n => Enumerable.Range(0, items).Select(async i =>
+        {
+            var t = await cc.Stage($"p{n}#ctx", [($"items[{i}].status", $"checked-{i}")]);
+            await Task.WhenAll(cc.Commit(t), cc.Commit(t)); // a commit sent twice at once is one fact
+        })));
+        await using var check = StoreDbContext.Open(o);
+        var facts = new FactLog(check);
+        for (var n = 0; n < payloads; n++)
+        {
+            var r = $"p{n}#ctx";
+            var v = await facts.Verify(r);
+            Assert.True(v.Ok, v.Problem);
+            Assert.Equal(1 + 2 * items, v.Facts);
+            var rebuilt = await DurableClaimCheck.Load(o, r);
+            Assert.Equal(CanonicalJson.Of(cc.Full(null, r)), CanonicalJson.Of(rebuilt));
+            Assert.Equal("checked-7", (string)rebuilt["items"]![7]!["status"]!);
+        }
+        var (saves, written) = cc.Saves;
+        Assert.Equal(payloads * (1 + 2 * items), written);
+        Assert.True(saves < written, $"{written} facts in {saves} saves: nothing was batched");
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task The_payment_of_a_run_is_accepted_into_the_ISO_20022_tables(StoreProvider p)
     {

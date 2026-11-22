@@ -51,7 +51,7 @@ final class Handler {
             inst.failed = e.getMessage();
             outcome = "failed";
         }
-        inst.trace.add("end:" + outcome);
+        inst.trace().add("end:" + outcome);
         inst.releaseTrace.add("end:" + outcome);
         inst.ended = true;
         inst.endedAt = h.elapsed();
@@ -93,7 +93,7 @@ final class Handler {
             }
         }
         if (outcome == null) throw new IllegalStateException(activity + " failed after retries");
-        inst.trace.add(step + ":" + outcome);
+        inst.trace().add(step + ":" + outcome);
         JsonNode action = st.path("handle").path(outcome);
         if (action.isMissingNode()) return;
         if (action.isArray()) steps(action, inst);

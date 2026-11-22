@@ -16,6 +16,11 @@ public sealed class Deployment
     public readonly JsonObject Config;
     public readonly long Start;
     public readonly int ChunkSize;
+    /// <summary>
+    /// How many items of a forEach run side by side when the forEach declares no concurrency and its body holds no state:
+    /// the binding's <c>defaults.forEachConcurrency</c> (R-09-45). One, item by item, unless the binding says more.
+    /// </summary>
+    public int ItemConcurrency { get; init; } = 1;
 
     public Deployment(JsonObject documents, JsonObject config, long start, int chunkSize)
     {
@@ -114,16 +119,18 @@ public sealed class ClaimCheckStore
     readonly IClaimCheckJournal? journal = DefaultJournal;
     public ClaimCheckStore() { journal?.Attached(this); }
     static readonly string[] StateParts = { "header", "facts", "status", "messages" };
-    readonly object gate = new();
-    readonly Dictionary<string, JsonObject> payloads = new();
-    readonly Dictionary<string, (string reff, List<(string path, JsonNode? value)> writes)> staged = new();
-    readonly HashSet<string> committed = new();
+    // A lock per payload, never one for the store (R-09-46, I-78): the items of one payload and other payloads go side by side.
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> gates = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, JsonObject> payloads = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string reff, List<(string path, JsonNode? value)> writes)> staged = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> committed = new();
     public readonly Dictionary<string, JsonNode?> RuleTraces = new();
-    int seq;
+    long seq;
+
+    object Gate(string r) => gates.GetOrAdd(r, _ => new object());
 
     public static bool IsStatePath(string p) => StateParts.Contains(p.Split('.')[0].Replace("[]", ""));
 
-    /// <summary>Split a context into what the engine holds and what the store holds.</summary>
     /// <summary>What the store needs to accept a root's payments: the tenant, and the scheme and direction from the header.</summary>
     public static JsonObject AcceptFor(JsonObject state, string? tenant, string docKey)
     {
@@ -131,6 +138,7 @@ public sealed class ClaimCheckStore
         return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = docKey };
     }
 
+    /// <summary>Split a context into what the engine holds and what the store holds.</summary>
     public static (JsonObject state, JsonObject payload) Split(JsonObject ctx)
     {
         var state = new JsonObject();
@@ -145,14 +153,14 @@ public sealed class ClaimCheckStore
 
     public void Create(string r, JsonObject payload, JsonObject? accept = null)
     {
-        lock (gate)
+        lock (Gate(r))
         {
             journal?.Created(r, (JsonObject)J.Clone(payload)!, accept);
             payloads[r] = payload;
         }
     }
 
-    public JsonObject Payload(string r) { lock (gate) return (JsonObject)J.Clone(payloads.TryGetValue(r, out var p) ? p : new JsonObject())!; }
+    public JsonObject Payload(string r) { lock (Gate(r)) return (JsonObject)J.Clone(payloads.TryGetValue(r, out var p) ? p : new JsonObject())!; }
 
     /// <summary>The whole context: the engine's state and the payload behind the reference.</summary>
     public JsonObject Full(JsonNode? state, string r)
@@ -168,7 +176,7 @@ public sealed class ClaimCheckStore
     {
         var o = new JsonObject();
         foreach (var (k, v) in J.Obj(state).ToList()) o[k] = J.Clone(v);
-        lock (gate)
+        lock (Gate(r))
         {
             var p = payloads.TryGetValue(r, out var x) ? x : new JsonObject();
             foreach (var (k, v) in p) if (k != "items") o[k] = J.Clone(v);
@@ -179,9 +187,9 @@ public sealed class ClaimCheckStore
 
     public string Stage(string r, List<(string path, JsonNode? value)> writes)
     {
-        lock (gate)
+        lock (Gate(r))
         {
-            var token = $"{r}!{++seq}";
+            var token = $"{r}!{Interlocked.Increment(ref seq)}";
             journal?.Staged(token, r, writes);
             staged[token] = (r, writes);
             return token;
@@ -190,21 +198,22 @@ public sealed class ClaimCheckStore
 
     public void Commit(string token)
     {
-        lock (gate)
+        if (!staged.TryGetValue(token, out var s)) return;
+        lock (Gate(s.reff))
         {
-            if (committed.Contains(token) || !staged.TryGetValue(token, out var s)) return;
+            if (committed.ContainsKey(token)) return;
             journal?.Committed(token, s.reff);
-            committed.Add(token);
-            if (!payloads.TryGetValue(s.reff, out var p)) payloads[s.reff] = p = new JsonObject();
+            committed[token] = true;
+            var p = payloads.GetOrAdd(s.reff, _ => new JsonObject());
             foreach (var (path, v) in s.writes) J.Set(p, path, J.Clone(v));
         }
     }
 
     public void Fork(string from, string to)
     {
-        lock (gate)
+        var copy = Payload(from);
+        lock (Gate(to))
         {
-            var copy = (JsonObject)J.Clone(payloads.TryGetValue(from, out var p) ? p : new JsonObject())!;
             journal?.Forked(from, to, (JsonObject)J.Clone(copy)!);
             payloads[to] = copy;
         }
@@ -212,26 +221,29 @@ public sealed class ClaimCheckStore
 
     public void Copy(string from, string to, IEnumerable<string> paths)
     {
-        lock (gate)
+        var src = Payload(from);
+        var values = new JsonObject();
+        foreach (var p in paths) values[p] = J.Clone(J.Get(src, p));
+        lock (Gate(to))
         {
-            var src = payloads.TryGetValue(from, out var a) ? a : new JsonObject();
-            var list = paths.ToList();
-            if (journal is not null)
-            {
-                var values = new JsonObject();
-                foreach (var p in list) values[p] = J.Clone(J.Get(src, p));
-                journal.Copied(from, to, values);
-            }
-            if (!payloads.TryGetValue(to, out var dst)) payloads[to] = dst = new JsonObject();
-            foreach (var p in list)
-            {
-                var v = J.Get(src, p);
-                if (v is not null) J.Set(dst, p, J.Clone(v));
-            }
+            journal?.Copied(from, to, (JsonObject)J.Clone(values)!);
+            Apply(to, values);
         }
     }
 
-    public int Count(string r, string path) { lock (gate) return J.Get(payloads.TryGetValue(r, out var p) ? p : null, path) is JsonArray a ? a.Count : 0; }
+    /// <summary>Values copied into a payload as a copy fact records them: a path whose value is null is left as it is.</summary>
+    public void CopyValues(string to, JsonObject values)
+    {
+        lock (Gate(to)) Apply(to, values);
+    }
+
+    void Apply(string to, JsonObject values)
+    {
+        var dst = payloads.GetOrAdd(to, _ => new JsonObject());
+        foreach (var (p, v) in values) if (v is not null) J.Set(dst, p, J.Clone(v));
+    }
+
+    public int Count(string r, string path) { lock (Gate(r)) return J.Get(payloads.TryGetValue(r, out var p) ? p : null, path) is JsonArray a ? a.Count : 0; }
 }
 
 /// <summary>The party service over JSON lines (studio/src/conformance/party-server.ts).</summary>
@@ -295,12 +307,12 @@ public sealed class WorkerRouter : IParty
     readonly Dictionary<string, string> workers; // queue -> base URL
     readonly Dictionary<string, string> queues;  // scope -> queue
     readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
-    public readonly Dictionary<string, int> Calls = new();
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> Calls = new();
     /// <summary>
-    /// Told of every attempt a worker answered, with the request and the answer. The studio's harnesses leave
-    /// it unset; the runtime's builds set it to record each step's outcome as a fact in the store.
+    /// Told of every attempt a worker answered, with the request and the answer, and awaited before the attempt is handed back.
+    /// The studio's harnesses leave it unset; the runtime's builds set it to record each step's outcome as a fact in the store.
     /// </summary>
-    public static Action<JsonObject, JsonObject>? Answered;
+    public static Func<JsonObject, JsonObject, Task>? Answered;
 
     public WorkerRouter(JsonObject workers, JsonObject queues)
     {
@@ -346,7 +358,7 @@ public sealed class WorkerRouter : IParty
                 var scope = ScopeOf(activity);
                 if (!queues.TryGetValue(scope, out var queue) || !workers.TryGetValue(queue, out var url))
                     throw new InvalidOperationException($"No worker serves queue {queue ?? "?"} for {activity}");
-                Calls[queue] = Calls.GetValueOrDefault(queue) + 1;
+                Calls.AddOrUpdate(queue, 1, (_, n) => n + 1);
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
                 // One span per attempt; HttpClient carries its context to the worker (traceparent).
@@ -355,7 +367,7 @@ public sealed class WorkerRouter : IParty
                 {
                     var res = await Post($"{url}/attempt", body);
                     span.Answered(res);
-                    Answered?.Invoke(body, res);
+                    if (Answered is { } answered) await answered(body, res);
                     return res;
                 }
                 catch (Exception e) { span.Failed(e); throw; }

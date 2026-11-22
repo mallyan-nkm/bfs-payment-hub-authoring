@@ -9,7 +9,7 @@ Java 21 or later and Node 22 are needed (the harness compiles for release 21). M
 ```
 cd studio
 engines/flowable/setup.sh                       # fetch Maven, build the harness (once)
-npx tsx engines/flowable/run-kit.ts             # all 48 scenarios, PASS or FAIL each
+npx tsx engines/flowable/run-kit.ts             # all 50 scenarios, PASS or FAIL each
 npx tsx engines/flowable/run-kit.ts CK-COMP-01 --verbose
 npx tsx engines/flowable/portability.ts         # C22-S5: every factory workflow, deployed into Flowable
 ```
@@ -140,7 +140,7 @@ npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-flowable
 
 ## Result
 
-Run on 22 November 2026, Flowable 7.1.0, H2 2.2.224, OpenJDK 21: **48 of 48 conformance scenarios pass on Flowable**, with CK-AWAIT-06 (the time rule) and CK-AWAIT-07 (families). The run takes about seven minutes, three of them for CK-FOREACH-02. The duration parameters were checked by hand on both bindings (embedded and REST): CK-AWAIT-07 with a hold of `{ parameter: hold }` in the second subflow (default `PT10S`, tenant value `PT20S`) and CK-BLOCK-02 with a timeout of `{ parameter: replyWait }` on the business calendar (default `P1D`, tenant value `P3D`) give the studio interpreter's trace, detail and elapsed time. On the REST server, CK-AWAIT-01, 04, 06, 07, CK-BLOCK-01 to 03 and CK-WAIT-01 pass as well.
+Run on 22 November 2026, Flowable 7.1.0, H2 2.2.224, OpenJDK 21: **50 of 50 conformance scenarios pass on Flowable**, with CK-AWAIT-06 (the time rule) and CK-AWAIT-07 (families). The run takes about seven minutes, three of them for CK-FOREACH-02. The duration parameters were checked by hand on both bindings (embedded and REST): CK-AWAIT-07 with a hold of `{ parameter: hold }` in the second subflow (default `PT10S`, tenant value `PT20S`) and CK-BLOCK-02 with a timeout of `{ parameter: replyWait }` on the business calendar (default `P1D`, tenant value `P3D`) give the studio interpreter's trace, detail and elapsed time. On the REST server, CK-AWAIT-01, 04, 06, 07, CK-BLOCK-01 to 03 and CK-WAIT-01 pass as well.
 
 Earlier, on 22 November 2026: 46 of 46, before CK-AWAIT-06 and 07 were added.
 

@@ -123,6 +123,14 @@ export interface Frame {
   item?: { index: number; item: any; parent: any };
   label?: (id: string) => string;
   blockStartedAt?: number; // when the innermost composite step began (R-05-43)
+  sink?: ItemSink; // an item of a forEach whose items run side by side: its entries, put in item order (R-05-53)
+}
+
+/** What one item of a forEach recorded while items ran side by side; the forEach puts it into the trace in item order (R-05-53). */
+interface ItemSink {
+  trace: string[];
+  detail: string[];
+  releaseTrace: string[];
 }
 
 let idSeq = 0;
@@ -704,7 +712,8 @@ async function runAction(action: any, frame: Frame) {
 
 /** Put a trace entry where it belongs: the business trace, or the detail inside a block. */
 function record(frame: Frame, entry: string) {
-  (frame.detail ? frame.inst.detail : frame.inst.trace).push(entry);
+  const to = frame.sink ?? frame.inst;
+  (frame.detail ? to.detail : to.trace).push(entry);
 }
 
 /** A composite step in the expanded form: its subflow's steps run as a frame (C09-S12). */
@@ -744,7 +753,7 @@ async function compensate(writes: CompletedWrite[], frame: Frame) {
     if (done < 0) continue;
     inst.completedWrites.splice(done, 1);
     for (const t of frame.tryStack) t.writes = t.writes.filter((x) => x !== w);
-    inst.trace.push(`undo:${w.step}`);
+    (frame.sink ?? inst).trace.push(`undo:${w.step}`);
     inst.event('compensate', w.step, { compensation: w.compensation });
     try {
       await runActivityStep({ id: `undo-${w.step}`, call: w.compensation }, { ...frame, scope: new Scope() }, { silent: true });
@@ -795,7 +804,7 @@ async function runActivityStep(st: any, frame: Frame, opts: { silent?: boolean }
   };
   inst.steps.push(rec);
   inst.event('step-start', label(frame, id), { activity: act.name, release: resolved.release, policy: rec.policy });
-  if (!opts.silent) inst.releaseTrace.push(`${shortName(act.name)}@${resolved.release}`);
+  if (!opts.silent) (frame.sink ?? inst).releaseTrace.push(`${shortName(act.name)}@${resolved.release}`);
   const level = st.level ?? act.level;
   const { result, attempts } = await attemptLoop(act, st, policy, frame, id, level);
   rec.attempts = attempts;
@@ -1227,25 +1236,53 @@ async function execForEach(st: any, frame: Frame) {
   frame.inst.event('for-each', undefined, { items: items.length, concurrency, onItemFailure: onFail });
   let next = 0;
   let stopError: any;
+  // Items side by side (R-05-53): each records into its own sink, and the sinks go into the trace in item order, as far as every
+  // earlier item has ended. The first item that stops the forEach is the last whose entries are kept, as item by item.
+  const ordered = concurrency > 1 && items.length > 1;
+  const sinks: (ItemSink | undefined)[] = [];
+  const ended: boolean[] = [];
+  let failedAt = Infinity;
+  let firstFailure: any;
+  let flushed = 0;
+  const flush = (all: boolean) => {
+    const to = frame.sink ?? frame.inst;
+    while (flushed < items.length && flushed <= failedAt && (all || ended[flushed])) {
+      const s = sinks[flushed];
+      if (s) {
+        to.trace.push(...s.trace);
+        to.detail.push(...s.detail);
+        to.releaseTrace.push(...s.releaseTrace);
+        sinks[flushed] = undefined;
+      }
+      flushed++;
+    }
+  };
   const worker = async () => {
     while (next < items.length && stopError === undefined) {
       const index = next++;
       const item = items[index];
       // A call with level item binds payment to the item's payment (R-05-28).
       const itemCtx = { ...frame.ctx, payment: item.payment ?? {}, ext: item.ext ?? {}, facts: item.facts ?? {}, items: [item] };
-      const iframe: Frame = { ...frame, ctx: itemCtx, item: { index, item, parent: frame.ctx } };
+      const sink = ordered ? (sinks[index] = { trace: [], detail: [], releaseTrace: [] }) : undefined;
+      const iframe: Frame = { ...frame, ctx: itemCtx, item: { index, item, parent: frame.ctx }, ...(sink ? { sink } : {}) };
       try {
         await execSteps(fe.do ?? [], iframe);
       } catch (e) {
         if (e instanceof EndFlow && onFail === 'continue') {
           frame.inst.event('item-failed', `item[${index}]`, { outcome: e.outcome });
-          continue;
+        } else {
+          if (stopError === undefined) stopError = e;
+          if (index < failedAt) { failedAt = index; firstFailure = e; }
         }
-        stopError = e;
       }
+      if (ordered) { ended[index] = true; flush(false); }
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length || 1) }, worker));
+  if (ordered) {
+    flush(true);
+    if (firstFailure !== undefined) throw firstFailure;
+  }
   if (stopError !== undefined) throw stopError;
 }
 
@@ -1440,10 +1477,11 @@ async function execHook(st: any, frame: Frame) {
   }
   const hook = run.resolveDoc(binding.hook, binding.release);
   if (!hook) throw new StepFailure(name, `Hook ${binding.hook}@${binding.release} does not resolve`);
-  inst.releaseTrace.push(`hook@${hook.release}`);
+  (frame.sink ?? inst).releaseTrace.push(`hook@${hook.release}`);
   const policy = point.policy ?? {};
-  const traceAt = inst.trace.length;
-  inst.trace.push(`hook:pending`);
+  const hookTrace = (frame.sink ?? inst).trace;
+  const traceAt = hookTrace.length;
+  hookTrace.push(`hook:pending`);
   const runIt = async (): Promise<{ outcome: string; failed?: string }> => {
     const hctx = clone(frame.ctx);
     const scope = new Scope();
@@ -1474,13 +1512,13 @@ async function execHook(st: any, frame: Frame) {
   if (point.type === 'notify') {
     // A notify hook must not delay or change the flow (R-06-09).
     void runIt().then((r) => {
-      inst.trace[traceAt] = `hook:${r.outcome === 'failed' ? 'failed' : r.outcome}`;
+      hookTrace[traceAt] = `hook:${r.outcome === 'failed' ? 'failed' : r.outcome}`;
       inst.event('hook', name, { hook: hook.name, type: 'notify', ...r });
     });
     return;
   }
   const r = await runIt();
-  inst.trace[traceAt] = `hook:${r.outcome}`;
+  hookTrace[traceAt] = `hook:${r.outcome}`;
   inst.event('hook', name, { hook: hook.name, type: point.type, ...r });
   let outcome = r.outcome;
   if (outcome === 'failed') outcome = policy.onFailure === 'fail-closed' ? 'hold' : 'continue';

@@ -91,6 +91,7 @@ public sealed class Frame
     public int? Item;
     public Func<string, string>? Label;
     public long? BlockStartedAt; // when the innermost composite step began (R-05-43)
+    public ItemSink? Sink; // an item of a forEach whose items run side by side: its entries, put in item order (R-05-53)
 
     public Frame With(Action<Frame> change)
     {
@@ -99,6 +100,25 @@ public sealed class Frame
         return f;
     }
 }
+
+/// <summary>
+/// What one item of a forEach recorded while items ran side by side. The forEach puts each item's entries into the
+/// trace in item order, whatever order the items end in, so the trace is the one a run item by item gives (R-05-53).
+/// </summary>
+public sealed class ItemSink
+{
+    public readonly List<string> Trace = new(), Detail = new(), ReleaseTrace = new(), RuleTraceSteps = new();
+    public readonly JsonArray Steps = new();
+    public readonly Dictionary<string, int> Attempts = new();
+    public string? ReasonCode;
+}
+
+/// <summary>
+/// An engine that keeps an attempt's own deadline itself (R-05-54): its activity never answers later than the deadline in
+/// business time, and answers a Timeout error, marked late, when the attempt's own execution passed it. The interpreter then
+/// races no timer against the attempt, so the engine's own processing and queueing never count against the attempt.
+/// </summary>
+public interface IAttemptDeadlines { }
 
 /// <summary>The operations the interpreter needs from an engine.</summary>
 /// <summary>
@@ -636,7 +656,9 @@ public sealed partial class Interp
         }
     }
 
-    void Record(Frame frame, string entry) => (frame.Detail ? Detail : Trace).Add(entry);
+    void Record(Frame frame, string entry) => (frame.Sink is { } s ? (frame.Detail ? s.Detail : s.Trace) : frame.Detail ? Detail : Trace).Add(entry);
+    List<string> TraceOf(Frame frame) => frame.Sink?.Trace ?? Trace;
+    List<string> ReleaseTraceOf(Frame frame) => frame.Sink?.ReleaseTrace ?? ReleaseTrace;
 
     /// <summary>A composite step in the expanded form: a frame in the interpreter, no engine construct (Part 9).</summary>
     async Task ExecBlock(JsonObject st, Frame frame)
@@ -672,7 +694,7 @@ public sealed partial class Interp
             if (done < 0) continue;
             CompletedWrites.RemoveAt(done);
             foreach (var t in frame.TryStack) t.Writes.Remove(w);
-            Trace.Add($"undo:{w.Step}");
+            TraceOf(frame).Add($"undo:{w.Step}");
             try { await RunActivityStep(new JsonObject { ["id"] = $"undo-{w.Step}", ["call"] = w.Compensation }, frame.With(f => f.Scope = new Scope()), silent: true); }
             catch (Exception) { /* a failed compensation is an event in the studio */ }
         }
@@ -719,12 +741,13 @@ public sealed partial class Interp
             ["supersededBy"] = resolved.superseded, ["attempts"] = 0, ["policy"] = policy.Values(), ["policySources"] = policy.Sources(),
             ["delta"] = new JsonArray(), ["startedAt"] = Elapsed, ["item"] = frame.Item,
         };
-        Steps.Add(rec);
-        if (!silent) ReleaseTrace.Add($"{ShortName(J.S(act, "name")!)}@{resolved.release}");
+        (frame.Sink?.Steps ?? Steps).Add(rec);
+        if (!silent) ReleaseTraceOf(frame).Add($"{ShortName(J.S(act, "name")!)}@{resolved.release}");
         var level = J.S(st, "level") ?? J.S(act, "level");
         var (result, attempts) = await AttemptLoop(act, st, policy, frame, id, level, resolved.release);
         rec["attempts"] = attempts;
-        Attempts[id] = Attempts.GetValueOrDefault(id) + attempts;
+        var counts = frame.Sink?.Attempts ?? Attempts;
+        counts[id] = counts.GetValueOrDefault(id) + attempts;
         var outcome = J.S(result, "outcome")!;
         // Writes: the engine keeps references (header, facts, status, messages); the rest is
         // committed to the claim-check store, and only an accepted result is committed (R-09-10, R-09-11).
@@ -741,8 +764,8 @@ public sealed partial class Interp
         rec["outcome"] = outcome;
         rec["endedAt"] = Elapsed;
         if (J.P(result, "decisions") is JsonObject ds) foreach (var (k, v) in ds.ToList()) decisions[k] = J.Clone(v);
-        if (J.Truthy(J.P(result, "ruleTrace"))) RuleTraceSteps.Add(Label(frame, id));
-        if (J.S(result, "reasonCode") is string rc) ReasonCode = rc;
+        if (J.Truthy(J.P(result, "ruleTrace"))) (frame.Sink?.RuleTraceSteps ?? RuleTraceSteps).Add(Label(frame, id));
+        if (J.S(result, "reasonCode") is string rc) { if (frame.Sink is { } rs) rs.ReasonCode = rc; else ReasonCode = rc; }
         foreach (var kv in frame.State) EngineStateKeys.Add(kv.Key);
         if (!silent) Record(frame, frame.InFinally ? $"finally:{id}" : $"{Label(frame, id)}:{outcome}");
         return (outcome, act);
@@ -789,12 +812,16 @@ public sealed partial class Interp
                 var cts = new CancellationTokenSource();
                 var waits = new List<Task> { task, frame.Scope.CancelledTask };
                 Task? timer = null;
-                if (limitAt != long.MaxValue) { timer = eng.Timer(limitAt, cts.Token); waits.Add(timer); }
+                // R-05-54: the attempt timeout measures the attempt's own execution. An engine that keeps the deadline
+                // itself answers a late attempt as a Timeout; any other races a timer on its business clock.
+                if (limitAt != long.MaxValue && eng is not IAttemptDeadlines) { timer = eng.Timer(limitAt, cts.Token); waits.Add(timer); }
                 var w = await Task.WhenAny(waits);
                 if (w == task)
                 {
                     cts.Cancel(); // the task won: cancel the timer
                     var res = task.Result;
+                    if (J.S(res, "kind") == "error" && J.Truthy(J.P(res, "late")))
+                        throw new AttemptFailed("Timeout", pol.IsRetryable("Timeout", errors), $"attempt {attempt} of {id} timed out; a late result is ignored");
                     if (J.S(res, "kind") == "error")
                     {
                         var name = J.S(res, "name") ?? "Error";
@@ -861,11 +888,30 @@ public sealed partial class Interp
     {
         var fe = J.P(st, "forEach");
         var n = (int)J.Num(await eng.Activity(ClaimCheck, new JsonObject { ["op"] = "count", ["ref"] = frame.PayloadRef, ["path"] = J.S(fe, "in") }), "count")!.Value;
-        var concurrency = Math.Max(1, (int)(J.Num(fe, "concurrency") ?? 1));
+        var concurrency = Math.Max(1, (int)(J.Num(fe, "concurrency") ?? ItemConcurrency(J.A(fe, "do"))));
         var onFail = J.S(fe, "onItemFailure") ?? "stop";
         // R-09-13: a large batch is chunked; each chunk runs in a batch orchestration that continues as new.
         if (eng.Durable && n > dep.ChunkSize) { await RunBatches(st, frame, n, concurrency, onFail); return; }
         await RunItems(st, frame, 0, n, concurrency, onFail);
+    }
+
+    /// <summary>
+    /// The concurrency of a forEach that declares none (R-09-45): the binding's (<see cref="Deployment.ItemConcurrency"/>) where
+    /// every step of its body calls an activity that holds no state (pure or read, not a hold) and handles an outcome only by
+    /// ending; else one, item by item.
+    /// </summary>
+    int ItemConcurrency(JsonArray body)
+    {
+        if (dep.ItemConcurrency <= 1) return 1;
+        foreach (var s in body)
+        {
+            if (s is not JsonObject st || !st.ContainsKey("call")) return 1;
+            var name = J.S(st, "call")!;
+            var d = dep.Resolve(name, pins.GetValueOrDefault(name), Elapsed);
+            if (J.S(d, "kind") != "activity" || J.S(d, "type") == "hold" || J.S(d, "effect") is not ("pure" or "read")) return 1;
+            if (J.P(st, "handle") is JsonObject h && h.Any(kv => kv.Value is not JsonObject o || !o.ContainsKey("end"))) return 1;
+        }
+        return dep.ItemConcurrency;
     }
 
     async Task RunItems(JsonObject st, Frame frame, int from, int to, int concurrency, string onFail)
@@ -873,18 +919,57 @@ public sealed partial class Interp
         var fe = J.P(st, "forEach");
         var next = from;
         Exception? stopError = null;
+        // Items side by side (R-05-53): each records into its own sink, and the sinks go into the trace in item order, as far as
+        // every earlier item has ended. The first item that stops the forEach is the last whose entries are kept, as item by item.
+        var ordered = concurrency > 1 && to - from > 1;
+        var sinks = ordered ? new ItemSink?[to - from] : null;
+        var ended = ordered ? new bool[to - from] : null;
+        var failedAt = int.MaxValue;
+        Exception? firstFailure = null;
+        var flushed = from;
+        void Flush(bool all)
+        {
+            while (flushed < to && flushed <= failedAt && (all || ended![flushed - from]))
+            {
+                if (sinks![flushed - from] is { } s)
+                {
+                    (frame.Sink?.Trace ?? Trace).AddRange(s.Trace);
+                    (frame.Sink?.Detail ?? Detail).AddRange(s.Detail);
+                    (frame.Sink?.ReleaseTrace ?? ReleaseTrace).AddRange(s.ReleaseTrace);
+                    (frame.Sink?.RuleTraceSteps ?? RuleTraceSteps).AddRange(s.RuleTraceSteps);
+                    var steps = frame.Sink?.Steps ?? Steps;
+                    foreach (var r in s.Steps.ToList()) { s.Steps.Remove(r); steps.Add(r); }
+                    var counts = frame.Sink?.Attempts ?? Attempts;
+                    foreach (var (k, v) in s.Attempts) counts[k] = counts.GetValueOrDefault(k) + v;
+                    if (s.ReasonCode is not null) { if (frame.Sink is { } ps) ps.ReasonCode = s.ReasonCode; else ReasonCode = s.ReasonCode; }
+                    sinks[flushed - from] = null;
+                }
+                flushed++;
+            }
+        }
         async Task Worker()
         {
             while (next < to && stopError is null)
             {
                 var index = next++;
-                var iframe = frame.With(f => f.Item = index);
+                var sink = ordered ? sinks![index - from] = new ItemSink() : null;
+                var iframe = frame.With(f => { f.Item = index; if (sink is not null) f.Sink = sink; });
                 try { await ExecSteps(J.A(fe, "do"), iframe); }
                 catch (EndFlow) when (onFail == "continue") { }
-                catch (Exception e) { stopError = e; }
+                catch (Exception e)
+                {
+                    stopError ??= e;
+                    if (index < failedAt) { failedAt = index; firstFailure = e; }
+                }
+                if (ordered) { ended![index - from] = true; Flush(false); }
             }
         }
         await Task.WhenAll(Enumerable.Range(0, Math.Min(concurrency, Math.Max(1, to - from))).Select(_ => Worker()));
+        if (ordered)
+        {
+            Flush(true);
+            if (firstFailure is not null) throw firstFailure;
+        }
         if (stopError is not null) throw stopError;
     }
 
@@ -1193,10 +1278,11 @@ public sealed partial class Interp
         var binding = bindings.FirstOrDefault(b => J.S(b, "hookPoint") == key);
         if (binding is null) return; // An unbound hook point does nothing and costs nothing (R-06-11).
         var hook = dep.Resolve(J.S(binding, "hook")!, J.S(binding, "release"), Elapsed) ?? throw new StepFailure(name, $"Hook {J.S(binding, "hook")}@{J.S(binding, "release")} does not resolve");
-        ReleaseTrace.Add($"hook@{J.S(hook, "release")}");
+        ReleaseTraceOf(frame).Add($"hook@{J.S(hook, "release")}");
         var policy = J.P(point, "policy");
-        var traceAt = Trace.Count;
-        Trace.Add("hook:pending");
+        var hookTrace = TraceOf(frame);
+        var traceAt = hookTrace.Count;
+        hookTrace.Add("hook:pending");
         var type = J.S(point, "type");
         async Task<(string outcome, string? failed)> RunIt()
         {
@@ -1238,13 +1324,13 @@ public sealed partial class Interp
             background.Add(((Func<Task>)(async () =>
             {
                 var r = await RunIt();
-                Trace[traceAt] = $"hook:{(r.outcome == "failed" ? "failed" : r.outcome)}";
+                hookTrace[traceAt] = $"hook:{(r.outcome == "failed" ? "failed" : r.outcome)}";
             }))());
             return;
         }
         var res = await RunIt();
         if (res.failed is not null) Console.Error.WriteLine($"hook {J.S(hook, "name")} at {key} failed: {res.failed}");
-        Trace[traceAt] = $"hook:{res.outcome}";
+        hookTrace[traceAt] = $"hook:{res.outcome}";
         var outcome = res.outcome;
         if (outcome == "failed") outcome = J.S(policy, "onFailure") == "fail-closed" ? "hold" : "continue";
         if (type == "transform")

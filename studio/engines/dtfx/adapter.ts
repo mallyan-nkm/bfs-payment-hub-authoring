@@ -66,6 +66,7 @@ export function dtfxAdapter(env: StudioEnv, opts: DtfxOptions = {}): KitAdapter 
       const input = {
         studioRoot: env.studioRoot,
         chunkSize,
+        itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
         built: { id: b.id, spec: b.spec, workflow: b.workflow, config: b.config, context: b.context },
         documents: exportedDocuments(b.documents),
       };
