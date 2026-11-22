@@ -1372,7 +1372,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Issue.** DIB's and ADIB's `p.port.file-transfer.v1` bindings name an `sftp` adapter (the source's SFTP gateway profiles and folders). The runtime builds two file-transfer adapters, `simulator` and `directory` (a folder on the host, its root by reference), and refuses `sftp` ("which this runtime does not build"). So the `file-bulk` core-banking adapter (I-82) and the encrypted WPS files (I-117) reach a real counterpart only through a mounted folder.
 
-**Recommendation.** Build an `sftp` adapter in `TransactHub.Ports` on a pinned SSH library, with the host key pinned by reference, the credential by `secretRef`, and the session settings DIB's binding carries (`sessions.*`); prove it against an SFTP container with a key made at test time. Until then a bank that posts by file binds `directory` on a share its SFTP gateway mirrors.
+**Recommendation.** Build an `sftp` adapter in `TransactHub.Ports` on a pinned SSH library, with the host key pinned by reference, the credential by `secretRef`, and the session settings DIB's binding carries (`sessions.*`); prove it against an SFTP container with a key made at test time. Until then a bank that posts by file binds `directory` on a share its SFTP gateway mirrors. The operations console's resend (`IFileTransferPort` in `runtime/src/TransactHub.Operations/Controls.cs`, I-128) writes to a folder of its own: put it on the same port adapters (`IFileTransfer`, `FileTransferAdapters`), so one binding of `p.port.file-transfer.v1` serves both.
 
 ## I-130. The participant directory has no source the factory may carry
 
