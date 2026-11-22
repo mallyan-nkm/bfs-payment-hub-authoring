@@ -1,0 +1,11 @@
+# The files change set CS-2026-11-22-001 published, each with the SHA-256 of its text as published (R-11-30). Written once; never edited.
+# Recorded on 2026-11-22 from the commit that published it (7d74785), as the change set itself carries no hashes (Issue I-83).
+# A second change set took the same id on a parallel branch; the merge kept the other's record, so this one names its commit.
+kind: release-ledger
+changeSet: CS-2026-11-22-001
+files:
+  - { path: artefacts/uae.wps/tests/WPS-IN-005.yaml, sha256: 327c2cb58e6f478960b227f48e49b9dc4313139588a5cd987f11218d03f5d9c6 }
+  - { path: artefacts/uae.wps/tests/WPS-IN-006.yaml, sha256: dfe7e8709ac8108aa7b6d267026707797a2e3a566f4c56d6f38cbcbb77fb04d8 }
+  - { path: artefacts/uae.wps/tests/WPS-IN-007.yaml, sha256: 97241e8b7264e7ae963ed38eeccab8169e603a371da17a63c4a552c091826c38 }
+  - { path: artefacts/uae.wps/uae.wps.exchange.report-disbursement.v1/1.0.0.yaml, sha256: a90ae86197dc0331f7781f6df4e193815864c697912e31997f34a45f71c4c826 }
+  - { path: artefacts/uae.wps/uae.wps.sub.report-disbursement.v1/1.0.0.yaml, sha256: ecaf5658e11c74b93978403b6a61fa25c35895396b533e751c8ce08eb8470689 }

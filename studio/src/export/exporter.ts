@@ -342,7 +342,7 @@ function workerFiles(env: StudioEnv, checker: Checker, binding: any, blocks: Map
     for (const s of sims.sort((a, b) => a.name.localeCompare(b.name))) files[`${base}simulators/${s.name}@${s.release}.yaml`] = toYaml(s);
     let needsPython = false;
     for (const a of acts) {
-      const sc = env.scripts.find(a.name);
+      const sc = env.scripts.find(a.name, a.release);
       if (!sc) continue;
       if (sc.language === 'python') {
         needsPython = true;

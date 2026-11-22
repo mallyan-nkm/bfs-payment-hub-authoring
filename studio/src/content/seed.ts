@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compareReleases } from '../core/names.js';
 import { OWNER_TENANT, StoreError, keyOf, tenantKey, walkYaml } from '../core/store.js';
 import { parseYamlAll, toYaml } from '../core/yaml.js';
 import { DEFAULT_USERS } from '../governance/governance.js';
@@ -21,8 +23,14 @@ import { USERS_PATH, documentPath } from './layout.js';
 // (studio/fixtures/samples/) are factory content too: the seed publishes them into scripts/ and samples/,
 // and the studio reads them from the branch like a designer's (R-11-25). Their sources stay in studio/.
 //
-// A factory change after the seed needs a new release (Issue I-44): the seed never rewrites a file on a
-// connected branch. Only this repository's own copy is regenerated, by `seed-content --write-local`.
+// A factory change after the seed needs a new release (Issue I-44, R-11-29): the seed never rewrites a file, on a connected
+// branch or in this repository's own copy. A document whose path names no release goes to a path that does once it is
+// released again: a factory test to `tests/<id>@<pack release>.yaml`, the inventory to `inventory/<release>.yaml`, the example
+// bank's configuration set to `configuration-sets/<release>.yaml`. The one file a seed replaces is a bank pack's lock file,
+// `banks/<bank>/pack.yaml`, whose place R-11-28 fixes: the earlier lock is kept first at `packs/<release>.yaml`.
+//
+// Each seed records what it published, path and SHA-256, in `change-sets/ledger/<id>.yaml` (R-11-30). `studio check` and
+// tools/validate.py (L38) hold every recorded file to its hash, so a published release never changes once seeded.
 
 const STUDIO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -40,6 +48,12 @@ export function seedSourceHeader(rel: string) {
 
 export interface SeedFile { path: string; text: string; source: string; docs: { doc: any; tenant: string }[] }
 
+/** The SHA-256 of a file's text, as a ledger records it (R-11-30). */
+export const textSha = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+
+/** Where the ledger of a change set lives (R-11-30). */
+export const ledgerPath = (id: string) => `change-sets/ledger/${id}.yaml`;
+
 /** Where a seeded file came from, for the change set record: its pack folder in spec/, or its folder in studio/. */
 const sourceGroup = (source: string) => (source.startsWith('studio/') ? path.posix.dirname(source) : source.split('/').slice(0, 3).join('/'));
 
@@ -53,15 +67,27 @@ export function seedFiles(specRoot: string, studioRoot = STUDIO_DIR): SeedFile[]
     out.push({ path: to(docs), text: seedHeader(rel) + text, source: `spec/${rel}`, docs: docs.map((doc) => ({ doc, tenant: doc.tenant ?? tenant })) });
   };
   const factory = path.join(specRoot, 'factory');
+  // A pack's release, for its tests: a test carries no release of its own (R-11-29).
+  const packRelease = (scope: string) => {
+    const f = path.join(factory, scope, 'pack.yaml');
+    return fs.existsSync(f) ? String(parseYamlAll(fs.readFileSync(f, 'utf8'))[0]?.release ?? '1.0.0') : '1.0.0';
+  };
   for (const f of walkYaml(factory)) {
     add(f, (docs) => {
-      if (docs.length === 1 && docs[0].kind === 'inventory') return 'artefacts/inventory.yaml';
+      if (docs.length === 1 && docs[0].kind === 'inventory') return docs[0].release ? `artefacts/inventory/${docs[0].release}.yaml` : 'artefacts/inventory.yaml';
+      if (docs.length === 1 && docs[0].kind === 'test') {
+        const scope = path.relative(factory, f).split(path.sep)[0];
+        const rel = packRelease(scope);
+        return rel === '1.0.0' ? documentPath(docs[0], OWNER_TENANT) : `artefacts/${scope}/tests/${docs[0].id}@${rel}.yaml`;
+      }
       if (docs.length === 1) return documentPath(docs[0], OWNER_TENANT);
       return `artefacts/${path.relative(factory, f).split(path.sep).join('/')}`;
     }, OWNER_TENANT);
   }
   const bank = path.join(specRoot, 'examples', 'bank');
-  for (const f of walkYaml(bank)) add(f, () => `banks/example-bank/${path.relative(bank, f).split(path.sep).join('/')}`, 'example-bank');
+  for (const f of walkYaml(bank)) add(f, (docs) => (docs.length === 1 && docs[0].kind === 'configuration-set' && docs[0].release && docs[0].release !== '1.0.0'
+    ? `banks/example-bank/configuration-sets/${docs[0].release}.yaml`
+    : `banks/example-bank/${path.relative(bank, f).split(path.sep).join('/')}`), 'example-bank');
   const bindings = path.join(specRoot, 'examples', 'bindings');
   if (fs.existsSync(bindings)) for (const f of walkYaml(bindings)) add(f, () => `artefacts/bindings/${path.basename(f)}`, OWNER_TENANT);
   const sup = path.join(specRoot, 'examples', 'supersession');
@@ -90,25 +116,39 @@ export interface SeedReport {
   changeSet?: string;
   commit?: string;
   added: string[];
+  replaced?: string[];
   unchanged: number;
   branch: string;
 }
 
-/** What the seed would do on the branch: the files to add, those already there, and those that clash. */
+/** A bank pack's lock file: the one seeded file a later release replaces, its place fixed by R-11-28. */
+const BANK_LOCK = /^banks\/([^/]+)\/pack\.yaml$/;
+const releaseOf = (text: string) => String(parseYamlAll(text).find((d: any) => d && typeof d === 'object')?.release ?? '');
+
+/**
+ * What the seed would do on the branch: the files to add, those already there, those that clash, and the bank pack lock files
+ * a later release replaces, each with where the earlier one is kept (R-11-29).
+ */
 export function seedPlan(env: StudioEnv) {
   const c = env.store.content;
   if (!c) throw new StoreError('content', 'The seed publishes to a content branch; this store has none');
   const files = seedFiles(env.specRoot, env.studioRoot);
   const add: SeedFile[] = [];
   const clash: SeedFile[] = [];
+  const replace: { file: SeedFile; was: string; keptAt: string }[] = [];
   let same = 0;
   for (const f of files) {
     const now = c.files.get(f.path);
     if (now === undefined) add.push(f);
     else if (now === f.text) same++;
-    else clash.push(f);
+    else {
+      const lock = BANK_LOCK.exec(f.path);
+      const was = releaseOf(now);
+      if (lock && was && compareReleases(releaseOf(f.text), was) > 0 && !c.has(`banks/${lock[1]}/packs/${was}.yaml`)) replace.push({ file: f, was: now, keptAt: `banks/${lock[1]}/packs/${was}.yaml` });
+      else clash.push(f);
+    }
   }
-  return { files, add, clash, same, users: !c.files.has(USERS_PATH) };
+  return { files, add, clash, replace, same, users: !c.files.has(USERS_PATH) };
 }
 
 /** Publish the seed as one change set (R-11-25). A second run changes nothing. */
@@ -118,17 +158,30 @@ export async function seedContent(env: StudioEnv, actor = SEED_ACTOR): Promise<S
   if (plan.clash.length) {
     throw new StoreError('R-09-21', `The branch ${c.conn.branch} already holds other content for ${plan.clash.length} seeded file(s): ${plan.clash.slice(0, 5).map((f) => `${c.conn.root}/${f.path}`).join(', ')}${plan.clash.length > 5 ? ', …' : ''}. A published file is never rewritten: release the changed artefacts under a new release, then seed again.`);
   }
-  if (!plan.add.length && !plan.users) return { status: 'unchanged', added: [], unchanged: plan.same, branch: c.conn.branch };
+  if (!plan.add.length && !plan.replace.length && !plan.users) return { status: 'unchanged', added: [], unchanged: plan.same, branch: c.conn.branch };
   const id = env.store.changeSetIdFor([]);
-  const members = plan.add.flatMap((f) => f.docs.map(({ doc, tenant }) => ({ kind: doc.kind, name: keyOf(doc).split('@')[0], release: doc.release ?? '', key: tenantKey(doc, tenant) }))).sort((a, b) => a.key.localeCompare(b.key));
+  const published = [...plan.add, ...plan.replace.map((r) => r.file)];
+  const members = published.flatMap((f) => f.docs.map(({ doc, tenant }) => ({ kind: doc.kind, name: keyOf(doc).split('@')[0], release: doc.release ?? '', key: tenantKey(doc, tenant) }))).sort((a, b) => a.key.localeCompare(b.key));
   const changeSet = {
     id, tenant: OWNER_TENANT, origin: 'seed', checker: actor, publishedAt: new Date().toISOString(),
-    makers: ['tools/build_factory.py'], sources: [...new Set(plan.add.map((f) => sourceGroup(f.source)))].sort(), members,
+    makers: ['tools/build_factory.py'], sources: [...new Set(published.map((f) => sourceGroup(f.source)))].sort(), members,
   };
-  const extra: Record<string, string> = Object.fromEntries(plan.add.map((f) => [f.path, f.text]));
+  const extra: Record<string, string | { path: string; text: string; guard: 'replace'; expect: string }> = Object.fromEntries(plan.add.map((f) => [f.path, f.text]));
+  // A bank pack's lock file a later release replaces: the earlier one is kept first, as it was (R-11-29).
+  for (const r of plan.replace) {
+    extra[r.keptAt] = r.was;
+    extra[r.file.path] = { path: r.file.path, text: r.file.text, guard: 'replace', expect: r.was };
+  }
   if (plan.users) extra[USERS_PATH] = toYaml({ kind: 'studio-users', users: DEFAULT_USERS });
+  // The ledger (R-11-30): every file this change set publishes, with the SHA-256 of its text; a replaced lock file with where it is kept.
+  const ledger = [...plan.add.map((f) => ({ path: f.path, sha256: textSha(f.text) })), ...plan.replace.map((r) => ({ path: r.keptAt, sha256: textSha(r.was) })), ...plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.file.text) }))]
+    .sort((a, b) => a.path.localeCompare(b.path));
+  extra[ledgerPath(id)] = [
+    `# The files change set ${id} published, each with the SHA-256 of its text as published (R-11-30). Written once; never edited.`,
+    toYaml({ kind: 'release-ledger', changeSet: id, files: ledger, ...(plan.replace.length ? { replaced: plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.was), keptAt: r.keptAt })) } : {}) }),
+  ].join('\n');
   const message = [
-    `Seed content ${id}: ${plan.add.length} file${plan.add.length === 1 ? '' : 's'} from spec/ and the studio's factory scripts and samples`,
+    `Seed content ${id}: ${published.length} file${published.length === 1 ? '' : 's'} from spec/ and the studio's factory scripts and samples`,
     '',
     ...changeSet.sources.map((s) => `- ${s}`),
     '',
@@ -138,12 +191,12 @@ export async function seedContent(env: StudioEnv, actor = SEED_ACTOR): Promise<S
   let write: Promise<any> | undefined;
   env.store.transaction(() => {
     env.store.markPublishing(id);
-    env.store.record({ tenant: OWNER_TENANT, actor, action: 'seed-content', key: id, detail: `${plan.add.length} file(s) from ${changeSet.sources.join(', ')}`, changeSet: id });
-    write = env.store.commitChangeSet(changeSet, [], extra, message);
+    env.store.record({ tenant: OWNER_TENANT, actor, action: 'seed-content', key: id, detail: `${published.length} file(s) from ${changeSet.sources.join(', ')}`, changeSet: id });
+    write = env.store.commitChangeSet(changeSet, [], extra, message, { filesOnly: true });
   });
   const r = await write!;
   await env.store.flush();
   // Read the branch again, so the store holds what the seed published.
   await env.store.reload();
-  return { status: 'committed', changeSet: id, commit: r.commit, added: plan.add.map((f) => f.path), unchanged: plan.same, branch: c.conn.branch };
+  return { status: 'committed', changeSet: id, commit: r.commit, added: [...plan.add.map((f) => f.path), ...plan.replace.map((x) => x.keptAt)], replaced: plan.replace.map((x) => x.file.path), unchanged: plan.same, branch: c.conn.branch };
 }

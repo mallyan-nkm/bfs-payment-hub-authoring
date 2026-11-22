@@ -803,6 +803,59 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** The `outbox` table in the store. Nothing reads it yet.
 
+## I-81. A test case carries no release
+
+**Issue.** A published release never changes (spec/CLAUDE.md, "Versions"). A test case is keyed by its id and has no release (`test-case.schema.json`), so a factory test that changes after it was seeded has no new release to go to: the seed rewrote `artefacts/<scope>/tests/<id>.yaml` in place. WPS-IN-002 to 004 were rewritten that way on 2026-11-22, and plan P2 changes the agent leg's trace again (the posting window).
+
+**Recommendation.** Give a test case a release, or state in Part 1 that a test is released with its pack. Until then, publish a changed test beside the earlier one, under its pack's release.
+
+**What is built.** R-11-29. The seed publishes every factory test of a pack at a release above 1.0.0 to `artefacts/<scope>/tests/<id>@<pack release>.yaml`; the file of the earlier pack release stays as it was published. The studio reads both and takes the later. Only the latest pack's tests are held to its lock file (`studio/test/core.test.ts`). WPS-IN-002 to 004 are back as first published; their 1.1.0 texts are at `tests/WPS-IN-00n@1.1.0.yaml`.
+
+## I-82. The source's RRI and DE flows have no factory home yet
+
+**Issue.** Plan P2 lists RRI and DE among the WPS flows. The source has both (DATA, `TransactHub-src`, `dsl/workflows/`):
+- **RRI**, the refund request instruction (`dib-wps-inward-rri.v1` 1.2.0): one run per RRI file; the file is verified, parsed and saved (`wps.ParseAndSaveInwardRri`, `InwardRriParser`), a rejected file is raised to the exception queue, and a saved file goes into an automated account block (`wps.BlockInwardRriLines`): one `cbs.amount.block` call per line, parked on the `CbPostingWindow` signal between passes, ending `RRI-Block-Completed` or `RRI-Block-Expired`. An unblock flow (`RriUnblock`) and reject reasons follow.
+- **DE**, inside the agent's payment file flow (`dib-wps-inward-paf.v1` 1.20.0, Activities 12 to 15 and the repost and lost-file activities): the bank's credits posted as one bulk file to its core system (generate the DE bulk file, transfer it by SFTP, submit the upload, determine the outcome from `getDeuploadStatus`, repost the failed lines).
+
+Neither is a scheme step the factory can author with what it has. The RRI's block needs an amount-block operation on an employee's account; `p.port.core-banking.v1` has posting, balance, reversal and verification only. DE is the bank's route to its own core banking, one bank's bulk upload: in the north-star layout it is a mode of a core-banking adapter, not a WPS step.
+
+**Recommendation.**
+1. **RRI.** Add `block` and `release` operations to `p.port.core-banking.v1` (an additive change: a minor) and an activity `p.reserve.block.v1`, then author `uae.wps.wf.refund-request-in.v1`: map the RRI, block each line in the posting window (`p.decide.await-posting-window.v1`), hand an expired block to operations. It needs the owner to decide what the RRI's reject reasons (000, 002) mean to the leg and to give `uae.wps.rri` a dispatch entry (D10 for the scheme facts).
+2. **DE.** Make it a `bulk` adapter of the core-banking binding: the leg's credits posted as one upload, the outcome read back per line, chosen per bank by its binding. No factory flow.
+
+**What is built.** The RRI parser as a native runtime activity, `uae.wps.map.rri-in.v1` (the source's `InwardRriParser`, proved by its own 671-line unit test, `runtime/tests/TransactHub.Activities.Wps.Tests`), with its factory contract. No flow reads it yet (L11 warns). Nothing of DE.
+
+## I-83. Factory releases that were edited in place
+
+**Issue.** The factory was first published at 1.0.0 by change set CS-2026-11-21-001. Later work changed 20 of those artefacts, the three pack lock files, the scheme, the inventory, three tests and the example bank's configuration set and lock file, all still at 1.0.0, and `seed-content --write-local` rewrote the published files with them. A change set record lists its members but not their hashes, so nothing on the branch shows a release changed. Two parallel branches also both used the id CS-2026-11-22-001; the merge kept one record.
+
+**Recommendation.** Release every change (R-11-29) and record what each seed publishes with its hash (R-11-30). Version the bank folders' own configuration sets as the example bank's are (`configuration-sets/<release>.yaml`) once the banks agree. Allocate change set ids per branch so parallel seeds cannot clash.
+
+**What is built.**
+- **The earlier releases, as first published.** Every changed file is back as its first publish had it, from the commit that added it. The changes are new releases (`tools/build_factory.py`, `RELEASES`):
+  - minor, 1.1.0: `p.post.accounting.v1`, `p.sim.core-banking.v1`, `uae.wps.exchange.return-credits.v1`, `uae.wps.exchange.submit-salary-file.v1`, `uae.wps.post.return.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1`, `uae.wps.table.returns.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.submit-salary-file.v1`, the `uae.wps` scheme; with plan P2 `uae.wps.map.pif-in.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.rfa-out.v1`, `uae.wps.wf.return-in.v1`;
+  - a new major line, at 2.0.0, where the interface check (L26) calls the change a major: `uae.wps.decide.returns.v2` (outcome `unverified` added), `uae.wps.wf.agent-payment-in.v2` (exit write `facts.returns` added), and with plan P2 `uae.wps.map.prc-out.v2` and `uae.wps.map.dif-out.v2` (reads added) and `uae.wps.map.rtc-in.v2` (writes added). Each v1 line stays at 1.0.0; the studio's packs leave a line a later major replaces out of the next pack release;
+  - the packs `p`, `uae.p` (its dependency moved), `uae.wps` and the example bank at 1.1.0, the inventory at 1.1.0;
+  - the banks: the example bank's configuration set 1.1.0 (`configuration-sets/1.1.0.yaml`) and DIB's 1.2.0 accept the 1.1.0 packs; both lock files depend on them (DIB's pack 1.1.0). DIB's configuration set is the bank's own working file, not seeded, and was changed where it is, as it was from 1.0.0 to 1.1.0.
+- **The seed adds, never rewrites** (R-11-29). `seed-content --write-local` no longer regenerates a changed file: it stops and names it, as on a connected branch. The bank pack's lock file is the one file a seed replaces, after keeping the earlier one at `packs/<release>.yaml`.
+- **Ledgers** (R-11-30). Each seed writes `change-sets/ledger/<id>.yaml`. The ledgers of the three seeds before this were recorded from the commits that published them; the change set whose record the merge lost is `CS-2026-11-22-001-7d74785.yaml`. Lint L38 (`tools/validate.py`, mutations M39 to M41) and `studio check` hold every recorded file to its hash and every seeded file to a ledger, and a factory artefact at a published release to what was seeded.
+- **Not recoverable.** Nothing: every first publish is in the repository's history. The change set records of the earlier seeds are not edited (they are published); their hashes are in the new ledgers instead.
+
+## I-84. What a native code-behind and its script-behind are held to
+
+**Issue.** R-08-16 lets an activity carry a script-behind for the studio and a native code-behind on the runtime. The native ones are the source's parsers and builders, and read the files the source reads; the factory's scripts and simulators were written from public sources and use their own shapes. Three gaps follow:
+- the factory's first PIF layout (`PDR` lines, an eleven-field `PCR`, `samples/wps-pif-valid.pif`) is not the source's (`EDR`, `EVP`, `PCR`); the native parser reads the source's only;
+- the WPS simulators send acknowledgements and the PSI as a status with no file, so the native ACK reader reads a status there, and the PSI map has nothing to read (OP-A7);
+- the native builders write more than the reference (file names, hashes, counts), so the two agree on outcomes and the business trace, not on every write.
+
+**Recommendation.** Move the factory's samples and tests to the source's PIF layout and drop the first layout in the next major of the map. Give the inward simulator files to send (an ACK or NAK file, a PSI), so the native readers are exercised on every engine. Decide whether the agent leg reads the PSI (a step after the await) before the map is wired.
+
+**What is built.** `uae.wps.map.pif-in.v1` 1.1.0's script reads both layouts; WPS-IN-008 runs the source's layout on the studio and, in `e2e-wps-inward-native`, on the native host, with the same trace. The native ACK reader takes a file when the message is one (it starts `AHR,`), else the status. `uae.wps.map.psi-in.v1` and `uae.wps.map.rri-in.v1` are native only and called by no leg.
+
+**On the engines.** The PSI the inward simulator sends with the payment file reached the platform workflow before its leg began, and the engines' leg (a child instance) never saw it. Now a leg takes over what its platform workflow kept for the payment, a message arriving while the leg runs is sent on to it (`studio/engines/shared/Interpreter.cs`), and an inward simulator's opening messages are due a second after the run starts (`studio/src/conformance/party.ts`). The inward payment file then runs on DTFx and Elsa with the studio's trace (`e2e-wps-parity`). On Temporal (the time-skipping front door) and on the Flowable REST binding the leg still ends `pending` at the supplement: those cases are written (`e2e-wps-temporal`, skipped unless `TH_TEMPORAL_INWARD=1`; `e2e-wps-engines-store`) and not yet green. And a simulator's scenario state is its worker's, one per queue, so a scenario ordered across queues (the core-banking simulator's `reject-first-then-accept` when the return's posting runs on `th-uae-wps`) is not what the interpreter plays: the engine suites compare the inward cases whose calls stay on one queue, and the return through core banking is shown on the runtime.
+
+**Recommendation (engines).** Route an opening message to the instance that awaits it, in the Temporal front door (`FrontDoorWorkflow`) and the Flowable binding, as the shared interpreter now does for DTFx and Elsa; and give the deployed simulators one state per port, not per worker.
+
 ## Not done, and why
 
 | Story | Why |

@@ -34,7 +34,7 @@ async function main() {
     // change set against an in-memory fake seeded from the folder, and the fake's tree is copied back.
     const { writeLocalSeed } = await import('./content/seed-local.js');
     const r = await writeLocalSeed(opt(args, 'actor'));
-    console.log(r.status === 'unchanged' ? `content-configurations/ is current: ${r.unchanged} seeded files, nothing to write` : `content-configurations/: ${r.written.length} file(s) written by change set ${r.changeSet}${r.replaced.length ? `; ${r.replaced.length} regenerated from a changed source` : ''}`);
+    console.log(r.status === 'unchanged' ? `content-configurations/ is current: ${r.unchanged} seeded files, nothing to write` : `content-configurations/: ${r.written.length} file(s) written by change set ${r.changeSet}${r.replaced.length ? `; ${r.replaced.join(', ')} replaced by a later release, the earlier kept` : ''}`);
     return;
   }
   const { env, where, stop } = await openReadEnv(banks.length ? { banks } : {});

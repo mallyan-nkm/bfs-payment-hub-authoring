@@ -449,6 +449,21 @@ export class Store {
     return this.get(name, release, tenant)?.doc;
   }
 
+  /**
+   * The published documents the studio resolves: of each name, per tenant, its latest release (R-11-29). An earlier release stays on
+   * the branch as it was published, and is still read by an exact release; the checks and the packs see this.
+   */
+  current(): Entry[] {
+    const best = new Map<string, Entry>();
+    for (const e of this.all()) {
+      if (e.status !== 'published') continue;
+      const k = `${e.tenant}|${e.kind}|${e.name}`;
+      const b = best.get(k);
+      if (!b || compareReleases(e.release || '0.0.0', b.release || '0.0.0') > 0) best.set(k, e);
+    }
+    return [...best.values()];
+  }
+
   byKind(kind: string): Entry[] {
     return this.all().filter((e) => e.kind === kind && e.status === 'published');
   }
@@ -457,8 +472,10 @@ export class Store {
     return this.byKind('test').find((e) => e.name === id);
   }
 
+  /** A scheme's manifest: its latest release, as every other artefact (R-11-29: an earlier release stays on the branch). */
   scheme(scope: string): any {
-    return this.byKind('scheme').find((e) => e.scope === scope)?.doc;
+    const all = this.byKind('scheme').filter((e) => e.scope === scope).sort((x, y) => compareReleases(x.release, y.release));
+    return all[all.length - 1]?.doc;
   }
 
   configurationSet(tenant: string): any {
@@ -617,10 +634,11 @@ export class Store {
    * set record, its audit and `extra` (engine packages, an activation). Every path is new: a file that
    * is on the branch with other content stops the publish and is named (R-09-21).
    */
-  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean } = {}): Promise<WriteResult> | undefined {
+  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean; filesOnly?: boolean } = {}): Promise<WriteResult> | undefined {
     const changes: Change[] = [];
     const add = (p: string, text: string) => changes.push({ path: p, text, guard: 'create' });
-    const members = changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
+    // The seed writes its files itself (extraFiles); its members only name them in the record (R-11-29).
+    const members = opts.filesOnly ? [] : changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
     for (const e of members) {
       add(e.path.startsWith('artefacts/') || e.path.startsWith('banks/') ? e.path : documentPath(e.doc, e.tenant), toYaml(e.doc));
       const sc = this.scriptSources.get(e.name);

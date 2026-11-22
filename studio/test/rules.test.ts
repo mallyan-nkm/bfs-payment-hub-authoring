@@ -30,7 +30,7 @@ describe('rule sessions (C06-S2 to S5)', () => {
   const resolve = (n: string) => env.store.doc(n);
   it('runs every example that every rule and table carries', () => {
     let n = 0;
-    for (const e of env.store.all().filter((x) => x.kind === 'rule' || x.kind === 'table')) {
+    for (const e of env.store.current().filter((x) => x.kind === 'rule' || x.kind === 'table')) {
       for (const r of runExamples(e.doc, resolve)) {
         expect(r.passed, `${e.name} ${r.name} ${JSON.stringify(r.actual)}`).toBe(true);
         n++;

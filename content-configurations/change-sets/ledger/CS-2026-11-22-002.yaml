@@ -1,0 +1,9 @@
+# The files change set CS-2026-11-22-002 published, each with the SHA-256 of its text as published (R-11-30). Written once; never edited.
+# Recorded on 2026-11-22 from the commit that published it (d2922a3), as the change set itself carries no hashes (Issue I-83).
+kind: release-ledger
+changeSet: CS-2026-11-22-002
+files:
+  - { path: artefacts/p/p.port.decryption.v1/1.0.0.yaml, sha256: c6d741392c1d84efb801e90739f8b4a7de8949f36522eec0e26b2388267b932f }
+  - { path: artefacts/p/p.port.file-transfer.v1/1.0.0.yaml, sha256: 7287bbe45e8ee0aee91ecf47b9d8279e9c0451610395c54af73e8fca8265ad5f }
+  - { path: artefacts/p/p.sim.decryption.v1/1.0.0.yaml, sha256: bb4a8f3ba1088baa0321e6dae6e0a43882229c99dd8ebc9b53fce0c1feabbc3e }
+  - { path: artefacts/p/p.sim.file-transfer.v1/1.0.0.yaml, sha256: c1b235b3ee90ff2b34ef46f99d08b4b0e76d3d1274c350e4a366b728de71f28e }

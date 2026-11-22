@@ -7,8 +7,8 @@ import { seedContent, seedPlan } from './seed.js';
 
 // Regenerate this repository's content-configurations/ (R-11-25): the seed command runs as a change
 // set against an in-memory fake GitHub seeded from the folder, and the files of that one commit are
-// copied back. A seeded file whose source in spec/ changed at the same release is regenerated here,
-// where the folder is the authoring copy; on a connected branch the seed never rewrites a file.
+// copied back. It adds files and never rewrites one (R-11-29): a seeded file whose source in spec/ changed at the same
+// release stops it, as on a connected branch, and names the file. Release the change, then seed again.
 
 export async function writeLocalSeed(actor?: string) {
   const local = await startLocalContent();
@@ -17,13 +17,9 @@ export async function writeLocalSeed(actor?: string) {
     const content = await ContentStore.open(local.connection);
     const env = envFor(content, { banks: [] });
     const plan = seedPlan(env);
-    if (!plan.add.length && !plan.clash.length && !plan.users) return { status: 'unchanged' as const, unchanged: plan.same, written: [] as string[], replaced: [] as string[], changeSet: undefined };
-    const replaced = plan.clash.map((f) => f.path);
-    if (replaced.length) {
-      local.fake.commitFiles(full, LOCAL_REPO.branch, Object.fromEntries(replaced.map((p) => [`content-configurations/${p}`, null])), 'Regenerate seeded files whose source changed');
-      await env.store.reload();
-    }
+    if (!plan.add.length && !plan.clash.length && !plan.replace.length && !plan.users) return { status: 'unchanged' as const, unchanged: plan.same, written: [] as string[], replaced: [] as string[], changeSet: undefined };
     const r = await seedContent(env, actor);
+    const replaced = r.replaced ?? [];
     const files = local.fake.files(full, LOCAL_REPO.branch);
     const commit = content.writes.find((w) => w.commit === r.commit);
     const written: string[] = [];

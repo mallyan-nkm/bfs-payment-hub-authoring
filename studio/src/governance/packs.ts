@@ -39,9 +39,19 @@ function parents(scope: string): string[] {
 
 export function packEntries(env: StudioEnv, scope: string, tenant?: string): Entry[] {
   const latest = new Map<string, Entry>();
+  // A major line a later major of the same name replaces stays in the pack releases that held it, not in the next (R-11-29).
+  const majors = new Map<string, number>();
+  for (const e of env.store.all()) {
+    const m = /^(.*)\.v(\d+)$/.exec(e.name);
+    if (m && e.status === 'published') majors.set(`${e.tenant}|${m[1]}`, Math.max(majors.get(`${e.tenant}|${m[1]}`) ?? 0, Number(m[2])));
+  }
+  const replaced = (e: Entry) => {
+    const m = /^(.*)\.v(\d+)$/.exec(e.name);
+    return !!m && (majors.get(`${e.tenant}|${m[1]}`) ?? 0) > Number(m[2]);
+  };
   for (const e of env.store.all()) {
     if (e.status !== 'published' || ['pack', 'inventory', 'conformance-kit', 'engine-binding', 'configuration-set', 'supersession'].includes(e.kind)) continue;
-    if (packScopeOf(e) !== scope) continue;
+    if (packScopeOf(e) !== scope || replaced(e)) continue;
     if (scope === 'b' && tenant && e.tenant !== tenant) continue;
     const k = `${e.kind}:${e.name}`;
     const prev = latest.get(k);
@@ -50,10 +60,18 @@ export function packEntries(env: StudioEnv, scope: string, tenant?: string): Ent
   return [...latest.values()];
 }
 
+/** The latest release of a pack's manifest in the repository: an earlier one stays as it was published (R-11-29). */
+function latestPack(env: StudioEnv, match: (e: Entry) => boolean): Entry | undefined {
+  return env.store.byKind('pack').filter(match).sort((a, b) => compareReleases(a.release || '1.0.0', b.release || '1.0.0')).pop();
+}
+
 /** A bank's pack manifest in the repository: the one of its tenant, the example bank's when none is named. */
 function bankPack(env: StudioEnv, tenant?: string): Entry | undefined {
-  return env.store.byKind('pack').find((e) => e.doc.scope === 'b' && (e.doc.tenant ?? 'example-bank') === (tenant ?? 'example-bank'));
+  return latestPack(env, (e) => e.doc.scope === 'b' && (e.doc.tenant ?? 'example-bank') === (tenant ?? 'example-bank'));
 }
+
+/** The release of a shared pack the repository holds, its latest. */
+const sharedRelease = (env: StudioEnv, scope: string) => latestPack(env, (e) => e.doc.scope === scope && e.doc.packType !== 'bank')?.release || '1.0.0';
 
 /** The pack manifest of a scope, as tools/build_factory.py writes it (C05-S2). A bank pack's paths are relative to its own folder. */
 export function packManifest(env: StudioEnv, scope: string, tenant?: string): any {
@@ -82,9 +100,9 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string): an
     }
   }
   const order = ['p', 'uae.p', 'uae.wps'];
-  const dependsOn = [...deps].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map((s) => ({ scope: s, release: '1.0.0' }));
+  const dependsOn = [...deps].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map((s) => ({ scope: s, release: sharedRelease(env, s) }));
   const pack: any = {
-    kind: 'pack', scope, release: '1.0.0',
+    kind: 'pack', scope, release: scope === 'b' ? own?.release || '1.0.0' : sharedRelease(env, scope),
     title: scope === 'b' ? own?.doc.title ?? 'Example bank pack' : `Factory pack for ${scope}`,
     packType: scope === 'b' ? 'bank' : 'shared',
     origin: scope === 'b' ? 'authored' : 'factory',
@@ -99,7 +117,7 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string): an
 
 /** Does the generated manifest equal the one in the repository? A bank pack is named by its tenant. */
 export function compareManifest(env: StudioEnv, scope: string, tenant?: string): { equal: boolean; differences: string[] } {
-  const want = (scope === 'b' ? bankPack(env, tenant) : env.store.byKind('pack').find((e) => e.doc.scope === scope))?.doc;
+  const want = (scope === 'b' ? bankPack(env, tenant) : latestPack(env, (e) => e.doc.scope === scope && e.doc.packType !== 'bank'))?.doc;
   const got = packManifest(env, scope, want?.tenant);
   if (!want) return { equal: false, differences: ['No manifest in the repository'] };
   const diffs: string[] = [];

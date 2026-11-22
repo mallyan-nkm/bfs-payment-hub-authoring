@@ -219,6 +219,8 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L34 | Factory packs: every folder under `factory/` is a pack the inventory lists, every listed pack has a folder, and every artefact sits in its own scope's folder | Yes |
 | L35 | Bank packs on the branch: each folder in `content-configurations/banks/` has a `pack.yaml` that is a bank pack naming its tenant; every studio artefact there is valid, is that tenant's, is in scope `b` or a test, and refers only to the factory or the folder; its lock file lists every artefact with its kind, release, hash and path, and nothing else (R-11-28) | Yes |
 | L36 | An await's `family` is one its message's dispatch entry declares (R-05-44) | Yes |
+| L37 | An activity that the runtime's native host implements as well (`implementation.native: true`) has a script-behind or a builtin binding (R-08-16) | Yes |
+| L38 | A published release never changes: every file a seed published is in its change set's ledger with the SHA-256 of its text and still has it; a path is published once, but for a bank pack's lock file a later ledger replaces; every seeded file is in a ledger; a factory artefact at a release the content branch holds is what was seeded (R-11-29, R-11-30) | Yes |
 
 ## 5.8 Examples
 

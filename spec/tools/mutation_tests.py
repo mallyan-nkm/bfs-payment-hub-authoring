@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 COPY = ("schemas", "factory", "examples", "conformance", "tools")
 # The bank packs on the branch (check L35) sit beside spec/, so a case copies them too.
 BANKS = ROOT.parent / "content-configurations" / "banks"
+CONTENT = ROOT.parent / "content-configurations"
 EB = "../content-configurations/banks/example-bank"
 
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
@@ -106,6 +107,20 @@ CASES = [
     # R-05-47: a reply wait a bank may set names a parameter the composite declares (L30)
     ("M37", "ERROR L30", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "replyTimeoutParameter: ackWait", "replyTimeoutParameter: noSuchWait", "a composite's reply wait names a parameter it does not declare"),
+    # R-08-16: only an activity with a script-behind or a builtin may say the native host implements it too (L37)
+    ("M38", "ERROR L37", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
+     "  subflow: uae.wps.sub.return-credits.v1\n", "  subflow: uae.wps.sub.return-credits.v1\n  native: true\n",
+     "a composite says the native host implements it"),
+    # R-11-30: a file a seed published keeps the text its ledger records (L38)
+    ("M39", "ERROR L38", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
+     "title: ACK or NAK to status", "title: ACK or NAK to a status", "a published release is edited on the branch"),
+    # R-11-29: a factory artefact changed at a release the branch already holds (L38)
+    ("M40", "ERROR L38", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
+     "title: ", "title: Changed ", "a factory artefact is changed without a new release"),
+    # R-11-30: a seeded file no ledger records (L38)
+    ("M41", "ERROR L38", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
+     "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
+     "a seeded file is in no ledger"),
 ]
 
 
@@ -115,9 +130,11 @@ def run_case(case):
         tmp = pathlib.Path(top) / "spec"
         for d in COPY:
             shutil.copytree(ROOT / d, tmp / d, ignore=shutil.ignore_patterns("__pycache__"))
-        if BANKS.is_dir():
-            shutil.copytree(BANKS, pathlib.Path(top) / "content-configurations" / "banks")
-        f = tmp / rel
+        # the content branch's copy beside spec/: the bank packs (L35) and what the seeds published (L38)
+        if CONTENT.is_dir():
+            shutil.copytree(CONTENT, pathlib.Path(top) / "content-configurations")
+        rel_path = pathlib.Path(rel)
+        f = (pathlib.Path(top) / rel_path.relative_to("..")) if rel.startswith("../") else tmp / rel
         text = f.read_text()
         if text.count(old) < 1:
             return cid, "SETUP", "text to mutate not found in %s" % rel

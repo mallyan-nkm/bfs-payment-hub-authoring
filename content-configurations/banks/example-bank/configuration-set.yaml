@@ -23,14 +23,6 @@ values:
   - parameter: uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes
     value: ["302620122"]
     validFrom: "2026-01-01"
-  # The bank waits ten business days for WPS to acknowledge a returns file, not the default thirty calendar days
-  # (Issues I-41, I-51): its own wait and its own calendar.
-  - parameter: uae.wps.exchange.return-credits.v1#replyWait
-    value: P10D
-    validFrom: "2026-01-01"
-  - parameter: uae.wps.exchange.return-credits.v1#replyWaitCalendar
-    value: business
-    validFrom: "2026-01-01"
 bindings:
   - hookPoint: p.wf.corporate.v1#before-release
     hook: b.hook.pre-release-approval.v1

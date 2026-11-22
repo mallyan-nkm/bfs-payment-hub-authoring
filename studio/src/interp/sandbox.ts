@@ -138,7 +138,15 @@ export interface InMemoryScript { name: string; language: 'typescript' | 'python
 export class ScriptRegistry {
   constructor(private dirs: string[], private memory: () => Iterable<InMemoryScript> = () => []) {}
 
-  find(name: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
+  /**
+   * The script-behind of an activity. With a release, a script re-released with it (`<name>@<release>`) comes first, then the
+   * script of the name: a script that changes is published beside the earlier one, never over it (R-08-10, R-11-30).
+   */
+  find(name: string, release?: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
+    if (release && !name.includes('@')) {
+      const own = this.find(`${name}@${release}`);
+      if (own) return own;
+    }
     for (const d of this.dirs) {
       for (const [ext, language] of [['.ts', 'typescript'], ['.js', 'typescript'], ['.py', 'python']] as const) {
         const f = path.join(d, `${name}${ext}`);
@@ -153,9 +161,9 @@ export class ScriptRegistry {
   withFirst(scripts: InMemoryScript[]): ScriptRegistry {
     const outer = this;
     return new (class extends ScriptRegistry {
-      find(name: string) {
-        const s = scripts.find((x) => x.name === name);
-        return s ? { file: s.file, source: s.source, language: s.language } : outer.find(name);
+      find(name: string, release?: string) {
+        const s = (release && scripts.find((x) => x.name === `${name}@${release}`)) || scripts.find((x) => x.name === name);
+        return s ? { file: s.file, source: s.source, language: s.language } : outer.find(name, release);
       }
       list() {
         return [...new Set([...scripts.map((x) => `${x.name}.${x.language === 'python' ? 'py' : 'ts'}`), ...outer.list()])].sort();
