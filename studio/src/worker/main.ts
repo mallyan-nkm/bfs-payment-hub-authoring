@@ -104,4 +104,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => console.log(`worker ${manifest.queue} on ${port}: ${manifest.tasks.length} task(s)`));
+// --port 0: the system picks a free port; the first line says which, for the deploy runner.
+server.listen(port, '127.0.0.1', () => console.log(`worker ${manifest.queue} on ${(server.address() as { port: number }).port}: ${manifest.tasks.length} task(s)`));
