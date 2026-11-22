@@ -23,11 +23,9 @@ export interface User { id: string; tenant: string; roles: string[]; subject?: s
 
 /** The studio's users. Names are role-shaped placeholders: no real person is named. */
 export const DEFAULT_USERS: User[] = [
-  { id: 'shared.designer', tenant: OWNER_TENANT, roles: ['workflow designer', 'workflow developer', 'operations', 'service engineer'] },
+  { id: 'shared.designer', tenant: OWNER_TENANT, roles: ['workflow designer', 'workflow developer'] },
   { id: 'workflow.designer', tenant: OWNER_TENANT, roles: ['workflow designer'] },
   { id: 'workflow.developer', tenant: OWNER_TENANT, roles: ['workflow developer'] },
-  { id: 'operations.designer', tenant: OWNER_TENANT, roles: ['operations'] },
-  { id: 'service.engineer', tenant: OWNER_TENANT, roles: ['service engineer'] },
   { id: 'shared.checker', tenant: OWNER_TENANT, roles: ['platform approver'] },
   { id: 'shared.auditor', tenant: OWNER_TENANT, roles: ['auditor'] },
   { id: 'service.operations', tenant: OWNER_TENANT, roles: ['service operations'] },
