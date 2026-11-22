@@ -246,7 +246,8 @@ function DataView({ api, onUse }: { api: BenchClient; onUse(d: DataChoice): void
             <label key={k} title={v}><input type="checkbox" checked={recipe.inject.includes(k)} onChange={() => set('inject', recipe.inject.includes(k) ? recipe.inject.filter((x: string) => x !== k) : [...recipe.inject, k])} /> {k}</label>
           ))}
         </fieldset>
-        <p><button className="primary" data-testid="build" onClick={build}>Build</button>{built?.suggestedBench && <span className="muted"> use with the bench {built.suggestedBench}</span>}</p>
+        {/* Build waits for a template: before the bench's templates arrive the recipe names none, and the bench refuses it. */}
+        <p><button className="primary" data-testid="build" disabled={!recipe.template} onClick={build}>Build</button>{built?.suggestedBench && <span className="muted"> use with the bench {built.suggestedBench}</span>}</p>
         <textarea data-testid="built" className="mono" rows={10} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} placeholder="The built data appears here; edit it as you like." />
         <div className="action-buttons">
           <button data-testid="validate" disabled={!text} onClick={() => validate(false)}>Validate the format</button>
