@@ -65,6 +65,11 @@ do:
       of: uae.wps.exchange.confirm-receipt.v1
       by: uae.wps.sub.confirm-receipt.v1
       do:
+        - id: confirm-receipt.encrypt
+          call: p.protect.encrypt-file.v1
+          handle:
+            refused:
+              return: rejected
         - id: confirm-receipt.send
           call: uae.wps.exchange.send-receipt-confirmation.v1
           handle:
@@ -147,6 +152,11 @@ do:
       of: uae.wps.exchange.report-disbursement.v1
       by: uae.wps.sub.report-disbursement.v1
       do:
+        - id: report-disbursement.encrypt
+          call: p.protect.encrypt-file.v1
+          handle:
+            refused:
+              return: rejected
         - id: report-disbursement.send
           call: uae.wps.exchange.send-disbursement-file.v1
           handle:
@@ -201,6 +211,11 @@ do:
                 wait:
                   parameter: uae.wps.exchange.return-credits.v1#uploadHold
                   default: PT0S
+              - id: return-credits.encrypt
+                call: p.protect.encrypt-file.v1
+                handle:
+                  refused:
+                    return: rejected
               - id: return-credits.send
                 call: uae.wps.exchange.send-returns-file.v1
                 handle:

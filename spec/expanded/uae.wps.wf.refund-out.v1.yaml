@@ -38,6 +38,11 @@ do:
       of: uae.wps.exchange.request-refund.v1
       by: uae.wps.sub.request-refund.v1
       do:
+        - id: request.encrypt
+          call: p.protect.encrypt-file.v1
+          handle:
+            refused:
+              return: rejected
         - id: request.send
           call: uae.wps.exchange.send-refund-request.v1
           handle:

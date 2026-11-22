@@ -10,7 +10,7 @@ import type { Target } from '../export/exporter.js';
 import type { StudioEnv } from '../env.js';
 
 // Who builds a bank's distribution and configuration release, and when (R-11-40, docs/runtime/PACKAGING-AND-DEPLOYMENT.md
-// section 10 item 1). On approval of a change set as a version, when the studio's settings say so (`distributions: true`):
+// section 10 item 1). On approval of a change set as a version, unless the studio's settings turn it off (`distributions: false`; on by default, Issue I-113):
 //   a platform or scheme change, approved by a Platform Approver: a new distribution for every bank that takes it;
 //   a bank pack change, approved by that bank's Bank Approver: a new distribution of that bank;
 //   a configuration change, approved by that bank's Bank Approver: a configuration release of that bank.
@@ -66,7 +66,7 @@ export interface Plan {
  */
 export async function planOnApproval(env: StudioEnv, tenant: string, checker: string, docs: any[]): Promise<Plan> {
   const plan: Plan = { distributions: [], configuration: [] };
-  if (!env.store.settings.distributions) return plan;
+  if (env.store.settings.distributions === false) return plan;
   const kinds = classify(docs.map((d) => ({ kind: d.kind, name: d.name ?? `${d.scope}.scheme` })), tenant);
   const day = new Date().toISOString().slice(0, 10);
   const want = new Set<string>();
@@ -85,6 +85,14 @@ export async function planOnApproval(env: StudioEnv, tenant: string, checker: st
   if (kinds.values) {
     enforce(env, checker, tenant, 'approve', `configuration-release:${tenant}`, { kind: 'configuration-release', scope: 'b' });
     const against = (await branchDistributions(env, tenant)).map((d) => ({ releaseId: d.releaseId, parameterContract: d.parameterContract }));
+    // A configuration release is checked against a distribution's parameter contract. With distributions on by default (Issue
+    // I-113), a bank that has none yet gets its first in the same approval, by the same bank approver, and the values are
+    // checked against it in place.
+    if (against.length === 0 && !plan.distributions.some((d) => d.bank === tenant)) {
+      enforce(env, checker, tenant, 'approve', `distribution:${tenant}`, { kind: 'distribution', scope: 'b' });
+      precheck(env, tenant, docs);
+      plan.distributions.push({ bank: tenant, id: await nextId(env, tenant, day) });
+    }
     // The values checked now, against the contracts the release will name, so a value no distribution declares, or one out of
     // its bounds, refuses the approval before anything is published. A distribution this approval builds is checked in place.
     const set = docs.find((d) => d.kind === 'configuration-set');

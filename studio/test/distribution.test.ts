@@ -59,7 +59,7 @@ describe('a distribution', () => {
   it('declares its parameter contract (every dial, its type and bounds) and its longest wait', () => {
     const c = dist.manifest.parameterContract;
     const ack = c.parameters.find((p: any) => p.parameter === 'uae.wps.exchange.submit-salary-file.v1#ackWait');
-    expect(ack).toMatchObject({ type: 'duration', bounds: { min: 'PT1H', max: 'P7D' } });
+    expect(ack).toMatchObject({ type: 'duration', bounds: { min: 'PT15M', max: 'P7D' } });
     expect(c.parameters.every((p: any) => p.type && p.default !== undefined)).toBe(true);
     expect(isoSeconds(dist.manifest.longestWait)).toBeGreaterThanOrEqual(30 * 86400);
     expect(longestWait({ parameters: [] })).toBe('PT0S');

@@ -70,7 +70,8 @@ export interface Settings {
   mode: 'commit' | 'pull-request';
   /** The engine whose package each published workflow carries under `releases/`. */
   target: string;
-  /** On approval, also build and publish the distributions and configuration releases the change set calls for (R-11-40). */
+  /** On approval, also build and publish the distributions and configuration releases the change set calls for (R-11-40). On
+   *  unless set to false (Issue I-113). */
   distributions?: boolean;
   /** Build those distributions for a test environment: with the simulators, never promotable (R-07-12). */
   testDistributions?: boolean;
@@ -80,7 +81,7 @@ export interface Settings {
   changedAt?: string;
 }
 
-export const DEFAULT_SETTINGS: Settings = { mode: 'commit', target: 'temporal' };
+export const DEFAULT_SETTINGS: Settings = { mode: 'commit', target: 'temporal', distributions: true };
 
 export class StoreError extends Error {
   constructor(public code: string, message: string) {

@@ -1,15 +1,19 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.request-refund.v1
-release: 1.1.0
+release: 1.2.0
 dsl: 1.0.0
 title: Request a refund, read the acknowledgement, wait for the settlement
-description: What the request-refund block does underneath. Two waits. The first takes the reply time of the calling step. The second is the scheme wait for settlement and is fixed here.
+description: What the request-refund block does underneath. Two waits. The first takes the reply time of the calling step. The second is the scheme wait for settlement and is fixed here. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17).
 implements:
   activity: uae.wps.exchange.request-refund.v1
 exit:
   outcomes: [accepted, rejected, pending]
 do:
+  - id: encrypt
+    call: p.protect.encrypt-file.v1
+    handle:
+      refused: { return: rejected }
   - id: send
     call: uae.wps.exchange.send-refund-request.v1
     handle:

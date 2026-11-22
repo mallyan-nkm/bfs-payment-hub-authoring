@@ -114,7 +114,9 @@ describe('a branch per change set (R-11-22)', () => {
     const pub = await publish(env, key);
     expect(pub.changeSet.id).toBe(id);
     expect(pub.git).toMatchObject({ status: 'committed', branch: BRANCH, changeSet: id });
-    expect(pub.git.files.sort()).toEqual([`${ROOT}/artefacts/p/p.enrich.cs-note-b.v1/1.0.0.yaml`, `${ROOT}/audit/change-sets/${id}.yaml`, `${ROOT}/change-sets/${id}.yaml`]);
+    // The distributions the change set calls for are built in the same commit, on by default (R-11-40, Issue I-113).
+    expect(pub.git.files.some((f: string) => f.startsWith(`${ROOT}/releases/distributions/example-bank/`))).toBe(true);
+    expect(pub.git.files.filter((f: string) => !f.startsWith(`${ROOT}/releases/distributions/`)).sort()).toEqual([`${ROOT}/artefacts/p/p.enrich.cs-note-b.v1/1.0.0.yaml`, `${ROOT}/audit/change-sets/${id}.yaml`, `${ROOT}/change-sets/${id}.yaml`]);
     const l = log(env);
     expect(l.length).toBe(before + 1);
     expect(l[0].parents).toEqual([l[1].sha, draftHead]);
@@ -238,22 +240,24 @@ describe('append-only state files (R-11-23, R-09-21)', () => {
     expect(w.status, JSON.stringify(w.body)).toBe(200);
     expect(files(env)[`${ROOT}/change-sets/${w.body.changeSet}.yaml`]).toMatch(/waivers:[\s\S]*scenario: CK-SEQ-01/);
     await call(env, 'POST', '/api/in-flight', { actor: 'service.operations', counts: { 'p.wf.commercial.v1@1.0.0': 2 }, asOf: '2026-11-21' });
-    const cs = { ...env.store.configurationSet('example-bank'), release: '1.3.0' };
+    const cs = { ...env.store.configurationSet('example-bank'), release: '1.4.0' };
     const { toYaml } = await import('../src/core/yaml.js');
     const c = await call(env, 'POST', '/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml(cs) });
     expect(c.status, JSON.stringify(c.body)).toBe(200);
     // Saved as a draft by its maker; a bank approver makes it the version (R-11-31).
-    expect(Object.keys(files(env))).not.toContain(`${ROOT}/banks/example-bank/configuration-sets/1.3.0.yaml`);
+    expect(Object.keys(files(env))).not.toContain(`${ROOT}/banks/example-bank/configuration-sets/1.4.0.yaml`);
     const pub = await call(env, 'POST', '/api/publish', { key: c.body.draft.key, checker: 'example.checker' });
     expect(pub.status, JSON.stringify(pub.body)).toBe(200);
     const names = Object.keys(files(env));
-    expect(names).toContain(`${ROOT}/banks/example-bank/configuration-sets/1.3.0.yaml`);
+    expect(names).toContain(`${ROOT}/banks/example-bank/configuration-sets/1.4.0.yaml`);
     expect(names.some((p) => p.startsWith(`${ROOT}/governance/in-flight/`))).toBe(true);
     const again = await restart(env);
     expect((await call(again, 'GET', '/api/conformance/report')).body.rows.find((r: any) => r.scenario === 'CK-SEQ-01')?.waiver?.reason).toBe('A test waiver');
     expect(again.store.extra.inFlight).toMatchObject({ asOf: '2026-11-21' });
-    expect(again.store.configurationSet('example-bank').release).toBe('1.3.0');
-    expect(again.store.get('config:example-bank', '1.3.0', 'example-bank')?.maker).toBe('example.maker');
+    expect(again.store.configurationSet('example-bank').release).toBe('1.4.0');
+    expect(again.store.get('config:example-bank', '1.4.0', 'example-bank')?.maker).toBe('example.maker');
+    // With distributions on by default (Issue I-113), the bank's first distribution and its configuration release are built too.
+    expect(names.some((p) => p.startsWith(`${ROOT}/releases/distributions/example-bank/`))).toBe(true);
   }, 60000);
 });
 

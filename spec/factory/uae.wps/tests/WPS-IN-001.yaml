@@ -19,6 +19,9 @@ bench:
   - port: p.port.fraud.v1
     simulator: p.sim.fraud.v1
     scenario: accept
+  - port: p.port.encryption.v1
+    simulator: p.sim.encryption.v1
+    scenario: accept
 given:
   inbound: samples/wps-pif-valid.pif
 expect:

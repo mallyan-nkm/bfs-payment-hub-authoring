@@ -67,7 +67,6 @@ RELEASES = {
     "p.sim.core-banking.v1": ("1.1.0", "scenarios for refused and unknown credits"),
     # Issues I-41, I-51 and R-05-47: the replies' waits are the bank's values
     "uae.wps.exchange.return-credits.v1": ("1.1.0", "replyWait, replyWaitCalendar and uploadHold"),
-    "uae.wps.exchange.submit-salary-file.v1": ("1.1.0", "ackWait and ackWaitCalendar"),
     # Issue I-41: each acknowledgement names the family of the file it answers
     "uae.wps.sim.wps-inward.v1": ("1.1.0", "the returns scenarios; acknowledgements carry their family"),
     "uae.wps.sim.wps-outward.v1": ("1.1.0", "acknowledgements carry their family"),
@@ -86,15 +85,25 @@ RELEASES = {
     # Owner's decisions of 2026-11-22 (Issues I-88 and I-100): the WPS fields the source's screens showed, and the employer the
     # labour ministry has suspended. Each a minor: parameters, fields or rules added, no read, write, outcome or port changed.
     "uae.wps.ext.salary.v1": ("1.1.0", "the allowances, the leave encashment, the upload channel and the employer's labour ministry status"),
-    "uae.wps.map.sif-in.v1": ("1.1.0", "reads the EVP allowances and the channel's upload: initiator, debtor name and account, channel; amounts as decimal strings (I-109)"),
     "uae.wps.map.ack-in.v1": ("1.2.0", "the NAK's per-line errors (DER) as status.transactions, pain.002 TxInfAndSts; native code-behind"),
     "uae.wps.ruleset.salary-file.v1": ("1.1.0", "refuses a file whose employer the labour ministry has suspended"),
+    # Owner's decisions of 2026-11-22 (Issues I-115 to I-118). Each a minor or a patch of an artefact the content branch holds.
+    # I-116: the acknowledgement wait may be as short as fifteen minutes (the source's ADIB waits twenty); a bound widened, a minor.
+    # Its 1.1.0 added ackWait and ackWaitCalendar (Issues I-41, I-51, R-05-47).
+    "uae.wps.exchange.submit-salary-file.v1": ("1.2.0", "ackWait from PT15M (Issue I-116)"),
+    # I-117: the runtime implements the encryption block as well (R-08-16), on the bank's OpenPGP binding.
+    "p.protect.encrypt-file.v1": ("1.1.0", "native code-behind (Issue I-117)"),
+    # I-118: the runtime asks the labour ministry's register through the bank's binding (R-12-16).
+    "uae.wps.enrich.employer-status.v1": ("1.1.0", "native code-behind on the labour ministry register (Issue I-118)"),
+    # I-115: each line's bank name from the participant directory and its account type from the channel's upload (R-12-18). Its
+    # 1.1.0 read the EVP allowances and the channel's upload: initiator, debtor name and account, channel; amounts as decimal strings (I-109).
+    "uae.wps.map.sif-in.v1": ("1.2.0", "each line's bank name from the participant directory, its account type from the channel's upload (Issue I-115)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
-PACK_RELEASES = {"p": "1.2.0", "uae.p": "1.2.0", "uae.wps": "1.2.0", "b": "1.2.0"}
-FACTORY_RELEASE = "1.2.0"
+PACK_RELEASES = {"p": "1.3.0", "uae.p": "1.3.0", "uae.wps": "1.3.0", "b": "1.3.0"}
+FACTORY_RELEASE = "1.3.0"
 
 
 def emit(doc, base=FACTORY):
@@ -243,9 +252,13 @@ act("p.decide.await-posting-window.v1", "Wait for core banking's posting window"
 # service is a port the bank binds (OpenPGP on the runtime); the recipient's key is named by id, a parameter the bank sets, and
 # held by its binding by reference only. Encrypting changes nothing in the bank, so it is a read and may be retried.
 act("p.protect.encrypt-file.v1", "Encrypt the outgoing file for its recipient", ["header", "messages"], ["facts.encryption"],
-    ["encrypted", "refused"], "read", ports=["p.port.encryption.v1"], policy=SHORT, service="encryption",
+    ["encrypted", "refused"], "read", ports=["p.port.encryption.v1"], policy=SHORT, service="encryption", native=True,
     params={"recipientKey": {"type": "code", "default": "recipient", "bounds": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
                              "description": "The id of the recipient's public key, as the bank's encryption binding names it. The key itself is never a value: the binding holds it by reference."}})
+# The pair of the encryption block (Issue I-117): a file the bank receives encrypted to its own key is decrypted before it is read,
+# by the front door, through the bank's binding of p.port.decryption.v1 (OpenPGP, or the source's GnuPG key folder on the runtime).
+act("p.protect.decrypt-file.v1", "Decrypt a received file with the bank's own key", ["header", "messages"], ["messages", "facts.decryption"],
+    ["decrypted", "refused"], "read", ports=["p.port.decryption.v1"], policy=SHORT, service="decryption", native=True, invoked_by="front-door")
 act("p.notify.channel.v1", "Tell the originating channel", ["header", "status"], ["facts.notified"], ["notified"],
     "write", ports=["p.port.channel.v1"], policy=STD)
 act("p.notify.publish-fact.v1", "Publish a fact outward", ["header", "status"], ["facts.published"], ["notified"],
@@ -317,7 +330,11 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              {"from": "upload.debtorName", "to": "batch.debtor.name"},
              {"from": "upload.debtorAccount", "to": "batch.debtorAccount.iban"},
              {"from": "upload.channel", "to": "ext.uae.wps.uploadChannel"},
-             {"from": "constant SALA", "to": "batch.categoryPurpose"}])
+             # 1.2.0 (Issue I-115): the line's account type where the channel declared one at upload (the SIF has none), and the
+             # name of the line's bank from the scheme's participant directory, by the line's routing code
+             {"from": "upload.accountType", "to": "items[].payment.creditorAccount.type"},
+             {"from": "EDR.agentRoutingCode", "to": "items[].payment.creditorAgent.name", "via": "uae.wps.table.participant-names.v1"},
+             {"from": "constant SALA", "to": "batch.categoryPurpose"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
      ["batch", "items[]", W], ["messages"])
 wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
@@ -371,7 +388,7 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
 # (AdibValidateWpsRules and its copies, mohreStatus SUSPENDED) and refused the file; no answer let the file through.
 act("uae.wps.enrich.employer-status.v1", "Ask the labour ministry for the employer's status", ["header", "ext.uae.wps.employerId"],
     ["ext.uae.wps.employerStatus"], ["found", "not-found"], "read", level="batch", ports=["uae.wps.port.labour-ministry.v1"], policy=SHORT,
-    script=True, p=WP)
+    script=True, native=True, p=WP)
 
 # composite exchanges: one block to the designer, a subflow underneath (design/05, section 5.6)
 WPS_PORT = ["uae.wps.port.wps.v1"]
@@ -381,7 +398,7 @@ act("uae.wps.exchange.submit-salary-file.v1", "Submit the salary file and get th
     ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
     policy={"replyTimeout": "P1D", "replyCalendar": "business", "replyTimeoutParameter": "ackWait", "replyCalendarParameter": "ackWaitCalendar"},
     sub="uae.wps.sub.submit-salary-file.v1", p=WP,
-    params={"ackWait": {"type": "duration", "default": "P1D", "bounds": {"min": "PT1H", "max": "P7D"},
+    params={"ackWait": {"type": "duration", "default": "P1D", "bounds": {"min": "PT15M", "max": "P7D"},
                         "description": "How long to wait for the scheme's acknowledgement of the salary file before the payment is pending."},
             "ackWaitCalendar": {"type": "code", "default": "business", "bounds": {"allowed": ["business", "elapsed"]},
                                 "description": "Whether the wait counts business time or elapsed time."}})
@@ -676,6 +693,20 @@ table("p.table.rail-choice.v1", "Which rail carries a payment", "first",
        {"name": "requested rail disabled", "given": {"Header": {"scheme": "uae.wps"}, "Param": {"name": "enabledRails", "value": []}},
         "expect": {"decisions": [{"name": "rail", "value": "none"}]}}],
       params={"enabledRails": {"type": "list", "default": [], "description": "Rails this bank runs, in order of preference. A bank value."}})
+# The scheme's participant directory (Issue I-115, R-12-18): a bank's name by its routing code, for the lines of a salary file. The
+# directory is a value, looked up by date: shared content names no bank (L09), so the factory's default is empty and the directory
+# is set where the participants are known (a bank's configuration, or the scheme operator's published list; Issue I-130). The
+# table hands the directory in force to the map, which looks each line's routing code up in it.
+table("uae.wps.table.participant-names.v1", "The scheme's participant directory: a bank's name by its routing code", "first",
+      [("directory", "participants.value"), ("known", "count(participants.value)")], ["directory", "known"],
+      [{"when": {}, "then": {"directory": "directory", "known": "known"}, "reason": "The participant directory in force"}],
+      [{"name": "the directory in force", "given": {"Param": {"name": "participants", "value": [{"routingCode": "203320101", "name": "Example Bank One"}]}},
+        "expect": {"decisions": [{"name": "directory", "value": [{"routingCode": "203320101", "name": "Example Bank One"}]}, {"name": "known", "value": 1}]}},
+       {"name": "no directory is set", "given": {"Param": {"name": "participants", "value": []}},
+        "expect": {"decisions": [{"name": "directory", "value": []}, {"name": "known", "value": 0}]}}],
+      params={"participants": {"type": "list", "default": [],
+                                "description": "The scheme's participants: each a routingCode (nine digits) and the name the directory gives it. Empty by default: shared content names no bank."}},
+      p=WP)
 # WPS agent returns (provisional; Issue I-39). A credit the core system refused, or one the inquiry found not
 # posted, is returned. A credit whose outcome is still unknown after the inquiry is not decided: the file goes to
 # operations. A line's amount is round2(fixed pay + variable pay), half away from zero, and the returned amount is
@@ -1029,6 +1060,12 @@ test("WPS-MAP-004", "A salary file whose total has sixteen digits maps every dig
      {"inbound": "samples/wps-sif-large-total.sif"},
      {"outcome": "mapped", "writes": {"batch.controlSum": "12345678901234.56", "items.0.payment.instructedAmount.value": "12345678901234.56",
                                       "items.0.ext.uae.wps.fixedPay": "12345678901233.99", "items.0.ext.uae.wps.variablePay": "0.57"}})
+# Issue I-115: a line's account type is the one the channel declared at upload, and its bank's name the participant directory's.
+test("WPS-MAP-005", "Each line's account type comes from the channel's upload and its bank's name from the participant directory", "uae.wps.map.sif-in.v1",
+     "activity", {"inbound": "samples/wps-sif-upload-account-type.sif"},
+     {"outcome": "mapped", "writes": {"items.0.payment.creditorAccount.type": "CACC", "items.0.payment.creditorAgent.name": "Example Bank One",
+                                      "items.1.payment.creditorAccount.type": "CACC", "items.1.payment.creditorAgent.name": "Example Bank Two"}},
+     tenant="example-bank")
 test("WPS-ENR-001", "The labour ministry knows the employer: its status is written", "uae.wps.enrich.employer-status.v1", "activity",
      {"context": {"header": {"paymentId": "P-1", "scheme": "uae.wps"}, "ext": {"uae": {"wps": {"employerId": "0000001234567"}}}}},
      {"outcome": "found", "writes": {"ext.uae.wps.employerStatus": "suspended"}}, bench_=bench((LM, LMSIM, "suspended")))
@@ -1040,7 +1077,7 @@ test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement rep
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
                                          {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
-                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"), ENC), tenant="example-bank", scope="uae.wps")
 # The agent's returns file (RFA): one of the two credits is refused, so the leg returns it to WPS.
 PIF = {"inbound": "samples/wps-pif-valid.pif"}
 AGENT_LEG = "uae.wps.wf.agent-payment-in.v2"
@@ -1049,7 +1086,7 @@ AGENT_LEG = "uae.wps.wf.agent-payment-in.v2"
 def returns_bench(wps_scenario, core="reject-first-then-accept"):
     return bench((WPS, "uae.wps.sim.wps-inward.v1", wps_scenario), ("p.port.core-banking.v1", "p.sim.core-banking.v1", core),
                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"),
-                 ("p.port.operations-queue.v1", "p.sim.operations.v1", "reject"))
+                 ("p.port.operations-queue.v1", "p.sim.operations.v1", "reject"), ENC)
 
 
 def rfa_head(credits=("credit[0]:rejected", "credit[1]:posted"), dif="accepted"):
@@ -1064,9 +1101,11 @@ TRACE_RFA = {"ack": _RFA_HEAD + ["return-credits:accepted", "record-return:poste
 
 
 def rfa_detail(dif="ack"):
-    return ["supplement.await-supplement:received", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
-            "confirm-receipt.read-ack:ack", "posting-window.window:open", "report-disbursement.send:accepted", "report-disbursement.await-ack:received",
-            "report-disbursement.read-ack:%s" % dif, "return-credits.upload-hold:PT0S", "return-credits.send:accepted"]
+    # Every file the agent sends is encrypted for WPS first (Issue I-117, R-12-17).
+    return ["supplement.await-supplement:received", "confirm-receipt.encrypt:encrypted", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
+            "confirm-receipt.read-ack:ack", "posting-window.window:open", "report-disbursement.encrypt:encrypted", "report-disbursement.send:accepted",
+            "report-disbursement.await-ack:received", "report-disbursement.read-ack:%s" % dif, "return-credits.upload-hold:PT0S",
+            "return-credits.encrypt:encrypted", "return-credits.send:accepted"]
 
 
 _RFA_DETAIL = rfa_detail()
@@ -1111,7 +1150,17 @@ test("WPS-IN-008", "A payment file in the source's layout is confirmed, credited
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
                                          {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
-                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"), ENC), tenant="example-bank", scope="uae.wps")
+# Issue I-117: a receipt confirmation the encryption service refuses is never sent; nothing after it is sent or credited, and the
+# leg ends pending as it does for a refused confirmation.
+test("WPS-IN-009", "A receipt confirmation the encryption service refuses is not sent, and the file stays pending with nothing credited", AGENT_LEG,
+     "end-to-end", PIF,
+     {"outcome": "pending", "trace": ["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:rejected", "end:pending"], "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 0}, {"port": WPS, "message": "uae.wps.dif", "count": 0}],
+      "detail": ["supplement.await-supplement:received", "confirm-receipt.encrypt:refused"]},
+     bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"),
+                  ("p.port.operations-queue.v1", "p.sim.operations.v1", "reject"), ("p.port.encryption.v1", "p.sim.encryption.v1", "reject")),
+     tenant="example-bank")
 # Plan P2: a return to the employer's bank; the map names the employer's account, and the leg credits it in the posting window.
 test("WPS-RTC-001", "A return file credits the employer's account", "uae.wps.wf.return-in.v1", "end-to-end",
      {"inbound": "samples/wps-rtc-valid.rtc"},
@@ -1123,6 +1172,11 @@ test("P-ENC-001", "A file the encryption service encrypts is encrypted", "p.prot
      {"outcome": "encrypted"}, bench_=bench(("p.port.encryption.v1", "p.sim.encryption.v1", "accept")))
 test("P-ENC-002", "A file the encryption service refuses is refused, and not retried", "p.protect.encrypt-file.v1", "activity", PAY_CTX,
      {"outcome": "refused", "attempts": {"protect": 1}}, bench_=bench(("p.port.encryption.v1", "p.sim.encryption.v1", "reject")))
+# Issue I-117: the decryption block alone, one test per outcome (R-03-16).
+test("P-DEC-001", "A received file the decryption service decrypts is decrypted", "p.protect.decrypt-file.v1", "activity", PAY_CTX,
+     {"outcome": "decrypted"}, bench_=bench(("p.port.decryption.v1", "p.sim.decryption.v1", "accept")))
+test("P-DEC-002", "A received file the decryption service refuses is refused, and not retried", "p.protect.decrypt-file.v1", "activity", PAY_CTX,
+     {"outcome": "refused", "attempts": {"protect": 1}}, bench_=bench(("p.port.decryption.v1", "p.sim.decryption.v1", "reject")))
 test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)

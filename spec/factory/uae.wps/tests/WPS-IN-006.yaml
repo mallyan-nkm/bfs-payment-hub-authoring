@@ -22,6 +22,9 @@ bench:
   - port: p.port.operations-queue.v1
     simulator: p.sim.operations.v1
     scenario: reject
+  - port: p.port.encryption.v1
+    simulator: p.sim.encryption.v1
+    scenario: accept
 given:
   inbound: samples/wps-pif-valid.pif
 expect:
@@ -51,14 +54,17 @@ expect:
     - end:settled
   detail:
     - supplement.await-supplement:received
+    - confirm-receipt.encrypt:encrypted
     - confirm-receipt.send:accepted
     - confirm-receipt.await-ack:received
     - confirm-receipt.read-ack:ack
     - posting-window.window:open
+    - report-disbursement.encrypt:encrypted
     - report-disbursement.send:accepted
     - report-disbursement.await-ack:received
     - report-disbursement.read-ack:ack
     - return-credits.upload-hold:PT0S
+    - return-credits.encrypt:encrypted
     - return-credits.send:accepted
     - return-credits.await-ack:received
     - return-credits.read-ack:ack

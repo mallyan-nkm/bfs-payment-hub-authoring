@@ -36,7 +36,8 @@ describe('a script-behind or builtin the native host implements too (R-08-16)', 
   it('names the WPS files the runtime implements, and no other activity', () => {
     const env = freshEnv();
     const native = env.store.current().filter((e) => e.kind === 'activity' && e.doc.implementation?.native).map((e) => e.name).sort();
-    expect(native).toEqual(['p.decide.posting-window.v1', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2']);
+    // The encryption and decryption blocks and the labour ministry lookup too (Issues I-117, I-118).
+    expect(native).toEqual(['p.decide.posting-window.v1', 'p.protect.decrypt-file.v1', 'p.protect.encrypt-file.v1', 'uae.wps.enrich.employer-status.v1', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2']);
   });
 
   it('runs the script or the builtin unless the run gives the activity to the runtime', async () => {

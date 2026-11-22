@@ -62,7 +62,7 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
     const cs = e.store.configurationSet(TENANT);
     expect(gov.checkConfiguration(e, TENANT, cs).filter((i) => i.severity === 'error')).toEqual([]);
     for (const v of cs.values) expect(e.store.doc(v.parameter.split('#')[0])?.parameters?.[v.parameter.split('#')[1]], v.parameter).toBeDefined();
-    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.2.0' }, { scope: 'uae.p', release: '1.2.0' }, { scope: 'uae.wps', release: '1.2.0' }]);
+    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.3.0' }, { scope: 'uae.p', release: '1.3.0' }, { scope: 'uae.wps', release: '1.3.0' }]);
     expect(Object.fromEntries(cs.values.map((v: any) => [v.parameter, v.value]))).toEqual({
       'p.table.rail-choice.v1#enabledRails': ['uae.wps'],
       'p.post.accounting.v1#vatPercent': 5,
@@ -71,6 +71,9 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
       'p.post.accounting.v1#chargeIncomeAccount': 'WPS-CHARGE-GL',
       'p.post.accounting.v1#vatAccount': 'WPS-VAT-GL',
       'p.protect.encrypt-file.v1#recipientKey': 'cbuae-wps',
+      // The source's twenty-minute acknowledgement wait, elapsed time, inside the bound from uae.wps 1.3.0 (Issue I-116).
+      'uae.wps.exchange.submit-salary-file.v1#ackWait': 'PT20M',
+      'uae.wps.exchange.submit-salary-file.v1#ackWaitCalendar': 'elapsed',
     });
     // No routing code: the source holds none for the bank (README.md), so the factory default, none, stays.
     expect(cs.values.map((v: any) => v.parameter)).not.toContain('uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes');
@@ -88,7 +91,7 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
   it("runs the bank's tests on the interpreter", async () => {
     const e = env();
     const tests = own(e).filter((x) => x.kind === 'test');
-    expect(tests.map((t) => t.name).sort()).toEqual(['BANK-AML-001', 'BANK-AML-002', 'BANK-NTF-001', 'BANK-RAIL-001', 'BANK-RTE-001', 'BANK-WPS-001', 'BANK-WPS-002']);
+    expect(tests.map((t) => t.name).sort()).toEqual(['BANK-AML-001', 'BANK-AML-002', 'BANK-NTF-001', 'BANK-RAIL-001', 'BANK-RTE-001', 'BANK-WPS-001', 'BANK-WPS-002', 'BANK-WPS-003']);
     for (const t of tests) {
       const r = await runTest(e, t.doc);
       expect(r.passed, `${t.name}: ${r.error ?? JSON.stringify(r.checks.filter((c) => !c.passed))}`).toBe(true);

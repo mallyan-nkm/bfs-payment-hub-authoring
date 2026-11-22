@@ -54,7 +54,9 @@ describe('the acknowledgement wait is a bank value (R-05-47)', () => {
     const acc = env.store.latest('p.post.accounting.v1')!.doc.parameters;
     expect(withinBounds(sub.ackWait, 'PT72H')).toBe(true);
     expect(withinBounds(sub.ackWait, 'P30D')).toBe(false);
-    expect(withinBounds(sub.ackWait, 'PT30M')).toBe(false);
+    // From 1.2.0 the wait may be as short as fifteen minutes (Issue I-116): ADIB's twenty minutes is inside, ten is not.
+    expect(withinBounds(sub.ackWait, 'PT20M')).toBe(true);
+    expect(withinBounds(sub.ackWait, 'PT10M')).toBe(false);
     expect(withinBounds(sub.ackWaitCalendar, 'elapsed')).toBe(true);
     expect(withinBounds(sub.ackWaitCalendar, 'weekly')).toBe(false);
     expect(withinBounds(acc.transactionCode, 'SALARY')).toBe(true);

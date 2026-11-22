@@ -268,6 +268,18 @@ for path, d in docs:
                 elif "family" in st["await"] and st["await"]["family"] not in (hit[0]["disposition"]["deliver"].get("families") or []):
                     err("L36", path, "await %s takes family %r of %s, which its dispatch entry does not declare" % (
                         st.get("id", "?"), st["await"]["family"], msg))
+        # L45 (R-12-17) on a scheme whose wire is a file, a step that sends or reports a file (an exchange of mode send or
+        # report that is not a composite) comes after a protect step that encrypts it (Issue I-117)
+        if (sch or {}).get("wire") == "file":
+            protected = False
+            for st in all_steps(d):
+                a = by_name.get(st.get("call")) if "call" in st else None
+                if not a or a.get("kind") != "activity":
+                    continue
+                if a.get("type") == "protect":
+                    protected = True
+                elif a.get("type") == "exchange" and a.get("mode") in ("send", "report") and (a.get("implementation") or {}).get("binding") != "subflow" and not protected:
+                    err("L45", path, "step %s sends %s on a file scheme before any protect step encrypts it" % (st.get("id", "?"), a["name"]))
 
 # ------------------------------------------- composites and subflows
 def composite(a):

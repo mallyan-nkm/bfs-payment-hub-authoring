@@ -1,15 +1,19 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.confirm-receipt.v1
-release: 1.1.0
+release: 1.2.0
 dsl: 1.0.0
 title: Confirm receipt and read the acknowledgement
-description: What the confirm-receipt block does underneath. Sends the receipt confirmation, waits for the acknowledgement and reads it.
+description: What the confirm-receipt block does underneath. Sends the receipt confirmation, waits for the acknowledgement and reads it. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17).
 implements:
   activity: uae.wps.exchange.confirm-receipt.v1
 exit:
   outcomes: [accepted, rejected, pending]
 do:
+  - id: encrypt
+    call: p.protect.encrypt-file.v1
+    handle:
+      refused: { return: rejected }
   - id: send
     call: uae.wps.exchange.send-receipt-confirmation.v1
     handle:

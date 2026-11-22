@@ -33,6 +33,10 @@ The factory pack is the default content that ships with the studio: the platform
 | R-12-12 | A bank's accounting values (transaction codes, narration, accounts, account kinds, charge slabs, VAT) MUST be parameters of `p.post.accounting.v1`, bounded, with defaults that name no bank and no real account. File transfer and file decryption MUST be ports, `p.port.file-transfer.v1` and `p.port.decryption.v1`, each with a simulator carrying the standard outward scenarios; a bank binds them with its transport and keys by reference. | Schema (L00); lint L14, L22 |
 | R-12-13 | File encryption MUST be a port, `p.port.encryption.v1`, the pair of `p.port.decryption.v1`, with a simulator carrying the standard outward scenarios, and the activity `p.protect.encrypt-file.v1` behind it. A salary file MUST be encrypted through it before it is sent to WPS, and a file the encryption service refuses MUST NOT be sent. The recipient's key is named by id, a bank parameter (`recipientKey`); the bank's binding holds the key by reference only (`keys.<id>.secretRef`). | Schema (L00); lint L22, L37; tests WPS-OUT-001, WPS-OUT-008, WPS-EXC-003, P-ENC-001, P-ENC-002; `EncryptionTests` |
 | R-12-14 | The scheme pack MUST refuse a salary file whose employer the labour ministry has suspended (`uae.wps.rule.employer-not-suspended.v1`, in the salary file checks), with the employer's status a registered extension field written by a lookup behind a port (`uae.wps.enrich.employer-status.v1`, `uae.wps.port.labour-ministry.v1`). An employer with no known status MUST NOT be refused for it. It is the same for every bank, so it is not a bank rule. | The rule's examples; tests WPS-OUT-006, WPS-OUT-007, WPS-ENR-001, WPS-ENR-002 |
+| R-12-15 | A bank that posts to its core banking by file MUST be able to bind `p.port.core-banking.v1` to the runtime's `file-bulk` adapter, with no workflow change: a batch of postings becomes one bulk file in the source's DE layout, put on core banking's landing folder through the bank's `p.port.file-transfer.v1`, submitted, its status read until core banking answers, and the lines it failed posted again in a file of their own (`repostAttempts`, `repostCodes`). The same batch MUST be the same file, never uploaded twice; a status never answered is an unknown fate, never posted blind. The adapter has a simulator. | `FileBulkCoreBankingTests` |
+| R-12-16 | The labour ministry's establishment register MUST be reached through the bank's binding of `uae.wps.port.labour-ministry.v1`: on the runtime the `gateway-rest` adapter (its credential by reference) or the simulator; the native code-behind of `uae.wps.enrich.employer-status.v1` writes what it answers. A bank that has not said where its register is binds a placeholder host and no path, and every call is refused. | `FileProtectionAndRegisterTests`; tests WPS-ENR-001, WPS-ENR-002 |
+| R-12-17 | On a scheme whose wire is a file, every file a bank sends MUST be encrypted through `p.protect.encrypt-file.v1` before it is sent, and a file the encryption service refuses MUST NOT be sent: the salary file, the receipt confirmation, the disbursement file, the returns file and the refund request. A file a bank receives encrypted is decrypted through `p.protect.decrypt-file.v1`. On the runtime both have a native code-behind on the bank's bindings (OpenPGP, or the source's GnuPG key folder as `gnupg`), and the file sent is the encrypted one. | Lint L45 (mutation M64); tests WPS-IN-001 to WPS-IN-009, P-DEC-001, P-DEC-002; `FileProtectionAndRegisterTests` |
+| R-12-18 | A salary line's account type MUST be the one its channel declared at upload, where it declared one, and its bank's name MUST come from the scheme's participant directory (`uae.wps.table.participant-names.v1`, a value looked up by date) by the line's routing code. Shared content names no bank: the directory's default is empty. | Test WPS-MAP-005; the table's examples |
 
 ## 12.4 Contents
 
@@ -43,11 +47,11 @@ The table is generated from `factory/inventory.yaml`.
 <!-- INVENTORY:summary -->
 | Pack | Type | Activity | Rule | Ruleset | Table | Port | Simulator | Workflow | Scheme | Extension | Hook | Test | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `factory/p/` | shared | 22 | 7 | 2 | 3 | 11 | 11 | 6 |  |  |  | 4 | 68 |
+| `factory/p/` | shared | 23 | 7 | 2 | 3 | 11 | 11 | 6 |  |  |  | 6 | 71 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 14 |
-| `factory/uae.wps/` | shared | 30 | 12 | 3 | 1 | 3 | 4 | 11 | 1 | 1 |  | 26 | 94 |
+| `factory/uae.wps/` | shared | 30 | 12 | 3 | 2 | 3 | 4 | 11 | 1 | 1 |  | 28 | 97 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 58 | 25 | 7 | 4 | 18 | 19 | 17 | 1 | 2 | 3 | 34 | 193 |
+| Total | | 59 | 25 | 7 | 5 | 18 | 19 | 17 | 1 | 2 | 3 | 38 | 199 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack

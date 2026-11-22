@@ -36,7 +36,7 @@ describe('rule sessions (C06-S2 to S5)', () => {
         n++;
       }
     }
-    expect(n).toBe(70); // 4 for the suspended employer (Issue I-88)
+    expect(n).toBe(72); // 4 for the suspended employer (Issue I-88); 2 for the participant directory (Issue I-115)
   });
   it('stops at a stage with a blocking finding (R-04-14)', () => {
     // a wrong currency (field stage) and a wrong control total (cross-field stage): the cross-field rule never runs

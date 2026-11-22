@@ -234,6 +234,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L42 | Money is exact (R-02-17, R-04-23): a rule's or table's expression does not compare a difference with a fraction between 0 and 1 (a floating-point tolerance such as `a - b < 0.01`); a number given in a rule's or table's examples, a parameter's default or bounds, a configuration value or a test case has at most 15 significant digits (a longer amount is a decimal string) | Yes |
 | L43 | A leg fills the slot contract `<slot>@<major>` of a platform workflow: each workflow it names is a platform workflow with that slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions; a distribution whose scheme does not fit is refused at build (R-11-38) | Yes |
 | L44 | The parameter contract: every parameter declares its type and a default, and the default lies within its own bounds; a distribution carries every dial with its type and bounds (R-11-39) | Yes |
+| L45 | On a scheme whose wire is a file, a step that sends or reports a file (an exchange of mode `send` or `report` that is not a composite) comes after a protect step that encrypts it (R-12-17) | Yes |
 
 ## 5.8 Examples
 

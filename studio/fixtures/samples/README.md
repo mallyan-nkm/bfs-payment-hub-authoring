@@ -22,6 +22,7 @@ metadata, not part of the message, and the intake maps read it as the `SourceFil
 | `wps-sif-two-lines.sif` | WPS SIF, two lines of 1000 and 500, total 1500 | The WPS end-to-end test: the bank's limit on each line and on the file total |
 | `wps-sif-upload-evp.sif` | WPS SIF with an EVP record, and the channel's upload declared before the records (`# channel:`, `# initiated-by:`, `# debtor-name:`, `# debtor-account:`) | WPS-MAP-003 (Issue I-100) |
 | `wps-sif-large-total.sif` | WPS SIF whose total has sixteen significant digits | WPS-MAP-004 (Issue I-109) |
+| `wps-sif-upload-account-type.sif` | WPS SIF whose channel declared the lines' account type at upload (`# account-type:`), two lines at two routing codes | WPS-MAP-005 (Issue I-115) |
 
 Format of a SIF line, comma separated:
 

@@ -234,7 +234,9 @@ describe('every released package is signed, and only a verified one is taken (R-
     expect(tagObj).toMatchObject({ type: 'tag', objectType: 'commit', object: pub.body.git.commit });
     expect(tagObj.message).toContain(`Change set: ${id}`);
     expect(tagObj.message).toContain(`Signed by key: ${testSigning().keyId}`);
-    expect(pub.body.git.tags).toEqual(['release/p.wf.commercial.v1/1.0.1/temporal']);
+    // The distributions built on approval, on by default (Issue I-113), carry tags of their own beside the workflow's.
+    expect(pub.body.git.tags).toContain('release/p.wf.commercial.v1/1.0.1/temporal');
+    expect(pub.body.git.tags.filter((t: string) => !t.startsWith('dist/'))).toEqual(['release/p.wf.commercial.v1/1.0.1/temporal']);
     expect(parseYaml(pkgFiles['manifest.yaml']).flows.find((f: any) => f.name === 'p.wf.commercial.v1').release).toBe('1.0.1');
   });
 

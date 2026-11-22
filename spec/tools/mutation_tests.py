@@ -179,6 +179,10 @@ CASES = [
     # L27: a supersession's scope names a workflow release the repository has, the latest or a published one
     ("M63", "ERROR L27", "examples/supersession/SUP-2026-001.yaml",
      '["uae.wps.wf.salary-file-out.v1@1.0.0"]', '["uae.wps.wf.salary-file-out.v1@0.9.0"]', "a supersession names a release never published"),
+    # R-12-17 (Issue I-117): on a file scheme every file is encrypted before it is sent
+    ("M64", "ERROR L45", "factory/uae.wps/workflows/uae.wps.sub.confirm-receipt.v1.yaml",
+     "  - id: encrypt\n    call: p.protect.encrypt-file.v1\n    handle:\n      refused: { return: rejected }\n", "",
+     "the receipt confirmation is sent unencrypted"),
 ]
 
 
