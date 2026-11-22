@@ -88,13 +88,13 @@ content-configurations/      what the studio publishes and what a bank configure
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
-- We start from what the studio has already proved. The conformance kit (51 scenarios since 2026-11-22, with CK-MONEY-01; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
+- We start from what the studio has already proved. The conformance kit (55 scenarios since 2026-11-22, with CK-MONEY-01, and CK-HOLD-01 and 02 and CK-PARK-01 and 02; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
 - The runtime turns that into a product:
   - **Temporal:** the .NET SDK, with worker versioning by Build ID. Each release's activity versions run on their own versioned workers.
   - **DTFx:** `Microsoft.DurableTask.SqlServer`. Task-queue routing is done by the host (one hub per release line). The source's "`IsPatched` is always true" is not carried over: versions come from releases, not patches.
   - **Elsa 3.x:** journal replay inside one Elsa activity, with bookmarks, as the studio's harness does, now with Elsa's SQL Server and PostgreSQL persistence.
   - **Flowable 7:** BPMN generated from the expanded workflow (`src/export/bpmn.ts`). It runs in a Java sidecar with its own database. .NET external workers take the jobs over REST.
-- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 51 scenarios plus the WPS parity suite on each engine.
+- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 55 scenarios plus the WPS parity suite on each engine.
 - The runtime's own data is always through EF Core (W2). Each engine also keeps its own state:
 
 | Engine | Its own state on SQL Server | Its own state on PostgreSQL |

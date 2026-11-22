@@ -14,7 +14,7 @@ export interface Release { releaseId: string; scope: string; release: string; ta
 export interface ErrorLink { code: string; title?: string; category: string; runbook: string }
 export interface LogItem { source: 'fact' | 'log'; at: string; level: string; subject?: string; tenant?: string; scheme?: string; kind?: string; code?: string; actor?: string; step?: string; activity?: string; message?: string; category?: string; data?: any; errors: ErrorLink[]; payment?: string; trace?: string }
 export interface ErrorEntry { code: string; scope: string; title?: string; category: string; retryable: boolean; isoReasonCode?: string; raisedBy: string[]; meaning: string; causes: string[]; runbook: { checks: string[]; safeActions: string[]; actions?: string[]; escalation: string }; actionsOffered: { id: string; title: string; risky: boolean; path: string; missing?: string }[]; dictionary: string }
-export interface ActionSpec { id: string; title: string; target: string; risky: boolean; path: 'built' | 'outbox' | 'missing'; does: string; missing?: string }
+export interface ActionSpec { id: string; title: string; target: string; risky: boolean; path: 'built' | 'missing'; does: string; missing?: string }
 export interface ActionResult { action: string; name: string; status: string; code?: string; runbook?: string; result?: any; needs?: string }
 export interface Proposal { action: string; title: string; target?: string; runbook: string; runbookLink: string; why?: string; risky: boolean; path: string; inRunbook: boolean; confirm: string }
 export interface Answer { answer: string; sources: string[]; cited: string[]; proposals: Proposal[]; model: string; stopReason: string; note: string }

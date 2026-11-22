@@ -21,7 +21,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 51 scenarios in draft 0.2.
+The machine-readable list is `conformance/kit.yaml`. It holds 55 scenarios in draft 0.2.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 51 scenarios in dr
 | Composition | CK-SLOT-01 and 02, CK-HANDLER-01 | Slots and legs; handlers without durable state |
 | Composite steps | CK-BLOCK-01 to 03 | Blocks and returns; the reply time of the calling step; the business trace and the detail |
 | Signals | CK-SIGNAL-01 to 03 | Pause, resume, cancel, re-screen |
+| Operator waits | CK-HOLD-01 and 02, CK-PARK-01 and 02 | A hold as an engine await on the operator's decision, two days long, and its expiry (R-05-56); a failed step parked, retried by an operator, and failing at the end of its park (R-05-55) |
 | Hooks | CK-HOOK-01 to 04 | Halt, transform, notify, unbound |
 | Versions | CK-PIN-01 and 02, CK-LOOKUP-01, CK-SUP-01 | Exact pins, lookup by date, supersession |
 | Record | CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 | Claim-check, deltas, rule trace |
@@ -56,6 +57,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 51 scenarios in dr
 | Hook | CK-HOOK-01 to 04 |
 | Finally, deadline | CK-FINALLY-01, CK-DEADLINE-01 |
 | Signals | CK-SIGNAL-01 to 03 |
+| Hold, park (operator waits) | CK-HOLD-01, CK-HOLD-02, CK-PARK-01, CK-PARK-02 |
 | Policy | CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 |
 | Handler | CK-HANDLER-01 |
 | Exact amounts (not a construct; every target is held to it) | CK-MONEY-01 |

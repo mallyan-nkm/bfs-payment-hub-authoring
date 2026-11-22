@@ -2,14 +2,14 @@
 
 This folder runs the conformance kit, and deployed packages, on **Elsa Workflows 3.10.2** (.NET 8). It uses the same interpreter as the DTFx harness, in `../shared/`, so a workflow means the same thing on both engines.
 
-Result: **51 of 51 conformance scenarios pass on Elsa** (22 November 2026, with CK-AWAIT-06 and 07, and CK-MONEY-01 for exact amounts).
+Result: **55 of 55 conformance scenarios pass on Elsa** (22 November 2026, with CK-AWAIT-06 and 07, CK-MONEY-01 for exact amounts, and CK-HOLD-01 and 02 and CK-PARK-01 and 02 for the operator waits).
 
 ## How to run
 
 From `studio/`:
 
 ```
-npx tsx engines/elsa/run-kit.ts                         # all 51 scenarios, about 2 minutes
+npx tsx engines/elsa/run-kit.ts                         # all 55 scenarios, about 2 minutes
 npx tsx engines/elsa/run-kit.ts CK-AWAIT-04 --verbose   # one scenario, with the engine's figures
 ```
 

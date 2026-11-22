@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Operations\TransactHub.Operations.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations.Api\TransactHub.Operations.Api.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations.Migrations.SqlServer\TransactHub.Operations.Migrations.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations.Migrations.PostgreSql\TransactHub.Operations.Migrations.PostgreSql.csproj" />

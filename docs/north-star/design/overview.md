@@ -41,7 +41,7 @@ The source sorted services into domain buckets. The north star sorts content by 
 | Something one bank does differently | A value, a hook or a port binding in the bank's folder | A limit, an extra approval hook, its core-banking adapter |
 | A connection to an outside system | A port, with one adapter per wire shape | `ICoreBanking`: `simulator`, `gateway-rest` |
 | Persistence of payments | The store's one model | A new fact kind, not a new table per scheme |
-| A way to run workflows | An engine binding behind `IEngine`, proved by the kit | A fifth engine would pass the same 51 scenarios |
+| A way to run workflows | An engine binding behind `IEngine`, proved by the kit | A fifth engine would pass the same 55 scenarios |
 | A designer's tool | The studio, with a spec requirement and a check | A new editor, a new check |
 
 If a feature fits only by naming a bank in shared code, by adding a table for a scheme, or by editing a published release, it is in the wrong place.

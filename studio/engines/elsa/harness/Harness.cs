@@ -136,11 +136,49 @@ public sealed class Harness : IDisposable
             return roots.All(r => Find(r.id)?.Completed == true) && Clock.PendingTimers == 0;
         }
         var finished = Clock.RunUntil(Done, start + Duration.Ms("P60D"), TimeSpan.FromSeconds(60));
+        liveStop.Cancel();
         if (!finished) log.Add("the clock ran out of work before every root ended");
         return await Observe(start);
     }
 
     Instance? Find(string id) => instances.LastOrDefault(i => i.Id == id);
+
+    /// <summary>
+    /// The live path from the runtime (R-05-57): with a store, the root's payment is followed on the outbox, and each row is raised on
+    /// the instance at the clock's now: a signal or an operator's control as a signal event, a hold's decision as its message.
+    /// </summary>
+    void FollowLive(string id, string payloadRef, JsonNode? header, string engine)
+    {
+        if (LiveSignals.Source is not { } source) return;
+        Clock.Enter();
+        _ = Task.Run(async () =>
+        {
+            ILiveFeed? feed;
+            try { feed = await source.Follow(payloadRef, engine, id, null); }
+            finally { Clock.Exit(); }
+            if (feed is null) return;
+            liveFeeds++;
+            Clock.Hold = () => LiveSignals.HoldClock(true);
+            await LiveSignals.Run(feed, row =>
+            {
+                var (name, data) = LiveSignals.EventOf(row, header);
+                var done = new TaskCompletionSource<string>();
+                Clock.Schedule(Clock.Now, () => done.TrySetResult(RaiseLive(id, name, data)));
+                return done.Task;
+            }, liveStop.Token);
+        });
+    }
+
+    int liveFeeds;
+    readonly CancellationTokenSource liveStop = new();
+
+    string RaiseLive(string id, string name, JsonObject data)
+    {
+        var inst = Find(id);
+        if (inst is null || inst.Completed) return "ended";
+        Raise(id, name, data);
+        return "delivered";
+    }
 
     // ------------------------------------------------------------------ instances on Elsa
 
@@ -153,6 +191,7 @@ public sealed class Harness : IDisposable
         // The legs the front door chose from the dispatch table fill the platform workflow's slots (R-05-08).
         if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
         StartInstance(id, inp, null, 0);
+        if (id == "root") FollowLive(id, r, J.P(state, "header"), "elsa");
         // Signals are events on the instance, raised at their virtual times (R-05-12).
         foreach (var s in J.A(config, "signals"))
         {
@@ -392,6 +431,8 @@ public sealed class Harness : IDisposable
         }
         if (kind == "error")
             return (new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["at"] = at }, at);
+        // A hold opened its item: the workflow awaits the operator's decision (Issue I-98).
+        if (kind == "held") return (new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry"), ["at"] = at }, at);
         // Writes: references go back to the engine; the payload part is staged in the claim-check store.
         var stateWrites = new JsonObject();
         var stagedWrites = new List<(string, JsonNode?)>();

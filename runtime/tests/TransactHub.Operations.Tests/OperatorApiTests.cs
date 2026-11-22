@@ -97,7 +97,7 @@ public sealed class OperatorApiTests(Databases dbs)
     [Fact]
     public async Task A_stored_file_is_a_document_of_its_payment_with_its_leg_and_signed_hash_and_only_its_operators_download_it()
     {
-        // Issue I-97 part 2 (R-09-62): a file a host kept in the store (here the SIF a leg sent) is in the documents tab.
+        // Issue I-97 part 2 (R-09-64): a file a host kept in the store (here the SIF a leg sent) is in the documents tab.
         var (store, _) = await dbs.Pair(StoreProvider.SqlServer);
         var held = await WpsRun.Seed(store);
         using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);

@@ -57,13 +57,12 @@ var banksDir = Environment.GetEnvironmentVariable("TH_BANKS_DIR");
 var bindings = banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings();
 var coreBanking = new CoreBankingResolver(bindings);
 // With TH_STORE_PROVIDER and TH_STORE_CONNECTION the platform's holds are answered here too (p.port.operations-queue.v1 given to
-// the runtime): a hold is opened on the payment's chain and waits for the operator's decision from the operations console (R-05-50).
+// the runtime): a hold is opened on the payment's chain and answered held; the engine awaits the operator's decision (R-05-50, R-05-56).
 var storeProvider = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
 var storeConnection = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
 TransactHub.Store.StoreOptions? store = string.IsNullOrEmpty(storeProvider) || string.IsNullOrEmpty(storeConnection) ? null
     : new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(storeProvider, true), storeConnection);
-INativeActivity[] holds = store is null ? []
-    : TransactHub.Operations.StoreHold.For(store, TimeSpan.FromSeconds(double.TryParse(Environment.GetEnvironmentVariable("TH_OPS_HOLD_WAIT_SECONDS"), out var w) ? w : 240));
+INativeActivity[] holds = store is null ? [] : TransactHub.Operations.StoreHold.For(store);
 var signingRef = Environment.GetEnvironmentVariable("TH_FILE_SIGNING_KEY_REF");
 var signingKey = signingRef is { Length: > 0 }
     ? TransactHub.Security.ReleaseSignature.PrivateKeyFromPem(await TransactHub.Security.SecretResolver.FromEnvironment().Resolve(signingRef))
@@ -105,6 +104,8 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
                 }
         var r = act.Run(new NativeAttempt(name, (string?)body["release"], view, body["params"] as JsonObject ?? new JsonObject(), now, tenant, (string?)body["level"]));
         served.AddOrUpdate(name, 1, (_, n) => n + 1);
+        // A hold opened: the engine awaits the operator's decision (R-05-56, Issue I-98).
+        if (r.Held is { } held) return Results.Ok(new JsonObject { ["kind"] = "held", ["hold"] = (string?)held["hold"], ["expiry"] = (string?)held["expiry"] });
         return Results.Ok(new JsonObject { ["kind"] = "result", ["outcome"] = r.Outcome, ["reasonCode"] = r.ReasonCode, ["writes"] = r.Writes });
     }
     catch (NativeFailure e)

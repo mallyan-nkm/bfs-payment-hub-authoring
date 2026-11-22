@@ -338,7 +338,7 @@ public sealed class InterpreterWorkflow
     public Task SignalAsync(string data, long at)
     {
         engine.Arrived(at);
-        interp.OnSignal(J.S((JsonObject)J.Parse(data)!, "signal")!);
+        interp.OnSignal((JsonObject)J.Parse(data)!);
         return Task.CompletedTask;
     }
 

@@ -139,7 +139,7 @@ public static class Replay
                     var data = (JsonObject)J.Clone(J.P(e, "data") ?? new JsonObject())!;
                     switch (J.S(e, "event"))
                     {
-                        case "signal": interp.OnSignal(J.S(data, "signal")!); break;
+                        case "signal": interp.OnSignal(data); break;
                         case "message": interp.OnMessage(data); break;
                         case "chunk": interp.OnChunk(data); break;
                     }

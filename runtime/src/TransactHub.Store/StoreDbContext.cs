@@ -305,4 +305,8 @@ public sealed class InsertOnlyGuard : SaveChangesInterceptor
     }
 }
 
-public sealed class InsertOnlyViolation(string message) : InvalidOperationException(message);
+public sealed class InsertOnlyViolation(string message) : InvalidOperationException(message)
+{
+    /// <summary>The error dictionary's code (Issue I-103).</summary>
+    public string Code => "store.InsertOnlyViolation";
+}

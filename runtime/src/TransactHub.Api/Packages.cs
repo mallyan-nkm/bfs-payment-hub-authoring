@@ -140,4 +140,8 @@ public sealed class Package
     };
 }
 
-public sealed class PackageRejected(string message) : Exception(message);
+/// <summary>A package refused, with the error dictionary's code (Issue I-103).</summary>
+public sealed class PackageRejected(string message, string code = "package.Rejected") : Exception(message)
+{
+    public string Code { get; } = code;
+}

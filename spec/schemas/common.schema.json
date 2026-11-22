@@ -116,6 +116,10 @@
         "retry": {
           "$ref": "#/$defs/retry"
         },
+        "park": {
+          "description": "How long a step that failed (an error its retry did not cover, or retries spent with no unknown outcome) waits, parked, for an operator's retry or re-drive before it fails (R-05-55). Without it the step fails at once.",
+          "$ref": "#/$defs/duration"
+        },
         "replyTimeout": {
           "description": "How long the workflow waits for a reply that comes later as its own message. Used by an await in the subflow of a composite activity.",
           "$ref": "#/$defs/duration"

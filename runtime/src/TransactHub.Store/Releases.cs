@@ -72,7 +72,11 @@ public sealed class ReleaseRegistry(StoreDbContext db, TimeProvider? clock = nul
 }
 
 public sealed record StoreResult(string Id, bool Stored);
-public sealed class ReleaseConflict(string message) : InvalidOperationException(message);
+public sealed class ReleaseConflict(string message) : InvalidOperationException(message)
+{
+    /// <summary>The error dictionary's code (Issue I-103).</summary>
+    public string Code => "store.ReleaseConflict";
+}
 
 /// <summary>
 /// Rules, lists and configuration values, effective-dated and published as new versions (plan W4).

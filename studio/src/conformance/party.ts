@@ -35,6 +35,7 @@ export interface AttemptRequest {
 export type AttemptResponse =
   | { kind: 'result'; outcome: string; reasonCode?: string; writes: Record<string, any>; decisions?: Record<string, any>; ruleTrace?: any; latencyMs?: number }
   | { kind: 'hang' } // the attempt never answers; the engine's attempt timeout ends it
+  | { kind: 'held'; expiry?: string } // a hold opened its item; the engine awaits the operator's decision (Issue I-98)
   | { kind: 'error'; name: string; retryable: boolean; message: string };
 
 export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'family' | 'copy'> }
@@ -92,13 +93,8 @@ export class PartyService {
       for (const m of captured) {
         // Keep the reply, so that a map reading it later on this service finds it by id.
         if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push(m);
-        // A hold waits within its own attempt for its decision: the operations decision
-        // answers the hold on this service, not the workflow.
+        // A hold's decision goes to the engine like any later message: the engine awaits it, not the attempt (Issue I-98).
         const owner = owners.getStore();
-        if (owner ? owner.holding : this.holding) {
-          this.run.mailbox.push(m);
-          continue;
-        }
         (owner?.due ?? this.due).push({ at: t, message: pickMsg(m) });
       }
       return () => {};
@@ -185,6 +181,12 @@ export class PartyService {
     if (!settled) {
       scope.cancel({ hang: true });
       void p;
+      // A hold that has opened its item waits for the operator's decision: the attempt answers `held`, with the hold's expiry
+      // in force, and the engine awaits the decision (p.ops.decision) until then (Issue I-98, R-05-56).
+      if (act.type === 'hold') {
+        const expiry = act.parameters?.expiry ? this.run.lookupParam(act.name, 'expiry', act.parameters.expiry, this.run.clock.today()) : undefined;
+        return { kind: 'held', ...(expiry ? { expiry } : {}) };
+      }
       return { kind: 'hang' };
     }
     const out = await p;

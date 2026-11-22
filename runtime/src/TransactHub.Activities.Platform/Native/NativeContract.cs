@@ -11,7 +11,11 @@ namespace TransactHub.Activities.Native;
 public sealed record NativeAttempt(string Activity, string? Release, JsonObject View, JsonObject Params, DateTimeOffset Now, string? Tenant = null, string? Level = null);
 
 /// <summary>What a native activity answers: an outcome of its contract, an ISO reason code, and its writes (path to value).</summary>
-public sealed record NativeResult(string Outcome, string? ReasonCode, JsonObject Writes);
+public sealed record NativeResult(string Outcome, string? ReasonCode, JsonObject Writes)
+{
+    /// <summary>A hold the runtime opened (R-05-56): the hold's id and expiry; the engine awaits the operator's decision.</summary>
+    public JsonObject? Held { get; init; }
+}
 
 /// <summary>A native code-behind (spec Part 3, binding <c>native</c>; R-08-15 for a port the runtime answers).</summary>
 public interface INativeActivity

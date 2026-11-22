@@ -66,7 +66,7 @@ public sealed class ScenarioRunner
         {
             await using var db = StoreDbContext.Open(storeOpts);
             await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
-            StepFacts.Install(storeOpts);
+            StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
         }
         var host = new Host(party, dep, durable);
 
@@ -164,7 +164,50 @@ public sealed class ScenarioRunner
             ["horizon"] = start + Duration.Ms("P60D"), ["starts"] = starts, ["signals"] = signals, ["deliveries"] = deliveries,
         };
         var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), new WorkflowOptions(frontDoorId, Q(HostQueue)));
-        var fdOut = (JsonObject)J.Parse(await fd.GetResultAsync())!;
+
+        // The live path from the runtime (R-05-57): with a store, the root's payment is followed on the outbox, and each row is
+        // signalled to the root's workflow at the business time now. While an operator wait is open and a live operator may still
+        // answer, the test server's time is not skipped: the run waits in wall time, as a production server does.
+        using var liveStop = new CancellationTokenSource();
+        var followed = false;
+        Task? liveTask = null;
+        if (storeOpts is not null && LiveSignals.Source is { } liveSource && !handlerOnly && roots.Count > 0)
+        {
+            var rid = roots[0].id;
+            var header = J.P(ctx, "header");
+            liveTask = Task.Run(async () =>
+            {
+                var feed = await liveSource.Follow($"{rid}#ctx", "temporal", rid, null);
+                if (feed is null) return;
+                followed = true;
+                await LiveSignals.Run(feed, async row =>
+                {
+                    var (name, data) = LiveSignals.EventOf(row, header);
+                    var at = new DateTimeOffset((await env.GetCurrentTimeAsync()).ToUniversalTime(), TimeSpan.Zero).ToUnixTimeMilliseconds() + offset;
+                    try { await env.Client.GetWorkflowHandle(rid).SignalAsync(name, new object?[] { J.Str(data), at }); return "delivered"; }
+                    catch (Temporalio.Exceptions.RpcException) { return "ended"; }
+                }, liveStop.Token);
+            });
+        }
+        string fdResult;
+        if (liveTask is not null && env.SupportsTimeSkipping)
+        {
+            // Live, on the time-skipping server: business time is skipped a few minutes at a time, and not at all while an operator
+            // wait is open and a live operator may still answer (LiveSignals.HoldClock). Skipping to the next timer at once would let
+            // a hold's expiry fire before anyone could decide it.
+            while ((await fd.DescribeAsync()).Status == Temporalio.Api.Enums.V1.WorkflowExecutionStatus.Running)
+            {
+                if (LiveSignals.HoldClock(followed)) { await Task.Delay(250); continue; }
+                // A sleep the server cannot skip at once (an attempt in flight) runs out its call: time moved, and the loop goes on.
+                try { await env.DelayAsync(TimeSpan.FromMinutes(1)); }
+                catch (Temporalio.Exceptions.RpcException) { }
+            }
+            fdResult = await fd.GetResultAsync();
+        }
+        else fdResult = await fd.GetResultAsync();
+        liveStop.Cancel();
+        if (liveTask is not null) { try { await liveTask; } catch (OperationCanceledException) { } }
+        var fdOut = (JsonObject)J.Parse(fdResult)!;
         foreach (var l in J.Strings(J.P(fdOut, "log"))) log.Add(l);
 
         // What each root ended with, and what the engine stored across every run.

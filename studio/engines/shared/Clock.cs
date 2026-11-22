@@ -16,6 +16,11 @@ public sealed class VirtualClock
     int busy;
     long progress; // every change of the busy count; a stall is no progress for the stall period
     public readonly long Start;
+    /// <summary>
+    /// While this says so, the clock fires only what is due now and does not jump ahead: a live operator may still answer an
+    /// operator wait (LiveSignals.HoldClock). The feed's deliveries are scheduled at now, so they still fire.
+    /// </summary>
+    public Func<bool>? Hold;
 
     public VirtualClock(long startMs) { Start = startMs; now = startMs; }
 
@@ -83,7 +88,13 @@ public sealed class VirtualClock
             Action fire;
             lock (gate)
             {
-                if (timers.Count == 0) return false;
+                if (timers.Count == 0 && Hold?.Invoke() != true) return false;
+                if ((timers.Count == 0 || timers.First().Key.at > now) && Hold?.Invoke() == true)
+                {
+                    progress++;
+                    Monitor.Wait(gate, TimeSpan.FromMilliseconds(200));
+                    continue;
+                }
                 var first = timers.First();
                 if (first.Key.at > limitAt) return false;
                 timers.Remove(first.Key);

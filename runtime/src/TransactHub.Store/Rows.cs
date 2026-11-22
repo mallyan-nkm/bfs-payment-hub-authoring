@@ -145,7 +145,7 @@ public sealed class MessageRow : IInsertOnly
 }
 
 /// <summary>
-/// A file a deployment received or sent (Issue I-97, R-09-62): its name, size, direction, kind, the payment (or bulk) and the leg it
+/// A file a deployment received or sent (Issue I-97, R-09-64): its name, size, direction, kind, the payment (or bulk) and the leg it
 /// belongs to, and the SHA-256 of its bytes signed by the host that kept it. The bytes are in <see cref="FileContentRow"/>, once per hash.
 /// </summary>
 public sealed class StoredFileRow : IInsertOnly

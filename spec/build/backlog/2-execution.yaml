@@ -155,7 +155,7 @@ components:
     design: [Part 5, Part 6, Annex C]
     schemas: [workflow, hook, configuration-set, test-case]
     dependsOn: [C04, C06, C07, C10, C23]
-    dos: The interpreter produces the expected trace for all 51 scenarios of the conformance kit.
+    dos: The interpreter produces the expected trace for all 55 scenarios of the conformance kit.
     stories:
       - id: C09-S1
         title: Core flow
@@ -220,7 +220,8 @@ components:
         needs: [C09-S5]
         dod:
           - Only the four fixed signals exist; cancel compensates then runs finally.
-        dos: CK-SIGNAL-01 to 03 pass.
+          - A hold awaits the operator's decision until its expiry, and a step that parks takes the operator's retry or re-drive (R-05-55, R-05-56).
+        dos: CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01 and CK-PARK-02 pass.
       - id: C09-S8
         title: Hook points and bindings
         sp: 5

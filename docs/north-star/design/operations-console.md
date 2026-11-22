@@ -26,7 +26,11 @@ Operators see and act on running payments in the runtime, never in the studio (R
 | `status`, `RCVD` | `PaymentStore.AcceptBulk`, `AcceptPayment` | none |
 | `step`, the outcome or `error` | `StepFacts`, from every engine's worker router | instance, step (with the composite's inner step), activity, release, call, attempt, level, the header's ids, the ISO status the state carried, reason code, the step's state writes (facts, status, message references), or the error's name |
 | `payload`, `create` / `staged` / `commit` / `fork` / `copy` / `accepted` | the claim check (`DurableClaimCheck`, `StoreJournal`) | the payload: the projection reads only the lines' own facts (`items[i].facts`) from it |
-| `hold`, `opened` / `decided` / `expired` | `StoreHold` (the native host), `OperatorActions` | hold id, kind, activity, reason, decision, who decided |
+| `hold`, `opened` / `decided` / `expired` | `StoreHold` (the native host), `OperatorActions`, `HoldExpiry` | hold id, kind, activity, reason, expiry, decision, who decided |
+| `engine`, `started` | the engine host (`StoreSignals.Follow`) | the engine, the instance id, the run id (R-05-57) |
+| `signal`, `delivered` / `refused` | the engine host | the outbox row, the signal, the engine and instance, the result |
+| `step`, `stuck` | the engine host, when a step parks (R-05-55) | instance, step, call |
+| `message`, `resent`; `posting`, `reconciled` | `FileResend`; the service console's `reconcile-posting` | the file's id and hash and what the port answered; the posting's reference, posted or not |
 | `operator`, `requested` / `approved` / `rejected` / `done` / `refused` | `OperatorActions` | action id and name, remarks, the hold, the second approver's role, the result; the actor is `operator:<subject>` from the identity provider |
 | `message`, e.g. `sif-generated` | the native SIF render | the message's id and hash |
 
@@ -62,12 +66,15 @@ The WPS view covers every field the source's WPS screens showed that the new mod
 
 | Action | Path to the payment | Maker-checker in the factory's views |
 | --- | --- | --- |
-| approve, decline (an approval hold) | the hold's port decision: a `hold decided` fact the waiting hold reads (I-98) | no |
+| approve, decline (an approval hold) | a `hold decided` fact and a `decide` row on the outbox; the engine host delivers it as `p.ops.decision`, which the instance awaits (R-05-56) | no |
 | release (a repair hold) | the same | a supervisor approves |
 | reject (a repair hold) | the same | no |
-| cancel | an `engine-signal` outbox row for the engine host (I-99) | a supervisor approves |
+| cancel | an `engine-signal` outbox row; the engine host delivers it as the engine's signal (R-05-57) | a supervisor approves |
 | re-screen | the same | no |
-| retry, resend | recorded and refused: no engine path (I-99) | resend: a supervisor approves |
+| retry | the same, to the payment's parked step (R-05-55); offered only while a step is parked | no |
+| resend | the kept file put on the file-transfer port again, idempotent by its id (R-05-58); offered only when a file was kept | a supervisor approves |
+
+The engine host of each engine reads the payment's `engine-signal` rows in outbox order, delivers each once and records it (`signal delivered`), and a host that restarts starts after the rows it recorded. A hold's expiry is the engine's timer and the runtime's sweep (`HoldExpiry`), whichever comes first.
 
 `OperatorActions` offers only what the views declare and the payment's state allows (an open hold of the right kind, the legs it has), checks the role in the payment's tenant, records the request, and carries the action out at once or, with a `secondApprover`, when another person with that role approves; the maker may not approve their own.
 

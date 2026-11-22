@@ -112,7 +112,7 @@ public sealed class InterpreterOrchestration : TaskOrchestration<string, string,
     {
         if (interp is null) return;
         var data = (JsonObject)J.Parse(input)!;
-        if (name == "signal") interp.OnSignal(J.S(data, "signal")!);
+        if (name == "signal") interp.OnSignal(data);
         else if (name == "message") interp.OnMessage(data);
         else if (name == "chunk") interp.OnChunk(data);
     }

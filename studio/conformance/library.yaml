@@ -213,6 +213,8 @@ outcomes:
 effect: write
 idempotencyKey: concat(header.paymentId, ':approve')
 ports: [ck.kit.port.operations.v1]
+parameters:
+  expiry: { type: duration, default: P1D, description: How long the approval may wait for its decision. }
 implementation: { binding: builtin, service: operations }
 ---
 kind: activity
@@ -551,6 +553,8 @@ standsFor: operations user
 state: { keyedBy: message id }
 scenarios:
   - { name: accept, steps: [ { expect: p.ops.item }, { send: p.ops.decision, status: approved, after: PT5M } ] }
+  - { name: approve-after-two-days, steps: [ { expect: p.ops.item }, { send: p.ops.decision, status: approved, after: P2D } ] }
+  - { name: no-decision, steps: [ { expect: p.ops.item } ] }
 implementation: { binding: script, language: typescript, script: scripts/ck.kit.sim.operations.v1.ts }
 ---
 kind: activity

@@ -71,7 +71,7 @@ You should see every test pass (about 160).
 npm run studio -- kit
 ```
 
-The last line should read `51 of 51 conformance scenarios pass on the studio interpreter`.
+The last line should read `55 of 55 conformance scenarios pass on the studio interpreter`.
 
 ```bash
 npm run studio -- test
@@ -239,10 +239,10 @@ Check yourself: what is the last event, and why is it after the payment ended? (
 
 ### Exercise 5. The conformance kit (5 minutes)
 
-1. Open **Conformance kit** and click **Run all 51**. All 51 pass.
+1. Open **Conformance kit** and click **Run all 55**. All 55 pass.
 2. Open one scenario, for example `CK-RETRY-01`, and read what it proves: the expected trace and the checks on attempts.
 
-The same 51 scenarios run on DTFx, Elsa and Flowable; see Part D.
+The same 55 scenarios run on DTFx, Elsa and Flowable; see Part D.
 
 ### Exercise 6. Author and publish a rule, with maker and checker (25 minutes)
 
@@ -451,7 +451,7 @@ npx tsx engines/elsa/run-kit.ts
 engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts
 ```
 
-Each ends with `51 of 51 conformance scenarios pass`.
+Each ends with `55 of 55 conformance scenarios pass`.
 
 ---
 

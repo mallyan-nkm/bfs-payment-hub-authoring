@@ -127,6 +127,25 @@ public sealed class FileBulkCoreBanking(PortBinding b, IFileTransfer transfer, I
 
     public Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default) => balance.Balance(branch, account, ct);
 
+    /// <summary>
+    /// The fate of a posting by its batch reference (R-08-19): the answer this adapter gave, else the status of the batch's first file:
+    /// no failed line is posted, a failed line or a fault is not posted, and a file core banking has not seen is not known.
+    /// </summary>
+    public async Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default)
+    {
+        if (answered.TryGetValue(reference, out var a)) return new PostingInquiry(reference, true, a.Posted, a.HostReference);
+        var name = FileNameOf(b.Setting("fileNamePrefix", "DE"), reference, 1);
+        var s = await gateway.Status(name, ct);
+        static bool Clean(UploadStatusRecord r) => (r.ErrorCode?.Trim() ?? "") is "" or "0" or "12";
+        return s.Kind switch
+        {
+            UploadStatusKind.NoRecord => new PostingInquiry(reference, true, true, name),
+            UploadStatusKind.Records when s.Records.All(Clean) => new PostingInquiry(reference, true, true, name),
+            UploadStatusKind.Records or UploadStatusKind.Fault => new PostingInquiry(reference, true, false, null),
+            _ => new PostingInquiry(reference, false, false, null),
+        };
+    }
+
     int Int(string key, int fallback, int min) => int.TryParse(b.Setting(key, ""), NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n >= min ? n : fallback;
 
     public static string FileNameOf(string prefix, string reference, int generation)

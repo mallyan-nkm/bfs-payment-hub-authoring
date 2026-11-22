@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace TransactHub.Store;
 
-// The files of a deployment (Issue I-97 part 2, R-09-62): every file a host receives or sends is kept in the store, insert-only. The
+// The files of a deployment (Issue I-97 part 2, R-09-64): every file a host receives or sends is kept in the store, insert-only. The
 // row says what it is (name, size, direction, kind), whose it is (tenant, payment or bulk, leg) and holds the SHA-256 of its bytes,
 // signed by the host that kept it; the bytes are kept once per hash in `file_content`. The operations console lists a payment's
 // files in its documents tab and serves their bytes to the payment's operators; anyone with the host's public key can check that a

@@ -14,6 +14,8 @@ public sealed record PostingBatch(string Reference, DateOnly ValueDate, IReadOnl
 public sealed record BalanceAnswer(string Account, decimal Available, string Currency, string Status);
 /// <summary>Core banking's answer to a batch. <paramref name="Lines"/>: how each leg came out, when the adapter posts line by line (file-bulk).</summary>
 public sealed record PostingAnswer(string Reference, bool Posted, string Code, string? HostReference, IReadOnlyList<PostingLineResult>? Lines = null);
+/// <summary>What core banking knows of a posting by its reference (R-08-19): posted, with its host reference, or not posted.</summary>
+public sealed record PostingInquiry(string Reference, bool Known, bool Posted, string? HostReference);
 
 public interface ICoreBanking
 {
@@ -21,6 +23,8 @@ public interface ICoreBanking
     string Adapter { get; }
     Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default);
     Task<PostingAnswer> Post(PostingBatch batch, CancellationToken ct = default);
+    /// <summary>Asks for the fate of a posting by its reference, as sent (R-08-19): what reconciles a posting whose answer was lost.</summary>
+    Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default);
 }
 
 /// <summary>Builds the adapter a binding names. A new core-banking system is a new adapter here and a binding in the bank's configuration.</summary>
@@ -71,6 +75,16 @@ public sealed class SimulatedCoreBanking(PortBinding b) : ICoreBanking
             var i = Posted.FindIndex(p => p.Reference == batch.Reference);
             if (i < 0) { Posted.Add(batch); i = Posted.Count - 1; }
             return Task.FromResult(new PostingAnswer(batch.Reference, true, "0", $"SIM-{i + 1:D6}"));
+        }
+    }
+
+    /// <summary>A posting is known when this core banking holds a batch of that reference.</summary>
+    public Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default)
+    {
+        lock (Posted)
+        {
+            var i = Posted.FindIndex(p => p.Reference == reference);
+            return Task.FromResult(i < 0 ? new PostingInquiry(reference, true, false, null) : new PostingInquiry(reference, true, true, $"SIM-{i + 1:D6}"));
         }
     }
 }
@@ -132,5 +146,20 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         var code = (string?)j["code"] ?? "";
         return new PostingAnswer(batch.Reference, code == b.Setting("successCode", "0"), code, (string?)j["hostReference"]);
+    }
+
+    /// <summary>
+    /// The gateway's inquiry by reference (settings <c>inquiryPath</c>, <c>inquiryFunctionId</c>): it answers <c>posted</c> with the
+    /// host reference, or <c>notFound</c>. A gateway that does not know the reference answers 404, read as not posted.
+    /// </summary>
+    public async Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default)
+    {
+        var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["reference"] = b.Setting("referencePrefix", "") + reference };
+        using var res = await http.SendAsync(await Request("inquiryPath", "inquiryFunctionId", reference, body, ct), ct);
+        if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return new PostingInquiry(reference, true, false, null);
+        res.EnsureSuccessStatusCode();
+        var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
+        var status = (string?)j["status"] ?? "";
+        return new PostingInquiry(reference, status is "posted" or "notFound", status == "posted", (string?)j["hostReference"]);
     }
 }

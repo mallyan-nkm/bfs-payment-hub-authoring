@@ -199,7 +199,7 @@ public sealed class FlowableBinding
         {
             await using var db = StoreDbContext.Open(storeOpts);
             await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
-            StepFacts.Install(storeOpts);
+            StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
         }
         claim = storeOpts is null ? new MemoryClaimCheck() : new DurableClaimCheck(storeOpts);
 
@@ -331,6 +331,12 @@ public sealed class FlowableBinding
         log.Add($"started {docKey} as {pid}");
     }
 
+    /// <summary>
+    /// An instance as the workers and the store know it: its root's process instance, then each child's, as the interpreter's
+    /// instance ids are (root/leg). A leg's or a hook's steps are then the payment's facts, found by the root's payload (R-05-50).
+    /// </summary>
+    static string PathOf(Inst i) => i.Parent is null ? i.Pid : $"{PathOf(i.Parent)}/{i.Pid}";
+
     static string ShortName(string n)
     {
         var p = n.Split('.');
@@ -344,6 +350,13 @@ public sealed class FlowableBinding
         await Settle();
         for (var guard = 0; guard < 2_000_000; guard++)
         {
+            if (await PollLive()) await Settle();
+            if (liveFeed is not null && await HoldClock())
+            {
+                if (queue.TryPeek(out var due, out var dk) && dk.at <= now) { queue.Dequeue(); await due.Run(); await Settle(); continue; }
+                await Task.Delay(250);
+                continue;
+            }
             JsonObject? timer = null;
             long tAt = long.MaxValue, tWall = long.MaxValue;
             foreach (var t in await rest.TimerJobs(tenant))
@@ -462,6 +475,7 @@ public sealed class FlowableBinding
                 moved = true;
                 Tick();
             }
+            moved |= await PollLive();
             moved |= await PlaceTimers();
             moved |= await WorkExternalJobs();
             moved |= await DeliverHeld();
@@ -713,7 +727,7 @@ public sealed class FlowableBinding
         var ctx = index is int ix && level == "item" ? claim.FullForItem(inst.State, inst.Ref, ix) : claim.Full(inst.State, inst.Ref);
         var req = new JsonObject
         {
-            ["op"] = "attempt", ["instance"] = inst.Pid, ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
+            ["op"] = "attempt", ["instance"] = PathOf(inst), ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
             ["call"] = call, ["attempt"] = attempt, ["now"] = now, ["ctx"] = ctx, ["level"] = index is not null && level == "item" ? "item" : null,
             ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null,
         };
@@ -758,6 +772,13 @@ public sealed class FlowableBinding
         }
         Deliveries(J.P(res, "deliveries"));
         if (J.S(res, "kind") == "hang") { hung.Add(job.Id); return; } // the attempt never answers; the timer boundary ends it
+        if (J.S(res, "kind") == "held")
+        {
+            // A hold opened its item: the instance awaits the operator's decision until the hold's expiry (Issue I-98, R-05-56).
+            Mark();
+            await rest.Complete(job.Id, workerId, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = J.S(res, "expiry") ?? "P1D" });
+            return;
+        }
         var latency = J.S(dep.Stub(step, activity), "latency") is string l ? Duration.Ms(l) : 0;
         if (latency > 0) Schedule(now + latency, "complete", () => Finish(job, inst, step, label, index, task, res));
         else await Finish(job, inst, step, label, index, task, res);
@@ -910,6 +931,10 @@ public sealed class FlowableBinding
             case "awaitReceived":
                 inst.Awaited.Add(p["message"]);
                 Record(inst, p, $"{LabelOf(job, p, p["step"])}:received", job);
+                break;
+            case "stuck":
+                Record(inst, p, $"{LabelOf(job, p, p["step"])}:stuck", job);
+                try { Interp.Stuck?.Invoke(PathOf(inst), p["step"], inst.Attempts.GetValueOrDefault(p["step"])); } catch (Exception) { }
                 break;
             case "awaitTimeout":
                 inst.Awaited.Add(p["message"]);
@@ -1100,7 +1125,9 @@ public sealed class FlowableBinding
         received[J.S(m, "type")!] = reff;
         msgs["lastReceived"] = J.Clone(reff);
         Mark();
-        await rest.MessageReceived(executionId, J.S(m, "type")!);
+        // The operator's decision carries its status to the hold's gateway (R-05-56).
+        if (J.S(m, "type") == Interp.DecisionMessage) await rest.MessageReceived(executionId, J.S(m, "type")!, new Dictionary<string, string> { ["th_decision"] = J.S(m, "status") ?? "" });
+        else await rest.MessageReceived(executionId, J.S(m, "type")!);
     }
 
     async Task<bool> DeliverHeld()
@@ -1144,8 +1171,74 @@ public sealed class FlowableBinding
 
     // ================================================================ signals (R-05-12)
 
+    /// <summary>An operator's control of a parked step (R-05-55): delivered only where a parked step waits for it.</summary>
+    async Task<bool> Operator(string control)
+    {
+        var root = roots.FirstOrDefault();
+        if (root is null || root.Ended) return false;
+        var name = $"th.operator.{control}";
+        var subs = await rest.EventSubscriptions(tenant, "message", name, root.Pid);
+        if (subs.Count == 0) { notes.Add($"no parked step waits for {control}"); return false; }
+        root.Trace.Add($"operator:{control}");
+        Mark();
+        await rest.MessageReceived(J.S(subs[0], "executionId")!, name);
+        return true;
+    }
+
+    ILiveFeed? liveFeed;
+    bool liveTried;
+    long livePolled;
+
+    /// <summary>
+    /// The live path from the runtime (R-05-57): with a store, the root's payment is followed on the outbox; at most every quarter
+    /// second of wall time the rows not yet delivered are delivered: a signal or an operator's control to the root, a hold's
+    /// decision through the front door. Each is recorded as delivered on the payment's chain.
+    /// </summary>
+    async Task<bool> PollLive()
+    {
+        if (LiveSignals.Source is not { } source) return false;
+        var root = roots.FirstOrDefault();
+        if (root is null) return false;
+        if (!liveTried) { liveTried = true; liveFeed = await source.Follow(root.Ref, "flowable", root.Pid, null); }
+        if (liveFeed is null || Wall() - livePolled < 250) return false;
+        livePolled = Wall();
+        var moved = false;
+        foreach (var row in await liveFeed.Poll())
+        {
+            var (name, data) = LiveSignals.EventOf(row, J.P(root.State, "header"));
+            string result;
+            if (root.Ended) result = "ended";
+            else if (name == "message") { await FrontDoor(data); result = "delivered"; }
+            else if (Interp.OperatorControls.Contains(J.S(data, "signal"))) result = await Operator(J.S(data, "signal")!) ? "delivered" : "nothing parked";
+            else { await Signal(J.S(data, "signal")!); result = "delivered"; }
+            await liveFeed.Ack(row, result);
+            moved = true;
+        }
+        return moved;
+    }
+
+    /// <summary>An operator wait is open on the root: a hold awaiting its decision, or a parked step.</summary>
+    async Task<bool> OperatorWaitOpen()
+    {
+        var root = roots.FirstOrDefault();
+        if (root is null || root.Ended || liveFeed is null) return false;
+        foreach (var name in new[] { Interp.DecisionMessage, "th.operator.retry" })
+            if ((await rest.EventSubscriptions(tenant, "message", name, root.Pid)).Count > 0) return true;
+        return false;
+    }
+
+    DateTimeOffset? waitingSince;
+
+    async Task<bool> HoldClock()
+    {
+        if (!await OperatorWaitOpen()) { waitingSince = null; return false; }
+        waitingSince ??= DateTimeOffset.UtcNow;
+        return DateTimeOffset.UtcNow - waitingSince.Value < LiveSignals.Patience;
+    }
+
     async Task Signal(string signal)
     {
+        if (Interp.OperatorControls.Contains(signal)) { await Operator(signal); return; }
         var root = roots.FirstOrDefault();
         if (root is null || root.Ended) return;
         string? aw = null;

@@ -71,7 +71,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
   L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
   L44: 'Every parameter declares its type and a default within its own bounds',
-  L45: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
+  L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
 };
 
 // ---------------------------------------------------------------- walking
@@ -307,7 +307,7 @@ export class Checker {
         else if (st.await.family && !(hit.disposition.deliver.families ?? []).includes(st.await.family)) err('L36', `Await ${st.id ?? '?'} takes family ${st.await.family} of ${st.await.message}, which its dispatch entry does not declare`, label);
       }
     }
-    // L45 (R-12-17, Issue I-117): on a scheme whose wire is a file, a step that sends or reports a file (an exchange of mode send or
+    // L46 (R-12-17, Issue I-117): on a scheme whose wire is a file, a step that sends or reports a file (an exchange of mode send or
     // report that is not a composite) comes after a protect step that encrypts it.
     // A line a later major replaces is published and stays as it was (the packs leave it out); it is not judged again.
     const lineBase = d.kind === 'workflow' ? String(d.name).replace(/\.v\d+$/, '') : '';
@@ -319,7 +319,7 @@ export class Checker {
         if (a?.kind !== 'activity') continue;
         if (a.type === 'protect') encrypted = true;
         else if (a.type === 'exchange' && ['send', 'report'].includes(a.mode) && a.implementation?.binding !== 'subflow' && !encrypted)
-          err('L45', `Step ${stepLabel(st)} sends ${a.name} on a file scheme before any protect step encrypts it`, stepLabel(st));
+          err('L46', `Step ${stepLabel(st)} sends ${a.name} on a file scheme before any protect step encrypts it`, stepLabel(st));
       }
     }
     if (d.kind === 'workflow' && d.wfKind === 'handler') {

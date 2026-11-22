@@ -341,16 +341,24 @@ app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrinci
 // and its end is a fact (R-09-54, Issue I-97). A caller may pin only for its own tenants.
 app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
     !ApiAuth.Has(user, ApiAuth.Intake, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
+    // The intake switch of the payment's scheme (R-09-62): while paused, a new payment is refused, with the code, and not pinned.
+    : p.Scheme is { Length: > 0 } scheme && await IntakeSwitch.Paused(db, p.Bank, scheme, ct)
+        ? Results.Json(new { error = new IntakePaused(p.Bank, scheme).Message, code = "ops.IntakePaused" }, statusCode: 423)
     // A payment id pinned already by another bank is not this caller's to read or pin.
     : NotForBank(user, ApiAuth.Intake, BankOfDistribution(await new DistributionRegistry(db, clock).PinOf(p.PaymentId, ct)), "accept this payment")
     ?? await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
+
+// The intake switch of a bank's scheme (R-09-62), for the front door.
+app.MapGet("/intake", async (string tenant, string scheme, ClaimsPrincipal user, StoreDbContext db, CancellationToken ct) =>
+    !ApiAuth.Has(user, ApiAuth.Intake, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the intake of {tenant}")
+    : Results.Ok(new { tenant, scheme, intake = await IntakeSwitch.Paused(db, tenant, scheme, ct) ? "paused" : "open" })).RequireAuthorization(ApiAuth.Intake);
 
 // A payment's end is recorded only by the front door of the bank it is pinned to.
 app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
     NotForBank(user, ApiAuth.Intake, BankOfDistribution(await new DistributionRegistry(db, clock).PinOf(p.PaymentId, ct)), "end this payment") ?? await Refusable(async () =>
     Results.Ok(new { paymentId = p.PaymentId, outcome = p.Outcome, recorded = await Distributions(db, clock).End(p.PaymentId, p.Outcome, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
 
-// The files of a payment (Issue I-97, R-09-62): the front door keeps each file it receives for a payment here, signed by this host's key
+// The files of a payment (Issue I-97, R-09-64): the front door keeps each file it receives for a payment here, signed by this host's key
 // (TH_FILE_SIGNING_KEY_REF, a P-256 private key in PEM by reference; without one, a key made for the host's lifetime). Insert-only.
 app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
 {
@@ -403,7 +411,7 @@ public sealed record SourceInstall(string Tag);
 /// <summary>An action on a distribution in an environment: its id (activate, drain, remove) or its bank (rollback), and why.</summary>
 public sealed record DistributionAction(string Environment, string? Id = null, string? Bank = null, string? Why = null);
 /// <summary>A payment accepted by the front door: pinned to the active distribution of its bank in its environment.</summary>
-public sealed record PaymentPin(string PaymentId, string Bank, string Environment);
+public sealed record PaymentPin(string PaymentId, string Bank, string Environment, string? Scheme = null);
 /// <summary>A payment's end: the outcome its root instance ended with.</summary>
 public sealed record PaymentEnd(string PaymentId, string Outcome);
 /// <summary>A file to keep for a payment: what it is, whose, and its bytes in Base64.</summary>

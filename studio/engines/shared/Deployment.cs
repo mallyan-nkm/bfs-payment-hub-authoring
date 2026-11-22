@@ -329,10 +329,28 @@ public sealed class WorkerRouter : IParty
         return parts[0] is "p" or "b" ? parts[0] : $"{parts[0]}.{parts[1]}";
     }
 
+    /// <summary>How long an attempt waits for a worker that drains or restarts (R-09-63) before it is answered as an error.</summary>
+    public static TimeSpan DrainWait = TimeSpan.FromMinutes(10);
+
     async Task<JsonObject> Post(string url, JsonObject body)
     {
-        using var content = new StringContent(J.Str(body), System.Text.Encoding.UTF8, "application/json");
-        using var res = await http.PostAsync(url, content);
+        // A worker that drains answers 503; one that restarts does not answer for a moment. The attempt waits for the worker to
+        // take it again, so no attempt is lost to a drain (R-09-63).
+        var until = DateTime.UtcNow + DrainWait;
+        HttpResponseMessage res;
+        while (true)
+        {
+            try
+            {
+                using var content = new StringContent(J.Str(body), System.Text.Encoding.UTF8, "application/json");
+                res = await http.PostAsync(url, content);
+                if (res.StatusCode != System.Net.HttpStatusCode.ServiceUnavailable || DateTime.UtcNow > until) break;
+                res.Dispose();
+            }
+            catch (HttpRequestException) when (DateTime.UtcNow < until) { }
+            await Task.Delay(250);
+        }
+        using var _res = res;
         var text = await res.Content.ReadAsStringAsync();
         var o = (JsonObject)J.Parse(text)!;
         if (J.S(o, "error") is string err) throw new InvalidOperationException($"worker {url}: {err}");

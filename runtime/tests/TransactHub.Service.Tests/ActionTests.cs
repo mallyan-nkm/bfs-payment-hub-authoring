@@ -9,8 +9,9 @@ namespace TransactHub.Service.Tests;
 
 /// <summary>
 /// Troubleshooting actions (R-09-43): each needs a reason; a risky one waits for a ServiceApprover who is another person;
-/// those with a path run end to end (a hold released, a dead-letter job requeued, a key rotated, the read model rebuilt);
-/// those whose engine path is not built are recorded and refused naming Issue I-101. Every step is a fact.
+/// each runs end to end (a hold released or expired, the operator's controls on the outbox for the engine's host, a file resent,
+/// a posting reconciled, intake paused and resumed, a worker drained and restarted, a dead-letter job requeued, a key rotated, the
+/// read model rebuilt), Issue I-101. Every step is a fact.
 /// </summary>
 [Collection(DatabaseCollection.Name)]
 public sealed class ActionTests(Databases dbs)
@@ -26,7 +27,7 @@ public sealed class ActionTests(Databases dbs)
     }
 
     [Fact]
-    public async Task A_risky_action_waits_for_another_person_and_one_with_no_engine_path_is_recorded_and_refused()
+    public async Task A_risky_action_waits_for_another_person_and_every_troubleshooting_action_reaches_its_target()
     {
         using var s = new Signers();
         await using var api = new ServiceApi(dbs.Fresh(), s, new FakeGitHub());
@@ -58,25 +59,143 @@ public sealed class ActionTests(Databases dbs)
             Assert.True((await new FactLog(db).Verify(bulk)).Ok);
         }
 
-        // Retry has no engine path: recorded, refused, with the issue.
+        // The operator's controls reach the engine's host through the outbox (R-05-55, R-05-57): only a parked step takes them.
         var retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
         Assert.Equal("refused", (string?)retry["status"]);
-        Assert.Equal("ops.NoEnginePath", (string?)retry["code"]);
-        Assert.Contains("I-101", (string?)retry["result"]!["message"]);
-        foreach (var a in new[] { "redrive-workflow", "reset-activity", "resend-file", "pause-intake", "drain-worker", "restart-worker", "expire-hold" })
+        Assert.Equal("ops.ActionNotOffered", (string?)retry["code"]);
+        await using (var db = StoreDbContext.Open(api.Store))
+            await new FactLog(db).Append(bulk, "bulk", new NewFact("step", "stuck", new JsonObject { ["instance"] = "root/leg3", ["step"] = "submit" }, Actor: "engine"));
+        retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
+        Assert.True((string?)retry["status"] == "done", retry.ToJsonString());
+        foreach (var a in new[] { "redrive-workflow", "reset-activity" })
         {
-            var r = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = a, target = a.EndsWith("intake") ? "uae.wps" : a.EndsWith("worker") ? "th-uae-wps" : bulk, reason = "test" }));
+            var r = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = a, target = bulk, reason = "the gateway is back" }));
             Assert.Equal("pending-approval", (string?)r["status"]);
-            var d = await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)r["action"]!}/decision", new { approve = true, reason = "test" }));
-            Assert.Equal("refused", (string?)d["status"]);
-            Assert.Contains("I-101", (string?)d["result"]!["message"]);
+            var dd = await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)r["action"]!}/decision", new { approve = true, reason = "checked" }));
+            Assert.True((string?)dd["status"] == "done", dd.ToJsonString());
         }
-        // Re-screen reaches the outbox only (I-99).
+        // Expire an open hold: recorded expired, and the decision on its way to the engine, which awaits it (R-05-56).
+        await using (var db = StoreDbContext.Open(api.Store))
+            await new FactLog(db).Append(bulk, "bulk", new NewFact("hold", "opened", new JsonObject { ["hold"] = "hold-2", ["kind"] = "repair", ["activity"] = "p.hold.repair.v1", ["expiry"] = "P1D" }, Actor: "runtime"));
+        var ex = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "expire-hold", target = bulk, reason = "the employer withdrew" }));
+        Assert.Equal("done", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)ex["action"]!}/decision", new { approve = true, reason = "checked" })))["status"]);
+        // Re-screen is delivered by the engine's host (R-05-57).
         var rs = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "re-screen", target = bulk, reason = "lists updated" }));
         Assert.Equal("done", (string?)rs["status"]);
-        Assert.False((bool)rs["result"]!["delivered"]!);
+        Assert.True((bool)rs["result"]!["queued"]!);
         await using (var db = StoreDbContext.Open(api.Store))
-            Assert.Contains(await db.Outbox.AsNoTracking().Where(o => o.Topic == "engine-signal").Select(o => o.PayloadJson).ToListAsync(), p => p.Contains("re-screen"));
+        {
+            var rows = await db.Outbox.AsNoTracking().Where(o => o.Topic == "engine-signal" && o.Key == bulk).OrderBy(o => o.Id).Select(o => o.PayloadJson).ToListAsync();
+            Assert.Equal(["decide", "retry", "redrive", "redrive", "decide", "re-screen"], rows.Select(r => (string?)JsonNode.Parse(r)!["signal"]));
+            Assert.True((bool)JsonNode.Parse(rows[3])!["reset"]!);
+            Assert.Equal("expired", (string?)JsonNode.Parse(rows[4])!["decision"]);
+            Assert.Contains(await db.Facts.AsNoTracking().Where(f => f.SubjectId == bulk && f.Kind == "hold").Select(f => f.Code).ToListAsync(), c => c == "expired");
+        }
+
+        // Intake per scheme (R-09-62): paused, the runtime refuses the bank's new payments of the scheme; resumed, it takes them.
+        var pause = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "pause-intake", target = "uae.wps", reason = "the Central Bank's window is closed", parameters = new { tenant = Seed.Tenant } }));
+        Assert.Equal("done", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)pause["action"]!}/decision", new { approve = true, reason = "agreed" })))["status"]);
+        await using (var db = StoreDbContext.Open(api.Store)) Assert.True(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
+        Assert.Equal("done", (string?)(await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "resume-intake", target = "uae.wps", reason = "open again", parameters = new { tenant = Seed.Tenant } })))["status"]);
+        await using (var db = StoreDbContext.Open(api.Store)) Assert.False(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
+
+        // Drain and restart a worker through its own control (R-09-63); one that does not answer is refused with the code.
+        using var worker = new FakeWorker();
+        foreach (var a in new[] { "drain-worker", "restart-worker" })
+        {
+            var r = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = a, target = worker.Url, reason = "a deployment of the bank's platform" }));
+            var d = await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)r["action"]!}/decision", new { approve = true, reason = "agreed" }));
+            Assert.True((string?)d["status"] == "done", d.ToJsonString());
+        }
+        Assert.Equal(["/drain", "/restart"], worker.Calls);
+        var gone = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "drain-worker", target = "http://127.0.0.1:9", reason = "test" }));
+        Assert.Equal("service.ProbeFailed", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)gone["action"]!}/decision", new { approve = true, reason = "test" })))["code"]);
+    }
+
+    /// <summary>A worker's control endpoints, as the worker answers them (POST /drain, POST /restart).</summary>
+    sealed class FakeWorker : IDisposable
+    {
+        readonly HttpListener listener;
+        public readonly List<string> Calls = new();
+        public string Url { get; }
+
+        public FakeWorker()
+        {
+            var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+            probe.Start();
+            var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+            listener = new HttpListener();
+            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            listener.Start();
+            Url = $"http://127.0.0.1:{port}";
+            _ = Task.Run(async () =>
+            {
+                while (listener.IsListening)
+                {
+                    HttpListenerContext c;
+                    try { c = await listener.GetContextAsync(); } catch { return; }
+                    lock (Calls) Calls.Add(c.Request.Url!.AbsolutePath);
+                    var body = System.Text.Encoding.UTF8.GetBytes($"{{\"draining\":true,\"restarting\":{(c.Request.Url!.AbsolutePath == "/restart" ? "true" : "false")}}}");
+                    c.Response.ContentType = "application/json";
+                    await c.Response.OutputStream.WriteAsync(body);
+                    c.Response.Close();
+                }
+            });
+        }
+
+        public void Dispose() => listener.Close();
+    }
+
+    [Fact]
+    public async Task A_file_is_resent_as_kept_and_an_unknown_posting_is_reconciled_with_core_banking()
+    {
+        using var s = new Signers();
+        var outFolder = Directory.CreateTempSubdirectory("th-resend-").FullName;
+        try
+        {
+            await using var api = new ServiceApi(dbs.Fresh(), s, new FakeGitHub(), new() { ["TH_FILE_TRANSFER_DIR"] = outFolder });
+            _ = api.Engineer; // the host starts and migrates the store
+            var bulk = await Seed.Bulk(api.Store, "p.wf.corporate.v1");
+            var sif = System.Text.Encoding.ASCII.GetBytes("EDR,synthetic\r\nSCR,synthetic\r\n");
+            await using (var db = StoreDbContext.Open(api.Store))
+                await new PaymentStore(db).KeepMessage(Seed.Tenant, "uae.wps", TransactHub.Model.Direction.Outward, "uae.wps.sif", "0000001234567202611011200000.SIF", sif, bulk);
+            await api.CatchUp();
+            // Resend (R-05-58): the same bytes on the file-transfer port, once per file id; a second resend leaves the receiver's file.
+            for (var n = 0; n < 2; n++)
+            {
+                var r = await J.Of(await api.Engineer.PostAsJsonAsync("/service/api/actions", new { action = "resend-file", target = bulk, reason = "the Central Bank asked for it again" }));
+                var d = await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)r["action"]!}/decision", new { approve = true, reason = "checked" }));
+                Assert.Equal("done", (string?)d["status"]);
+                Assert.Equal(n == 0 ? "sent" : "already there", (string?)d["result"]!["result"]);
+            }
+            Assert.Equal(sif, await File.ReadAllBytesAsync(Path.Combine(outFolder, "0000001234567202611011200000.SIF")));
+            Assert.Single(Directory.GetFiles(outFolder));
+            await using (var db = StoreDbContext.Open(api.Store))
+                Assert.Equal(2, await db.Facts.AsNoTracking().CountAsync(f => f.SubjectId == bulk && f.Kind == "message" && f.Code == "resent"));
+
+            // Reconcile (R-08-19): core banking is asked by the posting's reference; posted, the parked step is re-driven; not posted, retried.
+            var cb = new TransactHub.Ports.SimulatedCoreBanking(new TransactHub.Ports.PortBinding(Seed.Tenant, "p.port.core-banking.v1", "simulator", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), new Dictionary<string, string>()));
+            await cb.Post(new TransactHub.Ports.PostingBatch("POST-1", new DateOnly(2026, 11, 17), []));
+            var signals = new TransactHub.Operations.OutboxSignals(api.Store);
+            var reconcile = ActionBook.ReconcilePosting(api.Store, signals, _ => cb, TimeProvider.System);
+            await using (var db = StoreDbContext.Open(api.Store))
+                await new FactLog(db).Append(bulk, "bulk", new NewFact("step", "stuck", new JsonObject { ["instance"] = "root", ["step"] = "post" }, Actor: "engine"));
+            var who = new ServiceIdentity("se-1", "se-1", new HashSet<string> { ServiceRoles.Engineer }, new HashSet<string> { "*" });
+            var posted = await reconcile(who, new ActionAsk("reconcile-posting", bulk, "the answer was lost", new JsonObject { ["reference"] = "POST-1" }), default);
+            Assert.True((bool)posted["posted"]!);
+            Assert.Equal("redrive", (string?)posted["then"]);
+            var notPosted = await reconcile(who, new ActionAsk("reconcile-posting", bulk, "the answer was lost", new JsonObject { ["reference"] = "POST-2" }), default);
+            Assert.False((bool)notPosted["posted"]!);
+            Assert.Equal("retry", (string?)notPosted["then"]);
+            await using (var db = StoreDbContext.Open(api.Store))
+            {
+                Assert.Equal(2, await db.Facts.AsNoTracking().CountAsync(f => f.SubjectId == bulk && f.Kind == "posting" && f.Code == "reconciled"));
+                var rows = await db.Outbox.AsNoTracking().Where(o => o.Topic == "engine-signal" && o.Key == bulk).OrderBy(o => o.Id).Select(o => o.PayloadJson).ToListAsync();
+                Assert.Equal(["redrive", "retry"], rows.Select(r => (string?)JsonNode.Parse(r)!["signal"]));
+            }
+        }
+        finally { Directory.Delete(outFolder, true); }
     }
 
     [Fact]
