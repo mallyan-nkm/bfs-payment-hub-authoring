@@ -32,6 +32,10 @@ var trustSetting = builder.Configuration["Signing:TrustedSigners"] ?? builder.Co
 // Read once now, so a broken list stops the start; then again at each verification, so a key added, retired or revoked needs no restart.
 _ = await TrustedSigners.Load(trustSetting, secrets);
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
+// The key this host signs the files it keeps with (Issue I-97): by reference, or one made for the host's lifetime.
+var fileKey = builder.Configuration["TH_FILE_SIGNING_KEY_REF"] is { Length: > 0 } fileKeyRef
+    ? ReleaseSignature.PrivateKeyFromPem(await secrets.Resolve(fileKeyRef))
+    : System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
 builder.Services.AddSingleton(TimeProvider.System);
 await builder.Services.AddRuntimeAuth(builder.Configuration, secrets, ApiAuth.Roles);
 // The studio's content repository as a read-only source of signed releases (R-09-30), when one is configured.
@@ -309,6 +313,27 @@ app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbC
 app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
     Results.Ok(new { paymentId = p.PaymentId, outcome = p.Outcome, recorded = await Distributions(db, clock).End(p.PaymentId, p.Outcome, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
 
+// The files of a payment (Issue I-97, R-09-58): the front door keeps each file it receives for a payment here, signed by this host's key
+// (TH_FILE_SIGNING_KEY_REF, a P-256 private key in PEM by reference; without one, a key made for the host's lifetime). Insert-only.
+app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+{
+    if (!ApiAuth.MayReadTenant(user, f.Tenant)) return Problem(403, $"{ApiAuth.Actor(user)} may not keep files of {f.Tenant}");
+    if (f.Direction is not ("in" or "out")) return Problem(400, "A file's direction is in or out");
+    byte[] content;
+    try { content = Convert.FromBase64String(f.ContentBase64); }
+    catch (FormatException) { return Problem(400, "contentBase64 is not Base64"); }
+    var row = await new FileStore(db, fileKey, clock).Keep(new FileToKeep(f.Tenant, f.Scheme, f.Direction, f.Kind, f.FileName, f.PaymentId, f.Leg, f.Activity), content, ct);
+    return Results.Ok(new { id = row.Id, sha256 = row.ContentHash, size = row.Size, signingKeyId = row.SigningKeyId, signature = row.Signature });
+}).RequireAuthorization(ApiAuth.Intake);
+
+app.MapGet("/payments/files", async (string tenant, string paymentId, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    !ApiAuth.MayReadTenant(user, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the files of {tenant}")
+    : Results.Ok((await new FileStore(db, fileKey, clock).Of(tenant, paymentId, ct)).Select(r => new
+    {
+        r.Id, r.FileName, r.Direction, r.Kind, r.Size, sha256 = r.ContentHash, r.Leg, r.Activity, r.At, r.SigningKeyId, r.Signature,
+        verified = r.SigningKeyId == FileSignature.KeyIdOf(fileKey) ? FileSignature.Verify(r, fileKey) : (bool?)null,
+    }))).RequireAuthorization(ApiAuth.Reader);
+
 app.MapGet("/payments/pin", async (string paymentId, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
 {
     var reg = new DistributionRegistry(db, clock);
@@ -344,6 +369,8 @@ public sealed record DistributionAction(string Environment, string? Id = null, s
 public sealed record PaymentPin(string PaymentId, string Bank, string Environment);
 /// <summary>A payment's end: the outcome its root instance ended with.</summary>
 public sealed record PaymentEnd(string PaymentId, string Outcome);
+/// <summary>A file to keep for a payment: what it is, whose, and its bytes in Base64.</summary>
+public sealed record FileKeep(string Tenant, string Scheme, string Direction, string Kind, string FileName, string? PaymentId, string ContentBase64, string? Leg = null, string? Activity = null);
 
 /// <summary>What storing or activating came to: a status and a body, or a status and the reason it was refused.</summary>
 sealed record Outcome(int Status, object? Body, string? Error)

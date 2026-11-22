@@ -88,6 +88,8 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
   const schemeView = mine.find((v) => v.scheme === p.scheme);
   const lineDecl = schemeView?.subject?.lines;
   const lineCols = (lineDecl?.columns ?? lineDecl?.fields.map((f) => f.id) ?? []).map((c) => lineDecl!.fields.find((f) => f.id === c)!).filter(Boolean);
+  // A stored file names the leg's instance; the console shows the leg's title where the payment has that leg.
+  const legTitle = (leg?: string | null) => (leg ? p.legs.find((l) => l.instance === leg)?.title ?? leg : '—');
   const docLabel = (kind: string) => schemeView?.subject?.documents?.find((x) => x.kind === kind)?.label ?? kind;
   return (
     <section>
@@ -151,11 +153,12 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
       {tab === 'documents' && (
         d.documents.length === 0 ? <p className="muted">No file is kept for this payment.</p> : (
           <table className="grid" aria-label="Documents">
-            <thead><tr><th>Document</th><th>File name</th><th>Direction</th><th className="num">Bytes</th><th>At</th><th /></tr></thead>
+            <thead><tr><th>Document</th><th>File name</th><th>Direction</th><th>Leg</th><th className="num">Bytes</th><th>SHA-256</th><th>At</th><th /></tr></thead>
             <tbody>
               {d.documents.map((x) => (
                 <tr key={x.id}>
-                  <td>{docLabel(x.kind)}</td><td className="mono">{x.fileName ?? '—'}</td><td>{x.direction}</td><td className="num">{x.size}</td><td>{show(x.at, 'datetime')}</td>
+                  <td>{docLabel(x.kind)}</td><td className="mono">{x.fileName ?? '—'}</td><td>{x.direction === 'in' || x.direction === 'inward' ? 'received' : 'sent'}</td><td className="mono">{legTitle(x.leg)}</td><td className="num">{x.size}</td>
+                  <td className="mono" title={x.signed ? `signed by key ${x.signingKeyId}` : 'not signed'}>{x.contentHash.slice(0, 12)}{x.signed ? ' (signed)' : ''}</td><td>{show(x.at, 'datetime')}</td>
                   <td><button className="link" onClick={async () => {
                     const r = await fetch(api.documentUrl(p.id, x.id), { headers: api.headers() });
                     const url = URL.createObjectURL(await r.blob());

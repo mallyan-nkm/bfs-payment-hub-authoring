@@ -134,6 +134,18 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             await o.SaveChangesAsync(ct);
             lastMessage = ms[^1].Id;
         }
+        var lastFile = "";
+        while (true)
+        {
+            var fs = await s.StoredFiles.AsNoTracking().Where(f => string.Compare(f.Id, lastFile) > 0).OrderBy(f => f.Id).Select(f => f.Id).Take(BatchSize).ToListAsync(ct);
+            if (fs.Count == 0) break;
+            await using var o = OpsDbContext.Open(ops);
+            var run = new Run(s, o, views, clock);
+            foreach (var f in fs) await run.ApplyFile(f, ct);
+            await run.Finish(ct);
+            await o.SaveChangesAsync(ct);
+            lastFile = fs[^1];
+        }
         await using (var o = OpsDbContext.Open(ops))
         {
             var cp = await Checkpoint(o, ct);
@@ -184,6 +196,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
         {
             var p = JsonNode.Parse(r.PayloadJson) as JsonObject ?? new JsonObject();
             if (r.Topic == Outbox.MessageTopic) { await ApplyMessage((string)p["message"]!, ct); return; }
+            if (r.Topic == FileStore.FileTopic) { await ApplyFile((string)p["file"]!, ct); return; }
             if (r.Topic != Outbox.FactTopic) return;
             var subject = (string)p["subject"]!;
             var seq = (int)p["seq"]!;
@@ -438,6 +451,23 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             if (subject is not null && !await s.Bulks.AnyAsync(b => b.Id == subject, ct) && !await s.Payments.AnyAsync(p => p.Id == subject, ct))
                 subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId;
             o.Documents.Add(new OpsDocument { Id = m.Id, SubjectId = subject, Tenant = m.Tenant, Scheme = m.Scheme, Kind = m.Kind, Direction = m.Direction.ToLowerInvariant(), FileName = m.FileName, Size = m.Size, ContentHash = m.ContentHash, At = m.At });
+            if (subject is not null) touched.Add(subject);
+        }
+
+        /// <summary>A stored file (Issue I-97): a document of its payment or bulk, with its leg and the key it is signed by.</summary>
+        public async Task ApplyFile(string id, CancellationToken ct)
+        {
+            if (o.Documents.Local.Any(x => x.Id == id) || await o.Documents.AnyAsync(x => x.Id == id, ct)) return;
+            var f = await s.StoredFiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (f is null) return;
+            var subject = f.SubjectId;
+            if (subject is not null && !await s.Bulks.AnyAsync(b => b.Id == subject, ct) && !await s.Payments.AnyAsync(p => p.Id == subject, ct))
+                subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId ?? subject;
+            o.Documents.Add(new OpsDocument
+            {
+                Id = f.Id, SubjectId = subject, Tenant = f.Tenant, Scheme = f.Scheme, Kind = f.Kind, Direction = f.Direction, FileName = f.FileName,
+                Size = (int)Math.Min(f.Size, int.MaxValue), ContentHash = f.ContentHash, At = f.At, Source = "file", Leg = f.Leg, SigningKeyId = f.SigningKeyId,
+            });
             if (subject is not null) touched.Add(subject);
         }
 

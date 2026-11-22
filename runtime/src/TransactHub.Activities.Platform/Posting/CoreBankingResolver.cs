@@ -48,7 +48,19 @@ public sealed class CoreBankingResolver
     public (ICoreBanking CoreBanking, PortBinding Binding) For(string? tenant, DateTimeOffset at)
     {
         var b = BindingFor(tenant, at);
-        try { return (adapters.GetOrAdd(b, x => CoreBankingAdapters.Create(x, http(x), secrets)), b); }
+        // An adapter that posts by file (file-bulk) puts it on the tenant's file-transfer port in force at the same moment.
+        IFileTransfer Transfer() => transfers.GetOrAdd(bindings.InForce(tenant!, FileTransferAdapters.Port, at), x => FileTransferAdapters.Create(x, secrets));
+        try { return (adapters.GetOrAdd(b, x => CoreBankingAdapters.Create(x, http(x), secrets, Transfer, delay)), b); }
         catch (PortBindingException e) { throw new NativeFailure("PortNotBound", e.Message, false); }
     }
+
+    readonly ConcurrentDictionary<PortBinding, IFileTransfer> transfers = new(ReferenceEqualityComparer.Instance);
+    readonly Func<TimeSpan, CancellationToken, Task>? delay;
+
+    /// <summary>The file-transfer adapters built so far, with the binding each serves.</summary>
+    public IEnumerable<(PortBinding Binding, IFileTransfer Transfer)> Transfers => transfers.Select(x => (x.Key, x.Value));
+
+    /// <param name="delay">How a file-bulk adapter waits between status reads; a test gives one that does not wait.</param>
+    public CoreBankingResolver(PortBindings bindings, Func<TimeSpan, CancellationToken, Task> delay, Func<PortBinding, HttpClient>? http = null, TransactHub.Security.ISecretResolver? secrets = null)
+        : this(bindings, http, secrets) => this.delay = delay;
 }

@@ -12,7 +12,8 @@ namespace TransactHub.Ports;
 public sealed record PostingLeg(string Kind, string Branch, string Account, decimal Amount, string Currency, string TxnCode, string Narration);
 public sealed record PostingBatch(string Reference, DateOnly ValueDate, IReadOnlyList<PostingLeg> Legs);
 public sealed record BalanceAnswer(string Account, decimal Available, string Currency, string Status);
-public sealed record PostingAnswer(string Reference, bool Posted, string Code, string? HostReference);
+/// <summary>Core banking's answer to a batch. <paramref name="Lines"/>: how each leg came out, when the adapter posts line by line (file-bulk).</summary>
+public sealed record PostingAnswer(string Reference, bool Posted, string Code, string? HostReference, IReadOnlyList<PostingLineResult>? Lines = null);
 
 public interface ICoreBanking
 {
@@ -25,12 +26,27 @@ public interface ICoreBanking
 /// <summary>Builds the adapter a binding names. A new core-banking system is a new adapter here and a binding in the bank's configuration.</summary>
 public static class CoreBankingAdapters
 {
-    public static ICoreBanking Create(PortBinding b, HttpClient? http = null, ISecretResolver? secrets = null) => b.Adapter switch
+    /// <param name="transfer">The tenant's file-transfer port, for an adapter that posts by file (<see cref="FileBulkCoreBanking"/>).</param>
+    public static ICoreBanking Create(PortBinding b, HttpClient? http = null, ISecretResolver? secrets = null, Func<IFileTransfer>? transfer = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null) => b.Adapter switch
     {
         SimulatedCoreBanking.Name => new SimulatedCoreBanking(b),
         GatewayRestCoreBanking.Name => new GatewayRestCoreBanking(b, http ?? new HttpClient(), secrets),
+        FileBulkCoreBanking.Name => FileBulk(b, http ?? new HttpClient(), secrets,
+            transfer ?? throw new PortBindingException($"The {b.Adapter} binding of {b.Port} for {b.Tenant} needs the tenant's {FileTransferAdapters.Port}"), delay),
         _ => throw new PortBindingException($"No core-banking adapter is called '{b.Adapter}' (binding for {b.Port}, from {b.ValidFrom:O})"),
     };
+
+    static FileBulkCoreBanking FileBulk(PortBinding b, HttpClient http, ISecretResolver? secrets, Func<IFileTransfer> transfer, Func<TimeSpan, CancellationToken, Task>? delay)
+    {
+        var t = transfer();
+        return b.Setting("upload", RestBulkUploadGateway.Name) switch
+        {
+            SimulatedBulkUploadGateway.Name => new FileBulkCoreBanking(b, t, new SimulatedBulkUploadGateway(b, t), new SimulatedCoreBanking(b), delay),
+            RestBulkUploadGateway.Name => new FileBulkCoreBanking(b, t, new RestBulkUploadGateway(b, http, secrets), new GatewayRestCoreBanking(b, http, secrets), delay),
+            var u => throw new PortBindingException($"The {b.Adapter} binding of {b.Port} for {b.Tenant} names upload '{u}': write gateway-rest or simulator"),
+        };
+    }
 }
 
 /// <summary>An in-memory core banking for tests and the example bank: every account holds what the binding's `openingBalance` says.</summary>

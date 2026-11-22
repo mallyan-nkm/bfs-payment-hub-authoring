@@ -144,6 +144,40 @@ public sealed class MessageRow : IInsertOnly
     public DateTimeOffset At { get; set; }
 }
 
+/// <summary>
+/// A file a deployment received or sent (Issue I-97, R-09-58): its name, size, direction, kind, the payment (or bulk) and the leg it
+/// belongs to, and the SHA-256 of its bytes signed by the host that kept it. The bytes are in <see cref="FileContentRow"/>, once per hash.
+/// </summary>
+public sealed class StoredFileRow : IInsertOnly
+{
+    public string Id { get; set; } = "";
+    public string Tenant { get; set; } = "";
+    public string Scheme { get; set; } = "";
+    /// <summary>"in" (received) or "out" (sent).</summary>
+    public string Direction { get; set; } = "";
+    /// <summary>What it is: "uae.wps.sif-out", "uae.wps.prc"…, or the activity that kept it.</summary>
+    public string Kind { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public long Size { get; set; }
+    public string ContentHash { get; set; } = "";
+    /// <summary>ECDSA P-256 over the file's statement (FileSignature), Base64; with the signing key's id.</summary>
+    public string Signature { get; set; } = "";
+    public string SigningKeyId { get; set; } = "";
+    public string? SubjectId { get; set; }
+    /// <summary>The instance of the leg that received or sent it (its run id), when it was a leg's.</summary>
+    public string? Leg { get; set; }
+    public string? Activity { get; set; }
+    public DateTimeOffset At { get; set; }
+}
+
+/// <summary>A file's bytes, once per SHA-256: several files with the same content share one row.</summary>
+public sealed class FileContentRow : IInsertOnly
+{
+    public string ContentHash { get; set; } = "";
+    public byte[] Content { get; set; } = [];
+    public DateTimeOffset At { get; set; }
+}
+
 /// <summary>An exception item for operations; what happens to it later is facts about it.</summary>
 public sealed class ExceptionItemRow : IInsertOnly
 {

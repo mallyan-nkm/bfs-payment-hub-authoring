@@ -190,6 +190,55 @@ public sealed class OpenPgpDecryption(PortBinding binding, ISecretResolver? secr
     }
 }
 
+/// <summary>
+/// The <c>gnupg</c> adapter of <c>p.port.decryption.v1</c> (Issue I-117): the source's GnuPG provider, done with BouncyCastle instead of
+/// the gpg program. The source kept a key's files in a folder of its own (GnuPGKeyOptions.KeySourceDirectory: <c>.asc</c>, <c>.gpg</c>,
+/// <c>.pgp</c>, <c>.key</c>) and re-read it before each decryption, so a key is added without a restart; this adapter does the same.
+/// Settings: <c>keyFolderRef</c>, the folder by reference (its path is the deployment's, as a secret is); <c>key</c>, the key's name
+/// in the source's profile (named in messages, never a value); <c>secretRef</c>, the passphrase by reference. Public key files in the
+/// folder are passed over; a folder with no secret key is refused.
+/// </summary>
+public sealed class GnuPgDecryption(PortBinding binding, ISecretResolver? secrets = null) : IFileDecryption
+{
+    public const string Name = "gnupg";
+    public const string Port = "p.port.decryption.v1";
+    public static readonly IReadOnlyList<string> KeyFileExtensions = [".asc", ".gpg", ".pgp", ".key"];
+    readonly ISecretResolver secrets = secrets ?? SecretResolver.FromEnvironment();
+
+    /// <summary>The secret key rings of every key file in the folder, read now.</summary>
+    public async Task<PgpSecretKeyRingBundle> Keys(CancellationToken ct = default)
+    {
+        var folderRef = binding.Required("keyFolderRef");
+        if (!SecretRef.IsRef(folderRef)) throw new PortBindingException($"The {binding.Adapter} binding of {binding.Port} for {binding.Tenant}: keyFolderRef must be a reference ({SecretRef.Forms})");
+        var folder = (await secrets.Resolve(folderRef, ct)).Reveal();
+        var key = binding.Setting("key", "(unnamed)");
+        if (!Path.IsPathRooted(folder) || !Directory.Exists(folder))
+            throw new FileProtectionException($"The key folder {folderRef} of key {key} is not a folder on this host");
+        var rings = new List<PgpSecretKeyRing>();
+        foreach (var f in Directory.EnumerateFiles(folder).Where(f => KeyFileExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase)).Order(StringComparer.Ordinal))
+        {
+            try
+            {
+                using var input = PgpUtilities.GetDecoderStream(new MemoryStream(await File.ReadAllBytesAsync(f, ct)));
+                var factory = new PgpObjectFactory(input);
+                for (var o = factory.NextPgpObject(); o is not null; o = factory.NextPgpObject())
+                    if (o is PgpSecretKeyRing r) rings.Add(r);
+            }
+            catch (Exception e) when (e is IOException or PgpException or ArgumentException) { /* a file that is no key ring is passed over, as gpg's import would */ }
+        }
+        if (rings.Count == 0) throw new FileProtectionException($"The key folder {folderRef} of key {key} holds no secret key");
+        return new PgpSecretKeyRingBundle(rings);
+    }
+
+    public async Task<byte[]> Decrypt(byte[] cipher, CancellationToken ct = default)
+    {
+        var passRef = binding.Required("secretRef");
+        var keys = await Keys(ct);
+        var pass = await secrets.Resolve(passRef, ct);
+        return OpenPgp.Decrypt(cipher, keys, pass.Reveal().ToCharArray());
+    }
+}
+
 /// <summary>The adapter a binding names, as <see cref="CoreBankingAdapters"/> does for core banking.</summary>
 public static class FileProtectionAdapters
 {
@@ -202,6 +251,7 @@ public static class FileProtectionAdapters
     public static IFileDecryption Decryption(PortBinding b, ISecretResolver? secrets = null) => b.Adapter switch
     {
         OpenPgpDecryption.Name when b.Port == OpenPgpDecryption.Port => new OpenPgpDecryption(b, secrets),
-        _ => throw new PortBindingException($"{b.Port} for {b.Tenant} names adapter {b.Adapter}, which this runtime does not build (Issue I-67)"),
+        GnuPgDecryption.Name when b.Port == GnuPgDecryption.Port => new GnuPgDecryption(b, secrets),
+        _ => throw new PortBindingException($"{b.Port} for {b.Tenant} names adapter {b.Adapter}, which this runtime does not build"),
     };
 }

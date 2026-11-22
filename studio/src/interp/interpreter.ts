@@ -958,7 +958,7 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   if (act.implementation?.binding === 'native' || nativeHere(act) || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
-    return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
+    return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level, inst.id));
   }
   try {
     return await reference(act, view, io);
@@ -980,7 +980,8 @@ export function nativeHere(act: any): boolean {
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
-export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
+/** `instance`: the run instance the attempt is for, so the host can keep a file it receives or sends with its leg (Issue I-97). */
+export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string, instance?: string): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
@@ -991,7 +992,7 @@ export async function runNative(act: any, view: any, params: Record<string, any>
     res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
       const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
         method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders() },
-        body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
+        body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) }),
       });
       return r.json();
     }, { kind: SpanKind.CLIENT });

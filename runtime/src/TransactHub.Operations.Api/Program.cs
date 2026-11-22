@@ -156,7 +156,7 @@ api.MapGet("/payments/{id}", async (string id, HttpContext http, OperatorActions
         payment = Row(s, legs),
         lines = lines.Select(l => new { l.Id, l.LineNo, l.Amount, l.Currency, fields = JsonNode.Parse(l.FieldsJson) }),
         timeline = timeline.Select(t => new { t.Seq, t.At, t.Kind, t.Code, t.Instance, t.Step, t.Activity, t.Actor, data = JsonNode.Parse(t.DataJson) }),
-        documents = docs.Select(d => new { d.Id, d.Kind, d.Direction, d.FileName, d.Size, d.ContentHash, d.At }),
+        documents = docs.Select(d => new { d.Id, d.Kind, d.Direction, d.FileName, d.Size, d.ContentHash, d.At, d.Source, d.Leg, signed = d.SigningKeyId is not null, d.SigningKeyId }),
         holds, actions = acts, offers = await actions.Offers(id),
     });
 });
@@ -166,9 +166,19 @@ api.MapGet("/payments/{id}/documents/{doc}", async (string id, string doc, HttpC
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
     await using var s = StoreDbContext.Open(store);
-    var m = await s.Messages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == doc);
-    if (m is null || !who.Has(m.Tenant, OperatorRoles.Operator)) return Problem(404, "No such document for your tenants");
     await using var o = OpsDbContext.Open(ops);
+    var m = await s.Messages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == doc);
+    if (m is null)
+    {
+        // A stored file (Issue I-97): its bytes come from the blob table, checked against the hash its row signs.
+        var f = await s.StoredFiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == doc);
+        if (f is null || !who.Has(f.Tenant, OperatorRoles.Operator)) return Problem(404, "No such document for your tenants");
+        if (!await o.Documents.AnyAsync(d => d.Id == doc && d.SubjectId == id)) return Problem(404, "The document is not this payment's");
+        var c = await s.FileContents.AsNoTracking().FirstOrDefaultAsync(x => x.ContentHash == f.ContentHash);
+        if (c is null || FileStore.Sha256Hex(c.Content) != f.ContentHash) return Problem(409, "The file's bytes do not match the hash it was kept with");
+        return Results.File(c.Content, "application/octet-stream", f.FileName);
+    }
+    if (!who.Has(m.Tenant, OperatorRoles.Operator)) return Problem(404, "No such document for your tenants");
     if (!await o.Documents.AnyAsync(d => d.Id == doc && d.SubjectId == id)) return Problem(404, "The document is not this payment's");
     return Results.File(m.Content, "application/octet-stream", m.FileName ?? $"{m.Kind}-{m.Id}");
 });

@@ -133,10 +133,11 @@ public sealed class AdibWpsBankFolderTests
     static string Folder() => PlatformOnlyBankFolderTests.Folder(Tenant);
 
     [Fact]
-    public void The_folder_binds_core_banking_file_transfer_and_encryption_and_nothing_else()
+    public void The_folder_binds_core_banking_file_transfer_encryption_and_the_labour_register_and_nothing_else()
     {
         var bindings = PortBindings.FromDirectory(Folder());
-        Assert.Equal(["p.port.core-banking.v1", "p.port.encryption.v1", "p.port.file-transfer.v1"], bindings.All.Select(x => x.Port).Order(StringComparer.Ordinal));
+        // The labour ministry register (Issue I-118) is bound to the REST adapter with a placeholder host until the bank says where it is.
+        Assert.Equal(["p.port.core-banking.v1", "p.port.encryption.v1", "p.port.file-transfer.v1", "uae.wps.port.labour-ministry.v1"], bindings.All.Select(x => x.Port).Order(StringComparer.Ordinal));
         Assert.All(bindings.All, x => Assert.Equal(Tenant, x.Tenant));
         Assert.All(bindings.All, x => Assert.Equal(From, x.ValidFrom));
         // No decryption: the source's WPS workflow for the bank reads unencrypted files (fileEncrypted false), and its

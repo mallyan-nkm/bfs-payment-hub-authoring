@@ -1,0 +1,18 @@
+# The employer's status at the labour ministry's establishment register, as a port binding (R-12-16, Issue I-118). Read by
+# runtime/src/TransactHub.Ports/PortBindings.cs and runtime/src/TransactHub.Ports/EmployerRegister.cs.
+#
+# The source read the status (mohreStatus) from its input and names no service it came from; its bank fork's labour ministry
+# client (HttpClients:Mohre) sends the WPS notification only. So the binding names the runtime's REST adapter, its host as a
+# placeholder and its credential by reference, and nothing else: the adapter refuses every call ("has no 'statusPath'") until the
+# bank says where the register is reached (the ministry's service, or the bank's own copy of it). The bank's settings come as a
+# new binding with a later validFrom (README.md).
+kind: port-bindings
+tenant: dib
+bindings:
+  - port: uae.wps.port.labour-ministry.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-22T00:00:00Z
+    settings:
+      baseUrl: https://labour-register.dib.invalid/
+      # The register's credential, by reference only. The source holds none.
+      secretRef: env:TH_DIB_LABOUR_REGISTER_TOKEN

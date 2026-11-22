@@ -125,6 +125,12 @@ public sealed class OpsDocument
     public int Size { get; set; }
     public string ContentHash { get; set; } = "";
     public DateTimeOffset At { get; set; }
+    /// <summary>Where its bytes are: "message" (the store's message table) or "file" (a stored file, Issue I-97).</summary>
+    public string Source { get; set; } = "message";
+    /// <summary>The leg's instance that received or sent it, for a stored file.</summary>
+    public string? Leg { get; set; }
+    /// <summary>The id of the key whose signature the stored file carries; none for a message.</summary>
+    public string? SigningKeyId { get; set; }
 }
 
 /// <summary>A line of a bulk (a salary line): its declared fields, masked, and its own facts from the payload.</summary>
@@ -299,6 +305,9 @@ public sealed class OpsDbContext(DbContextOptions<OpsDbContext> options) : DbCon
             e.Property(x => x.Direction).HasMaxLength(16).IsRequired();
             e.Property(x => x.FileName).HasMaxLength(255);
             e.Property(x => x.ContentHash).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Leg).HasMaxLength(200);
+            e.Property(x => x.SigningKeyId).HasMaxLength(Id);
             e.HasIndex(x => x.SubjectId);
             e.HasIndex(x => x.FileName);
         });

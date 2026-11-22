@@ -95,6 +95,27 @@ public sealed class OperatorApiTests(Databases dbs)
     }
 
     [Fact]
+    public async Task A_stored_file_is_a_document_of_its_payment_with_its_leg_and_signed_hash_and_only_its_operators_download_it()
+    {
+        // Issue I-97 part 2 (R-09-58): a file a host kept in the store (here the SIF a leg sent) is in the documents tab.
+        var (store, _) = await dbs.Pair(StoreProvider.SqlServer);
+        var held = await WpsRun.Seed(store);
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        StoredFileRow kept;
+        await using (var db = StoreDbContext.Open(store))
+            kept = await new FileStore(db, key).Keep(new FileToKeep(WpsRun.Tenant, "uae.wps", "out", "encrypted", "0000001234567261117083000.SIF.gpg", held, "root-leg3", "p.protect.encrypt-file.v1"), [0x85, 0x01, 0x0c]);
+        await using var host = new Host(store, "Development");
+        var c = As(host.CreateClient(), "op-1", "example-bank:Operator");
+        var detail = await Until(c, $"/ops/api/payments/{held}", j => j["documents"]!.AsArray().Any(d => (string?)d!["id"] == kept.Id));
+        var doc = detail["documents"]!.AsArray().Single(d => (string?)d!["id"] == kept.Id)!;
+        Assert.Equal(("file", "root-leg3", true, kept.SigningKeyId, "out"), ((string?)doc["source"], (string?)doc["leg"], (bool)doc["signed"]!, (string?)doc["signingKeyId"], (string?)doc["direction"]));
+        Assert.Equal(3, (int)doc["size"]!);
+        Assert.Equal(new byte[] { 0x85, 0x01, 0x0c }, await c.GetByteArrayAsync($"/ops/api/payments/{held}/documents/{kept.Id}"));
+        var other = As(host.CreateClient(), "op-2", "other-bank:Operator");
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/ops/api/payments/{held}/documents/{kept.Id}")).StatusCode);
+    }
+
+    [Fact]
     public void Dev_sign_in_is_refused_in_production()
     {
         var store = dbs.Fresh(StoreProvider.PostgreSql);

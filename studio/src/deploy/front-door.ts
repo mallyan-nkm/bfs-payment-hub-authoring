@@ -31,6 +31,22 @@ export async function end(rt: RuntimeClient, paymentId: string, outcome: string)
   return (await call(rt, 'POST', '/payments/end', { paymentId, outcome })).recorded;
 }
 
+/**
+ * Keeps a file the front door received for a payment in the runtime's store (Issue I-97, R-09-58): its name, size, direction and
+ * kind, signed by the runtime. The file's name is the inbound message's (a `# file: <name>` first line, the samples' metadata), else
+ * the message type's.
+ */
+export async function keepFile(rt: RuntimeClient, f: { tenant: string; paymentId: string; message?: string; payload: string; direction?: 'in' | 'out' }): Promise<{ id: string; sha256: string }> {
+  const first = f.payload.split('\n', 1)[0].trim();
+  const named = /^#\s*file:\s*(\S+)/.exec(first)?.[1];
+  const kind = f.message ?? 'inbound';
+  const scheme = kind.split('.').length >= 3 ? kind.split('.').slice(0, 2).join('.') : 'p';
+  return call(rt, 'POST', '/payments/files', {
+    tenant: f.tenant, scheme, direction: f.direction ?? 'in', kind, fileName: named ?? `${kind}.txt`, paymentId: f.paymentId,
+    contentBase64: Buffer.from(f.payload, 'utf8').toString('base64'),
+  });
+}
+
 /** The local copy of a distribution, side by side with the others under `cache`: fetched once from the runtime and verified. */
 export async function distributionCopy(rt: RuntimeClient, distribution: string, cache: string): Promise<{ dir: string; manifest: any }> {
   const dir = path.join(cache, distribution.replace(/[^A-Za-z0-9._-]+/g, '_'));
@@ -79,6 +95,8 @@ export async function acceptAndRun(req: AcceptAndRun): Promise<{ distribution: s
 /** Runs a payment already pinned (a message for a running payment goes to its own distribution): from that distribution only. */
 export async function runPinned(req: AcceptAndRun & { distribution: string }): Promise<{ result: DeployResult; ended: boolean; manifest: any }> {
   const { dir, manifest } = await distributionCopy(req.runtime, req.distribution, req.cache);
+  // The file the payment arrived with is kept before it runs, as received.
+  if (req.inbound?.payload) await keepFile(req.runtime, { tenant: req.bank, paymentId: req.paymentId, message: req.inbound.message, payload: req.inbound.payload });
   const pkg = path.join(dir, 'engine', req.workflow);
   if (!fs.existsSync(pkg)) throw new Error(`${req.distribution} carries no ${req.workflow}`);
   const result = await deploy({

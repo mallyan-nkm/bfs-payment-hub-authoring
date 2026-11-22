@@ -127,6 +127,12 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
         }
         fact["code"] = answer.Code;
         fact["hostReference"] = answer.HostReference;
+        // An adapter that posts line by line (file-bulk) says how each leg came out: a line it failed, after its reposts, is named here.
+        if (answer.Lines is { } lines)
+            fact["lines"] = new JsonArray(lines.Select(l => (JsonNode?)new JsonObject
+            {
+                ["line"] = l.Line, ["posted"] = l.Posted, ["code"] = l.Code, ["generation"] = l.Generation,
+            }).ToArray());
         var outcome = answer.Posted ? primary : "rejected";
         fact["outcome"] = outcome; fact["result"] = outcome;
         return (outcome, answer.Posted ? null : "NARR", fact);

@@ -19,6 +19,8 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
     public DbSet<PaymentRow> Payments => Set<PaymentRow>();
     public DbSet<FactRow> Facts => Set<FactRow>();
     public DbSet<MessageRow> Messages => Set<MessageRow>();
+    public DbSet<StoredFileRow> StoredFiles => Set<StoredFileRow>();
+    public DbSet<FileContentRow> FileContents => Set<FileContentRow>();
     public DbSet<ExceptionItemRow> ExceptionItems => Set<ExceptionItemRow>();
     public DbSet<ReleaseRow> Releases => Set<ReleaseRow>();
     public DbSet<ActivationRow> Activations => Set<ActivationRow>();
@@ -169,6 +171,34 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.SubjectId).HasMaxLength(Id);
             e.HasIndex(x => new { x.Tenant, x.Scheme, x.Kind, x.ContentHash });
             e.HasIndex(x => new { x.Tenant, x.Scheme, x.Kind, x.FileName });
+        });
+
+        m.Entity<StoredFileRow>(e =>
+        {
+            e.ToTable("stored_file");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(Id);
+            e.Property(x => x.Tenant).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Scheme).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Direction).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.ContentHash).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Signature).HasMaxLength(256).IsRequired();
+            e.Property(x => x.SigningKeyId).HasMaxLength(Id).IsRequired();
+            e.Property(x => x.SubjectId).HasMaxLength(Id);
+            e.Property(x => x.Leg).HasMaxLength(200);
+            e.Property(x => x.Activity).HasMaxLength(Short);
+            e.HasIndex(x => new { x.Tenant, x.SubjectId });
+            e.HasIndex(x => new { x.Tenant, x.ContentHash });
+        });
+
+        m.Entity<FileContentRow>(e =>
+        {
+            e.ToTable("file_content");
+            e.HasKey(x => x.ContentHash);
+            e.Property(x => x.ContentHash).HasMaxLength(64);
+            e.Property(x => x.Content).IsRequired();
         });
 
         m.Entity<ExceptionItemRow>(e =>
