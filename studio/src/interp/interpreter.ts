@@ -956,7 +956,7 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
-async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
+export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
