@@ -1,23 +1,10 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using TransactHub.Activities.Wps.Rules;
+using TransactHub.Activities.Native;
 using TransactHub.Activities.Wps.Sif;
 
 namespace TransactHub.Activities.Wps.Native;
-
-/// <summary>One attempt of a native activity: the activity's view of the context, its parameter values and the engine's time.</summary>
-public sealed record NativeAttempt(string Activity, string? Release, JsonObject View, JsonObject Params, DateTimeOffset Now);
-
-/// <summary>What a native activity answers: an outcome of its contract, an ISO reason code, and its writes (path to value).</summary>
-public sealed record NativeResult(string Outcome, string? ReasonCode, JsonObject Writes);
-
-/// <summary>A native code-behind (spec Part 3, binding <c>native</c>): the platform's own code for a hot-path or regulated block.</summary>
-public interface INativeActivity
-{
-    /// <summary>The activity line it implements, e.g. <c>uae.wps.validate.cbx-file.v1</c>.</summary>
-    string Name { get; }
-    NativeResult Run(NativeAttempt a);
-}
 
 /// <summary>Reading the studio's canonical context the way every WPS native activity needs it.</summary>
 static class Ctx

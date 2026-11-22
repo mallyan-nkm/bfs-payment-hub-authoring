@@ -12,6 +12,7 @@
 #   CoreBanking:BalanceEnquiryPath, SalaryPostingPath          -> balancePath, postingPath
 #   FunctionIdBalanceEnquiry 0301, FunctionIdSalaryPosting 0332 -> balanceFunctionId, postingFunctionId
 #   ErrorCodeSuccess 0, ChannelWps WPS                         -> successCode, channel
+#   CoreBanking:PostableAccountStatuses NORM                   -> postableStatuses
 #   XREFPREFIX unset, so the source used the tenant id in capitals -> referencePrefix
 #   CoreBanking:Mode, PostingMode, BalanceEnquiryMode, ReversalMode -> which adapter is bound
 #   CoreBanking:PostingVariant UatFccAccService                -> the adapter (one adapter per wire shape)
@@ -39,5 +40,7 @@ bindings:
       referencePrefix: DIB
       successCode: "0"
       channel: WPS
+      # The account statuses core banking posts to (compose CoreBanking__PostableAccountStatuses).
+      postableStatuses: NORM
       # The gateway's credential, by reference only. The source sent its service key (SERVICE_API_KEY) here.
       secretRef: env:TH_DIB_CORE_BANKING_TOKEN

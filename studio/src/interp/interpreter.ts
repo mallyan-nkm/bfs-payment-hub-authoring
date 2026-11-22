@@ -36,6 +36,9 @@ export interface StubSpec {
   emit?: { type: string; after?: string; status?: string }; // a message the party sends back
 }
 
+/** The bench's word for a port the runtime answers through the bank's port binding, in place of a simulator. */
+export const RUNTIME_PORT = 'runtime';
+
 export interface RunConfig {
   store: Store;
   scripts: ScriptRegistry;
@@ -53,6 +56,8 @@ export interface RunConfig {
   limit?: string;
   bindings?: any[]; // hook bindings, in place of the tenant's configuration set
   availableFrom?: Record<string, string>; // name@release -> virtual time it is published
+  /** A deployed worker's values from the runtime, in force at the attempt's time (parameter -> value); set per attempt. */
+  liveValues?: Record<string, any>;
   /** The debugger (F-17): each event also carries the instance's data after it, and each step what it decided. */
   debug?: boolean;
 }
@@ -277,7 +282,12 @@ export class Run {
     this.clock = new VirtualClock(start);
     this.docs = cfg.documents ?? {};
     this.configSet = cfg.tenant ? cfg.store.configurationSet(cfg.tenant) : undefined;
-    for (const b of cfg.bench ?? []) this.bindSim(b, cfg.inbound);
+    for (const b of cfg.bench ?? []) if (b.simulator !== RUNTIME_PORT) this.bindSim(b, cfg.inbound);
+  }
+
+  /** A port the bench gives to the runtime: its builtin activities run in the runtime's native host, on the bank's port binding (R-08-15). */
+  onRuntime(port: string): boolean {
+    return (this.cfg.bench ?? []).some((b) => b.port === port && b.simulator === RUNTIME_PORT);
   }
 
   newId(prefix: string) {
@@ -332,6 +342,9 @@ export class Run {
   /** Parameter values are looked up by date at each step that reads them (R-01-17). */
   lookupParam(owner: string, param: string, decl: any, date: string): any {
     const key = `${owner}#${param}`;
+    // A deployed worker on a runtime (TH_RUNTIME_URL): the bank's values as the runtime holds them at the attempt's time,
+    // published there after the package was built (plan P6). They take the place of the package's configuration set.
+    if (this.cfg.liveValues && key in this.cfg.liveValues) return this.cfg.liveValues[key];
     const values = [...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key);
     const inForce = values.filter((v: any) => v.validFrom <= date && (!v.validTo || v.validTo >= date));
     inForce.sort((a: any, b: any) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
@@ -927,10 +940,12 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     return { outcome: res.outcome, reasonCode: res.reasonCode, writes, ruleTrace: (io as any).lastRuleTrace, decisions: (io as any).lastDecisions };
   }
   // A native code-behind runs in the runtime's native host (R-08-14), with the same view and parameters a script gets.
-  if (act.implementation?.binding === 'native') {
+  // So does a builtin activity whose port the bench gives to the runtime (R-08-15): the runtime's code answers it
+  // through the bank's port binding in force at the engine's time, not a simulator.
+  if (act.implementation?.binding === 'native' || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
-    return run.clock.external(() => runNative(act, view, params, run.clock.iso()));
+    return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
   }
   try {
     return await reference(act, view, io);
@@ -941,14 +956,14 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
-async function runNative(act: any, view: any, params: Record<string, any>, now: string): Promise<ActivityResult> {
+async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
   try {
     const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now }),
+      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
     });
     res = await r.json();
   } catch (e: any) {
@@ -1210,9 +1225,16 @@ async function execLoop(st: any, frame: Frame) {
 async function execAwait(st: any, frame: Frame) {
   const inst = frame.inst;
   const run = inst.run;
-  const aw = st.await;
   const id = st.id ?? 'await';
-  const timeout = durationOf(aw.timeout, frame);
+  // A wait the bank may set (R-05-47): the composite's parameter, as in force on the day the await starts; the timeout is its default.
+  const dated = (ref: string | undefined, fallback: any) => {
+    if (!ref) return fallback;
+    const [owner, param] = ref.split('#');
+    return run.lookupParam(owner, param, { default: fallback }, run.clock.today()) ?? fallback;
+  };
+  const aw = { ...st.await, calendar: dated(st.await.calendarParameter, st.await.calendar) };
+  // R-05-45: a timeout may itself name a parameter; R-05-47: a timeout from the policy may have a bank's parameter.
+  const timeout = dated(st.await.timeoutParameter, durationOf(st.await.timeout, frame));
   inst.event('await-start', id, { message: aw.message, family: aw.family, timeout, calendar: aw.calendar });
   // R-05-43: once an await of this instance has waited for this message, a later await takes only a message
   // received after the step that holds it began; an earlier one answered the earlier exchange.

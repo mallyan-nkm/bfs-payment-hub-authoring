@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { addDuration, DEFAULT_CALENDAR, durationMs, formatDuration, isDuration, parseDuration } from '../src/core/duration.js';
 import { zip, unzip } from '../src/export/zip.js';
@@ -43,16 +44,29 @@ describe('durations and the business calendar', () => {
 });
 
 describe('the reproducible zip', () => {
-  it('round-trips names and bytes, and reads only stored entries', () => {
+  it('round-trips names and bytes; reads a deflated entry, as the runtime stores a package, and refuses another method', () => {
     const entries = [{ name: 'a.txt', content: Buffer.from('alpha') }, { name: 'dir/b.bin', content: Buffer.from([0, 1, 2, 255]) }, { name: 'empty', content: Buffer.alloc(0) }];
     const z = zip(entries);
     expect(zip(entries).equals(z)).toBe(true);
     const back = unzip(z);
     expect(back.map((e) => e.name)).toEqual(entries.map((e) => e.name));
     back.forEach((e, i) => expect(e.content.equals(entries[i].content)).toBe(true));
-    const deflated = Buffer.from(z);
-    deflated.writeUInt16LE(8, 8);
-    expect(() => unzip(deflated)).toThrow(/only stored entries/);
+    // One entry, deflated: a local header, the data, a central directory entry and its end record.
+    const text = Buffer.from('alpha alpha alpha alpha');
+    const data = deflateRawSync(text);
+    const name = Buffer.from('a.txt');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(8, 8); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(text.length, 22); local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(8, 10); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(text.length, 24); central.writeUInt16LE(name.length, 28); central.writeUInt32LE(0, 42);
+    const cdAt = local.length + name.length + data.length;
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10); end.writeUInt32LE(central.length + name.length, 12); end.writeUInt32LE(cdAt, 16);
+    const deflated = Buffer.concat([local, name, data, central, name, end]);
+    expect(unzip(deflated)).toEqual([{ name: 'a.txt', content: text }]);
+    const other = Buffer.from(deflated);
+    other.writeUInt16LE(9, cdAt + 10);
+    expect(() => unzip(other)).toThrow(/compression method 9 is not read/);
     expect(unzip(Buffer.from('not a zip'))).toEqual([]);
   });
 });

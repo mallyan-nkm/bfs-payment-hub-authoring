@@ -46,6 +46,7 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | R-06-18 | A tenant's export MUST hold the shared packs it accepted, unchanged; its bank pack; and its configuration set. | Export test (C18) |
 | R-06-19 | Shared packs MUST be identical for every tenant on the same release. | Hash comparison in export test (C18) |
 | R-06-20 | A hook that two tenants implement SHOULD be offered to the owner as a shared block. | Studio usage report (advisory) |
+| R-06-21 | Bounds apply by type: `min` and `max` to a number or a duration, `allowed` and `pattern` (a regular expression) to a code or a string, and every bound to each item of a list, and to each field of an item that is an object. A value outside them is refused. | Lint L14 (`tools/validate.py`, studio check) |
 
 ## 6.5 Roles
 

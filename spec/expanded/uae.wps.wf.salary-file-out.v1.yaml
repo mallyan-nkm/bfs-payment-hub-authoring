@@ -77,7 +77,9 @@ do:
             correlateBy: header.fileId
             family: sif
             timeout: P1D
+            timeoutParameter: uae.wps.exchange.submit-salary-file.v1#ackWait
             calendar: business
+            calendarParameter: uae.wps.exchange.submit-salary-file.v1#ackWaitCalendar
             onTimeout:
               return: pending
         - id: submit.read-ack

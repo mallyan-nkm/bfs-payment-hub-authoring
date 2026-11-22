@@ -7,6 +7,7 @@ live beside the generated ones and are picked up by the manifest step.
 
 Run:  python3 tools/build_factory.py
 """
+import copy
 import hashlib
 import json
 import pathlib
@@ -134,10 +135,43 @@ act("p.reserve.funds.v1", "Reserve funds in the hub",
     comp="p.reserve.release.v1", service="reservation")
 act("p.reserve.release.v1", "Release a reservation", ["facts.reservation"], ["facts.reservation"],
     ["released"], "write", ports=["p.port.core-banking.v1"], policy=STD, service="reservation")
+# The accounting template's values (R-06-21): transaction codes, narration, accounts, charge slabs and VAT. A bank sets
+# its own; each is bounded. The defaults are placeholders that name no bank and no real account.
+TXN = {"pattern": "^[A-Z0-9]{2,10}$"}
+NARR = {"pattern": "^[A-Za-z0-9 .,:/()-]{1,35}$"}
+ACCT = {"pattern": "^[A-Za-z0-9-]{1,34}$"}
+
+
+def txn(default, what):
+    return {"type": "code", "default": default, "bounds": dict(TXN), "description": "Core-banking transaction code of %s." % what}
+
+
+def account(default, what):
+    return {"type": "string", "default": default, "bounds": dict(ACCT), "description": "The account %s." % what}
+
+
+ACCOUNTING = {
+    "template": {"type": "code", "default": "default", "description": "Accounting template id."},
+    "transactionCode": txn("PAY", "a payment's legs"),
+    "reversalTransactionCode": txn("REV", "a reversal's legs"),
+    "chargeTransactionCode": txn("CHG", "the bank's charge"),
+    "schemeChargeTransactionCode": txn("SCH", "the scheme's charge"),
+    "vatTransactionCode": txn("VAT", "the VAT on a charge"),
+    "narration": {"type": "string", "default": "Payment", "bounds": dict(NARR), "description": "Narration of a payment's legs; the payment's reference follows it."},
+    "chargeNarration": {"type": "string", "default": "Bank charge", "bounds": dict(NARR), "description": "Narration of the charge and VAT legs."},
+    "settlementAccount": account("GL-SETTLEMENT", "a scheme's payments settle through (the nostro)"),
+    "suspenseAccount": account("GL-SUSPENSE", "refused credits wait in"),
+    "chargeIncomeAccount": account("GL-CHARGES", "charges are credited to"),
+    "vatAccount": account("GL-VAT", "VAT on charges is credited to"),
+    "glAccountTypes": {"type": "list", "default": ["SETTLEMENT", "SUSPENSE", "INCOME", "EXPENSE"], "bounds": {"pattern": "^[A-Z]{2,12}$"},
+                       "description": "The kinds of general-ledger account the template's accounts are."},
+    "chargeSlabs": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
+                    "description": "Charge slabs, each {upTo, charge} in the payment's currency: the first slab whose upTo is not below the amount gives the charge. None, no charge."},
+    "vatPercent": {"type": "decimal", "default": 0, "bounds": {"min": 0, "max": 100}, "description": "VAT on a charge, in per cent."},
+}
 act("p.post.accounting.v1", "Post with an accounting template", ["header", "payment", "facts.route", "facts.reservation"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.post.reverse.v1", service="accounting",
-    params={"template": {"type": "code", "default": "default", "description": "Accounting template id."}})
+    comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING)
 act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"], ["facts.postingVerified"],
     ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
@@ -227,9 +261,16 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
 
 # composite exchanges: one block to the designer, a subflow underneath (design/05, section 5.6)
 WPS_PORT = ["uae.wps.port.wps.v1"]
+# How long the bank waits for the acknowledgement is the bank's (R-05-47): a parameter of the composite, the policy's
+# replyTimeout and replyCalendar its defaults.
 act("uae.wps.exchange.submit-salary-file.v1", "Submit the salary file and get the acknowledgement", ["header", "messages"], ["status", "messages"],
     ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
-    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.submit-salary-file.v1", p=WP)
+    policy={"replyTimeout": "P1D", "replyCalendar": "business", "replyTimeoutParameter": "ackWait", "replyCalendarParameter": "ackWaitCalendar"},
+    sub="uae.wps.sub.submit-salary-file.v1", p=WP,
+    params={"ackWait": {"type": "duration", "default": "P1D", "bounds": {"min": "PT1H", "max": "P7D"},
+                        "description": "How long to wait for the scheme's acknowledgement of the salary file before the payment is pending."},
+            "ackWaitCalendar": {"type": "code", "default": "business", "bounds": {"allowed": ["business", "elapsed"]},
+                                "description": "Whether the wait counts business time or elapsed time."}})
 act("uae.wps.exchange.confirm-receipt.v1", "Confirm receipt of the payment file and get the acknowledgement", ["header", "messages"],
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="report", ports=WPS_PORT,
     policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.confirm-receipt.v1", p=WP)
@@ -259,7 +300,8 @@ act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the r
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
     comp="p.post.reverse.v1", service="accounting", p=WP,
     params={"template": {"type": "code", "default": "wps-return",
-                         "description": "Accounting template for a return. The bank sets the accounts the returned amount moves between."}})
+                         "description": "Accounting template for a return. The bank sets the accounts the returned amount moves between."},
+            **{k: copy.deepcopy(ACCOUNTING[k]) for k in ("transactionCode", "reversalTransactionCode", "narration", "settlementAccount", "suspenseAccount")}})
 
 
 
@@ -572,6 +614,9 @@ port("p.port.facts-out.v1", "Outward facts", "downstream consumers of published 
 port("p.port.payment-record.v1", "Payment record", "payment record store", [("read", RR), ("find-duplicate", RR)])
 port("p.port.operations-queue.v1", "Operations queue", "operations console", [("create-item", SEND), ("decision", RECV)])
 port("p.port.liquidity.v1", "Liquidity position", "liquidity service", [("position", RR)])
+# Files to and from a scheme or a channel, and their decryption (R-12-12): the transport and the keys are the bank's binding.
+port("p.port.file-transfer.v1", "File transfer", "file transfer service", [("put", SEND), ("get", RR), ("list", RR)])
+port("p.port.decryption.v1", "File decryption", "decryption service", [("decrypt", RR)])
 port("uae.p.port.participant-directory.v1", "Participant directory", "central bank participant directory", [("lookup", RR)])
 port("uae.p.port.calendar.v1", "Business calendar", "business calendar service", [("business-date", RR)])
 port("uae.wps.port.wps.v1", "Wages protection system", "central bank wages protection system",
@@ -634,6 +679,10 @@ sim("p.sim.liquidity.v1", "Liquidity service simulator", "outward", "p.port.liqu
     outward_set("p.liquidity.request", "p.liquidity.reply", "AM04"))
 sim("p.sim.payment-record.v1", "Payment record simulator", "outward", "p.port.payment-record.v1", "payment record store",
     outward_set("p.record.request", "p.record.reply", "NOOR"))
+sim("p.sim.file-transfer.v1", "File transfer simulator", "outward", "p.port.file-transfer.v1", "file transfer service",
+    outward_set("p.file.request", "p.file.reply", "NARR"))
+sim("p.sim.decryption.v1", "Decryption simulator", "outward", "p.port.decryption.v1", "decryption service",
+    outward_set("p.decrypt.request", "p.decrypt.reply", "NARR"))
 sim("p.sim.channel.v1", "Channel simulator", "outward", "p.port.channel.v1", "initiating channel",
     outward_set("p.channel.notify", "p.channel.ack", "NARR"))
 sim("p.sim.facts-out.v1", "Fact consumer simulator", "outward", "p.port.facts-out.v1", "downstream consumers of payment facts",

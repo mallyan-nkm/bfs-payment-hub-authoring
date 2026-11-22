@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-22-002
+events:
+  - at: 2026-11-22T04:03:32.320Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-22-002
+    detail: 10 file(s) from spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.wps
+    changeSet: CS-2026-11-22-002
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:85d34c58d4271ffdebce71c2c0671db8dca2587a35b3e803362b053dce6f2501
+  - at: 2026-11-22T04:03:32.324Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-22-002
+    detail: inventory, p.port.decryption.v1@1.0.0, p.port.file-transfer.v1@1.0.0, p.post.accounting.v1@1.0.0, p.sim.decryption.v1@1.0.0, p.sim.file-transfer.v1@1.0.0, pack:p@1.0.0, pack:uae.wps@1.0.0, uae.wps.exchange.submit-salary-file.v1@1.0.0, uae.wps.post.return.v1@1.0.0
+    changeSet: CS-2026-11-22-002
+    prevHash: sha256:85d34c58d4271ffdebce71c2c0671db8dca2587a35b3e803362b053dce6f2501
+    hash: sha256:6c31d4f0a9976e22a616bcd619c01228af4b07332930d974697c16bad579be11

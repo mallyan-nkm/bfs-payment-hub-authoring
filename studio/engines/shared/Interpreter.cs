@@ -1017,9 +1017,15 @@ public sealed partial class Interp
             var cts = new CancellationTokenSource();
             var waits = new List<Task> { tcs.Task, frame.Scope.CancelledTask };
             Task? timer = null;
-            if (DurationOf(J.P(aw, "timeout")) is string timeout)
+            // A wait the bank may set (R-05-47): the composite's parameter in force on the engine's day; the timeout is its default.
+            // A timeout that itself names a parameter (R-05-45) is resolved first, and is the default of the bank's value.
+            var today = Duration.Today(eng.Now);
+            var literal = DurationOf(J.P(aw, "timeout"));
+            var timeoutValue = J.S(aw, "timeoutParameter") is string tp ? dep.ValueAt(tp, today) ?? literal : literal;
+            var calendarValue = J.S(aw, "calendarParameter") is string cp ? dep.ValueAt(cp, today) ?? J.S(aw, "calendar") : J.S(aw, "calendar");
+            if (timeoutValue is string timeout)
             {
-                var at = Duration.Add(eng.Now, timeout, J.S(aw, "calendar") == "business");
+                var at = Duration.Add(eng.Now, timeout, calendarValue == "business");
                 timer = eng.Timer(at, cts.Token);
                 waits.Add(timer);
             }

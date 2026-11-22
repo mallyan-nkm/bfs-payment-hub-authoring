@@ -123,8 +123,13 @@ export class PartyService {
       (r) => ({ ok: true as const, r }),
       (e) => ({ ok: false as const, e }),
     ).finally(() => (settled = true));
-    // Let the attempt run to completion or to a wait; an attempt still waiting is a hang.
+    // Let the attempt run to completion or to a wait; an attempt still waiting is a hang. A call outside
+    // the process (the native host) is real I/O, not a wait: it is waited for, however many turns it takes.
     for (let i = 0; i < 20 && !settled; i++) await new Promise((r) => setImmediate(r));
+    while (!settled && this.run.clock.busyOutside) {
+      await new Promise((r) => setTimeout(r, 1));
+      for (let i = 0; i < 20 && !settled; i++) await new Promise((r) => setImmediate(r));
+    }
     if (!settled) {
       scope.cancel({ hang: true });
       void p;

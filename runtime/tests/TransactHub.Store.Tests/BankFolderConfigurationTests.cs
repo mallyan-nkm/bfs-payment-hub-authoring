@@ -94,6 +94,24 @@ public sealed class BankFolderConfigurationTests
         Assert.NotNull(CbxScrRules.CheckBankRoutingCode(scr, "302620122", 3));
     }
 
+    [Theory]
+    [InlineData("p.port.file-transfer.v1", "sftp", "centralBank.sifFolder", "/sftp_user/wps/DIB/SIF/ToBeDone")]
+    [InlineData("p.port.decryption.v1", "gnupg", "key", "DibWpsInbound")]
+    public void The_bank_folder_binds_its_file_transfer_and_decryption_with_secrets_by_reference_only(string port, string adapter, string setting, string value)
+    {
+        var b = PortBindings.FromDirectory(Folder()).InForce(Tenant, port, From);
+        Assert.Equal(adapter, b.Adapter);
+        Assert.Equal(value, b.Settings[setting]);
+        Assert.StartsWith("env:TH_DIB_", b.Settings["secretRef"]);
+        // Every host is a placeholder a deployment replaces, and no setting carries a secret's value.
+        foreach (var (k, v) in b.Settings)
+        {
+            if (k.EndsWith("host", StringComparison.OrdinalIgnoreCase)) Assert.EndsWith(".invalid", v);
+            if (k.Contains("secret", StringComparison.OrdinalIgnoreCase) || k.Contains("password", StringComparison.OrdinalIgnoreCase) || k.EndsWith("Ref", StringComparison.Ordinal))
+                Assert.StartsWith("env:", v);
+        }
+    }
+
     /// <summary>A core banking behind a gateway, as far as the adapter can tell: it records each request and answers by function id.</summary>
     sealed class Recorder : HttpMessageHandler
     {

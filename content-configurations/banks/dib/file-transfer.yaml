@@ -1,0 +1,37 @@
+# The bank's file transfer, as a port binding (R-12-12): the Central Bank's SFTP and the salary-file pick-up.
+# Read by runtime/src/TransactHub.Ports/PortBindings.cs. The values are the bank's own, from the source:
+#   compose CbSftp__*, CbxSif__GeneratedDirectory                               -> centralBank.*
+#   Migrations/Wps/20261005195246_SeedSftpWpsCbParameters.cs (outward) and
+#   Migrations/Wps/20261012083605_SeedSftpWpsCbInwardParameters.cs (inward, the same values) -> sessions.*
+#   Migrations/Wps/20261027203804_SeedWpsFileLocationParameters.cs, 20261028204527_SeedCbxFileLocationPath.cs,
+#   20261030054352_SeedWpsFileLocationAllowLocalFallback.cs                    -> pickup.*
+# The hosts are set at deployment: the source names its SFTP gateway's profiles, not a host, so the hosts here are
+# .invalid placeholders. The credentials are the SFTP gateway's, by reference only (README.md).
+kind: port-bindings
+tenant: dib
+bindings:
+  - port: p.port.file-transfer.v1
+    adapter: sftp
+    validFrom: 2026-11-21T00:00:00Z
+    settings:
+      centralBank.host: cb-sftp.dib.invalid
+      centralBank.bankCode: DIB
+      centralBank.remoteBase: /sftp_user
+      centralBank.sifFolder: /sftp_user/wps/DIB/SIF/ToBeDone
+      centralBank.generatedSifFolder: /FileUpload/WPS/SIF/ToBeDONE
+      sessions.max: "5"
+      sessions.reuse: "true"
+      sessions.idleSeconds: "60"
+      sessions.keepAliveSeconds: "30"
+      sessions.acquireSeconds: "60"
+      sessions.attempts: "3"
+      pickup.host: channel-sftp.dib.invalid
+      pickup.mode: None
+      pickup.profile: WpsSftp
+      pickup.folder: /sftp_user/wps/DIB/Out/Salary/IB/IN
+      pickup.errorFolder: /sftp_user/wps/DIB/Out/Salary/IB/Error
+      pickup.doneFolder: Done
+      pickup.minimumAgeSeconds: "10"
+      pickup.allowLocalFallback: "false"
+      pickup.cbxFolder: /sftp_user/wps/DIB/Out/Salary/CBX/IN
+      secretRef: env:TH_DIB_SFTP_CREDENTIAL

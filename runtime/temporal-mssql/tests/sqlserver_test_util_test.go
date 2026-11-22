@@ -4,6 +4,7 @@
 package sqlservertests
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -34,7 +35,12 @@ const (
 )
 
 // The server under test: SQLSERVER_ADDR (host:port), SQLSERVER_USER (default sa) and
-// SQLSERVER_PASSWORD.
+// SQLSERVER_PASSWORD, the login the stores under test connect with.
+//
+// With SQLSERVER_ADMIN_USER and SQLSERVER_ADMIN_PASSWORD, schema work is the admin's and the stores run as a
+// least-privilege login (docs/ISSUES.md I-47): the admin creates each test database and its schema, then gives
+// SQLSERVER_USER, which must be a login with no server role, read, write and execute in that database only.
+// Without them the one login does both, as before.
 func sqlServerAddr() string { return os.Getenv("SQLSERVER_ADDR") }
 
 func sqlServerHost() string {
@@ -56,6 +62,120 @@ func sqlServerUser() string {
 }
 
 func sqlServerPassword() string { return os.Getenv("SQLSERVER_PASSWORD") }
+
+func sqlServerAdminUser() string {
+	if u := os.Getenv("SQLSERVER_ADMIN_USER"); u != "" {
+		return u
+	}
+	return sqlServerUser()
+}
+
+func sqlServerAdminPassword() string {
+	if pw := os.Getenv("SQLSERVER_ADMIN_PASSWORD"); pw != "" {
+		return pw
+	}
+	return sqlServerPassword()
+}
+
+// leastPrivilege says whether the stores run as a login other than the admin's.
+func leastPrivilege() bool { return sqlServerAdminUser() != sqlServerUser() }
+
+// asAdmin is cfg with the admin's credentials: what creates, sets up and drops a database.
+func asAdmin(cfg *config.SQL) *config.SQL {
+	admin := *cfg
+	admin.User = sqlServerAdminUser()
+	admin.Password = sqlServerAdminPassword()
+	return &admin
+}
+
+// grantService gives the stores' login read, write and execute in one database, as a bank's DBA would (I-47).
+func grantService(t *testing.T, cfg *config.SQL) {
+	if err := grantServiceLogin(cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func grantServiceLogin(cfg *config.SQL) error {
+	if !leastPrivilege() {
+		return nil
+	}
+	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, asAdmin(cfg), resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
+	if err != nil {
+		return fmt.Errorf("unable to connect as the admin to grant the service login: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+	for _, stmt := range ServiceGrants(sqlServerUser()) {
+		if err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("grant to the service login: %w\n%s", err, stmt)
+		}
+	}
+	return nil
+}
+
+// ServiceGrants is what a least-privilege login needs in each Temporal database: a user, the data reader and writer
+// roles, and execute. No server role, no DDL, no CONTROL; schema set-up and upgrades stay with the admin (I-47).
+func ServiceGrants(login string) []string {
+	q := "[" + login + "]"
+	return []string{
+		"IF USER_ID(N'" + login + "') IS NULL CREATE USER " + q + " FOR LOGIN " + q,
+		"ALTER ROLE db_datareader ADD MEMBER " + q,
+		"ALTER ROLE db_datawriter ADD MEMBER " + q,
+		"GRANT EXECUTE TO " + q,
+	}
+}
+
+// leastPrivilegeCluster is Temporal's SQL test cluster with the admin doing the database's set-up and tear-down, and
+// the suites' stores connecting as the service login. Once the stores have their configuration, the test base holds
+// Temporal's own cluster again: some suites choose their SQL cases by its type, and its tear-down is the admin's.
+type leastPrivilegeCluster struct {
+	inner *sql.TestCluster
+	cfg   *config.SQL
+	tb    *persistencetests.TestBase
+}
+
+func (c *leastPrivilegeCluster) SetupTestDatabase() {
+	c.inner.SetupTestDatabase()
+	if err := grantServiceLogin(c.cfg); err != nil {
+		panic(err)
+	}
+}
+
+func (c *leastPrivilegeCluster) TearDownTestDatabase() { c.inner.TearDownTestDatabase() }
+
+func (c *leastPrivilegeCluster) Config() config.Persistence {
+	cfg := c.inner.Config()
+	stores := make(map[string]config.DataStore, len(cfg.DataStores))
+	for name, ds := range cfg.DataStores {
+		if ds.SQL != nil {
+			sqlCfg := *ds.SQL
+			sqlCfg.User = sqlServerUser()
+			sqlCfg.Password = sqlServerPassword()
+			ds.SQL = &sqlCfg
+		}
+		stores[name] = ds
+	}
+	cfg.DataStores = stores
+	if c.tb != nil {
+		c.tb.DefaultTestCluster = c.inner
+	}
+	return cfg
+}
+
+// newSQLServerTestBase is persistencetests.NewTestBaseWithSQL for SQL Server, with the admin and service logins split.
+func newSQLServerTestBase() *persistencetests.TestBase {
+	o := GetSQLServerTestClusterOption()
+	logger := log.NewTestLogger()
+	inner := sql.NewTestCluster(o.SQLDBPluginName, o.DBName, sqlServerAdminUser(), sqlServerAdminPassword(), o.DBHost, o.DBPort,
+		o.ConnectAttributes, o.SchemaDir, o.FaultInjection, logger)
+	if !leastPrivilege() {
+		return persistencetests.NewTestBaseForCluster(inner, logger)
+	}
+	cfg := &config.SQL{User: sqlServerAdminUser(), Password: sqlServerAdminPassword(), ConnectAddr: sqlServerAddr(), ConnectProtocol: "tcp",
+		PluginName: sqlserver.PluginName, DatabaseName: o.DBName}
+	c := &leastPrivilegeCluster{inner: inner, cfg: cfg}
+	c.tb = persistencetests.NewTestBaseForCluster(c, logger)
+	return c.tb
+}
 
 func requireSQLServer(t *testing.T) {
 	if sqlServerAddr() == "" {
@@ -129,7 +249,7 @@ func GetSQLServerTestClusterOption() *persistencetests.TestBaseOptions {
 }
 
 func SetupSQLServerDatabase(t *testing.T, cfg *config.SQL) {
-	adminCfg := *cfg
+	adminCfg := *asAdmin(cfg)
 	adminCfg.DatabaseName = ""
 	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, &adminCfg, resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
 	if err != nil {
@@ -142,7 +262,8 @@ func SetupSQLServerDatabase(t *testing.T, cfg *config.SQL) {
 }
 
 func SetupSQLServerSchema(t *testing.T, cfg *config.SQL) {
-	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, cfg, resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
+	defer grantService(t, cfg)
+	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, asAdmin(cfg), resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
 	if err != nil {
 		t.Fatalf("unable to create SQL Server admin DB: %v", err)
 	}
@@ -161,7 +282,7 @@ func SetupSQLServerSchema(t *testing.T, cfg *config.SQL) {
 }
 
 func TearDownSQLServerDatabase(t *testing.T, cfg *config.SQL) {
-	adminCfg := *cfg
+	adminCfg := *asAdmin(cfg)
 	adminCfg.DatabaseName = ""
 	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, &adminCfg, resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
 	if err != nil {

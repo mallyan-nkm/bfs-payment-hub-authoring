@@ -49,7 +49,7 @@ artefacts:
   - name: p.post.accounting.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:ea19323653c5ca37a9325c11b5c8fb349098c5b96c29e742bc7759ccfb10c41e
+    hash: sha256:e24cd2f012da2e4e1eba478828f4a995921985bc8a2ddabd51deeb75c5218a2f
     path: activities/p.post.accounting.v1.yaml
   - name: p.post.reverse.v1
     kind: activity
@@ -111,11 +111,21 @@ artefacts:
     release: 1.0.0
     hash: sha256:7b518721a918198719def523e8a668aaa354d3aa82058a0268fd2fec6354ba1b
     path: ports/p.port.core-banking.v1.yaml
+  - name: p.port.decryption.v1
+    kind: port
+    release: 1.0.0
+    hash: sha256:5cae80f175e2d9121e27185cf82b57cc8f291eb2d691acd0c8e8317b150d921a
+    path: ports/p.port.decryption.v1.yaml
   - name: p.port.facts-out.v1
     kind: port
     release: 1.0.0
     hash: sha256:975310af6474b1ddcb5b052e7514e7e165f696c79cd901bf09bc3c649f5c7f30
     path: ports/p.port.facts-out.v1.yaml
+  - name: p.port.file-transfer.v1
+    kind: port
+    release: 1.0.0
+    hash: sha256:dd3f1eed7a79d7e7d5a6cf1725511baa1688467bd88f51bfd9d4b304bc5e16e7
+    path: ports/p.port.file-transfer.v1.yaml
   - name: p.port.fraud.v1
     kind: port
     release: 1.0.0
@@ -211,11 +221,21 @@ artefacts:
     release: 1.0.0
     hash: sha256:8cf8a4fd8cf0a35bfe79266002f076a09a4e0c96ebe9764b3b2f89f140a208e1
     path: simulators/p.sim.core-banking.v1.yaml
+  - name: p.sim.decryption.v1
+    kind: simulator
+    release: 1.0.0
+    hash: sha256:95c33a21ace3613d81715eb4290005976f9eccb0dccfc045af18adc5bf564802
+    path: simulators/p.sim.decryption.v1.yaml
   - name: p.sim.facts-out.v1
     kind: simulator
     release: 1.0.0
     hash: sha256:b55adc30bd951a06834a278675677895d546cf2270b1571b4eb76f626ce7063e
     path: simulators/p.sim.facts-out.v1.yaml
+  - name: p.sim.file-transfer.v1
+    kind: simulator
+    release: 1.0.0
+    hash: sha256:30461b952cb35d055eb48d3fa489bfb99a84bb23ad387fcb19875152307f5a68
+    path: simulators/p.sim.file-transfer.v1.yaml
   - name: p.sim.fraud.v1
     kind: simulator
     release: 1.0.0

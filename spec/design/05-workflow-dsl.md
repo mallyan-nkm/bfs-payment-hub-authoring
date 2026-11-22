@@ -104,6 +104,7 @@ What stays in the designer's hands: the business outcomes of the block, and how 
 | R-05-44 | A `deliver` disposition MAY declare the families the front door tells apart (`families`), read from the message: for a WPS acknowledgement, the family of the file it answers, from its name. An `await` MAY name one of them (`family`). It MUST then take only a message of that family, or one whose family the front door could not read. | Lint L36; conformance CK-AWAIT-07 |
 | R-05-45 | A wait in a subflow, or an await's timeout, whose length a bank may change MUST be a `duration` parameter of the composite activity, with a default and bounds, named as `{ parameter: <name> }`. The expansion names it in full (`<activity>#<name>`) and carries its default. The interpreter and every engine MUST take the tenant's value in force on the business date the step starts, else the default. A duration value MUST lie inside its bounds by length, not by its text. | Lint L17, L14; studio test `wps-returns.test.ts`; factory test WPS-IN-004 |
 | R-05-46 | An inward leg that paid some items and returned the others MUST end with its primary outcome and record the count and amount returned in `facts.returns`. It MUST end `returned` only when no item was paid and the whole amount went back. A return the scheme refuses, or one that cannot be recorded, MUST end `pending`, with the file at operations. | Factory tests WPS-IN-002 to WPS-IN-007 |
+| R-05-47 | A composite activity MAY let a bank set its reply wait. `policy.replyTimeoutParameter` and `policy.replyCalendarParameter` MUST name a `duration` and a `code` parameter the composite declares, whose defaults are the policy's `replyTimeout` and `replyCalendar`. The expanded await carries them as `timeoutParameter` and `calendarParameter` (`activity#parameter`), and the interpreter and the engines MUST wait for the value in force for the tenant on the day the await starts, the timeout being its default. A step that sets `replyTimeout` itself overrides the parameter. | Lint L30; `studio/test/ack-wait.test.ts` |
 
 ## 5.5 Messages that are not payments
 
@@ -195,7 +196,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L11 | Unused blocks: a block that nothing reaches says what runs it | Yes, as a warning |
 | L12 | Validation sets yield findings only | Yes |
 | L13 | Hook stays inside its hook point contract | Yes |
-| L14 | Configuration values inside bounds (a duration by its length); bindings resolve | Yes |
+| L14 | Configuration values inside bounds (numbers and durations by min and max, a duration by its length; codes and strings by allowed and pattern; each item of a list); bindings resolve | Yes |
 | L15 | Test bench matches ports and scenarios | Yes |
 | L16 | Awaited messages are deliver messages | Yes |
 | L17 | Parameters declared: a rule's, and a duration parameter a subflow's wait or await timeout names on its composite | Yes |
@@ -211,7 +212,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L27 | Supersession: forward within one major line; every workflow release in scope uses the artefact; evidence stays in scope; maker and checker differ | Yes |
 | L28 | Script determinism | To build (C07, C08) |
 | L29 | Step ids unique after inlining | To build (C04) |
-| L30 | A composite and its subflow agree: binding, outcomes, policy; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
+| L30 | A composite and its subflow agree: binding, outcomes, policy; a reply wait a bank may set names a parameter the composite declares; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
 | L31 | `await` and `return` appear only in a subflow; `block` appears only in the expanded form | Yes |
 | L32 | An `await` with no timeout has a reply time to take | Yes |
 | L33 | A start message routes: its kind, direction and segment select one platform workflow, and its leg fills that workflow's slot | Yes |

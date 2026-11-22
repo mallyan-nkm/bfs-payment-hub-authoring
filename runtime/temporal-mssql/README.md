@@ -68,7 +68,7 @@ sql:
 - **Collation `Latin1_General_100_BIN2_UTF8`.** `create-database` creates the database with it. The server refuses to start on a database with another collation. VARCHAR then holds UTF-8 and compares byte by byte, as Temporal expects. NVARCHAR would double every key and push four primary keys over SQL Server's 900-byte limit.
 - **`READ_COMMITTED_SNAPSHOT ON`.** `create-database` sets it. Plain reads then see the last committed row, as on PostgreSQL, and the plugin's locking reads still lock.
 - **Ids of at most 255 bytes.** Workflow, run and task queue ids are VARCHAR(255) keys. In UTF-8 that is 255 ASCII characters, or fewer when an id has other characters. The development dynamic config sets `limit.maxIDLength` to 255.
-- **Rights.** The user needs `CREATE DATABASE` for `create-database`, and `db_owner` on both databases for `setup-schema` and `update-schema`. The running server should need only `db_datareader` and `db_datawriter`. That was not tested: the tests here use `sa`.
+- **Rights.** The admin needs `CREATE DATABASE` for `create-database`, and `db_owner` on both databases for `setup-schema` and `update-schema`. The running server needs only a user in each database with `db_datareader`, `db_datawriter` and `EXECUTE`, and no server role. `scripts/least-privilege.sh` creates such a login, grants it, proves it can do nothing more (no server role, no `CREATE DATABASE`, no DDL, no other database), runs the durability check with the server connecting as it, and runs Temporal's persistence suites with every store under test connecting as it while the admin sets up and drops each test database. On 22 November 2026 the durability check passed, and the suites gave 478 passed, 0 failed, 2 skipped, the same as with `sa` on the same day (`docs/ISSUES.md` I-47).
 
 ## How the port works
 
@@ -276,7 +276,7 @@ The test checks that the payment settles with the full trace (validate to `end:s
 
 ### 5. CI
 
-The job `temporal-sqlserver` in `.github/workflows/engines.yml` builds the plugin, runs the unit tests and the persistence suites against a SQL Server 2022 service container, sets up the schemas with `temporal-sql-tool`, runs the durability check, then runs the kit's fast subset of 40 scenarios on three servers on SQL Server (`scripts/kit-on-sqlserver.sh`, about 30 minutes) and the WPS salary file. It leaves out the six scenarios that wait a business hour or more (`docs/ISSUES.md` I-48). The step name says so.
+The job `temporal-sqlserver` in `.github/workflows/engines.yml` builds the plugin, runs the unit tests and the persistence suites against a SQL Server 2022 service container, sets up the schemas with `temporal-sql-tool`, runs the durability check, repeats it and the persistence suites as a least-privilege login (`scripts/least-privilege.sh`), then runs the kit's fast subset of 40 scenarios on three servers on SQL Server (`scripts/kit-on-sqlserver.sh`, about 30 minutes) and the WPS salary file. It leaves out the six scenarios that wait a business hour or more (`docs/ISSUES.md` I-48). The step name says so.
 
 ## What is not proved
 

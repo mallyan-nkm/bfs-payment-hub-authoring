@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

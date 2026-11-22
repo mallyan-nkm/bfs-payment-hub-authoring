@@ -69,6 +69,14 @@ public sealed class Deployment
     public List<JsonObject> BindingsAt(string date) => J.A(Config, "bindings").OfType<JsonObject>()
         .Where(b => string.CompareOrdinal(J.S(b, "validFrom") ?? "", date) <= 0 && (J.S(b, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0)).ToList();
 
+    /// <summary>
+    /// The value of a parameter (<c>owner#name</c>) in force on a date, from the configuration's <c>values</c>, as the studio looks it
+    /// up (R-04-09, R-05-47): the latest validFrom not after the date, within its validTo. Null when none is set.
+    /// </summary>
+    public string? ValueAt(string key, string date) => J.A(Config, "values").OfType<JsonObject>()
+        .Where(v => J.S(v, "parameter") == key && string.CompareOrdinal(J.S(v, "validFrom") ?? "", date) <= 0 && (J.S(v, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0))
+        .OrderBy(v => J.S(v, "validFrom"), StringComparer.Ordinal).Select(v => J.S(v, "value")).LastOrDefault();
+
     public JsonObject? Stub(string step, string activity)
     {
         var stubs = J.P(Config, "stubs");

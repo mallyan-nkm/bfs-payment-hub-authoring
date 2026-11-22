@@ -126,6 +126,16 @@
             "elapsed",
             "business"
           ]
+        },
+        "replyTimeoutParameter": {
+          "description": "A duration parameter of this composite activity whose value, in force for the bank at the step, is the reply wait. replyTimeout is its default (R-05-47).",
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "replyCalendarParameter": {
+          "description": "A code parameter of this composite activity, elapsed or business, whose value is the reply wait's calendar. replyCalendar is its default (R-05-47).",
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
         }
       }
     },
@@ -163,6 +173,10 @@
             "max": {},
             "allowed": {
               "type": "array"
+            },
+            "pattern": {
+              "description": "A string, a code, or each item of a list of them, MUST match this regular expression (R-06-21).",
+              "type": "string"
             }
           }
         },

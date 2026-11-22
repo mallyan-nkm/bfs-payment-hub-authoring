@@ -96,6 +96,16 @@ CASES = [
      "wait: { parameter: uploadHold }", "wait: { parameter: uploadHolds }", "a wait names a parameter its composite does not declare"),
     ("M34", "ERROR L14", "examples/bank/configuration-set.yaml",
      "    value: P10D\n", "    value: P100D\n", "a duration value is longer than its bounds allow (P100D sorts before P30D as text)"),
+    # R-06-21: a code, a string or a list item outside its pattern, and a duration outside its bounds (L14)
+    ("M35", "ERROR L14", "examples/bank/configuration-set.yaml",
+     "values:\n", "values:\n  - parameter: p.post.accounting.v1#transactionCode\n    value: not a code\n    validFrom: '2026-01-01'\n",
+     "a transaction code a bank sets does not match its pattern"),
+    ("M36", "ERROR L14", "examples/bank/configuration-set.yaml",
+     "values:\n", "values:\n  - parameter: uae.wps.exchange.submit-salary-file.v1#ackWait\n    value: P30D\n    validFrom: '2026-01-01'\n",
+     "a bank waits longer for the acknowledgement than the parameter's bound"),
+    # R-05-47: a reply wait a bank may set names a parameter the composite declares (L30)
+    ("M37", "ERROR L30", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
+     "replyTimeoutParameter: ackWait", "replyTimeoutParameter: noSuchWait", "a composite's reply wait names a parameter it does not declare"),
 ]
 
 

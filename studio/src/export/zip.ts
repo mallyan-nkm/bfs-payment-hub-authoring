@@ -1,3 +1,5 @@
+import { inflateRawSync } from 'node:zlib';
+
 // A minimal, reproducible ZIP writer (stored entries, a fixed timestamp), so that the same
 // package gives the same bytes (R-09-15).
 
@@ -65,20 +67,33 @@ export function zip(entries: { name: string; content: Buffer }[]): Buffer {
   return Buffer.concat([...locals, cd, end]);
 }
 
-/** Read a ZIP of stored entries, as `zip` writes them. */
+/**
+ * Read a ZIP: the stored entries `zip` writes, and the deflated ones another writer may use (the runtime's canonical package,
+ * `GET /releases/package`). Entries are found through the central directory, so sizes a writer left out of a local header
+ * are still known.
+ */
 export function unzip(buf: Buffer): { name: string; content: Buffer }[] {
   const out: { name: string; content: Buffer }[] = [];
-  let i = 0;
-  while (i + 30 <= buf.length && buf.readUInt32LE(i) === 0x04034b50) {
-    const method = buf.readUInt16LE(i + 8);
-    const size = buf.readUInt32LE(i + 18);
-    const nameLen = buf.readUInt16LE(i + 26);
-    const extraLen = buf.readUInt16LE(i + 28);
-    const name = buf.subarray(i + 30, i + 30 + nameLen).toString('utf8');
-    const start = i + 30 + nameLen + extraLen;
-    if (method !== 0) throw new Error(`${name}: only stored entries are read`);
-    out.push({ name, content: buf.subarray(start, start + size) });
-    i = start + size;
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) return out;
+  const count = buf.readUInt16LE(eocd + 10);
+  let c = buf.readUInt32LE(eocd + 16);
+  for (let n = 0; n < count && buf.readUInt32LE(c) === 0x02014b50; n++) {
+    const method = buf.readUInt16LE(c + 10);
+    const compressed = buf.readUInt32LE(c + 20);
+    const nameLen = buf.readUInt16LE(c + 28);
+    const extraLen = buf.readUInt16LE(c + 30);
+    const commentLen = buf.readUInt16LE(c + 32);
+    const local = buf.readUInt32LE(c + 42);
+    const name = buf.subarray(c + 46, c + 46 + nameLen).toString('utf8');
+    c += 46 + nameLen + extraLen + commentLen;
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const data = buf.subarray(start, start + compressed);
+    if (name.endsWith('/')) continue;
+    if (method === 0) out.push({ name, content: data });
+    else if (method === 8) out.push({ name, content: inflateRawSync(data) });
+    else throw new Error(`${name}: compression method ${method} is not read`);
   }
   return out;
 }

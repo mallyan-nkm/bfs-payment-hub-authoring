@@ -25,9 +25,27 @@ effect: external
 idempotencyKey: concat(header.paymentId, ':submit-salary-file')
 ports:
   - uae.wps.port.wps.v1
+parameters:
+  ackWait:
+    type: duration
+    default: P1D
+    bounds:
+      min: PT1H
+      max: P7D
+    description: How long to wait for the scheme's acknowledgement of the salary file before the payment is pending.
+  ackWaitCalendar:
+    type: code
+    default: business
+    bounds:
+      allowed:
+        - business
+        - elapsed
+    description: Whether the wait counts business time or elapsed time.
 policy:
   replyTimeout: P1D
   replyCalendar: business
+  replyTimeoutParameter: ackWait
+  replyCalendarParameter: ackWaitCalendar
 implementation:
   binding: subflow
   subflow: uae.wps.sub.submit-salary-file.v1

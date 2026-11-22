@@ -151,7 +151,7 @@ content-configurations/      what the studio publishes and what a bank configure
   - The WPS salary file settles on Temporal on SQL Server with the runtime's payments store on SQL Server too (`e2e-wps-temporal.test.ts`, "database on SqlServer", with `TH_TEMPORAL_ADDRESS`).
   - CI job `temporal-sqlserver` runs all of it.
 - **P4 status: met, with one gap.** The plugin passes Temporal's persistence suites and runs the kit and the WPS salary file. The kit's scenarios that wait hours or days are proved on the time-skipping server, not on SQL Server, until I-48 is decided. CI runs the fast subset of 40.
-- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-45); Text search attributes are not indexed (I-46); what a bank's SQL Server must allow (I-47); the kit's long business waits on a real server (I-48).
+- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-45); Text search attributes are not indexed (I-46); what a bank's SQL Server must allow (I-47: the server now runs, and passes the durability check and the persistence suites, as a login with only read, write and execute on its two databases); the kit's long business waits on a real server (I-48).
 
 ### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
 - **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):
@@ -178,8 +178,8 @@ content-configurations/      what the studio publishes and what a bank configure
   - **The port.** Core banking is a port, `TransactHub.Ports.ICoreBanking`, with adapters `simulator` and `gateway-rest`. It is bound per tenant by effective-dated port bindings, in `content-configurations/banks/<bank>/*.yaml` (kind `port-bindings`). The 13 `CoreBanking:*` settings the bank fork read are settings of the binding; `core-banking.yaml` maps each one.
   - **The switch.** The example bank moves from the simulator to the gateway on 2026-12-01 by a binding alone, and the tests show it.
   - **The four bank sets.** Under D5 as first decided they were not in this repository. Each bank keeps its set in its own copy, and `example-bank` holds every knob with synthetic values.
-  - **DIB's set (D5 as amended, 2026-11-21).** DIB's real configuration is in `content-configurations/banks/dib/`: its pack (hooks for the employer AML check and the labour ministry notification, carried but not bound), its configuration set (rails and routing code), its core-banking binding and its CBX values. Its `README.md` gives the source of each value and lists what is not yet carried. The studio loads it with `--bank dib` (Issue I-43); the runtime reads its bindings (`BankFolderConfigurationTests`).
-  - **Not yet.** WPS posting and balance activities do not call `ICoreBanking` yet. That comes with P2's inward flows, which post.
+  - **DIB's set (D5 as amended, 2026-11-21).** DIB's real configuration is in `content-configurations/banks/dib/`: its pack (hooks for the employer AML check and the labour ministry notification, carried but not bound), its configuration set (rails and routing code), its core-banking binding and its CBX values. Since 2026-11-22 it also carries its accounting codes, charge narration, account kinds, VAT and the 72-hour acknowledgement wait as factory parameters (R-12-12, R-05-47), and its Central Bank SFTP and salary-file decryption as bindings of `p.port.file-transfer.v1` and `p.port.decryption.v1`, secrets by reference. Its accounts and charge slabs are not in the source (I-58). Its `README.md` gives the source of each value and lists what is not yet carried. The studio loads it with `--bank dib` (Issue I-43); the runtime reads its bindings (`BankFolderConfigurationTests`).
+  - **Posting through the port (P2).** WPS posting and balance on the runtime call `ICoreBanking` through the tenant's binding in force at the engine's time (`CoreBankingResolver`, `PortBindings.InForce`). See "Progress on P2" in section 6.
 - **ADIB RTC** becomes a `uae.wps` RTC flow, with the ADIB posting as a hook.
 - **ENBD and FAB** are thin stubs with no tests today. They become configuration sets only.
 - **Real bank values** (routing code, GL accounts, host ids) are not committed, except DIB's: the owner decided on 2026-11-21 that DIB's live in `content-configurations/banks/dib/` (D5 as amended). Another bank's set still lives in its private copy of `content-configurations/banks/<bank>/`. Secrets are never committed, DIB's included: the folder names them by reference.
@@ -243,6 +243,44 @@ The results, pass by pass and project by project, with each failure classified (
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
 | P6 | Studio | Aani is removed. The WPS leg and the new inward flows are authored and published. The studio deploys a release to the runtime and hot-updates a rule value with no deployment, shown end to end. |
 
+### Progress on P2 (WPS complete)
+
+- **Posting and balance through the core-banking port.** `runtime/src/TransactHub.Activities.Platform` answers every factory activity of `p.port.core-banking.v1` in the native host (`TransactHub.Native`, `TH_BANKS_DIR` names the banks' folders):
+  - `p.reserve.funds.v1`: a balance enquiry on the debtor account; enough available in a postable status (`postableStatuses`, a setting of the binding) reserves it in the hub;
+  - `p.post.accounting.v1`: an item or an inward payment credits the creditor from the settlement account; an outward payment debits the debtor to it, with the template's charge slab and VAT. The legs' codes, narration and accounts are the activity's parameters;
+  - `p.post.reverse.v1`, `p.post.verify.v1`, `p.reserve.release.v1`;
+  - `uae.wps.post.return.v1` (`TransactHub.Activities.Wps`): an accepted returns file moves the returned amount from suspense to settlement.
+  - The adapter is the binding's: the simulator, or `gateway-rest` with its wire settings. A call that may have reached core banking is `unknown`, never retried blind (the source's `AccTxnReplyClassifier`). A tenant with no binding in force is refused (`PortNotBound`).
+  - A test bench gives the port to the runtime with `simulator: runtime` (R-08-15; `studio deploy --bench p.port.core-banking.v1=runtime`).
+  - Tests: `CoreBankingPostingTests` (the simulator before the example bank's switch, the gateway after it and for the bank folder's binding, through a recording handler), `studio/test/runtime-port.test.ts`, and end to end `e2e-wps-core-banking.test.ts`: the payment file's credits posted by the real native host on the simulator adapter before the switch, and sent to the gateway after it.
+- **Posting windows.** The source's call-hours gate (`CbCallWindowGate`) is `PostingWindow`. A binding with `postingWindowStart` and `postingWindowEnd` (HH:mm, business-local) takes no posting outside them: the attempt fails with a retryable error and the engine tries again later. An invalid window fails closed. Not yet: a schedule-gated await in the factory's legs, so a payment waits for the window instead of retrying into it.
+- **The inward flows, flow by flow.**
+
+| Flow | On the runtime | Not yet |
+| --- | --- | --- |
+| PIF (payment file, bank as agent) | Each credit posts through the binding (`p.post.accounting.v1` at item level). | The PIF parser and its checks run as the studio's scripts (`uae.wps.map.pif-in.v1`), not native code. |
+| PSI (supplementary file) | Nothing to post. | The pairing with the PIF is the leg's exchange in the studio. The source's `InwardPsiParser` is not ported. |
+| PRC (receipt confirmation) | Nothing to post. | Generation, upload and the ACK/NAK extraction (`InwardPrc*`) are not ported; the factory renders the PRC as a script. |
+| DIF (disbursement file) | Nothing to post. | Generation, upload and ACK/NAK (`InwardDif*`) are not ported. |
+| RFA (returns file) | The accepted-returns posting (`uae.wps.post.return.v1`). | The returns decision (`uae.wps.table.returns.v1`) yields `returns` and `count` but no `amount`, so on the runtime the posting is refused until it does. The RFA reposting and the file itself are not ported. |
+| RRI (refund request instruction) | Nothing. | No factory flow. The parser (`InwardRriParser`), the reject reasons (000, 002) and the unblock flow are not ported. |
+| DE (bulk file, transfer, submit, outcome, repost, lost file) | Nothing. | No factory flow; none of `Inward/De*` is ported. |
+| RTC (return to the employer's bank) | The leg's posting is `p.post.accounting.v1`, which the runtime answers (inward: settlement to the creditor). | The RTC map (`uae.wps.map.rtc-in.v1`) writes the items but no payment-level creditor account, so the runtime refuses the posting until the leg credits per item or the map names the account. The map is a script, not native code. |
+| Posting windows | The gate, on every posting activity. | The schedule-gated await, above. |
+
+  P2's exit ("every WPS line of the parity matrix is green") is not met.
+
+### Progress on P6 (the studio deploys and hot-updates)
+
+- **Deploy, then change a rule value with no deployment, end to end** (`studio/test/blackbox/e2e-p6-hot-update.test.ts`, on Temporal with the runtime's store on PostgreSQL):
+  - the bank publishes its internal limit in the studio, and the commit lands on the connected branch;
+  - the runtime's release API stores the corporate workflow's Temporal package once and activates it for test; the pipeline imports the branch, so the runtime holds the bank's values as effective-dated versions (`POST /import-branch`, `BankValues`);
+  - a salary file runs from the package the runtime holds (`GET /releases/package`): its workers read the bank's values from the runtime at each attempt (`GET /values?tenant&at`, `TH_RUNTIME_URL`), and the file is held;
+  - the bank raises the limit from a later validFrom; the pipeline stores a new value version, and no release or activation;
+  - a second file on a later date runs from the same package, byte for byte, takes the new limit and is not held; a file on the first payment's date still takes the old limit and gives the first payment's trace.
+- The values in force are those of the latest configuration set that sets the parameter, by date (`BankValuesTests`, on both databases). Lookups of dated values by an engine's own timers are I-57.
+- **Not yet:** Aani's removal and the inward flows' authoring are tracked under P2 and W7; this item shows only the deploy and the hot update.
+
 ### Progress on P3 (DTFx, Elsa, Flowable)
 
 - **Kit.** The kit runs in CI on all four engines (`.github/workflows/engines.yml`, job `kit`).
@@ -257,8 +295,8 @@ The results, pass by pass and project by project, with each failure classified (
   - the server's async executor is off and the binding keeps the clock, firing each timer when the virtual clock reaches it (Issue I-53);
   - the deploy runner runs a Flowable package with `runtime/tools/TransactHub.FlowableHarness` against the server at `TH_FLOWABLE_URL`, its payloads in the store when `TH_STORE_PROVIDER` is set; `e2e-wps-engines-store.test.ts` starts the server as a container and asserts the trace and `engine.store` on both databases.
 
-  Found on the way: the generator's parallel join counted one token per exit of a branch, so the corporate workflow never joined on Flowable. Fixed (Issue I-56). P3's store matrix is met; its exit still waits on the WPS parity suite below.
-- **Not yet: the WPS parity suite on DTFx and Elsa.** It runs on the interpreter and on Temporal.
+  Found on the way: the generator's parallel join counted one token per exit of a branch, so the corporate workflow never joined on Flowable. Fixed (Issue I-56). P3's store matrix is met.
+- **The WPS parity suite on DTFx and Elsa.** The scenarios of `e2e-wps-temporal.test.ts` run on DTFx and Elsa in `e2e-wps-parity.test.ts`: the salary file settles through four workers on four queues, and the scheme's rejection, a sanctions hit and a two-line file held and declined or approved each give the studio interpreter's trace and outcome. It runs on the studio's engine harnesses and, with `TH_STORE_PROVIDER`, on the runtime's builds with the store. The source's Central Bank SIF writer, imported and published through the studio, settles the salary file on DTFx and Elsa with the same SIF as on Temporal (`e2e-wps-source-slice.test.ts`, steps 6 and 7). CI job `wps-parity` runs all of it per engine.
 
 ## 7. Issues found while planning (beyond the review's 21)
 
