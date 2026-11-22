@@ -24,6 +24,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:9189b1cd7422e8b55d6e9126919c5f7a5bcc17fafa8c2c1906d7bfd0c61113d9
     path: activities/uae.p.validate.iban.v1.yaml
+  - name: uae.p.errors.cluster.v1
+    kind: error-dictionary
+    release: 1.0.0
+    hash: sha256:42d77c1e9da9a05a7f542e6fba4fc09eaf0a2e57256843a6a1904c40240f3a02
+    path: errors/uae.p.errors.cluster.v1.yaml
   - name: uae.p.port.calendar.v1
     kind: port
     release: 1.0.0

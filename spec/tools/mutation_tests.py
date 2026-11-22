@@ -23,6 +23,7 @@ EB = "../content-configurations/banks/example-bank"
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
 SAL = "factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml"
 OPV = "factory/uae.wps/views/uae.wps.view.operations.v1.yaml"
+ERRS = "factory/p/errors/p.errors.platform.v1.yaml"
 
 # (id, expected line prefix, file, old text, new text, what it breaks)
 CASES = [
@@ -128,6 +129,19 @@ CASES = [
      "a view shows a value unmasked without naming the old screen that did"),
     ("M46", "ERROR L38", OPV,
      "source: ext.uae.wps.salaryMonth,", "source: ext.uae.wps.salaryMonths,", "a view reads an extension field nobody registers"),
+    # R-05-51, R-05-52: every error an activity, rule, port or engine can raise has a dictionary entry (L39)
+    ("M47", "ERROR L39", ERRS,
+     "  - code: TransientError\n", "  - code: TransientFailure\n", "the activities' TransientError has no entry"),
+    ("M48", "ERROR L39", "factory/p/rules/p.rule.amount-positive.v1.yaml",
+     "reasonCode: AM01", "reasonCode: AM99", "a rule gives a reason code no dictionary has"),
+    ("M49", "ERROR L39", ERRS,
+     "  - code: flowable.DeadLetterJob\n", "  - code: flowable.DeadLetter\n", "an engine binding's error has no entry"),
+    ("M50", "ERROR L39", "factory/uae.wps/errors/uae.wps.errors.wps.v1.yaml",
+     "  - code: FF01\n", "  - code: AM10\n", "a dictionary has two entries for one code, and the party's FF01 has none"),
+    ("M51", "ERROR L39", ERRS,
+     "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - port\n",
+     "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - rule\n",
+     "a party's reason code is in the dictionary only as a rule's"),
 ]
 
 

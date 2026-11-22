@@ -34,6 +34,8 @@ export const DEV_USERS: DevIdentity[] = [
   { sub: 'ops.operator', name: 'Example operator', roles: ['example-bank:Operator'] },
   { sub: 'ops.supervisor', name: 'Example supervisor', roles: ['example-bank:Supervisor'] },
   { sub: 'ops.other', name: 'Other bank operator', roles: ['other-bank:Operator'] },
+  { sub: 'svc.engineer', name: 'Example service engineer', roles: ['*:ServiceEngineer'] },
+  { sub: 'svc.approver', name: 'Example service approver', roles: ['*:ServiceApprover'] },
 ];
 
 function SignInPage({ auth, done }: { auth: SignIn; done(): void }) {

@@ -949,5 +949,44 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
 
+## I-101. Troubleshooting actions with no engine path from the runtime
+
+**Issue.** The service console (R-09-43, design/05 section 5.11) offers seventeen troubleshooting actions and three content actions. Each needs a person's confirmation and a reason, is a fact on the console's chain (and on the payment's, when it acts on one), and the risky ones wait for a ServiceApprover. Nine reach nothing today, because no path from the runtime to a running engine instance exists:
+- `retry-attempt` and `resend-file`: not in the DSL; no construct takes them (I-99).
+- `redrive-workflow` and `reset-activity` (Temporal): the store does not record an instance's engine ids (the Temporal workflow and run ids, the Flowable process instance, the DTFx instance, the Elsa instance), and no engine host has a re-drive or reset call the runtime can reach.
+- `expire-hold`: the attempt that waits for a hold ends it only on a decision or its own timeout (I-98); it reads no expiry fact.
+- `reconcile-posting`: the core-banking port (`p.port.core-banking.v1`) has no inquiry operation, and the gateway adapter (`GatewayRestCoreBanking`) no inquiry call, so an unknown posting cannot be asked about.
+- `pause-intake` and `resume-intake`: the front door reads no intake switch per scheme.
+- `drain-worker` and `restart-worker`: a deployed worker exposes no drain control, and the runtime has no path to the installation's orchestrator.
+`re-screen` reaches the outbox (topic `engine-signal`) and stops there (I-99).
+
+**Recommendation.** (1) Record each instance's engine ids as a fact when it starts (I-99), and give each engine host a reader of `engine-signal` that carries `re-screen`, a re-drive (Temporal: reset to the failed activity's task; Flowable: move the failed job; DTFx: rewind; Elsa: resume the faulted activity) and records the result as a fact. (2) Decide in Part 5 whether `retry` and `resend` are operator actions; if so, a composite's subflow gains a declared retry point and an exchange a declared resend, each with a conformance scenario. (3) Have the hold block await an expiry message as it awaits a decision (I-98). (4) Add an `inquire` operation to the core-banking port, a simulator scenario and the gateway adapter's call. (5) Give the front door an intake switch per tenant and scheme, read from the store's versioned values (`kind: intake`). (6) Give each worker a `POST /drain` and a `GET /health` with its version and queue; leave restarts to the orchestrator and link to it.
+
+**What is built.** Every action's permission, confirmation, approval and audit, end to end (`ActionTests`); the refusal names this issue. Built end to end: `release-hold` (the hold's decision on the payment's chain, which the operations-queue port reads), `requeue-dead-letter` (Flowable's management API), `rebuild-read-model`, `replay-read-model` (the projection from its checkpoint), `reverify-package`, `rotate-trusted-key` (written where `TH_TRUSTED_SIGNERS` names a writable file and `Service:TrustWritable` is true), and the content actions `activate`, `rollback` and `remove`.
+
+## I-102. Distributions, configuration releases and the open payments of a release
+
+**Issue.** (1) The service console lists every kind the package source offers (R-09-40), but installs only workflow packages: a distribution (`dist/<bank>/<id>`) or a configuration release has no runtime model yet (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, section 10, items 1 and 2), so installing one answers 501 with this issue. (2) A release's state (installed, active, draining, drained, removed) is derived from the activations and the console's facts: the store has no state column and no `removed` table, and the five states of the packaging document are not enforced by the engines (a removed release's workers keep running). (3) The open payments of a release are those whose ISO status in the read model is not final (ACSC, ACCC, RJCT, CANC), because the store holds no end of a payment (I-97). A payment records the release id the engine gave it; a deployment gives the workflow's name, so such a payment is counted for that workflow's release active when it was accepted, by the activation rows, which is an inference.
+
+**Recommendation.** Build items 1 and 2 of section 10 of the packaging document: store distributions and configuration releases insert-only, pin `distributionId` on every payment at acceptance, record each state change as an activation row, and have each engine host stop a removed distribution's workers. Record an `end` fact per payment (I-97) and count open payments from it.
+
+**What is built.** Listing of every kind, verification, the difference against what is active (flows, files and parameters), install, activation from a date with the previous release recorded as draining, rollback, removal refused while active or while a pinned payment is open, and the open count per release (`ContentTests`, the `service-console` Playwright test).
+
+## I-103. What the runtime's errors and logs do not carry yet
+
+**Issue.** (1) The runtime's libraries raise exceptions with a message only: `SignatureRejected`, `PackageRejected`, `ActionRefused`, `ReleaseConflict` carry no error code, so the service console classifies them by their words (`ErrorCodes.Of`), which breaks if a message is reworded. (2) A step fact records a reason code and an error name when the worker gives them, but an engine's own failure (a Temporal workflow task failure, a Flowable dead-letter job, a DTFx or Elsa fault) is not a fact: the console sees it only through the engine's own console. (3) The service console's log viewer reads its own host's structured logs (masked, in memory) and the store's facts; the other hosts' logs go to the installation's log back end over OTLP, which the console does not query, and the facts carry no trace id (I-80).
+
+**Recommendation.** (1) Give each refusal type a `Code` property set where it is thrown, from the dictionary's codes, and have `ErrorCodes.Of` read it; keep the words as the message only. (2) Have each engine binding record an `engine.failed` fact with the dictionary's code when an instance fails or a job is dead-lettered. (3) Add a read-only log source to the service console for the installation's back end (a Loki or OpenSearch query by trace id and time), configured like a probe, and add the trace id to the facts (I-80).
+
+**What is built.** `ErrorCodes`, the classification and its test, the masked ring buffer of the service host's logs, and the viewer over the store's facts with filters by error code, leg, scheme, tenant, payment and time, each error linked to its runbook (`ServiceApiTests`).
+
+## I-104. The assistant sends masked data to the model provider
+
+**Issue.** The service console's assistant (R-09-44) sends the question, the selected payment's masked trace and facts, masked logs, dictionary entries and document passages to the Anthropic API with the studio's key (`TH_ANTHROPIC_API_KEY`). Masking replaces every value the store holds for the parties the engineer may see (names, accounts, IBANs, the extension fields that name a person or employer) and the telemetry's patterns; a test proves no party value leaves (`AssistantTests`). It cannot mask what the store does not know: a name a person types into a free-text remark, or one inside a scheme's file kept as a message (which the assistant is never given). Whether a bank may send even masked operational data to a model provider is the bank's decision, not the runtime's. The assistant is off unless `TH_ASSISTANT_ENABLED=true`.
+
+**Recommendation.** Ask each bank's data protection officer to approve the assistant before it is switched on, with the list of what is sent (Part 9, R-09-44) and the provider's retention terms; record the decision in the bank's configuration release. Keep it off by default. The free-text fields of operator and service facts (`remarks`, `why`, `reason`) are not sent at all; keep it so.
+
+**What is built.** The switch, the masking and its test, read-only tools, citations, proposals that a person confirms on the Actions page, and a fake model for the tests: no test calls the API.
+
 ## Not done, and why
 

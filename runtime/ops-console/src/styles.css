@@ -112,3 +112,14 @@ tr.clickable:hover td { background: var(--surface-2); }
 .action-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .confirm { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .confirm label { display: flex; flex-direction: column; gap: 4px; }
+
+/* The service console (src/service). */
+.tabs a.tab { padding: 6px 10px; text-decoration: none; color: var(--text-2); border-bottom: 2px solid transparent; }
+.tabs a.tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 2px; background: var(--border); }
+.dot.pass { background: var(--pass); }
+.dot.warn { background: var(--warn); }
+.dot.fail { background: var(--fail); }
+tr.error-row td { background: var(--fail-soft); }
+a.badge { text-decoration: none; }
+pre.card { white-space: pre-wrap; overflow-wrap: anywhere; }

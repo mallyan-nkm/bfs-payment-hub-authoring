@@ -112,7 +112,7 @@ Generated from `factory/inventory.yaml`.
 | Scheme | 1 | `uae.wps.scheme` |
 | Extension | 1 | `uae.wps.ext.salary.v1` |
 | Test | 16 | `WPS-EXC-001`, `WPS-EXC-002`, `WPS-IN-001`, `WPS-IN-002`, `WPS-IN-003`, `WPS-IN-004`, `WPS-IN-005`, `WPS-IN-006`, `WPS-IN-007`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005` |
-| Total | 77 | |
+| Total | 78 | |
 <!-- /INVENTORY:uae.wps -->
 
 ## A.7 Open points

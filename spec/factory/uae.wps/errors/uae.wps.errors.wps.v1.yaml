@@ -1,0 +1,67 @@
+kind: error-dictionary
+name: uae.wps.errors.wps.v1
+release: 1.0.0
+title: WPS error dictionary (provisional)
+description: The reason codes the WPS scheme's rules and its party raise that the platform's and the cluster's dictionaries
+  do not hold (R-05-51). Provisional, as the scheme pack is.
+entries:
+  - code: AM10
+    title: Invalid control sum (provisional)
+    category: business
+    retryable: false
+    isoReasonCode: AM10
+    raisedBy:
+      - rule
+      - port
+    meaning: 'The file''s total does not equal the sum of its lines. Provisional: from public sources, not the rulebook.'
+    causes:
+      - The employer's payroll file was edited after its totals were written.
+    runbook:
+      checks:
+        - Open the payment in the operations console and read the step that gave the reason code.
+      safeActions:
+        - 'Do not retry: the same data gives the same answer. Correct the data at its source.'
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: AM18
+    title: Invalid number of transactions (provisional)
+    category: business
+    retryable: false
+    isoReasonCode: AM18
+    raisedBy:
+      - rule
+    meaning: 'The file''s record count does not equal its lines. Provisional: from public sources, not the rulebook.'
+    causes:
+      - Lines were added or removed after the header was written.
+    runbook:
+      checks:
+        - Open the payment in the operations console and read the step that gave the reason code.
+      safeActions:
+        - 'Do not retry: the same data gives the same answer. Correct the data at its source.'
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: FF01
+    title: Invalid file format (provisional)
+    category: business
+    retryable: false
+    isoReasonCode: FF01
+    raisedBy:
+      - rule
+      - port
+    meaning: 'The salary file is not in the scheme''s format, or the scheme refused its format. Provisional: from public sources,
+      not the rulebook.'
+    causes:
+      - A field out of its layout.
+      - A file name the scheme does not accept.
+    runbook:
+      checks:
+        - Open the payment in the operations console and read the step that gave the reason code.
+        - Open the file on the payment's documents tab (as kept).
+      safeActions:
+        - 'Do not retry: the same data gives the same answer. Correct the data at its source.'
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+provenance:
+  origin: factory
+  status: provisional
+  clauses:
+    - ISO 20022 external code sets, ExternalStatusReason1Code
+    - CBUAE WPS responsibility guide 2018
+  note: 'Provisional: from public sources, not the WPS rulebook. Confirm against the current rulebook.'
