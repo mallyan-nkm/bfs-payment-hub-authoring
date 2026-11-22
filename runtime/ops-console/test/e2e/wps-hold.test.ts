@@ -164,7 +164,8 @@ describe(`the operations console on a WPS file run through the runtime on ${ENGI
       await page.getByRole('heading', { name: 'Payments' }).waitFor();
       return (await page.getByTestId('payment-row').count()) === 1;
     }, 240000);
-    expect(await page.locator('select[name=scheme]').inputValue()).toBe('uae.wps');
+    // The scheme's option comes with the list of schemes, a moment after the rows.
+    await until('the scheme filter', async () => (await page.locator('select[name=scheme]').inputValue()) === 'uae.wps', 20000);
     expect(await page.locator('select[name=hold]').inputValue()).toBe('open');
     const row = page.getByTestId('payment-row').first();
     expect(await row.textContent()).toContain('1,500.00 AED');

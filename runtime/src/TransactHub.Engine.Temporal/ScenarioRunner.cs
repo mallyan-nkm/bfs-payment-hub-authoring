@@ -190,17 +190,21 @@ public sealed class ScenarioRunner
             });
         }
         string fdResult;
-        while (true)
+        if (liveTask is not null && env.SupportsTimeSkipping)
         {
-            using var cancel = new CancellationTokenSource();
-            var result = fd.GetResultAsync(rpcOptions: new RpcOptions { CancellationToken = cancel.Token });
-            var holding = Task.Run(async () => { while (!cancel.IsCancellationRequested && !LiveSignals.HoldClock(followed)) await Task.Delay(200); });
-            var first = await Task.WhenAny(result, holding);
-            if (first == result) { cancel.Cancel(); fdResult = await result; break; }
-            cancel.Cancel();
-            try { fdResult = await result; break; } catch (OperationCanceledException) { } catch (Temporalio.Exceptions.RpcException) { }
-            while (LiveSignals.HoldClock(followed)) await Task.Delay(250);
+            // Live, on the time-skipping server: business time is skipped a few minutes at a time, and not at all while an operator
+            // wait is open and a live operator may still answer (LiveSignals.HoldClock). Skipping to the next timer at once would let
+            // a hold's expiry fire before anyone could decide it.
+            while ((await fd.DescribeAsync()).Status == Temporalio.Api.Enums.V1.WorkflowExecutionStatus.Running)
+            {
+                if (LiveSignals.HoldClock(followed)) { await Task.Delay(250); continue; }
+                // A sleep the server cannot skip at once (an attempt in flight) runs out its call: time moved, and the loop goes on.
+                try { await env.DelayAsync(TimeSpan.FromMinutes(1)); }
+                catch (Temporalio.Exceptions.RpcException) { }
+            }
+            fdResult = await fd.GetResultAsync();
         }
+        else fdResult = await fd.GetResultAsync();
         liveStop.Cancel();
         if (liveTask is not null) { try { await liveTask; } catch (OperationCanceledException) { } }
         var fdOut = (JsonObject)J.Parse(fdResult)!;

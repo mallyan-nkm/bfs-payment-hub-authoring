@@ -331,6 +331,12 @@ public sealed class FlowableBinding
         log.Add($"started {docKey} as {pid}");
     }
 
+    /// <summary>
+    /// An instance as the workers and the store know it: its root's process instance, then each child's, as the interpreter's
+    /// instance ids are (root/leg). A leg's or a hook's steps are then the payment's facts, found by the root's payload (R-05-50).
+    /// </summary>
+    static string PathOf(Inst i) => i.Parent is null ? i.Pid : $"{PathOf(i.Parent)}/{i.Pid}";
+
     static string ShortName(string n)
     {
         var p = n.Split('.');
@@ -721,7 +727,7 @@ public sealed class FlowableBinding
         var ctx = index is int ix && level == "item" ? claim.FullForItem(inst.State, inst.Ref, ix) : claim.Full(inst.State, inst.Ref);
         var req = new JsonObject
         {
-            ["op"] = "attempt", ["instance"] = inst.Pid, ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
+            ["op"] = "attempt", ["instance"] = PathOf(inst), ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
             ["call"] = call, ["attempt"] = attempt, ["now"] = now, ["ctx"] = ctx, ["level"] = index is not null && level == "item" ? "item" : null,
             ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null,
         };
@@ -928,7 +934,7 @@ public sealed class FlowableBinding
                 break;
             case "stuck":
                 Record(inst, p, $"{LabelOf(job, p, p["step"])}:stuck", job);
-                try { Interp.Stuck?.Invoke(inst.Pid, p["step"], inst.Attempts.GetValueOrDefault(p["step"])); } catch (Exception) { }
+                try { Interp.Stuck?.Invoke(PathOf(inst), p["step"], inst.Attempts.GetValueOrDefault(p["step"])); } catch (Exception) { }
                 break;
             case "awaitTimeout":
                 inst.Awaited.Add(p["message"]);
