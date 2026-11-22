@@ -106,9 +106,12 @@ export function wpsTrainingBundle(env: StudioEnv, to = 'uae.wpsx'): BundleFile[]
   // extracted scheme needs its own. Here, the example bank's routing code for the renamed rule.
   const cfgRel = 'examples/bank/configuration-set.yaml';
   sourceFiles.push(cfgRel);
-  const cfg = clone(env.store.all().find((e) => e.kind === 'configuration-set' && e.source === 'spec' && e.path === cfgRel)?.doc);
+  const cfg = clone(env.store.all().filter((e) => e.kind === 'configuration-set' && e.source === 'spec' && e.path === cfgRel)
+    .sort((a, b) => compareReleases(a.doc.release ?? '0.0.0', b.doc.release ?? '0.0.0')).pop()?.doc);
   const next = JSON.parse(JSON.stringify(cfg));
-  next.release = '1.2.0';
+  // The next minor of the example bank's configuration set: the bundle's release is a new one, never one already published.
+  const [M, m] = String(cfg.release ?? '1.0.0').split('.').map(Number);
+  next.release = `${M}.${m + 1}.0`;
   next.title = `${cfg.title}, with the values of ${to}`;
   next.accepts = [...(next.accepts ?? []), { scope: to, release: '1.0.0' }];
   for (const v of cfg.values ?? []) {

@@ -42,13 +42,15 @@ describe('every changed factory artefact is a new release; the earlier stays as 
   it('moves the banks\' configuration sets and pins to the new pack releases', () => {
     const env = freshEnv({ banks: ['dib'] } as any);
     for (const t of ['example-bank', 'dib']) {
-      expect(env.store.configurationSet(t).accepts, t).toEqual([{ scope: 'p', release: '1.1.0' }, { scope: 'uae.p', release: '1.1.0' }, { scope: 'uae.wps', release: '1.1.0' }]);
+      expect(env.store.configurationSet(t).accepts, t).toEqual([{ scope: 'p', release: '1.2.0' }, { scope: 'uae.p', release: '1.2.0' }, { scope: 'uae.wps', release: '1.2.0' }]);
     }
     // The example bank's first configuration set and lock file stay as they were published.
     expect(body(disk('banks/example-bank/configuration-set.yaml')).release).toBe('1.0.0');
     expect(body(disk('banks/example-bank/configuration-sets/1.1.0.yaml')).release).toBe('1.1.0');
+    expect(body(disk('banks/example-bank/configuration-sets/1.2.0.yaml')).release).toBe('1.2.0');
     expect(body(disk('banks/example-bank/packs/1.0.0.yaml')).release).toBe('1.0.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.1.0');
+    expect(body(disk('banks/example-bank/packs/1.1.0.yaml')).release).toBe('1.1.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.2.0');
   });
 
   it('publishes a changed test again under its pack release; the studio reads the latest', () => {
@@ -72,14 +74,14 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
 
   it('a factory change at a release already published stops the seed and names the file; nothing is written', async () => {
     const full = forkRepo();
-    const at = `${ROOT}/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml`;
+    const at = `${ROOT}/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.2.0.yaml`;
     fake().commitFiles(full, BRANCH, { [at]: fake().files(full, BRANCH)[at].replace('title: ACK or NAK to status', 'title: changed elsewhere') });
     const env = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
     const before = fake().head(full, BRANCH);
-    await expect(seedContent(env)).rejects.toThrow(/uae\.wps\.map\.ack-in\.v1\/1\.1\.0\.yaml.*never rewritten/);
+    await expect(seedContent(env)).rejects.toThrow(/uae\.wps\.map\.ack-in\.v1\/1\.2\.0\.yaml.*never rewritten/);
     expect(fake().head(full, BRANCH)).toBe(before);
     // And the check names it: the published release changed since its ledger recorded it.
-    expect(checkAll(env).filter((i) => i.code === 'L41').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml']);
+    expect(checkAll(env).filter((i) => i.code === 'L41').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.2.0.yaml']);
   });
 
   it('a later seed adds its new files, keeps a replaced bank lock file first, and records both in its ledger', async () => {

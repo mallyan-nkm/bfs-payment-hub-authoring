@@ -1,8 +1,8 @@
-# The bank runs none of the factory's rails (README.md): a salary payment asks for WPS and no rail is chosen.
+# The bank runs WPS (README.md, owner's decision of 2026-11-22): a salary payment that asks for WPS is routed to it.
 # The payment is invented.
 kind: test
 id: BANK-RAIL-001
-title: A payment that asks for WPS finds no rail the bank runs
+title: A payment that asks for WPS is routed to WPS, a rail the bank runs
 target: p.decide.rail.v1
 level: activity
 evaluationDate: "2026-11-24"
@@ -21,4 +21,7 @@ given:
         value: 3500
         currency: AED
 expect:
-  outcome: no-match
+  outcome: decided
+  decisions:
+    - name: rail
+      value: uae.wps

@@ -29,8 +29,9 @@ describe('import: the training bundle', () => {
     expect(errors(r)).toEqual([]);
     expect(r.ok).toBe(true);
     // Plan P2 added the PSI and RRI maps, the RTC map's script, two samples and two tests (WPS-IN-008, WPS-RTC-001); the operations view and the error dictionary one more each.
-    expect(r.summary).toMatchObject({ documents: 64, activities: 29, rules: 11, workflows: 11, schemes: 1, configurationSets: 1, tests: 18, scripts: 3, samples: 9, new: 83, testsPassed: 18, testsFailed: 0 });
-    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 95, excluded: 1, missing: [] });
+    // The labour ministry lookup, its port, simulator and rule, its script, the upload sample and seven tests (Issues I-88, I-100).
+    expect(r.summary).toMatchObject({ documents: 68, activities: 30, rules: 12, workflows: 11, schemes: 1, configurationSets: 1, tests: 25, scripts: 4, samples: 10, new: 94, testsPassed: 25, testsFailed: 0 });
+    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 108, excluded: 1, missing: [] });
     // Nothing was saved by a preview.
     expect(env.store.drafts('owner')).toEqual([]);
   });

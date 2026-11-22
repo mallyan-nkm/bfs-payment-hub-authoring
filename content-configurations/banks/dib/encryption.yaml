@@ -1,0 +1,16 @@
+# The bank's file encryption, as a port binding (R-12-13, Issue I-87): the salary file is encrypted for the Central Bank
+# before it is sent to WPS (owner's decision of 2026-11-22). Read by runtime/src/TransactHub.Ports/PortBindings.cs and
+# runtime/src/TransactHub.Ports/OpenPgp.cs. The source has no encryption profile for the bank's outgoing files, so the key
+# id (configuration-set.yaml, p.protect.encrypt-file.v1#recipientKey) is this folder's name for the Central Bank's WPS key.
+# The key is never here: a deployment supplies the recipient's public key by reference (README.md).
+kind: port-bindings
+tenant: dib
+bindings:
+  - port: p.port.encryption.v1
+    adapter: openpgp
+    validFrom: 2026-11-22T00:00:00Z
+    settings:
+      # The Central Bank's WPS public key (an OpenPGP public key, armoured or binary), by reference only.
+      keys.cbuae-wps.secretRef: env:TH_DIB_CB_WPS_PUBLIC_KEY
+      # Binary output, as the source's encrypt profiles wrote it (Encryption__Providers__GnuPG__Keys__*__AsciiArmor false).
+      armor: "false"

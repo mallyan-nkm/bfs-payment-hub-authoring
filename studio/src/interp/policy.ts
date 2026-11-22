@@ -23,6 +23,7 @@ export const TYPE_DEFAULTS: Record<string, TypeDefault> = {
   decide: { attemptTimeout: 'PT5S', maxAttempts: 1, nonRetryable: 'all' },
   enrich: { attemptTimeout: 'PT5S', maxAttempts: 3, nonRetryable: [] },
   reconcile: { attemptTimeout: 'PT5S', maxAttempts: 3, nonRetryable: [] },
+  protect: { attemptTimeout: 'PT10S', maxAttempts: 3, nonRetryable: [] },
   screen: { attemptTimeout: 'PT10S', maxAttempts: 3, nonRetryable: ['BusinessReject'] },
   exchange: { attemptTimeout: 'PT10S', maxAttempts: 3, nonRetryable: ['BusinessReject'] },
   post: { attemptTimeout: 'PT10S', maxAttempts: 3, nonRetryable: ['BusinessReject'] },

@@ -63,7 +63,7 @@ describe('what is happening', () => {
     const x = explainDoc(env, env.store.doc('uae.wps.wf.salary-file-out.v1'), { selected: 'file-checks' });
     const t = x.lines.join('\n');
     expect(t).toMatch(/fills the scheme-leg slot of p\.wf\.corporate\.v1/);
-    expect(t).toMatch(/2\. file-checks: uses .* if repair, end as rejected; if reject, end as rejected\./);
+    expect(t).toMatch(/3\. file-checks: uses .* if repair, end as rejected; if reject, end as rejected\./);
     expect(t).toMatch(/For each line of the file, stopping at the first that fails:/);
     expect(t).toMatch(/The selected step, file-checks/);
   });

@@ -176,8 +176,9 @@ describe.skipIf(!dotnet)('the deploy runner, in process', () => {
     const r = await deploy({ packagePath: zipPath, workflow: 'uae.wps.wf.salary-file-out.v1', studioRoot: env.studioRoot, environment: environment('no-reply'), inbound });
     expect(r.outcome).toBe('pending');
     expect(r.intake).toMatchObject({ activity: 'uae.wps.map.sif-in.v1', queue: 'th-uae-wps' });
-    expect(r.workers.map((w) => w.queue)).toEqual(['th-uae-p', 'th-uae-wps']);
-    expect(new Set(r.workers.map((w) => w.pid)).size).toBe(2);
+    // The salary file is encrypted by a platform block before it is sent (Issue I-87), so the platform's queue has a worker too.
+    expect(r.workers.map((w) => w.queue)).toEqual(['th-p', 'th-uae-p', 'th-uae-wps']);
+    expect(new Set(r.workers.map((w) => w.pid)).size).toBe(3);
     for (const w of r.workers) expect(() => process.kill(w.pid, 0)).toThrow(); // stopped
   }, 300000);
 

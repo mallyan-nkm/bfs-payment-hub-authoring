@@ -10,11 +10,15 @@ bench:
   - port: uae.wps.port.wps.v1
     simulator: uae.wps.sim.wps-outward.v1
     scenario: no-reply
+  - port: p.port.encryption.v1
+    simulator: p.sim.encryption.v1
+    scenario: accept
 given:
   inbound: samples/wps-sif-valid.sif
 expect:
   outcome: pending
   virtualElapsed: P1D
   detail:
+    - encrypt:encrypted
     - send:accepted
     - await-ack:timeout

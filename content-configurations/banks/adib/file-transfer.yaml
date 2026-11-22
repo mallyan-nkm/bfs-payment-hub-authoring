@@ -1,0 +1,25 @@
+# The bank's file transfer, as a port binding (R-12-12): the salary files it picks up, the Central Bank's acknowledgements
+# and returns, and the result files to the corporate. Read by runtime/src/TransactHub.Ports/PortBindings.cs. The values
+# are the source's, the folders its bank fork uses when its workflow names none
+# (services/activities/bank/Adib/PaymentHub.Activities.Bank.Adib.Wps/AdibWpsActivities.cs):
+#   AdibSftpDownloadSifFile sftpPath      /wps/inbound   -> pickup.folder
+#   UploadSifToCbSftp       sftpOutPath   /wps/outbound  -> result.folder
+#   ReceiveSifAckNak        cbSftpAckPath /cb/wps/ack    -> centralBank.ackFolder
+#   ReceiveRtcFiles         cbSftpRtcPath /cb/wps/rtc    -> centralBank.rtcFolder
+# The source reaches them through its SFTP gateway (the named client SftpGateway) and holds no host, session setting or
+# Central Bank bank code for the bank, so the hosts are .invalid placeholders and nothing else is set (README.md).
+kind: port-bindings
+tenant: adib
+bindings:
+  - port: p.port.file-transfer.v1
+    adapter: sftp
+    validFrom: 2026-11-22T00:00:00Z
+    settings:
+      centralBank.host: cb-sftp.adib.invalid
+      centralBank.ackFolder: /cb/wps/ack
+      centralBank.rtcFolder: /cb/wps/rtc
+      pickup.host: channel-sftp.adib.invalid
+      pickup.folder: /wps/inbound
+      result.folder: /wps/outbound
+      # The SFTP gateway's credential, by reference only. The source holds none of the bank's.
+      secretRef: env:TH_ADIB_SFTP_CREDENTIAL

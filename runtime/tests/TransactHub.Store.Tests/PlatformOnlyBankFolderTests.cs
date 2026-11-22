@@ -6,7 +6,8 @@ using YamlDotNet.RepresentationModel;
 namespace TransactHub.Store.Tests;
 
 // Three real banks' folders in this repository (owner's decision of 2026-11-22, D5 as amended): content-configurations/
-// banks/<bank>/. None of them runs WPS in the source, so each configures the platform only. The source holds no core-banking
+// banks/<bank>/. ENBD and FAB run no WPS in the source, so each configures the platform only; ADIB runs WPS by the owner's
+// decision of 2026-11-22 (Issue I-86, AdibWpsBankFolderTests). The source holds no core-banking
 // setting of theirs (every route their forks called is the bank simulator's, Issue I-85), so each binds core banking to the
 // gateway with a placeholder host and a credential by reference, and the adapter refuses every call until the bank's
 // settings are added. Nothing is defaulted. Shared code still names no bank (BankConfigurationTests).
@@ -16,9 +17,12 @@ public sealed class PlatformOnlyBankFolderTests
     const string Port = "p.port.core-banking.v1";
     static readonly DateTimeOffset From = DateTimeOffset.Parse("2026-11-22T00:00:00Z");
 
+    /// <summary>The banks whose core banking the source does not describe (Issue I-85).</summary>
     public static TheoryData<string> Banks => new() { "adib", "enbd", "fab" };
+    /// <summary>The banks that configure the platform only (Issue I-86).</summary>
+    public static TheoryData<string> PlatformOnly => new() { "enbd", "fab" };
 
-    static string Folder(string tenant)
+    internal static string Folder(string tenant)
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
             if (Directory.Exists(Path.Combine(d.FullName, "content-configurations")) && Directory.Exists(Path.Combine(d.FullName, "runtime")))
@@ -27,7 +31,7 @@ public sealed class PlatformOnlyBankFolderTests
     }
 
     [Theory]
-    [MemberData(nameof(Banks))]
+    [MemberData(nameof(PlatformOnly))]
     public void The_folder_binds_core_banking_for_its_tenant_from_its_validFrom_and_no_other(string tenant)
     {
         var bindings = PortBindings.FromDirectory(Folder(tenant));
@@ -60,7 +64,7 @@ public sealed class PlatformOnlyBankFolderTests
     }
 
     [Theory]
-    [MemberData(nameof(Banks))]
+    [MemberData(nameof(PlatformOnly))]
     public void The_bank_runs_no_factory_rail_and_carries_no_WPS_rule_values(string tenant)
     {
         Assert.False(File.Exists(Path.Combine(Folder(tenant), "uae.wps.salary-file-rules.yaml")));

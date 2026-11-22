@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: uae.wps.errors.wps.v1
-release: 1.0.0
+release: 1.1.0
 title: WPS error dictionary (provisional)
 description: The reason codes the WPS scheme's rules and its party raise that the platform's and the cluster's dictionaries
   do not hold (R-05-51). Provisional, as the scheme pack is.
@@ -57,6 +57,27 @@ entries:
         - Open the file on the payment's documents tab (as kept).
       safeActions:
         - 'Do not retry: the same data gives the same answer. Correct the data at its source.'
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: RR04
+    title: Regulatory reason, employer suspended (provisional)
+    category: business
+    retryable: false
+    isoReasonCode: RR04
+    raisedBy:
+      - rule
+      - port
+    meaning: 'The labour ministry has suspended the employer, so its salary file is refused (Issue I-88), or the sanctions
+      party refused the payment for a regulatory reason. Provisional: the scheme''s own code for a suspended employer is not
+      confirmed.'
+    causes:
+      - The labour ministry's establishment register answered that the employer is suspended.
+      - A sanctions hit that the screening team confirmed.
+    runbook:
+      checks:
+        - Open the payment in the operations console and read the step that gave the reason code.
+        - Read the employer's labour ministry status in the file details.
+      safeActions:
+        - 'Do not retry: the same data gives the same answer. The employer settles its status with the labour ministry first.'
       escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
 provenance:
   origin: factory

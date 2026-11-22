@@ -1,23 +1,55 @@
 # The bank's values for factory parameters, and its hook bindings (plan W6). Values, not definitions: each one
 # sets a parameter the factory declares, inside its bounds, from its validFrom. README.md gives the source of each.
-# The bank does not run WPS in the source, so only the platform is configured: no routing code, no WPS dial.
+# The bank runs WPS by the owner's decision of 2026-11-22 (Issue I-86). Its WPS values are the ones the source holds for
+# it: the WPS outward workflow only ADIB's activities serve (dsl/workflows/wps-outward.v2.workflow.json 2.0.0) and the
+# bank's WPS plugin (PaymentHub.Activities.Bank.Adib.Wps). The source holds no WPS routing code for the bank, so none is set.
 kind: configuration-set
 tenant: adib
-release: 1.1.0
-title: Bank configuration (platform only)
+release: 1.2.0
+title: Bank configuration for WPS
 accepts:
-  - { scope: p, release: 1.1.0 }
-  - { scope: uae.p, release: 1.1.0 }
-  - { scope: uae.wps, release: 1.1.0 }
+  - { scope: p, release: 1.2.0 }
+  - { scope: uae.p, release: 1.2.0 }
+  - { scope: uae.wps, release: 1.2.0 }
 values:
-  # The rails the bank runs among the factory's: none. The bank's customer overlay licenses IPI and FTS only
-  # (infra/docker/docker-compose.customer-adib.yml, LICENSE_RAILS=ipi,fts); the factory has neither (D6).
+  # The rails the bank runs among the factory's: WPS. The source's base seed subscribes the tenant to WPS
+  # (infra/docker/mssql/init.sql, TenantSubscriptions adib WPS); the owner decided on 2026-11-22 that it runs it here.
   - parameter: p.table.rail-choice.v1#enabledRails
-    value: []
+    value: [uae.wps]
     validFrom: "2026-11-22"
-# The employer AML check and the labour ministry notification are carried as hooks, not bound: no live workflow of
-# the bank in the source calls them (README.md). Binding one is a line here with its validFrom.
-bindings: []
+  # VAT on a charge, 5 per cent (wps-outward.v2, variable vatPercentage 5.0). The source seeds no charge slab for the bank
+  # (chargesConfigured true, no slab), so the slabs stay the factory's default, none.
+  - parameter: p.post.accounting.v1#vatPercent
+    value: 5
+    validFrom: "2026-11-22"
+  # The accounts the WPS postings move between (wps-outward.v2: cbNostroAccount, sifSuspenseAccount, chargeGlAccount,
+  # vatGlAccount). They read as the workflow's names for the bank's general-ledger accounts, not account numbers: a
+  # deployment confirms them with the bank (README.md, "What a deployment must set").
+  - parameter: p.post.accounting.v1#settlementAccount
+    value: CB-NOSTRO-WPS
+    validFrom: "2026-11-22"
+  - parameter: p.post.accounting.v1#suspenseAccount
+    value: WPS-SUSPENSE-GL
+    validFrom: "2026-11-22"
+  - parameter: p.post.accounting.v1#chargeIncomeAccount
+    value: WPS-CHARGE-GL
+    validFrom: "2026-11-22"
+  - parameter: p.post.accounting.v1#vatAccount
+    value: WPS-VAT-GL
+    validFrom: "2026-11-22"
+  # The id this folder's encryption binding (encryption.yaml) gives the Central Bank's WPS public key (Issue I-87). The
+  # source has no encryption profile for the bank's outgoing files; the key itself is set at deployment, by reference.
+  - parameter: p.protect.encrypt-file.v1#recipientKey
+    value: cbuae-wps
+    validFrom: "2026-11-22"
+# The labour ministry notification is bound: the bank's WPS workflow calls it (wps-outward.v2, steps
+# mohre_salary_notification, mohre_salary_completion and mohre_nak_notification, mohreNotificationEnabled true), and the
+# bank runs WPS. The employer AML check stays unbound: no workflow of the source calls AdibWpsEmployerAmlCheck (README.md).
+bindings:
+  - hookPoint: p.wf.corporate.v1#on-close
+    hook: b.hook.labour-ministry-notify.v1
+    release: 1.0.0
+    validFrom: "2026-11-22"
 approval:
   maker: bank.maker
   checker: bank.checker

@@ -14,6 +14,8 @@ public sealed class AccountCols
     public string? OtherScheme { get; set; }
     public string? Currency { get; set; }
     public string? Name { get; set; }
+    /// <summary>CashAccount40/Tp: the ISO code or the scheme's own (Issue I-100).</summary>
+    public string? Type { get; set; }
 }
 
 public sealed class AgentCols
@@ -58,6 +60,8 @@ public sealed class BulkRow : IInsertOnly
     public string PaymentInformationId { get; set; } = "";
     public DateTimeOffset CreationDateTime { get; set; }
     public DateOnly? RequestedExecutionDate { get; set; }
+    /// <summary>GroupHeader InitiatingParty, a party by id only (Issue I-100).</summary>
+    public string? InitiatingPartyId { get; set; }
     public string DebtorPartyId { get; set; } = "";
     public AccountCols DebtorAccount { get; set; } = new();
     public AgentCols DebtorAgent { get; set; } = new();

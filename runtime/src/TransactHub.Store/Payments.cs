@@ -22,12 +22,14 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
         var bulkId = NewId();
         var debtor = PartyOf(tenant, bulk.Debtor, at);
         db.Parties.Add(debtor);
+        var initiator = bulk.InitiatingParty is null ? null : PartyOf(tenant, bulk.InitiatingParty, at);
+        if (initiator is not null) db.Parties.Add(initiator);
         db.Bulks.Add(new BulkRow
         {
             Id = bulkId, Tenant = tenant, Scheme = scheme, Direction = direction.ToString(),
             MessageId = bulk.MessageId, PaymentInformationId = bulk.PaymentInformationId,
             CreationDateTime = StoreTime.Of(bulk.CreationDateTime == default ? at : bulk.CreationDateTime),
-            RequestedExecutionDate = bulk.RequestedExecutionDate,
+            RequestedExecutionDate = bulk.RequestedExecutionDate, InitiatingPartyId = initiator?.Id,
             DebtorPartyId = debtor.Id, DebtorAccount = AccountOf(bulk.DebtorAccount), DebtorAgent = AgentOf(bulk.DebtorAgent),
             CategoryPurposeCode = bulk.CategoryPurposeCode,
             NumberOfTransactions = bulk.NumberOfTransactions, ControlSum = bulk.ControlSum,
@@ -92,12 +94,13 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
         var b = await db.Bulks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == bulkId, ct);
         if (b is null) return null;
         var rows = await db.Payments.AsNoTracking().Where(p => p.BulkId == bulkId).OrderBy(p => p.LineNo).ToListAsync(ct);
-        var partyIds = rows.SelectMany(r => new[] { r.CreditorPartyId, r.DebtorPartyId, r.UltimateCreditorPartyId, r.UltimateDebtorPartyId }).Append(b.DebtorPartyId).OfType<string>().Distinct().ToList();
+        var partyIds = rows.SelectMany(r => new[] { r.CreditorPartyId, r.DebtorPartyId, r.UltimateCreditorPartyId, r.UltimateDebtorPartyId }).Append(b.DebtorPartyId).Append(b.InitiatingPartyId).OfType<string>().Distinct().ToList();
         var parties = await db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
         return new PaymentBulk
         {
             MessageId = b.MessageId, PaymentInformationId = b.PaymentInformationId, CreationDateTime = b.CreationDateTime,
             RequestedExecutionDate = b.RequestedExecutionDate,
+            InitiatingParty = b.InitiatingPartyId is null ? null : ModelOf(parties[b.InitiatingPartyId]),
             Debtor = ModelOf(parties[b.DebtorPartyId]), DebtorAccount = ModelOf(b.DebtorAccount)!, DebtorAgent = ModelOf(b.DebtorAgent),
             CategoryPurposeCode = b.CategoryPurposeCode, SupplementaryData = SupplementaryOf(b.SupplementaryJson),
             Transactions = rows.Select(r => TransferOf(r, parties, omitDebtor: r.DebtorPartyId == b.DebtorPartyId)).ToList(),
@@ -162,9 +165,9 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
         };
     }
 
-    static AccountCols AccountOf(Account? a) => new() { Iban = a?.Iban, OtherId = a?.Other?.Id, OtherScheme = a?.Other?.SchemeName, Currency = a?.Currency, Name = a?.Name };
+    static AccountCols AccountOf(Account? a) => new() { Iban = a?.Iban, OtherId = a?.Other?.Id, OtherScheme = a?.Other?.SchemeName, Currency = a?.Currency, Name = a?.Name, Type = a?.Type };
     static Account? ModelOf(AccountCols? c) => c is null || (c.Iban ?? c.OtherId) is null ? null
-        : new Account { Iban = c.Iban, Other = c.OtherId is null ? null : new GenericId(c.OtherId, c.OtherScheme), Currency = c.Currency, Name = c.Name };
+        : new Account { Iban = c.Iban, Other = c.OtherId is null ? null : new GenericId(c.OtherId, c.OtherScheme), Currency = c.Currency, Name = c.Name, Type = c.Type };
     static AgentCols AgentOf(Agent? a) => new() { Bicfi = a?.Bicfi, Lei = a?.Lei, ClearingSystem = a?.ClearingSystem, MemberId = a?.MemberId, Name = a?.Name };
     static Agent? ModelOf(AgentCols? c) => c is null || (c.Bicfi ?? c.Lei ?? c.MemberId ?? c.Name) is null ? null
         : new Agent { Bicfi = c.Bicfi, Lei = c.Lei, ClearingSystem = c.ClearingSystem, MemberId = c.MemberId, Name = c.Name };

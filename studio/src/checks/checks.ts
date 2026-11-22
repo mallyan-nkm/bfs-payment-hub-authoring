@@ -160,7 +160,8 @@ export class Checker {
   extensionRoots: string[] = [];
   denyNames: string[] = [];
 
-  constructor(docs: any[], denyNames: string[] = [], private scriptOf?: (name: string, release?: string) => { source: string; language: string } | undefined) {
+  constructor(docs: any[], denyNames: string[] = [], private scriptOf?: (name: string, release?: string) => { source: string; language: string } | undefined,
+    private published?: (name: string, release: string) => boolean) {
     this.docs = docs;
     for (const d of docs) {
       if (d.name && d.kind !== 'pack') {
@@ -183,7 +184,8 @@ export class Checker {
     const f = path.join(env.specRoot, 'tools', 'deny-names.txt');
     if (fs.existsSync(f)) deny = fs.readFileSync(f, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
     // Script-behinds are files on the branch, the factory's among them (R-11-25).
-    return new Checker(merged, deny, (name, release) => env.scripts.find(name, release));
+    return new Checker(merged, deny, (name, release) => env.scripts.find(name, release),
+      (name, release) => env.store.releasesOf(name).some((e) => e.doc?.release === release));
   }
 
   hookPoints(d: any, depth = 0): Record<string, any> {
@@ -694,8 +696,9 @@ export class Checker {
     for (const wr of d.scope?.workflowReleases ?? []) {
       const [wf, rel] = String(wr).split('@');
       inScope.add(`${wf}@${rel}`);
+      // A workflow release in flight is a published one, not only the latest: a later release of the workflow does not end it.
       const w = this.byName.get(wf);
-      if (!w || w.kind !== 'workflow' || w.release !== rel) err('L27', `${wr} is not a workflow release in this repository`);
+      if (!w || w.kind !== 'workflow' || (w.release !== rel && !this.published?.(wf, rel))) err('L27', `${wr} is not a workflow release in this repository`);
       else if (!this.closure(wf).has(d.artefact)) err('L27', `${wr} does not use ${d.artefact}, so there is nothing to supersede`);
     }
     for (const t of d.evidence?.testRuns ?? []) if (!inScope.has(`${t.workflow}@${t.release}`)) err('L27', `Evidence names ${t.workflow}@${t.release}, which is outside the scope`);

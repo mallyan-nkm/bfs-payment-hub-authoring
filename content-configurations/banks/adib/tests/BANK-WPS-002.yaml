@@ -1,0 +1,55 @@
+# The labour ministry has suspended the employer (Issue I-88): under the bank's configuration set the salary file is refused
+# at the file's checks with RR04, and nothing is sent to WPS. The file is invented.
+kind: test
+id: BANK-WPS-002
+title: The salary file of an employer the labour ministry has suspended is refused, and nothing is sent
+target: p.wf.corporate.v1
+level: end-to-end
+evaluationDate: "2026-11-24"
+tenant: adib
+bench:
+  - port: p.port.core-banking.v1
+    simulator: p.sim.core-banking.v1
+    scenario: accept
+  - port: p.port.sanctions.v1
+    simulator: p.sim.sanctions.v1
+    scenario: accept
+  - port: p.port.fraud.v1
+    simulator: p.sim.fraud.v1
+    scenario: accept
+  - port: p.port.channel.v1
+    simulator: p.sim.channel.v1
+    scenario: accept
+  - port: p.port.payment-record.v1
+    simulator: p.sim.payment-record.v1
+    scenario: accept
+  - port: p.port.facts-out.v1
+    simulator: p.sim.facts-out.v1
+    scenario: accept
+  - port: p.port.operations-queue.v1
+    simulator: p.sim.operations.v1
+    scenario: release
+  - port: p.port.encryption.v1
+    simulator: p.sim.encryption.v1
+    scenario: accept
+  - port: uae.wps.port.wps.v1
+    simulator: uae.wps.sim.wps-outward.v1
+    scenario: accept
+  - port: uae.wps.port.labour-ministry.v1
+    simulator: uae.wps.sim.labour-ministry.v1
+    scenario: suspended
+  - port: uae.p.port.calendar.v1
+    simulator: uae.p.sim.calendar.v1
+    scenario: accept
+  - port: b.port.labour-ministry.v1
+    simulator: b.sim.labour-ministry.v1
+    scenario: accept
+given:
+  inbound: samples/wps-sif-valid.sif
+  message: uae.wps.sif
+expect:
+  outcome: rejected
+  messages:
+    - port: uae.wps.port.wps.v1
+      message: uae.wps.sif-submission
+      count: 0

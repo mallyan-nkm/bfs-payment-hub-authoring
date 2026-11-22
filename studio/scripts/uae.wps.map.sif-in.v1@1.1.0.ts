@@ -1,0 +1,130 @@
+// WPS salary information file (SIF) to the canonical batch, release 1.1.0. Variants: SCR first or SCR last.
+// Field mapping as declared in uae.wps.map.sif-in.v1. Runs the edge rule the map names.
+//
+// 1.1.0 (Issue I-100) reads two things the 1.0.0 script did not:
+// - the EVP record of a line (EVP,<person id>,<routing code>,<housing>,<conveyance>,<medical>,<annual passage>,<overtime>,
+//   <other>,<leave encashment>), matched to its EDR by the person id, as the line's allowance fields;
+// - what the employer's channel declared beside the file at upload, given as fixture lines before the records
+//   (`# channel:`, `# initiated-by:`, `# debtor-name:`, `# debtor-account:`, like `# file:`): the upload channel, the
+//   initiating party's id (GrpHdr/InitgPty, an id only), the employer's name (Dbtr/Nm) and its debit account (DbtrAcct).
+// Amounts are exact (R-02-17): each is written as the SIF's own text read as a number when it has at most 15 significant
+// digits, else as a decimal string; a line's amount is the exact sum of its fixed and variable pay.
+
+const HUNDRED = BigInt(100);
+const ZERO = BigInt(0);
+const UPLOAD: Record<string, string> = { channel: 'channel', 'initiated-by': 'initiatedBy', 'debtor-name': 'debtorName', 'debtor-account': 'debtorAccount' };
+
+function lines(text: string) {
+  let fileName: string | undefined;
+  const upload: Record<string, string> = {};
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l) continue;
+    if (l.startsWith('#')) {
+      const m = /^#\s*([a-z-]+):\s*(.+?)\s*$/.exec(l);
+      if (m && m[1] === 'file') fileName = m[2].split(/\s+/)[0];
+      else if (m && UPLOAD[m[1]]) upload[UPLOAD[m[1]]] = m[2];
+      continue;
+    }
+    out.push(l);
+  }
+  return { fileName, upload, lines: out };
+}
+
+/** An amount as its exact decimal: two places, in minor units, from the file's own text. */
+function minor(s: string): bigint | null {
+  const m = /^\s*(-?)(\d+)(?:\.(\d{1,2}))?\s*$/.exec(s ?? '');
+  if (!m) return null;
+  const v = BigInt(m[2]) * HUNDRED + BigInt((m[3] ?? '').padEnd(2, '0') || '0');
+  return m[1] ? -v : v;
+}
+
+/** Minor units back to an amount: a number when 15 significant digits hold it exactly, else a decimal string (R-02-17). */
+function amount(v: bigint): number | string {
+  const neg = v < ZERO;
+  const a = neg ? -v : v;
+  const text = `${neg ? '-' : ''}${a / HUNDRED}.${String(a % HUNDRED).padStart(2, '0')}`;
+  const digits = text.replace(/[-.]/g, '').replace(/^0+/, '').replace(/0+$/, '');
+  return digits.length > 15 ? text : Number(text);
+}
+
+export async function run({ ctx, rules }) {
+  const inbound = ctx.messages?.inbound;
+  const text: string = inbound?.payload ?? '';
+  if (!text || inbound?.malformed) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const { fileName, upload, lines: ls } = lines(text);
+  const scr = ls.filter((l) => l.startsWith('SCR,'));
+  const edr = ls.filter((l) => l.startsWith('EDR,'));
+  const evp = ls.filter((l) => l.startsWith('EVP,'));
+  if (scr.length !== 1 || edr.length === 0) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const variant = ls[0].startsWith('SCR,') ? 'scr-first' : ls[ls.length - 1].startsWith('SCR,') ? 'scr-last' : null;
+  if (!variant) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const s = scr[0].split(',');
+  if (s.length < 9) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const [, employerId, employerRoutingCode, creationDate, creationTime, salaryMonth, recordCount, totalSalary, currency, employerRef] = s;
+  const total = minor(totalSalary);
+  if (total === null) return { outcome: 'unmappable', reasonCode: 'FF01' };
+  const fileId = (fileName ?? `${employerId}-${creationDate}-${creationTime}`).replace(/\.sif$/i, '');
+  // The dispatch table says what payment this file starts (an outward corporate payment); the map
+  // only reads the file and what its channel declared with it (R-05-42).
+  ctx.header = { ...(ctx.header ?? {}), fileId, endToEndId: fileId };
+  ctx.batch = {
+    id: fileId,
+    numberOfTransactions: Number(recordCount),
+    controlSum: amount(total),
+    currency,
+    categoryPurpose: 'SALA',
+    debtorAgent: { clearingMemberId: employerRoutingCode },
+    ...(upload.initiatedBy ? { initiatingParty: { id: upload.initiatedBy } } : {}),
+    ...(upload.debtorName ? { debtor: { name: upload.debtorName } } : {}),
+    ...(upload.debtorAccount ? { debtorAccount: { iban: upload.debtorAccount } } : {}),
+  };
+  ctx.ext = { uae: { wps: {
+    employerId, fileCreationDate: creationDate, fileCreationTime: creationTime, salaryMonth,
+    ...(employerRef ? { employerReference: employerRef } : {}),
+    ...(upload.channel ? { uploadChannel: upload.channel } : {}),
+  } } };
+  // EVP records by person id: the allowances of the line with the same person id.
+  const allowances = new Map<string, Record<string, number | string>>();
+  const names = ['housingAllowance', 'conveyanceAllowance', 'medicalAllowance', 'annualPassageAllowance', 'overtimeAllowance', 'otherAllowances', 'leaveEncashment'];
+  for (const line of evp) {
+    const f = line.split(',');
+    if (f.length < 10) return { outcome: 'unmappable', reasonCode: 'FF01' };
+    const values: Record<string, number | string> = {};
+    for (let i = 0; i < names.length; i++) {
+      const v = minor(f[3 + i]);
+      if (v === null) return { outcome: 'unmappable', reasonCode: 'FF01' };
+      values[names[i]] = amount(v);
+    }
+    allowances.set(f[1], values);
+  }
+  const items = [];
+  for (const line of edr) {
+    const f = line.split(',');
+    if (f.length < 10) return { outcome: 'unmappable', reasonCode: 'FF01' };
+    const [, personId, agentRoutingCode, iban, payStartDate, payEndDate, days, fixed, variable, leave] = f;
+    const fixedPay = minor(fixed);
+    const variablePay = minor(variable);
+    if (fixedPay === null || variablePay === null) return { outcome: 'unmappable', reasonCode: 'FF01' };
+    items.push({
+      payment: {
+        creditorAgent: { clearingMemberId: agentRoutingCode },
+        creditorAccount: { iban },
+        instructedAmount: { value: amount(fixedPay + variablePay), currency },
+      },
+      ext: { uae: { wps: {
+        personId, payStartDate, payEndDate, daysInPeriod: Number(days), fixedPay: amount(fixedPay), variablePay: amount(variablePay), leaveDays: Number(leave),
+        ...(allowances.get(personId) ?? {}),
+      } } },
+    });
+  }
+  ctx.items = items;
+  // The edge rule the map names: the file name agrees with the control record.
+  const edge = rules.run('uae.wps.rule.file-name-matches-control.v1', {
+    SourceFile: [{ name: fileName ?? '', size: text.length }],
+    WpsBatch: [ctx.ext.uae.wps],
+  });
+  if (edge.worst === 'reject') return { outcome: 'unmappable', reasonCode: edge.findings[0]?.reasonCode };
+  return 'mapped';
+}

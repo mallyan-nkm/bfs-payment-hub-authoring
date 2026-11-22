@@ -537,12 +537,17 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             {
                 var b = await s.Bulks.AsNoTracking().FirstAsync(x => x.Id == subj.Id, ct);
                 var debtor = await s.Parties.AsNoTracking().Where(x => x.Id == b.DebtorPartyId).Select(x => x.Name).FirstOrDefaultAsync(ct);
+                // GrpHdr/InitgPty: the id the channel gave its user, never a name (R-02-18). The view masks it.
+                var initiator = b.InitiatingPartyId is null ? null
+                    : (await s.Parties.AsNoTracking().Where(x => x.Id == b.InitiatingPartyId).Select(x => x.OtherIdsJson).FirstOrDefaultAsync(ct)) is { } ids
+                        ? (JsonNode.Parse(ids) as JsonArray)?.OfType<JsonObject>().Select(o => (string?)o["Id"]).FirstOrDefault() : null;
                 bulk = new JsonObject
                 {
                     ["id"] = b.Id, ["messageId"] = b.MessageId, ["paymentInformationId"] = b.PaymentInformationId, ["numberOfTransactions"] = b.NumberOfTransactions,
                     ["controlSum"] = b.ControlSum, ["requestedExecutionDate"] = b.RequestedExecutionDate?.ToString("yyyy-MM-dd"), ["creationDateTime"] = b.CreationDateTime.ToString("O"),
                     ["acceptedAt"] = b.AcceptedAt.ToString("O"), ["categoryPurposeCode"] = b.CategoryPurposeCode, ["releaseId"] = b.ReleaseId, ["debtorName"] = debtor,
                     ["debtorAccount"] = Account(b.DebtorAccount), ["debtorAgent"] = Agent(b.DebtorAgent),
+                    ["initiatingParty"] = new JsonObject { ["id"] = initiator },
                 };
                 ext = JsonNode.Parse(b.SupplementaryJson) as JsonObject ?? new JsonObject();
                 var rows = await s.Payments.AsNoTracking().Where(x => x.BulkId == subj.Id).OrderBy(x => x.LineNo).ToListAsync(ct);
@@ -588,8 +593,8 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             };
         }
 
-        static JsonObject Account(AccountCols a) => new() { ["iban"] = a.Iban, ["other"] = a.OtherId, ["currency"] = a.Currency };
-        static JsonObject Agent(AgentCols a) => new() { ["bicfi"] = a.Bicfi, ["memberId"] = a.MemberId, ["clearingSystem"] = a.ClearingSystem };
+        static JsonObject Account(AccountCols a) => new() { ["iban"] = a.Iban, ["other"] = a.OtherId, ["currency"] = a.Currency, ["type"] = a.Type };
+        static JsonObject Agent(AgentCols a) => new() { ["bicfi"] = a.Bicfi, ["memberId"] = a.MemberId, ["clearingSystem"] = a.ClearingSystem, ["name"] = a.Name };
     }
 }
 

@@ -54,6 +54,8 @@ public sealed record Account
     public GenericId? Other { get; init; }
     public string? Currency { get; init; }
     public string? Name { get; init; }
+    /// <summary>CashAccount40/Tp (Issue I-100): an ExternalCashAccountType1Code (Cd), or the scheme's own code (Prtry).</summary>
+    public string? Type { get; init; }
     public string Display => Iban ?? Other?.Id ?? "";
 }
 
@@ -121,6 +123,11 @@ public sealed record PaymentBulk
     public required string PaymentInformationId { get; init; }
     public DateTimeOffset CreationDateTime { get; init; }
     public DateOnly? RequestedExecutionDate { get; init; }
+    /// <summary>
+    /// GroupHeader InitiatingParty (Issue I-100): who uploaded or initiated the file at the channel, by its id only
+    /// (<see cref="Party.OtherIds"/>), never a name. Personal data: it lives with the parties and is masked where shown.
+    /// </summary>
+    public Party? InitiatingParty { get; init; }
     public required Party Debtor { get; init; }
     public required Account DebtorAccount { get; init; }
     public Agent? DebtorAgent { get; init; }
@@ -160,4 +167,34 @@ public enum TransactionStatus
 }
 
 /// <summary>A status report line: pacs.002 TxInfAndSts or OrgnlPmtInfAndSts, with an ISO reason code and the scheme's own code.</summary>
-public sealed record StatusReport(TransactionStatus Status, string? IsoReason = null, string? SchemeCode = null, string? Text = null);
+public sealed record StatusReport(TransactionStatus Status, string? IsoReason = null, string? SchemeCode = null, string? Text = null)
+{
+    /// <summary>pain.002 TxInfAndSts (Issue I-100): the status of each line the report names, as a scheme's NAK lists them.</summary>
+    public IReadOnlyList<TransactionStatusLine> Transactions { get; init; } = [];
+}
+
+/// <summary>
+/// One pain.002 TxInfAndSts: the line it reports on (its number in the file, or its original end-to-end id), its ISO status, its
+/// StsRsnInf (an ISO reason code where one applies, the scheme's own code beside it, R-02-14, and the scheme's text).
+/// </summary>
+public sealed record TransactionStatusLine(int? LineNo, TransactionStatus Status, string? IsoReason = null, string? SchemeCode = null,
+    string? AdditionalInformation = null, string? OriginalEndToEndId = null);
+
+/// <summary>CreditDebitCode, as camt.054 marks an entry.</summary>
+public enum CreditDebit { CRDT, DBIT }
+
+/// <summary>
+/// One camt.054 entry of a posting (Issue I-100): its side, amount and the account it moved, masked (only its last four
+/// characters), with the branch and the bank transaction code core banking took it under.
+/// </summary>
+public sealed record PostingEntry(CreditDebit Indicator, Money Amount, string MaskedAccount, string? Branch, string? TransactionCode);
+
+/// <summary>camt.054 ChrgsInf (Issue I-100): a charge on a posting, with its tax (VAT): rate in per cent and amount.</summary>
+public sealed record ChargesInformation(Money Amount, string Type, TaxAmount? Tax)
+{
+    /// <summary>TtlChrgsAndTaxAmt: the charge with its tax.</summary>
+    public Money TotalChargesAndTax => new(Amount.Amount + (Tax?.Amount.Amount ?? 0m), Amount.Currency);
+}
+
+/// <summary>A tax on a charge: rate in per cent, and the amount.</summary>
+public sealed record TaxAmount(decimal Rate, Money Amount);

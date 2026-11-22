@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <!-- OpenPGP for the file encryption and decryption adapters (R-12-13, Issue I-87). Pinned. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,7 @@ Status: draft 0.2, 17 November 2026. Normative words follow RFC 2119.
 
 ## 3.1 Purpose
 
-A block is its contract. The script-behind and the code-behind are two implementations of the same contract. This part defines the contract and the eleven activity types.
+A block is its contract. The script-behind and the code-behind are two implementations of the same contract. This part defines the contract and the twelve activity types.
 
 ## 3.2 Types
 
@@ -21,6 +21,7 @@ A block is its contract. The script-behind and the code-behind are two implement
 | `notify` | Tells a channel; publishes a fact outward | Close | write | `notified` |
 | `hold` | Parks the payment for a person | Any | write | `released`, `rejected`, `expired` |
 | `reconcile` | Matches scheme reports to the record | Close | read | `matched`, `unmatched` |
+| `protect` | Encrypts a file for its recipient, or decrypts one received, through a key service | Scheme leg, intake | read | `encrypted`, `refused` |
 
 A block MAY name its outcomes differently where the business meaning differs; the first outcome is always the primary one.
 
@@ -55,6 +56,7 @@ A block MAY name its outcomes differently where the business meaning differs; th
 | R-03-16 | An activity MUST ship at least one test per outcome. | Publish check (C11) |
 | R-03-17 | A port names a party by role. It MUST NOT name an endpoint, a bank or a vendor. | Schema `port` (L00); lint L09 |
 | R-03-18 | An activity that no workflow calls MUST say what runs it: `invokedBy: front-door` or `invokedBy: schedule`. A block that nothing reaches and that says neither is reported. | Lint L11 |
+| R-03-24 | A `protect` activity MUST reach its key service through at least one declared port and MUST be of effect `read`: it encrypts or decrypts a file and changes nothing in the bank. A key MUST NOT be a parameter or a value; the activity names the key by id and the bank's port binding holds it by reference (`secretRef`). | Schema `activity` (L00); `EncryptionTests` in `runtime/tests/TransactHub.Store.Tests` |
 
 ## 3.5 Type default policies
 
@@ -64,6 +66,7 @@ Values are placeholders. They are parameters of the engine binding, set per envi
 | --- | --- | --- | --- |
 | `map`, `validate`, `decide` | PT5S | 1 | All errors |
 | `enrich`, `reconcile` | PT5S | 3 | None |
+| `protect` | PT10S | 3 | None |
 | `screen`, `exchange`, `post`, `reserve` | PT10S | 3 | `BusinessReject` |
 | `notify` | PT5S | 5 | None |
 | `hold` | None; it waits for a person | 1 | All errors |

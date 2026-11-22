@@ -45,7 +45,8 @@
         "post",
         "notify",
         "hold",
-        "reconcile"
+        "reconcile",
+        "protect"
       ]
     },
     "mode": {
@@ -329,6 +330,31 @@
             }
           }
         ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "protect"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "ports"
+        ],
+        "properties": {
+          "effect": {
+            "const": "read"
+          },
+          "ports": {
+            "minItems": 1
+          }
+        }
       }
     }
   ]

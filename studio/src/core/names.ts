@@ -3,7 +3,7 @@
 
 export const ACTIVITY_TYPES = [
   'map', 'validate', 'enrich', 'screen', 'decide', 'reserve',
-  'exchange', 'post', 'notify', 'hold', 'reconcile',
+  'exchange', 'post', 'notify', 'hold', 'reconcile', 'protect',
 ] as const;
 export const OTHER_TYPES = ['rule', 'ruleset', 'table', 'sim', 'wf', 'seg', 'sub', 'handler', 'hook', 'port', 'ext', 'view', 'errors'] as const;
 export const ALL_TYPES: readonly string[] = [...ACTIVITY_TYPES, ...OTHER_TYPES];

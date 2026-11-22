@@ -6,13 +6,14 @@ import { runTest } from '../src/testing/runner.js';
 import type { StudioEnv } from '../src/env.js';
 import { freshEnv } from './helpers.js';
 
-// Three real banks' folders on the content branch, content-configurations/banks/<bank>/ (owner's decision of
-// 2026-11-22; D5 as amended; Issue I-43). None runs WPS in the source, so each configures the platform only: no rail
+// Two real banks' folders on the content branch, content-configurations/banks/<bank>/ (owner's decision of
+// 2026-11-22; D5 as amended; Issue I-43). Neither runs WPS in the source, so each configures the platform only: no rail
 // of the factory's, no routing code, no WPS dial. Each carries the employer AML check and the labour ministry
 // notification from its own WPS fork as hooks, built and tested and switched off: no live workflow of the bank in the
 // source calls them (each README.md). The runs that bind them do so in a configuration that exists only in the test.
 
-const BANKS = ['adib', 'enbd', 'fab'];
+// ADIB runs WPS by the owner's decision of 2026-11-22 (Issue I-86): its folder is tested in adib-wps.test.ts.
+const BANKS = ['enbd', 'fab'];
 const AML = 'b.hook.employer-aml-check.v1';
 const NOTIFY = 'b.hook.labour-ministry-notify.v1';
 

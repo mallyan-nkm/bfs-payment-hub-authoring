@@ -71,8 +71,8 @@ describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
     // 217 since the releases of plan P2 (R-11-35): every earlier release stays beside the later one. Of the latest, 193.
-    expect(env.store.current().length).toBe(193);
-    expect(env.store.all().length).toBe(217); // 3 more for the error dictionaries (R-05-51); 3 more for the operations views of p and uae.wps (R-05-48), the WPS view at 1.0.0 and 1.1.0; 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
+    expect(env.store.current().length).toBe(209); // 16 more for the encryption port, its block and simulator, the labour ministry lookup, its port, simulator and rule, and their tests (I-87, I-88, I-100)
+    expect(env.store.all().length).toBe(248); // 31 more for the 1.2.0 packs (I-87, I-88, I-100): 16 new documents and 15 new releases of published ones; 3 more for the error dictionaries (R-05-51); 3 more for the operations views of p and uae.wps (R-05-48), the WPS view at 1.0.0 and 1.1.0; 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

@@ -2,11 +2,12 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.salary-file-out.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: WPS salary file, bank as the employer's bank
-description: Sets the business date, validates the file and each record, and submits the file to WPS. The submit
-  step is a composite. It sends, waits for the acknowledgement and reads it.
+description: Sets the business date, asks the labour ministry for the employer's status, validates the file and
+  each record, and submits the file to WPS. The submit step is a composite. It sends, waits for the acknowledgement
+  and reads it.
 direction: outward
 implements:
   slot: scheme-leg
@@ -31,6 +32,11 @@ exit:
 do:
   - id: business-date
     call: uae.p.enrich.business-date.v1
+  - id: employer-status
+    call: uae.wps.enrich.employer-status.v1
+    handle:
+      not-found:
+        continue: true
   - id: file-checks
     call: uae.wps.validate.salary-file.v1
     handle:
@@ -64,6 +70,11 @@ do:
       of: uae.wps.exchange.submit-salary-file.v1
       by: uae.wps.sub.submit-salary-file.v1
       do:
+        - id: submit.encrypt
+          call: p.protect.encrypt-file.v1
+          handle:
+            refused:
+              return: rejected
         - id: submit.send
           call: uae.wps.exchange.send-salary-file.v1
           handle:
@@ -102,5 +113,5 @@ provenance:
   note: From public sources. Confirm against the current CBUAE WPS rulebook.
 form: expanded
 expandedFrom:
-  release: 1.0.0
-  hash: sha256:cff716027d618c6f6668df4745695fcda8fd881701db021cd75bc3dc55a2a358
+  release: 1.1.0
+  hash: sha256:34e663bdb5f6d9687767a0c8ebc07951915a2c2356e693b48629a19c4942ef38

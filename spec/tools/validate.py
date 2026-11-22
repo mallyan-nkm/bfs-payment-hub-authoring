@@ -584,7 +584,9 @@ for path, d in docs:
         wf, _, rel = wr.partition("@")
         w = by_name.get(wf)
         in_scope.add((wf, rel))
-        if w is None or w.get("kind") != "workflow" or w["release"] != rel:
+        # A workflow release in flight is the latest or one the content branch published: a later release does not end it.
+        published = w is not None and (ROOT.parent / "content-configurations" / "artefacts" / scope_of(wf) / wf / ("%s.yaml" % rel)).is_file()
+        if w is None or w.get("kind") != "workflow" or (w["release"] != rel and not published):
             err("L27", path, "%s is not a workflow release in this repository" % wr)
         elif d["artefact"] not in closure(wf):
             err("L27", path, "%s does not use %s, so there is nothing to supersede" % (wr, d["artefact"]))
@@ -756,16 +758,17 @@ OPS_PROPS = {
                 "acceptedAt", "releaseId", "hold", "holdReason"},
     "bulk": {"id", "messageId", "paymentInformationId", "numberOfTransactions", "controlSum", "requestedExecutionDate",
              "creationDateTime", "acceptedAt", "categoryPurposeCode", "releaseId", "debtorName", "debtorAccount.iban",
-             "debtorAccount.other", "debtorAccount.currency", "debtorAgent.bicfi", "debtorAgent.memberId", "debtorAgent.clearingSystem"},
+             "debtorAccount.other", "debtorAccount.currency", "debtorAccount.type", "debtorAgent.bicfi", "debtorAgent.memberId",
+             "debtorAgent.clearingSystem", "initiatingParty.id"},
     "payment": {"id", "endToEndId", "instructionId", "transactionId", "uetr", "amount", "currency", "settlementDate", "purposeCode",
-                "creditorAccount.iban", "creditorAccount.other", "creditorAgent.bicfi", "creditorAgent.memberId",
-                "debtorAccount.iban", "debtorAccount.other", "debtorAgent.bicfi", "debtorAgent.memberId"},
-    "line": {"id", "lineNo", "endToEndId", "amount", "currency", "creditorAccount.iban", "creditorAccount.other",
-             "creditorAgent.bicfi", "creditorAgent.memberId", "creditorAgent.clearingSystem"},
+                "creditorAccount.iban", "creditorAccount.other", "creditorAccount.type", "creditorAgent.bicfi", "creditorAgent.memberId",
+                "creditorAgent.name", "debtorAccount.iban", "debtorAccount.other", "debtorAgent.bicfi", "debtorAgent.memberId"},
+    "line": {"id", "lineNo", "endToEndId", "amount", "currency", "creditorAccount.iban", "creditorAccount.other", "creditorAccount.type",
+             "creditorAgent.bicfi", "creditorAgent.memberId", "creditorAgent.clearingSystem", "creditorAgent.name"},
     "hold": {"id", "kind", "status", "reason", "decision", "openedAt", "decidedAt", "decidedBy"},
     "header": {"scheme", "direction", "kind", "segment", "fileId", "endToEndId"},
 }
-OPS_PERSONAL = {"bulk.debtorName", "bulk.debtorAccount.iban", "bulk.debtorAccount.other", "payment.creditorAccount.iban",
+OPS_PERSONAL = {"bulk.debtorName", "bulk.initiatingParty.id", "bulk.debtorAccount.iban", "bulk.debtorAccount.other", "payment.creditorAccount.iban",
                 "payment.creditorAccount.other", "payment.debtorAccount.iban", "payment.debtorAccount.other",
                 "line.creditorAccount.iban", "line.creditorAccount.other"}
 OPS_HOLDS = {"approve": ("p.hold.approval.v1", "approved"), "decline": ("p.hold.approval.v1", "declined"),

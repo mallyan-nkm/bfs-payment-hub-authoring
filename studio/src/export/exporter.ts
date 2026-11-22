@@ -138,13 +138,15 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     files[`${KIND_DIR[d.kind] ?? d.kind}/${n}@${d.release}.yaml`] = toYaml(d);
     if (d.kind === 'activity') tasks.push({ kind: 'activity', task: `${n}@${d.release}`, queue: queueOf(binding, n), binding: d.implementation?.binding });
   }
-  for (const ext of env.store.byKind('extension')) {
+  // The latest release of each extension and dictionary: an earlier one stays published for the packages pinned to it (R-11-35).
+  const latest = (kind: string) => env.store.current().filter((e) => e.kind === kind);
+  for (const ext of latest('extension')) {
     if ([...flows.keys(), ...blocks.keys()].some((n) => scopeOf(n) === ext.scope)) files[`extensions/${ext.name}@${ext.release}.yaml`] = toYaml(ext.doc);
   }
   // The error dictionaries of every scope the package carries, and the platform's (R-05-52): the service console links
   // every error it shows to its entry, from the package a payment is pinned to.
   const scopes = new Set(['p', ...[...flows.keys(), ...blocks.keys()].map(scopeOf)]);
-  for (const dict of env.store.byKind('error-dictionary')) {
+  for (const dict of latest('error-dictionary')) {
     if (scopes.has(scopeOf(dict.name))) files[`errors/${dict.name}@${dict.release}.yaml`] = toYaml(dict.doc);
   }
 

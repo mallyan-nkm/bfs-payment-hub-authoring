@@ -17,7 +17,7 @@ describe('the error dictionary in a package (R-05-51, R-05-52)', () => {
   it('ships the dictionaries of p, the cluster and the scheme with the corporate workflow, listed in the manifest', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'temporal' });
     const errors = Object.keys(pkg.files).filter((f) => f.startsWith('errors/')).sort();
-    expect(errors).toEqual(['errors/p.errors.platform.v1@1.0.0.yaml', 'errors/uae.p.errors.cluster.v1@1.0.0.yaml', 'errors/uae.wps.errors.wps.v1@1.0.0.yaml']);
+    expect(errors).toEqual(['errors/p.errors.platform.v1@1.0.0.yaml', 'errors/uae.p.errors.cluster.v1@1.0.0.yaml', 'errors/uae.wps.errors.wps.v1@1.1.0.yaml']);
     for (const f of errors) expect(pkg.manifest.files.map((x: any) => x.path)).toContain(f);
     expect(parseYaml(pkg.files['errors/p.errors.platform.v1@1.0.0.yaml']).kind).toBe('error-dictionary');
   });

@@ -678,7 +678,7 @@ function TableForm({ doc, set, gates, analysis }: { doc: any; set: Set; gates?: 
 
 // ------------------------------------------------------------------ activity contract (C13-S3, C13-S4, C13-S6)
 
-const TYPES = ['map', 'validate', 'enrich', 'screen', 'decide', 'reserve', 'exchange', 'post', 'notify', 'hold', 'reconcile'];
+const TYPES = ['map', 'validate', 'enrich', 'screen', 'decide', 'reserve', 'exchange', 'post', 'notify', 'hold', 'reconcile', 'protect'];
 
 function ActivityForm({ doc, set, composite }: { doc: any; set: Set; composite?: boolean }) {
   const model = useModel();

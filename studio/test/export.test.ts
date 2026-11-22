@@ -39,7 +39,7 @@ describe('export (C05, C20, C22)', () => {
   });
   it('generates BPMN with external worker tasks, timer boundaries and an event-based await (R-09-12)', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.commercial.v1', 'p.wf.corporate.v1'], target: 'flowable' });
-    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.1.0.bpmn20.xml'];
     expect(x).toMatch(/flowable:type="external-worker" flowable:topic="th-uae-wps:uae.wps.exchange.send-salary-file.v1@1.0.0"/);
     expect(x).toMatch(/<eventBasedGateway/);
     expect((x.match(/<process /g) ?? []).length).toBe(1);
@@ -55,12 +55,12 @@ describe('export (C05, C20, C22)', () => {
   });
   it('ships the expanded form, pins the composite and its subflow, and makes a block a sub-process (R-09-17, R-05-41)', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'flowable' });
-    const leg = parseYaml(pkg.files['workflows/uae.wps.wf.salary-file-out.v1@1.0.0.yaml']);
+    const leg = parseYaml(pkg.files['workflows/uae.wps.wf.salary-file-out.v1@1.1.0.yaml']);
     expect(leg.form).toBe('expanded');
-    expect(leg.expandedFrom.release).toBe('1.0.0');
+    expect(leg.expandedFrom.release).toBe('1.1.0');
     const pins = leg.artefacts.map((a: any) => a.name);
-    expect(pins).toEqual(expect.arrayContaining(['uae.wps.exchange.submit-salary-file.v1', 'uae.wps.sub.submit-salary-file.v1', 'uae.wps.exchange.send-salary-file.v1', 'uae.wps.map.ack-in.v1']));
-    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    expect(pins).toEqual(expect.arrayContaining(['uae.wps.exchange.submit-salary-file.v1', 'uae.wps.sub.submit-salary-file.v1', 'uae.wps.exchange.send-salary-file.v1', 'uae.wps.map.ack-in.v1', 'p.protect.encrypt-file.v1']));
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.1.0.bpmn20.xml'];
     expect(x).toMatch(/<subProcess id="block_\d+" name="submit">/);
     expect(x).toMatch(/errorRef="ret_pending"/);
   });
@@ -78,7 +78,7 @@ describe('export (C05, C20, C22)', () => {
   });
   it('marks the acknowledgement wait a bank sets for the Flowable binding (R-05-47)', () => {
     const pkg = exportPackage(env, { workflows: ['uae.wps.wf.salary-file-out.v1'], target: 'flowable' });
-    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.1.0.bpmn20.xml'];
     // The timer is written with the policy's default, and names the parameters the binding resolves.
     expect(x).toMatch(/<th:timer [^>]*parameter="uae\.wps\.exchange\.submit-salary-file\.v1#ackWait" default="P1D" calendarParameter="uae\.wps\.exchange\.submit-salary-file\.v1#ackWaitCalendar"\/>/);
   });

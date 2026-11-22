@@ -37,9 +37,17 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 
 ### Payment elements (minimum set)
 
-`debtor`, `debtorAccount` (`iban`, `other`), `debtorAgent` (`bicfi`, `clearingMemberId`), `creditor`, `creditorAccount` (`iban`, `other`, `proxy`), `creditorAgent`, `instructedAmount` (`value`, `currency`), `requestedExecutionDate`, `purpose`, `categoryPurpose`, `remittanceInformation`, `chargeBearer`. A party carries `name` and `postalAddress` with structured elements (`townName`, `country`, and the others ISO defines).
+`debtor`, `debtorAccount` (`iban`, `other`, `type`), `debtorAgent` (`bicfi`, `clearingMemberId`, `name`), `creditor`, `creditorAccount` (`iban`, `other`, `type`, `proxy`), `creditorAgent`, `instructedAmount` (`value`, `currency`), `requestedExecutionDate`, `purpose`, `categoryPurpose`, `remittanceInformation`, `chargeBearer`. A party carries `name` and `postalAddress` with structured elements (`townName`, `country`, and the others ISO defines).
 
 Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch.currency`, `batch.categoryPurpose`, `batch.debtorAgent`, `batch.creditorAgent`.
+
+Batch party elements (Issue I-100): `batch.debtor` (PmtInf/Dbtr, the employer: `name`), `batch.debtorAccount` (PmtInf/DbtrAcct) and `batch.initiatingParty` (GrpHdr/InitgPty: `id` only). A file's source format may not carry them; the channel that uploaded the file declares them beside it, and the intake map reads them from what the channel declared.
+
+An account's `type` is CashAccount40/Tp: an ISO `ExternalCashAccountType1Code`, or the scheme's own code. An agent's `name` is FinInstnId/Nm, looked up by its routing code.
+
+Status of the lines (Issue I-100): `status.transactions[]` holds one entry per line a scheme's status report names (pain.002 TxInfAndSts): `lineNo`, `code` (the ISO status), `reasonCode` (ISO), `schemeCode` and `additionalInformation`.
+
+Posting facts (Issue I-100): `facts.posting` carries the posting's entries in the shape of camt.054 (`entries[]`: `creditDebitIndicator`, `amount`, `currency`, the account masked, `branch`, `transactionCode`), the amount debited with charges (`totalAmount`) and its charges (`charges`: ChrgsInf, `amount`, `currency`, `tax` with `rate` and `amount`, and `totalChargesAndTaxAmount`). Amounts follow the decimal rule of amounts below.
 
 ## 2.3 Requirements
 
@@ -61,6 +69,8 @@ Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch
 | R-02-14 | `status` MUST use ISO payment status codes and ISO status reason codes; a scheme code MAY be carried beside the ISO code. | Rule finding schema (L00) |
 | R-02-15 | A block that works on a batch or on an item MUST declare `level`. | Schema `activity` (L00) |
 | R-02-16 | `header.tenant` MUST NOT be read by shared content to change behaviour. Tenant differences come from values and hooks. | Lint L09; review |
+| R-02-18 | The initiating party of a file (`batch.initiatingParty`) MUST be carried by its id only, never by a name, and is personal data: it lives in the payment record and is masked wherever it is shown. A field the channel declared beside a file (initiator, debtor name and account, channel) MUST reach the context through the intake map, as the source format's fields do. | Canonical model (`studio/src/core/model.ts`, personal data); lint L38 (a view that shows it masks it); test WPS-MAP-003 |
+| R-02-19 | A scheme status report that names lines MUST be read into `status.transactions[]`, one entry per line, each with an ISO status and, where the scheme gives one, its own code beside the ISO reason (R-02-14). | `WpsAckNakTests` in `runtime/tests/TransactHub.Activities.Wps.Tests` |
 
 ## 2.4 The ISO data capability in the studio
 

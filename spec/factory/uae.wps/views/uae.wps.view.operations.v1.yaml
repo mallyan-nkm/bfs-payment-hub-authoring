@@ -1,12 +1,14 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.1.0
+release: 1.2.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
   as the agent (PIF, PSI, PRC, DIF, RFA and the returns), the return to the employer's bank (RTC) and the refund request
   (RFR, RSU). Each field names the source system's screen that showed it (oldScreen); docs/runtime/ops-console-wps-mapping.md
-  lists every field of those screens and the ones with no source in the new model (Issue I-100).
+  lists every field of those screens and the ones with no source in the new model (Issue I-100). Release 1.2.0 adds the
+  fields the owner's decision of 2026-11-22 gave an ISO 20022 home: the initiator, the channel, the labour ministry status,
+  the allowances, the account type and bank name of a line, the encryption of the SIF and the NAK's per-line errors.
 scheme: uae.wps
 subject:
   title: WPS file
@@ -19,6 +21,9 @@ subject:
     - { id: transactionId, label: Transaction id, group: file, source: subject.id, format: code, oldScreen: "SIF Summary report, Transaction ID" }
     - { id: sifFileId, label: SIF file id, group: file, source: bulk.messageId, format: code, oldScreen: "SIF Detail report, SIF File Name" }
     - { id: corporateName, label: Corporate name, group: file, source: bulk.debtorName, mask: none, oldScreen: "SIF Summary report, Corporate Name (an organisation's name, shown whole)" }
+    - { id: initiatedBy, label: Initiated by, group: file, source: bulk.initiatingParty.id, mask: id, oldScreen: "SIF Summary report, Uploaded By; SIF Summary 360, Initiated By; Upload History, Submitted By (the channel user's id, masked)" }
+    - { id: uploadChannel, label: Channel, group: file, source: ext.uae.wps.uploadChannel, format: code, oldScreen: "SIF Detail report, Channel; SIF Summary 360, Channel; audit trail, Channel" }
+    - { id: employerStatus, label: Labour ministry status, group: file, source: ext.uae.wps.employerStatus, format: status, oldScreen: "SIF Detail report, MOHRE Update Status" }
     - { id: debitAccount, label: Debit account, group: file, source: bulk.debtorAccount.iban, mask: account, oldScreen: "SIF Detail report, Debit Account Number (masked); Upload History, Debit A/c No (masked)" }
     - { id: employerId, label: MOL establishment id, group: file, source: ext.uae.wps.employerId, mask: id, oldScreen: "SIF Summary report, MOL Establishment ID; Upload History, MOL ID (masked)" }
     - { id: employerReference, label: Employer reference, group: file, source: ext.uae.wps.employerReference, oldScreen: "SIF file SCR, employer reference" }
@@ -43,6 +48,8 @@ subject:
     - { field: employerId, match: exact, label: MOL establishment id (masked) }
     - { field: salaryMonth, match: exact }
     - { field: employerRoutingCode, match: exact }
+    - { field: uploadChannel, match: exact, label: Channel }
+    - { field: employerStatus, match: exact, label: Labour ministry status }
     - { field: totalAmount, match: range }
     - { field: totalRecords, match: range }
   lines:
@@ -58,6 +65,15 @@ subject:
       - { id: fixedPay, label: Fixed, source: line.ext.uae.wps.fixedPay, format: amount, mask: none, oldScreen: "SIF Summary 360, Record List, Fixed (shown whole)" }
       - { id: variablePay, label: Variable, source: line.ext.uae.wps.variablePay, format: amount, mask: none, oldScreen: "SIF Summary 360, Record List, Variable (shown whole)" }
       - { id: leaveDays, label: Leave days, source: line.ext.uae.wps.leaveDays, format: count, oldScreen: "SIF Summary 360, Record List, Leave Days" }
+      - { id: housingAllowance, label: Housing, source: line.ext.uae.wps.housingAllowance, format: amount, mask: none, oldScreen: "SIF Detail report, Housing Allowance; Record List, Housing (shown whole)" }
+      - { id: conveyanceAllowance, label: Conveyance, source: line.ext.uae.wps.conveyanceAllowance, format: amount, mask: none, oldScreen: "SIF Detail report, Conveyance Allowance; Record List, Conveyance (shown whole)" }
+      - { id: medicalAllowance, label: Medical, source: line.ext.uae.wps.medicalAllowance, format: amount, mask: none, oldScreen: "SIF Detail report, Medical Allowance; Record List, Medical (shown whole)" }
+      - { id: annualPassageAllowance, label: Annual passage, source: line.ext.uae.wps.annualPassageAllowance, format: amount, mask: none, oldScreen: "SIF Detail report, Annual Passage Allowance; Record List, Passage (shown whole)" }
+      - { id: overtimeAllowance, label: Overtime, source: line.ext.uae.wps.overtimeAllowance, format: amount, mask: none, oldScreen: "SIF Detail report, Overtime Allowance; Record List, Overtime (shown whole)" }
+      - { id: otherAllowances, label: Other allowances, source: line.ext.uae.wps.otherAllowances, format: amount, mask: none, oldScreen: "SIF Detail report, Other Allowances; Record List, Other (shown whole)" }
+      - { id: leaveEncashment, label: Leave encashment, source: line.ext.uae.wps.leaveEncashment, format: amount, mask: none, oldScreen: "SIF Detail report, Leave Encashment; Record List, Leave Encash (shown whole)" }
+      - { id: accountType, label: Account type, source: line.creditorAccount.type, format: code, oldScreen: "SIF Detail report, Account Type" }
+      - { id: bankName, label: Bank, source: line.creditorAgent.name, oldScreen: "SIF Detail report, Bank Name" }
       - { id: totalSalary, label: Total salary, source: line.amount, format: amount, oldScreen: "File Detail, Total Salary; SIF Detail report, Total Salary Amount" }
       - { id: lineStatus, label: Status, source: line.facts.validation.worst, format: status, oldScreen: "File Detail, Status; SIF Detail report, EDR Status" }
       - { id: lineFindings, label: Findings, source: line.facts.validation.findings, format: json, oldScreen: "Upload History, Error Details (per record)" }
@@ -86,7 +102,9 @@ legs:
       - { id: businessDate, label: Business date, group: checks, source: "step:business-date.outcome", format: status }
       - { id: fileChecks, label: File checks, group: checks, source: "step:file-checks.outcome", format: status, oldScreen: "SIF Summary report, Current Status (validation stage)" }
       - { id: fileFindings, label: File findings, group: checks, source: "step:file-checks.writes.facts.validation.findings", format: json, oldScreen: "Upload History, Error Details" }
+      - { id: employerStatusCheck, label: Labour ministry asked, group: checks, source: "step:employer-status.outcome", format: status, oldScreen: "SIF Detail report, MOHRE Update Status (the lookup)" }
       - { id: rendered, label: SIF rendered, group: gateway, source: "step:render.outcome", format: status }
+      - { id: encryption, label: SIF encrypted for WPS, group: gateway, source: "step:submit.encrypt.outcome", format: status }
       - { id: sentToCbAt, label: Sent to the Central Bank at, group: gateway, source: "step:submit.send.at", format: datetime, oldScreen: "SIF Summary 360, Central Bank Gateway Details, Sent to CB DateTime" }
       - { id: sendOutcome, label: Upload, group: gateway, source: "step:submit.send.outcome", format: status, oldScreen: "Integration 360, Channel Interactions, Status of the upload" }
       - { id: sendAttempts, label: Upload attempts, group: gateway, source: "step:submit.send.attempt", format: count, oldScreen: "Integration 360, Channel Interactions, Retry" }
@@ -95,6 +113,7 @@ legs:
       - { id: ackReceivedAt, label: ACK or NAK received at, group: gateway, source: "step:submit.read-ack.at", format: datetime, oldScreen: "SIF Detail report, ACK/NAK Received DateTime" }
       - { id: ackStatus, label: Status after the acknowledgement, group: gateway, source: "step:submit.read-ack.writes.status.code", format: status, oldScreen: "Related Messages, ACK section, Status" }
       - { id: nakReason, label: NAK reason, group: gateway, source: "step:submit.read-ack.reasonCode", format: code, oldScreen: "Related Messages, NAK section, error code (file level)" }
+      - { id: nakLines, label: NAK errors per line, group: gateway, source: "step:submit.read-ack.writes.status.transactions", format: json, oldScreen: "Related Messages, NAK section, errors per line (line, code, description)" }
       - { id: ackFileName, label: ACK or NAK file name, group: gateway, source: "message:uae.wps.ack.fileName", oldScreen: "SIF Summary 360, ACK/NAK File Name" }
     columns: [cbResponse, ackReceivedAt]
     filters:

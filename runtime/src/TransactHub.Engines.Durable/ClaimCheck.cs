@@ -195,6 +195,8 @@ public static class CanonicalMapper
             MessageId = Short(id), PaymentInformationId = Short(id),
             RequestedExecutionDate = Date(batch["requestedExecutionDate"]),
             CategoryPurposeCode = (string?)batch["categoryPurpose"],
+            // GrpHdr/InitgPty: an id only (R-02-18).
+            InitiatingParty = batch["initiatingParty"] is JsonObject ip && (string?)ip["id"] is { Length: > 0 } ipId ? new Party { OtherIds = [new GenericId(ipId, "CHANNEL-USER")] } : null,
             Debtor = Party(batch["debtor"]) ?? new Party(),
             DebtorAccount = Account(batch["debtorAccount"]) ?? new Account(),
             DebtorAgent = Agent(batch["debtorAgent"]),
@@ -240,6 +242,7 @@ public static class CanonicalMapper
     static Account? Account(JsonNode? n) => n is not JsonObject o ? null : new Account
     {
         Iban = (string?)o["iban"], Other = o["other"] is JsonValue v ? new GenericId((string)v!) : null, Currency = (string?)o["currency"], Name = (string?)o["name"],
+        Type = (string?)o["type"],
     };
 
     static Agent? Agent(JsonNode? n) => n is not JsonObject o ? null : new Agent

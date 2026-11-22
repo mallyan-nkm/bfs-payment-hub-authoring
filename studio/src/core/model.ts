@@ -24,8 +24,16 @@ const PARTY = {
     townName: ['Max35Text', true, 'Town name, in its own element (R-02-13)'], countrySubDivision: ['Max35Text', true], country: ['CountryCode', false],
   },
 };
-const ACCOUNT = { iban: ['IBAN2007Identifier', true, 'International bank account number'], other: ['Max34Text', true], proxy: { type: ['ExternalProxyAccountType1Code', false], value: ['Max2048Text', true] } };
-const AGENT = { bicfi: ['BICFIDec2014Identifier', false], clearingMemberId: ['Max35Text', false, 'Clearing system member id, the routing code'] };
+const ACCOUNT = {
+  iban: ['IBAN2007Identifier', true, 'International bank account number'], other: ['Max34Text', true],
+  // CashAccount40/Tp (Issue I-100): an ExternalCashAccountType1Code, or the scheme's own code as Prtry.
+  type: ['CashAccountType2Choice', false, 'The kind of account: an ISO cash account type code, or the scheme\'s own'],
+  proxy: { type: ['ExternalProxyAccountType1Code', false], value: ['Max2048Text', true] },
+};
+// FinInstnId/Nm (Issue I-100): the agent's name, looked up by its routing code.
+const AGENT = { bicfi: ['BICFIDec2014Identifier', false], clearingMemberId: ['Max35Text', false, 'Clearing system member id, the routing code'], name: ['Max140Text', false, 'The agent\'s name, from the participant directory by its routing code'] };
+// GrpHdr/InitgPty (Issue I-100): who initiated the file at the channel, by id only, never a name.
+const INITIATING = { id: ['Max35Text', true, 'The channel user who uploaded or initiated the file, by id only (GrpHdr/InitgPty/Id)'] };
 const AMOUNT = { value: ['ActiveCurrencyAndAmount', false, 'Amount'], currency: ['ActiveCurrencyCode', false] };
 
 const TREE: Record<string, any> = {
@@ -47,10 +55,15 @@ const TREE: Record<string, any> = {
   batch: {
     id: ['Max35Text', false], numberOfTransactions: ['Max15NumericText', false], controlSum: ['DecimalNumber', false], currency: ['ActiveCurrencyCode', false],
     categoryPurpose: ['ExternalCategoryPurpose1Code', false], debtorAgent: AGENT, creditorAgent: AGENT,
+    // PmtInf/Dbtr and DbtrAcct, and GrpHdr/InitgPty (Issue I-100): carried from the channel's upload at intake.
+    debtor: PARTY, debtorAccount: ACCOUNT, initiatingParty: INITIATING,
   },
   status: {
     code: ['ExternalPaymentTransactionStatus1Code', false, 'ISO payment status'], reasonCode: ['ExternalStatusReason1Code', false, 'ISO status reason'],
     schemeCode: ['Max35Text', false, 'A scheme code beside the ISO code (R-02-14)'], history: ['StatusHistory', false],
+    // pain.002 TxInfAndSts (Issue I-100): one entry per line the scheme reported on, each with lineNo, code, reasonCode,
+    // schemeCode and additionalInformation.
+    transactions: ['TransactionStatusList', false, 'The status of each line the scheme reported on (pain.002 TxInfAndSts)'],
   },
   messages: {
     inbound: ['MessageReference', false, 'Reference to the raw inbound message (claim-check)'], received: ['MessageReferences', false],

@@ -93,6 +93,10 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
 
+                    b.Property<string>("InitiatingPartyId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("MessageId")
                         .IsRequired()
                         .HasMaxLength(35)
@@ -649,6 +653,11 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                                 .HasColumnType("nvarchar(35)")
                                 .HasColumnName("debtor_account_other_scheme");
 
+                            b1.Property<string>("Type")
+                                .HasMaxLength(35)
+                                .HasColumnType("nvarchar(35)")
+                                .HasColumnName("debtor_account_type");
+
                             b1.HasKey("BulkRowId");
 
                             b1.ToTable("payment_bulk");
@@ -734,6 +743,11 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                                 .HasColumnType("nvarchar(35)")
                                 .HasColumnName("creditor_account_other_scheme");
 
+                            b1.Property<string>("Type")
+                                .HasMaxLength(35)
+                                .HasColumnType("nvarchar(35)")
+                                .HasColumnName("creditor_account_type");
+
                             b1.HasKey("PaymentRowId");
 
                             b1.ToTable("payment");
@@ -809,6 +823,11 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                                 .HasMaxLength(35)
                                 .HasColumnType("nvarchar(35)")
                                 .HasColumnName("debtor_account_other_scheme");
+
+                            b1.Property<string>("Type")
+                                .HasMaxLength(35)
+                                .HasColumnType("nvarchar(35)")
+                                .HasColumnName("debtor_account_type");
 
                             b1.HasKey("PaymentRowId");
 

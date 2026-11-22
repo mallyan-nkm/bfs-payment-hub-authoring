@@ -94,6 +94,7 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.MessageId).HasMaxLength(35).IsRequired();
             e.Property(x => x.PaymentInformationId).HasMaxLength(35).IsRequired();
             e.Property(x => x.DebtorPartyId).HasMaxLength(Id);
+            e.Property(x => x.InitiatingPartyId).HasMaxLength(Id);
             e.Property(x => x.CategoryPurposeCode).HasMaxLength(4);
             e.Property(x => x.ControlSum).HasPrecision(19, 4);
             e.Property(x => x.ReleaseId).HasMaxLength(Short).IsRequired();
@@ -235,6 +236,7 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
         a.Property(x => x.OtherScheme).HasColumnName($"{prefix}_other_scheme").HasMaxLength(35);
         a.Property(x => x.Currency).HasColumnName($"{prefix}_currency").HasMaxLength(3);
         a.Property(x => x.Name).HasColumnName($"{prefix}_name").HasMaxLength(70);
+        a.Property(x => x.Type).HasColumnName($"{prefix}_type").HasMaxLength(35);
     }
 
     static void Agent<T>(Microsoft.EntityFrameworkCore.Metadata.Builders.OwnedNavigationBuilder<T, AgentCols> a, string prefix) where T : class

@@ -169,7 +169,7 @@ public sealed class Policy
     static readonly Dictionary<string, (string? at, int max, string[]? nr)> TypeDefaults = new()
     {
         ["map"] = ("PT5S", 1, null), ["validate"] = ("PT5S", 1, null), ["decide"] = ("PT5S", 1, null),
-        ["enrich"] = ("PT5S", 3, Array.Empty<string>()), ["reconcile"] = ("PT5S", 3, Array.Empty<string>()),
+        ["enrich"] = ("PT5S", 3, Array.Empty<string>()), ["reconcile"] = ("PT5S", 3, Array.Empty<string>()), ["protect"] = ("PT10S", 3, Array.Empty<string>()),
         ["screen"] = ("PT10S", 3, new[] { "BusinessReject" }), ["exchange"] = ("PT10S", 3, new[] { "BusinessReject" }),
         ["post"] = ("PT10S", 3, new[] { "BusinessReject" }), ["reserve"] = ("PT10S", 3, new[] { "BusinessReject" }),
         ["notify"] = ("PT5S", 5, Array.Empty<string>()), ["hold"] = (null, 1, null),

@@ -33,7 +33,7 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(24); // WPS-IN-008 and WPS-RTC-001 (plan P2)
+    expect(reports.length).toBe(33); // WPS-IN-008 and WPS-RTC-001 (plan P2); P-ENC, WPS-ENR, WPS-EXC-003, WPS-MAP-003, WPS-OUT-006 to 008 (I-87, I-88, I-100)
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual([]);
   });

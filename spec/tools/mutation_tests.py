@@ -160,6 +160,12 @@ CASES = [
     ("M56", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
      "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
      "a seeded file is in no ledger"),
+    # R-03-24: a protect activity reaches its key service through a port and changes nothing in the bank (L00)
+    ("M59", "ERROR L00", "factory/p/activities/p.protect.encrypt-file.v1.yaml",
+     "effect: read", "effect: pure", "the encryption block claims to need no key service"),
+    # L27: a supersession's scope names a workflow release the repository has, the latest or a published one
+    ("M60", "ERROR L27", "examples/supersession/SUP-2026-001.yaml",
+     '["uae.wps.wf.salary-file-out.v1@1.0.0"]', '["uae.wps.wf.salary-file-out.v1@0.9.0"]', "a supersession names a release never published"),
 ]
 
 

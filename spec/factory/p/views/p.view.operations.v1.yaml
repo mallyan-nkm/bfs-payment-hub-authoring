@@ -1,16 +1,18 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.0.0
+release: 1.1.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
   reservation, route, posting, notification), its hold, and the actions the platform's workflows can take while it runs.
-  A scheme's own view (for example uae.wps.view.operations.v1) adds the fields of its legs.
+  A scheme's own view (for example uae.wps.view.operations.v1) adds the fields of its legs. Release 1.1.0 adds the posting's
+  amount with charges, its charge and VAT and its legs, from the posting fact (camt.054 entries and ChrgsInf, Issue I-100).
 platform: [p.wf.corporate.v1, p.wf.inward.v1]
 subject:
   title: Payment
   groups:
     - { id: lifecycle, title: Lifecycle }
+    - { id: posting, title: Posting }
     - { id: hold, title: Hold }
   fields:
     - { id: status, label: Status, group: lifecycle, source: subject.status, format: status }
@@ -26,6 +28,10 @@ subject:
     - { id: posting, label: Posting, group: lifecycle, source: "step:post.outcome", format: status }
     - { id: postedAt, label: Posted at, group: lifecycle, source: "step:post.at", format: datetime }
     - { id: postingVerified, label: Posting verified, group: lifecycle, source: "step:verify.outcome", format: status }
+    - { id: postingTotal, label: Total debited, group: posting, source: "step:post.writes.facts.posting.totalAmount", format: amount, oldScreen: "Integration 360, Total Transaction Amount" }
+    - { id: chargeAmount, label: Charge, group: posting, source: "step:post.writes.facts.posting.charges.amount", format: amount, oldScreen: "Integration 360, Charge Amount" }
+    - { id: vatAmount, label: VAT, group: posting, source: "step:post.writes.facts.posting.charges.tax.amount", format: amount, oldScreen: "Integration 360, VAT" }
+    - { id: postingLegs, label: Posting legs, group: posting, source: "step:post.writes.facts.posting.entries", format: json, oldScreen: "Integration 360, CORE posting, legs (D/C, account masked, amount, currency, branch, type code)" }
     - { id: notified, label: Channel notified, group: lifecycle, source: "step:notify.outcome", format: status }
     - { id: release, label: Release, group: lifecycle, source: subject.releaseId, format: code }
     - { id: holdStatus, label: Hold, group: hold, source: hold.status, format: status }
