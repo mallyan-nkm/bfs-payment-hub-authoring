@@ -52,14 +52,14 @@ The permission table:
 | --- | --- | --- |
 | Bank Configurator | scope `b` of its bank | author hooks, activities, scripts, rules, rule sets, tables, the configuration set (dials and hook bindings), port bindings, simulators, tests, samples; run the bench, import the bank part, export, deploy, the assistant |
 | Bank Approver | scope `b` of its bank | approve the same kinds as versions; accept a shared release; run the bench, export, deploy |
-| Workflow Designer | shared scopes | author workflows (subflows among them), schemes, tests, samples, supersessions; run the bench, import, export, deploy, the assistant |
-| Workflow Developer | shared scopes | author activities, scripts, engine bindings, ports, rules, rule sets, tables, simulators, extensions, tests, samples, supersessions; run as the designer |
+| Workflow Designer | shared scopes | author workflows (subflows among them), schemes, operations views, tests, samples, supersessions; run the bench, import, export, deploy, the assistant |
+| Workflow Developer | shared scopes | author activities, scripts, engine bindings, ports, rules, rule sets, tables, simulators, extensions, error dictionaries, tests, samples, supersessions; run as the designer |
 | Platform Approver | shared scopes, the studio | approve every shared kind and supersessions; waive; retire; the publishing settings; run the bench, export, deploy |
 | Administrator | the studio | propose and approve changes to the users and roles |
 | Service operations | the studio | retire, in-flight counts, the publishing settings |
-| Operations | shared scopes | author the operations console's views of each scheme's legs (operations views); run the assistant |
-| Service Engineer | shared scopes | author the error dictionaries and their runbooks; run the assistant. The same people use the runtime's service console, signed in there through the bank's identity provider |
 | Auditor | its tenant | read |
+
+Operators, supervisors and service engineers are not studio users. They are runtime roles of the operations console and the service console, signed in through the bank's identity provider (owner's decision of 22 November 2026).
 
 What the source's user-management screens did, and where it went:
 

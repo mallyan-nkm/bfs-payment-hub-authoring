@@ -848,7 +848,7 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **Recommendation 4.** Confirm that, and decide whether a bank documents the errors of its own hooks in a dictionary of scope `b`, authored by its Bank Configurator.
 
-**Decided (22 November 2026).** The owner decided: the Workflow Designer and Developer are studio roles for workflows and their building blocks only. Operations views belong to a new studio role, **Operations**, and error dictionaries to a new studio role, **Service Engineer** (who also uses the runtime's service console). The Platform Approver approves both. A new kind of connection (a bank-only port or extension) is created by the Workflow Developer; a bank then binds it. Built in `studio/src/governance/permissions.ts` and its test.
+**Decided (22 November 2026).** The owner decided: the Workflow Designer and Developer are the studio's roles. Operations and Service Engineer are not studio roles: they are the runtime roles of the operations console and the service console, signed in through the bank's identity provider. In the studio the operations views stay with the Workflow Designer and the error dictionaries with the Workflow Developer, approved by the Platform Approver, as built. A new kind of connection (a bank-only port or extension) is created by the Workflow Developer; a bank then binds it.
 
 ## I-70. Port bindings have no editor in the studio
 
