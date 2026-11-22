@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { del, downloadUrl, get, post, q, refusal, type Issue, type Summary, type User } from '../api';
+import { APPROVER_ROLES, MAKER_ROLES, del, downloadUrl, get, post, q, refusal, type Issue, type Summary, type User } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Issues, KV, List, Loading, PassFail, Section, Tabs, Val, useLoad, useStudio } from '../ui';
 import { useCatalogue } from '../authoring';
 
@@ -43,27 +43,29 @@ export function Governance({ query }: { query: URLSearchParams }) {
   );
 }
 
-/** A local picker for an action that needs a particular role. Defaults to a user who holds it. */
+/**
+ * Who an action is taken as: always the signed-in user (R-11-32). There is no picker: the server takes
+ * the user from the session. `prefer` says which role the action needs, to tell the user beforehand.
+ */
 export function AsUser({ value, onChange, prefer, label = 'As' }: { value: string; onChange: (v: string) => void; prefer: (u: User) => boolean; label?: string }) {
-  const { users } = useStudio();
+  const { actor, roles, tenant } = useStudio();
   useEffect(() => {
-    if (!value || !users.some((u) => u.id === value)) onChange((users.find(prefer) ?? users[0])?.id ?? '');
+    if (value !== actor) onChange(actor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users]);
+  }, [actor]);
+  const may = prefer({ id: actor, tenant, roles });
   return (
-    <label className="field-inline">
-      <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-        {users.map((u) => <option key={u.id} value={u.id}>{u.id} ({u.roles.join(', ')})</option>)}
-      </select>
-    </label>
+    <span className="field-inline" aria-label={label}>
+      <span>{label}</span> <b className="mono">{actor}</b>
+      {!may && <span className="badge warn" title="Your roles do not include the one this needs; the server will refuse">not your role</span>}
+    </span>
   );
 }
 
 const may = (...roles: string[]) => (u: User) => u.roles.some((r) => roles.includes(r));
 
 function Drafts() {
-  const { tenant, actor, users, go } = useStudio();
+  const { tenant, actor, users, roles, go } = useStudio();
   const drafts = useLoad(() => get<Summary[]>('/api/drafts'), [tenant]);
   // The change set the studio generates for each draft: what approving it publishes (R-11-19).
   const sets = useLoad(async () => {
@@ -78,7 +80,7 @@ function Drafts() {
   const remove = async (key: string) => {
     if (!window.confirm(`Delete draft ${key}?`)) return;
     try {
-      await del(`/api/drafts/${encodeURIComponent(key)}${q({ actor })}`);
+      await del(`/api/drafts/${encodeURIComponent(key)}`);
       drafts.reload();
     } catch (e: any) {
       setError(refusal(e));
@@ -89,11 +91,11 @@ function Drafts() {
     setMsg(undefined);
     try {
       if (what === 'review') {
-        await post('/api/review', { key, actor });
-        setMsg({ tone: 'pass', text: `${key} is in review, submitted by ${actor}.` });
+        await post('/api/request-release', { key });
+        setMsg({ tone: 'pass', text: `Release requested for the change set of ${key}, by ${actor}.` });
       } else {
-        const r = await post('/api/publish', { key, checker });
-        setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} published, approved by ${checker}: ${r.published.map((p: any) => p.key).join(', ')}.` });
+        const r = await post('/api/publish', { key });
+        setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} approved as a version by ${actor}: ${r.published.map((p: any) => p.key).join(', ')}.` });
       }
       drafts.reload();
     } catch (e: any) {
@@ -103,8 +105,8 @@ function Drafts() {
     }
   };
   return (
-    <Section title={`Drafts of ${tenant}`} count={drafts.data?.length} actions={<AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.some((r) => r.endsWith('checker')) && u.id !== actor} label="Checker" />}>
-      <p className="muted small">The maker submits for review; a checker of this tenant who is not the maker approves. Approving a draft publishes its change set: the draft and the drafts it refers to or that refer to it, checked and tested together. Approval refuses on an error or a red test, and then nothing is published.</p>
+    <Section title={`Drafts of ${tenant}`} count={drafts.data?.length} actions={<AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.some((r) => r.endsWith('approver'))} label="Working as" />}>
+      <p className="muted small">A maker's saves need no approval. The maker requests the release of a change set; an approver for its area who is not a maker of it approves it as a version: the draft and the drafts it refers to or that refer to it, checked and tested together. Approval refuses on an error or a red test, and then nothing is published.</p>
       <ErrorBox error={drafts.error || error} />
       {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
       {drafts.loading && !drafts.data ? <Loading /> : !drafts.data?.length ? <p className="muted">No drafts.</p> : (
@@ -122,9 +124,9 @@ function Drafts() {
                   <td className="small">{(sets.data?.[d.key] ?? []).filter((k) => k !== d.key).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}{(sets.data?.[d.key] ?? []).length <= 1 && <span className="muted">alone</span>}</td>
                   <td className="nowrap">
                     {['workflow', 'hook'].includes(d.kind) && <button onClick={() => go(`/designer?open=${encodeURIComponent(d.key)}&draft=1`)}>Open</button>}{' '}
-                    <button disabled={busy === d.key || d.status === 'in-review'} onClick={() => act(d.key, 'review')}>Submit as {actor}</button>{' '}
-                    <button className="primary" disabled={busy === d.key || !checker} onClick={() => act(d.key, 'publish')}>{busy === d.key ? 'Working…' : `Approve as ${checker}`}</button>{' '}
-                    <button className="link danger" onClick={() => remove(d.key)}>Delete</button>
+                    {roles.some((r) => MAKER_ROLES.includes(r)) && <button disabled={busy === d.key || d.status === 'in-review'} onClick={() => act(d.key, 'review')}>Request release</button>}{' '}
+                    {roles.some((r) => APPROVER_ROLES.includes(r)) && <button className="primary" disabled={busy === d.key} onClick={() => act(d.key, 'publish')}>{busy === d.key ? 'Working…' : 'Approve as version'}</button>}{' '}
+                    {roles.some((r) => MAKER_ROLES.includes(r)) && <button className="link danger" onClick={() => remove(d.key)}>Delete</button>}
                   </td>
                 </tr>
               ))}
@@ -137,47 +139,47 @@ function Drafts() {
   );
 }
 
-const ACTIONS = ['author', 'approve', 'configure', 'accept-release', 'retire', 'supersede', 'export', 'read'];
+const ACTIONS = ['author', 'approve', 'accept', 'run', 'retire'];
+const KINDS = ['workflow', 'scheme', 'activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant'];
 
 function Users() {
   const { tenant, meta } = useStudio();
   const users = useLoad(() => get<User[]>('/api/users'), [tenant]);
-  const [actor, setActor] = useState('');
+  const table = useLoad(() => get<{ grants: { role: string; scope: string; kinds: string[]; actions: string[] }[] }>('/api/permissions'), []);
+  const [who, setWho] = useState('');
   const [action, setAction] = useState('author');
+  const [kind, setKind] = useState('workflow');
   const [scope, setScope] = useState('');
   const [res, setRes] = useState<any>();
-  const ask = async () => setRes(await get(`/api/permit${q({ actor, action, scope: scope || undefined })}`).catch((e) => ({ error: e.message })));
+  const ask = async () => setRes(await get(`/api/permit${q({ user: who, action, kind, scope: scope || undefined })}`).catch((e) => ({ error: e.message })));
   return (
     <div className="cols">
       <div className="col">
         <Section title={`Users ${tenant === meta?.owner ? 'of every tenant' : `of ${tenant}`}`} count={users.data?.length}>
           <ErrorBox error={users.error} />
-          <p className="muted small">Names are role-shaped placeholders; no real person is named. A user acts in one tenant only.</p>
+          <p className="muted small">Names are role-shaped placeholders; no real person is named. A user acts in one tenant only. A change to the users is proposed by one administrator and approved by another.</p>
           <table className="grid compact">
             <thead><tr><th>User</th><th>Tenant</th><th>Roles</th></tr></thead>
             <tbody>{(users.data ?? []).map((u) => <tr key={u.id}><td className="mono">{u.id}</td><td>{u.tenant}</td><td>{u.roles.map((r) => <Badge key={r} tone="info">{r}</Badge>)}</td></tr>)}</tbody>
           </table>
-          <h4>What each role may do</h4>
+          <h4>The permission table</h4>
+          <p className="muted small">The server checks every write, release and approval against this table. Reading is open to every user of a tenant for what the tenant may see.</p>
+          <ErrorBox error={table.error} />
           <table className="grid compact">
-            <tbody>
-              <tr><td>shared designer</td><td>author shared content; draft a supersession</td></tr>
-              <tr><td>shared checker</td><td>approve shared content; retire; hand over a supersession; waive a scenario</td></tr>
-              <tr><td>bank designer</td><td>author in scope b; set the bank's configuration</td></tr>
-              <tr><td>bank checker</td><td>approve the bank's content; accept a shared release</td></tr>
-              <tr><td>auditor</td><td>read everything; change and export nothing</td></tr>
-              <tr><td>service operations</td><td>import in-flight counts; retire</td></tr>
-            </tbody>
+            <thead><tr><th>Role</th><th>Where</th><th>May</th><th>On</th></tr></thead>
+            <tbody>{(table.data?.grants ?? []).map((g, i) => <tr key={i}><td>{g.role}</td><td>{g.scope === 'bank' ? 'scope b of its bank' : g.scope === 'shared' ? 'shared scopes' : 'the studio'}</td><td>{g.actions.join(', ')}</td><td className="small">{g.kinds.join(', ')}</td></tr>)}</tbody>
           </table>
         </Section>
       </div>
       <div className="col side">
         <Section title="May this user do this?">
           <div className="stack">
-            <select value={actor} onChange={(e) => setActor(e.target.value)} aria-label="User"><option value="">Choose a user</option>{(users.data ?? []).map((u) => <option key={u.id}>{u.id}</option>)}</select>
+            <select value={who} onChange={(e) => setWho(e.target.value)} aria-label="User"><option value="">Choose a user</option>{(users.data ?? []).map((u) => <option key={u.id}>{u.id}</option>)}</select>
             <select value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action">{ACTIONS.map((a) => <option key={a}>{a}</option>)}</select>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">{KINDS.map((a) => <option key={a}>{a}</option>)}</select>
             <input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="scope, for example p or b (optional)" className="mono" aria-label="Scope" />
-            <button disabled={!actor} onClick={ask}>Ask</button>
-            {res && (res.error ? <p className="fail-text small">{res.error}</p> : res.allowed ? <div className="alert pass small">Allowed in {tenant}.</div> : <div className="alert fail small">Refused: {res.reason}</div>)}
+            <button disabled={!who} onClick={ask}>Ask</button>
+            {res && (res.error ? <p className="fail-text small">{res.error}</p> : res.allowed ? <div className="alert pass small">Allowed.</div> : <div className="alert fail small">Refused: {res.reason}</div>)}
           </div>
         </Section>
       </div>
@@ -259,7 +261,7 @@ function Releases({ initial }: { initial: string }) {
             </div>
             <div className="col side">
               <div className="stack">
-                <AsUser value={as} onChange={setAs} prefer={may('shared checker', 'service operations')} label="Retire as" />
+                <AsUser value={as} onChange={setAs} prefer={may('platform approver', 'service operations')} label="Retire as" />
                 <button className="danger-btn" onClick={retire}>Retire {pins.name}@{pins.release}</button>
                 <p className="muted small">The server refuses while anything pins it or an instance in flight is pinned to it.</p>
               </div>
@@ -350,7 +352,7 @@ function SupersessionWizard() {
       <div className="row-actions">
         <button className="primary" disabled={busy} onClick={() => run(async () => { setEv(undefined); setDone(undefined); setDoc(await post('/api/supersessions/draft', { artefact, replaces, with: by, reason, maker: actor })); })}>1. Draft as {actor}</button>
         <button disabled={busy || !doc} onClick={() => run(async () => setEv(await post('/api/supersessions/evidence', { doc })))}>{busy && doc && !ev ? 'Rerunning…' : '2. Rerun the pinned tests'}</button>
-        <AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.includes('shared checker') && u.id !== actor} label="Checker" />
+        <AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.includes('platform approver')} label="Checker" />
         <button disabled={busy || !ev} onClick={() => run(async () => setDone(await post('/api/supersessions/hand-over', { doc: ev, checker })))}>3. Hand over</button>
       </div>
       <ErrorBox error={err} />
@@ -405,7 +407,7 @@ function Packs() {
   const [built, setBuilt] = useState<any>();
   const [gate, setGate] = useState<any>();
   const [busy, setBusy] = useState<string>();
-  const bankTenant = tenant !== meta?.owner ? tenant : (meta?.tenants ?? []).find((t) => t !== meta?.owner);
+  const bankTenant = tenant !== meta?.owner ? tenant : undefined;
   const build = async () => {
     setBusy('build');
     try {
@@ -550,7 +552,7 @@ function Conformance() {
               {rows.map((r) => <option key={r.scenario} value={r.scenario}>{r.scenario} ({r.result})</option>)}
             </select>
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="The reason, required" aria-label="Waiver reason" />
-            <AsUser value={as} onChange={setAs} prefer={may('shared checker')} label="Approve as" />
+            <AsUser value={as} onChange={setAs} prefer={may('platform approver')} label="Approve as" />
             <button disabled={!scenario || !reason} onClick={waive}>Waive</button>
             <p className="muted small">Run the report first to list the scenarios.</p>
           </div>

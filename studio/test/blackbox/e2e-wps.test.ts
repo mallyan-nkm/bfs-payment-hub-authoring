@@ -41,7 +41,7 @@ beforeAll(async () => {
 }, 60000);
 afterAll(() => server?.stop());
 
-/** A new release of the bank's configuration set, checked, validated and saved by the bank's designer. */
+/** A new release of the bank's configuration set, checked, validated, saved by the bank configurator and approved as a version by the bank approver (R-11-31). */
 async function release(version: string, change: (c: any) => void) {
   const c = JSON.parse(JSON.stringify(shipped));
   c.release = version;
@@ -50,6 +50,8 @@ async function release(version: string, change: (c: any) => void) {
   expect(check.data.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
   const saved = await api.post(`/api/tenants/${TENANT}/configuration`, { actor: MAKER, yaml: toYaml(c) });
   expect(saved.status, JSON.stringify(saved.data)).toBe(200);
+  const approved = await api.post('/api/publish', { tenant: TENANT, key: saved.data.draft.key, checker: 'example.checker' });
+  expect(approved.status, JSON.stringify(approved.data).slice(0, 400)).toBe(200);
   expect((await api.get(`/api/tenants/${TENANT}/configuration`)).data.configurationSet.release).toBe(version);
   return c;
 }
@@ -84,7 +86,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(scheme.messages.find((m: any) => m.id === MESSAGE).disposition.start.leg).toBe('uae.wps.wf.salary-file-out.v1');
     // A bank cannot author in a shared scope, so configuration is its only lever.
     const refused = await api.post('/api/drafts', { tenant: TENANT, actor: MAKER, doc: { kind: 'rule', name: 'uae.wps.rule.bank-copy.v1', release: '1.0.0', title: 'x' } });
-    expect(refused.status).toBe(409);
+    expect(refused.status).toBe(403);
   });
 
   it('as shipped, a salary file settles: front door, corporate workflow, WPS leg, bank hooks', async () => {
@@ -99,7 +101,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     over.values.find((v: any) => v.parameter === 'b.rule.internal-limit.v1#internalLimit').value = 2000000;
     expect((await api.post(`/api/tenants/${TENANT}/configuration/validate`, { doc: over })).data.issues.some((i: any) => i.severity === 'error')).toBe(true);
     expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: MAKER, yaml: toYaml(shipped) })).status).toBe(409);
-    expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: 'example.checker', yaml: toYaml({ ...shipped, release: '1.1.2' }) })).status).toBe(409);
+    expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: 'example.checker', yaml: toYaml({ ...shipped, release: '1.1.2' }) })).status).toBe(403);
   });
 
   it('1.2.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone', async () => {
@@ -188,7 +190,10 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
       expect(audit.filter((a: any) => a.outcome === 'done' && /^uae\.wps\./.test(a.key ?? ''))).toEqual([]);
     }
     const bank = (await api.get(`/api/audit?tenant=${TENANT}`)).data;
-    expect(bank.filter((a: any) => a.action === 'set-configuration' && a.outcome === 'done').map((a: any) => a.diff.after).sort()).toEqual(['1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0']);
+    // Each configuration release is a version a bank approver approved (R-11-31).
+    const versions = bank.filter((a: any) => a.action === 'publish' && a.outcome !== 'refused' && /config:example-bank@/.test(a.key ?? ''));
+    expect(versions.map((a: any) => /@(\S+)$/.exec(a.key)![1]).sort()).toEqual(['1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0']);
+    expect(versions.every((a: any) => a.actor === 'example.checker' && /maker example\.maker/.test(a.detail))).toBe(true);
     expect(bank.some((a: any) => a.outcome === 'refused')).toBe(true);
     expect((await api.get('/api/audit/verify')).data.ok).toBe(true);
   });

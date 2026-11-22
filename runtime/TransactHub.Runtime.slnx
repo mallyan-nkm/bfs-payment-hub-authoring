@@ -30,11 +30,13 @@
     <Project Path="tests/TransactHub.Operations.Tests/TransactHub.Operations.Tests.csproj" />
     <Project Path="tests/TransactHub.Service.Tests/TransactHub.Service.Tests.csproj" />
     <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
+    <Project Path="tests/TransactHub.TestBench.Tests/TransactHub.TestBench.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/TransactHub.DtfxHarness/TransactHub.DtfxHarness.csproj" />
     <Project Path="tools/TransactHub.ElsaHarness/TransactHub.ElsaHarness.csproj" />
     <Project Path="tools/TransactHub.FlowableHarness/TransactHub.FlowableHarness.csproj" />
     <Project Path="tools/TransactHub.TemporalHarness/TransactHub.TemporalHarness.csproj" />
+    <Project Path="tools/TransactHub.TestBench/TransactHub.TestBench.csproj" />
   </Folder>
 </Solution>

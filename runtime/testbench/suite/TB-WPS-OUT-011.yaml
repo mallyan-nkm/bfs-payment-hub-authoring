@@ -1,0 +1,10 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-011
+title: 'Builder, sanctioned-name goes with the sanctions-hit bench'
+request:
+  profile: wps-all-engines
+  data: { build: { template: wps-sif, lines: 1, seed: 46, inject: [sanctioned-name] } }
+  bench: sanctions-hit
+expect:
+  outcome: rejected

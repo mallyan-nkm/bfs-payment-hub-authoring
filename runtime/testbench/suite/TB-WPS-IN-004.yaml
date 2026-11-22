@@ -1,0 +1,13 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-IN-004
+title: 'A payment file addressed to another bank'
+request:
+  profile: wps-inward-all-engines
+  data: { sample: wps-pif-wrong-agent }
+expect:
+  outcome: pending
+knownIssue:
+  id: I-94
+  engines: [temporal, dtfx, elsa, flowable]
+  note: The deploy runner does not play the inward simulator's later deliveries (the PSI), so the leg waits for the supplement on every engine

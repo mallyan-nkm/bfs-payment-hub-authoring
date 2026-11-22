@@ -11,7 +11,7 @@ import { unzip } from '../src/export/zip.js';
 import { resolveSecret, resolveSecretSync, SecretUnavailable, SecretValue } from '../src/secrets/secrets.js';
 import { literalSecretsIn, literalSecretsInText } from '../src/secrets/scan.js';
 import { checkAll } from '../src/checks/checks.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { parseYaml } from '../src/core/yaml.js';
 import { toYaml } from '../src/core/yaml.js';
 import { freshEnv } from './helpers.js';
@@ -42,7 +42,7 @@ describe('secrets are read by reference only (R-06-22)', () => {
     expect(resolveSecretSync(`file:${f}`, { TH_SECRET_FILE_ROOTS: work }).reveal()).toBe(value);
     expect(() => resolveSecretSync('file:/etc/hostname', { TH_SECRET_FILE_ROOTS: work })).toThrow('outside the folders');
     expect(() => resolveSecretSync(`file:${work}/../x`, {})).toThrow("without '..'");
-    expect(() => resolveSecretSync('akv:vault/secret', {})).toThrow('I-73');
+    expect(() => resolveSecretSync('akv:th-vault/secret', {})).toThrow('over the network: resolve it with resolveSecret');
   });
 
   it('never shows a value: not in an error, a log line, JSON or inspect', () => {

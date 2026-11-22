@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
-import { ApiError, get, isChecker, post, refusal, type GateResult, type Issue, type Summary } from './api';
+import { APPROVER_ROLES, ApiError, MAKER_ROLES, get, post, refusal, type GateResult, type Issue, type Summary } from './api';
 import { Badge, ErrorBox, Issues, Json, Section, useDebounced, useStudio } from './ui';
 
 // Shared pieces of the authoring screens: the gates, save and publish through maker-checker,
@@ -169,21 +169,18 @@ export function Gates({ state, title = 'Gates' }: { state: { result?: GateResult
 export interface Saved { key: string; issues: Issue[]; iface?: any }
 
 /**
- * Save as a draft as the acting user, then publish through maker-checker: a checker of the
- * tenant who is not the maker, with green tests. Refusals are shown as the server gives them.
+ * Save as a draft as the signed-in user: a maker's save needs no approval (R-11-31). The maker asks
+ * for the change set to be released; an approver who is not a maker of it approves it as a version.
+ * The server decides both from the session; refusals are shown as it gives them.
  */
 export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label = 'draft' }: { doc?: any; yaml?: string; onSaved?: (s: Saved) => void; draftKey?: string; setDraftKey: (k?: string) => void; label?: string }) {
-  const { actor, users, go } = useStudio();
-  const checkers = users.filter((u) => isChecker(u) && u.id !== actor);
-  const [checker, setChecker] = useState('');
+  const { actor, roles, go } = useStudio();
+  const approver = roles.some((r) => APPROVER_ROLES.includes(r));
+  const maker = roles.some((r) => MAKER_ROLES.includes(r));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'pass' | 'fail' | 'warn'; text: string; issues?: Issue[] }>();
-  useEffect(() => {
-    if (!checker || checker === actor || !users.some((u) => u.id === checker)) setChecker(checkers[0]?.id ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actor, users]);
 
-  // What publishing this draft takes with it: the change set the studio generates (R-11-19).
+  // What releasing this draft takes with it: the change set the studio generates (R-11-19).
   const [set, setSet] = useState<string[]>([]);
   useEffect(() => {
     if (!draftKey) { setSet([]); return; }
@@ -194,10 +191,10 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
     setBusy(true);
     setMsg(undefined);
     try {
-      const r = await post('/api/drafts', doc ? { doc, actor } : { yaml, actor });
+      const r = await post('/api/drafts', doc ? { doc } : { yaml });
       setDraftKey(r.draft.key);
       const errs = (r.issues as Issue[]).filter((i) => i.severity === 'error').length;
-      setMsg({ tone: errs ? 'warn' : 'pass', text: `Saved ${label} ${r.draft.key} as ${actor}.${errs ? ` It has ${errs} error(s); fix them before publish.` : ''}` });
+      setMsg({ tone: errs ? 'warn' : 'pass', text: `Saved ${label} ${r.draft.key} as ${actor}.${errs ? ` It has ${errs} error(s); fix them before it is released.` : ''}` });
       onSaved?.({ key: r.draft.key, issues: r.issues, iface: r.interface });
       forgetCatalogue();
     } catch (e: any) {
@@ -206,12 +203,12 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
       setBusy(false);
     }
   };
-  const review = async () => {
+  const requestRelease = async () => {
     if (!draftKey) return;
     setBusy(true);
     try {
-      await post('/api/review', { key: draftKey, actor });
-      setMsg({ tone: 'pass', text: `${draftKey} is in review. A checker approves it.` });
+      const r = await post('/api/request-release', { key: draftKey });
+      setMsg({ tone: 'pass', text: `Release requested for the change set of ${draftKey} (${r.requested.length} draft(s)). An approver who is not a maker approves it as a version.` });
     } catch (e: any) {
       setMsg({ tone: 'fail', text: refusal(e) });
     } finally {
@@ -223,8 +220,8 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
     setBusy(true);
     setMsg(undefined);
     try {
-      const r = await post('/api/publish', { key: draftKey, checker });
-      setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} published: ${r.published.map((p: any) => p.key).join(', ')}. Maker ${actor}, checker ${checker}.` });
+      const r = await post('/api/publish', { key: draftKey });
+      setMsg({ tone: 'pass', text: `Change set ${r.changeSet.id} approved as a version: ${r.published.map((p: any) => p.key).join(', ')}. Approved by ${actor}.` });
       setDraftKey(undefined);
       forgetCatalogue();
     } catch (e: any) {
@@ -236,25 +233,17 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
 
   return (
     <div className="stack">
-      <button className="primary" disabled={busy || (!doc && !yaml)} onClick={save}>Save {label} as {actor}</button>
-      <button disabled={busy || !draftKey} onClick={review} title="Submit for review: runs the checks and marks the draft in review">Submit for review</button>
-      <label className="field">
-        <span>Checker</span>
-        <select value={checker} onChange={(e) => setChecker(e.target.value)} aria-label="Checker">
-          <option value="">Choose a checker</option>
-          {users.filter((u) => u.id !== actor).map((u) => <option key={u.id} value={u.id}>{u.id} ({u.roles.join(', ')})</option>)}
-        </select>
-      </label>
-      {checker && !checkers.some((c) => c.id === checker) && <p className="small warn-text">{checker} has no checker role. The server will refuse.</p>}
+      {maker && <button className="primary" disabled={busy || (!doc && !yaml)} onClick={save}>Save {label}</button>}
+      {maker && <button disabled={busy || !draftKey} onClick={requestRelease} title="Ask an approver to make this change set a version">Request release</button>}
       {set.length > 1 && (
         <div className="small">
-          <strong>Change set.</strong> Publishing takes these drafts with it, checked and tested together:
+          <strong>Change set.</strong> Its release takes these drafts with it, checked and tested together:
           {set.filter((k) => k !== draftKey).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}
         </div>
       )}
-      <button disabled={busy || !draftKey || !checker} onClick={publish} title={!draftKey ? 'Save a draft first' : undefined}>Publish as {checker || 'checker'}</button>
+      {approver && <button className="primary" disabled={busy || !draftKey} onClick={publish} title={!draftKey ? 'Open a draft first' : undefined}>Approve as version</button>}
       <p className="muted small">
-        Publish needs a checker who is not the maker, no error, and green tests on the saved draft.
+        Saving needs no approval. A change set becomes a version when an approver for its area, who is not a maker of it, approves it, with no error and green tests.
         {draftKey && <> Draft <code>{draftKey}</code>. <button className="link" onClick={() => go(`/artefact/${encodeURIComponent(draftKey.split('@')[0])}?key=${encodeURIComponent(draftKey)}`)}>Open its page</button></>}
       </p>
       {msg && (

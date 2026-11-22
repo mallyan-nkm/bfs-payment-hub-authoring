@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-002
+title: 'WPS refuses the salary file (NAK)'
+request:
+  profile: wps-all-engines
+  data: { sample: wps-sif-nak }
+expect:
+  outcome: rejected

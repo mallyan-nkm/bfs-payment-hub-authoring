@@ -62,7 +62,7 @@ async function publishSet(docs: any[]) {
     expect(cs.data.members.map((m: any) => m.key).sort()).toEqual([...keys].sort());
   }
   for (const key of keys) expect((await api.post('/api/review', { tenant: 'owner', actor: MAKER, key })).status).toBe(200);
-  expect((await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: MAKER })).status).toBe(409); // the maker cannot approve it
+  expect((await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: MAKER })).status).toBe(403); // the maker holds no approver right and cannot approve it
   // Approving one member publishes the whole change set.
   const pub = await api.post('/api/publish', { tenant: 'owner', key: keys[0], checker: CHECKER });
   expect(pub.status, JSON.stringify(pub.data)).toBe(200);
@@ -158,7 +158,10 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push(S);
     const check = await api.post(`/api/tenants/${BANK}/configuration/validate`, { doc: next });
     expect(check.data.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
-    expect((await api.post(`/api/tenants/${BANK}/configuration`, { actor: 'example.maker', yaml: toYaml(next) })).status).toBe(200);
+    const saved = await api.post(`/api/tenants/${BANK}/configuration`, { actor: 'example.maker', yaml: toYaml(next) });
+    expect(saved.status).toBe(200);
+    // The bank approver, not its configurator, makes it the version (R-11-31).
+    expect((await api.post('/api/publish', { tenant: BANK, key: saved.data.draft.key, checker: 'example.checker' })).status).toBe(200);
     const r = await api.post(`/api/tests/${TESTS.e2e[0].id}/run`);
     expect(r.data.passed, JSON.stringify(r.data.checks?.filter((c: any) => !c.passed))).toBe(true);
     expect(r.data.trace).toEqual(expect.arrayContaining(['route:decided', 'leg:settled', 'post:posted', 'end:settled']));

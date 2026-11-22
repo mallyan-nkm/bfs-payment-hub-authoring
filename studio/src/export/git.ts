@@ -4,7 +4,7 @@ import { OWNER_TENANT, StoreError, type Settings } from '../core/store.js';
 import { SETTINGS_PATH, scopeOfName } from '../content/layout.js';
 import { TOKEN_ENV } from '../content/github.js';
 import type { StudioEnv } from '../env.js';
-import { users } from '../governance/governance.js';
+import { Forbidden, permit } from '../governance/governance.js';
 import { exportPackage, packageHash, signPackage, type Target } from './exporter.js';
 import { claimsOf, NoRootWorkflow, SignatureRejected } from './signing.js';
 
@@ -23,10 +23,7 @@ const TARGETS: Target[] = ['temporal', 'dtfx', 'flowable', 'elsa'];
 
 /** Who changes the studio's settings: a shared checker or service operations of the owner. */
 function mayChangeSettings(env: StudioEnv, actor: string): string | undefined {
-  const u = users(env).find((x) => x.id === actor);
-  if (!u) return `${actor} is not a user of the studio`;
-  if (u.tenant !== OWNER_TENANT) return 'Only the owner changes how the studio publishes';
-  return u.roles.includes('shared checker') || u.roles.includes('service operations') ? undefined : `${actor} may not change how the studio publishes: a shared checker or service operations does`;
+  return permit(env, actor, OWNER_TENANT, 'author', { kind: 'settings' });
 }
 
 /** The connection and the settings, and what the studio wrote lately. Never the token: only whether there is one. */
@@ -52,7 +49,7 @@ export function changeSettings(env: StudioEnv, actor: string, input: Partial<Set
   const why = mayChangeSettings(env, actor);
   if (why) {
     env.store.record({ tenant: OWNER_TENANT, actor, action: 'change-settings', key: 'settings', outcome: 'refused', detail: why });
-    throw new StoreError('R-06', why);
+    throw new Forbidden(why);
   }
   const mode: GitMode = input.mode === 'pull-request' ? 'pull-request' : input.mode === 'commit' || input.mode === undefined ? (input.mode ?? env.store.settings.mode) : (() => { throw new StoreError('git', `No mode ${input.mode}: commit or pull-request`); })();
   const target = (input.target ?? env.store.settings.target) as Target;

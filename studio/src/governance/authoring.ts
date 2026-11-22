@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { StoreError } from '../core/store.js';
+import { OWNER_TENANT, StoreError } from '../core/store.js';
 import { parseName } from '../core/names.js';
 import { lintScript } from '../interp/sandbox.js';
 import type { StudioEnv } from '../env.js';
@@ -16,7 +16,7 @@ const PY_FORBIDDEN = [/\bimport\s+(os|sys|time|random|socket|subprocess|datetime
 export function saveScript(env: StudioEnv, inp: { tenant: string; actor: string; activity: string; language?: 'typescript' | 'python'; source: string }) {
   const parsed = parseName(inp.activity);
   if (!parsed) throw new StoreError('L01', `${inp.activity} is not an artefact name`);
-  enforce(env, inp.actor, inp.tenant, 'author', `script:${inp.activity}`, parsed.scope);
+  enforce(env, inp.actor, inp.tenant, 'author', `script:${inp.activity}`, { kind: 'script', scope: parsed.scope });
   const draft = env.store.drafts(inp.tenant).find((e) => e.name === inp.activity && e.kind === 'activity');
   if (!draft) throw new StoreError('not-found', `No activity draft ${inp.activity} in tenant ${inp.tenant}: a script belongs to an activity being authored`);
   if (env.store.releasesOf(inp.activity, { tenant: inp.tenant }).some((e) => e.status === 'published')) throw new StoreError('R-01-10', `${inp.activity} is published; its script is fixed. Release a new major or a new activity`);
@@ -38,7 +38,7 @@ const SAMPLE_NAME = /^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
 
 /** A synthetic sample file for tests. The designer vouches it holds no personal data. */
 export function saveSample(env: StudioEnv, inp: { tenant: string; actor: string; name: string; content: string }) {
-  enforce(env, inp.actor, inp.tenant, 'author', `sample:${inp.name}`);
+  enforce(env, inp.actor, inp.tenant, 'author', `sample:${inp.name}`, { kind: 'sample', scope: inp.tenant === OWNER_TENANT ? 'p' : 'b' });
   if (!SAMPLE_NAME.test(inp.name ?? '')) throw new StoreError('C12', 'A sample name is lower case, digits and hyphens, with an extension, for example demo-file-valid.csv');
   if (typeof inp.content !== 'string' || !inp.content.length || inp.content.length > 1_000_000) throw new StoreError('C12', 'A sample is text of at most 1 MB');
   if (env.store.factorySamples.has(inp.name)) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);

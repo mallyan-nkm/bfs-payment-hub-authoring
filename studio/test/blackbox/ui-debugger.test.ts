@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startServer, STUDIO, type Server } from './server.js';
+import { signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: the workflow debugger (F-17; I-32). A whole payment, a WPS salary file
 // from the bank's channel, is debugged on the bench: step into and back, a breakpoint and continue,
@@ -23,6 +23,8 @@ beforeAll(async () => {
   await page.addInitScript(() => localStorage.setItem('th.dock', '0'));
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+  // The bank's configurator runs the bank's payment with the bank's configuration (R-11-30).
+  await signInPage(page, server.url, 'example.maker');
 }, 180000);
 afterAll(async () => {
   await browser?.close();
@@ -37,8 +39,6 @@ describe('the workflow debugger', () => {
   it('debugs a whole payment from the bench', async () => {
     await page.goto(`${server.url}/#/tests`);
     await page.waitForLoadState('networkidle');
-    await page.getByLabel('Tenant', { exact: true }).selectOption('example-bank');
-    await page.waitForTimeout(400);
     await page.getByRole('button', { name: 'Ad hoc bench' }).click();
     await page.getByLabel('Target', { exact: true }).selectOption('p.wf.corporate.v1');
     for (const [port, sim] of [['p.port.core-banking.v1', 'p.sim.core-banking.v1'], ['p.port.sanctions.v1', 'p.sim.sanctions.v1'], ['p.port.fraud.v1', 'p.sim.fraud.v1'], ['uae.wps.port.wps.v1', 'uae.wps.sim.wps-outward.v1'], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1']]) {

@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-JSON-001
+title: 'A canonical JSON payment as the corporate workflow context'
+request:
+  profile: platform-iso-outward
+  data: { sample: json-canonical-payment }
+expect:
+  outcome: rejected

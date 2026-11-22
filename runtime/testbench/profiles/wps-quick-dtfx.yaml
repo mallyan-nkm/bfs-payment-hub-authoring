@@ -1,0 +1,13 @@
+# A test bench profile (runtime/testbench/README.md): it fixes the engines, the database, the tenant, the bench and
+# the environment, so a user sends only data: testbench run --profile <name> --file <data>.
+kind: testbench-profile
+name: wps-quick-dtfx
+title: WPS outward on DTFx without a store, against the interpreter, for a quick check while working
+workflow: p.wf.corporate.v1
+message: uae.wps.sif
+tenant: example-bank
+engines: [dtfx]
+reference: true
+databases: [none]
+bench: wps-happy
+clock: { date: '2026-11-17' }

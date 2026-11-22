@@ -1,0 +1,9 @@
+{
+  "kind": "runtime-role-map",
+  "tenantsClaim": "tenants",
+  "grants": [
+    { "claim": "groups", "value": "th-testers", "roles": ["Tester"], "tenants": ["*"] },
+    { "claim": "groups", "value": "th-operators", "roles": ["Operator"], "tenants": ["*"] },
+    { "claim": "groups", "value": "th-supervisors", "roles": ["Supervisor"], "tenants": ["*"] }
+  ]
+}

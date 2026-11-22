@@ -17,12 +17,13 @@ npm run web:build
 ```
 
 ```bash
-TH_CONTENT_REPO=<owner>/<repo> TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=<token> npm start
+TH_CONTENT_REPO=<owner>/<repo> TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=<token> \
+TH_OIDC_ISSUER=https://<the studio's identity provider> TH_OIDC_CLIENT_ID=<client id> npm start
 ```
 
-Then open http://localhost:4317. Without `TH_CONTENT_REPO` the studio does not start. The token needs contents: write on the repository (and pull requests: write for pull-request mode); where a proxy authenticates the requests to the API host, any placeholder value will do, since the studio never checks its format; it is read from the environment at each request and never stored, shown, logged or audited. `TH_GITHUB_API` changes the API base (default `https://api.github.com`); requests to it go through `HTTPS_PROXY` (or `HTTP_PROXY`) unless `NO_PROXY` names its host, and TLS trusts the authorities in `NODE_EXTRA_CA_CERTS`. `TH_CONTENT_ROOT` the folder on the branch (default `content-configurations`), `TH_BANKS` the bank packs to load besides the example bank (folder names under `banks/`). Set `ANTHROPIC_API_KEY` (or run `ant auth login`) for the AI assistant. `PORT` changes the port, `TH_SPEC_ROOT` the spec repository (default `../spec`).
+Then open http://localhost:4317 and sign in. Without `TH_CONTENT_REPO` the studio does not start, and without sign-in configured it does not start either (see "Sign-in and roles" below). The token needs contents: write on the repository (and pull requests: write for pull-request mode); where a proxy authenticates the requests to the API host, any placeholder value will do, since the studio never checks its format; it is read from the environment at each request and never stored, shown, logged or audited. `TH_GITHUB_API` changes the API base (default `https://api.github.com`), `TH_CONTENT_ROOT` the folder on the branch (default `content-configurations`), `TH_BANKS` the bank packs to load besides the example bank (folder names under `banks/`). Set `ANTHROPIC_API_KEY` (or run `ant auth login`) for the AI assistant. `PORT` changes the port, `TH_SPEC_ROOT` the spec repository (default `../spec`).
 
-Every workflow release the studio publishes or serves for download is signed (spec R-09-23): set `TH_SIGNING_KEY` to a reference to its P-256 key (`file:/run/secrets/th-signing-key.pem`, `env:NAME` or `vault:mount/path#field`), never the key itself. `npm run studio -- signing-key <dir>` makes a key and the trusted-signers file a runtime and `studio deploy` check against (`TH_TRUSTED_SIGNERS`); `npm run studio:dev` makes one for its run. `studio deploy` runs only a package whose signature verifies, and a deployed worker reads the runtime's values with the bank's client-credentials token, by reference in `TH_RUNTIME_TOKEN`. See `docs/north-star/guidelines/encryption-and-secrets.md`.
+Every workflow release the studio publishes or serves for download is signed (spec R-09-23): set `TH_SIGNING_KEY` to a reference to its P-256 key (`file:/run/secrets/th-signing-key.pem`, `env:NAME`, `vault:mount/path#field`, `akv:<vault-name>/<secret-name>`, `aws-sm:<region>/<secret-id>[#field]` or `aws-ssm:<region>/<parameter-name>`), never the key itself. A key in a store over the network is read when the studio starts and held in its process until it restarts (I-74). Azure signs in with managed identity, workload identity, or `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `TH_AKV_CLIENT_SECRET` (a reference); AWS with its default credential chain. `npm run studio -- signing-key <dir>` makes a key and the trusted-signers file a runtime and `studio deploy` check against (`TH_TRUSTED_SIGNERS`); `npm run studio:dev` makes one for its run. `studio deploy` runs only a package whose signature verifies, and a deployed worker reads the runtime's values with the bank's client-credentials token, by reference in `TH_RUNTIME_TOKEN`. See `docs/north-star/guidelines/encryption-and-secrets.md`.
 
 For local development, without GitHub:
 
@@ -30,7 +31,38 @@ For local development, without GitHub:
 npm run studio:dev
 ```
 
-It starts the fake GitHub API (`test/support/fake-github.ts`) seeded from this repository's `content-configurations/`, and the studio against it. Everything stays in that process's memory and is gone when it stops: still no local copy.
+It starts the fake GitHub API (`test/support/fake-github.ts`) seeded from this repository's `content-configurations/`, and the studio against it, with the built-in development sign-in (`TH_AUTH_DEV=1`): its sign-in page lists the users of `governance/users.yaml`. Everything stays in that process's memory and is gone when it stops: still no local copy.
+
+### Sign-in and roles
+
+The studio has its own sign-in, separate from the runtime's (R-11-32 to R-11-34). It is OpenID Connect, the authorization code flow with PKCE, against the identity provider the platform vendor operates for the studio alone. Bank Configurators and Bank Approvers sign in with accounts in that provider. The studio trusts that one issuer; federation with a bank's own provider, if it comes, is brokered there. It accepts no bearer token and shares no session with the runtime.
+
+| Variable | What |
+| --- | --- |
+| `TH_OIDC_ISSUER`, `TH_OIDC_CLIENT_ID` | The identity provider and the studio's client there |
+| `TH_OIDC_CLIENT_SECRET_REF` | The client secret, by reference only: `env:<NAME>` names the variable that holds it |
+| `TH_PUBLIC_URL`, `TH_OIDC_REDIRECT_URI` | The studio's address (default `http://localhost:<PORT>`) and the callback (default `<TH_PUBLIC_URL>/auth/callback`) |
+| `TH_OIDC_USER_CLAIM` | The ID token claim matched to a user's `subject` in `governance/users.yaml`, else its `id` (default `sub`) |
+| `TH_OIDC_GROUPS_CLAIM`, `TH_OIDC_GROUP_PREFIX` | Optional: the provider's groups narrow a user's roles to those it asserts as `<prefix><role>` (default prefix `studio:`); they never add one |
+| `TH_SESSION_KEY_REF`, `TH_SESSION_HOURS`, `TH_COOKIE_SECURE` | The cookie signing key by reference (default: a random key per process), the session length (default 8 hours), and `Secure` cookies (on by default for an `https` address) |
+| `TH_AUTH_DEV=1` | The built-in development provider at `/auth/dev`, for local work and tests. Refused when `NODE_ENV=production` |
+
+The session is an id in a signed, http-only, same-site cookie; what it stands for is in memory only, so a restart signs everyone out and nothing is written to disk. Every API call takes its user, and with it its tenant, from the session: a body or query that names another user or tenant is refused. A state-changing call carries the CSRF token that `GET /auth/me` returns, in `x-csrf-token`. No session is 401; an identity that is no user of the studio is 403; a refusal by the permission table is 403 and audited.
+
+The roles and the one permission table are in `src/governance/permissions.ts` (R-11-29, R-11-30):
+
+| Role | Tenant | Lands on | May |
+| --- | --- | --- | --- |
+| Bank Configurator | one bank | Bank workspace | author in scope `b`: hooks, their activities and scripts, rules and tables, the configuration set (dials and hook bindings), simulators, tests, port bindings; run the bench, import the bank part, export |
+| Bank Approver | one bank | Governance | approve the bank's change sets as versions; accept a shared release |
+| Workflow Designer | owner | Workflow designer | compose workflows, subflows and schemes; tests |
+| Workflow Developer | owner | Artefact editors | activities, scripts, engine bindings, ports, rules, rule sets, tables, simulators, extensions; tests |
+| Platform Approver | owner | Governance | approve designer and developer change sets as versions; waive; retire; settings |
+| Administrator | owner | Governance | propose and approve changes to the users and roles, never one's own |
+| Service operations | owner | Governance | in-flight counts, retirement, settings |
+| Auditor | either | Catalogue | read |
+
+A maker's save needs no approval. The maker requests the release of a change set; an approver for its area who is not a maker of it approves it as a version (R-11-31). A bank's configuration set is a draft until its Bank Approver approves it. `GET /api/permissions` returns the table; `GET /api/permit?user=&action=&kind=&scope=` asks it.
 
 ### What lives where on the branch
 
@@ -148,7 +180,7 @@ A payment reaches a scheme leg through the front door. A file comes in. The sche
 
 **A new scheme from scratch** (`test/blackbox/e2e-new-scheme.test.ts`). `uae.demo` is a synthetic scheme made up for the test; its documents are in `test/blackbox/demo-scheme.ts`.
 
-1. A shared designer saves synthetic sample files, then authors:
+1. A shared designer (Workflow Designer and Workflow Developer) saves synthetic sample files, then authors:
    - the port and a simulator with the standard scenario set;
    - a rule, its rule set and the file checks;
    - the intake map with its script-behind;
@@ -156,9 +188,9 @@ A payment reaches a scheme leg through the front door. A file comes in. The sche
    - a composite with its subflow;
    - the leg that fills the scheme-leg slot of `p.wf.corporate.v1`;
    - the scheme manifest, whose dispatch table routes the credit file to that leg.
-2. Artefacts that refer to one another are published together as one reviewed change set (Issue I-27); each set and each artefact has a different checker from its maker.
+2. Artefacts that refer to one another are approved together as one change set (Issue I-27), by a Platform Approver who is not their maker.
 3. The composite and leg tests pass, started from the dispatch table.
-4. The end-to-end test first fails at the route: the bank has not enabled the rail. Then the bank releases configuration 1.1.0, which accepts the scheme and enables the rail, and the payment settles.
+4. The end-to-end test first fails at the route: the bank has not enabled the rail. Then the Bank Configurator saves configuration 1.1.0, which accepts the scheme and enables the rail, the Bank Approver approves it as a version, and the payment settles.
 5. The corporate workflow is exported for the bank with simulators. The new scheme gets its own worker, `th-uae-demo`, with the queue derived from its scope.
 6. Deployed on DTFx with `studio deploy --message uae.demo.credit-file`, three cases run:
    - an acknowledged file is paid;
@@ -170,7 +202,7 @@ A payment reaches a scheme leg through the front door. A file comes in. The sche
 **The factory WPS scheme, changed only by configuration** (`test/blackbox/e2e-wps.test.ts`). WPS is factory content, so the bank authors nothing in it.
 
 1. As shipped, a salary file settles. It passes through the corporate workflow, the WPS leg in its slot and the bank's hooks.
-2. The bank is refused when it sets a scheme limit above its bound, reuses a release, or acts as a checker where an author is needed.
+2. The bank is refused when it sets a scheme limit above its bound, reuses a release, or has its approver save a configuration (403).
 3. Configuration 1.1.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone.
 4. Configuration 1.2.0 turns WPS back on and unbinds the pre-release hook: the payment settles without it.
 5. Each configuration runs on the interpreter, and is exported for the bank and deployed on DTFx. The configuration set travels in the package. There are four separate workers: `th-bank`, `th-p`, `th-uae-p` and `th-uae-wps`.

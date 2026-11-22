@@ -89,14 +89,11 @@ export function scenes(d: Director): Scene[] {
     await d.click(p().getByRole('button', { name: 'Done' }).first());
   };
   const save = async () => {
-    await d.click(p().getByRole('button', { name: /^Save draft as / }).first());
+    await d.click(p().getByRole('button', { name: /^Save draft$/ }).first());
     await status(/Saved draft/);
   };
   const publish = async (checker = 'shared.checker') => {
-    await d.select(p().getByLabel('Checker').first(), checker);
-    await d.wait(600);
-    await d.click(p().getByRole('button', { name: `Publish as ${checker}` }).first());
-    await status(/Change set CS-\S+ published/);
+    await d.release(checker, checker === 'example.checker' ? 'example.maker' : 'shared.designer');
     await d.wait(700);
   };
   const addChip = async (label: string, value: string) => {
@@ -108,6 +105,7 @@ export function scenes(d: Director): Scene[] {
     await d.click(main().getByRole('button', { name: `Remove ${value}`, exact: true }).first());
   };
   const bench = async (target: string, tenant: string, ports: [string, string, string?][]) => {
+    await d.forTenant(tenant);
     await d.go('tests');
     await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
     await d.select(p().getByLabel('Target', { exact: true }), target);
@@ -158,7 +156,7 @@ export function scenes(d: Director): Scene[] {
     await d.wait(600);
   };
   const tenantYaml = async (change: (c: any) => void) => {
-    const cs = await (await fetch(`${d.server.url}/api/tenants/example-bank/configuration`)).json();
+    const cs = (await d.api('example.maker').get('/api/tenants/example-bank/configuration')).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
     change(next);
     await d.paste(p().getByLabel('Configuration set YAML'), toYaml(next));
@@ -441,7 +439,7 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'It never saves or publishes on its own. You save the draft yourself, and a checker publishes it, exactly as in part one. We close the panel. The assistant tab on the right edge opens it again.',
       do: async () => {
-        await d.point(p().getByRole('button', { name: /^Save draft as / }).first(), 2000);
+        await d.point(p().getByRole('button', { name: /^Save draft$/ }).first(), 2000);
         await d.click(dock().getByRole('button', { name: 'Close the assistant' }));
         await d.point(p().getByRole('button', { name: 'Open the assistant' }), 2000);
       },
@@ -571,6 +569,8 @@ export function scenes(d: Director): Scene[] {
         await expectText(/passes every check/);
         await d.click(p().getByRole('button', { name: 'Save the configuration set' }));
         await d.wait(1200);
+        await d.approveConfiguration();
+        await d.go('tenant');
       },
     },
     {

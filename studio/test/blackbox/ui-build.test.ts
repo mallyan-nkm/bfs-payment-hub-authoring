@@ -6,11 +6,12 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
 import { ACK_IN, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, GARBAGE, LEG, PORT, RULE, RULESET, SCHEME, SEND, SIM, SUBFLOW, SUBMIT, USD, VALID, VALIDATE } from './demo-scheme.js';
-import { startServer, STUDIO, type Server } from './server.js';
+import { client, signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: the walk-through of the user guide's "Build a full workflow", done only
-// in the web app. A shared designer builds the synthetic scheme `uae.demo` and its leg; a checker
-// approves; the bank enables the rail; a file is paid end to end; the export is downloaded and
+// in the web app. A shared designer builds the synthetic scheme `uae.demo` and its leg; a platform
+// approver approves each change set as a version; the bank configurator enables the rail and the
+// bank approver approves it; a file is paid end to end; the export is downloaded and
 // deployed on DTFx with a separate worker per queue. Every click here is a step of the guide.
 
 const require = createRequire(import.meta.url);
@@ -27,6 +28,7 @@ beforeAll(async () => {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+  await signInPage(page, server.url, 'shared.designer');
 }, 180000);
 afterAll(async () => {
   await browser?.close();
@@ -37,11 +39,12 @@ const go = async (hash: string) => {
   await page.goto(`${server.url}/#/${hash}`);
   await page.waitForLoadState('networkidle');
 };
-const as = async (tenant: string, actor: string) => {
-  await page.getByLabel('Tenant', { exact: true }).selectOption(tenant);
-  await page.waitForTimeout(300);
-  await page.getByLabel('Acting as').selectOption(actor);
-  await page.waitForTimeout(300);
+/** Sign in as another user: the studio takes the user from the session (R-11-32). */
+let signedIn = 'shared.designer';
+const as = async (_tenant: string, actor: string) => {
+  if (signedIn === actor) return;
+  await signInPage(page, server.url, actor);
+  signedIn = actor;
 };
 const status = () => page.locator('[role="status"]').last();
 
@@ -52,21 +55,29 @@ async function editorDraft(kind: string, doc: any) {
   await page.getByRole('button', { name: 'Edit the YAML' }).first().click();
   await page.getByLabel('Document YAML').first().fill(toYaml(doc));
   await page.getByRole('button', { name: 'Done' }).first().click();
-  await page.getByRole('button', { name: /^Save draft as / }).click();
+  await page.getByRole('button', { name: /^Save draft$/ }).click();
   await expect.poll(async () => (await status().textContent()) ?? '').toContain('Saved draft');
 }
 
-/** Publish from the screen the draft was saved on, with a checker who is not the maker. */
-async function publishHere(expectMembers: string[]) {
-  await page.getByLabel('Checker').first().selectOption('shared.checker');
+/**
+ * The maker requests the release from the screen the draft was saved on; a platform approver, who
+ * is not the maker, signs in and approves the change set as a version in Governance (R-11-31).
+ */
+async function publishHere(expectMembers: string[], maker = 'shared.designer', approver = 'shared.checker') {
   for (const m of expectMembers.slice(1)) await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toContain(m);
-  await page.getByRole('button', { name: 'Publish as shared.checker' }).first().click();
-  // Wait for the publish to answer, either way, then say what it said.
+  await page.getByRole('button', { name: 'Request release' }).first().click();
+  await expect.poll(async () => (await page.locator('[role="status"]').allTextContents()).join(' | '), { timeout: 15000 }).toContain('Release requested');
+  await as('', approver);
+  await go('governance');
+  const row = page.locator('tr', { hasText: expectMembers[0] }).first();
+  await row.getByRole('button', { name: 'Approve as version' }).click();
+  // Wait for the approval to answer, either way, then say what it said.
   const all = async () => (await page.locator('[role="status"]').allTextContents()).join(' || ');
-  await expect.poll(async () => /Change set CS-\S+ published|alert fail/.test(await all()) || (await page.locator('.alert.fail').count()) > 0, { timeout: 30000 }).toBe(true);
-  const text = (await page.locator('[role="status"]').allTextContents()).find((t: string) => /Change set CS-\S+ published/.test(t)) ?? '';
-  expect(text, await all()).toMatch(/Change set CS-\S+ published/);
+  await expect.poll(async () => /Change set CS-\S+ approved as a version|Refused/.test(await all()), { timeout: 30000 }).toBe(true);
+  const text = (await page.locator('[role="status"]').allTextContents()).find((t: string) => /Change set CS-\S+ approved as a version/.test(t)) ?? '';
+  expect(text, await all()).toMatch(/Change set CS-\S+ approved as a version/);
   for (const m of expectMembers) expect(text).toContain(m);
+  await as('', maker);
 }
 
 /** Workflow designer: a new workflow of a kind, written in the YAML editor beside the canvas, saved. */
@@ -82,7 +93,7 @@ async function designerDraft(wfKind: string, doc: any) {
   await expect.poll(() => page.getByLabel('Workflow YAML').inputValue()).toContain(doc.name);
   await page.getByLabel('Workflow YAML').fill(toYaml(doc));
   await page.waitForTimeout(800);
-  await page.getByRole('button', { name: /^Save draft as / }).click();
+  await page.getByRole('button', { name: /^Save draft$/ }).click();
   await expect.poll(async () => (await status().textContent()) ?? '').toContain('Saved draft');
 }
 
@@ -150,7 +161,7 @@ describe('the guide: build a full workflow in the web app', () => {
     await editorDraft('map', FILE_IN);
     await page.getByLabel('Script source').fill(FILE_IN_SCRIPT);
     await page.getByRole('button', { name: /^Save the script as / }).click();
-    await expect.poll(async () => (await page.locator('[role="status"]').allTextContents()).join(' | ')).toContain('Saved uae.demo.map.file-in.v1.ts');
+    await expect.poll(async () => (await page.locator('[role="status"]').allTextContents()).join(' | '), { timeout: 15000 }).toContain('Saved uae.demo.map.file-in.v1.ts');
     await publishHere([FILE_IN.name]);
   }, 60000);
 
@@ -179,18 +190,23 @@ describe('the guide: build a full workflow in the web app', () => {
   }, 90000);
 
   it('step 8: as a bank, accept the scheme and enable its rail in a new configuration release', async () => {
-    await go('tenant');
     await as('example-bank', 'example.maker');
     await go('tenant');
-    const cs = await (await fetch(`${server.url}/api/tenants/example-bank/configuration`)).json();
+    const cs = (await client(server.url, { as: 'example.maker' }).get('/api/tenants/example-bank/configuration')).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
     next.release = '1.2.0';
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));
     await page.getByRole('button', { name: 'Save the configuration set' }).click();
-    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.2\.0 as example\.maker/);
-  }, 60000);
+    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.2\.0\S* as example\.maker, as a draft/);
+    // The bank approver, not the configurator, makes it the version.
+    await as('example-bank', 'example.checker');
+    await go('governance');
+    await page.locator('tr', { hasText: 'config:example-bank' }).first().getByRole('button', { name: 'Approve as version' }).click();
+    await expect.poll(async () => (await page.locator('[role="status"]').allTextContents()).join(' ')).toMatch(/approved as a version by example\.checker/);
+    await as('example-bank', 'example.maker');
+  }, 90000);
 
   it('step 9: a credit file from the bank\'s channel is paid end to end', async () => {
     const text = await benchRun('p.wf.corporate.v1', 'example-bank', [...PLATFORM_PORTS, ...DEMO_PORTS], 'samples/demo-credit-file-valid.csv', 'uae.demo.credit-file');
@@ -201,7 +217,7 @@ describe('the guide: build a full workflow in the web app', () => {
 
   let zip = '';
   it('step 10: export for the bank with simulators, and download the zip', async () => {
-    await as('owner', 'shared.designer');
+    // The bank exports its own package: its configuration is its own (R-06-01).
     await go('export?workflows=p.wf.corporate.v1&target=dtfx');
     await page.getByLabel('Export tenant').selectOption('example-bank');
     await page.getByLabel('With simulators').check();

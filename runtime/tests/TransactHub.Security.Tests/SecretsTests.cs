@@ -7,7 +7,7 @@ using TransactHub.Security;
 
 namespace TransactHub.Security.Tests;
 
-// The one secret interface (spec R-06-22): env:, file: and vault: references, resolved by the host; the value never
+// The one secret interface (spec R-06-22): env:, file: and vault: references (the cloud stores: CloudSecretsTests), resolved by the host; the value never
 // appears in a message, an exception or a printed object.
 
 public sealed class SecretsTests : IDisposable
@@ -55,8 +55,7 @@ public sealed class SecretsTests : IDisposable
         Assert.Equal("[secret]", s.ToString());
         Assert.DoesNotContain(value, $"{s}");
         Assert.DoesNotContain(value, System.Text.Json.JsonSerializer.Serialize(s));
-        // Azure Key Vault is named but not built (Issue I-73); an unknown store is refused.
-        Assert.Contains("I-73", (await Assert.ThrowsAsync<SecretUnavailable>(() => r.Resolve("akv:vault-name/secret"))).Message);
+        // A store this installation has not configured is refused, naming the reference only.
         Assert.Contains("has not configured", (await Assert.ThrowsAsync<SecretUnavailable>(() => r.Resolve("vault:secret/th#x"))).Message);
     }
 }

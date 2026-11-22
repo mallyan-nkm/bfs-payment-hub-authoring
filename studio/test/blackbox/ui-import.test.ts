@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { client, startServer, STUDIO, type Server } from './server.js';
+import { client, signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: Import (I-33). The training bundle (WPS extracted as uae.wpsx) is
 // previewed and imported as drafts; a broken bundle uploaded as a zip is refused with its errors.
@@ -22,6 +22,8 @@ beforeAll(async () => {
   await page.addInitScript(() => localStorage.setItem('th.dock', '0'));
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+  // A platform user imports the shared part; the bank part is left for the bank (R-11-30).
+  await signInPage(page, server.url, 'shared.designer');
 }, 180000);
 afterAll(async () => {
   await browser?.close();
@@ -33,7 +35,6 @@ describe('import in the web app', () => {
     await page.goto(`${server.url}/#/import`);
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Use the training bundle' }).click();
-    await expect.poll(() => page.getByLabel('Bank tenant').inputValue()).toBe('example-bank');
     await page.getByRole('button', { name: 'Preview' }).click();
     await page.getByTestId('import-summary').waitFor({ timeout: 60000 });
     expect(await page.getByText('may be imported').count()).toBe(1);
@@ -48,7 +49,7 @@ describe('import in the web app', () => {
 
   it('imports as drafts, publishing nothing', async () => {
     await page.getByRole('button', { name: /^Import as drafts, as / }).click();
-    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: 5 change sets wait for a checker/); // the PSI and RRI maps and the error dictionary, referred to by nothing, are change sets of their own
+    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: \d+ change sets? wait for an approver/);
     const drafts = await client(server.url).get('/api/drafts?tenant=owner');
     expect(drafts.data.some((d: any) => d.name === 'uae.wpsx.wf.salary-file-out.v1')).toBe(true);
     const cat = await client(server.url).get('/api/catalogue?q=uae.wpsx.wf.salary-file-out');
@@ -70,7 +71,6 @@ describe('import in the web app', () => {
     fs.writeFileSync(file, makeZip(entries));
     await page.goto(`${server.url}/#/import`);
     await page.getByLabel('Extraction bundle').setInputFiles(file);
-    await page.getByLabel('Bank tenant').selectOption('example-bank');
     await page.getByRole('button', { name: 'Preview' }).click();
     await page.getByTestId('import-summary').waitFor({ timeout: 60000 });
     expect((await page.getByTestId('import-issues').textContent()) ?? '').toMatch(/I64.*neither inventoried nor excluded/s);

@@ -16,6 +16,7 @@ export default defineConfig({
     proxy: {
       '/ops/api': { target: process.env.TH_OPS_API ?? 'http://localhost:7400', changeOrigin: true },
       '/service/api': { target: process.env.TH_SERVICE_API ?? 'http://localhost:7410', changeOrigin: true },
+      '/testbench/api': { target: process.env.TH_TESTBENCH_API ?? 'http://localhost:4380', changeOrigin: true },
     },
   },
 });

@@ -114,6 +114,9 @@ CASES = [
      "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: synthetic-literal-value", "a binding's secretRef holds a value, not a reference"),
     ("M39", "ERROR L37", "../content-configurations/banks/dib/file-transfer.yaml",
      "secretRef: env:TH_DIB_SFTP_CREDENTIAL", "secretRef: env:TH_DIB_SFTP_CREDENTIAL\n      password: synthetic-literal-value", "a binding carries a password as a value beside its reference"),
+    # R-06-22: a secretRef naming a store that is not one of the six is not a reference (L37)
+    ("M52", "ERROR L37", "../content-configurations/banks/dib/core-banking.yaml",
+     "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: gcp-sm:projects/x/secrets/th-token", "a binding's secretRef names a store the secret interface does not have"),
     # R-05-48, R-05-49: an operations view says only what the store can answer (L38)
     ("M40", "ERROR L38", OPV,
      '"step:submit.read-ack.outcome"', '"step:submit.read-acks.outcome"', "a view's field reads a step the leg does not have"),
@@ -144,17 +147,17 @@ CASES = [
      "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - rule\n",
      "a party's reason code is in the dictionary only as a rule's"),
     # R-08-16: only an activity with a script-behind or a builtin may say the native host implements it too (L40)
-    ("M52", "ERROR L40", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
+    ("M53", "ERROR L40", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
      "  subflow: uae.wps.sub.return-credits.v1\n", "  subflow: uae.wps.sub.return-credits.v1\n  native: true\n",
      "a composite says the native host implements it"),
     # R-11-36: a file a seed published keeps the text its ledger records (L41)
-    ("M53", "ERROR L41", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
+    ("M54", "ERROR L41", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
      "title: ACK or NAK to status", "title: ACK or NAK to a status", "a published release is edited on the branch"),
     # R-11-35: a factory artefact changed at a release the branch already holds (L41)
-    ("M54", "ERROR L41", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
+    ("M55", "ERROR L41", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
      "title: ", "title: Changed ", "a factory artefact is changed without a new release"),
     # R-11-36: a seeded file no ledger records (L41)
-    ("M55", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
+    ("M56", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
      "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
      "a seeded file is in no ledger"),
 ]

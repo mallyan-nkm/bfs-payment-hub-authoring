@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace';
 import { AggregationTemporality, InMemoryMetricExporter } from '@opentelemetry/sdk-metrics';
 import { InMemoryLogRecordExporter } from '@opentelemetry/sdk-logs';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import type { StudioEnv } from '../src/env.js';
 import { inSpan, initTelemetry, log, shutdownTelemetry, flushTelemetry } from '../src/telemetry/telemetry.js';
 import { isPersonalKey, MASKED, scrub } from '../src/telemetry/mask.js';

@@ -780,7 +780,9 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **The same gap in the studio.** The studio enforces roles on every write, but it takes the acting user from the request (`actor`), chosen in the web app's header; it has no sign-in. That is enough for the walking skeleton, not for a shared installation. Decide the studio's sign-in with the same identity provider, so that `actor` comes from a verified identity and never from the request body.
 
-**What is built.** Nothing for operators. The studio's roles, maker-checker and hash-chained audit are built and tested (C17). `docs/north-star/guidelines/access-control.md` keeps the two apart.
+**The studio's part: decided and done (2026-11-22).** The owner decided the studio's sign-in and roles, and it is built: OpenID Connect with PKCE against the identity provider the platform vendor operates for the studio alone, signed in-memory sessions, CSRF protection, no "Act as" selector, the user and tenant always from the session, and one permission table for Bank Configurator, Bank Approver, Workflow Designer, Workflow Developer, Platform Approver, Administrator, Service operations and Auditor (R-11-29 to R-11-34, R-10-10 to R-10-12). The studio's sign-in is separate from the runtime's and accepts no runtime token. What remains of it is in I-69 to I-72.
+
+**What is built (the studio).** The studio's sign-in, roles, maker-checker and hash-chained audit are built and tested (C17; `studio/test/permissions.test.ts`, `studio/test/auth.test.ts`, `studio/test/blackbox/auth.test.ts`, `studio/test/blackbox/ui-login.test.ts`). `docs/north-star/guidelines/access-control.md` keeps the two apart.
 
 **The runtime part, decided and built (owner, 2026-11-22).** The runtime belongs to the bank and has no identity store. `runtime/src/TransactHub.Auth` validates bearer JWTs from the bank's one OIDC issuer (issuer, audience, discovery or a JWKS, clock skew: configuration), people's tokens and machine callers' client-credentials tokens alike, and maps the bank's claims and groups to the host's roles through the bank's role map (`Auth:RoleMap`); a role claim in the token itself is ignored. It never trusts the studio's issuer: the studio's only link to the runtime is the package signature (R-09-23 to R-09-26). The release API requires a caller on every endpoint and authorises by role: `release-importer`, `release-activator`, `release-reader`, `values-reader` (per tenant); the actor recorded is the verified caller (R-09-27, R-09-29; `ApiAuthTests`: 401, 403, app roles, groups, tenants, the studio's issuer refused, start-up refusals). The library takes any host's roles, so an operations console's API uses it for operator and supervisor. Still open: the operator surface itself, which actions need a second approver, audit of operator actions on the payment's chain, and the native host's callers (I-75).
 
@@ -809,7 +811,7 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 - (3) CI job `security` on every push: gitleaks 8.21.2 (checksum pinned) over the history and the tree, L37, `npm audit --omit=dev --audit-level=high`, `dotnet list package --vulnerable --include-transitive` (R-09-28).
 - Package signing: ECDSA P-256 over a canonical statement of every file's SHA-256, the release id, tenant and change set; the key by reference (`TH_SIGNING_KEY`); verified by the runtime at storage and activation, recorded as a fact, and by the deploy runner; several trusted keys with retirement and revocation (`TH_TRUSTED_SIGNERS`) (R-09-23 to R-09-26; `spec/design/09-export-bindings.md`, 9.9).
 
-Still open: (2) decryption as an activity behind a port, (4) erasure and retention, the Azure Key Vault provider (I-73) and a remote signer (I-74).
+Still open: (2) decryption as an activity behind a port, (4) erasure and retention. The Azure Key Vault and AWS providers are built (I-73, done) and the signing key stays in the studio's process (I-74, decided).
 
 ## I-68. Non-functional targets, deployment sizes and the reporting read side
 
@@ -826,17 +828,61 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **What is built for the operator surface (2026-11-22).** The first read model: the operations read model (`runtime/src/TransactHub.Operations`, R-05-49). The store now writes an outbox row with every fact and every message, in the same save; the projection follows the outbox from a checkpoint, applies each fact once by its number on its chain, is rebuilt from the facts on request with the same result, and shows its lag (`GET /ops/api/health`, the console's top bar). It runs on SQL Server and PostgreSQL through EF Core, with its own migrations, in the store's database or one of its own (`Operations:Connection`). The operator's search is the console's list: by tenant, scheme, leg, direction, ISO status, outcome, hold and its reason, dates, amounts, ids, references and file names, and by any filter a pack's view declares. Not yet: the reports of the source's report database (dashboards, counts per file type, exports to CSV, Excel and PDF), and one projecting process per installation is assumed (a second would only redo work, since applying is by number; a lease is not built).
 **A first load test (22 November 2026).** The owner decided a load test runs before any bank goes live. The harness is built (`runtime/load/`, R-09-38) and ran here on Temporal with its persistence on our SQL Server plugin and on PostgreSQL, and the store on SQL Server and on PostgreSQL: `docs/runtime/LOAD-TEST.md` has the conditions and the numbers, and proposes targets for the owner to set. It found two things that stop a bank going live as the runtime stands: a file of more than a few dozen lines fails on a real Temporal server (I-77), and a large file takes far too long, because its items run one after another at a fixed cost each (I-78). Issue 1 stays open until the owner sets the targets; Issue 2 is unchanged.
 
+## I-69. The roles of earlier releases, and who authors a bank's own ports and extensions
+
+**Issue 1.** A content branch written by an earlier release names the roles shared designer, shared checker, bank designer and bank checker in `governance/users.yaml`. Read strictly, every user there would lose every right after an upgrade, the Administrator role among them, and nobody could change the users again. The studio therefore reads each old name as the roles that held the same rights (shared designer as Workflow Designer and Workflow Developer, shared checker as Platform Approver and Administrator, bank designer as Bank Configurator, bank checker as Bank Approver), and refuses an old name in a newly proposed list.
+
+**Recommendation 1.** On each installation, have an administrator propose the users with the new role names, and have another approve it. Once every branch in use is migrated, remove `LEGACY_ROLES` from `studio/src/governance/permissions.ts`, in a change with its requirement (R-11-29) amended.
+
+**Issue 2.** The owner's decision forbids a Bank Configurator to create or change a port, and does not list extensions among its kinds. A bank's own hooks can need a bank's own port and extension in scope `b` (the example bank has `b.port.treasury.v1` and `b.ext.bank.v1`). No role may now author those: the developer works only in shared scopes, and the configurator may not.
+
+**Recommendation 2.** Decide who authors a port and an extension in scope `b`: either the Bank Configurator (one row added to the table), or a Workflow Developer working for the bank, which needs a role that is both a platform role and of one bank. Until then, a bank's port and extension change only through the seed or the bank's pack folder.
+
+**Issue 3.** The operations view (R-05-48), which declares a workflow's operator actions and their second approvers, came after the owner's decision and is not in it. The table gives it to the Workflow Designer, with the workflow it belongs to, and its version to the Platform Approver.
+
+**Recommendation 3.** Confirm that, or name another author (the second-approver rules are a control the bank may want to approve too).
+
+**Issue 4.** The error dictionary (R-05-51) also came after the decision. The table gives it to the Workflow Developer, who builds the activities, rules and ports whose errors it documents, and its version to the Platform Approver. A bank has no dictionary of its own in scope `b`.
+
+**Recommendation 4.** Confirm that, and decide whether a bank documents the errors of its own hooks in a dictionary of scope `b`, authored by its Bank Configurator.
+
+## I-70. Port bindings have no editor in the studio
+
+**Issue.** The owner's decision lets a Bank Configurator change the port bindings for its bank, and the permission table grants it (`port-bindings`, author, scope `b`). But a port binding is a runtime document (`banks/<bank>/core-banking.yaml`, R-11-28): the studio reads past it and offers no editor and no API to change it. The table row is therefore not reachable today.
+
+**Recommendation.** Add port bindings to the studio as a bank's artefact: a draft on the bank's change set branch, checked against its port, approved as a version by a Bank Approver, in one change with a requirement for its shape and a check. Secrets in a binding stay references (I-67).
+
+## I-71. The command line and the deploy runner are not signed in
+
+**Issue.** The server's API asks for a signed-in user on every call. The command line (`npm run studio -- import --apply`, `seed-content`, `deploy`) runs in the operator's own process with the operator's GitHub token, and takes its actor from `--actor` and `--bank-actor`. The permission table still decides what that actor may do, but nothing proves who typed the command.
+
+**Recommendation.** Treat the command line as a tool of the platform's own pipeline and administrators, run only where the GitHub token is held, and say so in the deployment guide. If it must serve other users, give it the same sign-in (a device authorization flow against the studio's identity provider) and drop `--actor`.
+
+## I-72. Sessions live in one process
+
+**Issue.** Sessions are held in memory (R-11-24 forbids a disk). A second studio instance does not know the first one's sessions, so a load balancer must keep each browser on one instance, and a restart signs everyone out. A change to the users takes effect on the next call, but a session is not ended early when its identity is disabled in the identity provider: it lasts until it expires (8 hours by default).
+
+**Recommendation.** For one instance, keep it. For several, either sticky sessions, or a session cookie that carries its own signed, short-lived claims (no server state) with the same signing key on every instance (`TH_SESSION_KEY_REF`). Decide the session length with the identity provider's owner, and whether the studio should check the provider's session on a short interval.
+
 ## I-73. The Azure Key Vault secret provider is not built
 
 **Issue.** The secret interface names `akv:` references, but only `env:`, `file:` and `vault:` (HashiCorp Vault KV version 2) have providers. An Azure installation can mount Key Vault secrets as files (the Secrets Store CSI driver) and use `file:`, but cannot read Key Vault directly. A reference to `akv:` fails with a message naming this issue. The Key Vault SDK and a managed identity cannot be tested in this repository's CI without an Azure subscription.
 
 **Recommendation.** Mount Key Vault secrets as files (`file:`) until a bank needs a direct read. Then add an `AzureKeyVaultSecretProvider` behind `ISecretProvider` (Azure.Security.KeyVault.Secrets with a managed identity), tested against a recorded fake in CI and once against a real vault before the bank's first use.
 
+**Done (owner's decision of 2026-11-22).** The owner decided to support Azure Key Vault and AWS beside HashiCorp Vault, in the runtime and the studio. Built (R-06-22 amended, R-06-26, R-06-27):
+- `akv:<vault-name>/<secret-name>[#version]`: `AzureKeyVaultSecretProvider` (Azure.Security.KeyVault.Secrets 4.12.0, Azure.Identity 1.21.0) and `studio/src/secrets/cloud.ts` (@azure/keyvault-secrets 4.12.0, @azure/identity 4.14.1). It signs in with the first configured of client credentials (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `TH_AKV_CLIENT_SECRET`, a reference to env: or file:), workload identity (`AZURE_FEDERATED_TOKEN_FILE`) and managed identity, in DefaultAzureCredential's order. A literal `AZURE_CLIENT_SECRET` is refused. `TH_AKV_DNS_SUFFIX` names a sovereign cloud's vault domain.
+- `aws-sm:<region>/<secret-id>[#json-field]` and `aws-ssm:<region>/<parameter-name>`: `AwsSecretsManagerSecretProvider` and `AwsParameterStoreSecretProvider` (AWSSDK.SecretsManager 4.0.100.23, AWSSDK.SimpleSystemsManagement 4.0.104.9) and the studio's (@aws-sdk/client-secrets-manager and @aws-sdk/client-ssm 3.1162.0), on the AWS default credential chain. A field is read from a JSON object; a parameter must be a SecureString.
+- A value read over the network is cached for `TH_SECRET_CACHE_SECONDS` (default 300, 0 for none) and never past it or when its store fails; `ISecretResolver.Invalidate` and `WithSecret` read a refused credential again, once (`SecretStores.withSecret` in the studio).
+- Tests: Azure against `FakeKeyVault` (`runtime/tests/TransactHub.Security.Tests`) and `studio/test/support/fake-key-vault.ts`, an in-process fake of the Key Vault REST protocol and the token endpoint, given to the official SDK as its transport, since there is no official emulator; AWS against LocalStack 4.14.0 in a container named for the run. What these do not prove is I-105.
+
 ## I-74. The studio's signing key is held in its process
 
 **Issue.** The studio signs packages with a private key it reads into its own memory, by reference, from the environment, a mounted file or Vault. A compromise of the studio's host can sign packages that every runtime trusting the key accepts, until the key is revoked in each installation's trusted signers. There is no transparency log of what was signed, so a bank cannot list every package a key signed.
 
 **Recommendation.** For production, sign with a key that never leaves a key store: Vault transit, a cloud KMS or an HSM, all of which sign ECDSA P-256 over SHA-256, so the format and the verification do not change. Record each signature (key id, statement hash, change set) in the change set's audit on the branch, or in a transparency log (Sigstore's Rekor) where the bank may use one. Rotate the key at least yearly, as the guidelines describe.
+
+**Decided (owner, 2026-11-22).** The studio's signing key may stay in the studio's process: no HSM, KMS or remote signer is required. The key is still read only through the secret interface (`TH_SIGNING_KEY`), so it may come from any of its stores: env:, file:, Vault, Azure Key Vault, AWS Secrets Manager or Parameter Store. A key in a store over the network is read when the studio starts (`primeSigningKey`) and held until it restarts (I-106). R-09-23 says so. The transparency log and the yearly rotation stay recommendations.
 
 ## I-75. The native host has no authentication
 
@@ -914,7 +960,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
   - the banks: the example bank's configuration set 1.1.0 (`configuration-sets/1.1.0.yaml`), DIB's 1.2.0 and ADIB's, ENBD's and FAB's 1.1.0 accept the 1.1.0 packs; their lock files depend on them (each bank folder's pack 1.1.0). A bank folder's configuration set is the bank's own working file, not seeded, and was changed where it is, as DIB's was from 1.0.0 to 1.1.0.
   - the operations view `uae.wps.view.operations.v1` at 1.1.0: its payment-file leg is `uae.wps.wf.agent-payment-in.v2`, the leg of the scheme at 1.1.0 (its 1.0.0 names the v1 leg). The packs `p` and `uae.wps` at 1.1.0 carry the views; the packs `p`, `uae.p` and `uae.wps` at 1.1.0 carry the error dictionaries too; their 1.0.0 lock files and the inventory, which the views' and the dictionaries' seeds (CS-2026-11-22-003 and 004) had rewritten, are back as first published.
 - **The seed adds, never rewrites** (R-11-35). `seed-content --write-local` no longer regenerates a changed file: it stops and names it, as on a connected branch. The bank pack's lock file is the one file a seed replaces, after keeping the earlier one at `packs/<release>.yaml`.
-- **Ledgers** (R-11-36). Each seed writes `change-sets/ledger/<id>.yaml`. The ledgers of the five seeds before this (CS-2026-11-21-001, CS-2026-11-22-001 to 004) were recorded from the commits that published them; this work's own seed is CS-2026-11-22-005; the change set whose record the merge lost is `CS-2026-11-22-001-7d74785.yaml`. Lint L41 (`tools/validate.py`, mutations M53 to M55) and `studio check` hold every recorded file to its hash and every seeded file to a ledger, and a factory artefact at a published release to what was seeded.
+- **Ledgers** (R-11-36). Each seed writes `change-sets/ledger/<id>.yaml`. The ledgers of the five seeds before this (CS-2026-11-21-001, CS-2026-11-22-001 to 004) were recorded from the commits that published them; this work's own seed is CS-2026-11-22-005; the change set whose record the merge lost is `CS-2026-11-22-001-7d74785.yaml`. Lint L41 (`tools/validate.py`, mutations M54 to M56) and `studio check` hold every recorded file to its hash and every seeded file to a ledger, and a factory artefact at a published release to what was seeded.
 - **Not recoverable.** Nothing: every first publish is in the repository's history. The change set records of the earlier seeds are not edited (they are published); their hashes are in the new ledgers instead.
 
 ## I-84. What a native code-behind and its script-behind are held to
@@ -969,6 +1015,46 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** In production mode (I-53) Flowable keeps the flow, the jobs, their locks and retries, and the store keeps the payloads. The binding still keeps in memory what it learnt during the run: the business trace and detail, the attempts, held early messages, the messages each instance has waited for (R-05-43), the hook bindings taken at start and the timers it has placed. A job whose worker crashed comes back from Flowable when its lock expires, and the tests show that, but if the binding's process itself stops, a new one cannot pick up the payments the old one was running: it does not know them. The harness runs one plan and ends, as the other engines' harnesses do.
 
 **Recommendation.** Before a payment depends on the binding in production, keep that state on the payment's fact chain in the store (the trace and detail as facts, held messages in the inbox, the hook bindings with the instance), and let a binding that starts read the server's running instances of its tenant and rebuild its view from the store. Add a test that kills the binding mid-payment and starts another.
+
+## I-93. Engine runs on a busy machine: Temporal's test server, and workers on shared ports
+
+**Issue.** On Temporal's time-skipping test server, with the store on (`TH_STORE_PROVIDER`), the WPS salary file can fail at its first step: `p.validate.canonical.v1 failed: attempt 1 of validate timed out; a late result is ignored`, at about five seconds of virtual time. It shows on a loaded machine: here `studio/test/blackbox/e2e-wps-temporal.test.ts -t "database on PostgreSql"` fails the same way (load average 16 to 20), without the test bench. With claim checks as local activities (the default, `TH_LOCAL_CLAIMCHECK`, `runtime/src/TransactHub.Engine.Temporal/TemporalEngine.cs`) it failed on every run here: a local activity does not hold the test server's clock while it writes facts to the database. With `TH_LOCAL_CLAIMCHECK=0` it settles on most runs, and still fails on some (2 of the first 9 outward cases of one suite run; in another, a step of the WPS leg failed the same way, `leg:failed`): an attempt that waits on a busy worker races its attempt timer.
+
+**Recommendation.** (1) Decide that a deployment with a store runs its claim checks as regular activities on the test server (or always), in the Temporal binding. (2) Make the attempt timer of a deployment's steps not race the test server's clock: lock time skipping while an activity is outstanding, or warm each worker before the first workflow starts. Each with a test that runs the salary file with the store under an artificial delay on the worker and on each fact write.
+
+**Issue 2.** The deploy runner gives a package's workers ports from 7400 to 7800 at random when it is given none, and takes a worker as up when anything on its port answers `/health`. With several deployments on one machine (CI runners, parallel test sessions), an engine can reach another run's worker: here Elsa on SQL Server failed with `p.validate.canonical.v1@1.0.0 is not registered on queue th-bank`, from a worker of another run.
+
+**Recommendation 2.** Let the deploy runner choose ports the system gives it (listen on port 0, then pass each worker its port), and check that `/health` answers with the deployment's own id. **Done since:** the deploy runner now starts its workers on port 0 and reads each worker's port from its first line; the test bench's own port check is gone.
+
+**What is built.** The test bench sets `TH_LOCAL_CLAIMCHECK=0` for Temporal when the store is on and Temporal is the test server, and runs a Temporal run on the test server whose outcome is not the interpreter's once more, on a fresh database, saying so in the result and the report (`runtime/tools/TransactHub.TestBench/Runner.cs`). A real difference shows on both runs and still fails the run. It retries nothing else. On a real Temporal server (`environment.temporal: host:port`) it does neither. The harness and the e2e test are unchanged.
+
+## I-94. The WPS inward flow cannot run on the engines through the deploy runner
+
+**Issue.** A payment file (PIF) waits for its supplement (PSI), which the WPS inward simulator sends after it. The studio interpreter plays those later deliveries, and settles the factory's inward scenarios (WPS-IN-002 to 007). The deploy runner (`studio/src/deploy/deploy.ts`) never asks a worker for an inward simulator's deliveries (the worker's `POST /start`), so on every engine the leg ends `supplement:missing`, `end:pending`. The test bench's inward profiles show this on Temporal, DTFx, Elsa and Flowable alike; no engine test ran the inward flow before.
+
+**Recommendation.** In the deploy runner, after the front door, ask each worker with inward simulators for their deliveries and hand them to the engine's front door as the kit runner does, with an end-to-end test of WPS-IN-002 on each engine. Then remove `knownIssue: I-94` from `runtime/testbench/suite/TB-WPS-IN-*.yaml`; the suite fails while the mark stays on a case that now agrees.
+
+**What is built.** The inward profiles, samples, benches and cases. The cases pass on the interpreter and are marked as known to differ on the engines.
+
+## I-95. ISO 20022 messages and canonical payments have no front door
+
+**Issue 1.** No scheme in the factory takes pain.001 or pacs.008 as a start message: the only intake maps are the WPS files'. The owner asked for a test bench that takes ISO 20022 messages and canonical JSON payments. The test bench maps such a message to the canonical context (ids, amounts, accounts and agents; never a party's name or address) and runs the platform workflow from that context, on the interpreter and every engine. That is a parity test, not a test of an intake: no map of the factory checked the mapping.
+
+**Issue 2.** Run from a context, the inward workflow (`p.wf.inward.v1`) with no leg in its slot ends `failed` on the interpreter and `leg:pending`, `end:review` on DTFx (and the other engines). The two treat an empty slot differently.
+
+**Recommendation.** (1) Decide whether the platform takes pain.001 (a corporate channel) and pacs.008 (a scheme) through the front door; if so, add their intake maps and dispatch entries in `p.*`, with tests, and the test bench sends them through the front door like the WPS files. (2) Decide what a platform workflow does with an empty slot, write it as a requirement with a check, and make the interpreter and the engines agree.
+
+**What is built.** The mapping in `runtime/tools/TransactHub.TestBench/Inputs.cs`, the `platform-iso-*` profiles, and three cases; TB-ISO-002 is marked as known to differ (I-95).
+
+## I-96. What synthetic test data can and cannot drive
+
+**Issue 1.** The factory's rules add money as binary floating point: `uae.wps.rule.control-total-matches.v1` sums `fixedPay + variablePay` and compares the sum with the control total exactly, so a correct file whose amounts sum to 7894.87 is refused with AM10 (the sum is 7894.870000000001). The factory's samples use round amounts and never show it. A bank's real salary file would.
+
+**Issue 2.** The simulators decide by their scenario, not by the data: a payee named as a sanctions hit is screened clear unless the bench gives the sanctions port the `reject` scenario. Personal data never enters workflow state (`spec/CLAUDE.md`), so no screening activity sees a name. The pack has no rule against a person id repeated within a salary file.
+
+**Recommendation.** (1) Compare money in rules as decimals, or round each sum to the currency's minor unit before comparing, as a requirement with a check and a mutation case. (2) Keep scenarios as the way a bench drives the parties, and say in the simulator spec that a sanctioned-name sample needs its scenario. (3) Ask the business whether a repeated person id in one file is refused, once `uae.wps` is confirmed.
+
+**What is built.** The builder makes amounts in quarters of a dirham, whose sums are exact in binary, so its files are valid unless an error is injected on purpose; the `sanctioned-name` injection names the `sanctions-hit` bench to go with it. The README lists both.
 
 ## I-97. The store holds no end of a payment and no files of a deployment
 
@@ -1040,6 +1126,18 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Ask each bank's data protection officer to approve the assistant before it is switched on, with the list of what is sent (Part 9, R-09-44) and the provider's retention terms; record the decision in the bank's configuration release. Keep it off by default. The free-text fields of operator and service facts (`remarks`, `why`, `reason`) are not sent at all; keep it so.
 
 **What is built.** The switch, the masking and its test, read-only tools, citations, proposals that a person confirms on the Actions page, and a fake model for the tests: no test calls the API.
+
+## I-105. The cloud secret providers are proved against a fake and LocalStack, not the real services
+
+**Issue.** The Azure Key Vault provider is tested against an in-process fake of the Key Vault REST protocol and the token endpoint (`FakeKeyVault`, `fake-key-vault.ts`), and the AWS providers against LocalStack. Neither proves a managed identity, a workload identity or an IAM role against the real service, nor Key Vault's and AWS's real refusals, throttling and private endpoints. The fake is pinned to the protocol as the SDK spoke it on 2026-11-22. LocalStack is pinned to 4.14.0, the last image that runs without an account token; later images (2026.x) need one, so it gets no fixes. This repository's CI has no Azure subscription or AWS account, and must hold no real credential.
+
+**Recommendation.** Before a bank's first use of `akv:`, `aws-sm:` or `aws-ssm:`, run the providers' tests once against the bank's own vault or account, in the bank's environment, with its identity, and record the result in the installation's acceptance. Replace LocalStack with Moto (moto_server, Apache 2.0) or an account-token LocalStack if 4.14.0 stops matching the SDK.
+
+## I-106. A rotated secret reaches a running host only after the cache time or a restart
+
+**Issue.** The interface caches a value read over the network for up to `TH_SECRET_CACHE_SECONDS` and can read a refused credential again (`WithSecret`, R-06-27), but no adapter calls `WithSecret` yet: the core-banking gateway and the package source resolve their credential and, when it is refused, fail the call. A credential rotated in its store is therefore used only once the cache time has passed. The studio's signing key, when held in a store over the network, is read at start and kept until the studio restarts (I-74), so a rotated signing key needs a restart.
+
+**Recommendation.** Have each adapter that sends a credential (the core-banking gateway, the GitHub package source, the worker's runtime token) call through `WithSecret`, with a 401 from the far side as the refusal, in the change that next touches each adapter, with a test that rotates the credential in the store. Re-prime the studio's signing key when the cache time passes, or document a restart as part of rotating it.
 
 ## Not done, and why
 
