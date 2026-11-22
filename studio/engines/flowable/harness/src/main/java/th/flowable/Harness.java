@@ -364,10 +364,13 @@ public final class Harness {
     long timerDue(Job j, long eng) {
         long vCreated = clock.virtualOf(eng);
         Map<String, String> t = annOf(j.getProcessDefinitionId(), j.getElementId()).get("timer");
-        if (t == null || t.get("parameter") == null) return vCreated + (j.getDuedate().getTime() - eng);
-        String value = timerValue.computeIfAbsent(j.getId(), k -> paramValue(t.get("parameter"), t.get("default"), Support.isoDate(vCreated)));
+        if (t == null || (t.get("parameter") == null && t.get("calendarParameter") == null)) return vCreated + (j.getDuedate().getTime() - eng);
+        // R-05-47: an await's wait a bank may set names its duration and its calendar as parameters, the policy giving the defaults.
+        String date = Support.isoDate(vCreated);
+        String value = timerValue.computeIfAbsent(j.getId(), k -> t.get("parameter") == null ? t.get("default") : paramValue(t.get("parameter"), t.get("default"), date));
         lastTimerValue.put(j.getProcessInstanceId() + "|" + j.getElementId(), value);
-        if (!"business".equals(t.get("calendar"))) return vCreated + Support.durationMs(value);
+        String calendar = t.get("calendarParameter") == null ? t.get("calendar") : paramValue(t.get("calendarParameter"), t.get("calendar"), date);
+        if (!"business".equals(calendar)) return vCreated + Support.durationMs(value);
         List<Integer> weekend = new ArrayList<>();
         for (JsonNode d : plan.at("/calendar/weekend")) weekend.add(d.asInt());
         return Support.addBusiness(vCreated, value, weekend, Support.strings(plan.at("/calendar/holidays")));

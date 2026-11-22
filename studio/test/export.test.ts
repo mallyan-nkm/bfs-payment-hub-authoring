@@ -76,4 +76,10 @@ describe('export (C05, C20, C22)', () => {
     // The REST binding learns when each composite step began at a point of its own.
     expect(x).toMatch(/<th:point kind="blockStart" step="return-credits"\/>/);
   });
+  it('marks the acknowledgement wait a bank sets for the Flowable binding (R-05-47)', () => {
+    const pkg = exportPackage(env, { workflows: ['uae.wps.wf.salary-file-out.v1'], target: 'flowable' });
+    const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.0.0.bpmn20.xml'];
+    // The timer is written with the policy's default, and names the parameters the binding resolves.
+    expect(x).toMatch(/<th:timer [^>]*parameter="uae\.wps\.exchange\.submit-salary-file\.v1#ackWait" default="P1D" calendarParameter="uae\.wps\.exchange\.submit-salary-file\.v1#ackWaitCalendar"\/>/);
+  });
 });

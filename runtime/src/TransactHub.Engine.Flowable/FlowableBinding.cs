@@ -318,7 +318,11 @@ public sealed class FlowableBinding
         var element = J.S(timer, "elementId") ?? "";
         var def = byDef.GetValueOrDefault(J.S(timer, "processDefinitionId") ?? "");
         var meta = def?.Ann(element, "timer");
-        var business = meta?.GetValueOrDefault("calendar") == "business";
+        var calendar = meta?.GetValueOrDefault("calendar");
+        // R-05-47: an await's wait a bank may set names its calendar as a parameter too, the policy giving the default.
+        if (meta?.GetValueOrDefault("calendarParameter") is string calendarParameter)
+            calendar = ParamValue(calendarParameter, calendar ?? "elapsed", Duration.Today(vCreated));
+        var business = calendar == "business";
         var written = def?.DurationOf(element);
         if (meta?.GetValueOrDefault("parameter") is string parameter)
         {

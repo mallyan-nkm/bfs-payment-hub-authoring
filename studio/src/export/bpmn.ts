@@ -704,10 +704,18 @@ class B {
       // server that has no such calendar, applied by the binding when it fires the timer.
       // A timeout from a parameter (R-05-45) is marked for the binding, which takes the tenant's value.
       const business = aw.calendar === 'business';
-      const d = timerDuration(aw.timeout, stepId);
+      // A wait a bank may set (R-05-47): the expanded await names the composite's parameters, the policy giving
+      // the defaults; the binding takes the tenant's values in force, as for a parameter timeout.
+      const d = typeof aw.timeout === 'string' && aw.timeoutParameter
+        ? { literal: aw.timeout, parameter: aw.timeoutParameter as string, default: aw.timeout as string }
+        : timerDuration(aw.timeout, stepId);
+      const calParam: string | undefined = aw.calendarParameter;
       const cal = business && !this.g.rest ? ' flowable:businessCalendarName="business"' : '';
-      const meta = (business && this.g.rest) || d.parameter
-        ? ext(ann('timer', { ...(business ? { calendar: 'business' } : {}), duration: d.parameter ? undefined : d.literal, parameter: d.parameter, default: d.default }))
+      const meta = (business && this.g.rest) || d.parameter || calParam
+        ? ext(ann('timer', {
+          ...(business ? { calendar: 'business' } : calParam ? { calendar: aw.calendar ?? 'elapsed' } : {}),
+          duration: d.parameter ? undefined : d.literal, parameter: d.parameter, default: d.parameter || calParam ? d.literal : d.default, calendarParameter: calParam,
+        }))
         : '';
       this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout">${meta}<timerEventDefinition${cal}><timeDuration>${esc(d.literal)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
       this.flow(gw, tmr);
@@ -1098,8 +1106,8 @@ export function portabilityReport(flows: any[], target: string): PortabilityItem
         if (target === 'dtfx') add('await', 'An external event raced with a durable timer; early events are kept in orchestration state.');
         if (target === 'elsa') add('await', 'The instance waits at an Elsa bookmark, raced with a timer; early messages are kept in its journal, in the workflow state.');
         if (st.await.calendar === 'business') add('await', 'Business calendar: the binding converts the timeout to business days.', 'warning', target === 'flowable' ? sid : undefined);
-        // R-05-47: the other engines read the bank's value at the await; the generated timer holds the default (docs/ISSUES.md I-57).
-        if (target === 'flowable' && (st.await.timeoutParameter || st.await.calendarParameter)) add('await', `The wait is the bank's ${[st.await.timeoutParameter, st.await.calendarParameter].filter(Boolean).join(' and ')}; the BPMN timer holds its default, ${st.await.timeout}.`, 'warning', sid, 'Run the payment on Temporal, DTFx or Elsa, or set the timer at deployment.');
+        // R-05-47: the timer is written with the policy's default, and the binding places it by the bank's value (docs/ISSUES.md I-57).
+        if (target === 'flowable' && (st.await.timeoutParameter || st.await.calendarParameter)) add('await', `The wait is the bank's ${[st.await.timeoutParameter, st.await.calendarParameter].filter(Boolean).join(' and ')}: the timer is written with its default, ${st.await.timeout}, and the binding places it by the tenant's value (R-05-47).`, 'warning', sid);
         if (target === 'flowable' && inParallel) add('await', 'Two awaits for one message type in parallel branches cannot be told apart by the binding.', 'warning', sid, 'Await in sequence, or await distinct message types.');
         if (target === 'flowable' && st.await.family) add('await', `The binding delivers only a ${st.await.message} of family ${st.await.family} to this catch (R-05-44), and drops a held one older than the composite step (R-05-43).`, 'info', sid);
         if (target === 'flowable' && st.await.timeout && typeof st.await.timeout === 'object') add('await', 'The timeout is a parameter: the timer is written with its default, and the binding places it by the tenant\'s value (R-05-45).', 'warning', sid);
