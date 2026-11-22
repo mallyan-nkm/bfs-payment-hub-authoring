@@ -358,8 +358,11 @@ describe('packaging and deployment, scenarios 1 to 12 on Temporal with the store
     const bad = { ...leg, release: patch(leg.release), implements: { ...leg.implements, of: ['p.wf.corporate.v2'] } };
     const d = await api.post('/api/drafts', { tenant: 'owner', actor: 'workflow.designer', doc: bad });
     if (d.status === 200) {
-      const pub = await api.post('/api/publish', { tenant: 'owner', key: d.data.key ?? d.data.draft?.key, checker: 'shared.checker' });
+      const key = d.data.key ?? d.data.draft?.key;
+      const pub = await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.checker' });
       expect(pub.status).not.toBe(200);
+      // The refused draft is withdrawn, so that it joins no later change set.
+      expect((await api.del(`/api/drafts/${encodeURIComponent(key)}?tenant=owner&actor=workflow.designer`)).status).toBe(200);
     }
     // Every distribution lists only the schemes its bank licenses.
     for (const id of Object.keys(await states())) expect(manifestOf(id).schemes).toEqual(['uae.wps']);

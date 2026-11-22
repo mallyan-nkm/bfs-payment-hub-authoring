@@ -1,0 +1,18 @@
+# The files change set CS-2026-11-22-007 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+kind: release-ledger
+changeSet: CS-2026-11-22-007
+files:
+  - path: artefacts/bindings/p.binding.dtfx.v1/1.0.0.yaml
+    sha256: 85cb0bd1acb2b5fcac5aa4ab925c650decaefab83625c278bd8ed50da669bbe2
+  - path: artefacts/bindings/p.binding.dtfx.v1/1.1.0.yaml
+    sha256: ae454cf7af523ccc24814941c716fe10f9e112005184177b7180417afbacfc6e
+  - path: artefacts/bindings/p.binding.elsa.v1/1.0.0.yaml
+    sha256: b1ca2b852820fc5b4dd69bb6da78bdd25eff62c9c1569a87aea38b425b3d49a4
+  - path: artefacts/bindings/p.binding.elsa.v1/1.1.0.yaml
+    sha256: 9b3565c26b0a749f483f2dc164268fcd8fac654ff846b9a18fd3b0a183c5a576
+  - path: artefacts/bindings/p.binding.flowable.v1/1.0.0.yaml
+    sha256: d7e9ba4f0618399e18989c29a32ef6b74e9ca5dc0aa665058fd87be3e1da58d3
+  - path: artefacts/bindings/p.binding.temporal.v1/1.0.0.yaml
+    sha256: b791821d1f0ccc069c3adecfc2d293198b7fdd3efbba9ab8eabd5df7bb997802
+  - path: artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml
+    sha256: c967ec0e9376d486aefc6c292e94c4fc31fc66b3753a69d86e2323215ab4de74

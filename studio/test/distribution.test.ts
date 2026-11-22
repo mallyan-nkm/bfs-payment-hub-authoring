@@ -33,7 +33,7 @@ describe('a distribution', () => {
     expect(m).toMatchObject({ kind: 'distribution', id: '2026.11.22-1', bank: 'example-bank', engine: 'temporal', schemes: ['uae.wps'], platform: ['p', 'uae.p'] });
     expect(m.billOfMaterials.packs.map((p: any) => p.scope)).toEqual(['p', 'uae.p', 'uae.wps', 'b']);
     for (const a of m.billOfMaterials.artefacts) expect(sha(dist.files[a.path]), a.path).toBe(a.sha256);
-    expect(m.billOfMaterials.artefacts.some((a: any) => a.kind === 'engine-binding' && a.name === 'binding:temporal')).toBe(true);
+    expect(m.billOfMaterials.artefacts.some((a: any) => a.kind === 'engine-binding' && a.name === 'p.binding.temporal.v1' && a.release === '1.1.0')).toBe(true);
     // The error dictionaries, the operations views and every platform workflow expanded, with its slots filled.
     expect(Object.keys(dist.files).some((f) => f.startsWith('errors/'))).toBe(true);
     expect(Object.keys(dist.files).some((f) => f.startsWith('ops/'))).toBe(true);

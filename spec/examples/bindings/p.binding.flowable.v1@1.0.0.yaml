@@ -1,0 +1,16 @@
+# The flowable engine binding at 1.0.0. Settings here are placeholders. Engine bindings are released like every other
+# artefact (owner's decision of 2026-11-22, Issue I-83): a change is a new release, never an edit of this file.
+kind: engine-binding
+name: p.binding.flowable.v1
+release: 1.0.0
+target: flowable
+strategy: generation
+queues:
+  p: th-p
+  uae.p: th-uae-p
+  uae.wps: th-uae-wps
+  b: th-bank
+taskNaming: "<name>@<release>"
+extensions:
+  activityTask: external-worker
+  retry: modelled-loop

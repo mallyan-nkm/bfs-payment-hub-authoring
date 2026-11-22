@@ -6,6 +6,7 @@ import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
 import { withinBounds } from '../checks/checks.js';
 import { packEntries } from '../governance/packs.js';
 import { exportPackage, signPackage, type Target } from './exporter.js';
+import { bindingOf } from './bindings.js';
 import { signFiles, type ReleaseClaims } from './signing.js';
 import type { StudioEnv } from '../env.js';
 
@@ -197,7 +198,8 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
   const all = [...byScope.values()].flat();
   const params = parameterContract(all.map((e) => e.doc));
   if (params.problems.length) throw new DistributionRefused(`The parameter contract of ${bank}'s distribution has problems: ${params.problems.join('; ')}`);
-  const binding = env.store.byKind('engine-binding').find((e) => e.doc.target === engine);
+  // The engine binding at its exact release, pinned in the bill of materials (Issue I-83).
+  const binding = bindingOf(env, engine);
   if (!binding) throw new DistributionRefused(`No engine binding for ${engine}`);
 
   const files: Record<string, string> = {};
@@ -210,7 +212,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
     artefacts.push({ scope: scopeOfName(e.kind === 'scheme' ? `${e.doc.scope}.x` : e.name), name: e.kind === 'scheme' ? `${e.doc.scope}.scheme` : e.name, kind: e.kind, release: e.release, hash: e.hash, path: p, sha256: sha(files[p]) });
   }
   files['binding.yaml'] = toYaml(binding.doc);
-  artefacts.push({ scope: 'binding', name: `binding:${engine}`, kind: 'engine-binding', release: binding.release || binding.doc.release || '1.0.0', hash: binding.hash, path: 'binding.yaml', sha256: sha(files['binding.yaml']) });
+  artefacts.push({ scope: 'p', name: binding.name, kind: 'engine-binding', release: binding.release, hash: binding.hash, path: 'binding.yaml', sha256: sha(files['binding.yaml']) });
   // The tests the release passed: the test documents of its packs (R-09-47); their results are the release gate's.
   for (const s of scopes) for (const t of packEntries(env, s, s === 'b' ? bank : undefined).filter((e) => e.kind === 'test')) files[`tests/${t.name}.yaml`] = toYaml(t.doc);
 

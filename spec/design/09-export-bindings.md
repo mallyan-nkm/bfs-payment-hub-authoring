@@ -157,7 +157,7 @@ Limits that remain:
 
 ## 9.8 Examples
 
-- Four bindings: `examples/bindings/bindings.yaml`.
+- Four bindings, each at its releases: `examples/bindings/p.binding.<target>.v1@<release>.yaml` (Issue I-83).
 - Pins as they appear in a manifest: `factory/p/pack.yaml`.
 
 ## 9.9 The signature of a released package

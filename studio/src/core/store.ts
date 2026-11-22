@@ -245,6 +245,8 @@ export class Store {
     const events: AuditEvent[] = [];
     for (const [p, text] of files) {
       const parts = p.split('/');
+      // The old, unreleased bindings file stays on the branch as a record; once the bindings have releases it is not read (Issue I-83).
+      if (p === 'artefacts/bindings/bindings.yaml' && files.some(([q]) => q.startsWith('artefacts/bindings/p.binding.'))) continue;
       if (p.startsWith('artefacts/') && isYaml(p)) this.loadFile(p, text, undefined);
       else if (p.startsWith('supersessions/') && parts.length === 2 && isYaml(p)) this.loadFile(p, text, undefined);
       else if (parts[0] === 'banks' && parts.length > 2) {

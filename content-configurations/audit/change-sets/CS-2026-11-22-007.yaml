@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-22-007
+events:
+  - at: 2026-11-22T12:03:30.930Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-22-007
+    detail: 7 file(s) from spec/examples/bindings
+    changeSet: CS-2026-11-22-007
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:2ddc9d0363dd7f46a4a5ea0a8b95f1bf8434e7e5202d9f1b4572d23943854ddc
+  - at: 2026-11-22T12:03:30.931Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-22-007
+    detail: p.binding.dtfx.v1@1.0.0, p.binding.dtfx.v1@1.1.0, p.binding.elsa.v1@1.0.0, p.binding.elsa.v1@1.1.0, p.binding.flowable.v1@1.0.0, p.binding.temporal.v1@1.0.0, p.binding.temporal.v1@1.1.0
+    changeSet: CS-2026-11-22-007
+    prevHash: sha256:2ddc9d0363dd7f46a4a5ea0a8b95f1bf8434e7e5202d9f1b4572d23943854ddc
+    hash: sha256:ef624348352f33d8808e36cc2e70a5166b1b7f0782967e31d508a06d3d9a4758

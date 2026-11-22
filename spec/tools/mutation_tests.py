@@ -165,6 +165,8 @@ CASES = [
      "a leg reads what its slot contract does not give it"),
     ("M58", "ERROR L43", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "    default: P1D\n", "    default: P9D\n", "a dial's default is outside its own bounds"),
+    ("M59", "ERROR L41", "../content-configurations/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml",
+     "forEachConcurrency: 64", "forEachConcurrency: 32", "a published engine binding release is edited in place (Issue I-83)"),
 ]
 
 

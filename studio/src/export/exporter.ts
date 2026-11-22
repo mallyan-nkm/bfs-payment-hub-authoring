@@ -5,7 +5,7 @@ import { generateBpmn, portabilityReport } from './bpmn.js';
 import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
 import { startEntryFor } from '../testing/runner.js';
-import { queueName } from './bindings.js';
+import { bindingOf, queueName } from './bindings.js';
 import { claimsOf, signFiles, SignatureRejected } from './signing.js';
 import { literalSecretsInText } from '../secrets/scan.js';
 import type { StudioEnv } from '../env.js';
@@ -54,7 +54,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   const checker = Checker.fromEnv(env);
   const files: Record<string, string> = {};
   const issues: Issue[] = [];
-  const stored = env.store.byKind('engine-binding').map((e) => e.doc).find((b) => b.target === req.target);
+  const stored = bindingOf(env, req.target)?.doc;
   if (!stored) throw new Error(`No engine binding for ${req.target}`);
   // A copy: a scope the binding does not list yet (a new scheme) gets the queue the binding's rule
   // derives (R-09-05), and the package's binding says so.
