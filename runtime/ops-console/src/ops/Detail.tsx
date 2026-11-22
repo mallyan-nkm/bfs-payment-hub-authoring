@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Client, Detail as D, FieldDecl, Offer, Section, View } from './api';
-import { grouped, show, tone } from './format';
+import { documentRow, grouped, show, tone } from './format';
 
 // A payment or bulk: its fields from the platform's and its scheme's views, each leg it has with that leg's declared
 // fields, the lines of a bulk, its timeline (every fact of its chain), its documents, holds and actions, and the actions
@@ -88,8 +88,6 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
   const schemeView = mine.find((v) => v.scheme === p.scheme);
   const lineDecl = schemeView?.subject?.lines;
   const lineCols = (lineDecl?.columns ?? lineDecl?.fields.map((f) => f.id) ?? []).map((c) => lineDecl!.fields.find((f) => f.id === c)!).filter(Boolean);
-  // A stored file names the leg's instance; the console shows the leg's title where the payment has that leg.
-  const legTitle = (leg?: string | null) => (leg ? p.legs.find((l) => l.instance === leg)?.title ?? leg : '—');
   const docLabel = (kind: string) => schemeView?.subject?.documents?.find((x) => x.kind === kind)?.label ?? kind;
   return (
     <section>
@@ -157,8 +155,8 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
             <tbody>
               {d.documents.map((x) => (
                 <tr key={x.id}>
-                  <td>{docLabel(x.kind)}</td><td className="mono">{x.fileName ?? '—'}</td><td>{x.direction === 'in' || x.direction === 'inward' ? 'received' : 'sent'}</td><td className="mono">{legTitle(x.leg)}</td><td className="num">{x.size}</td>
-                  <td className="mono" title={x.signed ? `signed by key ${x.signingKeyId}` : 'not signed'}>{x.contentHash.slice(0, 12)}{x.signed ? ' (signed)' : ''}</td><td>{show(x.at, 'datetime')}</td>
+                  <td>{docLabel(x.kind)}</td><td className="mono">{x.fileName ?? '—'}</td><td>{documentRow(x, p.legs).direction}</td><td className="mono">{documentRow(x, p.legs).leg}</td><td className="num">{x.size}</td>
+                  <td className="mono" title={documentRow(x, p.legs).signature}>{documentRow(x, p.legs).hash}{x.signed ? ' (signed)' : ''}</td><td>{show(x.at, 'datetime')}</td>
                   <td><button className="link" onClick={async () => {
                     const r = await fetch(api.documentUrl(p.id, x.id), { headers: api.headers() });
                     const url = URL.createObjectURL(await r.blob());

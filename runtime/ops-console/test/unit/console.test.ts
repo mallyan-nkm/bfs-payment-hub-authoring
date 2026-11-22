@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { authorizeUrl, base64url, pkceChallenge, pkceVerifier } from '../../src/shell/auth';
-import { columnsFor, filtersFor, grouped, show, tone } from '../../src/ops/format';
+import { columnsFor, documentRow, filtersFor, grouped, show, tone } from '../../src/ops/format';
 import type { View } from '../../src/ops/api';
 
 // The console's own logic: PKCE (RFC 7636), and rendering from a view's declaration alone.
@@ -47,6 +47,15 @@ describe('rendering from the declaration (R-05-48)', () => {
     expect(show('2026-11-17T06:00:00.000Z', 'datetime')).toBe('2026-11-17 06:00:00Z');
     expect(tone('nak')).toBe('fail');
     expect(tone('ack')).toBe('pass');
+  });
+
+  it('shows a kept file as received or sent, with its leg by title and whether its hash is signed (Issue I-97)', () => {
+    const legs = [{ instance: 'root/leg3', title: 'WPS salary file' }];
+    expect(documentRow({ direction: 'out', leg: 'root/leg3', contentHash: 'ab'.repeat(32), signed: true, signingKeyId: 'k1' }, legs))
+      .toEqual({ direction: 'sent', leg: 'WPS salary file', hash: 'abababababab', signature: 'signed by key k1' });
+    expect(documentRow({ direction: 'in', leg: 'root/other', contentHash: 'cd'.repeat(32) }, legs))
+      .toEqual({ direction: 'received', leg: 'root/other', hash: 'cdcdcdcdcdcd', signature: 'not signed' });
+    expect(documentRow({ direction: 'inward', contentHash: 'ef'.repeat(32) }, legs).leg).toBe('—');
   });
 
   it('names no scheme in its code', () => {

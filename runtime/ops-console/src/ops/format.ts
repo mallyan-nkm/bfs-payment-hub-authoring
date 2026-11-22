@@ -2,6 +2,23 @@ import type { FieldDecl, View } from './api';
 
 // How a declared field's value is shown: by its declared format only. No scheme is named here.
 
+/**
+ * A row of the documents tab (Issue I-97): whether the file was received or sent, the leg it belongs to by the leg's title (its
+ * instance when the payment has no such leg), its hash shortened, and whether the host that kept it signed it.
+ */
+export function documentRow(
+  doc: { direction: string; leg?: string | null; contentHash: string; signed?: boolean; signingKeyId?: string | null },
+  legs: { instance: string; title: string }[],
+): { direction: 'received' | 'sent'; leg: string; hash: string; signature: string } {
+  const received = doc.direction === 'in' || doc.direction === 'inward';
+  return {
+    direction: received ? 'received' : 'sent',
+    leg: doc.leg ? legs.find((l) => l.instance === doc.leg)?.title ?? doc.leg : '—',
+    hash: doc.contentHash.slice(0, 12),
+    signature: doc.signed ? `signed by key ${doc.signingKeyId ?? '?'}` : 'not signed',
+  };
+}
+
 export function show(value: unknown, format?: string): string {
   if (value === null || value === undefined || value === '') return '—';
   switch (format) {

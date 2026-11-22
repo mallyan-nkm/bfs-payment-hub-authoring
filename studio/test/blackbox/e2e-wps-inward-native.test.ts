@@ -41,7 +41,9 @@ beforeAll(async () => {
   nativeUrl = `http://127.0.0.1:${await freePort()}`;
   native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: banks }, stdio: 'ignore' });
   for (let i = 0; i < 120; i++) { try { if ((await fetch(`${nativeUrl}/health`)).ok) break; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
-  onRuntime = await startServer({ TH_NATIVE_HOST: nativeUrl, TH_NATIVE_ACTIVITIES: '*' });
+  // Every file the agent sends is encrypted first (Issue I-117). The example bank holds no Central Bank key, so its encryption stays
+  // with the studio's simulator here; the runtime's encryption is proved by FileProtectionAndRegisterTests.
+  onRuntime = await startServer({ TH_NATIVE_HOST: nativeUrl, TH_NATIVE_ACTIVITIES: '*,!p.protect.encrypt-file.v1' });
   onStudio = await startServer();
 }, 600000);
 afterAll(() => {

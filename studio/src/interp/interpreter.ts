@@ -971,11 +971,13 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
 /**
  * Whether this attempt goes to the runtime's native host though the activity has a script-behind or a builtin (R-08-16): the
  * activity says the runtime implements it (`implementation.native: true`), and the run gives it to the runtime
- * (`TH_NATIVE_ACTIVITIES` names it, or is `*`). Without a native host such an attempt fails, as R-08-14 says.
+ * (`TH_NATIVE_ACTIVITIES` names it, or is `*`, and does not name it with `!`). Without a native host such an attempt fails, as R-08-14 says.
  */
 export function nativeHere(act: any): boolean {
   if (act.implementation?.native !== true) return false;
   const list = (process.env.TH_NATIVE_ACTIVITIES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  // `!<name>` keeps an activity on the studio although `*` gives the rest to the runtime.
+  if (list.includes(`!${act.name}`) || list.includes(`!${act.name}@${act.release}`)) return false;
   return list.includes('*') || list.includes(act.name) || list.includes(`${act.name}@${act.release}`);
 }
 

@@ -52,6 +52,10 @@ describe('a script-behind or builtin the native host implements too (R-08-16)', 
     expect(nativeHere(act)).toBe(true);
     expect(nativeHere(env.store.doc('uae.wps.map.dif-out.v2'))).toBe(false);
     expect(nativeHere(env.store.doc('uae.wps.map.sif-in.v1')), 'an activity that does not say so is never sent').toBe(false);
+    // `*` gives every such activity to the runtime, and `!<name>` keeps one on the studio.
+    process.env.TH_NATIVE_ACTIVITIES = '*,!p.protect.encrypt-file.v1';
+    expect(nativeHere(act)).toBe(true);
+    expect(nativeHere(env.store.doc('p.protect.encrypt-file.v1'))).toBe(false);
   });
 
   it('sends the attempt to the native host with its view, its parameters and the tenant, and keeps the trace', async () => {
