@@ -41,7 +41,7 @@ export function saveSample(env: StudioEnv, inp: { tenant: string; actor: string;
   enforce(env, inp.actor, inp.tenant, 'author', `sample:${inp.name}`);
   if (!SAMPLE_NAME.test(inp.name ?? '')) throw new StoreError('C12', 'A sample name is lower case, digits and hyphens, with an extension, for example demo-file-valid.csv');
   if (typeof inp.content !== 'string' || !inp.content.length || inp.content.length > 1_000_000) throw new StoreError('C12', 'A sample is text of at most 1 MB');
-  for (const d of env.samplesDirs) if (fs.existsSync(path.join(d, inp.name))) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);
+  if (env.store.factorySamples.has(inp.name)) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);
   if (env.store.sampleFiles.get(inp.name) !== inp.content) env.store.saveSampleFile(inp.tenant, inp.actor, inp.name, inp.content);
   return { sample: `samples/${inp.name}` };
 }

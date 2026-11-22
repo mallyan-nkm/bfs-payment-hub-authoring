@@ -278,7 +278,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="see"><code>46 of 46 conformance scenarios pass on Flowable</code>.</div>
 
   <h3>Start again</h3>
-  <p>Stop <code>npm run studio:dev</code> and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete. The factory content and the example bank are seeded from <code>spec/</code> into <code>content-configurations/</code>, and the studio never rewrites a published file.</p>
+  <p>Stop <code>npm run studio:dev</code> and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete. The factory content and the example bank are seeded from <code>spec/</code> into <code>content-configurations/</code>, the factory's script-behinds and test samples from <code>studio/scripts/</code> and <code>studio/fixtures/samples/</code>, and the studio never rewrites a published file. A change set's branch, <code>studio/&lt;id&gt;</code>, is deleted once its change set is on the content branch.</p>
 </section>
 
 <!-- ============================================================ 3 -->

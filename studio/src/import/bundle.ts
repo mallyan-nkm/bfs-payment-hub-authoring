@@ -284,7 +284,7 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   const samples = b.samples.map((s) => {
     const sIssues: Issue[] = [];
     if (!/^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/.test(s.name)) sIssues.push({ severity: 'error', code: 'C12', where: s.name, message: 'A sample name is lower case, digits and hyphens, with an extension' });
-    for (const d of env.samplesDirs.slice(0, 1)) if (fs.existsSync(path.join(d, s.name))) sIssues.push({ severity: 'error', code: 'R-01-10', where: s.name, message: `samples/${s.name} is factory content; choose another name` });
+    if (env.store.factorySamples.has(s.name)) sIssues.push({ severity: 'error', code: 'R-01-10', where: s.name, message: `samples/${s.name} is factory content; choose another name` });
     for (const what of personalData(s.content)) sIssues.push({ severity: 'error', code: 'I30', where: s.name, message: `It holds what looks like ${what}. A sample is synthetic.` });
     return { name: s.name, issues: sIssues };
   });

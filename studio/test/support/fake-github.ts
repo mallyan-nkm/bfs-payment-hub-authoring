@@ -5,8 +5,8 @@ import type { AddressInfo } from 'node:net';
 import * as path from 'node:path';
 
 // A fake GitHub REST API, in memory: exactly the endpoints the studio's content layer uses (get ref,
-// get tree, get blob, create blob, create tree, create commit, update ref, create ref, matching refs,
-// compare, create pull request). Objects are hashed as Git hashes them, so a SHA means what it means
+// get tree, get blob, create blob, create tree, create commit, update ref, create ref, delete ref,
+// matching refs, compare, create pull request). Objects are hashed as Git hashes them, so a SHA means what it means
 // on GitHub, and a ref update that is not a fast-forward is refused with 422, as GitHub refuses it.
 // It holds nothing on disk. Every test of the studio's store runs against it.
 
@@ -35,6 +35,8 @@ export class FakeGitHub {
   readonly requests: FakeRequest[] = [];
   /** Ref updates that asked to force. The studio never asks; a test checks that it did not. */
   forced = 0;
+  /** Branches deleted through the API, as `<repo> <branch>`. */
+  readonly deleted: string[] = [];
   /** Called before a ref update is checked: a test moves the branch here to play another writer. */
   beforeRefUpdate?: (repo: string, branch: string) => void;
   private server?: http.Server;
@@ -254,7 +256,7 @@ export class FakeGitHub {
       let raw = '';
       req.on('data', (c) => (raw += c));
       req.on('end', () => {
-        const send = (status: number, body: any) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+        const send = (status: number, body: any) => (status === 204 ? res.writeHead(204).end() : res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body)));
         try {
           const url = new URL(req.url ?? '/', 'http://fake');
           this.requests.push({ method: req.method ?? 'GET', path: url.pathname });
@@ -269,6 +271,8 @@ export class FakeGitHub {
         }
       });
     });
+    // Keep idle connections open longer than a test waits, so a client never reuses one being closed.
+    this.server.keepAliveTimeout = 120_000;
     await new Promise<void>((r) => this.server!.listen(opts.port ?? 0, '127.0.0.1', () => r()));
     if (opts.unref) this.server.unref();
     this.url = `http://127.0.0.1:${(this.server!.address() as AddressInfo).port}`;
@@ -328,8 +332,9 @@ export class FakeGitHub {
     }
     if (method === 'POST' && rest === 'git/trees') {
       if (body?.base_tree && !this.get(body.base_tree, 'tree')) return unprocessable('base_tree is not a tree');
-      for (const e of body?.tree ?? []) if (e.sha !== null && !this.objects.has(e.sha)) return unprocessable(`No object ${e.sha}`);
-      const sha = this.buildTree(body?.base_tree, (body?.tree ?? []).map((e: any) => ({ path: e.path, mode: e.mode === '040000' ? '40000' : e.mode, type: e.type, sha: e.sha })));
+      for (const e of body?.tree ?? []) if (typeof e.content !== 'string' && e.sha !== null && !this.objects.has(e.sha)) return unprocessable(`No object ${e.sha}`);
+      // An entry with `content` is stored as a blob of that text, as GitHub does.
+      const sha = this.buildTree(body?.base_tree, (body?.tree ?? []).map((e: any) => ({ path: e.path, mode: e.mode === '040000' ? '40000' : e.mode, type: e.type, sha: typeof e.content === 'string' ? this.blob(e.content) : e.sha })));
       return { status: 201, body: { sha } };
     }
     if (method === 'POST' && rest === 'git/commits') {
@@ -348,6 +353,12 @@ export class FakeGitHub {
       else if (!this.ancestors(body.sha).has(cur)) return unprocessable('Update is not a fast forward');
       repo.refs.set(x[1], body.sha);
       return { status: 200, body: refBody(x[1], body.sha) };
+    }
+    if (method === 'DELETE' && (x = /^git\/refs\/heads\/(.+)$/.exec(rest))) {
+      if (!repo.refs.has(x[1])) return unprocessable('Reference does not exist');
+      repo.refs.delete(x[1]);
+      this.deleted.push(`${full} ${x[1]}`);
+      return { status: 204, body: undefined };
     }
     if (method === 'POST' && rest === 'git/refs') {
       const name = String(body?.ref ?? '').replace(/^refs\/heads\//, '');

@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-22-001
+events:
+  - at: 2026-11-22T02:47:38.491Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-22-001
+    detail: 11 file(s) from studio/fixtures/samples, studio/scripts
+    changeSet: CS-2026-11-22-001
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:457f37fa002ab7f562ad82dad3a4fda03fa40dacd48dc50c239ae2ff77db932a
+  - at: 2026-11-22T02:47:38.495Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-22-001
+    detail: ""
+    changeSet: CS-2026-11-22-001
+    prevHash: sha256:457f37fa002ab7f562ad82dad3a4fda03fa40dacd48dc50c239ae2ff77db932a
+    hash: sha256:dd5266b17b96d523bb276fdf716334fadd0ba7d1ffb0f5ef66f26eac1a0c6113

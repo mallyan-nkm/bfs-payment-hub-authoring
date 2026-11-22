@@ -1,5 +1,8 @@
 # Sample messages
 
+Authoring source of the factory's test samples. The seed publishes each file (not this README) to the
+content branch's `samples/`, where the studio reads it (R-11-25).
+
 Synthetic sample messages for the factory tests. Every value is invented: no person, employer or
 bank in these files exists. IBANs use the UAE format with computed check digits.
 

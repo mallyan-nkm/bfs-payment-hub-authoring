@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ContentStore } from '../src/content/content-store.js';
+import { ContentStore, forgetCache } from '../src/content/content-store.js';
 import { ENDPOINTS } from '../src/content/github.js';
 import { seedContent, seedFiles } from '../src/content/seed.js';
 import { CONTENT_DIR, SPEC_ROOT, STUDIO_ROOT, envFor, openEnv } from '../src/env.js';
@@ -52,6 +52,7 @@ describe('the content branch is the only store (R-11-21)', () => {
     const env = freshEnv();
     const before = fake().requests.length;
     const key = await draft(env, ACT('endpoints'));
+    const id = env.store.entries.get(key)!.changeSet!;
     await call(env, 'POST', '/api/review', { tenant: 'owner', actor: 'shared.designer', key });
     await publish(env, key);
     await restart(env);
@@ -61,7 +62,18 @@ describe('the content branch is the only store (R-11-21)', () => {
       return { method, re: new RegExp('^/repos/[^/]+/[^/]+' + p.replace(/[.]/g, '\\.').replace(/\{[^}]+\}/g, '.+') + '$') };
     });
     for (const r of used) expect(patterns.some((p) => p.method === r.method && p.re.test(r.path)), `${r.method} ${r.path}`).toBe(true);
-    expect(new Set(used.map((r) => r.method))).toEqual(new Set(['GET', 'POST', 'PATCH']));
+    expect(new Set(used.map((r) => r.method))).toEqual(new Set(['GET', 'POST', 'PATCH', 'DELETE']));
+    // The one deletion is of the change set's own branch, which the publish took in (R-11-26).
+    expect(used.filter((r) => r.method === 'DELETE').map((r) => r.path.replace(/^\/repos\/[^/]+\/[^/]+/, ''))).toEqual([`/git/refs/heads/studio/${id}`]);
+  });
+
+  it('deletes only a change set branch: any other name is refused before a request is made (R-11-26)', async () => {
+    const env = freshEnv();
+    const before = fake().requests.length;
+    for (const b of [BRANCH, 'master', 'studio', 'studio/', 'studio/notes', 'studio/CS-2026-11-22-001/x', 'feature/CS-2026-11-22-001', '../studio/CS-2026-11-22-001']) {
+      await expect(env.store.content!.client.deleteChangeSetBranch(b), b).rejects.toThrow(/deletes only a change set branch/);
+    }
+    expect(fake().requests.length).toBe(before);
   });
 });
 
@@ -109,6 +121,10 @@ describe('a branch per change set (R-11-22)', () => {
     expect(l[0].message).toMatch(new RegExp(`^Release change set ${id}: 1 artefact[\\s\\S]*Maker: shared\\.designer\\nChecker: shared\\.checker`));
     expect(l[0].sha).toBe(pub.git.commit);
     expect(fake().forced).toBe(0);
+    // The content branch took the change set branch in whole: the branch is deleted (R-11-26).
+    expect(pub.git.deletedBranches).toEqual([`studio/${id}`]);
+    expect(studioBranches(env)).toEqual([]);
+    expect(fake().deleted).toContain(`${env.store.content!.repository} studio/${id}`);
 
     const again = await restart(env);
     expect(again.store.get('p.enrich.cs-note-b.v1', '1.0.0')).toMatchObject({ status: 'published', source: 'studio', maker: 'shared.designer', checker: 'shared.checker' });
@@ -138,9 +154,17 @@ describe('a branch per change set (R-11-22)', () => {
     // Waiting for the merge survives a restart; once merged, the change set is published.
     expect((await restart(env)).store.entries.get(key)).toMatchObject({ status: 'in-review', awaitingMerge: `studio/${id}` });
     fake().mergePull(env.store.content!.repository, pulls[0].number);
+    // A command that only reads sees the merge and deletes nothing.
+    const reader = envFor(await ContentStore.open({ ...env.store.content!.conn, readOnly: true }), { banks: [] });
+    expect(reader.store.get('p.enrich.cs-note-c.v1', '1.0.0')?.status).toBe('published');
+    expect(studioBranches(env)).toEqual([`studio/${id}`]);
+    // The studio, reading the branch, finds the pull request merged and deletes its branch (R-11-26).
     const merged = await restart(env);
     expect(merged.store.get('p.enrich.cs-note-c.v1', '1.0.0')?.status).toBe('published');
     expect(merged.store.drafts('owner')).toEqual([]);
+    expect(studioBranches(env)).toEqual([]);
+    expect(merged.store.content!.deletedBranches).toEqual([`studio/${id}`]);
+    expect(fake().branches(env.store.content!.repository)).toContain(BRANCH);
   }, 60000);
 });
 
@@ -161,10 +185,11 @@ describe('append-only state files (R-11-23, R-09-21)', () => {
     expect(paths).toContain(`${ROOT}/audit/change-sets/${id}.yaml`);
     const events = paths.filter((p) => p.startsWith(`${ROOT}/audit/events/`));
     expect(events.length).toBe(1);
+    expect(events[0]).toMatch(/\/\d{9}-author-[0-9a-f]{12}\.yaml$/);
     expect(files(env)[events[0]]).toMatch(/outcome: refused[\s\S]*actor: example\.maker/);
     const again = await restart(env);
-    expect(again.store.verifyAudit()).toEqual({ ok: true });
-    expect(again.store.audit.filter((a) => a.changeSet === id).map((a) => a.action)).toEqual(['save-draft', 'publish', 'publish-change-set']);
+    expect(await again.store.verifyAudit()).toEqual({ ok: true });
+    expect((await again.store.readAudit()).filter((a) => a.changeSet === id).map((a) => a.action)).toEqual(['save-draft', 'publish', 'publish-change-set']);
   });
 
   it('never rewrites a published file: a clash stops the publish and names the file, and nothing is forced', async () => {
@@ -320,11 +345,126 @@ describe('the factory published into content (R-11-25)', () => {
   }, 60000);
 });
 
-// The real thing, when the environment names it: read the connected branch, write nothing.
-describe.skipIf(!(process.env.TH_GITHUB_TOKEN && process.env.TH_CONTENT_REPO))('smoke test against real GitHub (TH_GITHUB_TOKEN and TH_CONTENT_REPO set)', () => {
-  it('reads the connected branch into memory', async () => {
-    const env = await openEnv({ banks: [] });
-    expect(env.store.content!.head).toMatch(/^[0-9a-f]{40}$/);
-    expect(env.store.all().length).toBeGreaterThan(1);
-  }, 120000);
+describe('the change set a draft joins, and what a publish leaves (R-11-22, Issue I-44)', () => {
+  it('a new draft joins the first change set, by id, of the drafts it refers to; approval publishes the closure under the approved draft\'s id and empties both branches', async () => {
+    const env = freshEnv();
+    const a = await draft(env, ACT('j1'));
+    const b = await draft(env, ACT('j2'));
+    const [ida, idb] = [env.store.entries.get(a)!.changeSet!, env.store.entries.get(b)!.changeSet!];
+    expect(ida < idb).toBe(true);
+    // c refers to both: it joins the first by id.
+    const c = await draft(env, ACT('j3', { provenance: { origin: 'authored', status: 'provisional', clauses: ['p.enrich.cs-note-j1.v1', 'p.enrich.cs-note-j2.v1'] } }));
+    expect(env.store.entries.get(c)!.changeSet).toBe(ida);
+    const pub = await publish(env, b);
+    expect(pub.changeSet.id).toBe(idb);
+    expect(pub.changeSet.members.map((m: any) => m.key).sort()).toEqual(['p.enrich.cs-note-j1.v1@1.0.0', 'p.enrich.cs-note-j2.v1@1.0.0', 'p.enrich.cs-note-j3.v1@1.0.0']);
+    expect(pub.changeSet.members.every((m: any) => m.maker === 'shared.designer')).toBe(true);
+    // Nothing is left only on a branch: the other branch's audit is on the content branch, and both branches are gone.
+    expect(files(env)[`${ROOT}/audit/change-sets/${ida}.yaml`]).toMatch(/action: save-draft/);
+    expect(pub.git.deletedBranches.sort()).toEqual([`studio/${ida}`, `studio/${idb}`]);
+    expect(studioBranches(env)).toEqual([]);
+    const again = await restart(env);
+    expect(again.store.drafts('owner')).toEqual([]);
+    expect(again.store.get('p.enrich.cs-note-j3.v1', '1.0.0')).toMatchObject({ status: 'published', maker: 'shared.designer', checker: 'shared.checker' });
+  });
+
+  it('a branch that still holds drafts after a publish keeps them; they publish later under a new id, and then the branch goes', async () => {
+    const env = freshEnv();
+    const a = await draft(env, ACT('k1'));
+    const id = env.store.entries.get(a)!.changeSet!;
+    const b = env.store.saveDraft('owner', 'shared.designer', ACT('k2'), { changeSet: id }).key;
+    await env.store.flush();
+    const first = await publish(env, a);
+    expect(first.changeSet.id).toBe(id);
+    expect(first.git.deletedBranches).toBeUndefined();
+    expect(studioBranches(env)).toEqual([`studio/${id}`]);
+    const kept = await restart(env);
+    expect(kept.store.drafts('owner').map((d) => [d.key, d.changeSet])).toEqual([[b, id]]);
+    const second = await publish(kept, b);
+    expect(second.changeSet.id).not.toBe(id);
+    expect(second.git.deletedBranches).toEqual([`studio/${id}`]);
+    expect(studioBranches(env)).toEqual([]);
+    expect((await restart(kept)).store.get('p.enrich.cs-note-k2.v1', '1.0.0')?.status).toBe('published');
+  });
+});
+
+describe('the audit is read when it is opened (R-11-27)', () => {
+  it('reads at start only the events the state needs and the newest; the rest on demand, once, cached by SHA; the chain verifies', async () => {
+    const env = freshEnv();
+    const key = await draft(env, ACT('l'));
+    const id = env.store.entries.get(key)!.changeSet!;
+    await publish(env, key);
+    // A retirement is state: it is read at start.
+    const r = await call(env, 'POST', '/api/retire', { actor: 'service.operations', name: 'p.enrich.cs-note-l.v1', release: '1.0.0' });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    await call(env, 'POST', '/api/in-flight', { actor: 'service.operations', counts: {}, asOf: '2026-11-22' });
+    const repo = env.store.content!.repository;
+    const blobs = () => fake().requests.filter((q) => q.method === 'GET' && q.path.startsWith(`/repos/${repo}/git/blobs/`)).length;
+    const auditPaths = Object.keys(files(env)).filter((p) => p.startsWith(`${ROOT}/audit/`)).map((p) => p.slice(ROOT.length + 1));
+    expect(auditPaths.some((p) => /-retire-[0-9a-f]{12}\.yaml$/.test(p))).toBe(true);
+
+    // A cold start: nothing cached, so every blob the studio needs is a request.
+    forgetCache();
+    const n = blobs();
+    const again = await restart(env);
+    const c = again.store.content!;
+    const shas = new Set([...c.unread.values()]);
+    const blobPaths = () => fake().requests.filter((q) => q.method === 'GET' && q.path.startsWith(`/repos/${repo}/git/blobs/`)).map((q) => q.path.split('/').pop()!);
+    expect(blobPaths().slice(n).filter((x) => shas.has(x))).toEqual([]);
+    // Unread: every change set's audit on the content branch, and old events of no state.
+    expect([...c.unread.keys()]).toEqual(expect.arrayContaining([`audit/change-sets/${id}.yaml`]));
+    expect([...c.unread.keys()].some((p) => /-retire-/.test(p))).toBe(false);
+    expect([...c.files.keys()].some((p) => /-import-in-flight-/.test(p))).toBe(true); // the newest event
+    expect(again.store.audit.some((a) => a.changeSet === id)).toBe(false);
+    expect(again.store.get('p.enrich.cs-note-l.v1', '1.0.0')?.status).toBe('retired');
+    expect(again.store.get('p.enrich.cs-note-l.v1', '1.0.0')?.maker).toBe('shared.designer');
+
+    // An event recorded now chains to the newest one, though the rest is unread.
+    await call(again, 'POST', '/api/in-flight', { actor: 'service.operations', counts: {}, asOf: '2026-11-23' });
+    const n0 = blobs();
+    const list = await call(again, 'GET', '/api/audit');
+    expect(list.body.map((a: any) => a.action)).toEqual(expect.arrayContaining(['save-draft', 'publish-change-set', 'retire', 'import-in-flight']));
+    const n1 = blobs();
+    expect(new Set(blobPaths().slice(n0))).toEqual(shas);
+    expect(c.unread.size).toBe(0);
+    await call(again, 'GET', '/api/audit');
+    expect((await call(again, 'GET', '/api/audit/verify')).body).toEqual({ ok: true });
+    expect(blobs()).toBe(n1);
+    // Another start reads nothing it read before: blobs are cached by SHA.
+    const third = await restart(again);
+    await third.store.readAudit();
+    expect(blobs()).toBe(n1);
+    expect(await third.store.verifyAudit()).toEqual({ ok: true });
+  }, 60000);
+});
+
+describe('the factory script-behinds and samples are content (R-11-25)', () => {
+  it('reads them from the branch, where the seed published them, and not from studio/', async () => {
+    const env = freshEnv();
+    const sc = env.scripts.find('uae.wps.map.sif-in.v1')!;
+    expect(sc.file).toBe('content:scripts/uae.wps.map.sif-in.v1.ts');
+    expect(env.store.content!.files.get('scripts/uae.wps.map.sif-in.v1.ts')).toMatch(/^\/\/ Generated by `npm run studio -- seed-content` from studio\/scripts\/uae\.wps\.map\.sif-in\.v1\.ts\. /);
+    expect(sc.source).not.toMatch(/Generated by/);
+    expect(env.store.factorySamples.has('wps-sif-valid.sif')).toBe(true);
+    expect(env.store.sampleFiles.get('wps-sif-valid.sif')).toMatch(/^# file: /);
+    // A designer may not take a factory sample's name.
+    const s = await call(env, 'POST', '/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'wps-sif-valid.sif', content: 'x\n' });
+    expect(s.status).toBe(409);
+    expect(s.body.code).toBe('R-01-10');
+    // Without the branch's copy, the factory script is gone: nothing is read from studio/scripts.
+    const full = forkRepo();
+    fake().commitFiles(full, BRANCH, { [`${ROOT}/scripts/uae.wps.map.sif-in.v1.ts`]: null, [`${ROOT}/samples/wps-sif-valid.sif`]: null });
+    const bare = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
+    expect(bare.scripts.find('uae.wps.map.sif-in.v1')).toBeUndefined();
+    expect(bare.store.sampleFiles.has('wps-sif-valid.sif')).toBe(false);
+  });
+
+  it('a factory change after the seed needs a new release: the seed stops and names the file (R-09-21)', async () => {
+    const full = forkRepo();
+    fake().commitFiles(full, BRANCH, { [`${ROOT}/scripts/p.validate.duplicate.v1.ts`]: '// changed elsewhere\n' });
+    const env = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
+    const before = fake().head(full, BRANCH);
+    await expect(seedContent(env)).rejects.toThrow(/content-configurations\/scripts\/p\.validate\.duplicate\.v1\.ts.*never rewritten.*new release/);
+    expect(fake().head(full, BRANCH)).toBe(before);
+  });
 });

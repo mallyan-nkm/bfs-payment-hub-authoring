@@ -1,5 +1,10 @@
 # Scripts-behind
 
+The factory's script-behinds, authoring source. The studio does not read this folder: the seed
+(`npm run studio -- seed-content`) publishes each file to the content branch's `scripts/`, where the
+studio reads it (R-11-25). After a change, run `npm run studio -- seed-content --write-local`; a
+connected branch takes a changed factory script only with a new release.
+
 One file per activity, named `<activity name>.ts` (TypeScript) or `<activity name>.py` (Python).
 If both exist the TypeScript one runs.
 

@@ -131,8 +131,9 @@ export async function runScript(
 export interface InMemoryScript { name: string; language: 'typescript' | 'python'; source: string; file: string }
 
 /**
- * Script-behinds: the factory's in studio/scripts/<activity name>.ts, then a designer's, which are files
- * on the content branch read into memory (R-11-24).
+ * Script-behinds, searched in the folders given (a deployed worker's package), then in memory: in the
+ * studio every script is a file on the content branch, the factory's (seeded from studio/scripts) and a
+ * designer's (R-11-24, R-11-25).
  */
 export class ScriptRegistry {
   constructor(private dirs: string[], private memory: () => Iterable<InMemoryScript> = () => []) {}

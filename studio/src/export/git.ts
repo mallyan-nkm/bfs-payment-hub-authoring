@@ -38,6 +38,8 @@ export function gitStatus(env: StudioEnv) {
     drafts: c ? [...c.drafts.values()].filter((d) => env.store.all().some((e) => e.changeSet === d.id && (e.status === 'draft' || e.status === 'in-review'))).map((d) => ({ id: d.id, branch: d.branch, members: env.store.all().filter((e) => e.changeSet === d.id && (e.status === 'draft' || e.status === 'in-review')).map((e) => e.key), awaitingMerge: env.store.all().some((e) => e.changeSet === d.id && e.awaitingMerge) })) : [],
     pending: env.store.extra.pendingChangeSets ?? [],
     writes: (c?.writes ?? []).slice(-20).reverse(),
+    /** Change set branches deleted once the content branch took them in (R-11-26). */
+    deletedBranches: (c?.deletedBranches ?? []).slice(-20).reverse(),
   };
 }
 

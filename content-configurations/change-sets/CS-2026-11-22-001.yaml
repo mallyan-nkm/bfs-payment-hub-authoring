@@ -1,0 +1,12 @@
+kind: change-set
+id: CS-2026-11-22-001
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T02:47:38.491Z
+makers:
+  - tools/build_factory.py
+sources:
+  - studio/fixtures/samples
+  - studio/scripts
+members: []

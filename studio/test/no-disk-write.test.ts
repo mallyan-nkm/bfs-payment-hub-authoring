@@ -94,7 +94,9 @@ describe('the studio writes nothing to disk (R-11-24)', () => {
 
     // The evidence: what the studio wrote is on the branches of the fake, and nothing is on disk.
     const branches = server.fake.branches(server.repo);
-    expect(branches.filter((b) => b.startsWith('studio/')).length).toBeGreaterThanOrEqual(imp.changeSets.length);
+    // The branches of the published change sets are deleted (R-11-26); the rest hold their drafts.
+    expect(branches.filter((b) => b.startsWith('studio/')).length).toBeGreaterThanOrEqual(imp.changeSets.length - 1);
+    expect(branches).not.toContain(`studio/${pub.changeSet.id}`);
     const all = branches.flatMap((b) => Object.keys(server.fake.files(server.repo, b)));
     const main = Object.keys(server.fake.files(server.repo, 'main'));
     expect(all.some((p) => /^content-configurations\/(banks\/[^/]+\/)?scripts\//.test(p)), 'a script on a branch').toBe(true);

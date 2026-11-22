@@ -1,11 +1,19 @@
+import { createHash } from 'node:crypto';
 import { GitHubClient, GitHubError } from './github.js';
-import { DRAFT_PREFIX, READ_PREFIXES, changeSetPath, draftBranch, isYaml } from './layout.js';
+import { DRAFT_PREFIX, READ_PREFIXES, STATE_ACTIONS, changeSetAuditPath, changeSetPath, draftBranch, eventFileName, isYaml } from './layout.js';
 
 // The content store (R-11-21 to R-11-24). The studio's only store is a branch of a GitHub repository:
 // its `content-configurations/` folder on the content branch, and one branch per change set in
 // progress, `studio/<change set id>`. It is read through the GitHub REST API into memory, cached by
-// commit SHA, and written through the Git Data API: blobs, a tree, a commit, and a ref update that
+// commit SHA, and written through the Git Data API: a tree with its files' text, a commit, and a ref update that
 // must fast-forward. Nothing is written to disk: no workspace file, no data folder, no clone.
+//
+// Reading cost (R-11-26, R-11-27). The audit grows by a file per event, so the audit files of the
+// content branch are not read at start: only those the studio's state depends on (a retirement, who set
+// a configuration set) and the newest event, whose hash the next event chains to. The rest are read
+// when the audit is opened, and cached by blob SHA. A change set branch that the content branch has
+// taken in is deleted: in commit mode right after the publish, in pull-request mode when the studio
+// next reads the branch and finds the pull request merged. No other branch is ever deleted.
 
 export interface ContentConnection {
   /** The API base, `https://api.github.com` by default (`TH_GITHUB_API`). */
@@ -18,6 +26,8 @@ export interface ContentConnection {
   root: string;
   /** Where the token comes from; by default `TH_GITHUB_TOKEN`, read at each request and never stored. */
   token?: () => string | undefined;
+  /** A command that only reads (check, test, kit): it deletes no merged change set branch. */
+  readOnly?: boolean;
 }
 
 export class ContentError extends Error {
@@ -46,10 +56,16 @@ export interface Snapshot { commit: string; rootTree: string; files: Map<string,
 const SNAPSHOTS = new Map<string, Snapshot>();
 const BLOBS = new Map<string, string>();
 
+/** Forget every cached commit, tree and blob: for a test that counts what a cold start reads. */
+export function forgetCache(): void {
+  SNAPSHOTS.clear();
+  BLOBS.clear();
+}
+
 /** A change to one file. `create`: append-only, refused if the file exists with other text (R-09-21, R-11-23). `replace`: the file must still hold `expect`. `free`: a draft branch's own file. */
 export interface Change { path: string; text: string | null; guard: 'create' | 'replace' | 'free'; expect?: string | null }
 
-export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true } }
+export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true }; deletedBranches?: string[] }
 
 interface Op {
   branch: string;
@@ -58,6 +74,8 @@ interface Op {
   /** A commit to add as a second parent: the change set's branch, when its publish takes it whole. */
   merge?: () => string | undefined;
   pull?: { title: string; body: string };
+  /** Change set ids whose branches hold nothing the commit does not put on the content branch: deleted once it is there (R-11-26). */
+  prune?: string[];
   done: (r: WriteResult) => void;
   failed: (e: unknown) => void;
 }
@@ -73,6 +91,49 @@ export interface DraftBranch {
 const wanted = (p: string) =>
   READ_PREFIXES.some((x) => p.startsWith(x)) &&
   (isYaml(p) || /(^|\/)samples\/[^/]+$/.test(p) || /(^|\/)scripts\/[^/]+\.(ts|js|py)$/.test(p));
+
+/**
+ * Which of the content branch's files are read at start: all but the audit, and of the audit only the
+ * events the studio's state depends on and the newest event, whose hash the next one chains to (R-11-27).
+ */
+function atStart(paths: string[]): (p: string) => boolean {
+  let newest = '';
+  for (const p of paths) {
+    const n = eventFileName(p);
+    if (n && n.stamp > newest) newest = n.stamp;
+  }
+  return (p) => {
+    if (!p.startsWith('audit/')) return true;
+    if (!p.startsWith('audit/events/')) return false;
+    const n = eventFileName(p);
+    return !n || !n.action || STATE_ACTIONS.includes(n.action) || n.stamp === newest;
+  };
+}
+
+/** The SHA Git gives a blob of this text. */
+function gitBlobSha(text: string): string {
+  const body = Buffer.from(text, 'utf8');
+  return createHash('sha1').update(Buffer.concat([Buffer.from(`blob ${body.length}\0`), body])).digest('hex');
+}
+
+/** Tree entries in parts of at most 200 entries and about 1 MB of text. */
+function parts<T extends { text: string | null }>(entries: T[]): T[][] {
+  const out: T[][] = [];
+  let cur: T[] = [];
+  let size = 0;
+  for (const e of entries) {
+    const n = e.text?.length ?? 0;
+    if (cur.length && (cur.length >= 200 || size + n > 1_000_000)) {
+      out.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(e);
+    size += n;
+  }
+  if (cur.length || !out.length) out.push(cur);
+  return out;
+}
 
 async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -92,6 +153,10 @@ export class ContentStore {
   head = '';
   /** The content branch's files the studio reads, path to text, as it last read or wrote them. */
   readonly files = new Map<string, string>();
+  /** Audit files of the content branch not read yet, path to blob SHA: read when the audit is opened (R-11-27). */
+  readonly unread = new Map<string, string>();
+  /** Change set branches the studio deleted, newest last (R-11-26). */
+  readonly deletedBranches: string[] = [];
   readonly drafts = new Map<string, DraftBranch>();
   /** Every `studio/` branch seen, open or not: a change set id is never used twice. */
   readonly branchesSeen = new Set<string>();
@@ -130,6 +195,7 @@ export class ContentStore {
     const s = new ContentStore(conn);
     s.head = this.head;
     for (const [k, v] of this.files) s.files.set(k, v);
+    for (const [k, v] of this.unread) s.unread.set(k, v);
     const snap = SNAPSHOTS.get(this.key(this.head));
     if (snap) SNAPSHOTS.set(s.key(this.head), snap);
     return s;
@@ -140,28 +206,80 @@ export class ContentStore {
     try {
       head = await this.client.getRef(this.conn.branch);
     } catch (e: any) {
+      if (e instanceof GitHubError && e.status === 409) throw new ContentError('content', `${this.repository} is empty: it has no commit, so it has no branch ${this.conn.branch}. Give it a first commit and create the branch; the studio never creates its content branch.`);
       throw new ContentError('content', `The studio cannot read ${this.repository}: ${e?.message ?? e}`);
     }
     if (!head) throw new ContentError('content', `${this.repository} has no branch ${this.conn.branch}. Create it first; the studio never creates its content branch.`);
     this.head = head;
     const snap = await this.snapshot(head);
     this.files.clear();
+    this.unread.clear();
     const paths = [...snap.files.keys()].filter(wanted).sort();
-    const texts = await pool(paths, 16, (p) => this.text(snap.files.get(p)!));
-    paths.forEach((p, i) => this.files.set(p, texts[i]));
+    const start = atStart(paths);
+    const eager = paths.filter(start);
+    for (const p of paths) if (!start(p)) this.unread.set(p, snap.files.get(p)!);
+    const texts = await pool(eager, 16, (p) => this.text(snap.files.get(p)!));
+    eager.forEach((p, i) => this.files.set(p, texts[i]));
     // The change sets in progress: each studio/ branch with commits the content branch has not taken.
     this.drafts.clear();
+    const merged: { branch: string; sha: string }[] = [];
     for (const r of await this.client.listStudioRefs()) {
       this.branchesSeen.add(r.branch);
       const id = r.branch.slice(DRAFT_PREFIX.length);
+      // Taken in: its change set is published, or its audit is on the content branch (a branch whose drafts
+      // were published with another change set's).
+      const published = this.files.has(changeSetPath(id)) || this.has(changeSetAuditPath(id));
       const cmp = await this.client.compare(this.conn.branch, r.branch);
-      if (cmp.ahead_by === 0) continue;
+      if (cmp.ahead_by === 0) {
+        if (published) merged.push(r);
+        continue;
+      }
       const bsnap = await this.snapshot(r.sha);
       const diff = [...bsnap.files].filter(([p, sha]) => wanted(p) && snap.files.get(p) !== sha).map(([p]) => p).sort();
-      if (!diff.length) continue;
+      if (!diff.length) {
+        // Taken in another way (a squash or rebase merge): nothing on it differs from the content branch.
+        if (published) merged.push(r);
+        continue;
+      }
       const bt = await pool(diff, 16, (p) => this.text(bsnap.files.get(p)!));
       this.drafts.set(id, { id, branch: r.branch, head: r.sha, files: new Map(diff.map((p, i) => [p, bt[i]])) });
     }
+    // A published change set's branch that the content branch has taken in: its pull request merged (R-11-26).
+    if (!this.conn.readOnly) for (const r of merged) await this.deleteMerged(r.branch, r.sha);
+  }
+
+  /**
+   * Delete a change set branch the content branch has taken in, if it still points where the studio saw
+   * it. A failure is not an error: the branch is tried again at the next read.
+   */
+  private async deleteMerged(branch: string, sha: string): Promise<boolean> {
+    try {
+      if ((await this.client.getRef(branch)) !== sha) return false;
+      await this.client.deleteChangeSetBranch(branch);
+      this.deletedBranches.push(branch);
+      this.drafts.delete(branch.slice(DRAFT_PREFIX.length));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Is this path on the content branch, read or not? */
+  has(p: string): boolean {
+    return this.files.has(p) || this.unread.has(p);
+  }
+
+  /** Read every audit file not read yet (R-11-27). A blob is fetched once: its SHA is the cache key. */
+  async readUnread(): Promise<Map<string, string>> {
+    const list = [...this.unread].sort(([a], [b]) => a.localeCompare(b));
+    const texts = await pool(list, 16, ([, sha]) => this.text(sha));
+    const out = new Map<string, string>();
+    list.forEach(([p], i) => {
+      out.set(p, texts[i]);
+      this.files.set(p, texts[i]);
+      this.unread.delete(p);
+    });
+    return out;
   }
 
   /** Read again from GitHub: what others published since, and their change sets in progress. */
@@ -249,7 +367,7 @@ export class ContentStore {
    * Write to the content branch or to a change set's branch. The in-memory view changes at once; the
    * commit goes out in order, in the background. `flush()` waits for it and reports a failure.
    */
-  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string } } = {}): Promise<WriteResult> {
+  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string }; prune?: string[] } = {}): Promise<WriteResult> {
     if (branch === this.conn.branch) {
       for (const c of changes) {
         if (c.text === null) this.files.delete(c.path);
@@ -265,7 +383,7 @@ export class ContentStore {
       }
     }
     const p = new Promise<WriteResult>((done, failed) => {
-      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, done, failed };
+      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, prune: opts.prune, done, failed };
       if (this.tx) this.tx.push(op);
       else this.send(op);
     });
@@ -331,8 +449,14 @@ export class ContentStore {
   }
 
   private async commit(snap: Snapshot, changes: Change[], message: string, parents: string[]): Promise<{ commit: string; snap: Snapshot }> {
-    const entries = await pool(changes, 8, async (c) => ({ path: this.full(c.path), mode: '100644' as const, type: 'blob' as const, sha: c.text === null ? null : await this.client.createBlob(c.text) }));
-    const tree = await this.client.createTree(snap.rootTree, entries);
+    // Each file's text goes inline in the tree request, so a commit of many files is a few requests, not
+    // one per file (GitHub limits how many objects a client creates a minute). Its blob SHA is the one
+    // Git gives the text, worked out here. A large commit builds its tree in parts, each on the last.
+    const entries = changes.map((c) => ({ path: this.full(c.path), mode: '100644' as const, type: 'blob' as const, sha: c.text === null ? null : gitBlobSha(c.text), text: c.text }));
+    let tree = snap.rootTree;
+    for (const part of parts(entries)) {
+      tree = await this.client.createTree(tree, part.map((e) => (e.text === null ? { path: e.path, mode: e.mode, type: e.type, sha: null } : { path: e.path, mode: e.mode, type: e.type, content: e.text })));
+    }
     const commit = await this.client.createCommit(message, tree, parents);
     const files = new Map(snap.files);
     changes.forEach((c, i) => {
@@ -357,8 +481,9 @@ export class ContentStore {
       const changes = await this.resolve(snap, op.changes);
       if (!changes.length && !op.pull) return { status: 'unchanged', branch: op.branch, commit: base, files: [] };
       let commit = base;
+      let second: string | undefined;
       if (changes.length) {
-        const second = op.merge?.();
+        second = op.merge?.();
         const parents = [base, ...(second && second !== base ? [second] : [])];
         commit = (await this.commit(snap, changes, op.message, parents)).commit;
       }
@@ -386,7 +511,16 @@ export class ContentStore {
         const pr = await this.client.createPullRequest(op.branch, this.conn.branch, op.pull.title, op.pull.body);
         return { status: 'pull-request', branch: op.branch, commit, files, pullRequest: { url: pr.html_url, number: pr.number, branch: op.branch, opened: true } };
       }
-      return { status: 'committed', branch: op.branch, commit, files };
+      // Each change set branch the publish emptied is done with: everything on it is now on the content
+      // branch. It is deleted if it is still where the studio saw it (R-11-26).
+      const deletedBranches: string[] = [];
+      if (onContent && changes.length) {
+        for (const id of op.prune ?? []) {
+          const at = this.drafts.get(id)?.head;
+          if (at && (await this.deleteMerged(draftBranch(id), at))) deletedBranches.push(draftBranch(id));
+        }
+      }
+      return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}) };
     }
   }
 }
@@ -406,6 +540,7 @@ function merge(ops: Op[]): Op[] {
       changes: [...changes.values()],
       merge: list.find((o) => o.merge)?.merge,
       pull: list.find((o) => o.pull)?.pull,
+      prune: [...new Set(list.flatMap((o) => o.prune ?? []))],
       done: (r) => list.forEach((o) => o.done(r)),
       failed: (e) => list.forEach((o) => o.failed(e)),
     };

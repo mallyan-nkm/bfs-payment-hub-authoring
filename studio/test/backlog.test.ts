@@ -78,9 +78,9 @@ describe('C17 roles, maker-checker, audit and isolation', () => {
     const p = await gov.approve(env, 'owner', 'shared.checker', d.key);
     expect(p.status).toBe('published');
     expect(env.store.audit.find((a) => a.action === 'publish' && a.outcome === 'done')?.diff).toBeDefined();
-    expect(env.store.verifyAudit().ok).toBe(true);
+    expect((await env.store.verifyAudit()).ok).toBe(true);
     env.store.audit[0].actor = 'someone-else';
-    expect(env.store.verifyAudit().ok).toBe(false);
+    expect((await env.store.verifyAudit()).ok).toBe(false);
   });
   it('lets two banks author the same b name with different content, each seeing only its own (C17-S1, S5)', async () => {
     const env = freshEnv();
