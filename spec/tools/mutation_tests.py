@@ -22,6 +22,7 @@ EB = "../content-configurations/banks/example-bank"
 
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
 SAL = "factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml"
+OPV = "factory/uae.wps/views/uae.wps.view.operations.v1.yaml"
 
 # (id, expected line prefix, file, old text, new text, what it breaks)
 CASES = [
@@ -111,6 +112,22 @@ CASES = [
      "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: synthetic-literal-value", "a binding's secretRef holds a value, not a reference"),
     ("M39", "ERROR L37", "../content-configurations/banks/dib/file-transfer.yaml",
      "secretRef: env:TH_DIB_SFTP_CREDENTIAL", "secretRef: env:TH_DIB_SFTP_CREDENTIAL\n      password: synthetic-literal-value", "a binding carries a password as a value beside its reference"),
+    # R-05-48, R-05-49: an operations view says only what the store can answer (L38)
+    ("M40", "ERROR L38", OPV,
+     '"step:submit.read-ack.outcome"', '"step:submit.read-acks.outcome"', "a view's field reads a step the leg does not have"),
+    ("M41", "ERROR L38", OPV,
+     "source: line.ext.uae.wps.personId, mask: id,", "source: line.ext.uae.wps.personId,", "a view shows a personal value with no mask"),
+    ("M42", "ERROR L38", OPV,
+     "action: retry, label: Retry the failed step", "action: approve, label: Retry the failed step", "a view offers a hold decision where no flow holds for one"),
+    ("M43", "ERROR L38", OPV,
+     "columns: [cbResponse, ackReceivedAt]", "columns: [cbResponse, ackAt]", "a view's list column is not a declared field"),
+    ("M44", "ERROR L38", OPV,
+     "leg: uae.wps.wf.return-in.v1", "leg: uae.wps.wf.return-out.v1", "a view declares a leg the scheme does not have"),
+    ("M45", "ERROR L38", OPV,
+     "mask: none, oldScreen: \"SIF Summary report, Corporate Name (an organisation's name, shown whole)\" }", "mask: none }",
+     "a view shows a value unmasked without naming the old screen that did"),
+    ("M46", "ERROR L38", OPV,
+     "source: ext.uae.wps.salaryMonth,", "source: ext.uae.wps.salaryMonths,", "a view reads an extension field nobody registers"),
 ]
 
 

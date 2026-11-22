@@ -84,6 +84,7 @@ content-configurations/      what the studio publishes and what a bank configure
   - **A build check fails the runtime** if it finds `Microsoft.Data.SqlClient`, `Npgsql` or `FromSqlRaw` outside the two provider registration files.
 - **Every store test runs twice**, once on SQL Server 2022 and once on PostgreSQL 16, in Testcontainers. CI runs the whole runtime suite (unit, store, conformance, WPS parity) against both. A test that passes on one database and not the other is a failed build.
 - **The report database** is fed from the `outbox`, not from change data capture.
+  - Built for operations (2026-11-22): the store writes an outbox row with every fact and message in the same save, and the operations read model is its first reader (see "Progress on the operator surface" in section 6).
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
@@ -286,6 +287,17 @@ The results, pass by pass and project by project, with each failure classified (
   - a second file on a later date runs from the same package, byte for byte, takes the new limit and is not held; a file on the first payment's date still takes the old limit and gives the first payment's trace.
 - The values in force are those of the latest configuration set that sets the parameter, by date (`BankValuesTests`, on both databases). Lookups of dated values by an engine's own timers are I-57.
 - **Not yet:** Aani's removal and the inward flows' authoring are tracked under P2 and W7; this item shows only the deploy and the hot update.
+
+### Progress on the operator surface (W4's operator actions, I-65, I-68)
+
+Decided by the owner on 2026-11-22: an operations console in the runtime, leg-generic, with the bank's identity provider. Built (design: `docs/north-star/design/operations-console.md`; requirements R-05-48 to R-05-50 and R-06-24):
+
+- **Facts.** Every step a worker answers is a fact on the payment's chain (`StepFacts`, installed by every engine's runtime build through `WorkerRouter.Answered`); holds and operator actions are facts too. The store writes an outbox row with each fact and message, in the same save.
+- **The read model.** `runtime/src/TransactHub.Operations`: a projection from the outbox into `ops_*` tables, EF Core on SQL Server and PostgreSQL with its own migrations; ordered, idempotent by chain number, resumable from its checkpoint, rebuildable from the facts with the same result, its lag measured (`ProjectionTests` on both databases).
+- **Operations views.** A new artefact kind, `operations-view` (schema, Part 5 section 5.10, lint L38, mutation cases M40 to M46): `p.view.operations.v1` for the platform, `uae.wps.view.operations.v1` for the WPS legs. The WPS view covers the source's WPS screens field by field (`docs/runtime/ops-console-wps-mapping.md`); what has no source is I-100.
+- **Operator actions.** Approve and decline an approval hold, release and reject a repair hold, cancel, re-screen, retry, resend, each as a view declares it, with maker-checker where it names a second approver. A hold the runtime answers (the operations-queue port given to the runtime) waits for the operator's decision (I-98); signals go to the outbox for the engine host (I-99).
+- **The console.** `runtime/src/TransactHub.Operations.Api` (behind the runtime's authentication library `TransactHub.Auth`: the bank's OIDC issuer and role map, roles Operator and Supervisor; dev sign-in outside production only) and `runtime/ops-console` (React and Vite, as the studio's web app). The Playwright test runs a WPS file on the runtime's DTFx build with the store on PostgreSQL, filters to it, opens it, approves its hold and sees its WPS leg settle (`runtime/ops-console/test/e2e/wps-hold.test.ts`). CI job `ops-console`.
+- **Not yet:** an end fact and the files of a deployment in the store (I-97); a durable hold and the store's id on the header (I-98); signals delivered to an engine, retry and resend (I-99); the source's report database's reports and exports (I-68); a role per tenant in the role map (I-65).
 
 ### Progress on P3 (DTFx, Elsa, Flowable)
 

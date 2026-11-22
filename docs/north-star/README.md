@@ -23,6 +23,7 @@ These pages describe; they do not decide. The decisions are in `docs/runtime/NST
 | [design/overview.md](design/overview.md) | The picture, and where a feature goes |
 | [design/components.md](design/components.md) | Each component, and the map from the source's services |
 | [design/sequences.md](design/sequences.md) | Publish, release, a salary file, a hot update |
+| [design/operations-console.md](design/operations-console.md) | The operations console: facts, outbox, read model, operations views, operator actions, sign-in |
 | [requirements/requirements.md](requirements/requirements.md) | Where requirements live; the source's requirements mapped |
 | [quality/fmea.md](quality/fmea.md) | Failure modes and their controls |
 | [quality/test-strategy.md](quality/test-strategy.md) | The suites and their results |

@@ -182,6 +182,7 @@ public sealed class FlowableBinding
         {
             await using var db = StoreDbContext.Open(storeOpts);
             await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+            StepFacts.Install(storeOpts);
         }
         claim = storeOpts is null ? new MemoryClaimCheck() : new DurableClaimCheck(storeOpts);
 

@@ -66,6 +66,7 @@ public sealed class ScenarioRunner
         {
             await using var db = StoreDbContext.Open(storeOpts);
             await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+            StepFacts.Install(storeOpts);
         }
         var host = new Host(party, dep, durable);
 

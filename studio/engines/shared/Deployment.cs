@@ -294,6 +294,11 @@ public sealed class WorkerRouter : IParty
     readonly Dictionary<string, string> queues;  // scope -> queue
     readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
     public readonly Dictionary<string, int> Calls = new();
+    /// <summary>
+    /// Told of every attempt a worker answered, with the request and the answer. The studio's harnesses leave
+    /// it unset; the runtime's builds set it to record each step's outcome as a fact in the store.
+    /// </summary>
+    public static Action<JsonObject, JsonObject>? Answered;
 
     public WorkerRouter(JsonObject workers, JsonObject queues)
     {
@@ -342,7 +347,9 @@ public sealed class WorkerRouter : IParty
                 Calls[queue] = Calls.GetValueOrDefault(queue) + 1;
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
-                return await Post($"{url}/attempt", body);
+                var answer = await Post($"{url}/attempt", body);
+                Answered?.Invoke(body, answer);
+                return answer;
             }
             case "sent":
             {

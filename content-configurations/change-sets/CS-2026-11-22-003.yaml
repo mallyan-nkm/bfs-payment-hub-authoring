@@ -1,0 +1,33 @@
+kind: change-set
+id: CS-2026-11-22-003
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T06:35:09.463Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/factory/inventory.yaml
+  - spec/factory/p
+  - spec/factory/uae.wps
+members:
+  - kind: inventory
+    name: inventory
+    release: ""
+    key: inventory
+  - kind: operations-view
+    name: p.view.operations.v1
+    release: 1.0.0
+    key: p.view.operations.v1@1.0.0
+  - kind: pack
+    name: pack:p
+    release: 1.0.0
+    key: pack:p@1.0.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.0.0
+    key: pack:uae.wps@1.0.0
+  - kind: operations-view
+    name: uae.wps.view.operations.v1
+    release: 1.0.0
+    key: uae.wps.view.operations.v1@1.0.0

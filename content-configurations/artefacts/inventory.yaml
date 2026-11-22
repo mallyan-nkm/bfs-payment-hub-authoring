@@ -13,8 +13,9 @@ packs:
       table: 3
       simulator: 10
       test: 2
+      operations-view: 1
       workflow: 5
-    total: 58
+    total: 59
     artefacts:
       - name: p.decide.inward-disposition.v1
         kind: activity
@@ -122,6 +123,8 @@ packs:
         kind: test
       - name: P-RES-002
         kind: test
+      - name: p.view.operations.v1
+        kind: operations-view
       - name: p.seg.check-and-screen.v1
         kind: workflow
       - name: p.wf.commercial.v1
@@ -180,8 +183,9 @@ packs:
       scheme: 1
       simulator: 3
       test: 16
+      operations-view: 1
       workflow: 11
-    total: 76
+    total: 77
     artefacts:
       - name: uae.wps.decide.returns.v1
         kind: activity
@@ -313,6 +317,8 @@ packs:
         kind: test
       - name: WPS-OUT-005
         kind: test
+      - name: uae.wps.view.operations.v1
+        kind: operations-view
       - name: uae.wps.sub.confirm-receipt.v1
         kind: workflow
       - name: uae.wps.sub.receive-supplement.v1

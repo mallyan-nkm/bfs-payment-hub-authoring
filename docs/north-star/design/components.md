@@ -32,7 +32,9 @@ Each part of the north star: what it does, where it is, and whether it is built.
 | Flowable binding | External-worker client and BPMN deployment | `TransactHub.Engine.Flowable` | No (plan P3) |
 | Temporal on SQL Server | Persistence and visibility plugin | `runtime/temporal-mssql` | Yes, pinned to v1.32.2 |
 | WPS activities | The scheme's own rules and file formats, golden against the source | `runtime/src/TransactHub.Activities.Wps` | In part (outward) |
-| Native host | Code-behind for activities bound `native` (R-08-14) | `runtime/src/TransactHub.Native` | Yes |
+| Native host | Code-behind for activities bound `native` (R-08-14), and the holds of the operations-queue port when given the store | `runtime/src/TransactHub.Native` | Yes |
+| Operations read model | The projection of the store's facts through the outbox; the operations views; operator actions | `runtime/src/TransactHub.Operations` | Yes ([operations-console.md](operations-console.md)) |
+| Operations console | The console's API (OIDC, roles per tenant) and its web app | `runtime/src/TransactHub.Operations.Api`, `runtime/ops-console` | Yes; signals reach no engine yet ([I-99](../../ISSUES.md#i-99-signals-retry-and-resend-have-no-path-from-the-runtime-to-an-engine)) |
 | Ports | Interfaces and effective-dated port bindings | `runtime/src/TransactHub.Ports` | Core banking only |
 | Platform and UAE activities | `p.*` and `uae.p.*` code-behind | `TransactHub.Activities.Platform`, `TransactHub.Activities.Uae` | No |
 | Front door host | One intake API; file watchers call it | `TransactHub.FrontDoor` | No; the front door runs as a workflow today |
@@ -75,7 +77,7 @@ Code sets and participant lists are versioned registries and lists, looked up by
 | Participant directory | Registries and lists |
 | Simulator | The studio's simulators; a deployable stub for tests, never in a promotable pack |
 | AI workflow builder | The studio's assistant |
-| Operations | Declared operator actions (plan W4); surface undecided ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) |
+| Operations | The operations console: declared operator actions on the packs' operations views ([operations-console.md](operations-console.md), I-65) |
 | IAM, RBAC | [../guidelines/access-control.md](../guidelines/access-control.md) |
 | Smart integration | Ports and adapters |
 | Report sync | The outbox ([I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)) |
