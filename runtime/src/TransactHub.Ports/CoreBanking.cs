@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using TransactHub.Security;
 
 namespace TransactHub.Ports;
 
@@ -24,10 +25,10 @@ public interface ICoreBanking
 /// <summary>Builds the adapter a binding names. A new core-banking system is a new adapter here and a binding in the bank's configuration.</summary>
 public static class CoreBankingAdapters
 {
-    public static ICoreBanking Create(PortBinding b, HttpClient? http = null) => b.Adapter switch
+    public static ICoreBanking Create(PortBinding b, HttpClient? http = null, ISecretResolver? secrets = null) => b.Adapter switch
     {
         SimulatedCoreBanking.Name => new SimulatedCoreBanking(b),
-        GatewayRestCoreBanking.Name => new GatewayRestCoreBanking(b, http ?? new HttpClient()),
+        GatewayRestCoreBanking.Name => new GatewayRestCoreBanking(b, http ?? new HttpClient(), secrets),
         _ => throw new PortBindingException($"No core-banking adapter is called '{b.Adapter}' (binding for {b.Port}, from {b.ValidFrom:O})"),
     };
 }
@@ -63,13 +64,14 @@ public sealed class SimulatedCoreBanking(PortBinding b) : ICoreBanking
 /// the source's bank fork used): function id, external host id, channel, txn flag. Every value that was a
 /// bank constant is a setting of the binding.
 /// </summary>
-public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http) : ICoreBanking
+public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecretResolver? secrets = null) : ICoreBanking
 {
     public const string Name = "gateway-rest";
     public string Adapter => Name;
+    readonly ISecretResolver secrets = secrets ?? SecretResolver.FromEnvironment();
     Uri Url(string path) => new(new Uri(b.Required("baseUrl")), b.Required(path));
 
-    HttpRequestMessage Request(string pathSetting, string functionSetting, string reference, JsonObject body)
+    async Task<HttpRequestMessage> Request(string pathSetting, string functionSetting, string reference, JsonObject body, CancellationToken ct)
     {
         var m = new HttpRequestMessage(HttpMethod.Post, Url(pathSetting)) { Content = JsonContent.Create(body) };
         m.Headers.Add("X-Function-Id", b.Required(functionSetting));
@@ -78,16 +80,17 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http) : ICo
         m.Headers.Add("X-Txn-Type", "RQST");
         m.Headers.Add("X-Txn-Flag", b.Required("txnFlag"));
         m.Headers.Add("X-Ref", reference);
-        // The gateway's credential, by reference only: `secretRef: env:NAME` names the variable a deployment sets.
-        if (b.Setting("secretRef", "") is var r && r.StartsWith("env:", StringComparison.Ordinal) && Environment.GetEnvironmentVariable(r[4..]) is { Length: > 0 } token)
-            m.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        // The gateway's credential, by reference only (R-06-22): `secretRef` names where the installation keeps it
+        // (env:NAME, file:/path, vault:mount/path#field). A binding that names one and cannot have it fails the call.
+        if (b.Setting("secretRef", "") is { Length: > 0 } r)
+            m.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", (await secrets.Resolve(r, ct)).Reveal());
         return m;
     }
 
     public async Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default)
     {
         var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["branch"] = branch, ["account"] = account };
-        using var res = await http.SendAsync(Request("balancePath", "balanceFunctionId", $"{b.Setting("referencePrefix", "")}{account}", body), ct);
+        using var res = await http.SendAsync(await Request("balancePath", "balanceFunctionId", $"{b.Setting("referencePrefix", "")}{account}", body, ct), ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         return new BalanceAnswer(account, (decimal)j["available"]!, (string?)j["currency"] ?? "AED", (string?)j["status"] ?? "");
@@ -108,7 +111,7 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http) : ICo
                 ["kind"] = l.Kind, ["branch"] = l.Branch, ["account"] = l.Account, ["amount"] = l.Amount, ["currency"] = l.Currency, ["txnCode"] = l.TxnCode, ["narration"] = l.Narration,
             }).ToArray()),
         };
-        using var res = await http.SendAsync(Request("postingPath", "postingFunctionId", batch.Reference, body), ct);
+        using var res = await http.SendAsync(await Request("postingPath", "postingFunctionId", batch.Reference, body, ct), ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         var code = (string?)j["code"] ?? "";

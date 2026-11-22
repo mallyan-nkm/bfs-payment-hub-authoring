@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, type Server } from './server.js';
+import { unzip } from '../../src/export/zip.js';
 
 // Black box: the studio's HTTP API as a client sees it, on a fresh data root. Nothing here imports
 // the studio's code.
@@ -163,11 +164,14 @@ describe('running', () => {
     expect(kit.filter((k: any) => !k.passed).map((k: any) => k.id)).toEqual([]);
   }, 120000);
 
-  it('exports reproducibly: the same request gives the same bytes', async () => {
+  it('exports reproducibly: the same request gives the same package, signed each time (R-09-23)', async () => {
     const a = await api.get('/api/export/download?workflows=p.wf.commercial.v1&target=temporal');
     const b = await api.get('/api/export/download?workflows=p.wf.commercial.v1&target=temporal');
     expect(a.status).toBe(200);
-    expect(sha(a.data)).toBe(sha(b.data));
+    // Every file the same, byte for byte; an ECDSA signature differs each time, over the same statement of the same files.
+    const content = (z: Buffer) => unzip(z).filter((e) => e.name !== 'release.sig' && e.name !== 'release.json').map((e) => `${e.name} ${sha(e.content)}`);
+    expect(content(a.data)).toEqual(content(b.data));
+    expect(JSON.parse(unzip(a.data).find((e) => e.name === 'release.json')!.content.toString()).files).toEqual(JSON.parse(unzip(b.data).find((e) => e.name === 'release.json')!.content.toString()).files);
     const withSims = await api.get('/api/export/download?workflows=p.wf.commercial.v1&target=temporal&withSimulators=true');
     expect(sha(withSims.data)).not.toBe(sha(a.data));
   });

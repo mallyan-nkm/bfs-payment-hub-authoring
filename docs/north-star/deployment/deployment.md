@@ -17,6 +17,7 @@ The studio is never deployed beside a runtime in a way that lets it reach a paym
 - Optional: `TH_GITHUB_API` (a GitHub Enterprise base), `TH_CONTENT_ROOT`, `TH_BANKS`, `PORT`, `TH_SPEC_ROOT`, and `ANTHROPIC_API_KEY` for the assistant.
 - It keeps no state of its own: stop it, start it elsewhere, and it reads the branch again.
 - Before banks share one installation, the studio needs a sign-in ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) and scripts need an isolated worker (D14).
+- Set `TH_SIGNING_KEY` to a reference to the studio's package-signing key (`npm run studio -- signing-key <dir>` makes one). Without it the studio publishes no workflow release.
 
 Full list: `studio/README.md`, "Run it".
 
@@ -34,7 +35,7 @@ Each installation runs one engine (D1). How each engine is hosted is decision D3
 Beside the engine:
 
 - **The store**: SQL Server 2022 or PostgreSQL 16, as tested. Migrations come from the provider's migrations assembly.
-- **The release API** (`TransactHub.Api`): stores releases and activations. It has no authentication yet; reach it from the pipeline's network only ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)).
+- **The release API** (`TransactHub.Api`): stores releases and activations, each verified against the studio's signature. It takes bearer JWTs from the bank's identity provider only, with roles from the bank's role map (`guidelines/access-control.md`). It needs `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:RoleMap` and `TH_TRUSTED_SIGNERS`, or it does not start.
 - **The native host** (`TransactHub.Native`): code-behind for native activities, on `TH_NATIVE_URLS`.
 - **One worker per task queue**, the queue derived from the scope (R-09-05). A bank never has a worker of its own.
 
@@ -56,7 +57,10 @@ The source rolled services to change behaviour. Here behaviour changes by releas
 ## Configuration and secrets
 
 - An installation's settings come from its environment. A bank's values come from its folder on the branch.
-- Secrets are set at deployment, never committed. How a binding names one is [I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment).
+- Secrets are set at deployment, never committed, and named by reference: `env:NAME`, `file:/path` (a Kubernetes or Docker secret), `vault:mount/path#field` (`TH_VAULT_ADDR`, `TH_VAULT_TOKEN`). See `guidelines/encryption-and-secrets.md`.
+- The studio signs every released package with `TH_SIGNING_KEY` (a reference). Each runtime installation and each deploy runner trusts the studio's public keys the bank lists in `TH_TRUSTED_SIGNERS`, with retired and revoked keys; nothing unsigned is stored, activated or run.
+- GitHub is the artefact repository: each published release is a signed folder on the content branch and an annotated tag `release/<workflow>/<release>/<target>`. An installation may take versions from it through its package source (`PackageSource:GitHub:*`, a read-only token by reference), verified like any upload.
+- A worker that reads the runtime's values sends a client-credentials token from the bank's provider, by reference in `TH_RUNTIME_TOKEN`.
 
 ## Not decided
 
