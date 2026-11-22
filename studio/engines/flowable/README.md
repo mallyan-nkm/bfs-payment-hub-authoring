@@ -48,6 +48,8 @@ The generated model carries `th:` annotations (namespace `urn:transacthub:flowab
 | finally | A sub-process every endpoint passes through. |
 | deadline | An interrupting timer boundary on `main`, then the deadline steps. |
 | signals | Message event sub-processes in `main`: pause and resume (with a gate before every step), cancel (interrupting: compensate, then end cancelled), re-screen (runs the screen steps that have run again). |
+| hold (R-05-56) | After the hold's task, a gateway on `held`: an event-based gateway between the decision's message catch (`p.ops.decision`, the binding setting `th_decision` from its status) and the expiry's timer (`th_expiry_<step>`, from the attempt's answer); a gateway on `th_decision` sets the outcome. |
+| park (R-05-55) | An error boundary on the call's sub-process catches the step's failure; the binding records `<step>:stuck`; an event-based gateway between the operator's `th.operator.retry` and `th.operator.redrive` (each runs the call again) and the park's timer (the step fails). |
 | handler | Not in the engine. The binding runs it as a plain request handler, one party call after another, with no process instance (R-09-14). |
 
 The binding (the harness) does what Part 9 gives a binding and nothing more: worker topics, the front door (correlation, early, late and duplicate messages), signals, hook bindings taken at instance start and their contracts, leg dispatch, supersession, and the claim-check of the context. The context lives with the binding; the engine holds only references and flow variables, so CK-CLAIM-01 is checked against the real Flowable variable names.
