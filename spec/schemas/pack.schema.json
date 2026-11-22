@@ -34,7 +34,7 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
-          "kind": { "enum": ["activity", "rule", "ruleset", "table", "simulator", "workflow", "scheme", "hook", "port", "extension", "test"] },
+          "kind": { "enum": ["activity", "rule", "ruleset", "table", "simulator", "workflow", "scheme", "hook", "port", "extension", "test", "operations-view", "error-dictionary"] },
           "release": { "$ref": "urn:th:schema:common#/$defs/release" },
           "hash": { "$ref": "urn:th:schema:common#/$defs/hash" },
           "path": { "type": "string" }

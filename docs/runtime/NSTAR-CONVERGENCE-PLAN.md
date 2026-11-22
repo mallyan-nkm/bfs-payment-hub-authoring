@@ -84,6 +84,7 @@ content-configurations/      what the studio publishes and what a bank configure
   - **A build check fails the runtime** if it finds `Microsoft.Data.SqlClient`, `Npgsql` or `FromSqlRaw` outside the two provider registration files.
 - **Every store test runs twice**, once on SQL Server 2022 and once on PostgreSQL 16, in Testcontainers. CI runs the whole runtime suite (unit, store, conformance, WPS parity) against both. A test that passes on one database and not the other is a failed build.
 - **The report database** is fed from the `outbox`, not from change data capture.
+  - Built for operations (2026-11-22): the store writes an outbox row with every fact and message in the same save, and the operations read model is its first reader (see "Progress on the operator surface" in section 6).
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
@@ -128,6 +129,11 @@ content-configurations/      what the studio publishes and what a bank configure
     - Each rule says whether it is evaluated as of the payment's acceptance or as of the step.
     - The runtime fixes the source's bug N1 by filtering on date first, then taking the version.
     - They change with no deployment, through maker-checker in the studio. The runtime only reads published versions.
+- **Signed packages and who may call (built 2026-11-22, owner's decision).**
+  - Every package the studio releases is signed: `release.json` (every file's SHA-256, the release id, tenant and change set) and `release.sig` (ECDSA P-256), with the studio's key read by reference (`TH_SIGNING_KEY`). The runtime verifies it at `POST /releases`, `POST /import-branch` and again at activation, against `TH_TRUSTED_SIGNERS` (several keys, retired and revoked), and records each verification as a `release.verified` fact on the release. The deploy runner runs only a verified package. Spec R-09-23 to R-09-26.
+  - The runtime is the bank's: it takes bearer JWTs from the bank's identity provider only, people's and machine callers' client-credentials tokens alike, maps the bank's claims and groups to its roles by the bank's role map, and keeps no identities (`TransactHub.Auth`, R-09-27, R-09-29). The studio's only link to it is the signature.
+  - GitHub is the artefact repository (owner, 2026-11-22). Each published release is its signed folder on the content branch and an annotated tag `release/<workflow>/<release>/<target>`. A runtime takes a version through a package source (`IPackageSource`, `GitHubPackageSource`: list the tags, download the folder at its commit, read-only, its token by reference), only through the same verification (`GET /sources/versions`, `POST /sources/install`). Spec R-09-30.
+  - Secrets are named by reference (`env:`, `file:`, `vault:`) and read through one interface (`TransactHub.Security`, R-06-22); check L37 refuses a literal one (R-06-23); CI scans for secrets and audits dependencies (R-09-28).
 - **Running payments** can change only through declared operator actions (retry, repair, cancel, decide), each with a permission and a second approver where the package says so. `InjectState` and arbitrary key/value edits are not carried over. This closes the review's item 13.
 
 ### W5. Temporal on SQL Server (N* item 8)
@@ -282,6 +288,17 @@ The results, pass by pass and project by project, with each failure classified (
 - The values in force are those of the latest configuration set that sets the parameter, by date (`BankValuesTests`, on both databases). Lookups of dated values by an engine's own timers are I-57.
 - **Not yet:** Aani's removal and the inward flows' authoring are tracked under P2 and W7; this item shows only the deploy and the hot update.
 
+### Progress on the operator surface (W4's operator actions, I-65, I-68)
+
+Decided by the owner on 2026-11-22: an operations console in the runtime, leg-generic, with the bank's identity provider. Built (design: `docs/north-star/design/operations-console.md`; requirements R-05-48 to R-05-50 and R-06-24):
+
+- **Facts.** Every step a worker answers is a fact on the payment's chain (`StepFacts`, installed by every engine's runtime build through `WorkerRouter.Answered`); holds and operator actions are facts too. The store writes an outbox row with each fact and message, in the same save.
+- **The read model.** `runtime/src/TransactHub.Operations`: a projection from the outbox into `ops_*` tables, EF Core on SQL Server and PostgreSQL with its own migrations; ordered, idempotent by chain number, resumable from its checkpoint, rebuildable from the facts with the same result, its lag measured (`ProjectionTests` on both databases).
+- **Operations views.** A new artefact kind, `operations-view` (schema, Part 5 section 5.10, lint L38, mutation cases M40 to M46): `p.view.operations.v1` for the platform, `uae.wps.view.operations.v1` for the WPS legs. The WPS view covers the source's WPS screens field by field (`docs/runtime/ops-console-wps-mapping.md`); what has no source is I-100.
+- **Operator actions.** Approve and decline an approval hold, release and reject a repair hold, cancel, re-screen, retry, resend, each as a view declares it, with maker-checker where it names a second approver. A hold the runtime answers (the operations-queue port given to the runtime) waits for the operator's decision (I-98); signals go to the outbox for the engine host (I-99).
+- **The console.** `runtime/src/TransactHub.Operations.Api` (behind the runtime's authentication library `TransactHub.Auth`: the bank's OIDC issuer and role map, roles Operator and Supervisor; dev sign-in outside production only) and `runtime/ops-console` (React and Vite, as the studio's web app). The Playwright test runs a WPS file on the runtime's DTFx build with the store on PostgreSQL, filters to it, opens it, approves its hold and sees its WPS leg settle (`runtime/ops-console/test/e2e/wps-hold.test.ts`). CI job `ops-console`.
+- **Not yet:** an end fact and the files of a deployment in the store (I-97); a durable hold and the store's id on the header (I-98); signals delivered to an engine, retry and resend (I-99); the source's report database's reports and exports (I-68); a role per tenant in the role map (I-65).
+
 ### Progress on P3 (DTFx, Elsa, Flowable)
 
 - **Kit.** The kit runs in CI on all four engines (`.github/workflows/engines.yml`, job `kit`).
@@ -292,12 +309,18 @@ The results, pass by pass and project by project, with each failure classified (
 - **Flowable on the store (D3).** Built on 22 November 2026. The Flowable REST server (`flowable/flowable-rest:7.1.0`, the Flowable of the kit harness) runs the BPMN the studio exports; `runtime/src/TransactHub.Engine.Flowable` is its external worker over REST, and keeps the payloads in `DurableClaimCheck`, as the Temporal binding does:
   - `FlowableRest` is the client: deploy through `/repository/deployments` (one zip), start through `/runtime/process-instances`, acquire and lock, complete, fail and BPMN errors through `/external-job-api`, run jobs and move timers through `/management`, deliver messages to executions;
   - `FlowableBinding` is the binding: every activity attempt goes to the worker of its task queue, and the binding's own tasks (topic `th.binding`) are where it writes the trace, names a slot's leg, counts a batch, checks a hook's contract and learns of each instance;
-  - the export for `flowable` generates BPMN for this REST binding (`binding: 'rest'` in `src/export/bpmn.ts`), and the bound hooks with it; the kit's embedded harness keeps the embedded form and still passes 46 of 46;
+  - the export for `flowable` generates BPMN for this REST binding (`binding: 'rest'` in `src/export/bpmn.ts`), and the bound hooks with it; the kit's embedded harness keeps the embedded form and passes 48 of 48;
   - the server's async executor is off and the binding keeps the clock, firing each timer when the virtual clock reaches it (Issue I-53);
+  - in production mode (`TH_FLOWABLE_MODE=production`, built 22 November 2026) the executor is on and time is real: the binding is a pure external worker, Flowable runs its jobs, fires its timers, retries failed jobs and hands out jobs whose lock expired, the binding reschedules the timers it computes (business calendar, a bank's parameter) and reports dead letters (Issues I-53 to I-55). `e2e-wps-flowable-production.test.ts` runs the WPS salary file so on the store on both databases, with a real timeout, a crashed worker and a dead letter (CI job `flowable-production`). The binding's own run state is still in memory (Issue I-89);
   - the deploy runner runs a Flowable package with `runtime/tools/TransactHub.FlowableHarness` against the server at `TH_FLOWABLE_URL`, its payloads in the store when `TH_STORE_PROVIDER` is set; `e2e-wps-engines-store.test.ts` starts the server as a container and asserts the trace and `engine.store` on both databases.
 
   Found on the way: the generator's parallel join counted one token per exit of a branch, so the corporate workflow never joined on Flowable. Fixed (Issue I-56). P3's store matrix is met.
 - **The WPS parity suite on DTFx and Elsa.** The scenarios of `e2e-wps-temporal.test.ts` run on DTFx and Elsa in `e2e-wps-parity.test.ts`: the salary file settles through four workers on four queues, and the scheme's rejection, a sanctions hit and a two-line file held and declined or approved each give the studio interpreter's trace and outcome. It runs on the studio's engine harnesses and, with `TH_STORE_PROVIDER`, on the runtime's builds with the store. The source's Central Bank SIF writer, imported and published through the studio, settles the salary file on DTFx and Elsa with the same SIF as on Temporal (`e2e-wps-source-slice.test.ts`, steps 6 and 7). CI job `wps-parity` runs all of it per engine.
+
+### Monitoring and the load test (I-66, I-68; decided by the owner on 22 November 2026)
+
+- **Monitoring (I-66).** OpenTelemetry in every runtime host and in the studio: traces, metrics and logs over OTLP, configured only by the standard `OTEL_*` variables, no backend named in shared code (R-09-31, R-10-07). One trace per payment from the front door's intake through every engine attempt, activity, port call and store write, on all four engines (R-09-32, R-09-33). The metrics of R-09-34, Temporal's SDK and server metrics among them. Personal data masked before any exporter, proved on the WPS salary file (R-09-35, R-10-08). `/health/live` and `/health/ready` (R-09-36, R-10-09). A local stack with dashboards (`runtime/observability/`, R-09-37). See `docs/north-star/guidelines/observability.md`.
+- **Load test (I-68).** `runtime/load/` (R-09-38): synthetic WPS salary files through a deployment on Temporal, Temporal's persistence on our SQL Server plugin or on PostgreSQL, the store on SQL Server or on PostgreSQL. The first run, its conditions and the targets proposed for the owner are in `docs/runtime/LOAD-TEST.md`. It found I-77 (a file of more than a few dozen lines fails on a real Temporal server) and I-78 (a large file's lines run one after another). Both stop a bank going live; P2 on a real server is not met until they are fixed and the load matrix meets the targets the owner sets.
 
 ## 7. Issues found while planning (beyond the review's 21)
 

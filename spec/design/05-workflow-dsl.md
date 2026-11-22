@@ -105,6 +105,11 @@ What stays in the designer's hands: the business outcomes of the block, and how 
 | R-05-45 | A wait in a subflow, or an await's timeout, whose length a bank may change MUST be a `duration` parameter of the composite activity, with a default and bounds, named as `{ parameter: <name> }`. The expansion names it in full (`<activity>#<name>`) and carries its default. The interpreter and every engine MUST take the tenant's value in force on the business date the step starts, else the default. A duration value MUST lie inside its bounds by length, not by its text. | Lint L17, L14; studio test `wps-returns.test.ts`; factory test WPS-IN-004 |
 | R-05-46 | An inward leg that paid some items and returned the others MUST end with its primary outcome and record the count and amount returned in `facts.returns`. It MUST end `returned` only when no item was paid and the whole amount went back. A return the scheme refuses, or one that cannot be recorded, MUST end `pending`, with the file at operations. | Factory tests WPS-IN-002 to WPS-IN-007 |
 | R-05-47 | A composite activity MAY let a bank set its reply wait. `policy.replyTimeoutParameter` and `policy.replyCalendarParameter` MUST name a `duration` and a `code` parameter the composite declares, whose defaults are the policy's `replyTimeout` and `replyCalendar`. The expanded await carries them as `timeoutParameter` and `calendarParameter` (`activity#parameter`), and the interpreter and the engines MUST wait for the value in force for the tenant on the day the await starts, the timeout being its default. A step that sets `replyTimeout` itself overrides the parameter. | Lint L30; `studio/test/ack-wait.test.ts` |
+| R-05-48 | A pack MAY declare how operators see its payments and legs, as an `operations-view` artefact (section 5.10): the platform's view in scope `p`, a scheme's in the scheme's scope. Every field MUST name a source the store can answer: a step the leg (or, for the platform view, a platform workflow) has, an extension field that is registered at the right level, a message of the scheme's catalogue, or a known column of the payment model. Each leg MUST be a leg of the scheme and MUST be told apart by steps it has. Columns and filters MUST name declared fields. A hold decision MUST be offered only where a flow of the view reaches that hold, and a signal only where every platform workflow the view shows handles it. | Lint L38; `OperationsViewTests` |
+| R-05-49 | The operations read model MUST be a projection of the store's facts, fed from the outbox: applied in order from a checkpoint, each fact once (by its number on its chain), resumable, and rebuildable from the facts at any time with the same result. It MUST hold no personal data beyond the fields a view declares, and a field that reads personal data MUST declare its mask (`none` only where the source system's screen showed it whole, named in `oldScreen`). Its lag MUST be measured and shown. | Lint L38; `ProjectionTests` (both databases) |
+| R-05-50 | A running payment MUST change only through an operator action a view declares, taken by a verified operator of the payment's tenant with the role the view names. Each request, approval and result MUST be a fact on the payment's chain with the operator's identity. An action with a `secondApprover` MUST be carried out only when another person with that role approves it (maker-checker). A hold decision MUST reach the hold as the operations-queue port's decision; a signal MUST reach the engine through its host (Issue I-99). | `OperatorActionTests`; `ops-console` Playwright test |
+| R-05-51 | A pack MAY declare an `error-dictionary` artefact (section 5.11). Every error an activity declares, every reason code a rule, rule set or table gives, every reason code a port's party answers (as the port's simulators answer for it), and every code a port boundary, the interpreter and each engine binding raise MUST have an entry, raised by that kind of thing, in a dictionary of the artefact's own scope or of a scope it may depend on. The runtime's own codes (store, read model, signing and packages, the package source, authentication, the operations console, the service console and its assistant) MUST have entries in the platform's dictionary. An entry for an ISO 20022 reason code a rule or a port gives MUST name it as its `isoReasonCode`. Codes MUST be unique in a dictionary. | Lint L39; `ErrorDictionaryTests` |
+| R-05-52 | Every entry MUST say whether the error is business or technical and whether it is retryable, what it means and its likely causes, and carry a runbook: the checks, the safe actions, the service console's troubleshooting actions it relies on (from the fixed list of section 5.11) and the escalation. The dictionaries MUST ship in every export package under `errors/`, and every error the service console shows MUST link to its entry. | Schema `error-dictionary`; `studio/test/error-dictionary.test.ts`; `ServiceApiTests`; `service-console` Playwright test |
 
 ## 5.5 Messages that are not payments
 
@@ -219,6 +224,9 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L34 | Factory packs: every folder under `factory/` is a pack the inventory lists, every listed pack has a folder, and every artefact sits in its own scope's folder | Yes |
 | L35 | Bank packs on the branch: each folder in `content-configurations/banks/` has a `pack.yaml` that is a bank pack naming its tenant; every studio artefact there is valid, is that tenant's, is in scope `b` or a test, and refers only to the factory or the folder; its lock file lists every artefact with its kind, release, hash and path, and nothing else (R-11-28) | Yes |
 | L36 | An await's `family` is one its message's dispatch entry declares (R-05-44) | Yes |
+| L37 | No literal secret: a key that names a secret (password, passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a name ending in one) holds a reference (`env:`, `file:`, `vault:`) or nothing, a `secretRef` holds a reference, and no file is a private key; in the factory, the examples, the kit, `content-configurations/` and every export package (R-06-23) | Yes |
+| L38 | An operations view says only what the store can answer: its scheme and legs exist and each leg is told apart by steps it has; each source reads a step of the flow, a registered extension field at its level, a catalogue message or a known column; a personal value declares its mask, and `none` names the old screen; columns, filters and groups are declared; a hold decision is offered only where that hold is reached, a signal only where the platform workflows handle it (R-05-48, R-05-49) | Yes |
+| L39 | The error dictionary covers every error: each error an activity declares, each reason code a rule, rule set or table gives and each a port's simulator answers, each code of a port boundary, the interpreter and every engine binding the examples bind, has an entry raised by that kind of thing, in the artefact's scope or one it may depend on; a dictionary has one entry per code; an ISO reason code a rule or a port gives names its `isoReasonCode` (R-05-51) | Yes |
 
 ## 5.8 Examples
 
@@ -238,3 +246,43 @@ D9 (synchronous segment for instant rails; the `synchronous` marker is carried n
 Open point: an `await` names one catalogue message. Where a scheme answers with different files or message types, the dispatch table maps them to one catalogue message that carries a status, as `uae.wps.ack` does for ACK and NAK, and, where one message answers several exchanges, a family the await names, as `uae.wps.ack` does for the file it acknowledges (R-05-44). Waiting for the first of several different messages is not in the portable core. Add it only when a scheme needs it, with a mapping for each engine and a conformance scenario.
 
 Open point: composites cover scheme exchanges. A bank-side port (core banking, screening) is request and reply at the interop boundary; an adapter bridges a queue within the attempt timeout. A bank-side reply that can take longer than an attempt timeout needs port-level messages and dispatch, which this draft does not define.
+
+## 5.10 Operations views
+
+A scheme is a leg, so the runtime's operations console is leg-generic: it lists payments and bulks by what every payment has (tenant, scheme, direction, status, the last outcome, a hold and its reason, dates, amounts, ids, file names) and shows what each leg declares, as data, in its pack's `operations-view` (R-05-48). The console has no code for any scheme. A new scheme gets its console by declaring its view.
+
+| Part | What it declares |
+| --- | --- |
+| `subject` | The payment or bulk as a whole: fields in groups, the list's columns, filters, the lines of a bulk (`lines`), the documents by message kind, and actions |
+| `legs[]` | Per leg of the scheme: how its engine instance is told apart (`selectBy`: direction, kind, steps only it has), its fields, columns, filters and actions |
+| A field | `id`, `label`, `group`, `source`, `format`, `mask`, and `oldScreen`: where the source system's screen showed it |
+| An action | One of `approve`, `decline` (an approval hold), `release`, `reject` (a repair hold), `cancel`, `re-screen`, `pause`, `resume` (the fixed signals, R-05-12), `retry`, `resend`; the `role` it needs, a `secondApprover` for maker-checker, whether `remarks` are required, and `when` it applies |
+
+A source is one of:
+
+| Source | Reads |
+| --- | --- |
+| `subject.<x>`, `bulk.<x>`, `payment.<x>` | The payment model's columns (ids, amounts, accounts, agents, dates, the release) |
+| `ext.<scope>.<field>`, `line.ext.<scope>.<field>` | A registered extension field (SupplementaryData), at batch or item level |
+| `step:<step>[.<inner step>].<outcome \| reasonCode \| at \| attempt \| status.x \| writes.x>` | The latest fact the step recorded: the authored step id, and the step inside a composite's subflow |
+| `header.<x>`, `hold.<x>` | The workflow header's ids; the payment's latest hold (status, reason, decision, who decided and when) |
+| `message:<kind>.<fileName \| at \| size \| count>` | A file or message of the scheme's catalogue, as kept |
+| `lines.count`, `lines.count(<line source> = \| != <value or source>)`, `lines.sum(<line source>)`, `line.<x>`, `line.facts.<x>` | A bulk's lines and their own facts |
+
+The read model is a projection of the store's facts (R-05-49). Every step a worker answers is a fact on the payment's chain (kind `step`: the step, the activity, the attempt, the outcome and reason code, the header's ids and the step's state writes, never the payload); a hold is opened and decided on the same chain (kind `hold`), and every operator action too (kind `operator`). The projection reads them through the outbox, which the store writes in the same save as each fact. The views of the factory are `factory/p/views/p.view.operations.v1.yaml` and `factory/uae.wps/views/uae.wps.view.operations.v1.yaml`; the runtime's console is `runtime/ops-console/`.
+
+## 5.11 The error dictionary and its runbooks
+
+An error is shown to a service engineer the same way wherever it comes from: by its code, as it was raised, with its entry in an `error-dictionary` artefact (R-05-51, R-05-52). The platform's dictionary is `factory/p/errors/p.errors.platform.v1.yaml`; the UAE cluster's and the WPS scheme's hold only the codes the platform's does not (`factory/uae.p/errors/`, `factory/uae.wps/errors/`). A code is looked up in the artefact's own scope first, then its cluster platform, then `p`.
+
+| Field | What |
+| --- | --- |
+| `code` | As raised: an activity's error name (`TransientError`), an ISO 20022 reason code (`AC03`), an engine's or the runtime's code (`flowable.DeadLetterJob`, `signing.Tampered`) |
+| `category`, `retryable` | `business` or `technical`; whether the engine or a person may try again |
+| `isoReasonCode` | The ISO 20022 external status reason code, where one exists |
+| `raisedBy` | `activity`, `rule`, `port`, `interpreter`, `engine:<target>`, `native`, `store`, `read-model`, `signing`, `package-source`, `auth`, `operations-console`, `service-console`, `assistant` |
+| `meaning`, `causes` | What it means and why it usually happens |
+| `runbook` | `checks`, `safeActions`, `actions` (the service console's troubleshooting actions below) and `escalation` |
+
+The troubleshooting actions are fixed: `retry-attempt`, `redrive-workflow`, `requeue-dead-letter` (Flowable), `reset-activity` (Temporal), `resend-file`, `re-screen`, `release-hold`, `expire-hold`, `reconcile-posting`, `pause-intake`, `resume-intake`, `drain-worker`, `restart-worker`, `replay-read-model`, `rebuild-read-model`, `reverify-package`, `rotate-trusted-key`. Each needs a person's confirmation and is a fact; the risky ones need a second person (R-09-43). A dictionary is logic, not a value: it is pinned with the package it ships in (`errors/<name>@<release>.yaml`).
+

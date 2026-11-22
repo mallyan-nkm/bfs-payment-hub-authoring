@@ -25,7 +25,7 @@ Tests are written first and seen to fail (`spec/CLAUDE.md`).
 | Studio white-box | Store, names, hashes, rules, sandboxes, simulators, interpreter, checks, export, every API route, governance | `cd studio && npm test` |
 | Studio black-box | The HTTP API, the command line, the web app in Chromium, end to end | `cd studio && npm run test:blackbox` |
 | Factory and bank tests | The pack's own test cases on the interpreter | `npm run studio -- test` |
-| Conformance kit | 46 scenarios, the same expected traces on every engine | `npm run studio -- kit`, then each engine's `run-kit.ts` |
+| Conformance kit | 48 scenarios, the same expected traces on every engine | `npm run studio -- kit`, then each engine's `run-kit.ts` |
 | Runtime | Store on both databases, neutrality, bank checks, release API, WPS golden corpus | `cd runtime && dotnet test` |
 | Temporal on SQL Server | Temporal's own persistence suites, the durability check, the kit, the WPS file | `runtime/temporal-mssql/README.md` |
 
@@ -33,7 +33,7 @@ Tests are written first and seen to fail (`spec/CLAUDE.md`).
 
 - **A check fires.** A new static check has a mutation case that breaks the repository and expects the check to fire (`spec/CLAUDE.md`).
 - **Both databases.** A store test runs on SQL Server and PostgreSQL. Passing on one is a failure.
-- **Every engine.** An engine change passes the 46 kit scenarios on that engine. A trace that differs from the interpreter's is a failure.
+- **Every engine.** An engine change passes the 48 kit scenarios on that engine. A trace that differs from the interpreter's is a failure.
 - **The source as reference.** The WPS rules in the runtime answer the golden corpus generated from the source's code exactly (`runtime/tests/TransactHub.Store.Tests/Golden`). The parity matrix (`docs/runtime/PARITY.md`) names the proof of each source item.
 
 ## What not to write

@@ -1,0 +1,351 @@
+{
+  "uid": "th-store",
+  "title": "TransactHub: Store",
+  "description": "Writes to the runtime's store (payments, facts, messages, releases, values) on SQL Server or PostgreSQL (R-09-33).",
+  "tags": [
+    "transacthub"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Database",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "th-prometheus"
+        },
+        "query": {
+          "query": "label_values(th_store_write_duration_seconds_count, th_store_provider)",
+          "refId": "v"
+        },
+        "definition": "label_values(th_store_write_duration_seconds_count, th_store_provider)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Saves per second, by row kinds",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_store_op) (rate(th_store_write_duration_seconds_count{th_store_provider=~\"$provider\"}[$__rate_interval]))",
+          "legendFormat": "{{th_store_op}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Save latency p50 / p95 / p99, by database",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, th_store_provider) (rate(th_store_write_duration_seconds_bucket{th_store_provider=~\"$provider\"}[$__rate_interval])))",
+          "legendFormat": "p50 {{th_store_provider}}"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, th_store_provider) (rate(th_store_write_duration_seconds_bucket{th_store_provider=~\"$provider\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{th_store_provider}}"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, th_store_provider) (rate(th_store_write_duration_seconds_bucket{th_store_provider=~\"$provider\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{th_store_provider}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Rows inserted per second, by kind",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_store_kind) (rate(th_store_rows_total{th_store_provider=~\"$provider\"}[$__rate_interval]))",
+          "legendFormat": "{{th_store_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Failed saves per minute (a lost race for a fact number among them)",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_store_op, th_error) (rate(th_store_write_errors_total{th_store_provider=~\"$provider\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{th_store_op}} {{th_error}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Fact save latency p95",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, th_store_provider) (rate(th_store_write_duration_seconds_bucket{th_store_provider=~\"$provider\", th_store_op=\"fact\"}[$__rate_interval])))",
+          "legendFormat": "{{th_store_provider}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Releases stored",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum(increase(th_release_stored_total[$__range]))",
+          "legendFormat": "stored"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "TransactHub",
+      "type": "dashboards",
+      "tags": [
+        "transacthub"
+      ],
+      "asDropdown": true
+    }
+  ]
+}

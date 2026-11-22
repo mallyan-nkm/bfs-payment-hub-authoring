@@ -1,0 +1,57 @@
+# The local stack's collector (R-09-37). Traces go to Jaeger, logs to Loki, metrics to Prometheus (scraped on :8889).
+# The hosts mask personal data before they export (R-09-35); the redaction processor here is a second guard, for
+# anything a library adds that the hosts do not see: an IBAN or a standalone run of eight or more digits is masked.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 400
+  batch: {}
+  redaction:
+    allow_all_keys: true
+    blocked_values:
+      - "\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\\b"
+      - "\\b[0-9]{8,}\\b"
+      - "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+    summary: info
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, redaction, batch]
+      exporters: [otlphttp/loki, debug]

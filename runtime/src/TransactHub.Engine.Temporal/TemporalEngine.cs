@@ -157,10 +157,22 @@ public sealed class TemporalEngine : IEngine
         return res;
     }
 
-    public Task Timer(long at, CancellationToken ct)
+    /// <summary>
+    /// TH_TEMPORAL_TIMERS=logical (off by default; the load harness's setting, docs/runtime/LOAD-TEST.md, I-77): a timer the
+    /// interpreter races (an attempt's deadline, an await's timeout) runs for its business length from the logical now,
+    /// so the time a real server spends processing does not use it up. Without it, a step's deadline is set on Temporal's
+    /// clock, and on a real server a file whose items take longer to process than the step's attempt timeout fails.
+    /// </summary>
+    public static readonly bool LogicalTimers = Environment.GetEnvironmentVariable("TH_TEMPORAL_TIMERS") == "logical";
+
+    public async Task Timer(long at, CancellationToken ct)
     {
         Log($"timer {Duration.Iso(at)}");
-        return Until(at, ct);
+        if (!LogicalTimers || ServerNow <= logical) { await Until(at, ct); return; }
+        var wait = at - logical;
+        if (wait > 0) await Workflow.DelayAsync(TimeSpan.FromMilliseconds(wait), ct);
+        else ct.ThrowIfCancellationRequested();
+        logical = Math.Max(logical, at);
     }
 
     public async Task<JsonObject> Child(string instanceId, JsonObject input)
@@ -261,7 +273,13 @@ public sealed class InterpreterWorkflow
         for (int i = 0, n = 0; i < text.Length; i += Piece, n++)
             await Workflow.ExecuteLocalActivityAsync<string>(Host.KeepOutput, new object?[] { J.Str(new JsonObject { ["key"] = r, ["piece"] = n, ["text"] = text.Substring(i, Math.Min(Piece, text.Length - i)) }) },
                 new LocalActivityOptions { StartToCloseTimeout = TimeSpan.FromMinutes(5), RetryPolicy = new() { MaximumAttempts = 3 } });
-        return J.Str(new JsonObject { ["outputRef"] = r, ["consumed"] = J.Clone(J.P(o, "consumed")), ["endedAt"] = J.Clone(J.P(o, "endedAt")) });
+        // The reference carries what a parent reads of a child (its outcome, reason, state, payload reference, times),
+        // and leaves the per-step records, which grow with the items, with the host. Without them a leg of a large file
+        // ended settled but its parent read no outcome, and failed it (found by the load harness, docs/runtime/LOAD-TEST.md).
+        var small = (JsonObject)J.Clone(o)!;
+        foreach (var big in new[] { "trace", "detail", "releaseTrace", "steps", "attempts", "ruleTraceSteps" }) small.Remove(big);
+        small["outputRef"] = r;
+        return J.Str(small);
     }
 
     // Each signal carries the business time it was sent at, so the receiver's clock moves to it.

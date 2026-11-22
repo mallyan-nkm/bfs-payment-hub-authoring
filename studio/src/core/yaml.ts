@@ -18,6 +18,11 @@ export function parseYamlAll(text: string): any[] {
   return YAML.parseAllDocuments(text, YAML_OPTIONS as any).map((d) => d.toJSON());
 }
 
+/**
+ * A document as text. Never with anchors and aliases: an object a document holds twice is written out twice,
+ * so the text depends on the content only, not on which objects in memory happen to be shared. A draft and
+ * its published file are then the same text for the same content, as the draft listing expects.
+ */
 export function toYaml(doc: any): string {
-  return YAML.stringify(doc, { lineWidth: 0 });
+  return YAML.stringify(doc, { lineWidth: 0, aliasDuplicateObjects: false });
 }

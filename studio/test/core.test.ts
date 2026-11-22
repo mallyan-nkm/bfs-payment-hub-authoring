@@ -66,7 +66,7 @@ describe('durations and the business calendar', () => {
 describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
-    expect(env.store.all().length).toBe(176); // 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
+    expect(env.store.all().length).toBe(181); // 3 more for the error dictionaries of p, uae.p and uae.wps (R-05-51); 2 more for the operations views of p and uae.wps (R-05-48); 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

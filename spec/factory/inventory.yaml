@@ -6,14 +6,16 @@ packs:
     packType: shared
     counts:
       activity: 19
+      error-dictionary: 1
       port: 10
       rule: 7
       ruleset: 2
       table: 3
       simulator: 10
       test: 2
+      operations-view: 1
       workflow: 5
-    total: 58
+    total: 60
     artefacts:
       - name: p.decide.inward-disposition.v1
         kind: activity
@@ -53,6 +55,8 @@ packs:
         kind: activity
       - name: p.validate.limits.v1
         kind: activity
+      - name: p.errors.platform.v1
+        kind: error-dictionary
       - name: p.port.channel.v1
         kind: port
       - name: p.port.core-banking.v1
@@ -121,6 +125,8 @@ packs:
         kind: test
       - name: P-RES-002
         kind: test
+      - name: p.view.operations.v1
+        kind: operations-view
       - name: p.seg.check-and-screen.v1
         kind: workflow
       - name: p.wf.commercial.v1
@@ -135,11 +141,12 @@ packs:
     packType: shared
     counts:
       activity: 3
+      error-dictionary: 1
       port: 2
       rule: 5
       ruleset: 1
       simulator: 2
-    total: 13
+    total: 14
     artefacts:
       - name: uae.p.enrich.business-date.v1
         kind: activity
@@ -147,6 +154,8 @@ packs:
         kind: activity
       - name: uae.p.validate.iban.v1
         kind: activity
+      - name: uae.p.errors.cluster.v1
+        kind: error-dictionary
       - name: uae.p.port.calendar.v1
         kind: port
       - name: uae.p.port.participant-directory.v1
@@ -171,6 +180,7 @@ packs:
     packType: shared
     counts:
       activity: 27
+      error-dictionary: 1
       extension: 1
       port: 2
       rule: 11
@@ -179,8 +189,9 @@ packs:
       scheme: 1
       simulator: 3
       test: 16
+      operations-view: 1
       workflow: 11
-    total: 76
+    total: 78
     artefacts:
       - name: uae.wps.decide.returns.v1
         kind: activity
@@ -236,6 +247,8 @@ packs:
         kind: activity
       - name: uae.wps.validate.salary-record.v1
         kind: activity
+      - name: uae.wps.errors.wps.v1
+        kind: error-dictionary
       - name: uae.wps.ext.salary.v1
         kind: extension
       - name: uae.wps.port.employer-channel.v1
@@ -312,6 +325,8 @@ packs:
         kind: test
       - name: WPS-OUT-005
         kind: test
+      - name: uae.wps.view.operations.v1
+        kind: operations-view
       - name: uae.wps.sub.confirm-receipt.v1
         kind: workflow
       - name: uae.wps.sub.receive-supplement.v1

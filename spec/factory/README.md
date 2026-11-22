@@ -23,11 +23,11 @@ Each pack folder holds `activities/`, `rules/`, `ports/`, `simulators/`, `workfl
 <!-- INVENTORY:summary -->
 | Pack | Type | Activity | Rule | Ruleset | Table | Port | Simulator | Workflow | Scheme | Extension | Hook | Test | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `factory/p/` | shared | 19 | 7 | 2 | 3 | 10 | 10 | 5 |  |  |  | 2 | 58 |
-| `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 13 |
-| `factory/uae.wps/` | shared | 27 | 11 | 3 | 1 | 2 | 3 | 11 | 1 | 1 |  | 16 | 76 |
+| `factory/p/` | shared | 19 | 7 | 2 | 3 | 10 | 10 | 5 |  |  |  | 2 | 60 |
+| `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 14 |
+| `factory/uae.wps/` | shared | 27 | 11 | 3 | 1 | 2 | 3 | 11 | 1 | 1 |  | 16 | 78 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 52 | 24 | 7 | 4 | 16 | 17 | 16 | 1 | 2 | 3 | 22 | 164 |
+| Total | | 52 | 24 | 7 | 4 | 16 | 17 | 16 | 1 | 2 | 3 | 22 | 169 |
 <!-- /INVENTORY:summary -->
 
 ## What is written by hand and what is generated

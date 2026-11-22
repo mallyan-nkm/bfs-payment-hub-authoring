@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The operations read model, its projection from the store's outbox, the operations views of the packs,
+       the operator actions and the holds the runtime answers. No database provider is referenced here:
+       the provider is chosen by TransactHub.Store (StoreDbContext.ConfigureFor). -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

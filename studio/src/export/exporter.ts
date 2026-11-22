@@ -6,6 +6,8 @@ import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
 import { startEntryFor } from '../testing/runner.js';
 import { queueName } from './bindings.js';
+import { claimsOf, signFiles, SignatureRejected } from './signing.js';
+import { literalSecretsInText } from '../secrets/scan.js';
 import type { StudioEnv } from '../env.js';
 
 // Export (Part 9; C05, C20, C21, C22). A package holds the workflow, leg, segment and handler
@@ -139,6 +141,12 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   for (const ext of env.store.byKind('extension')) {
     if ([...flows.keys(), ...blocks.keys()].some((n) => scopeOf(n) === ext.scope)) files[`extensions/${ext.name}@${ext.release}.yaml`] = toYaml(ext.doc);
   }
+  // The error dictionaries of every scope the package carries, and the platform's (R-05-52): the service console links
+  // every error it shows to its entry, from the package a payment is pinned to.
+  const scopes = new Set(['p', ...[...flows.keys(), ...blocks.keys()].map(scopeOf)]);
+  for (const dict of env.store.byKind('error-dictionary')) {
+    if (scopes.has(scopeOf(dict.name))) files[`errors/${dict.name}@${dict.release}.yaml`] = toYaml(dict.doc);
+  }
 
   // Intake maps the front door runs for the schemes in the package are tasks too.
   for (const f of Object.keys(files).filter((k) => k.startsWith('schemes/'))) {
@@ -171,6 +179,8 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   if (kit) files['conformance/kit.yaml'] = toYaml(kit.doc);
   const report = portabilityReport([...flows.values()], req.target);
   files['portability.json'] = JSON.stringify(report, null, 2) + '\n';
+  // No literal secret travels in a package (R-06-23, L37): a binding names its secret by reference.
+  for (const [f, text] of Object.entries(files)) for (const s of literalSecretsInText(text, f)) issues.push({ code: 'L37', severity: 'error', key: f, step: s.at || undefined, message: `${f}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: f });
 
   const manifest = {
     kind: 'export',
@@ -279,6 +289,22 @@ function readme(m: any): string {
 
 export function exportZip(pkg: ExportPackage): Buffer {
   return zip(Object.entries(pkg.files).sort(([a], [b]) => a.localeCompare(b)).map(([name, content]) => ({ name, content: Buffer.from(content, 'utf8') })));
+}
+
+/**
+ * The package as it is released (R-09-23): its files with the statement and signature beside them, signed with the
+ * studio's key (TH_SIGNING_KEY). `changeSet` is the change set that publishes it; by default the one the root
+ * workflow's release was published in. A package that carries a literal secret is not signed.
+ */
+export function signPackage(pkg: ExportPackage, changeSet?: string): ExportPackage {
+  const leaks = pkg.issues.filter((i) => i.code === 'L37');
+  if (leaks.length) throw new SignatureRejected(`The package carries a literal secret and is not signed: ${leaks.map((i) => i.message).slice(0, 3).join('; ')}`);
+  return { ...pkg, files: signFiles(pkg.files, claimsOf(pkg.manifest, changeSet)) as Record<string, string> };
+}
+
+/** The released package as a zip: signed, so the runtime and the deploy runner accept it. */
+export function signedZip(pkg: ExportPackage, changeSet?: string): Buffer {
+  return exportZip(signPackage(pkg, changeSet));
 }
 
 export function packageHash(pkg: ExportPackage): string {

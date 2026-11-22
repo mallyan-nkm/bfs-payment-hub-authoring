@@ -8,6 +8,7 @@ import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
 import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
 import { flowablePortable } from '../export/bpmn.js';
+import { literalSecretsInText } from '../secrets/scan.js';
 import type { StudioEnv } from '../env.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
@@ -60,6 +61,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L34: 'The factory holds only the packs its inventory lists',
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
+  L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
 };
 
 // ---------------------------------------------------------------- walking
@@ -861,7 +863,25 @@ export function checkAll(env: StudioEnv): Issue[] {
   for (const e of env.store.all().filter((x) => x.status === 'published')) {
     for (const s of env.schemas.validate(e.doc)) issues.push({ code: 'L00', severity: 'error', key: e.name, message: s.message, file: e.path });
   }
+  issues.push(...literalSecretIssues(env));
   return issues;
+}
+
+/**
+ * L37 (R-06-23): every file on the content branch (bank bindings and configuration, artefacts, released packages) and
+ * every document in the store names its secrets by reference only, and holds no private key.
+ */
+export function literalSecretIssues(env: StudioEnv): Issue[] {
+  const out: Issue[] = [];
+  const files = env.store.content?.files;
+  if (files) {
+    for (const [p, text] of [...files].sort(([a], [b]) => a.localeCompare(b)))
+      for (const s of literalSecretsInText(text, p)) out.push({ code: 'L37', severity: 'error', key: p, step: s.at || undefined, message: `${p}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: p });
+  } else {
+    for (const e of env.store.all())
+      for (const s of literalSecretsInText(JSON.stringify(e.doc), `${e.path}.json`)) out.push({ code: 'L37', severity: 'error', key: e.name, step: s.at || undefined, message: `${e.path}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: e.path });
+  }
+  return out;
 }
 
 /**

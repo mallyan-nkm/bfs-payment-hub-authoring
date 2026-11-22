@@ -1,0 +1,537 @@
+{
+  "uid": "th-engines",
+  "title": "TransactHub: Engines",
+  "description": "Activity attempts as each engine binding sees them, the queues, and Temporal's SDK and server metrics, the persistence layer among them (R-09-32).",
+  "tags": [
+    "transacthub"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "engine",
+        "label": "Engine",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "th-prometheus"
+        },
+        "query": {
+          "query": "label_values(th_activity_duration_seconds_count, th_engine)",
+          "refId": "v"
+        },
+        "definition": "label_values(th_activity_duration_seconds_count, th_engine)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Attempts per second, by engine and kind",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_engine, th_kind) (rate(th_activity_duration_seconds_count{th_engine=~\"$engine\"}[$__rate_interval]))",
+          "legendFormat": "{{th_engine}} {{th_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Attempt latency p95, by activity",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, th_activity) (rate(th_activity_duration_seconds_bucket{th_engine=~\"$engine\"}[$__rate_interval])))",
+          "legendFormat": "{{th_activity}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Attempt errors per minute, by activity and error",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_activity, th_error) (rate(th_activity_errors_total{th_engine=~\"$engine\"}[$__rate_interval])) * 60",
+          "legendFormat": "{{th_activity}} {{th_error}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Attempts in flight, by worker queue",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (th_queue) (th_queue_in_flight)",
+          "legendFormat": "{{th_queue}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Temporal SDK: workflow task and activity latency p95",
+      "description": "From Temporalio.Extensions.DiagnosticSource; the unit is the SDK's (milliseconds).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=~\"temporal_workflow_task_execution_latency.*_bucket\"}[$__rate_interval])))",
+          "legendFormat": "workflow task"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=~\"temporal_activity_execution_latency.*_bucket\"}[$__rate_interval])))",
+          "legendFormat": "activity"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Temporal SDK: task slots available",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (worker_type, task_queue) ({__name__=~\"temporal_worker_task_slots_available.*\"})",
+          "legendFormat": "{{worker_type}} {{task_queue}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Temporal server: persistence latency p95 by operation",
+      "description": "The server's persistence layer, where our SQL Server plugin (runtime/temporal-mssql) and PostgreSQL are compared.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, operation, temporal_store) (rate(persistence_latency_bucket[$__rate_interval])))",
+          "legendFormat": "{{temporal_store}} {{operation}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Temporal server: persistence requests and errors per second",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (temporal_store) (rate(persistence_requests[$__rate_interval]))",
+          "legendFormat": "{{temporal_store}} requests"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (temporal_store) (rate(persistence_errors[$__rate_interval]))",
+          "legendFormat": "{{temporal_store}} errors"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Temporal server: task queue backlog",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "sum by (taskqueue, temporal_store) (approximate_backlog_count)",
+          "legendFormat": "{{temporal_store}} {{taskqueue}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Temporal server: frontend requests per second, by operation",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "th-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "th-prometheus"
+          },
+          "expr": "topk(10, sum by (operation) (rate(service_requests[$__rate_interval])))",
+          "legendFormat": "{{operation}}"
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "TransactHub",
+      "type": "dashboards",
+      "tags": [
+        "transacthub"
+      ],
+      "asDropdown": true
+    }
+  ]
+}

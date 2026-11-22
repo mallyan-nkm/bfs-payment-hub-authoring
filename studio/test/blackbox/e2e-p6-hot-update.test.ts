@@ -7,6 +7,8 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
+import { runtimeApiEnv, runtimeClientEnv, runtimeHeaders } from './runtime-auth.js';
+import { unzip, zip } from '../../src/export/zip.js';
 
 // P6 end to end, black box: the studio deploys a release to the runtime, and a rule value changes with no deployment.
 //   1. The bank publishes its internal limit (1200 for 2026) in the studio; the change lands on the connected branch.
@@ -19,6 +21,9 @@ import { client, startServer, STUDIO, type Server } from './server.js';
 //   5. A second salary file on 2026-11-24 runs from the same stored package, byte for byte: 1500 is within 2000, so it is not
 //      held. A file on the first payment's date still takes 1200 and is held, as the first was: the first payment keeps
 //      the value of its date and the release it ran, and nothing was redeployed.
+// Signed all the way (R-09-23 to R-09-27): the studio signs the package with the run's key, the runtime verifies it before it
+// stores or activates it and records each verification on the release, refuses an unsigned or changed copy and any caller
+// without a token, and the deploy runner verifies the package it fetches from the runtime before a worker starts.
 
 const REPO = path.resolve(STUDIO, '..');
 const RUNTIME = path.join(REPO, 'runtime');
@@ -52,7 +57,8 @@ const build = (dir: string) => {
   const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: dir, encoding: 'utf8', env: DOTNET_ENV });
   if (b.status !== 0) throw new Error(`dotnet build ${dir} failed:\n${b.stdout}\n${b.stderr}`);
 };
-const post = async (url: string, body: any) => (await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+const post = async (url: string, body: any) => (await fetch(url, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(body) }));
+const get = (url: string) => fetch(url, { headers: runtimeHeaders() });
 
 beforeAll(async () => {
   build(path.join(RUNTIME, 'src', 'TransactHub.Api'));
@@ -73,7 +79,7 @@ beforeAll(async () => {
   for (let i = 0; i < 60 && spawnSync('docker', ['exec', name, 'pg_isready', '-U', 'postgres']).status !== 0; i++) await new Promise((r) => setTimeout(r, 1000));
   runtimeUrl = `http://127.0.0.1:${await freePort()}`;
   runtime = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Api', 'bin', 'Release', 'net10.0', 'TransactHub.Api.dll'), '--urls', runtimeUrl], {
-    env: { ...DOTNET_ENV, Store__Provider: 'PostgreSql', Store__Connection: `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_p6` }, stdio: 'ignore',
+    env: { ...DOTNET_ENV, ...runtimeApiEnv(), Store__Provider: 'PostgreSql', Store__Connection: `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_p6` }, stdio: 'ignore',
   });
   for (let i = 0; i < 120; i++) { try { await fetch(`${runtimeUrl}/activations/active?environment=x&scope=x`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
 }, 900000);
@@ -122,15 +128,15 @@ async function pipeline() {
 
 /** A salary file on a date, run on Temporal from the package the runtime holds for the active release. */
 async function pay(label: string, date: string) {
-  const active = await (await fetch(`${runtimeUrl}/activations/active?environment=test&scope=${encodeURIComponent(SCOPE)}`)).json();
+  const active = await (await get(`${runtimeUrl}/activations/active?environment=test&scope=${encodeURIComponent(SCOPE)}`)).json();
   expect(active.release).toBe(release);
-  const zip = Buffer.from(await (await fetch(`${runtimeUrl}/releases/package?scope=${encodeURIComponent(SCOPE)}&release=${active.release}`)).arrayBuffer());
+  const zip = Buffer.from(await (await get(`${runtimeUrl}/releases/package?scope=${encodeURIComponent(SCOPE)}&release=${active.release}`)).arrayBuffer());
   const file = path.join(work, `${label}.zip`);
   fs.writeFileSync(file, zip);
   const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', 'uae.wps.sif', '--inbound', TWO_LINES, '--tenant', TENANT, '--date', date, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   const out = await new Promise<string>((resolve) => {
     let text = '';
-    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, TH_RUNTIME_URL: runtimeUrl } });
+    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...runtimeClientEnv(), TH_RUNTIME_URL: runtimeUrl } });
     const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
     child.stdout.on('data', (d) => (text += d));
     child.stderr.on('data', (d) => (text += d));
@@ -139,6 +145,8 @@ async function pay(label: string, date: string) {
   const p = { out, trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [], outcome: /^outcome (\w+)/m.exec(out)?.[1], sha: crypto.createHash('sha256').update(zip).digest('hex') };
   payments[label] = p;
   expect(out).toContain(`values from the runtime at ${runtimeUrl}`);
+  // The deploy runner verified the package the runtime gave it, with the studio's key, before anything ran.
+  expect(out).toMatch(/^package verified: \d+ file\(s\) signed by key [0-9a-f]{32}/m);
   expect(out, out.slice(-2000)).toMatch(/worker th-bank .*values read from the runtime [1-9]\d* time/);
   return p;
 }
@@ -151,15 +159,36 @@ describe('P6: the studio deploys a release to the runtime and hot-updates a rule
   it('2. the runtime stores the Temporal package once, activates it for test, and takes the bank\'s values from the branch', async () => {
     const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
     expect(z.status).toBe(200);
-    const stored = await (await fetch(`${runtimeUrl}/releases?actor=pipeline`, { method: 'POST', body: z.data })).json();
-    expect(stored, JSON.stringify(stored)).toMatchObject({ scope: SCOPE, stored: true });
+    // Without a token the runtime takes nothing; with the pipeline's, it verifies the studio's signature and stores the package.
+    expect((await fetch(`${runtimeUrl}/releases`, { method: 'POST', body: z.data })).status).toBe(401);
+    const stored = await (await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
+    expect(stored, JSON.stringify(stored)).toMatchObject({ scope: SCOPE, stored: true, signedBy: expect.stringMatching(/^[0-9a-f]{32}$/) });
     release = stored.release;
     expect((await post(`${runtimeUrl}/activations`, { environment: 'test', scope: SCOPE, release, actor: 'ops' })).status).toBe(201);
     const imported = await pipeline();
     expect(imported.values).toBeGreaterThan(0);
-    const inForce = await (await fetch(`${runtimeUrl}/values?tenant=${TENANT}&at=2026-11-17T06:00:00Z`)).json();
+    const inForce = await (await get(`${runtimeUrl}/values?tenant=${TENANT}&at=2026-11-17T06:00:00Z`)).json();
     expect(inForce.find((v: any) => v.parameter === LIMIT)?.value).toBe(1200);
+    // The upload and the activation each verified the package; both are facts on the release.
+    const got = await (await get(`${runtimeUrl}/releases?scope=${encodeURIComponent(SCOPE)}&release=${release}`)).json();
+    expect(got.verifications.map((v: any) => v.purpose)).toEqual(['upload', 'activation:test']);
+    expect(got.verifications[0].detail.keyId).toBe(stored.signedBy);
   }, 300000);
+
+  it('2b. the runtime refuses the same package unsigned, or with one file changed, and stores nothing', async () => {
+    const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
+    const entries = unzip(z.data);
+    const unsigned = zip(entries.filter((e) => e.name !== 'release.json' && e.name !== 'release.sig'));
+    const r1 = await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: new Uint8Array(unsigned) });
+    expect(r1.status).toBe(422);
+    expect((await r1.json()).error).toContain('is not signed');
+    const wf = entries.find((e) => e.name.startsWith('workflows/'))!;
+    const tampered = zip(entries.map((e) => (e === wf ? { name: e.name, content: Buffer.concat([e.content, Buffer.from('# changed after release\n')]) } : e)));
+    const r2 = await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: new Uint8Array(tampered) });
+    expect(r2.status).toBe(422);
+    expect((await r2.json()).error).toMatch(/does not match its hash/);
+    expect((await (await get(`${runtimeUrl}/releases?scope=${encodeURIComponent(SCOPE)}&release=${release}`)).json()).verifications).toHaveLength(2);
+  }, 120000);
 
   it('3. a salary file of 1500 on 2026-11-17 is held: the total is above the limit the runtime holds for that date', async () => {
     const a = await pay('first', '2026-11-17');
@@ -174,7 +203,7 @@ describe('P6: the studio deploys a release to the runtime and hot-updates a rule
     expect(imported.values).toBeGreaterThan(0);
     expect(imported.stored).toEqual([]);
     expect(imported.activated).toEqual([]);
-    const at = async (t: string) => (await (await fetch(`${runtimeUrl}/values?tenant=${TENANT}&at=${t}`)).json()).find((v: any) => v.parameter === LIMIT)?.value;
+    const at = async (t: string) => (await (await get(`${runtimeUrl}/values?tenant=${TENANT}&at=${t}`)).json()).find((v: any) => v.parameter === LIMIT)?.value;
     expect(await at('2026-11-24T06:00:00Z')).toBe(2000);
     expect(await at('2026-11-17T06:00:00Z')).toBe(1200);
   }, 300000);

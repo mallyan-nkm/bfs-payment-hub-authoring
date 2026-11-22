@@ -102,6 +102,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:76bc574d4a8f5b187e6358bc695d2992fa097f8e53716e59c26a8e3cc7c38224
     path: activities/p.validate.limits.v1.yaml
+  - name: p.errors.platform.v1
+    kind: error-dictionary
+    release: 1.0.0
+    hash: sha256:dee0c45c33468d24840f4025cc9bf5d519a3e515cd0b9544f95d06281161c48b
+    path: errors/p.errors.platform.v1.yaml
   - name: p.port.channel.v1
     kind: port
     release: 1.0.0
@@ -272,6 +277,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:d643185e9b0ace79baf8209c89cb90c6770a84bc170ec3a578071b71778b43e0
     path: tests/P-RES-002.yaml
+  - name: p.view.operations.v1
+    kind: operations-view
+    release: 1.0.0
+    hash: sha256:4c2e427c7d31739bcbbf7118a604e914bb561b63c25638f855f397da3df27905
+    path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow
     release: 1.0.0

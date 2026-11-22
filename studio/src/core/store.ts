@@ -279,6 +279,10 @@ export class Store {
           const tenant = parts[0] === 'banks' ? parts[1] : OWNER_TENANT;
           for (const doc of parseYamlAll(text)) {
             if (!doc || typeof doc !== 'object') continue;
+            // The published release with the same content is not a draft: the branch's file differs from the
+            // content branch's only in how it is written (an older studio wrote YAML aliases where an object
+            // was held twice, and published it without them).
+            if (this.entries.get(tenantKey(doc, tenant))?.hash === contentHash(doc)) continue;
             const e = this.add(doc, p, 'studio', false, 'draft', tenant);
             e.changeSet = d.id;
             if (awaiting) e.awaitingMerge = awaiting;
@@ -522,7 +526,8 @@ export class Store {
     const e = this.add(clone(doc), p, 'studio', false, 'draft', tenant);
     e.changeSet = cs;
     this.transaction(() => {
-      this.write(draftBranch(cs), `Draft ${e.key.replace(/#draft$/, '')} (${cs})\n\nSaved by ${actor}.`, [{ path: p, text: toYaml(doc), guard: 'free' }]);
+      // The text of what is kept, so the branch holds what a publish of it will write.
+      this.write(draftBranch(cs), `Draft ${e.key.replace(/#draft$/, '')} (${cs})\n\nSaved by ${actor}.`, [{ path: p, text: toYaml(e.doc), guard: 'free' }]);
       this.record({ tenant, actor, action: 'save-draft', key: e.key, changeSet: cs });
     });
     return e;
@@ -617,7 +622,7 @@ export class Store {
    * set record, its audit and `extra` (engine packages, an activation). Every path is new: a file that
    * is on the branch with other content stops the publish and is named (R-09-21).
    */
-  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean } = {}): Promise<WriteResult> | undefined {
+  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean; tags?: { name: string; message: string }[] } = {}): Promise<WriteResult> | undefined {
     const changes: Change[] = [];
     const add = (p: string, text: string) => changes.push({ path: p, text, guard: 'create' });
     const members = changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
@@ -655,6 +660,8 @@ export class Store {
       r = this.write(target, msg, changes, {
         merge: !opts.pullRequest && whole ? () => this.content?.drafts.get(branches[0])?.head : undefined,
         prune: opts.pullRequest ? undefined : emptied,
+        // Release tags go on the content branch's commit; a pull request's are not made (Issue I-76).
+        tags: opts.pullRequest ? undefined : opts.tags,
         pull: opts.pullRequest ? { title: `Release change set ${changeSet.id}`, body: `${msg}\n\nApproved in the studio through maker-checker. Merge the pull request to publish it.` } : undefined,
       });
       // The audit of the change set goes with it.

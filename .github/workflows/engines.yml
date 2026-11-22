@@ -48,7 +48,7 @@ jobs:
       # runners read an in-memory one seeded from content-configurations/.
       - name: Black-box suites (the narrated videos are left out)
         working-directory: studio
-        run: npx vitest run --config vitest.blackbox.config.ts --exclude test/blackbox/demo-videos.test.ts --exclude test/blackbox/e2e-wps-engines-store.test.ts
+        run: npx vitest run --config vitest.blackbox.config.ts --exclude test/blackbox/demo-videos.test.ts --exclude test/blackbox/e2e-wps-engines-store.test.ts --exclude test/blackbox/e2e-wps-flowable-production.test.ts
   kit:
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -134,6 +134,39 @@ jobs:
           else
             npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-engines-store.test.ts -t "${{ matrix.engine }} on ${{ matrix.database }}"
           fi
+  flowable-production:
+    # Flowable in production mode (Issues I-53 to I-55): the REST server's async executor on, in real time,
+    # the runtime's binding a pure external worker. The WPS salary file on the store (PostgreSQL and SQL
+    # Server) with its waits shortened by parameters, a timeout on a real timer against the virtual run's
+    # trace, a job whose worker crashed handed out again when its lock expires, and a dead letter.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install
+        working-directory: studio
+        run: npm ci
+      - name: Pull the images once
+        run: |
+          docker pull flowable/flowable-rest:7.1.0@sha256:b7ae287502cd5c243b577a0ca2894172e1c18cd75aea4fd67dc7d58f1b40db44
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          docker pull postgres:16-alpine
+      - name: WPS on Flowable in production mode
+        working-directory: studio
+        run: npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-flowable-production.test.ts
   wps-parity:
     # The WPS parity suite on DTFx and Elsa (plan P3): the scenarios e2e-wps-temporal runs on Temporal, each
     # compared with the studio interpreter's trace; first on the studio's engine harnesses, then on the

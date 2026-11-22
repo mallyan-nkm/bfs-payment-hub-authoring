@@ -26,21 +26,23 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 
 | Evidence | Result |
 | --- | --- |
-| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 4 expected warnings (I-38); `expand.py --check` up to date; 34 of 34 mutations caught; 125 stories render |
+| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 4 expected warnings (I-38); `expand.py --check` up to date; 37 of 37 mutations caught; 125 stories render |
 | Spec documents valid against their schemas | 157 of 157 |
 | Content hashes (RFC 8785) equal to the pack manifests | All; four of the five pack manifests also regenerate identically (Issue I-20 for the bank pack) |
 | Expansion of composite steps | Identical to `tools/expand.py` on the three reference workflows |
 | Rule and table examples | 60 of 60 |
-| Factory and bank test cases on the studio interpreter | 16 of 16 |
+| Factory and bank test cases on the studio interpreter | 22 of 22 (`npm run studio -- test`) |
 | Conformance kit, studio interpreter | 48 of 48 |
 | Conformance kit, DTFx (DurableTask.Core 3.11.3) | 48 of 48 |
-| Conformance kit, Flowable 7.1.0 with generated BPMN | 46 of 46 before CK-AWAIT-06 and 07; not yet built for them (I-49) |
+| Conformance kit, Flowable 7.1.0 with generated BPMN | 48 of 48 (I-49 done) |
+| Conformance kit, Elsa 3 | 48 of 48 |
+| Flowable on its REST server, production mode (async executor on, real time) | The WPS salary file settles on the store on PostgreSQL and SQL Server; a real timeout, a crashed worker and a dead letter (`e2e-wps-flowable-production.test.ts`, Issues I-53 to I-55) |
 | Conformance kit, Temporal (time-skipping test server) | 48 of 48 |
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
 | Generated samples, each proved valid or failing with its labelled code | 7 of 7 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
-| White-box suite (`cd studio && npm test`) | 161 tests, green; 90.7% of lines, 78.1% of branches, 91.7% of functions (`npm run test:coverage`) |
-| Black-box suites (`npm run test:blackbox`) | 123 tests, green: HTTP API 71, command line 8, web app in Chromium 24, end to end 20 (new scheme 12, WPS by configuration 8); the engine suite (2) runs with `TH_ENGINES=1` |
+| White-box suite (`cd studio && npm test`) | 262 tests, green (one skipped: the real-GitHub test, which needs a repository); 90.8% of lines, 70.6% of branches, 83.3% of functions (`npm run test:coverage`, Vitest 4 with V8) |
+| Black-box suites (`npm run test:blackbox`, the narrated videos left out) | 201 tests in 17 files, green, 22 November 2026: the HTTP API, the command line, the web app in Chromium, and end to end the new scheme, WPS by configuration, WPS on Temporal, DTFx, Elsa and Flowable with the store, the WPS parity suite, the source slice and Flowable in production mode. 3 skipped: the engine suite runs with `TH_ENGINES=1` |
 | End to end, a new scheme | A synthetic scheme built from scratch over the API: manifest and dispatch table, port, simulator, maps with a script, rule, exchange with its subflow, and a leg in the corporate workflow's slot. The bank enables the rail in its configuration, and the payment settles end to end on the interpreter and deployed on DTFx, the new scheme on its own worker |
 | End to end, WPS | The factory WPS scheme changed only by bank configuration: the rail turned off (rejected at the route) and a hook unbound (settled without it), each deployed on DTFx with four separate workers |
 

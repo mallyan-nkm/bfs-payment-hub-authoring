@@ -1,0 +1,57 @@
+# The operations console: the read model's projection on SQL Server and PostgreSQL (rebuild equals incremental,
+# idempotent replay), the operations views against the WPS field mapping, operator actions and the API, the web app's
+# own tests, the service console's API tests, and the Playwright tests (a WPS file run on the runtime's DTFx build, its hold
+# approved in the browser; a service engineer installing a signed version from a fake GitHub).
+name: ops-console
+on:
+  push:
+    paths: [runtime/**, studio/engines/shared/**, spec/factory/**, spec/schemas/**, content-configurations/**, docs/runtime/ops-console-wps-mapping.md, .github/workflows/ops-console.yml]
+  pull_request:
+    paths: [runtime/**, studio/engines/shared/**, spec/factory/**, spec/schemas/**, content-configurations/**, docs/runtime/ops-console-wps-mapping.md]
+  workflow_dispatch:
+jobs:
+  ops-console:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pull the database images once
+        run: |
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          docker pull postgres:16-alpine
+      - name: Read model, views, actions and API (SQL Server and PostgreSQL)
+        working-directory: runtime
+        run: dotnet test tests/TransactHub.Operations.Tests -v q --logger "trx;LogFileName=ops.trx" --results-directory TestResults
+      - name: The service console's API, content, backups, actions, assistant and dictionary (PostgreSQL)
+        working-directory: runtime
+        run: dotnet test tests/TransactHub.Service.Tests -v q --logger "trx;LogFileName=service.trx" --results-directory TestResults
+      - name: The web app
+        working-directory: runtime/ops-console
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: The studio (to export and deploy the WPS file)
+        working-directory: studio
+        run: npm ci
+      - name: Playwright end to end
+        working-directory: runtime/ops-console
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ops-console-test-results
+          path: runtime/TestResults

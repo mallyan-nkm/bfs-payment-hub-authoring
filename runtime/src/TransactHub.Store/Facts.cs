@@ -92,6 +92,10 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
             };
             row.Hash = HashOf(row);
             db.Facts.Add(row);
+            // The transactional outbox (plan W2): every fact is announced in the same save, so a reader that
+            // follows the outbox (the operations read model) misses none and sees none that was not written.
+            var note = Outbox.Of(row);
+            db.Outbox.Add(note);
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -100,6 +104,7 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
             catch (DbUpdateException) when (attempt < 50)
             {
                 db.Entry(row).State = EntityState.Detached;
+                db.Entry(note).State = EntityState.Detached;
                 if (!await db.Facts.AnyAsync(f => f.SubjectId == subjectId && f.Seq == row.Seq, ct)) throw;
                 await Task.Delay(Random.Shared.Next(1, 5 + attempt * 2), ct);
             }
@@ -142,3 +147,25 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
 }
 
 public sealed record ChainCheck(bool Ok, int Facts, string? Problem);
+
+/// <summary>
+/// What the outbox says of each fact and message: a reference, never the data (a fact's data can hold a payload).
+/// A reader reads the fact itself from the store by subject and number.
+/// </summary>
+public static class Outbox
+{
+    public const string FactTopic = "fact";
+    public const string MessageTopic = "message";
+
+    public static OutboxRow Of(FactRow f) => new()
+    {
+        Topic = FactTopic, Key = f.SubjectId, At = f.At,
+        PayloadJson = CanonicalJson.Of(new JsonObject { ["subject"] = f.SubjectId, ["subjectKind"] = f.SubjectKind, ["seq"] = f.Seq, ["kind"] = f.Kind, ["code"] = f.Code }),
+    };
+
+    public static OutboxRow Of(MessageRow m) => new()
+    {
+        Topic = MessageTopic, Key = m.Id, At = m.At,
+        PayloadJson = CanonicalJson.Of(new JsonObject { ["message"] = m.Id, ["subject"] = m.SubjectId, ["kind"] = m.Kind }),
+    };
+}

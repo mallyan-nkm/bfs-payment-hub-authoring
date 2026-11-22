@@ -61,6 +61,9 @@ Define, script, test, publish, compose, export. Every artefact kind follows it.
 | R-10-04 | The studio MUST run workflows on its own interpreter with a virtual clock. | Conformance kit on the studio interpreter |
 | R-10-05 | The studio MUST show a tenant only what Part 6 allows. | Isolation tests (C17) |
 | R-10-06 | The studio MUST be usable for functional testing only. It MUST NOT offer load, back-pressure or soak tests. | Scope review |
+| R-10-07 | The studio's processes (its server, the deploy runner and the deployed workers) MUST export traces, metrics and logs as R-09-31 says. A request to the server is a span, named by its route; a deployment is one trace across every process it starts (R-09-32). | `studio/test/telemetry.test.ts` |
+| R-10-08 | The studio's telemetry MUST hold no personal data, by the masking rules of R-09-35. | `studio/test/telemetry.test.ts` (a WPS run's exported spans, metrics and logs hold no value of its party records) |
+| R-10-09 | The studio server MUST answer `GET /health/live` and `GET /health/ready`. Ready means it has read the content branch. | `studio/test/blackbox/api.test.ts` ("answers live and ready") |
 
 ## 10.5 Out of scope
 
