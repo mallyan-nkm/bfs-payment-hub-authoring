@@ -35,7 +35,7 @@ A story MAY start before its decision closes if it isolates the choice behind an
 
 ## Success for the component
 
-The interpreter produces the expected trace for all 48 scenarios of the conformance kit.
+The interpreter produces the expected trace for all 50 scenarios of the conformance kit.
 
 ## Stories
 
@@ -105,7 +105,7 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s3-timeouts-and-retries`.
 
 **Definition of Success**
 
-- CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 and CK-UNKNOWN-01 pass.
+- CK-RETRY-01 and 02, CK-TIMEOUT-01 to 03, CK-POLICY-01 and CK-UNKNOWN-01 pass.
 
 ### C09-S4 Parallel and for each
 
@@ -126,7 +126,7 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s4-parallel-and-for-each`.
 
 **Definition of Success**
 
-- CK-PAR-01 and CK-FOREACH-01 and 02 pass.
+- CK-PAR-01 and CK-FOREACH-01 to 03 pass.
 
 ### C09-S5 Try, compensate, finally and deadline
 
