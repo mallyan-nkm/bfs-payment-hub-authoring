@@ -68,7 +68,7 @@ describe('studio command line', () => {
     expect(JSON.parse(m.out).target).toBe('flowable');
     const a = path.join(work, 'a.zip');
     const b = path.join(work, 'b.zip');
-    expect(studio('export-zip', 'uae.wps.wf.salary-file-out.v1', 'dtfx', a).out).toContain('workers th-uae-p, th-uae-wps');
+    expect(studio('export-zip', 'uae.wps.wf.salary-file-out.v1', 'dtfx', a).out).toContain('workers th-p, th-uae-p, th-uae-wps');
     expect(studio('export-zip', 'uae.wps.wf.salary-file-out.v1', 'dtfx', b).out).toMatch(/signed by key [0-9a-f]{32}/);
     // Every file the same, byte for byte; an ECDSA signature differs each time it is made (R-09-23).
     const files = (z: string) => unzip(fs.readFileSync(z)).filter((e) => e.name !== 'release.json' && e.name !== 'release.sig').map((e) => `${e.name} ${e.content.toString('base64')}`);

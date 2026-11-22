@@ -194,7 +194,7 @@ describe('the guide: build a full workflow in the web app', () => {
     await go('tenant');
     const cs = (await client(server.url, { as: 'example.maker' }).get('/api/tenants/example-bank/configuration')).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
-    next.release = '1.2.0';
+    next.release = '1.3.0';
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));

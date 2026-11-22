@@ -2,6 +2,8 @@
 
 The source (`TransactHub-src.zip`, its `frontend/` and `PaymentHub-UI/`) showed WPS files on scheme-specific screens. The runtime's operations console is leg-generic: it shows what the packs' operations views declare (`spec/factory/p/views/p.view.operations.v1.yaml`, `spec/factory/uae.wps/views/uae.wps.view.operations.v1.yaml`, R-05-48). This table lists every field those screens showed and where it is now. `OperationsViewTests` checks that every field marked **mapped** is declared in the view named, so this table and the views cannot drift apart.
 
+The views are artefacts of their packs, released like any artefact: this table follows `uae.wps.view.operations.v1` 1.2.0 and `p.view.operations.v1` 1.1.0.
+
 Status:
 
 - **mapped**: the view declares it and the read model fills it from the store's facts.

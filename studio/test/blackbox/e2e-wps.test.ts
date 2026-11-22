@@ -80,7 +80,7 @@ function deploy(label: string, sample = SAMPLE, extra: any[] = []) {
 
 describe('the factory WPS scheme, changed only by bank configuration', () => {
   it('starts from the shipped configuration: WPS is enabled and the bank holds no WPS content of its own', async () => {
-    expect(shipped.release).toBe('1.1.0');
+    expect(shipped.release).toBe('1.2.0');
     expect(shipped.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value).toContain('uae.wps');
     const scheme = (await api.get('/api/schemes/uae.wps')).data.scheme;
     expect(scheme.messages.find((m: any) => m.id === MESSAGE).disposition.start.leg).toBe('uae.wps.wf.salary-file-out.v1');
@@ -105,14 +105,14 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
   });
 
   it('1.2.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone', async () => {
-    await release('1.2.0', (c) => { c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value = []; });
+    await release('1.3.0', (c) => { c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value = []; });
     const r = await bench();
     expect(r.outcome).toBe('rejected');
     expect(r.trace).toEqual(NO_WPS_RAIL);
   });
 
   it('1.2.0 deployed on DTFx: rejected the same way, and nothing reaches the WPS worker past the intake', async () => {
-    const d = await deploy('1.2.0');
+    const d = await deploy('1.3.0');
     expect(d.out).toContain(`configuration ${TENANT}@1.2.0 from the package`);
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(NO_WPS_RAIL);
@@ -121,16 +121,16 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
   }, 300000);
 
   it('1.3.0 turns WPS back on and unbinds the pre-release hook: the payment settles without it', async () => {
-    await release('1.3.0', (c) => { c.bindings = c.bindings.filter((b: any) => b.hookPoint !== 'p.wf.corporate.v1#before-release'); });
+    await release('1.4.0', (c) => { c.bindings = c.bindings.filter((b: any) => b.hookPoint !== 'p.wf.corporate.v1#before-release'); });
     const r = await bench();
     expect(r.outcome).toBe('settled');
     expect(r.trace).toEqual(NO_HOLD_HOOK);
   });
 
   it('1.3.0 deployed on DTFx: settled through four separate workers, each serving only its queue', async () => {
-    const d = await deploy('1.3.0');
+    const d = await deploy('1.4.0');
     const files = new Map(unzip(fs.readFileSync(d.file)).map((e) => [e.name, e.content.toString('utf8')]));
-    expect(parseYaml(files.get(`configuration/${TENANT}.yaml`)!).release).toBe('1.3.0');
+    expect(parseYaml(files.get(`configuration/${TENANT}.yaml`)!).release).toBe('1.4.0');
     expect(d.out).toContain('front door: workflow-select chose p.wf.corporate.v1 for payment outward corporate');
     expect(d.out).toContain('front door: uae.wps.wf.salary-file-out.v1 fills scheme-leg');
     expect(d.outcome, d.out.slice(-1500)).toBe('settled');
@@ -156,7 +156,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
   };
 
   it('1.4.0 sets the internal limit to 1200: every line is within, the file total is not, so the payment is held', async () => {
-    await release('1.4.0', limit(1200));
+    await release('1.5.0', limit(1200));
     const approved = await bench(TWO_LINES, [OPS('approve')]);
     expect(approved.trace).toEqual(HELD('approved'));
     expect(approved.outcome).toBe('settled');
@@ -166,7 +166,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
   });
 
   it('1.4.0 deployed on DTFx: held on the file total and declined, the bank worker ran the limit', async () => {
-    const d = await deploy('1.4.0', TWO_LINES, [OPS('decline')]);
+    const d = await deploy('1.5.0', TWO_LINES, [OPS('decline')]);
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(HELD('declined'));
     expect(d.workers.find((w) => w.queue === 'th-bank')!.served['b.validate.internal-limit.v1@1.0.0']).toBe(1);
@@ -174,12 +174,12 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
   }, 300000);
 
   it('1.5.0 sets the limit to 900: the line of 1000 is above it, so the payment is held', async () => {
-    await release('1.5.0', limit(900));
+    await release('1.6.0', limit(900));
     expect((await bench(TWO_LINES, [OPS('approve')])).trace).toEqual(HELD('approved'));
   });
 
   it('1.6.0 sets the limit to 2000: every line and the total are within, so nothing is held', async () => {
-    await release('1.6.0', limit(2000));
+    await release('1.7.0', limit(2000));
     const r = await bench(TWO_LINES, [OPS('decline')]);
     expect(r.trace).toEqual(SETTLED);
   });
@@ -192,7 +192,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     const bank = (await api.get(`/api/audit?tenant=${TENANT}`)).data;
     // Each configuration release is a version a bank approver approved (R-11-31).
     const versions = bank.filter((a: any) => a.action === 'publish' && a.outcome !== 'refused' && /config:example-bank@/.test(a.key ?? ''));
-    expect(versions.map((a: any) => /@(\S+)$/.exec(a.key)![1]).sort()).toEqual(['1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0']);
+    expect(versions.map((a: any) => /@(\S+)$/.exec(a.key)![1]).sort()).toEqual(['1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0']);
     expect(versions.every((a: any) => a.actor === 'example.checker' && /maker example\.maker/.test(a.detail))).toBe(true);
     expect(bank.some((a: any) => a.outcome === 'refused')).toBe(true);
     expect((await api.get('/api/audit/verify')).data.ok).toBe(true);
