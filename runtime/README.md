@@ -16,6 +16,9 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest, stored once), `POST /activations`, `GET /activations/active`, `POST /import-branch` (the branch the studio exports to). PUT, PATCH and DELETE are refused. |
 | `src/TransactHub.Operations` | The operations read model (R-05-49): a projection of the store's facts through the outbox, on both databases (`…Operations.Migrations.SqlServer`, `…PostgreSql`); the packs' operations views (R-05-48); operator actions with maker-checker and the holds the runtime answers (R-05-50). |
 | `src/TransactHub.Operations.Api`, `ops-console/` | The operations console's API (behind `TransactHub.Auth`: roles Operator and Supervisor from the bank's role map, R-06-24) and its web app. See `ops-console/README.md`. |
+| `src/TransactHub.Telemetry` | OpenTelemetry for every runtime host: traces, metrics and logs over OTLP by the standard `OTEL_*` variables, masking of personal data before export, `/health/live` and `/health/ready` (R-09-31 to R-09-36). See `docs/north-star/guidelines/observability.md`. |
+| `observability/` | The local monitoring stack for development: collector, Jaeger, Loki, Prometheus, Grafana and the dashboards Payments, Engines, Ports, Store (R-09-37). |
+| `load/` | The load harness (R-09-38): synthetic WPS salary files on Temporal, its persistence on SQL Server or PostgreSQL, the store on either. See `docs/runtime/LOAD-TEST.md`. |
 | `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
 | `tools/TransactHub.FlowableHarness` | Runs a deployment's plan on the Flowable REST server at `TH_FLOWABLE_URL` and prints the observation. |
 | `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |

@@ -19,6 +19,7 @@
     <Project Path="src/TransactHub.Store.Migrations.PostgreSql/TransactHub.Store.Migrations.PostgreSql.csproj" />
     <Project Path="src/TransactHub.Store.Migrations.SqlServer/TransactHub.Store.Migrations.SqlServer.csproj" />
     <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />
+    <Project Path="src/TransactHub.Telemetry/TransactHub.Telemetry.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TransactHub.Engine.Flowable.Tests/TransactHub.Engine.Flowable.Tests.csproj" />

@@ -9,6 +9,7 @@ import { startEntryFor } from '../testing/runner.js';
 import { runTable } from '../rules/service.js';
 import { routeOf } from '../interp/interpreter.js';
 import { blockedByWindows } from './blocked.js';
+import { attrs, childEnv, inSpan, SpanKind, traceHeaders } from '../telemetry/telemetry.js';
 import { claimsOf, trustedSigners, verifyFiles, type Verification } from '../export/signing.js';
 import { isSecretRef } from '../secrets/secrets.js';
 
@@ -41,6 +42,11 @@ export interface DeployRequest {
   basePort?: number;
   studioRoot: string; // where the engine harnesses live
   keep?: boolean;
+  /**
+   * The runtime's load harness (runtime/load, R-09-38): many files through the same deployment at once, on Temporal.
+   * Each file goes through the front door's intake on the workers, then the harness runs them all side by side.
+   */
+  load?: { inbounds: { label: string; payload: string }[]; concurrency: number; worker?: { maxConcurrentActivities?: number; maxConcurrentWorkflowTasks?: number } };
 }
 
 export interface DeployResult {
@@ -58,6 +64,8 @@ export interface DeployResult {
   engine: any;
   elapsedMs?: number;
   log: string[];
+  /** With req.load: what the harness measured, per run, and how long each intake took. */
+  load?: any;
   /** The package's signature, as verified before anything ran (R-09-26). */
   verification: Verification;
 }
@@ -132,7 +140,12 @@ export async function verifyPackageDir(dir: string): Promise<Verification> {
   return verifyFiles(packageFiles(dir), { releaseId: claims.releaseId, tenant: claims.tenant }, await trustedSigners());
 }
 
+/** One deployment's run, as a span (R-09-32): every child process continues this trace (TRACEPARENT, traceparent). */
 export async function deploy(req: DeployRequest): Promise<DeployResult> {
+  return inSpan('th.payment', attrs({ 'th.workflow': req.workflow, 'th.tenant': req.environment.tenant, 'th.engine': req.engine }), () => deployRun(req));
+}
+
+async function deployRun(req: DeployRequest): Promise<DeployResult> {
   const dir = unpack(req.packagePath);
   let verification: Verification;
   try {
@@ -169,7 +182,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       const wdir = path.join(dir, w.path);
       const p = port === undefined ? 0 : port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
+        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
@@ -199,17 +212,20 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     if (!wfKey) throw new Error(`${req.workflow} is not in the package`);
     const wf = documents[wfKey];
 
-    // 3. The front door: the scheme's intake map, on the worker of its queue.
+    // 3. The front door: the scheme's intake map, on the worker of its queue. A load run (req.load) sends each of its
+    // files through it, each with ids of its own; a deployment, its one inbound message.
     let ctx: any = req.context ?? {};
     let intake: DeployResult['intake'];
     let endToEnd = false;
     let legs: Record<string, string> | undefined;
     const start = Date.parse(`${req.environment.evaluationDate}T06:00:00Z`);
-    if (req.inbound) {
+    const frontDoor = (inbound: NonNullable<DeployRequest['inbound']>, n: number, base: any) => inSpan('th.payment.intake', attrs({ 'th.payment.id': `P-${n}` }), async () => {
+      let ctx: any = base;
+      let legs: Record<string, string> | undefined;
       const schemes = Object.values(documents).filter((d: any) => d.kind === 'scheme');
       const resolve = (n: string) => Object.entries(documents).find(([k]) => k.startsWith(`${n}@`))?.[1];
-      const found = req.inbound.message
-        ? (() => { for (const s of schemes) { const e = (s.messages ?? []).find((m: any) => m.id === req.inbound!.message); if (e) return { scheme: s, entry: e }; } return undefined; })()
+      const found = inbound.message
+        ? (() => { for (const s of schemes) { const e = (s.messages ?? []).find((m: any) => m.id === inbound.message); if (e) return { scheme: s, entry: e }; } return undefined; })()
         : startEntryFor(schemes, req.workflow, resolve) ?? (() => {
             const f = (manifest.fallbackStarts ?? []).find((x: any) => x.leg === req.workflow);
             const scheme = f && schemes.find((x: any) => x.scope === f.scheme);
@@ -221,17 +237,17 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       if (!entry?.disposition?.start?.intakeMap) throw new Error(`No start message in the package's dispatch tables leads to ${req.workflow}`);
       const map = entry.disposition.start.intakeMap;
       const queue = binding.queues[scopeOf(map)];
-      const msg = { id: 'in-1', type: entry.id, payload: req.inbound.payload };
+      const msg = { id: `in-${n}`, type: entry.id, payload: inbound.payload };
       // End to end when the workflow is not the leg the message starts: the front door runs the
       // platform workflow that workflow-select picks, with that leg in its slot (R-05-08).
-      endToEnd = entry.disposition.start.leg !== req.workflow;
+      const endToEnd = entry.disposition.start.leg !== req.workflow;
       const direction = endToEnd ? (entry.direction === 'in' ? 'inward' : 'outward') : wf.direction ?? 'outward';
-      ctx = { header: { conversation: 'conv-1', paymentId: 'P-1', scheme: scheme.scope, direction, receivedAt: new Date(start).toISOString(), ...(endToEnd ? routeOf(entry.disposition.start) : { kind: entry.disposition.start.kind }) }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
-      const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', body: JSON.stringify({ instance: 'intake', activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) })).json();
+      ctx = { header: { conversation: `conv-${n}`, paymentId: `P-${n}`, scheme: scheme.scope, direction, receivedAt: new Date(start).toISOString(), ...(endToEnd ? routeOf(entry.disposition.start) : { kind: entry.disposition.start.kind }) }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
+      const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', headers: traceHeaders(), body: JSON.stringify({ instance: n === 1 ? 'intake' : `intake-${n}`, activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) })).json();
       if (r.kind !== 'result') throw new Error(`Intake ${map} failed: ${r.message ?? r.kind}`);
       for (const [p, v] of Object.entries<any>(r.writes ?? {})) setPath(ctx, p, v);
-      intake = { activity: map, queue, outcome: r.outcome };
-      log.push(`intake ${map} on ${queue}: ${r.outcome}`);
+      const intake: DeployResult['intake'] = { activity: map, queue, outcome: r.outcome };
+      if (n === 1) log.push(`intake ${map} on ${queue}: ${r.outcome}`);
       if (r.outcome !== 'mapped') throw new Error(`Intake ${map} returned ${r.outcome}`);
       // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
       if (endToEnd) Object.assign(ctx.header, routeOf(entry.disposition.start), { scheme: scheme.scope });
@@ -239,15 +255,28 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
         const sel = Object.values<any>(documents).find((d) => d.name === 'p.table.workflow-select.v1');
         if (!sel) throw new Error('The package has no p.table.workflow-select.v1 for the front door');
         const chosen = runTable(sel, { Header: [ctx.header] }, { resolve: (n) => Object.values<any>(documents).find((d) => d.name === n), evaluationDate: req.environment.evaluationDate }).decisions.find((d) => d.name === 'workflow')?.value;
-        log.push(`front door: workflow-select chose ${chosen ?? 'nothing'} for ${ctx.header.kind} ${ctx.header.direction} ${ctx.header.segment ?? ''}`.trimEnd());
+        if (n === 1) log.push(`front door: workflow-select chose ${chosen ?? 'nothing'} for ${ctx.header.kind} ${ctx.header.direction} ${ctx.header.segment ?? ''}`.trimEnd());
         if (chosen !== req.workflow) throw new Error(`The front door chose ${chosen ?? 'no workflow'} for ${entry.id}, not ${req.workflow}`);
         const leg = Object.values<any>(documents).find((d) => d.name === entry.disposition.start.leg);
         if (!leg) throw new Error(`The leg ${entry.disposition.start.leg} that ${entry.id} starts is not in the package`);
         legs = { [leg.implements?.slot ?? 'scheme-leg']: entry.disposition.start.leg, ...(entry.disposition.start.refuseLeg ? { 'scheme-refuse': entry.disposition.start.refuseLeg } : {}) };
-        log.push(`front door: ${entry.disposition.start.leg} fills ${Object.keys(legs).join(', ')}`);
+        if (n === 1) log.push(`front door: ${entry.disposition.start.leg} fills ${Object.keys(legs).join(', ')}`);
       }
       // The payload stays with the workers by reference; every worker can resolve it.
-      for (const pr of procs) if (pr.url !== urlOf(queue)) await fetch(`${pr.url}/attempt`, { method: 'POST', body: JSON.stringify({ instance: 'intake', activity: '__register__', step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) });
+      for (const pr of procs) if (pr.url !== urlOf(queue)) await fetch(`${pr.url}/attempt`, { method: 'POST', headers: traceHeaders(), body: JSON.stringify({ instance: n === 1 ? 'intake' : `intake-${n}`, activity: '__register__', step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) });
+      return { ctx, legs, intake, endToEnd };
+    });
+    if (req.inbound && !req.load) ({ ctx, legs, intake, endToEnd } = await frontDoor(req.inbound, 1, ctx));
+    const runs: { label: string; context: any; legs?: Record<string, string>; intakeMs: number }[] = [];
+    if (req.load) {
+      if (engine !== 'temporal') throw new Error('The load harness runs on Temporal');
+      for (const [i, f] of req.load.inbounds.entries()) {
+        const t = Date.now();
+        const r = await frontDoor({ message: req.inbound?.message, payload: f.payload }, i + 1, req.context ?? {});
+        runs.push({ label: f.label, context: r.ctx, legs: r.legs, intakeMs: Date.now() - t });
+        ({ ctx, legs, intake, endToEnd } = r);
+      }
+      log.push(`load: ${runs.length} file(s) through the front door, concurrency ${req.load.concurrency}`);
     }
 
     // 4. The engine.
@@ -276,12 +305,13 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       queues: binding.queues,
       // The BPMN the studio exported for the Flowable REST server, deployed as it is (R-09-15).
       ...(engine === 'flowable' ? { bpmn: bpmnOf(dir) } : {}),
+      ...(req.load ? { runs: runs.map(({ label, context, legs }) => ({ label, context, legs })), concurrency: req.load.concurrency, worker: req.load.worker ?? {} } : {}),
     };
     const inFile = path.join(tmp, 'input.json');
     fs.writeFileSync(inFile, JSON.stringify(input));
     const t0 = Date.now();
     const r = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve) => {
-      const child = spawn('dotnet', [harnessDll, inFile], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn('dotnet', [harnessDll, ...(req.load ? ['--load'] : []), inFile], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...childEnv() } });
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d) => (stdout += d));
@@ -289,6 +319,21 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       child.on('close', (code) => resolve({ stdout, stderr, code }));
     });
     const lines = r.stdout.split('\n');
+    if (req.load) {
+      const loadLine = lines.find((l) => l.startsWith('LOAD '));
+      if (!loadLine) {
+        const err = lines.find((l) => l.startsWith('ERROR '));
+        throw new Error(err ? JSON.parse(err.slice(6)) : `The engine exited ${r.code}: ${r.stderr.slice(-2000)}`);
+      }
+      const measured = JSON.parse(loadLine.slice('LOAD '.length));
+      for (const [i, x] of (measured.runs ?? []).entries()) if (x) x.intakeMs = runs[i]?.intakeMs;
+      const workers: DeployResult['workers'] = [];
+      for (const pr of procs) {
+        const st = await (await fetch(`${pr.url}/stats`)).json();
+        workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
+      }
+      return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-200000) }, elapsedMs: Date.now() - t0, log, verification, load: measured };
+    }
     const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
     if (!obsLine) {
       const err = lines.find((l) => l.startsWith('ERROR '));

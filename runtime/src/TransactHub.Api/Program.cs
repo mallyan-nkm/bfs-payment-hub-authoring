@@ -5,6 +5,7 @@ using TransactHub.Api;
 using TransactHub.Auth;
 using TransactHub.Security;
 using TransactHub.Store;
+using TransactHub.Telemetry;
 using YamlDotNet.Serialization;
 
 // The runtime's release API (plan W4). A package from the studio is stored once and never changed;
@@ -35,7 +36,11 @@ builder.Services.AddSingleton(TimeProvider.System);
 await builder.Services.AddRuntimeAuth(builder.Configuration, secrets, ApiAuth.Roles);
 // The studio's content repository as a read-only source of signed releases (R-09-30), when one is configured.
 if (GitHubPackageSource.FromConfiguration(builder.Configuration, secrets) is { } source) builder.Services.AddSingleton<IPackageSource>(source);
+// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; /health/live and /health/ready, anonymous (R-09-31, R-09-36).
+builder.Services.AddTransactHubTelemetry("transacthub-api");
+builder.Services.AddHealthChecks().AddCheck<StoreReady>("store", tags: [WebTelemetry.Ready]);
 var app = builder.Build();
+app.MapTransactHubHealth();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -70,6 +75,7 @@ async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package 
     {
         var r = await reg.Store(p.Scope, p.Release, p.CanonicalZip(), p.Manifest, actor, contentHash: p.ContentHash);
         if (r.Stored) await Verify(db, clock, p, purpose, actor, record: true);
+        if (r.Stored) RuntimeTelemetry.ReleasesStored.Add(1, new KeyValuePair<string, object?>("th.scope", p.Scope));
         return new Outcome(r.Stored ? 201 : 200, new { id = r.Id, scope = p.Scope, release = p.Release, stored = r.Stored, promotable = p.Promotable, hash = p.ContentHash, signedBy = v.KeyId, changeSet = v.ChangeSet }, null);
     }
     catch (ReleaseConflict e) { return Outcome.Refused(409, e.Message); }
@@ -88,6 +94,7 @@ async Task<Outcome> Activate(StoreDbContext db, TimeProvider clock, string envir
     try { await Verify(db, clock, Package.FromZip(r.Package), $"activation:{environment}", actor, record: true); }
     catch (Exception e) when (e is SignatureRejected or PackageRejected) { return Outcome.Refused(422, $"{scope}@{release} may not be activated: {e.Message}"); }
     await reg.Activate(environment, scope, release, effectiveFrom, actor);
+    RuntimeTelemetry.Activations.Add(1, new KeyValuePair<string, object?>("th.environment", environment), new KeyValuePair<string, object?>("th.scope", scope));
     return new Outcome(201, new { environment, scope, release, effectiveFrom }, null);
 }
 

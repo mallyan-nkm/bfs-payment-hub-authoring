@@ -35,7 +35,7 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             StoreProvider.PostgreSql => b.UseNpgsql(o.ConnectionString, x => x.MigrationsAssembly(MigrationsAssembly(o.Provider))),
             _ => throw new ArgumentOutOfRangeException(nameof(o)),
         };
-        b.AddInterceptors(new InsertOnlyGuard());
+        b.AddInterceptors(new InsertOnlyGuard(), new StoreWriteTelemetry(o.Provider));
         return b.Options;
     }
 

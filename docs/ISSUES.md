@@ -787,6 +787,8 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** Nothing. `docs/north-star/guidelines/observability.md` states only the rules that already hold.
 
+**Decided and built (22 November 2026).** The owner decided to add monitoring. Built as the recommendation says (R-09-31 to R-09-37, R-10-07 to R-10-09): OpenTelemetry, pinned, in the release API, the four engine bindings' hosts, the studio server, the deploy runner and the deployed workers, exporting over OTLP by the standard `OTEL_*` variables only; one trace per payment from intake through every engine attempt, activity, port call and store write; the metrics of R-09-34; structured logs carrying the trace id; masking of personal data before any exporter, proved by tests that run the WPS salary file on in-memory exporters (`runtime/tests/TransactHub.Store.Tests/TelemetryTests.cs`, `studio/test/telemetry.test.ts`); `/health/live` and `/health/ready`; and a local stack with four dashboards (`runtime/observability/`). The guideline is rewritten. What it does not yet do is I-80.
+
 ## I-67. Secrets, keys and file encryption at deployment
 
 **Issue.** `content-configurations/README.md` says a secret is named by reference and set at deployment. No format for that reference exists: the port bindings in `banks/<bank>/core-banking.yaml` carry settings only, and the runtime reads no secret. The plan puts a decrypt activity in `p.*` (section 2 and W6), the factory has none yet, and WPS files can arrive encrypted (`.SIF.GPG`), but the runtime has no decryption and no key store, and the source's encryption library is not carried. This repository is public and its CI has no secret scan and no dependency audit.
@@ -815,6 +817,7 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **What is built.** The `outbox` table in the store. Nothing reads it yet.
 
 **What is built for the operator surface (2026-11-22).** The first read model: the operations read model (`runtime/src/TransactHub.Operations`, R-05-49). The store now writes an outbox row with every fact and every message, in the same save; the projection follows the outbox from a checkpoint, applies each fact once by its number on its chain, is rebuilt from the facts on request with the same result, and shows its lag (`GET /ops/api/health`, the console's top bar). It runs on SQL Server and PostgreSQL through EF Core, with its own migrations, in the store's database or one of its own (`Operations:Connection`). The operator's search is the console's list: by tenant, scheme, leg, direction, ISO status, outcome, hold and its reason, dates, amounts, ids, references and file names, and by any filter a pack's view declares. Not yet: the reports of the source's report database (dashboards, counts per file type, exports to CSV, Excel and PDF), and one projecting process per installation is assumed (a second would only redo work, since applying is by number; a lease is not built).
+**A first load test (22 November 2026).** The owner decided a load test runs before any bank goes live. The harness is built (`runtime/load/`, R-09-38) and ran here on Temporal with its persistence on our SQL Server plugin and on PostgreSQL, and the store on SQL Server and on PostgreSQL: `docs/runtime/LOAD-TEST.md` has the conditions and the numbers, and proposes targets for the owner to set. It found two things that stop a bank going live as the runtime stands: a file of more than a few dozen lines fails on a real Temporal server (I-77), and a large file takes far too long, because its items run one after another at a fixed cost each (I-78). Issue 1 stays open until the owner sets the targets; Issue 2 is unchanged.
 
 ## I-73. The Azure Key Vault secret provider is not built
 
@@ -843,6 +846,30 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **Issue 2.** In commit mode a published workflow release gets its annotated tag `release/<workflow>/<release>/<target>` on the publishing commit (R-09-30). In pull-request mode the studio commits to the change set's branch and opens a pull request; the release reaches the content branch only when someone merges it, on a commit the studio did not make (and a squash or rebase merge rewrites it, I-62). No tag is made, so a runtime's package source does not list that release.
 
 **Recommendation 2.** When the studio sees the merge (it already reads it to mark the change set published), tag the merge commit, after checking that the release folder there is byte for byte what it committed and signed. Until then, a bank in pull-request mode installs with `POST /import-branch` from its pipeline.
+
+## I-77. On a real Temporal server, a step's attempt timeout is spent by processing time
+
+**Issue.** The Temporal binding keeps business time logical: it moves on a timer, a party's declared latency or an arrival, never on processing (`TemporalEngine`). But the timer the interpreter races against each attempt (its `attemptTimeout`, `PT5S` for a validate activity by the type default) is set on Temporal's own clock: it fires when the server's time passes the deadline. On a real server that time moves while the workers process, and the logical time does not. Each item of a salary file costs about 0.2 to 0.4 seconds of real time on the server (two attempts, a claim check), so once the item loop has run for five seconds every new attempt's deadline is already past and the attempt times out. On 22 November 2026, on Temporal with its persistence on SQL Server and a heavily shared machine, a file of 3 lines settled and files of 10, 20, 30 and 100 lines failed (a decision or the record checks timed out, `leg:failed`), with the default setting (`docs/runtime/LOAD-TEST.md`, the ceiling runs). The time-skipping test server and the studio's interpreter do not show it: there, processing takes no time on the clock. This stops any bank going live on Temporal.
+
+**Recommendation.** Decide in Part 9 what an attempt timeout measures on a real engine: business time (from the logical now, as `TH_TEMPORAL_TIMERS=logical` does, `TemporalEngine.Timer`) or real time (then the logical clock must move with the server's, and the type defaults must be sized for real ports). Prove the choice with a kit scenario run on a real server that processes a file whose item loop outlasts the step's timeout, on every engine. Until then the load harness sets `TH_TEMPORAL_TIMERS=logical` and says so; the default is unchanged.
+
+## I-78. A large file runs its items one after another, and the claim check writes one at a time
+
+**Issue.** The WPS leg checks each line in a `forEach` with no parallelism, and each line is two activity attempts, each a Temporal activity on the scheme's task queue plus a claim-check local activity, a fact in the store and an HTTP call to a Node worker. Measured on 22 November 2026 (`docs/runtime/LOAD-TEST.md`), a 1,000-line file takes several minutes and its lines go at a few per second; a 10,000-line file would take the better part of an hour. Two host-level limits add to it: `DurableClaimCheck` writes every fact of every payment in a host behind one lock, and each deployed worker is one Node process.
+
+**Recommendation.** Decide, with the owner's targets (I-68): (1) a bounded parallel `forEach` for item-level checks that hold no state (Part 5), or one activity per chunk of items, so a file's cost grows with its chunks, not its lines; (2) a lock per payload in the claim check, not per host; (3) more than one worker process per queue. Re-run the load matrix after each.
+
+## I-79. A deployed worker shares one clock and one run across the attempts in flight
+
+**Issue.** A deployed worker (`studio/src/worker/main.ts`) runs every attempt on one `PartyService`, which has one simulator run and one clock: `attempt` sets `run.clock.now` to the request's time, and the hold flag and the deliveries were also kept once for the service. A worker serves many attempts of many payments at once, so one attempt could take another's deliveries (a scheme's acknowledgement handed to the wrong payment) or read another's time. The deliveries and the hold flag are now kept per attempt (`PartyService.attemptOwn`, an `AsyncLocalStorage`), which the load runs needed; the clock is still shared.
+
+**Recommendation.** Give each attempt its own clock view, or serialise the attempts of one simulator conversation. This matters only where simulators run (a test deployment); in production a port is the bank's connection. Add a test that runs two payments' attempts on one worker at once and checks each gets its own replies at its own time.
+
+## I-80. What the telemetry does not yet do
+
+**Issue.** (1) The facts do not carry the trace id, so an operator cannot go from a fact to its trace. (2) Span events cannot be changed in .NET once added; the masking processor takes them off and adds them back masked through `Activity`'s private `_events` field. A test fails if that field moves (`TelemetryTests`), but it is a dependency on the runtime's internals. (3) A name in free text has no pattern: the masking finds IBANs, emails and long numbers, and replaces values under personal keys, but a name written into a message by a library would pass. (4) No alert rules, service-level objectives or retention are written, and the dashboards are for the local stack only. (5) The deployed worker bundles OpenTelemetry, which makes `worker.cjs` about 1.2 MB.
+
+**Recommendation.** (1) Add the trace id to the payload's `create` fact as a correlation reference, outside the hashed business data, in the store's next migration. (2) Ask OpenTelemetry .NET for a way to filter events in a processor, and drop the private field when there is one. (3) Keep the rule that hosts write ids only, and add a scan of the collector's output for the party values in the load harness. (4) Write the alerts with the targets of I-68. (5) Accept it, or load OpenTelemetry in the worker only when an endpoint is set.
 
 ## I-85. ADIB's, ENBD's and FAB's core-banking settings are not in the source
 
@@ -875,6 +902,20 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **Recommendation.** Add a `uae.wps` rule that refuses a salary file whose employer the ministry has suspended, with the status as a registered extension read by an activity (a lookup behind a port), and its reason code from the scheme's code set once confirmed (`uae.wps` is provisional). Do not add it as a bank rule: it is the same for every bank.
 
 **What is built.** Nothing in the factory. ADIB's, ENBD's and FAB's READMEs list the step as not carried; their `rules/` are empty.
+
+## I-89. The Flowable binding keeps a run's state in memory
+
+**Issue.** In production mode (I-53) Flowable keeps the flow, the jobs, their locks and retries, and the store keeps the payloads. The binding still keeps in memory what it learnt during the run: the business trace and detail, the attempts, held early messages, the messages each instance has waited for (R-05-43), the hook bindings taken at start and the timers it has placed. A job whose worker crashed comes back from Flowable when its lock expires, and the tests show that, but if the binding's process itself stops, a new one cannot pick up the payments the old one was running: it does not know them. The harness runs one plan and ends, as the other engines' harnesses do.
+
+**Recommendation.** Before a payment depends on the binding in production, keep that state on the payment's fact chain in the store (the trace and detail as facts, held messages in the inbox, the hook bindings with the instance), and let a binding that starts read the server's running instances of its tenant and rebuild its view from the store. Add a test that kills the binding mid-payment and starts another.
+
+
+| Story | Why |
+| --- | --- |
+| C25-S1 Confirm the pack against the rulebook | Needs the current CBUAE WPS rulebook (D10). Nothing here confirms a scheme fact. |
+| C25-S6 Planned message groups | Each needs a business decision to build, defer or drop. |
+| C25-S5 Refund | Needs the refund order layout, which the pack marks unconfirmed; writing it would invent scheme facts. |
+| C24-S1 to S5 Scripts and tests for every platform block | The reference behaviour runs every block; six blocks have scripts. Writing a test per outcome for every block is factory content for the generator, not yet done. |
 
 ## I-97. The store holds no end of a payment and no files of a deployment
 
@@ -910,16 +951,3 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 ## Not done, and why
 
-## I-89. The Flowable binding keeps a run's state in memory
-
-**Issue.** In production mode (I-53) Flowable keeps the flow, the jobs, their locks and retries, and the store keeps the payloads. The binding still keeps in memory what it learnt during the run: the business trace and detail, the attempts, held early messages, the messages each instance has waited for (R-05-43), the hook bindings taken at start and the timers it has placed. A job whose worker crashed comes back from Flowable when its lock expires, and the tests show that, but if the binding's process itself stops, a new one cannot pick up the payments the old one was running: it does not know them. The harness runs one plan and ends, as the other engines' harnesses do.
-
-**Recommendation.** Before a payment depends on the binding in production, keep that state on the payment's fact chain in the store (the trace and detail as facts, held messages in the inbox, the hook bindings with the instance), and let a binding that starts read the server's running instances of its tenant and rebuild its view from the store. Add a test that kills the binding mid-payment and starts another.
-
-
-| Story | Why |
-| --- | --- |
-| C25-S1 Confirm the pack against the rulebook | Needs the current CBUAE WPS rulebook (D10). Nothing here confirms a scheme fact. |
-| C25-S6 Planned message groups | Each needs a business decision to build, defer or drop. |
-| C25-S5 Refund | Needs the refund order layout, which the pack marks unconfirmed; writing it would invent scheme facts. |
-| C24-S1 to S5 Scripts and tests for every platform block | The reference behaviour runs every block; six blocks have scripts. Writing a test per outcome for every block is factory content for the generator, not yet done. |

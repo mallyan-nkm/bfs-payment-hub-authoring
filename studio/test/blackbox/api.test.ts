@@ -31,6 +31,17 @@ describe('reading', () => {
     expect(Buffer.isBuffer(r.data)).toBe(false);
   });
 
+  it('answers live and ready (R-10-09): ready once it has read the content branch', async () => {
+    const live = await fetch(server.url + '/health/live');
+    expect(live.status).toBe(200);
+    expect((await live.json()).status).toBe('live');
+    const ready = await fetch(server.url + '/health/ready');
+    expect(ready.status).toBe(200);
+    const body = await ready.json();
+    expect(body.status).toBe('ready');
+    expect(body.content).toMatch(/^[0-9a-f]{12}$/);
+  });
+
   it('serves the web app and answers 404 for an unknown route or artefact', async () => {
     const home = await fetch(server.url + '/');
     expect([200, 404]).toContain(home.status); // 404 only when the web app has not been built

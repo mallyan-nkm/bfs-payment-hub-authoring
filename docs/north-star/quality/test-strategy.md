@@ -15,7 +15,7 @@ Which suites prove the north star, and what each found on 2026-11-22. It replace
 | Parity | The runtime's WPS rules answer the source's own code exactly | `runtime/tests/TransactHub.Store.Tests/Golden` (1,977 cases), `docs/runtime/PARITY.md` |
 | Engine persistence | Temporal's own persistence and visibility suites on SQL Server; a crash mid-workflow | `runtime/temporal-mssql/tests`, `scripts/durability-check.sh` |
 
-There are no load, soak or back-pressure tests in the studio (`spec/CLAUDE.md`). Runtime performance tests wait on [I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side).
+There are no load, soak or back-pressure tests in the studio (`spec/CLAUDE.md`). The runtime has a load harness outside the studio (`runtime/load/`, R-09-38): synthetic WPS salary files on Temporal, on each Temporal persistence store and each store database. It runs before any bank goes live; its first results and the proposed targets are in [`docs/runtime/LOAD-TEST.md`](../../runtime/LOAD-TEST.md), and the targets themselves wait on the owner ([I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)). Telemetry has its own tests: spans, metrics and masking on a WPS run with in-memory exporters (R-09-31 to R-09-37).
 
 ## What ran here on 2026-11-22
 
