@@ -112,6 +112,9 @@ CASES = [
      "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: synthetic-literal-value", "a binding's secretRef holds a value, not a reference"),
     ("M39", "ERROR L37", "../content-configurations/banks/dib/file-transfer.yaml",
      "secretRef: env:TH_DIB_SFTP_CREDENTIAL", "secretRef: env:TH_DIB_SFTP_CREDENTIAL\n      password: synthetic-literal-value", "a binding carries a password as a value beside its reference"),
+    # R-06-22: a secretRef naming a store that is not one of the six is not a reference (L37)
+    ("M47", "ERROR L37", "../content-configurations/banks/dib/core-banking.yaml",
+     "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: gcp-sm:projects/x/secrets/th-token", "a binding's secretRef names a store the secret interface does not have"),
     # R-05-48, R-05-49: an operations view says only what the store can answer (L38)
     ("M40", "ERROR L38", OPV,
      '"step:submit.read-ack.outcome"', '"step:submit.read-acks.outcome"', "a view's field reads a step the leg does not have"),

@@ -1,9 +1,9 @@
 import { parseYamlAll } from '../core/yaml.js';
-import { isSecretRef } from './secrets.js';
+import { isSecretRef, REF_FORMS } from './secrets.js';
 
 // Check L37 (R-06-23): no binding, configuration or package carries a literal secret. A key that names a secret
 // (password, passphrase, token, apiKey, privateKey, clientSecret, credential, and the like) holds a reference
-// (`env:`, `file:`, `vault:`) or nothing; `secretRef` holds a reference; and no text anywhere is a private key.
+// (`env:`, `file:`, `vault:`, `akv:`, `aws-sm:`, `aws-ssm:`) or nothing; `secretRef` holds a reference; and no text anywhere is a private key.
 // The same rule is in spec/tools/validate.py.
 
 /** A key that names a secret: the word itself, or a camel-case name that ends with it (`gatewayPassword`). */
@@ -22,8 +22,8 @@ export function literalSecretsIn(doc: unknown, file: string): LiteralSecret[] {
   const visit = (v: unknown, at: string, key?: string) => {
     if (typeof v === 'string') {
       if (PRIVATE_KEY_PEM.test(v)) out.push({ file, at, why: 'is a private key' });
-      else if (key && /secretref$/i.test(key) && !isSecretRef(v)) out.push({ file, at, why: `${key} must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value` });
-      else if (key && SECRET_KEY.test(key) && v.length > 0 && !isSecretRef(v)) out.push({ file, at, why: `${key} holds a value: name the secret by reference instead (secretRef: env:NAME, file:/path or vault:mount/path#field)` });
+      else if (key && /secretref$/i.test(key) && !isSecretRef(v)) out.push({ file, at, why: `${key} must be a reference (${REF_FORMS}), not a value` });
+      else if (key && SECRET_KEY.test(key) && v.length > 0 && !isSecretRef(v)) out.push({ file, at, why: `${key} holds a value: name the secret by reference instead (secretRef: ${REF_FORMS})` });
       return;
     }
     if (typeof v === 'number' && key && SECRET_KEY.test(key)) {

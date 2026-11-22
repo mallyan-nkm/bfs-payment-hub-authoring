@@ -689,10 +689,11 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
 # ------------------------------------------------- no literal secret
 # L37 no binding, configuration or package carries a literal secret (R-06-23). A key that names a secret (password,
 # passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a camel-case name ending in one)
-# holds a reference (env:, file:, vault:, akv:) or nothing; a secretRef holds a reference; no text is a private key.
+# holds a reference (env:, file:, vault:, akv:, aws-sm:, aws-ssm:; R-06-22) or nothing; a secretRef holds a reference; no text is a private key.
 # It reads the spec's content and everything under content-configurations/. The studio check is the same rule.
 SECRET_KEY = re.compile(r"(^|[a-z0-9_])(password|passwd|passphrase|secret|token|apikey|api_key|accesskey|access_key|privatekey|private_key|clientsecret|client_secret|credentials?)$", re.I)
-SECRET_REF = re.compile(r"^(env|file|vault|akv):\S+$")
+SECRET_REF = re.compile(r"^(env|file|vault|akv|aws-sm|aws-ssm):\S+$")
+REF_FORMS = "env:NAME, file:/path, vault:mount/path#field, akv:vault/secret[#version], aws-sm:region/secret-id[#field] or aws-ssm:region/parameter"
 PRIVATE_KEY_PEM = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 
 
@@ -701,7 +702,7 @@ def literal_secrets(v, at="", key=None):
         if PRIVATE_KEY_PEM.search(v):
             yield at, "is a private key"
         elif key and key.lower().endswith("secretref") and not SECRET_REF.match(v):
-            yield at, "%s must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value" % key
+            yield at, "%s must be a reference (%s), not a value" % (key, REF_FORMS)
         elif key and SECRET_KEY.search(key) and v and not SECRET_REF.match(v):
             yield at, "%s holds a value: name the secret by reference instead" % key
     elif isinstance(v, (int, float)) and not isinstance(v, bool) and key and SECRET_KEY.search(key):

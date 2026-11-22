@@ -802,7 +802,7 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 - (3) CI job `security` on every push: gitleaks 8.21.2 (checksum pinned) over the history and the tree, L37, `npm audit --omit=dev --audit-level=high`, `dotnet list package --vulnerable --include-transitive` (R-09-28).
 - Package signing: ECDSA P-256 over a canonical statement of every file's SHA-256, the release id, tenant and change set; the key by reference (`TH_SIGNING_KEY`); verified by the runtime at storage and activation, recorded as a fact, and by the deploy runner; several trusted keys with retirement and revocation (`TH_TRUSTED_SIGNERS`) (R-09-23 to R-09-26; `spec/design/09-export-bindings.md`, 9.9).
 
-Still open: (2) decryption as an activity behind a port, (4) erasure and retention, the Azure Key Vault provider (I-73) and a remote signer (I-74).
+Still open: (2) decryption as an activity behind a port, (4) erasure and retention. The Azure Key Vault and AWS providers are built (I-73, done) and the signing key stays in the studio's process (I-74, decided).
 
 ## I-68. Non-functional targets, deployment sizes and the reporting read side
 
@@ -825,11 +825,19 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **Recommendation.** Mount Key Vault secrets as files (`file:`) until a bank needs a direct read. Then add an `AzureKeyVaultSecretProvider` behind `ISecretProvider` (Azure.Security.KeyVault.Secrets with a managed identity), tested against a recorded fake in CI and once against a real vault before the bank's first use.
 
+**Done (owner's decision of 2026-11-22).** The owner decided to support Azure Key Vault and AWS beside HashiCorp Vault, in the runtime and the studio. Built (R-06-22 amended, R-06-25, R-06-26):
+- `akv:<vault-name>/<secret-name>[#version]`: `AzureKeyVaultSecretProvider` (Azure.Security.KeyVault.Secrets 4.12.0, Azure.Identity 1.21.0) and `studio/src/secrets/cloud.ts` (@azure/keyvault-secrets 4.12.0, @azure/identity 4.14.1). It signs in with the first configured of client credentials (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `TH_AKV_CLIENT_SECRET`, a reference to env: or file:), workload identity (`AZURE_FEDERATED_TOKEN_FILE`) and managed identity, in DefaultAzureCredential's order. A literal `AZURE_CLIENT_SECRET` is refused. `TH_AKV_DNS_SUFFIX` names a sovereign cloud's vault domain.
+- `aws-sm:<region>/<secret-id>[#json-field]` and `aws-ssm:<region>/<parameter-name>`: `AwsSecretsManagerSecretProvider` and `AwsParameterStoreSecretProvider` (AWSSDK.SecretsManager 4.0.100.23, AWSSDK.SimpleSystemsManagement 4.0.104.9) and the studio's (@aws-sdk/client-secrets-manager and @aws-sdk/client-ssm 3.1162.0), on the AWS default credential chain. A field is read from a JSON object; a parameter must be a SecureString.
+- A value read over the network is cached for `TH_SECRET_CACHE_SECONDS` (default 300, 0 for none) and never past it or when its store fails; `ISecretResolver.Invalidate` and `WithSecret` read a refused credential again, once (`SecretStores.withSecret` in the studio).
+- Tests: Azure against `FakeKeyVault` (`runtime/tests/TransactHub.Security.Tests`) and `studio/test/support/fake-key-vault.ts`, an in-process fake of the Key Vault REST protocol and the token endpoint, given to the official SDK as its transport, since there is no official emulator; AWS against LocalStack 4.14.0 in a container named for the run. What these do not prove is I-105.
+
 ## I-74. The studio's signing key is held in its process
 
 **Issue.** The studio signs packages with a private key it reads into its own memory, by reference, from the environment, a mounted file or Vault. A compromise of the studio's host can sign packages that every runtime trusting the key accepts, until the key is revoked in each installation's trusted signers. There is no transparency log of what was signed, so a bank cannot list every package a key signed.
 
 **Recommendation.** For production, sign with a key that never leaves a key store: Vault transit, a cloud KMS or an HSM, all of which sign ECDSA P-256 over SHA-256, so the format and the verification do not change. Record each signature (key id, statement hash, change set) in the change set's audit on the branch, or in a transparency log (Sigstore's Rekor) where the bank may use one. Rotate the key at least yearly, as the guidelines describe.
+
+**Decided (owner, 2026-11-22).** The studio's signing key may stay in the studio's process: no HSM, KMS or remote signer is required. The key is still read only through the secret interface (`TH_SIGNING_KEY`), so it may come from any of its stores: env:, file:, Vault, Azure Key Vault, AWS Secrets Manager or Parameter Store. A key in a store over the network is read when the studio starts (`primeSigningKey`) and held until it restarts (I-106). R-09-23 says so. The transparency log and the yearly rotation stay recommendations.
 
 ## I-75. The native host has no authentication
 
@@ -948,6 +956,18 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **Recommendation.** Register the allowances and the leave encashment as item fields of `uae.wps.ext.salary.v1` (provisional until the rulebook confirms them) and map them in `uae.wps.map.sif-in.v1`; carry the channel, the employer's name and the debit account from the channel's upload into the bulk at intake; write the NAK's DER records and the posting's charge, VAT and legs as step writes (state, with masked accounts); and add the reports as projections of their own (I-68). Decide whether an unmask is needed at all: if it is, it reads the store, needs a permission of its own, and is a fact on the payment's chain.
 
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
+
+## I-105. The cloud secret providers are proved against a fake and LocalStack, not the real services
+
+**Issue.** The Azure Key Vault provider is tested against an in-process fake of the Key Vault REST protocol and the token endpoint (`FakeKeyVault`, `fake-key-vault.ts`), and the AWS providers against LocalStack. Neither proves a managed identity, a workload identity or an IAM role against the real service, nor Key Vault's and AWS's real refusals, throttling and private endpoints. The fake is pinned to the protocol as the SDK spoke it on 2026-11-22. LocalStack is pinned to 4.14.0, the last image that runs without an account token; later images (2026.x) need one, so it gets no fixes. This repository's CI has no Azure subscription or AWS account, and must hold no real credential.
+
+**Recommendation.** Before a bank's first use of `akv:`, `aws-sm:` or `aws-ssm:`, run the providers' tests once against the bank's own vault or account, in the bank's environment, with its identity, and record the result in the installation's acceptance. Replace LocalStack with Moto (moto_server, Apache 2.0) or an account-token LocalStack if 4.14.0 stops matching the SDK.
+
+## I-106. A rotated secret reaches a running host only after the cache time or a restart
+
+**Issue.** The interface caches a value read over the network for up to `TH_SECRET_CACHE_SECONDS` and can read a refused credential again (`WithSecret`, R-06-26), but no adapter calls `WithSecret` yet: the core-banking gateway and the package source resolve their credential and, when it is refused, fail the call. A credential rotated in its store is therefore used only once the cache time has passed. The studio's signing key, when held in a store over the network, is read at start and kept until the studio restarts (I-74), so a rotated signing key needs a restart.
+
+**Recommendation.** Have each adapter that sends a credential (the core-banking gateway, the GitHub package source, the worker's runtime token) call through `WithSecret`, with a 401 from the far side as the refusal, in the change that next touches each adapter, with a test that rotates the credential in the store. Re-prime the studio's signing key when the cache time passes, or document a restart as part of rotating it.
 
 ## Not done, and why
 
