@@ -40,8 +40,8 @@ public sealed class ContentTests(Databases dbs)
         var versions = (await J.Of(await c.GetAsync("/service/api/content/versions"))).AsArray();
         Assert.Equal(5, versions.Count);
         var dist = versions.Single(v => (string?)v!["kind"] == "distribution")!;
-        Assert.False((bool)dist["installable"]!);
-        Assert.Contains("I-102", (string?)dist["notInstallable"]);
+        Assert.True((bool)dist["installable"]!);
+        Assert.Equal("dist/example-bank@2026.11.22-1", (string?)dist["releaseId"]);
         Assert.All(versions, v => Assert.Equal("offered", (string?)v!["state"]));
 
         var verify = await J.Of(await Post(c, "/service/api/content/verify", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "before install" }));
@@ -62,8 +62,9 @@ public sealed class ContentTests(Databases dbs)
             Assert.Equal($"#/service/errors/{code}", (string?)j["runbook"]);
         }
         var d = await Post(c, "/service/api/content/install", new { tag = "dist/example-bank/2026.11.22-1", reason = "try" });
-        Assert.Equal(HttpStatusCode.NotImplemented, d.StatusCode);
-        Assert.Equal("package.KindNotInstallable", (string?)(await J.Of(d))["code"]);
+        // A distribution is installed by its own kind (R-09-48): this one is not signed, so it is refused.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, d.StatusCode);
+        Assert.Equal("package.Rejected", (string?)(await J.Of(d))["code"]);
 
         await using var db = StoreDbContext.Open(api.Store);
         Assert.Equal(1, await db.Releases.CountAsync());

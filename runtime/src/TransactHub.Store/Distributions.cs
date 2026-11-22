@@ -278,6 +278,8 @@ public static class ParameterContract
         return Item(b, type, value);
     }
 
+    static decimal? Num(JsonNode? n) => n is JsonValue v && v.GetValueKind() == System.Text.Json.JsonValueKind.Number && decimal.TryParse(v.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+
     static string? Item(JsonObject b, string? type, JsonNode? value)
     {
         if (type == "duration")
@@ -287,10 +289,10 @@ public static class ParameterContract
             if (b["min"] is { } mn && DistributionRegistry.Duration((string?)mn) is { } min && v < min) return $"is below its minimum {(string?)mn}";
             if (b["max"] is { } mx && DistributionRegistry.Duration((string?)mx) is { } max && v > max) return $"is above its maximum {(string?)mx}";
         }
-        else if (value is JsonValue n && n.TryGetValue<decimal>(out var num) && !n.TryGetValue<bool>(out _))
+        else if (Num(value) is { } num)
         {
-            if (b["min"] is JsonValue mn && mn.TryGetValue<decimal>(out var min) && num < min) return $"is below its minimum {min.ToString(CultureInfo.InvariantCulture)}";
-            if (b["max"] is JsonValue mx && mx.TryGetValue<decimal>(out var max) && num > max) return $"is above its maximum {max.ToString(CultureInfo.InvariantCulture)}";
+            if (Num(b["min"]) is { } min && num < min) return $"is below its minimum {min.ToString(CultureInfo.InvariantCulture)}";
+            if (Num(b["max"]) is { } max && num > max) return $"is above its maximum {max.ToString(CultureInfo.InvariantCulture)}";
         }
         if (b["allowed"] is JsonArray allowed && !allowed.Any(a => JsonNode.DeepEquals(a, value))) return "is not one of the allowed values";
         if (b["pattern"] is JsonValue pat && value is JsonValue sv && sv.TryGetValue<string>(out var str) && !System.Text.RegularExpressions.Regex.IsMatch(str, (string)pat!)) return $"does not match {(string?)pat}";

@@ -115,7 +115,7 @@ public sealed class FakeGitHub : HttpMessageHandler
         if (!path.StartsWith(repo)) return new HttpResponseMessage(HttpStatusCode.NotFound);
         var rest = Uri.UnescapeDataString(path[repo.Length..]);
         JsonNode? body = null;
-        foreach (var prefix in new[] { "release", "dist" })
+        foreach (var prefix in new[] { "release", "dist", "config" })
             if (rest == $"git/matching-refs/tags/{prefix}")
                 body = new JsonArray(tagRefs.Where(t => t.Key.StartsWith(prefix)).OrderBy(t => t.Key).Select(t => (JsonNode)new JsonObject { ["ref"] = $"refs/tags/{t.Key}", ["object"] = new JsonObject { ["sha"] = t.Value, ["type"] = "tag" } }).ToArray());
         if (rest.StartsWith("git/tags/") && tagObjects.TryGetValue(rest[9..], out var to))
