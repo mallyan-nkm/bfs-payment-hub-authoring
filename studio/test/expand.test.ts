@@ -10,7 +10,7 @@ describe('expansion of composite steps (C04-S6, R-05-35)', () => {
   const resolve = (n: string) => env.store.doc(n);
   const dir = path.join(env.specRoot, 'expanded');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.yaml'));
-  it('finds the three reference expansions', () => expect(files.length).toBe(3));
+  it('finds the four reference expansions', () => expect(files.length).toBe(4)); // the return leg waits for the posting window (plan P2)
   for (const f of files) {
     it(`gives the same document as tools/expand.py for ${f}`, () => {
       const want = parseYaml(fs.readFileSync(path.join(dir, f), 'utf8'));

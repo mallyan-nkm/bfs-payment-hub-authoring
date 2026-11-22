@@ -165,14 +165,14 @@ Screens inventoried: Banking Ops `features/reports/wps` (SIF Summary report, SIF
 | Old field | Status | View field | Source | Note |
 | --- | --- | --- | --- | --- |
 | Per file type: ACK received, NAK received (SIF) | mapped | uae.wps:uae.wps.wf.salary-file-out.v1:cbResponse | `step:submit.read-ack.outcome` | As a filter: the list's count by CB response |
-| Per file type: PRC | mapped | uae.wps:uae.wps.wf.agent-payment-in.v1:prcStatus | `step:confirm-receipt.read-ack.outcome` | |
-| Per file type: DIF | mapped | uae.wps:uae.wps.wf.agent-payment-in.v1:difStatus | `step:report-disbursement.read-ack.outcome` | |
-| Per file type: RFA | mapped | uae.wps:uae.wps.wf.agent-payment-in.v1:rfaStatus | `step:return-credits.read-ack.outcome` | |
+| Per file type: PRC | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:prcStatus | `step:confirm-receipt.read-ack.outcome` | |
+| Per file type: DIF | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:difStatus | `step:report-disbursement.read-ack.outcome` | |
+| Per file type: RFA | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:rfaStatus | `step:return-credits.read-ack.outcome` | |
 | Per file type: RTC | mapped | uae.wps:uae.wps.wf.return-in.v1:employerCredit | `step:credit-employer.outcome` | |
 | Refund flows: RFR, RSU | mapped | uae.wps:uae.wps.wf.refund-out.v1:rfrStatus, settlement | `step:request.read-ack.outcome`, `step:request.read-settlement.outcome` | |
 | Refund flows: RRI, RRR, DCR | not mapped | | | No factory flow (`uae.wps.rrr` and `uae.wps.dcr` are planned messages; RRI is in no flow, plan P2) |
-| Returned | mapped | uae.wps:uae.wps.wf.agent-payment-in.v1:returnsCount | `step:returns.writes.facts.returns.count` | |
-| Returned amount | mapped, empty | uae.wps:uae.wps.wf.agent-payment-in.v1:returnsAmount | `step:returns.writes.facts.returns.amount` | The returns table yields no amount yet (plan P2, RFA) |
+| Returned | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:returnsCount | `step:returns.writes.facts.returns.count` | |
+| Returned amount | mapped, empty | uae.wps:uae.wps.wf.agent-payment-in.v2:returnsAmount | `step:returns.writes.facts.returns.amount` | The returns table yields no amount yet (plan P2, RFA) |
 | Sanction completed, failed, confirmed | mapped | p:subject:sanctions, p:subject:lastOutcome | `step:sanctions.outcome`, `subject.lastOutcome` | Per payment; the counts are the list filtered |
 | KPIs, MOHRE compliance status, employer establishments | not mapped | | | Dashboards and counts are reports, not a leg's view (I-68) |
 | Recent transactions: id, type, status, direction, tenant, start | mapped | (list) | the list's own columns | |

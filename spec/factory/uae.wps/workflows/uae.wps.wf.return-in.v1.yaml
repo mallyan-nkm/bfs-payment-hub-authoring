@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.return-in.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: WPS return, bank as the employer's bank
-description: A return file has arrived. Credit the employer's account.
+description: A return file has arrived. Wait for core banking's posting window, then credit the employer's account, which the return map names.
 direction: inward
 implements:
   slot: scheme-leg
@@ -15,6 +15,11 @@ exit:
   writes: [status, facts.posting]
   outcomes: [settled, rejected, returned, pending]
 do:
+  # The credit waits for core banking's posting window (plan P2).
+  - id: posting-window
+    call: p.decide.await-posting-window.v1
+    handle:
+      closed: { end: pending }
   - id: credit-employer
     call: p.post.accounting.v1
     handle:

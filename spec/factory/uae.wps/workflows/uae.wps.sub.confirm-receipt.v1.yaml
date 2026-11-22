@@ -1,7 +1,7 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.confirm-receipt.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: Confirm receipt and read the acknowledgement
 description: What the confirm-receipt block does underneath. Sends the receipt confirmation, waits for the acknowledgement and reads it.

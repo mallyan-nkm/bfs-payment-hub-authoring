@@ -1,6 +1,6 @@
 kind: scheme
 scope: uae.wps
-release: 1.0.0
+release: 1.1.0
 title: UAE Wages Protection System
 wire: file
 messages:
@@ -36,7 +36,7 @@ messages:
       start:
         kind: payment
         direction: inward
-        leg: uae.wps.wf.agent-payment-in.v1
+        leg: uae.wps.wf.agent-payment-in.v2
         refuseLeg: uae.wps.wf.inward-refuse.v1
         intakeMap: uae.wps.map.pif-in.v1
   - id: uae.wps.psi
@@ -113,10 +113,10 @@ messages:
         direction: inward
         leg: uae.wps.wf.return-in.v1
         refuseLeg: uae.wps.wf.inward-refuse.v1
-        intakeMap: uae.wps.map.rtc-in.v1
+        intakeMap: uae.wps.map.rtc-in.v2
 legs:
   - uae.wps.wf.salary-file-out.v1
-  - uae.wps.wf.agent-payment-in.v1
+  - uae.wps.wf.agent-payment-in.v2
   - uae.wps.wf.refund-out.v1
   - uae.wps.wf.return-in.v1
   - uae.wps.wf.inward-refuse.v1

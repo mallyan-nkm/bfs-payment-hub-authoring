@@ -1,0 +1,32 @@
+kind: workflow
+wfKind: subflow
+name: p.sub.await-posting-window.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Wait for core banking's posting window
+description: What the await-posting-window block does underneath. Asks whether core banking takes postings now, by the bank's window; while it does not, waits fifteen minutes and asks again, for up to a day. The payment waits for the window instead of retrying into it (plan P2, posting windows).
+implements:
+  activity: p.decide.await-posting-window.v1
+exit:
+  outcomes: [open, closed]
+do:
+  - loop:
+      max: 96
+      every: PT15M
+      until: { outcomeOf: window, in: [open] }
+      do:
+        - id: window
+          call: p.decide.posting-window.v1
+          handle:
+            closed: { continue: true }
+  - switch:
+      by: { outcomeOf: window }
+      cases:
+        closed:
+          - return: closed
+  - return: open
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [TransactHub source 666f1ee]
+  note: The source parks the payment on a signal its dispatcher sends when the call window opens (AwaitCbPostingWindow, CbCallWindowGate). Here the leg asks again every fifteen minutes on the engine's clock, which every engine runs the same way.

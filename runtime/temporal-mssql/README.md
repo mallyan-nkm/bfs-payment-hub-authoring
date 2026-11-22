@@ -7,6 +7,7 @@ Both stores are on SQL Server: the persistence store and the visibility store.
 ## Pinning
 
 - `go.temporal.io/server` is pinned to exactly **v1.32.2** in `go.mod`. The plugin, the schema and the proof below are for that release only.
+- **Owner.** The team that owns this GitHub repository keeps the plugin (owner's decision of 2026-11-22, `docs/ISSUES.md` I-42). An upgrade is one change by that team, and the runtime stays on the pinned release until CI job `temporal-sqlserver` is green on it; a Temporal security release is the only reason to hurry.
 - **Every Temporal upgrade MUST re-run the whole proof** before it ships: the persistence suites, the durability check, the conformance kit and the WPS salary file. The CI job `temporal-sqlserver` in `.github/workflows/engines.yml` runs all four, the kit as its fast subset (see "CI" below).
 - An upgrade that adds a schema version (Temporal's `schema/postgresql/v12/temporal/versioned/v1.20`, for example) needs the same change written for SQL Server in `schema/sqlserver/temporal/versioned/v1.20/`, and `Version` in `sqlplugin/sqlserver/plugin.go` raised to match.
 - An upgrade that changes a store method in `common/persistence/sql/sqlplugin` needs the matching change here. Compare the new release's PostgreSQL plugin with the one this port started from.

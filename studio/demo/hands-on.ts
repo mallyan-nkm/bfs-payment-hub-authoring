@@ -163,7 +163,7 @@ export function scenes(d: Director): Scene[] {
     await d.wait(1200);
   };
   const bankConfig = (maxLines: number) => (c: any) => {
-    c.release = '1.1.0';
+    c.release = String(c.release).replace(/^(\d+)\.(\d+)\..*/, (_: string, M: string, m: string) => `${M}.${Number(m) + 1}.0`);
     c.values.push({ parameter: `${D.BANK_RULE.name}#maxLines`, value: maxLines, validFrom: '2026-01-01' });
     c.bindings.push({ hookPoint: 'p.seg.check-and-screen.v1#after-validate', hook: D.BANK_HOOK.name, release: '1.0.0', validFrom: '2026-01-01' });
   };

@@ -39,7 +39,11 @@ describe('canonical JSON and the content hash (R-01-12)', () => {
   it('matches the hashes the factory pack manifests carry', () => {
     const env = freshEnv();
     let checked = 0;
+    // Every pack release, the earlier ones as they were published (R-11-35): each artefact at its release has the hash the pack
+    // locked. A test carries no release, so only the latest pack's tests are held to it (Issue I-81).
+    const latest = new Set(env.store.current().filter((e) => e.kind === 'pack').map((e) => e.key));
     for (const p of env.store.byKind('pack')) for (const a of p.doc.artefacts ?? []) {
+      if (a.kind === 'test' && !latest.has(p.key)) continue;
       const e = a.kind === 'test' ? env.store.test(a.name) : env.store.get(a.name, a.release);
       expect(e, a.name).toBeDefined();
       expect(e!.hash, a.name).toBe(a.hash);
@@ -66,7 +70,9 @@ describe('durations and the business calendar', () => {
 describe('the store (C01, R-01-11, R-06-03, R-06-04)', () => {
   it('loads every document of the spec', () => {
     const env = freshEnv();
-    expect(env.store.all().length).toBe(181); // 3 more for the error dictionaries of p, uae.p and uae.wps (R-05-51); 2 more for the operations views of p and uae.wps (R-05-48); 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
+    // 217 since the releases of plan P2 (R-11-35): every earlier release stays beside the later one. Of the latest, 193.
+    expect(env.store.current().length).toBe(193);
+    expect(env.store.all().length).toBe(217); // 3 more for the error dictionaries (R-05-51); 3 more for the operations views of p and uae.wps (R-05-48), the WPS view at 1.0.0 and 1.1.0; 199 less the 44 documents of the removed second scheme, and the two bank lookup tests (I-37); 10 more for the agent's returns file (I-39); 5 more for its decision (I-39 to I-41: a composite and its subflow, three tests); 4 more for the file transfer and decryption ports and simulators (R-12-12)
     expect(env.store.tenants()).toEqual(['owner', 'example-bank']);
   });
   it('validates every document against its schema', () => {

@@ -182,7 +182,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       const wdir = path.join(dir, w.path);
       const p = port === undefined ? 0 : port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
+        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_NATIVE_ACTIVITIES ? { TH_NATIVE_ACTIVITIES: process.env.TH_NATIVE_ACTIVITIES } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
@@ -347,6 +347,8 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     const st = obs.engine?.store;
     if (st) log.push(`store: ${st.provider} holds ${st.bulks} bulk(s), ${st.payments} payment(s), ${st.parties} part(ies); ${st.payloads.length} payload(s) rebuilt from their facts, chains ${st.payloads.every((x: any) => x.chain) ? 'unbroken' : 'BROKEN'}, ${st.ok ? 'all match the run' : 'NOT the run'}`);
     const root = obs.instances?.[0] ?? {};
+    // The other instances (a leg in its slot, a subflow), so a run can be read without the engine's own tools.
+    for (const i of (obs.instances ?? []).slice(1)) if ((i.trace ?? []).length) log.push(`instance ${i.workflow ?? i.doc ?? i.id}: ${(i.trace ?? []).join(' | ')}`);
     const workers: DeployResult['workers'] = [];
     for (const pr of procs) {
       const st = await (await fetch(`${pr.url}/stats`)).json();

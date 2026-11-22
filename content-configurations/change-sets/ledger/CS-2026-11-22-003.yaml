@@ -1,0 +1,7 @@
+# The files change set CS-2026-11-22-003 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+# Recorded on 2026-11-22 from the commit that published it (64ce449), as the change set itself carries no hashes (Issue I-83).
+kind: release-ledger
+changeSet: CS-2026-11-22-003
+files:
+  - { path: artefacts/p/p.view.operations.v1/1.0.0.yaml, sha256: 361a705fcec9551af8ec4ce5c39a95b8d6923f4155e40b6bb166ea9c370b4516 }
+  - { path: artefacts/uae.wps/uae.wps.view.operations.v1/1.0.0.yaml, sha256: 03b542573441175430fd0f702488d505a2000975dfa60a9d51b29b56c930d37c }

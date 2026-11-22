@@ -1,0 +1,16 @@
+# The files change set CS-2026-11-22-001 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+# Recorded on 2026-11-22 from the commit that published it (1bc71d0), as the change set itself carries no hashes (Issue I-83).
+kind: release-ledger
+changeSet: CS-2026-11-22-001
+files:
+  - { path: samples/wps-pif-valid.pif, sha256: d70afeda1547094775fbd256d109ea75da3611a2ba7254f303441991528d288f }
+  - { path: samples/wps-sif-bad-control-total.sif, sha256: 52cdad096f45cbfc435a4ab4f9dff012988a224a5233db3d895a376a357baf44 }
+  - { path: samples/wps-sif-bad-iban.sif, sha256: 4c12d5cb4b1f5e01c6cec5e4c8e89f67e1caaaa003873bb81a571fd0c844003b }
+  - { path: samples/wps-sif-bad-month.sif, sha256: 2338c6a498413b04099ae054840038a4d9c9fcfa3356dfc2707ceb6692008e34 }
+  - { path: samples/wps-sif-two-lines.sif, sha256: 6c8ef57ae506add3a682d8be77b1bfd17561b4513e3f0eeeee3ea25494ee9299 }
+  - { path: samples/wps-sif-valid-scr-last.sif, sha256: 0bbb8f324ecf3848857d7b88b3fc2cb4eb11d628a75a425f7d20f62d79442efc }
+  - { path: samples/wps-sif-valid.sif, sha256: 02849add717a47ca783b33a543095921a347c2fa51e496c248b07baa4ce1d226 }
+  - { path: scripts/p.validate.duplicate.v1.ts, sha256: ff4777f6f825ee98f4bd0885eae4e2deeae9bf484f55fe7d55bff4feb871ea00 }
+  - { path: scripts/uae.p.enrich.business-date.v1.ts, sha256: 552d2084dc24531ab4b7c91bfd724f208213a62b741c371106494df7e44113eb }
+  - { path: scripts/uae.wps.map.pif-in.v1.ts, sha256: eeb253d29af9af9b14bc766f35600c4d1002031bdd18d33f8e7cd0d526109cd3 }
+  - { path: scripts/uae.wps.map.sif-in.v1.ts, sha256: 2c27b3b3ceefe5e7e37e858504d9ee49f0115a844765dc955b853659646340a8 }

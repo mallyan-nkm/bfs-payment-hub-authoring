@@ -47,12 +47,13 @@ beforeAll(async () => {
 }, RUN_MS);
 afterAll(() => server?.stop());
 
-async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEnv: Record<string, string> = {}) {
-  const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
+async function deploy(label: string, sample = SAMPLE, extra: any[] = [], extraEnv: Record<string, string> = {}, flow = { platform: PLATFORM, message: MESSAGE, bench: BENCH }) {
+  const z = await api.get(`/api/export/download?workflows=${flow.platform}&target=temporal&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
   const file = path.join(work, `${label}.zip`);
   fs.writeFileSync(file, z.data);
-  const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...[...BENCH, ...extra].flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
+  const bench = [...flow.bench.filter((b) => !extra.some((o) => o.port === b.port)), ...extra];
+  const args = ['src/cli.ts', 'deploy', file, '--workflow', flow.platform, '--message', flow.message, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...bench.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   // Asynchronous, so the studio server's kept-alive connections stay open while Temporal runs.
   const out = await new Promise<string>((resolve) => {
     let text = '';
@@ -98,6 +99,35 @@ describe('the WPS salary file on Temporal', () => {
       expect(expected.status, JSON.stringify(expected.data).slice(0, 400)).toBe(200);
       const d = await deploy(what.replace(/\W+/g, '-'), sample, override);
       expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
+      expect(d.outcome).toBe(expected.data.outcome);
+    }, RUN_MS);
+  }
+
+  // Plan P2: the WPS payment file with the bank as the agent, in the source's layout, as e2e-wps-parity runs it on DTFx and Elsa.
+  const INWARD = {
+    platform: 'p.wf.inward.v1', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
+    bench: [
+      { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-refused' },
+      { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'reject-first-then-accept' },
+      ...['sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
+      { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'reject' },
+    ],
+  };
+  const inwardCases: [string, any[]][] = [
+    ['every credit posted: confirmed, credited and reported', [{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file' }, { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'accept' }]],
+    ['a refused credit returned, the returns file refused and handed to operations', []],
+  ];
+  // The PSI the inward simulator sends with the payment file reaches the leg: the platform workflow hands a kept message to its
+  // leg once the leg has started (Issue I-84, R-09-16).
+  for (const [what, override] of inwardCases) {
+    it(`the inward payment file, ${what}: the same trace as the studio interpreter`, async () => {
+      const bench = [...INWARD.bench.filter((b) => !override.some((o) => o.port === b.port)), ...override];
+      const expected = await api.post('/api/bench/run', { target: INWARD.platform, tenant: TENANT, inbound: INWARD.sample, message: INWARD.message, bench });
+      expect(expected.status, JSON.stringify(expected.data).slice(0, 400)).toBe(200);
+      const d = await deploy(`inward-${what.replace(/\W+/g, '-')}`, INWARD.sample, override, {}, INWARD);
+      expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
+      // The leg ran past the supplementary file to the disbursement file: the PSI reached it (R-05-30).
+      expect(d.out).toContain('"uae.wps.map.dif-out.v2@2.0.0":1');
       expect(d.outcome).toBe(expected.data.outcome);
     }, RUN_MS);
   }

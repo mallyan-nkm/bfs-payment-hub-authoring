@@ -1,0 +1,9 @@
+# The files change set CS-2026-11-22-005 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+# Recorded on 2026-11-22 from the commit that published it (9c4369e, as CS-2026-11-22-004 on its branch; renamed by the merge 591870f),
+# as the change set itself carries no hashes (Issue I-83). The engine bindings carry no release, so it replaced their file.
+kind: release-ledger
+changeSet: CS-2026-11-22-005
+files:
+  - { path: artefacts/bindings/bindings.yaml, sha256: 6c6192f30b091b2374d1798b4cf0a01217dc36ebe07ee9eac586fef59c428133 }
+replaced:
+  - { path: artefacts/bindings/bindings.yaml, sha256: 8b785c16dd08f921798ecd4fd5d302357fa17c82b152912a08a21f3f25836f68 }

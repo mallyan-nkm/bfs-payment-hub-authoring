@@ -194,12 +194,12 @@ describe('the guide: build a full workflow in the web app', () => {
     await go('tenant');
     const cs = (await client(server.url, { as: 'example.maker' }).get('/api/tenants/example-bank/configuration')).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
-    next.release = '1.1.0';
+    next.release = '1.2.0';
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));
     await page.getByRole('button', { name: 'Save the configuration set' }).click();
-    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.1\.0\S* as example\.maker, as a draft/);
+    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.2\.0\S* as example\.maker, as a draft/);
     // The bank approver, not the configurator, makes it the version.
     await as('example-bank', 'example.checker');
     await go('governance');
@@ -236,7 +236,7 @@ describe('the guide: build a full workflow in the web app', () => {
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     expect(out, out.slice(-1500)).toMatch(/^outcome settled/m);
     expect(out).toContain('worker th-uae-demo');
-    expect(out).toContain('configuration example-bank@1.1.0 from the package');
+    expect(out).toContain('configuration example-bank@1.2.0 from the package');
   }, 300000);
 
   it('caused no script error and no server error along the way', () => {

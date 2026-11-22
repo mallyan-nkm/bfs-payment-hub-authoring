@@ -7,7 +7,7 @@ import { freshEnv, clone } from './helpers.js';
 
 function docsOf() {
   const env = freshEnv();
-  return { env, docs: env.store.all().filter((e) => e.status === 'published').map((e) => clone(e.doc)) };
+  return { env, docs: env.store.current().map((e) => clone(e.doc)) };
 }
 
 function fire(code: string, mutate: (find: (name: string) => any, docs: any[]) => void | any) {
