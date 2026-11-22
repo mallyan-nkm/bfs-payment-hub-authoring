@@ -5,7 +5,7 @@ export const ACTIVITY_TYPES = [
   'map', 'validate', 'enrich', 'screen', 'decide', 'reserve',
   'exchange', 'post', 'notify', 'hold', 'reconcile',
 ] as const;
-export const OTHER_TYPES = ['rule', 'ruleset', 'table', 'sim', 'wf', 'seg', 'sub', 'handler', 'hook', 'port', 'ext'] as const;
+export const OTHER_TYPES = ['rule', 'ruleset', 'table', 'sim', 'wf', 'seg', 'sub', 'handler', 'hook', 'port', 'ext', 'view'] as const;
 export const ALL_TYPES: readonly string[] = [...ACTIVITY_TYPES, ...OTHER_TYPES];
 
 export type ScopeLevel = 'platform' | 'cluster-platform' | 'scheme' | 'bank';

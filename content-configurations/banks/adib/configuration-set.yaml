@@ -1,0 +1,23 @@
+# The bank's values for factory parameters, and its hook bindings (plan W6). Values, not definitions: each one
+# sets a parameter the factory declares, inside its bounds, from its validFrom. README.md gives the source of each.
+# The bank does not run WPS in the source, so only the platform is configured: no routing code, no WPS dial.
+kind: configuration-set
+tenant: adib
+release: 1.1.0
+title: Bank configuration (platform only)
+accepts:
+  - { scope: p, release: 1.1.0 }
+  - { scope: uae.p, release: 1.1.0 }
+  - { scope: uae.wps, release: 1.1.0 }
+values:
+  # The rails the bank runs among the factory's: none. The bank's customer overlay licenses IPI and FTS only
+  # (infra/docker/docker-compose.customer-adib.yml, LICENSE_RAILS=ipi,fts); the factory has neither (D6).
+  - parameter: p.table.rail-choice.v1#enabledRails
+    value: []
+    validFrom: "2026-11-22"
+# The employer AML check and the labour ministry notification are carried as hooks, not bound: no live workflow of
+# the bank in the source calls them (README.md). Binding one is a line here with its validFrom.
+bindings: []
+approval:
+  maker: bank.maker
+  checker: bank.checker

@@ -32,7 +32,7 @@ const KIND_OF: Record<string, string> = { activity: 'activity', rule: 'rule', ru
 export function wpsTrainingBundle(env: StudioEnv, to = 'uae.wpsx'): BundleFile[] {
   const last = to.split('.').pop()!;
   // The factory as the seed published it on the branch: each file's first line names its source (R-11-21).
-  // Of a source published at more than one release, its latest; a major line a later major replaces is not taken (R-11-29).
+  // Of a source published at more than one release, its latest; a major line a later major replaces is not taken (R-11-35).
   const seeded = new Map<string, string>();
   const at = new Map<string, string>();
   const current = new Set(env.store.current().map((e) => `${e.name}@${e.release}`));

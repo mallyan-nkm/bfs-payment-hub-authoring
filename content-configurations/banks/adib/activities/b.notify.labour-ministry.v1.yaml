@@ -1,0 +1,32 @@
+# The source's labour ministry notification (AdibWpsActivities.MohreNotification). Its failure was logged and
+# never affected the file; the hook point's fail-open policy keeps that.
+kind: activity
+name: b.notify.labour-ministry.v1
+release: 1.0.0
+title: Tell the labour ministry a salary file closed
+type: notify
+reads:
+  - header
+  - status
+  - payment.instructedAmount
+writes:
+  - facts.notified
+outcomes:
+  - name: notified
+    primary: true
+errors:
+  - name: TransientError
+    retryable: true
+  - name: BusinessReject
+    retryable: false
+effect: write
+idempotencyKey: concat(header.paymentId, ':labour-ministry')
+ports:
+  - b.port.labour-ministry.v1
+implementation:
+  binding: builtin
+  service: notification
+provenance:
+  origin: authored
+  status: provisional
+  note: Mined from the source's bank fork. No live workflow of the bank in the source calls it; see the README.

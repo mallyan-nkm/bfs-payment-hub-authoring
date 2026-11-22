@@ -52,7 +52,7 @@ def make_iban(bban, country="AE"):
 IBAN_OK = make_iban("0331234567890123456")
 
 
-# Releases (spec/CLAUDE.md "Versions", R-11-29, R-11-30). A published release is never edited: an artefact that changed after
+# Releases (spec/CLAUDE.md "Versions", R-11-35, R-11-36). A published release is never edited: an artefact that changed after
 # its first publish carries its new release here, with the reason, and everything else stays at REL. An interface change is a
 # major (a new name), an improvement a minor, a fix a patch. The earlier release stays on the content branch as it was seeded.
 # The minor releases. Each was first published at 1.0.0 (CS-2026-11-21-001) and changed after it, so the change is its own release

@@ -9,7 +9,7 @@ import { parseYamlAll } from '../src/core/yaml.js';
 import { freshEnv } from './helpers.js';
 import { BRANCH, connection, fake, forkRepo } from './support/content.js';
 
-// Published releases never change (R-11-29, R-11-30): a factory artefact changed after its first publish is a new release beside
+// Published releases never change (R-11-35, R-11-36): a factory artefact changed after its first publish is a new release beside
 // the earlier one, which stays as it was published; the seed adds files and never rewrites one; and every seeded file is in its
 // change set's ledger with the SHA-256 of its text.
 
@@ -17,7 +17,7 @@ const ROOT = 'content-configurations';
 const disk = (p: string) => fs.readFileSync(path.join(CONTENT_DIR, p), 'utf8');
 const body = (t: string) => parseYamlAll(t.slice(t.indexOf('\n') + 1)).find((d: any) => d && typeof d === 'object');
 
-describe('every changed factory artefact is a new release; the earlier stays as it was published (R-11-29)', () => {
+describe('every changed factory artefact is a new release; the earlier stays as it was published (R-11-35)', () => {
   it('keeps 1.0.0 of each changed artefact beside its new release, and resolves the latest', () => {
     const env = freshEnv();
     for (const [name, now] of [['uae.wps.exchange.return-credits.v1', '1.1.0'], ['p.post.accounting.v1', '1.1.0'], ['uae.wps.table.returns.v1', '1.1.0'], ['uae.wps.map.pif-in.v1', '1.1.0']]) {
@@ -59,7 +59,7 @@ describe('every changed factory artefact is a new release; the earlier stays as 
   });
 });
 
-describe('the seed adds and never rewrites; the ledger holds what it published (R-11-29, R-11-30)', () => {
+describe('the seed adds and never rewrites; the ledger holds what it published (R-11-35, R-11-36)', () => {
   it('this repository\'s copy is the seed: nothing to add, nothing that clashes, and every seeded file in a ledger with its hash', () => {
     const env = freshEnv();
     const plan = seedPlan(env);
@@ -67,7 +67,7 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     expect(plan.clash.map((f) => f.path)).toEqual([]);
     expect(plan.replace).toEqual([]);
     expect(releaseLedgerIssues(env.store.content!.files)).toEqual([]);
-    expect(checkAll(env).filter((i) => i.code === 'L38')).toEqual([]);
+    expect(checkAll(env).filter((i) => i.code === 'L40')).toEqual([]);
   });
 
   it('a factory change at a release already published stops the seed and names the file; nothing is written', async () => {
@@ -79,7 +79,7 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     await expect(seedContent(env)).rejects.toThrow(/uae\.wps\.map\.ack-in\.v1\/1\.1\.0\.yaml.*never rewritten/);
     expect(fake().head(full, BRANCH)).toBe(before);
     // And the check names it: the published release changed since its ledger recorded it.
-    expect(checkAll(env).filter((i) => i.code === 'L38').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml']);
+    expect(checkAll(env).filter((i) => i.code === 'L40').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml']);
   });
 
   it('a later seed adds its new files, keeps a replaced bank lock file first, and records both in its ledger', async () => {

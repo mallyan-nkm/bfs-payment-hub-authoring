@@ -39,7 +39,7 @@ function parents(scope: string): string[] {
 
 export function packEntries(env: StudioEnv, scope: string, tenant?: string): Entry[] {
   const latest = new Map<string, Entry>();
-  // A major line a later major of the same name replaces stays in the pack releases that held it, not in the next (R-11-29).
+  // A major line a later major of the same name replaces stays in the pack releases that held it, not in the next (R-11-35).
   const majors = new Map<string, number>();
   for (const e of env.store.all()) {
     const m = /^(.*)\.v(\d+)$/.exec(e.name);
@@ -60,7 +60,7 @@ export function packEntries(env: StudioEnv, scope: string, tenant?: string): Ent
   return [...latest.values()];
 }
 
-/** The latest release of a pack's manifest in the repository: an earlier one stays as it was published (R-11-29). */
+/** The latest release of a pack's manifest in the repository: an earlier one stays as it was published (R-11-35). */
 function latestPack(env: StudioEnv, match: (e: Entry) => boolean): Entry | undefined {
   return env.store.byKind('pack').filter(match).sort((a, b) => compareReleases(a.release || '1.0.0', b.release || '1.0.0')).pop();
 }

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The operations console's API and its web app (runtime/ops-console), over the operations read model. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Operations\TransactHub.Operations.csproj" />
+    <ProjectReference Include="..\TransactHub.Auth\TransactHub.Auth.csproj" />
+    <ProjectReference Include="..\TransactHub.Operations.Migrations.SqlServer\TransactHub.Operations.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Operations.Migrations.PostgreSql\TransactHub.Operations.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
+  </ItemGroup>
+
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

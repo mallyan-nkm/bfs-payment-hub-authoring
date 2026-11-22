@@ -3,3 +3,6 @@
 # Tenant ids found in packs and configuration sets are added automatically.
 example-bank
 dib
+adib
+enbd
+fab

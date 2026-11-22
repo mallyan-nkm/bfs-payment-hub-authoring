@@ -9,6 +9,7 @@ import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
 import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
 import { flowablePortable } from '../export/bpmn.js';
+import { literalSecretsInText } from '../secrets/scan.js';
 import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
 
@@ -62,8 +63,9 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L34: 'The factory holds only the packs its inventory lists',
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
-  L37: 'An activity the native host implements as well keeps a script-behind or a builtin',
-  L38: 'A published release never changes once seeded',
+  L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
+  L39: 'An activity the native host implements as well keeps a script-behind or a builtin',
+  L40: 'A published release never changes once seeded',
 };
 
 // ---------------------------------------------------------------- walking
@@ -173,7 +175,7 @@ export class Checker {
   }
 
   static fromEnv(env: StudioEnv, overlay: any[] = [], tenant?: string): Checker {
-    // The latest release of each name: an earlier one was checked when it was published, and stays as it was (R-11-29).
+    // The latest release of each name: an earlier one was checked when it was published, and stays as it was (R-11-35).
     const docs = env.store.current().filter((e) => !tenant || e.tenant === 'owner' || e.tenant === tenant).map((e) => e.doc);
     const names = new Set(overlay.map((d) => `${d.kind}:${d.name ?? d.scope ?? d.id}`));
     const merged = [...docs.filter((d) => !names.has(`${d.kind}:${d.name ?? d.scope ?? d.id}`)), ...overlay];
@@ -852,13 +854,13 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
 }
 
 /**
- * L38 (R-11-29, R-11-30): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
+ * L40 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
  * it; a path is published once, except a bank pack's lock file, which a later ledger replaces; every seeded file is in a ledger.
  * `files` are the content branch's files, path to text, relative to its root. The same check as tools/validate.py.
  */
 export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
   const out: Issue[] = [];
-  const err = (file: string, message: string) => out.push({ code: 'L38', severity: 'error', key: file, message, file });
+  const err = (file: string, message: string) => out.push({ code: 'L40', severity: 'error', key: file, message, file });
   const sha = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex');
   const recorded = new Map<string, { sha256: string; ledger: string }>();
   const ledgers = [...files.keys()].filter((p) => /^change-sets\/ledger\/[^/]+\.yaml$/.test(p)).sort();
@@ -885,7 +887,7 @@ export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
 export function checkAll(env: StudioEnv): Issue[] {
   const c = Checker.fromEnv(env);
   const issues = c.checkAll();
-  // R-11-30: what the seeds published is as they published it. Read only when a ledger exists (a branch seeded with ledgers).
+  // R-11-36: what the seeds published is as they published it. Read only when a ledger exists (a branch seeded with ledgers).
   const content = env.store.content;
   if (content && [...content.files.keys()].some((p) => p.startsWith('change-sets/ledger/'))) issues.push(...releaseLedgerIssues(content.files));
   // The factory as the seed published it (R-11-25): each entry names its source in spec/factory, so
@@ -894,14 +896,32 @@ export function checkAll(env: StudioEnv): Issue[] {
   const seeded = spec.filter((e) => e.path.split(/[\\/]/)[0] === 'factory');
   if (seeded.length) {
     const folders = [...new Set(seeded.map((e) => e.path.split(/[\\/]/)).filter((p) => p.length > 2).map((p) => p[1]))].sort();
-    // The latest inventory: an earlier one stays on the branch as it was published (R-11-29).
+    // The latest inventory: an earlier one stays on the branch as it was published (R-11-35).
     const inventory = seeded.filter((e) => e.kind === 'inventory').sort((x, y) => compareReleases(x.release || '0.0.0', y.release || '0.0.0')).pop()?.doc;
     issues.push(...factoryPackIssues(inventory, folders, spec.map((e) => ({ path: e.path, doc: e.doc }))));
   }
   for (const e of env.store.all().filter((x) => x.status === 'published')) {
     for (const s of env.schemas.validate(e.doc)) issues.push({ code: 'L00', severity: 'error', key: e.name, message: s.message, file: e.path });
   }
+  issues.push(...literalSecretIssues(env));
   return issues;
+}
+
+/**
+ * L37 (R-06-23): every file on the content branch (bank bindings and configuration, artefacts, released packages) and
+ * every document in the store names its secrets by reference only, and holds no private key.
+ */
+export function literalSecretIssues(env: StudioEnv): Issue[] {
+  const out: Issue[] = [];
+  const files = env.store.content?.files;
+  if (files) {
+    for (const [p, text] of [...files].sort(([a], [b]) => a.localeCompare(b)))
+      for (const s of literalSecretsInText(text, p)) out.push({ code: 'L37', severity: 'error', key: p, step: s.at || undefined, message: `${p}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: p });
+  } else {
+    for (const e of env.store.all())
+      for (const s of literalSecretsInText(JSON.stringify(e.doc), `${e.path}.json`)) out.push({ code: 'L37', severity: 'error', key: e.name, step: s.at || undefined, message: `${e.path}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: e.path });
+  }
+  return out;
 }
 
 /**

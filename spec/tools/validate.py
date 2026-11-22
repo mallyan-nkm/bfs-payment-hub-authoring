@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_OF = {"activity": "activity", "rule": "rule", "ruleset": "rule", "table": "rule", "workflow": "workflow",
              "simulator": "simulator", "scheme": "scheme", "hook": "hook", "configuration-set": "configuration-set",
              "pack": "pack", "engine-binding": "engine-binding", "test": "test-case", "extension": "extension",
-             "port": "port", "supersession": "supersession"}
+             "port": "port", "supersession": "supersession", "operations-view": "operations-view"}
 errors, warnings = [], []
 
 
@@ -594,12 +594,12 @@ for path, d in docs:
         err("L27", path, "maker and checker are the same person")
 
 # ------------------------------------------------------- native code-behinds
-# L37 an activity that says the runtime's native host implements it as well (R-08-16) keeps a script-behind or a builtin for
+# L39 an activity that says the runtime's native host implements it as well (R-08-16) keeps a script-behind or a builtin for
 # every other run: `native: true` goes with binding script or builtin only.
 for path, d in docs:
     impl = d.get("implementation") or {}
     if d.get("kind") == "activity" and impl.get("native") and impl.get("binding") not in ("script", "builtin"):
-        err("L37", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
+        err("L39", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
             % (d["name"], impl.get("binding")))
 
 # ------------------------------------------------------- factory packs
@@ -638,7 +638,7 @@ for path, d in docs:
 # publishes and are checked by the studio.
 BANKS = ROOT.parent / "content-configurations" / "banks"
 RUNTIME_KINDS = ("port-bindings", "configuration-values")
-# packs/ keeps a bank pack's earlier lock files, as published (R-11-29); L38 holds them to their hashes.
+# packs/ keeps a bank pack's earlier lock files, as published (R-11-35); L40 holds them to their hashes.
 STUDIO_FOLDERS = ("artefacts", "configuration-sets", "scripts", "packs")
 factory_names = set(by_name)
 for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
@@ -697,8 +697,256 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
     if bool(pack.get("containsSimulators")) != any(a["kind"] == "simulator" for a in found.values()) or pack.get("promotable") == pack.get("containsSimulators"):
         err("L35", where + "/pack.yaml", "containsSimulators and promotable do not match the folder")
 
+# ------------------------------------------------- no literal secret
+# L37 no binding, configuration or package carries a literal secret (R-06-23). A key that names a secret (password,
+# passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a camel-case name ending in one)
+# holds a reference (env:, file:, vault:, akv:) or nothing; a secretRef holds a reference; no text is a private key.
+# It reads the spec's content and everything under content-configurations/. The studio check is the same rule.
+SECRET_KEY = re.compile(r"(^|[a-z0-9_])(password|passwd|passphrase|secret|token|apikey|api_key|accesskey|access_key|privatekey|private_key|clientsecret|client_secret|credentials?)$", re.I)
+SECRET_REF = re.compile(r"^(env|file|vault|akv):\S+$")
+PRIVATE_KEY_PEM = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
+
+
+def literal_secrets(v, at="", key=None):
+    if isinstance(v, str):
+        if PRIVATE_KEY_PEM.search(v):
+            yield at, "is a private key"
+        elif key and key.lower().endswith("secretref") and not SECRET_REF.match(v):
+            yield at, "%s must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value" % key
+        elif key and SECRET_KEY.search(key) and v and not SECRET_REF.match(v):
+            yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, (int, float)) and not isinstance(v, bool) and key and SECRET_KEY.search(key):
+        yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from literal_secrets(x, "%s[%d]" % (at, i), key)
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield from literal_secrets(x, "%s.%s" % (at, k) if at else str(k), str(k))
+
+
+CONTENT = ROOT.parent / "content-configurations"
+for top, label in [(ROOT / b, b) for b in ("factory", "examples", "conformance")] + [(CONTENT, "../content-configurations")]:
+    if not top.is_dir():
+        continue
+    for f in sorted(p for p in top.rglob("*") if p.is_file() and p.suffix in (".yaml", ".yml", ".json", ".js", ".py", ".ts", ".md")):
+        where = "%s/%s" % (label, f.relative_to(top))
+        text = f.read_text(errors="replace")
+        found = []
+        if f.suffix in (".yaml", ".yml", ".json"):
+            try:
+                for d in (yaml.safe_load_all(text) if f.suffix != ".json" else [json.loads(text)]):
+                    found.extend(literal_secrets(d))
+            except Exception:
+                pass
+        if not found and PRIVATE_KEY_PEM.search(text):
+            found.append(("", "holds a private key"))
+        for at, why in found:
+            err("L37", where, "%s%s" % ("at %s " % at if at else "", why))
+# ------------------------------------------------------- operations views
+# L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
+# apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
+# registered, a message of the scheme's catalogue or a known column; a personal value declares its mask; columns and
+# filters name declared fields; and an action applies only where the flow can take it (a hold decision where that
+# hold is reached, a signal the platform workflow handles).
+OPS_PROPS = {
+    "subject": {"id", "kind", "tenant", "scheme", "direction", "status", "lastOutcome", "lastStep", "amount", "currency", "count",
+                "acceptedAt", "releaseId", "hold", "holdReason"},
+    "bulk": {"id", "messageId", "paymentInformationId", "numberOfTransactions", "controlSum", "requestedExecutionDate",
+             "creationDateTime", "acceptedAt", "categoryPurposeCode", "releaseId", "debtorName", "debtorAccount.iban",
+             "debtorAccount.other", "debtorAccount.currency", "debtorAgent.bicfi", "debtorAgent.memberId", "debtorAgent.clearingSystem"},
+    "payment": {"id", "endToEndId", "instructionId", "transactionId", "uetr", "amount", "currency", "settlementDate", "purposeCode",
+                "creditorAccount.iban", "creditorAccount.other", "creditorAgent.bicfi", "creditorAgent.memberId",
+                "debtorAccount.iban", "debtorAccount.other", "debtorAgent.bicfi", "debtorAgent.memberId"},
+    "line": {"id", "lineNo", "endToEndId", "amount", "currency", "creditorAccount.iban", "creditorAccount.other",
+             "creditorAgent.bicfi", "creditorAgent.memberId", "creditorAgent.clearingSystem"},
+    "hold": {"id", "kind", "status", "reason", "decision", "openedAt", "decidedAt", "decidedBy"},
+    "header": {"scheme", "direction", "kind", "segment", "fileId", "endToEndId"},
+}
+OPS_PERSONAL = {"bulk.debtorName", "bulk.debtorAccount.iban", "bulk.debtorAccount.other", "payment.creditorAccount.iban",
+                "payment.creditorAccount.other", "payment.debtorAccount.iban", "payment.debtorAccount.other",
+                "line.creditorAccount.iban", "line.creditorAccount.other"}
+OPS_HOLDS = {"approve": ("p.hold.approval.v1", "approved"), "decline": ("p.hold.approval.v1", "declined"),
+             "release": ("p.hold.repair.v1", "released"), "reject": ("p.hold.repair.v1", "rejected")}
+STEP_SRC = re.compile(r"^step:(?P<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?P<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$")
+MSG_SRC = re.compile(r"^message:(?P<kind>[a-z0-9.\-]+?)\.(?:fileName|at|size|count|direction)$")
+
+
+def flow_steps(wf, seen=()):
+    """The step ids of a workflow with its segments inlined, each mapped to the activity it calls (or None)."""
+    out = {}
+    if not wf or wf.get("name") in seen:
+        return out
+    for st in all_steps(wf):
+        if st.get("id"):
+            out[st["id"]] = st.get("call")
+        if st.get("use"):
+            out.update(flow_steps(by_name.get(st["use"]), seen + (wf.get("name"),)))
+    return out
+
+
+def step_exists(path_, steps):
+    head, _, inner = path_.partition(".")
+    if head not in steps:
+        return False
+    if not inner:
+        return True
+    a = by_name.get(steps[head])
+    sub = by_name.get((a or {}).get("implementation", {}).get("subflow")) if composite(a) else None
+    return bool(sub) and inner in flow_steps(sub)
+
+
+def reached(wf_names, activity):
+    """True when one of the workflows (their segments, legs and subflows) calls the activity, or a hook point holds with it."""
+    todo, seen = list(wf_names), set()
+    while todo:
+        n = todo.pop()
+        if n in seen:
+            continue
+        seen.add(n)
+        d = by_name.get(n)
+        if not d:
+            continue
+        own = {st.get("call") for st in all_steps(d)} | {hp["policy"].get("onHold") for hp in d.get("hookPoints") or []}
+        if activity in own:
+            return True
+        # Down into what the flow runs (its segments and subflows), never up into the platform workflow a leg fills.
+        todo.extend(st["use"] for st in all_steps(d) if st.get("use"))
+        for a in (by_name.get(st.get("call")) for st in all_steps(d) if st.get("call")):
+            if composite(a):
+                todo.append(a["implementation"]["subflow"])
+    return False
+
+
+ext_fields = {}
+for _, d in docs:
+    if d.get("kind") == "extension":
+        for f in d.get("fields") or []:
+            ext_fields["%s.%s" % (d["root"], f["path"])] = f
+
+for path, d in docs:
+    if d.get("kind") != "operations-view":
+        continue
+    scheme_scope = d.get("scheme")
+    own = scope_of(d["name"])
+    if scheme_scope:
+        sch = schemes.get(scheme_scope)
+        if sch is None or own != scheme_scope:
+            err("L38", path, "%s is a view of scheme %s, which is not its own scope's scheme" % (d["name"], scheme_scope))
+            continue
+        platform = []
+        leg_names = set(sch.get("legs") or [])
+        catalogue = {m["id"] for m in sch.get("messages") or []}
+    else:
+        platform = d.get("platform") or []
+        if own != "p" or not platform:
+            err("L38", path, "a view with no scheme is the platform's: it is in scope p and lists the platform workflows it shows")
+        for w in platform:
+            if (by_name.get(w) or {}).get("wfKind") != "platform":
+                err("L38", path, "%s is not a platform workflow" % w)
+        leg_names, catalogue = set(), set()
+    platform_steps = {}
+    for w in platform:
+        platform_steps.update(flow_steps(by_name.get(w)))
+    sections = [("subject", d.get("subject") or {}, None)] + [("leg %s" % l.get("leg"), l, l.get("leg")) for l in d.get("legs") or []]
+    all_leg_steps = {}
+    for _, l, leg in sections[1:]:
+        all_leg_steps.update(flow_steps(by_name.get(leg)))
+    for where, sec, leg in sections:
+        at = "%s %s" % (path, where)
+        if leg is not None:
+            wf = by_name.get(leg)
+            if leg not in leg_names or not wf or wf.get("wfKind") != "leg":
+                err("L38", at, "%s is not a leg of scheme %s" % (leg, scheme_scope))
+                continue
+            steps = flow_steps(wf)
+            sel = sec.get("selectBy") or {}
+            if sel.get("direction") and sel["direction"] != wf.get("direction"):
+                err("L38", at, "selects direction %s, but the leg is %s" % (sel["direction"], wf.get("direction")))
+            for s in sel.get("steps") or []:
+                if s not in steps:
+                    err("L38", at, "is told apart by step %s, which the leg does not have" % s)
+            flows = [leg]
+        else:
+            steps = platform_steps if not scheme_scope else all_leg_steps
+            flows = platform if not scheme_scope else sorted(leg_names)
+        ids = {}
+        for kind_, fields in (("field", sec.get("fields") or []), ("line field", (sec.get("lines") or {}).get("fields") or [])):
+            for f in fields:
+                key = (kind_, f["id"])
+                if key in ids:
+                    err("L38", at, "declares %s %s twice" % (kind_, f["id"]))
+                ids[key] = f
+                src = f["source"].strip()
+                root = re.split(r"[.:(]", src, maxsplit=1)[0]
+                problem = None
+                personal = src in OPS_PERSONAL
+                if src.startswith("step:"):
+                    m = STEP_SRC.match(src)
+                    if not m:
+                        problem = "is not a step source (step:<step>.<outcome|reasonCode|at|attempt|status|writes...>)"
+                    elif not step_exists(m.group("path"), steps):
+                        problem = "reads step %s, which %s does not have" % (m.group("path"), leg or "any flow of the view")
+                elif src.startswith("message:"):
+                    m = MSG_SRC.match(src)
+                    if not m or m.group("kind") not in catalogue:
+                        problem = "reads a message that is not in the scheme's catalogue"
+                elif src.startswith("lines."):
+                    if not re.match(r"^lines\.(count|count\(.+\)|sum\(line\..+\))$", src):
+                        problem = "is not lines.count, lines.count(<line source> = <value>) or lines.sum(<line source>)"
+                elif root in ("ext", "line") and (src.startswith("ext.") or src.startswith("line.ext.")):
+                    p = src[5:] if src.startswith("line.") else src
+                    ef = ext_fields.get(p)
+                    want = "item" if kind_ == "line field" else None
+                    if ef is None:
+                        problem = "reads %s, which no extension registers" % p
+                    elif want and ef["level"] != want:
+                        problem = "reads %s, which is not an item field" % p
+                    elif not want and ef["level"] == "item":
+                        problem = "reads item field %s outside the lines" % p
+                    personal = personal or bool(ef and ef.get("personalData"))
+                elif src.startswith("line.facts.") and kind_ == "line field":
+                    pass
+                elif root in OPS_PROPS and src[len(root) + 1:] in OPS_PROPS[root]:
+                    if root == "line" and kind_ != "line field":
+                        problem = "reads a line outside the lines"
+                else:
+                    problem = "is not a source the console can read"
+                if problem:
+                    err("L38", at, "%s %s %s" % (kind_, f["id"], problem))
+                # R-05-49: a value that is personal data says how it is masked; showing it whole is a choice the old screen made
+                if personal and "mask" not in f:
+                    err("L38", at, "%s %s reads personal data (%s) and declares no mask" % (kind_, f["id"], src))
+                if f.get("mask") == "none" and not f.get("oldScreen"):
+                    err("L38", at, "%s %s is shown unmasked without naming the old screen that showed it" % (kind_, f["id"]))
+        fields = {i for (k, i) in ids if k == "field"}
+        lfields = {i for (k, i) in ids if k == "line field"}
+        for c in sec.get("columns") or []:
+            if c not in fields:
+                err("L38", at, "column %s is not a declared field" % c)
+        for c in (sec.get("lines") or {}).get("columns") or []:
+            if c not in lfields:
+                err("L38", at, "line column %s is not a declared line field" % c)
+        for flt in sec.get("filters") or []:
+            if flt["field"] not in fields:
+                err("L38", at, "filter %s is not a declared field" % flt["field"])
+        for g in {f.get("group") for (k, _), f in ids.items() if f.get("group")} - {g["id"] for g in sec.get("groups") or []}:
+            err("L38", at, "group %s is not declared" % g)
+        for a in sec.get("actions") or []:
+            name = a["action"]
+            if name in OPS_HOLDS:
+                act, outcome = OPS_HOLDS[name]
+                hold = by_name.get(act) or {}
+                if outcome not in {o["name"] for o in hold.get("outcomes") or []} or not any(reached([w], act) for w in flows):
+                    err("L38", at, "action %s decides %s, which no flow of this view reaches" % (name, act))
+            elif name in ("cancel", "re-screen", "pause", "resume"):
+                hosts = flows if not scheme_scope else sorted({w for l in flows for w in ((by_name.get(l) or {}).get("implements") or {}).get("of") or []})
+                if not hosts or not all(name in (by_name.get(w) or {}).get("signals", []) for w in hosts):
+                    err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
+            if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
+                err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
 # ------------------------------------------------- published releases never change
-# L38 (R-11-29, R-11-30) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
+# L40 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
 # (content-configurations/change-sets/ledger/<id>.yaml), and still has that text: a published release is never edited. A path
 # is published once, except a bank pack's lock file, which a later ledger replaces by naming the hash it replaces and where
 # the earlier lock is kept. Every seeded file is in a ledger. And a factory artefact at a release the branch already holds
@@ -723,14 +971,14 @@ if (CC / "change-sets" / "ledger").is_dir():
             pth, h = row.get("path"), row.get("sha256")
             again = pth in recorded and not (BANK_LOCK.match(pth) and pth in replaced and replaced[pth].get("sha256") == recorded[pth][0])
             if again:
-                err("L38", at, "publishes %s again; ledger %s published it, and a published file is never replaced" % (pth, recorded[pth][1]))
+                err("L40", at, "publishes %s again; ledger %s published it, and a published file is never replaced" % (pth, recorded[pth][1]))
             recorded[pth] = (h, lf.name)
     for pth, (h, lf) in sorted(recorded.items()):
         f = CC / pth
         if not f.is_file():
-            err("L38", "content-configurations/" + pth, "ledger %s published it, and it is gone" % lf)
+            err("L40", "content-configurations/" + pth, "ledger %s published it, and it is gone" % lf)
         elif sha256(f.read_text()) != h:
-            err("L38", "content-configurations/" + pth, "has changed since ledger %s published it; a published release is never edited: release a new one" % lf)
+            err("L40", "content-configurations/" + pth, "has changed since ledger %s published it; a published release is never edited: release a new one" % lf)
     for f in sorted(CC.rglob("*")):
         if not f.is_file():
             continue
@@ -740,7 +988,7 @@ if (CC / "change-sets" / "ledger").is_dir():
             continue
         rel = f.relative_to(CC).as_posix()
         if SEED_MARK in first and rel not in recorded:
-            err("L38", "content-configurations/" + rel, "is a seeded file that no change set's ledger records")
+            err("L40", "content-configurations/" + rel, "is a seeded file that no change set's ledger records")
     # the factory at a release the branch holds is what was seeded
     for path, d in docs:
         if not path.startswith("factory/") or not d.get("release"):
@@ -751,7 +999,7 @@ if (CC / "change-sets" / "ledger").is_dir():
         where = "artefacts/%s/%s/%s.yaml" % (scope, {"scheme": "scheme", "pack": "pack"}.get(d.get("kind"), d.get("name")), d["release"])
         seeded = CC / where
         if seeded.is_file() and seeded.read_text() != SEED_HEADER % path + (ROOT / path).read_text():
-            err("L38", path, "%s@%s is not what the branch published at that release (content-configurations/%s): a published release "
+            err("L40", path, "%s@%s is not what the branch published at that release (content-configurations/%s): a published release "
                 "is never edited; give the change a new release" % (d.get("name") or d.get("scope"), d["release"], where))
 
 # ---------------------------------------------------------------- report

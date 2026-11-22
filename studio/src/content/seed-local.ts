@@ -7,7 +7,7 @@ import { seedContent, seedPlan } from './seed.js';
 
 // Regenerate this repository's content-configurations/ (R-11-25): the seed command runs as a change
 // set against an in-memory fake GitHub seeded from the folder, and the files of that one commit are
-// copied back. It adds files and never rewrites one (R-11-29): a seeded file whose source in spec/ changed at the same
+// copied back. It adds files and never rewrites one (R-11-35): a seeded file whose source in spec/ changed at the same
 // release stops it, as on a connected branch, and names the file. Release the change, then seed again.
 
 export async function writeLocalSeed(actor?: string) {

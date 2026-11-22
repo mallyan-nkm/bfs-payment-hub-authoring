@@ -9,7 +9,7 @@ What can go wrong in the north star, what it does, and what stops or finds it. I
 | F3 | Two writers take the same sequence number on a payment | Facts out of order | Unique index on (subject, sequence); a clean conflict | `StoreTests.Two_writers_on_one_subject_never_share_a_number` |
 | F4 | A future-dated rule hides the rule in force | Wrong charges or limits (the source's N1) | Date first, then version | `StoreTests.A_future_dated_rule_does_not_hide_the_rule_in_force` |
 | F5 | A hot update changes a payment that asked for its acceptance date | A payment's answer changes in flight | Lookup as of the date the rule declares | `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update` |
-| F6 | Engines disagree on a workflow | A payment's outcome depends on the installation | One interpreter; the kit's 46 scenarios on each engine | `run-kit.ts` per engine; CI job `kit` |
+| F6 | Engines disagree on a workflow | A payment's outcome depends on the installation | One interpreter; the kit's 48 scenarios on each engine | `run-kit.ts` per engine; CI job `kit` |
 | F7 | A test package reaches production | A simulator answers for a real party | A package with simulators is not promotable | `ReleaseApiTests` |
 | F8 | A bank is defaulted when none is given | One bank's values applied to another (the source's N5) | A tenant is always given; a port with no binding is refused | `BankConfigurationTests` |
 | F9 | Shared code names a bank | A fork grows back | Build check on bank names | `BankConfigurationTests.No_shared_code_names_a_bank` |
@@ -23,8 +23,10 @@ What can go wrong in the north star, what it does, and what stops or finds it. I
 | F17 | A script-behind reaches outside its interface | Non-deterministic or unsafe runs | Sandboxes with only the injected interface | Sandbox tests; not a security boundary (D14) |
 | F18 | An outside party does not answer | A payment waits for ever | Every await has a timeout (check L32) | Mutation case for L32 |
 | F19 | A non-primary outcome is not handled | A payment stops with no path | Every non-primary outcome is handled (check catalogue) | `validate.py`, `mutation_tests.py` |
-| F20 | A secret is committed | Credentials exposed in a public repository | Review only today | No scan in CI: [I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment) |
+| F20 | A secret is committed | Credentials exposed in a public repository | Check L37; gitleaks in CI | Built (R-06-23, R-09-28; [I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)) |
 | F21 | An operator changes a running payment without a second approver | Money moved on one person's word | Declared operator actions (plan W4) | Not built: [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) |
-| F22 | Someone stores or activates a release without leave | Unapproved logic goes live | None in the API today | [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) |
+| F22 | Someone stores or activates a release without leave | Unapproved logic goes live | Bank-issued JWTs and roles on the release API; every package signed by the studio and verified at storage and activation | Built (R-09-23 to R-09-29) |
+| F23 | Personal data reaches a trace, a metric or a log | A party's name, account or IBAN leaves the bank in telemetry | Hosts write ids only; masking before every exporter (R-09-35, R-10-08); the collector's redaction as a second guard | `TelemetryTests`, `studio/test/telemetry.test.ts` (a WPS run exports no party value) |
+| F24 | A large file times out or takes hours on a real Temporal server | Salary files miss their day | Load harness before go-live (R-09-38); I-77 and I-78 | `runtime/load/matrix.sh`; `docs/runtime/LOAD-TEST.md` (not yet met) |
 
 The source's top risks were in parts the north star reaches through ports (screening, core banking, exchange rates) or has not decided (notification, reconciliation). They return as failure modes of those ports and lifecycle steps when each is built, each with its simulator scenario.

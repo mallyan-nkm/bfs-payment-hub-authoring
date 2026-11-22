@@ -1,0 +1,21 @@
+# The bank's core banking, as a port binding (plan W6, P5). Read by runtime/src/TransactHub.Ports/PortBindings.cs.
+#
+# The source's bank fork (services/activities/bank/Enbd/PaymentHub.Activities.Bank.Enbd.Wps/EnbdWpsActivities.cs and the Core, Ipi and Fts plugins beside it) reached core banking through the
+# named HTTP client CoreBanking, JSON over REST, and read no CoreBanking:* setting. Every route it called is the
+# bank simulator's (/api/simulator/...). So no gateway setting of the bank's is in the source: no service code,
+# host id, branch, flags, paths or function ids (Issue I-85).
+#
+# The binding names the runtime's REST adapter, its host as a placeholder and its credential by reference, and
+# nothing else. The adapter refuses every call until the bank's settings are added ("has no '...'"): nothing is
+# defaulted, and no payment of the bank reaches a simulator by mistake. The bank's settings come as a new binding
+# with a later validFrom (README.md).
+kind: port-bindings
+tenant: enbd
+bindings:
+  - port: p.port.core-banking.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-22T00:00:00Z
+    settings:
+      baseUrl: https://core-banking.enbd.invalid/
+      # The gateway's credential, by reference only. The source holds none of the bank's.
+      secretRef: env:TH_ENBD_CORE_BANKING_TOKEN

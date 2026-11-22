@@ -98,7 +98,7 @@ dump('tests/WPS-CBX-006.yaml', d6)
 
 # The example bank's values for the new parameters.
 cs = yaml.safe_load(open(os.path.join(REPO, 'spec/examples/bank/configuration-set.yaml')))
-# A later release than the example bank's own, which it carries forward (R-11-29: the earlier stays as published).
+# A later release than the example bank's own, which it carries forward (R-11-35: the earlier stays as published).
 maj, mi, _ = (int(x) for x in cs['release'].split('.'))
 cs['release'] = f'{maj}.{mi + 1}.0'
 cs['title'] = f"{cs.get('title', 'Configuration')}, with its routing code for the source's CBX checks"

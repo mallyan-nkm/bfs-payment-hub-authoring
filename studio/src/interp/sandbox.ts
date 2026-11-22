@@ -140,7 +140,7 @@ export class ScriptRegistry {
 
   /**
    * The script-behind of an activity. With a release, a script re-released with it (`<name>@<release>`) comes first, then the
-   * script of the name: a script that changes is published beside the earlier one, never over it (R-08-10, R-11-30).
+   * script of the name: a script that changes is published beside the earlier one, never over it (R-08-10, R-11-36).
    */
   find(name: string, release?: string): { file: string; source: string; language: 'typescript' | 'python' } | undefined {
     if (release && !name.includes('@')) {

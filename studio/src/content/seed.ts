@@ -23,14 +23,14 @@ import { USERS_PATH, documentPath } from './layout.js';
 // (studio/fixtures/samples/) are factory content too: the seed publishes them into scripts/ and samples/,
 // and the studio reads them from the branch like a designer's (R-11-25). Their sources stay in studio/.
 //
-// A factory change after the seed needs a new release (Issue I-44, R-11-29): the seed never rewrites a file, on a connected
+// A factory change after the seed needs a new release (Issue I-44, R-11-35): the seed never rewrites a file, on a connected
 // branch or in this repository's own copy. A document whose path names no release goes to a path that does once it is
 // released again: a factory test to `tests/<id>@<pack release>.yaml`, the inventory to `inventory/<release>.yaml`, the example
 // bank's configuration set to `configuration-sets/<release>.yaml`. The one file a seed replaces is a bank pack's lock file,
 // `banks/<bank>/pack.yaml`, whose place R-11-28 fixes: the earlier lock is kept first at `packs/<release>.yaml`.
 //
-// Each seed records what it published, path and SHA-256, in `change-sets/ledger/<id>.yaml` (R-11-30). `studio check` and
-// tools/validate.py (L38) hold every recorded file to its hash, so a published release never changes once seeded.
+// Each seed records what it published, path and SHA-256, in `change-sets/ledger/<id>.yaml` (R-11-36). `studio check` and
+// tools/validate.py (L40) hold every recorded file to its hash, so a published release never changes once seeded.
 
 const STUDIO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -48,10 +48,10 @@ export function seedSourceHeader(rel: string) {
 
 export interface SeedFile { path: string; text: string; source: string; docs: { doc: any; tenant: string }[] }
 
-/** The SHA-256 of a file's text, as a ledger records it (R-11-30). */
+/** The SHA-256 of a file's text, as a ledger records it (R-11-36). */
 export const textSha = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
-/** Where the ledger of a change set lives (R-11-30). */
+/** Where the ledger of a change set lives (R-11-36). */
 export const ledgerPath = (id: string) => `change-sets/ledger/${id}.yaml`;
 
 /** Where a seeded file came from, for the change set record: its pack folder in spec/, or its folder in studio/. */
@@ -67,7 +67,7 @@ export function seedFiles(specRoot: string, studioRoot = STUDIO_DIR): SeedFile[]
     out.push({ path: to(docs), text: seedHeader(rel) + text, source: `spec/${rel}`, docs: docs.map((doc) => ({ doc, tenant: doc.tenant ?? tenant })) });
   };
   const factory = path.join(specRoot, 'factory');
-  // A pack's release, for its tests: a test carries no release of its own (R-11-29).
+  // A pack's release, for its tests: a test carries no release of its own (R-11-35).
   const packRelease = (scope: string) => {
     const f = path.join(factory, scope, 'pack.yaml');
     return fs.existsSync(f) ? String(parseYamlAll(fs.readFileSync(f, 'utf8'))[0]?.release ?? '1.0.0') : '1.0.0';
@@ -127,7 +127,7 @@ const releaseOf = (text: string) => String(parseYamlAll(text).find((d: any) => d
 
 /**
  * What the seed would do on the branch: the files to add, those already there, those that clash, and the bank pack lock files
- * a later release replaces, each with where the earlier one is kept (R-11-29).
+ * a later release replaces, each with where the earlier one is kept (R-11-35).
  */
 export function seedPlan(env: StudioEnv) {
   const c = env.store.content;
@@ -167,17 +167,17 @@ export async function seedContent(env: StudioEnv, actor = SEED_ACTOR): Promise<S
     makers: ['tools/build_factory.py'], sources: [...new Set(published.map((f) => sourceGroup(f.source)))].sort(), members,
   };
   const extra: Record<string, string | { path: string; text: string; guard: 'replace'; expect: string }> = Object.fromEntries(plan.add.map((f) => [f.path, f.text]));
-  // A bank pack's lock file a later release replaces: the earlier one is kept first, as it was (R-11-29).
+  // A bank pack's lock file a later release replaces: the earlier one is kept first, as it was (R-11-35).
   for (const r of plan.replace) {
     extra[r.keptAt] = r.was;
     extra[r.file.path] = { path: r.file.path, text: r.file.text, guard: 'replace', expect: r.was };
   }
   if (plan.users) extra[USERS_PATH] = toYaml({ kind: 'studio-users', users: DEFAULT_USERS });
-  // The ledger (R-11-30): every file this change set publishes, with the SHA-256 of its text; a replaced lock file with where it is kept.
+  // The ledger (R-11-36): every file this change set publishes, with the SHA-256 of its text; a replaced lock file with where it is kept.
   const ledger = [...plan.add.map((f) => ({ path: f.path, sha256: textSha(f.text) })), ...plan.replace.map((r) => ({ path: r.keptAt, sha256: textSha(r.was) })), ...plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.file.text) }))]
     .sort((a, b) => a.path.localeCompare(b.path));
   extra[ledgerPath(id)] = [
-    `# The files change set ${id} published, each with the SHA-256 of its text as published (R-11-30). Written once; never edited.`,
+    `# The files change set ${id} published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.`,
     toYaml({ kind: 'release-ledger', changeSet: id, files: ledger, ...(plan.replace.length ? { replaced: plan.replace.map((r) => ({ path: r.file.path, sha256: textSha(r.was), keptAt: r.keptAt })) } : {}) }),
   ].join('\n');
   const message = [

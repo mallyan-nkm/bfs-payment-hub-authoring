@@ -20,9 +20,10 @@ What the studio publishes and what a bank configures (plan section 2, W4, W6, W8
 
 A change set in progress is not in this folder of the content branch: it is its own branch, `studio/<change set id>`, which holds its drafts at the paths above, their scripts and its audit, one commit per draft save (R-11-22). Approval publishes it here as one commit, or, in pull-request mode, opens a pull request from that branch.
 
-Values here are synthetic, with one exception. By the owner's decision of 2026-11-21 (D5 as amended), DIB's real configuration lives here, in `banks/dib/`: its bank pack, its configuration set, its core-banking binding and its CBX values. Its `README.md` says where each value came from and what is not carried. Another bank's real values (its routing code, GL accounts, host ids) still live in the bank's own copy of this repository. No secret lives here, DIB's included: a secret is named by reference and set at deployment.
+Values here are synthetic, with one exception. By the owner's decision of 2026-11-21 (D5 as amended), DIB's real configuration lives here, in `banks/dib/`: its bank pack, its configuration set, its core-banking binding and its CBX values. Its `README.md` says where each value came from and what is not carried. By the owner's decision of 2026-11-22, ADIB, ENBD and FAB are set up the same way, in `banks/adib/`, `banks/enbd/` and `banks/fab/`: none of them runs WPS in the source, so each configures the platform only, and its `README.md` says where each value came from and what has nowhere to go yet. Another bank's real values (its routing code, GL accounts, host ids) still live in the bank's own copy of this repository. No secret lives here, DIB's included: a secret is named by reference and set at deployment.
 
 | Bank folder | What |
 | --- | --- |
 | `banks/example-bank/` | Synthetic. Every knob the runtime reads, with made-up values, and the example bank pack seeded from `spec/examples/bank/`. |
 | `banks/dib/` | DIB's real configuration. The studio loads its pack with `--bank dib`. |
+| `banks/adib/`, `banks/enbd/`, `banks/fab/` | ADIB's, ENBD's and FAB's real configuration, platform only (Issues I-85, I-86). The studio loads each with `--bank <name>`. |

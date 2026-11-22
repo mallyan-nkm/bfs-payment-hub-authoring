@@ -357,6 +357,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:549bfb7935f479df410c754da579042052bffa4d4b67de087b6e57d6fb05e79f
     path: tests/WPS-RTC-001.yaml
+  - name: uae.wps.view.operations.v1
+    kind: operations-view
+    release: 1.1.0
+    hash: sha256:9e12d179a45d8422650205aafce2ae11450823b9e5dbb217c8d1d5fcc10e37af
+    path: views/uae.wps.view.operations.v1.yaml
   - name: uae.wps.sub.confirm-receipt.v1
     kind: workflow
     release: 1.1.0

@@ -40,6 +40,13 @@ jobs:
       - name: Studio checks
         working-directory: studio
         run: npm run studio -- check
+      - name: Bank folders (content-configurations/banks)
+        working-directory: studio
+        run: |
+          for bank in dib adib enbd fab; do
+            npm run studio -- check --bank "$bank"
+            npm run studio -- test --bank "$bank"
+          done
       - name: The seeded content is current (R-11-25)
         working-directory: studio
         run: npm run studio -- seed-content

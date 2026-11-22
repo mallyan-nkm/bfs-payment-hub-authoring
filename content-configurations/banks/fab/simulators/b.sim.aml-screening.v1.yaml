@@ -1,0 +1,41 @@
+# A test double for b.port.aml-screening.v1. A simulator is never part of a promotable pack: the bank pack this folder exports
+# leaves it out (buildPack), as the example bank's does.
+kind: simulator
+name: b.sim.aml-screening.v1
+release: 1.0.0
+title: Bank AML screening simulator
+direction: outward
+port: b.port.aml-screening.v1
+standsFor: bank AML screening service
+state:
+  keyedBy: message id
+scenarios:
+  - name: accept
+    steps:
+      - expect: b.aml.employer-check
+      - send: b.aml.result
+        status: accepted
+  - name: reject
+    steps:
+      - expect: b.aml.employer-check
+      - send: b.aml.result
+        status: rejected
+        reasonCode: RR04
+  - name: no-reply
+    steps:
+      - expect: b.aml.employer-check
+      - noReply: true
+  - name: fail-twice-then-accept
+    steps:
+      - expect: b.aml.employer-check
+        failTimes: 2
+      - send: b.aml.result
+        status: accepted
+implementation:
+  binding: script
+  language: python
+  script: scripts/b.sim.aml-screening.v1.py
+provenance:
+  origin: authored
+  status: provisional
+  note: Synthetic. Stands in for the bank's service in tests only.

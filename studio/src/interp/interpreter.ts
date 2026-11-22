@@ -13,6 +13,7 @@ import { ActivityFailure, TransientFailure, outcomeForStatus, primaryOutcome, re
 import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from './sandbox.js';
 import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../core/expand.js';
 import { runPythonScript } from './pysandbox.js';
+import { attrs, inSpan, meters, SpanKind, SpanStatusCode, traceHeaders, tracer } from '../telemetry/telemetry.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
 // reference for every engine. It never evaluates rules, reads values or calls ports inline:
@@ -968,18 +969,26 @@ export function nativeHere(act: any): boolean {
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
-async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
+export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
+  // The native host's ports are the bank's: the call is a port call span, and carries the trace (R-09-33).
+  const t0 = performance.now();
+  const portAttrs = attrs({ 'th.port': 'native-host', 'th.activity': act.name });
   try {
-    const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
-    });
-    res = await r.json();
+    res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
+      const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
+        method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders() },
+        body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
+      });
+      return r.json();
+    }, { kind: SpanKind.CLIENT });
   } catch (e: any) {
+    meters().portErrors.add(1, { ...portAttrs, 'th.error': 'NativeHostUnreachable' });
     throw new TransientFailure('NativeHostUnreachable');
+  } finally {
+    meters().portCall.record((performance.now() - t0) / 1000, portAttrs);
   }
   if (res.kind === 'error') throw new ActivityFailure(res.name ?? 'NativeFailure', res.message ?? 'native failure', !!res.retryable);
   if (!(act.outcomes ?? []).some((o: any) => o.name === res.outcome)) throw new ContractViolation('R-03-02', `${act.name} returned ${res.outcome}, which is not one of its outcomes`);
@@ -1088,7 +1097,28 @@ function makeIO(act: any, frame: Frame, scope: Scope, stepId: string, view: any,
       run.messages.push(msg);
       inst.event('message-out', label(frame, stepId), { port, type: msg.type, id: msg.id });
       const sim = run.simFor(port);
-      const res = sim.receive(msg, o.expectsSyncReply);
+      // A port call is a span of its own and a latency (R-09-33), made and ended here with no await, so the
+      // interpreter's order of events is what it was.
+      const t0 = performance.now();
+      const portAttrs = attrs({ 'th.port': port, 'th.activity': act.name });
+      const span = tracer().startSpan(`th.port.call ${port}`, { kind: SpanKind.CLIENT, attributes: attrs({ ...portAttrs, 'th.message.type': msg.type, 'th.payment.id': frame.ctx?.header?.paymentId }) });
+      let res: SimResponse;
+      try {
+        res = sim.receive(msg, o.expectsSyncReply);
+      } catch (e: any) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: e?.name ?? 'Error' });
+        span.end();
+        meters().portErrors.add(1, { ...portAttrs, 'th.error': e?.name ?? 'Error' });
+        throw e;
+      }
+      const result = res.kind === 'reply' ? res.message.status ?? 'reply' : res.kind;
+      span.setAttribute('th.port.result', result);
+      if (res.kind === 'transient' || res.kind === 'no-reply') {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: res.kind });
+        meters().portErrors.add(1, { ...portAttrs, 'th.error': res.kind });
+      }
+      span.end();
+      meters().portCall.record((performance.now() - t0) / 1000, { ...portAttrs, 'th.port.result': result });
       if (res.kind === 'reply') {
         run.messages.push(res.message);
         inst.event('reply', label(frame, stepId), { status: res.message.status, reasonCode: res.message.reasonCode });

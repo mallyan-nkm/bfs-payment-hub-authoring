@@ -10,4 +10,8 @@
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Security\TransactHub.Security.csproj" />
+  </ItemGroup>
+
 </Project>

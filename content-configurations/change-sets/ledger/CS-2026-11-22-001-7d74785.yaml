@@ -1,4 +1,4 @@
-# The files change set CS-2026-11-22-001 published, each with the SHA-256 of its text as published (R-11-30). Written once; never edited.
+# The files change set CS-2026-11-22-001 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
 # Recorded on 2026-11-22 from the commit that published it (7d74785), as the change set itself carries no hashes (Issue I-83).
 # A second change set took the same id on a parallel branch; the merge kept the other's record, so this one names its commit.
 kind: release-ledger

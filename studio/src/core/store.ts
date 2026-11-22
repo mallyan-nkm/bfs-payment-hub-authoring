@@ -279,6 +279,10 @@ export class Store {
           const tenant = parts[0] === 'banks' ? parts[1] : OWNER_TENANT;
           for (const doc of parseYamlAll(text)) {
             if (!doc || typeof doc !== 'object') continue;
+            // The published release with the same content is not a draft: the branch's file differs from the
+            // content branch's only in how it is written (an older studio wrote YAML aliases where an object
+            // was held twice, and published it without them).
+            if (this.entries.get(tenantKey(doc, tenant))?.hash === contentHash(doc)) continue;
             const e = this.add(doc, p, 'studio', false, 'draft', tenant);
             e.changeSet = d.id;
             if (awaiting) e.awaitingMerge = awaiting;
@@ -450,7 +454,7 @@ export class Store {
   }
 
   /**
-   * The published documents the studio resolves: of each name, per tenant, its latest release (R-11-29). An earlier release stays on
+   * The published documents the studio resolves: of each name, per tenant, its latest release (R-11-35). An earlier release stays on
    * the branch as it was published, and is still read by an exact release; the checks and the packs see this.
    */
   current(): Entry[] {
@@ -472,7 +476,7 @@ export class Store {
     return this.byKind('test').find((e) => e.name === id);
   }
 
-  /** A scheme's manifest: its latest release, as every other artefact (R-11-29: an earlier release stays on the branch). */
+  /** A scheme's manifest: its latest release, as every other artefact (R-11-35: an earlier release stays on the branch). */
   scheme(scope: string): any {
     const all = this.byKind('scheme').filter((e) => e.scope === scope).sort((x, y) => compareReleases(x.release, y.release));
     return all[all.length - 1]?.doc;
@@ -539,7 +543,8 @@ export class Store {
     const e = this.add(clone(doc), p, 'studio', false, 'draft', tenant);
     e.changeSet = cs;
     this.transaction(() => {
-      this.write(draftBranch(cs), `Draft ${e.key.replace(/#draft$/, '')} (${cs})\n\nSaved by ${actor}.`, [{ path: p, text: toYaml(doc), guard: 'free' }]);
+      // The text of what is kept, so the branch holds what a publish of it will write.
+      this.write(draftBranch(cs), `Draft ${e.key.replace(/#draft$/, '')} (${cs})\n\nSaved by ${actor}.`, [{ path: p, text: toYaml(e.doc), guard: 'free' }]);
       this.record({ tenant, actor, action: 'save-draft', key: e.key, changeSet: cs });
     });
     return e;
@@ -634,10 +639,10 @@ export class Store {
    * set record, its audit and `extra` (engine packages, an activation). Every path is new: a file that
    * is on the branch with other content stops the publish and is named (R-09-21).
    */
-  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean; filesOnly?: boolean } = {}): Promise<WriteResult> | undefined {
+  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean; tags?: { name: string; message: string }[]; filesOnly?: boolean } = {}): Promise<WriteResult> | undefined {
     const changes: Change[] = [];
     const add = (p: string, text: string) => changes.push({ path: p, text, guard: 'create' });
-    // The seed writes its files itself (extraFiles); its members only name them in the record (R-11-29).
+    // The seed writes its files itself (extraFiles); its members only name them in the record (R-11-35).
     const members = opts.filesOnly ? [] : changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
     for (const e of members) {
       add(e.path.startsWith('artefacts/') || e.path.startsWith('banks/') ? e.path : documentPath(e.doc, e.tenant), toYaml(e.doc));
@@ -673,6 +678,8 @@ export class Store {
       r = this.write(target, msg, changes, {
         merge: !opts.pullRequest && whole ? () => this.content?.drafts.get(branches[0])?.head : undefined,
         prune: opts.pullRequest ? undefined : emptied,
+        // Release tags go on the content branch's commit; a pull request's are not made (Issue I-76).
+        tags: opts.pullRequest ? undefined : opts.tags,
         pull: opts.pullRequest ? { title: `Release change set ${changeSet.id}`, body: `${msg}\n\nApproved in the studio through maker-checker. Merge the pull request to publish it.` } : undefined,
       });
       // The audit of the change set goes with it.
