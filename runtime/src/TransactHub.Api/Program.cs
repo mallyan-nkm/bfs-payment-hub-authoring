@@ -55,6 +55,18 @@ app.MapGet("/releases", async (string scope, string release, StoreDbContext db) 
     return r is null ? Problem(404, $"No release {scope}@{release}") : Results.Ok(new { r.Id, r.Scope, r.Release, r.ContentHash, manifest = JsonNode.Parse(r.ManifestJson), r.StoredBy, r.StoredAt });
 });
 
+// The package as stored, byte for byte: what a deployment runs (plan P6).
+app.MapGet("/releases/package", async (string scope, string release, StoreDbContext db) =>
+{
+    var r = await new ReleaseRegistry(db).Get(scope, release);
+    return r is null ? Problem(404, $"No release {scope}@{release}") : Results.File(r.Package, "application/zip", $"{release}.zip");
+});
+
+// A bank's configuration values in force at a moment (plan P6): what the workers look up at each attempt, so a value the studio
+// publishes with a later validFrom reaches the payments of that date with no deployment.
+app.MapGet("/values", async (string tenant, DateTimeOffset? at, StoreDbContext db, TimeProvider clock) =>
+    Results.Ok(await BankValues.InForce(db, tenant, at ?? clock.GetUtcNow())));
+
 app.MapPost("/activations", async (ActivationRequest a, StoreDbContext db, TimeProvider clock) =>
 {
     if (string.IsNullOrWhiteSpace(a.Actor)) return Problem(400, "Name the actor");
@@ -74,8 +86,8 @@ app.MapGet("/activations/active", async (string environment, string scope, DateT
     return release is null ? Problem(404, $"No release of {scope} is active in {environment}") : Results.Ok(new { environment, scope, release });
 });
 
-// The branch the studio exports to (plan W8): every package under releases/ and every activation
-// under environments/<env>/activations/, stored and recorded. Running it again changes nothing.
+// The branch the studio exports to (plan W8): every package under releases/, every activation under
+// environments/<env>/activations/ and every bank's configuration values, stored and recorded. Running it again changes nothing.
 app.MapPost("/import-branch", async (BranchImport b, StoreDbContext db, TimeProvider clock) =>
 {
     if (!Directory.Exists(b.Path)) return Problem(404, $"No directory {b.Path}");
@@ -121,7 +133,9 @@ app.MapPost("/import-branch", async (BranchImport b, StoreDbContext db, TimeProv
             }
         }
     }
-    return Results.Ok(new { stored, activated, problems });
+    // The banks' configuration sets: each value an effective-dated version (plan P6).
+    var values = await BankValues.Import(db, clock, Path.Combine(b.Path, "banks"), b.Actor);
+    return Results.Ok(new { stored, activated, values, problems });
 });
 
 // Insert-only: nothing is changed or removed in place.

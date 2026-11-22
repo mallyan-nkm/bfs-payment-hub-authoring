@@ -48,6 +48,7 @@ const party = new PartyService({
 
 const served: Record<string, number> = {};
 let refused = 0;
+let valuesRead = 0;
 
 function send(res: http.ServerResponse, code: number, body: any) {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -60,7 +61,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', 'http://worker');
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { queue: manifest.queue, tasks: manifest.tasks, simulators: dirs.length > 1 });
-    if (req.method === 'GET' && url.pathname === '/stats') return send(res, 200, { queue: manifest.queue, served, refused });
+    if (req.method === 'GET' && url.pathname === '/stats') return send(res, 200, { queue: manifest.queue, served, refused, valuesRead });
     if (req.method === 'GET' && url.pathname === '/sent') return send(res, 200, { messages: party.sent() });
     if (req.method === 'POST' && url.pathname === '/start') {
       const b = JSON.parse(raw || '{}');
@@ -77,6 +78,20 @@ const server = http.createServer(async (req, res) => {
       if (!tasks.has(task)) {
         refused++;
         return send(res, 200, { kind: 'error', name: 'NotOnThisQueue', retryable: false, message: `${task} is not registered on queue ${manifest.queue}`, deliveries: [] });
+      }
+      // On a runtime (plan P6), the bank's values are the runtime's, in force at the engine's time of this attempt: a value
+      // published with a later validFrom reaches the attempts of that date with no new deployment.
+      const runtime = process.env.TH_RUNTIME_URL;
+      if (runtime && environment.tenant) {
+        try {
+          const at = new Date(b.now ?? Date.now()).toISOString();
+          const r = await fetch(`${runtime.replace(/\/$/, '')}/values?tenant=${encodeURIComponent(environment.tenant)}&at=${encodeURIComponent(at)}`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          (party.run.cfg as any).liveValues = Object.fromEntries(((await r.json()) as any[]).map((v) => [v.parameter, v.value]));
+          valuesRead++;
+        } catch (e: any) {
+          return send(res, 200, { kind: 'error', name: 'ValuesUnavailable', retryable: true, message: `The runtime's values could not be read: ${e?.message ?? e}`, deliveries: [] });
+        }
       }
       served[task] = (served[task] ?? 0) + 1;
       const r = await party.attempt({ ...b, release });

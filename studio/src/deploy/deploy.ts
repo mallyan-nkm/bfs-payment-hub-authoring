@@ -46,7 +46,7 @@ export interface DeployResult {
   detail: string[];
   attempts: Record<string, number>;
   intake?: { activity: string; queue: string; outcome: string };
-  workers: { queue: string; port: number; pid: number; tasks: string[]; served: Record<string, number>; refused: number }[];
+  workers: { queue: string; port: number; pid: number; tasks: string[]; served: Record<string, number>; refused: number; valuesRead?: number }[];
   messages: any[];
   engine: any;
   elapsedMs?: number;
@@ -99,6 +99,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   const packaged = environment.tenant ? path.join(dir, 'configuration', `${environment.tenant}.yaml`) : undefined;
   if (!environment.configurationSet && packaged && fs.existsSync(packaged)) environment.configurationSet = parseYaml(fs.readFileSync(packaged, 'utf8'));
   if (environment.configurationSet) log.push(`configuration ${environment.tenant}@${environment.configurationSet.release}${req.environment.configurationSet ? '' : ' from the package'}`);
+  if (process.env.TH_RUNTIME_URL) log.push(`values from the runtime at ${process.env.TH_RUNTIME_URL}, in force at each attempt's time`);
   const envFile = path.join(tmp, 'environment.json');
   fs.writeFileSync(envFile, JSON.stringify(environment));
 
@@ -110,7 +111,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       const wdir = path.join(dir, w.path);
       const p = port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}) },
+        env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}) },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
@@ -237,7 +238,7 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
     const workers: DeployResult['workers'] = [];
     for (const pr of procs) {
       const st = await (await fetch(`${pr.url}/stats`)).json();
-      workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
+      workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused, valuesRead: st.valuesRead ?? 0 });
     }
     return {
       workflow: req.workflow, release: wf.release, expandedFrom: wf.expandedFrom,

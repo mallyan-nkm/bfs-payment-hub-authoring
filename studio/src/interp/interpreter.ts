@@ -56,6 +56,8 @@ export interface RunConfig {
   limit?: string;
   bindings?: any[]; // hook bindings, in place of the tenant's configuration set
   availableFrom?: Record<string, string>; // name@release -> virtual time it is published
+  /** A deployed worker's values from the runtime, in force at the attempt's time (parameter -> value); set per attempt. */
+  liveValues?: Record<string, any>;
   /** The debugger (F-17): each event also carries the instance's data after it, and each step what it decided. */
   debug?: boolean;
 }
@@ -323,6 +325,9 @@ export class Run {
   /** Parameter values are looked up by date at each step that reads them (R-01-17). */
   lookupParam(owner: string, param: string, decl: any, date: string): any {
     const key = `${owner}#${param}`;
+    // A deployed worker on a runtime (TH_RUNTIME_URL): the bank's values as the runtime holds them at the attempt's time,
+    // published there after the package was built (plan P6). They take the place of the package's configuration set.
+    if (this.cfg.liveValues && key in this.cfg.liveValues) return this.cfg.liveValues[key];
     const values = [...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key);
     const inForce = values.filter((v: any) => v.validFrom <= date && (!v.validTo || v.validTo >= date));
     inForce.sort((a: any, b: any) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));

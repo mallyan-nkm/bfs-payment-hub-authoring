@@ -270,6 +270,17 @@ The results, pass by pass and project by project, with each failure classified (
 
   P2's exit ("every WPS line of the parity matrix is green") is not met.
 
+### Progress on P6 (the studio deploys and hot-updates)
+
+- **Deploy, then change a rule value with no deployment, end to end** (`studio/test/blackbox/e2e-p6-hot-update.test.ts`, on Temporal with the runtime's store on PostgreSQL):
+  - the bank publishes its internal limit in the studio, and the commit lands on the connected branch;
+  - the runtime's release API stores the corporate workflow's Temporal package once and activates it for test; the pipeline imports the branch, so the runtime holds the bank's values as effective-dated versions (`POST /import-branch`, `BankValues`);
+  - a salary file runs from the package the runtime holds (`GET /releases/package`): its workers read the bank's values from the runtime at each attempt (`GET /values?tenant&at`, `TH_RUNTIME_URL`), and the file is held;
+  - the bank raises the limit from a later validFrom; the pipeline stores a new value version, and no release or activation;
+  - a second file on a later date runs from the same package, byte for byte, takes the new limit and is not held; a file on the first payment's date still takes the old limit and gives the first payment's trace.
+- The values in force are those of the latest configuration set that sets the parameter, by date (`BankValuesTests`, on both databases). Lookups of dated values by an engine's own timers are I-57.
+- **Not yet:** Aani's removal and the inward flows' authoring are tracked under P2 and W7; this item shows only the deploy and the hot update.
+
 ### Progress on P3 (DTFx, Elsa, Flowable)
 
 - **Kit.** The kit runs in CI on all four engines (`.github/workflows/engines.yml`, job `kit`).

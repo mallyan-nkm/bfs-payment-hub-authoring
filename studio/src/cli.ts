@@ -162,7 +162,7 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
       inbound: opt('inbound') ? { payload: (await import('node:fs')).readFileSync(opt('inbound')!, 'utf8'), ...(opt('message') ? { message: opt('message') } : {}) } : undefined,
     });
     for (const l of r.log) console.log(l);
-    for (const w of r.workers) console.log(`worker ${w.queue} (pid ${w.pid}) served ${JSON.stringify(w.served)}, refused ${w.refused}`);
+    for (const w of r.workers) console.log(`worker ${w.queue} (pid ${w.pid}) served ${JSON.stringify(w.served)}, refused ${w.refused}${w.valuesRead ? `, values read from the runtime ${w.valuesRead} time(s)` : ''}`);
     console.log(`outcome ${r.outcome}${r.failed ? ' (' + r.failed + ')' : ''}`);
     console.log(`trace  ${r.trace.join(' | ')}`);
     console.log(`detail ${r.detail.join(' | ')}`);
