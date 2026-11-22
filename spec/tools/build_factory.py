@@ -86,7 +86,7 @@ RELEASES = {
     # Owner's decisions of 2026-11-22 (Issues I-88 and I-100): the WPS fields the source's screens showed, and the employer the
     # labour ministry has suspended. Each a minor: parameters, fields or rules added, no read, write, outcome or port changed.
     "uae.wps.ext.salary.v1": ("1.1.0", "the allowances, the leave encashment, the upload channel and the employer's labour ministry status"),
-    "uae.wps.map.sif-in.v1": ("1.1.0", "reads the EVP allowances and the channel's upload: initiator, debtor name and account, channel"),
+    "uae.wps.map.sif-in.v1": ("1.1.0", "reads the EVP allowances and the channel's upload: initiator, debtor name and account, channel; amounts as decimal strings (I-109)"),
     "uae.wps.map.ack-in.v1": ("1.2.0", "the NAK's per-line errors (DER) as status.transactions, pain.002 TxInfAndSts; native code-behind"),
     "uae.wps.ruleset.salary-file.v1": ("1.1.0", "refuses a file whose employer the labour ministry has suspended"),
 }
@@ -1021,9 +1021,14 @@ test("WPS-MAP-003", "The channel's upload and the EVP allowances map into the ba
      {"inbound": "samples/wps-sif-upload-evp.sif"},
      {"outcome": "mapped", "writes": {"batch.initiatingParty.id": "U-0001", "batch.debtor.name": "Example Trading LLC",
                                       "batch.debtorAccount.iban": IBAN_OK, "ext.uae.wps.uploadChannel": "IB",
-                                      "items.0.ext.uae.wps.housingAllowance": 200, "items.0.ext.uae.wps.otherAllowances": 50,
-                                      "items.0.ext.uae.wps.leaveEncashment": 0, "items.0.payment.instructedAmount.value": 1500,
-                                      "items.1.ext.uae.wps.fixedPay": 900}})
+                                      "items.0.ext.uae.wps.housingAllowance": "200.00", "items.0.ext.uae.wps.otherAllowances": "50.00",
+                                      "items.0.ext.uae.wps.leaveEncashment": "0.00", "items.0.payment.instructedAmount.value": "1500.00",
+                                      "items.1.ext.uae.wps.fixedPay": "900.00", "batch.controlSum": "2400.00"}})
+# Issue I-109: a control total of sixteen significant digits keeps every digit, as a decimal string (R-02-17).
+test("WPS-MAP-004", "A salary file whose total has sixteen digits maps every digit exactly", "uae.wps.map.sif-in.v1", "activity",
+     {"inbound": "samples/wps-sif-large-total.sif"},
+     {"outcome": "mapped", "writes": {"batch.controlSum": "12345678901234.56", "items.0.payment.instructedAmount.value": "12345678901234.56",
+                                      "items.0.ext.uae.wps.fixedPay": "12345678901233.99", "items.0.ext.uae.wps.variablePay": "0.57"}})
 test("WPS-ENR-001", "The labour ministry knows the employer: its status is written", "uae.wps.enrich.employer-status.v1", "activity",
      {"context": {"header": {"paymentId": "P-1", "scheme": "uae.wps"}, "ext": {"uae": {"wps": {"employerId": "0000001234567"}}}}},
      {"outcome": "found", "writes": {"ext.uae.wps.employerStatus": "suspended"}}, bench_=bench((LM, LMSIM, "suspended")))

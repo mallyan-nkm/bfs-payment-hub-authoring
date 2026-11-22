@@ -205,10 +205,10 @@ packs:
       table: 1
       scheme: 1
       simulator: 4
-      test: 25
+      test: 26
       operations-view: 1
       workflow: 11
-    total: 93
+    total: 94
     artefacts:
       - name: uae.wps.decide.returns.v2
         kind: activity
@@ -353,6 +353,8 @@ packs:
       - name: WPS-MAP-002
         kind: test
       - name: WPS-MAP-003
+        kind: test
+      - name: WPS-MAP-004
         kind: test
       - name: WPS-OUT-001
         kind: test

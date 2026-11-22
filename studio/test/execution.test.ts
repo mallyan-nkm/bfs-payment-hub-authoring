@@ -33,7 +33,7 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(33); // WPS-IN-008 and WPS-RTC-001 (plan P2); P-ENC, WPS-ENR, WPS-EXC-003, WPS-MAP-003, WPS-OUT-006 to 008 (I-87, I-88, I-100)
+    expect(reports.length).toBe(34); // WPS-IN-008 and WPS-RTC-001 (plan P2); P-ENC, WPS-ENR, WPS-EXC-003, WPS-MAP-003 and 004, WPS-OUT-006 to 008 (I-87, I-88, I-100, I-109)
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual([]);
   });
@@ -75,11 +75,11 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
 });
 
 describe('the conformance kit on the studio interpreter (C23, C09)', () => {
-  it('passes all 50 scenarios', async () => {
+  it('passes all 51 scenarios', async () => {
     const env = freshEnv();
     const res = await runKit(env);
     const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
     expect(red).toEqual([]);
-    expect(res.length).toBe(50);
+    expect(res.length).toBe(51);
   });
 });

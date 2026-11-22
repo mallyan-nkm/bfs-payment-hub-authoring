@@ -97,6 +97,7 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 | R-09-44 | The service console's assistant MUST be switchable off (`TH_ASSISTANT_ENABLED`) and MUST mask personal data before anything leaves the runtime (names, accounts, IBANs, employee ids). It MUST use read-only tools only, MUST cite its sources, and MAY propose a troubleshooting action with the runbook it relies on, which only a person can confirm in the console. | `AssistantTests` (a fake model: no party value leaves) |
 | R-09-45 | An engine binding MAY set `defaults.forEachConcurrency`. A `forEach` that declares no `concurrency`, and whose steps are all calls of activities that hold no state (effect `pure` or `read`, not a hold) that handle an outcome only by ending, then runs that many items side by side, chunk by chunk where the batch is chunked (R-09-13). Its trace is the one item by item gives (R-05-53). | Conformance kit on DTFx, Elsa and Temporal with the binding's concurrency (CK-FOREACH-01, CK-FOREACH-03); `e2e-wps-temporal` |
 | R-09-46 | The claim check and the record of each step's outcome MUST keep a payload's facts in order without holding up another payload's: a lock per payload, never one per host. They MAY write the facts that queue for one payload in one save, each chained to the one before, so that every chain stays numbered without gaps and linked (`FactLog.Verify`). | `ClaimCheckTests` ("many payloads and many items side by side", on SQL Server and PostgreSQL); the store report of every deploy |
+| R-09-47 | An engine binding MUST carry every amount in the context as the text it received and MUST NOT compute on it: it parses JSON numbers without binary rounding (.NET `JsonNode`, Java `BigDecimal` with exact decimals) and passes decimal strings through. Rules run in the one rule service (R-04-21). | Conformance CK-MONEY-01 on Temporal, DTFx, Elsa and Flowable (the `amounts` check) |
 
 ## 9.6 Core and extension profiles
 
@@ -130,7 +131,7 @@ Limits that remain: compensation runs in reverse document order, which in parall
 
 ### Proved on Elsa 3.10.2 (I-30)
 
-The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 50 of 50 scenarios pass, and two runs give the same traces.
+The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 51 of 51 scenarios pass, and two runs give the same traces.
 
 | Who does what | |
 | --- | --- |

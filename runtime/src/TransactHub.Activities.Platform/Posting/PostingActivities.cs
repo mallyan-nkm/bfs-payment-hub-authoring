@@ -206,6 +206,8 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
         var settlementBranch = BranchFor(t.SettlementAccount, b);
         var legs = new List<PostingLeg>();
         string reference;
+        TransactHub.Model.ChargesInformation? charges = null;
+        decimal total;
         var inward = a.Level == "item" || NativeContext.S(a.View, "header.direction") == "inward";
         if (inward)
         {
@@ -215,6 +217,7 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
             reference = Reference(a, a.Level == "item" ? account : "");
             legs.Add(new("debit", settlementBranch, t.SettlementAccount, amount, currency, t.TransactionCode, $"{t.Narration} {reference}".Trim()));
             legs.Add(new("credit", BranchFor(account, b), account, amount, currency, t.TransactionCode, $"{t.Narration} {reference}".Trim()));
+            total = amount;
         }
         else
         {
@@ -228,6 +231,7 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
             legs.Add(new("debit", branch, account, amount, currency, t.TransactionCode, $"{t.Narration} {reference}".Trim()));
             legs.Add(new("credit", settlementBranch, t.SettlementAccount, amount, currency, t.TransactionCode, $"{t.Narration} {reference}".Trim()));
             var charge = t.ChargeFor(amount);
+            total = amount;
             if (charge > 0)
             {
                 if (t.ChargeIncomeAccount.Length == 0 || t.ChargeTransactionCode.Length == 0) throw new NativeFailure("BusinessReject", "A charge applies but the template names no charge account or charge code", false);
@@ -240,12 +244,42 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
                     legs.Add(new("debit", branch, account, vat, currency, t.VatTransactionCode, t.ChargeNarration));
                     legs.Add(new("credit", BranchFor(t.VatAccount, b), t.VatAccount, vat, currency, t.VatTransactionCode, t.ChargeNarration));
                 }
+                charges = new(new(charge, currency), "BANK", vat > 0 ? new(t.VatPercent, new(vat, currency)) : null);
+                total += charges.TotalChargesAndTax.Amount;
             }
         }
         var (outcome, reason, fact) = Post(cb, b, new PostingBatch(reference, ValueDate(a), legs), "posted");
         fact["template"] = t.Template;
         fact["reversalTransactionCode"] = t.ReversalTransactionCode;
+        Statement(fact, legs, total, currency, charges);
         return new NativeResult(outcome, reason, new JsonObject { ["facts.posting"] = fact });
+    }
+
+    /// <summary>
+    /// The posting as camt.054 reports it (Issue I-100): its entries, each with its side and the account masked to its last four
+    /// characters; the amount debited with charges (totalAmount); and the charges with their tax (ChrgsInf). Amounts are decimal
+    /// strings (R-02-17). The legs stay as they were, for a reversal.
+    /// </summary>
+    public static void Statement(JsonObject fact, IEnumerable<PostingLeg> legs, decimal total, string currency, TransactHub.Model.ChargesInformation? charges)
+    {
+        static string Amt(decimal d) => d.ToString("0.00##", CultureInfo.InvariantCulture);
+        static string Mask(string a) => a.Length <= 4 ? new string('*', a.Length) : new string('*', a.Length - 4) + a[^4..];
+        fact["entries"] = new JsonArray(legs.Select(l => new TransactHub.Model.PostingEntry(l.Kind == "debit" ? TransactHub.Model.CreditDebit.DBIT : TransactHub.Model.CreditDebit.CRDT,
+                new(l.Amount, l.Currency), Mask(l.Account), l.Branch, l.TxnCode))
+            .Select(e => (JsonNode?)new JsonObject
+            {
+                ["creditDebitIndicator"] = e.Indicator.ToString(), ["amount"] = Amt(e.Amount.Amount), ["currency"] = e.Amount.Currency,
+                ["account"] = e.MaskedAccount, ["branch"] = e.Branch, ["transactionCode"] = e.TransactionCode,
+            }).ToArray());
+        fact["totalAmount"] = Amt(total);
+        fact["currency"] = currency;
+        if (charges is not null)
+            fact["charges"] = new JsonObject
+            {
+                ["amount"] = Amt(charges.Amount.Amount), ["currency"] = charges.Amount.Currency, ["type"] = charges.Type,
+                ["tax"] = charges.Tax is null ? null : new JsonObject { ["rate"] = Amt(charges.Tax.Rate), ["amount"] = Amt(charges.Tax.Amount.Amount) },
+                ["totalChargesAndTaxAmount"] = Amt(charges.TotalChargesAndTax.Amount),
+            };
     }
 }
 

@@ -231,6 +231,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L39 | The error dictionary covers every error: each error an activity declares, each reason code a rule, rule set or table gives and each a port's simulator answers, each code of a port boundary, the interpreter and every engine binding the examples bind, has an entry raised by that kind of thing, in the artefact's scope or one it may depend on; a dictionary has one entry per code; an ISO reason code a rule or a port gives names its `isoReasonCode` (R-05-51) | Yes |
 | L40 | An activity that the runtime's native host implements as well (`implementation.native: true`) has a script-behind or a builtin binding (R-08-16) | Yes |
 | L41 | A published release never changes: every file a seed published is in its change set's ledger with the SHA-256 of its text and still has it; a path is published once, but for a bank pack's lock file and the engine bindings, which a later ledger replaces; every seeded file is in a ledger; a factory artefact at a release the content branch holds is what was seeded (R-11-35, R-11-36) | Yes |
+| L42 | Money is exact (R-02-17, R-04-23): a rule's or table's expression does not compare a difference with a fraction between 0 and 1 (a floating-point tolerance such as `a - b < 0.01`); a number given in a rule's or table's examples, a parameter's default or bounds, a configuration value or a test case has at most 15 significant digits (a longer amount is a decimal string) | Yes |
 
 ## 5.8 Examples
 

@@ -213,7 +213,7 @@ public static class CanonicalMapper
         return new CreditTransfer
         {
             PaymentId = new PaymentIdentification { EndToEndId = Short(e2e), InstructionId = (string?)p["instructionId"], TransactionId = (string?)p["transactionId"], Uetr = (string?)p["uetr"] },
-            InstructedAmount = new Money(amount?["value"]?.GetValue<decimal>() ?? 0m, (string?)amount?["currency"] ?? "AED"),
+            InstructedAmount = new Money(Amount(amount?["value"]), (string?)amount?["currency"] ?? "AED"),
             Debtor = Party(p["debtor"]), DebtorAccount = Account(p["debtorAccount"]), DebtorAgent = Agent(p["debtorAgent"]),
             Creditor = Party(p["creditor"]) ?? new Party(),
             CreditorAccount = Account(p["creditorAccount"]) ?? new Account(),
@@ -225,6 +225,10 @@ public static class CanonicalMapper
     }
 
     static string Short(string s) => s.Length <= 35 ? s : s[..35];
+
+    /// <summary>An amount as canonical JSON carries it (R-02-17): a decimal string, or a number read by its text.</summary>
+    static decimal Amount(JsonNode? n) => n is JsonValue v && decimal.TryParse(v.TryGetValue<string>(out var s) ? s : v.ToJsonString(),
+        System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0m;
     static DateOnly? Date(JsonNode? n) => n is JsonValue v && DateOnly.TryParse((string?)v, out var d) ? d : null;
 
     static Party? Party(JsonNode? n) => n is not JsonObject o ? null : new Party

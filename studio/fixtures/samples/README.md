@@ -20,11 +20,16 @@ metadata, not part of the message, and the intake maps read it as the `SourceFil
 | `wps-rtc-valid.rtc` | WPS RTC, the factory's provisional layout (RTH, RTD) | WPS-RTC-001 |
 | `wps-sif-bad-month.sif` | WPS SIF, salary month 13 | Kept as an invalid sample; the leg test that used it was replaced |
 | `wps-sif-two-lines.sif` | WPS SIF, two lines of 1000 and 500, total 1500 | The WPS end-to-end test: the bank's limit on each line and on the file total |
+| `wps-sif-upload-evp.sif` | WPS SIF with an EVP record, and the channel's upload declared before the records (`# channel:`, `# initiated-by:`, `# debtor-name:`, `# debtor-account:`) | WPS-MAP-003 (Issue I-100) |
+| `wps-sif-large-total.sif` | WPS SIF whose total has sixteen significant digits | WPS-MAP-004 (Issue I-109) |
 
 Format of a SIF line, comma separated:
 
 - `SCR,<employer id 13>,<employer bank routing code 9>,<creation date>,<creation time>,<salary month MMYYYY>,<record count>,<total salary>,<currency>,<employer reference>`
 - `EDR,<person id 14>,<agent routing code 9>,<IBAN>,<pay start>,<pay end>,<days in period>,<fixed pay>,<variable pay>,<leave days>`
+- `EVP,<person id 14>,<agent routing code 9>,<housing>,<conveyance>,<medical>,<annual passage>,<overtime>,<other>,<leave encashment>` (optional, the breakdown of an EDR's variable pay; read by `uae.wps.map.sif-in.v1` from 1.1.0)
+
+A line that starts with `# channel:`, `# initiated-by:`, `# debtor-name:` or `# debtor-account:` is what the employer's channel declared beside the file at upload. Like `# file:`, it is not part of the message.
 
 The SIF layout follows the public bank guides the factory pack was written from. It is
 provisional, as `uae.wps` is.

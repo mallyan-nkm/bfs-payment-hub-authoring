@@ -284,6 +284,8 @@ public sealed class MapAckIn : INativeActivity
 {
     public string Name => "uae.wps.map.ack-in.v1";
 
+    static JsonObject Nak(WpsAckNakDocument doc, string? reason) => AckStatus.Json(AckStatus.Lines(doc), reason);
+
     public NativeResult Run(NativeAttempt a)
     {
         // The acknowledgement the await took (messages.lastReceived), else the message that started the run.
@@ -296,14 +298,38 @@ public sealed class MapAckIn : INativeActivity
             var reason = doc.DetailErrors.Select(e => e.ErrorNumber).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
             return doc.IsAccepted
                 ? new NativeResult("ack", null, new JsonObject { ["status"] = new JsonObject { ["code"] = "ACCP" } })
-                : new NativeResult("nak", reason ?? "NARR", new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = reason ?? "NARR" } });
+                : new NativeResult("nak", reason ?? "NARR", new JsonObject { ["status"] = Nak(doc, reason) });
         }
         var status = NativeContext.S(inbound, "status");
         var code = NativeContext.S(inbound, "reasonCode");
         var nak = status is "rejected" or "nak" or "refused";
+        // A status with no file names no line: status.transactions stays empty.
         return nak
             ? new NativeResult("nak", code.Length > 0 ? code : "NARR", new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = code.Length > 0 ? code : "NARR" } })
             : new NativeResult("ack", null, new JsonObject { ["status"] = new JsonObject { ["code"] = "ACCP" } });
+    }
+}
+
+/// <summary>
+/// A NAK's status with its per-line errors (Issue I-100, R-02-19): pain.002 TxInfAndSts, one per DER record, each rejected with the
+/// scheme's error number beside the ISO reason NARR (R-02-14: the scheme code is carried beside the ISO code) and its description.
+/// </summary>
+public static class AckStatus
+{
+    public static IReadOnlyList<TransactHub.Model.TransactionStatusLine> Lines(WpsAckNakDocument doc) => doc.DetailErrors
+        .Select(e => new TransactHub.Model.TransactionStatusLine(e.LineNumber, TransactHub.Model.TransactionStatus.RJCT, "NARR",
+            string.IsNullOrWhiteSpace(e.ErrorNumber) ? null : e.ErrorNumber, string.IsNullOrWhiteSpace(e.ErrorDescription) ? null : e.ErrorDescription))
+        .ToList();
+
+    public static JsonObject Json(IReadOnlyList<TransactHub.Model.TransactionStatusLine> lines, string? reason)
+    {
+        var o = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = reason ?? "NARR" };
+        if (reason is not null) o["schemeCode"] = reason;
+        o["transactions"] = new JsonArray(lines.Select(l => (JsonNode?)new JsonObject
+        {
+            ["lineNo"] = l.LineNo, ["code"] = l.Status.ToString(), ["reasonCode"] = l.IsoReason, ["schemeCode"] = l.SchemeCode, ["additionalInformation"] = l.AdditionalInformation,
+        }).ToArray());
+        return o;
     }
 }
 

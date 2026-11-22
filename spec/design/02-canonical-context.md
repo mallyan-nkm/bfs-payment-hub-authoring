@@ -41,13 +41,16 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 
 Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch.currency`, `batch.categoryPurpose`, `batch.debtorAgent`, `batch.creditorAgent`.
 
+### Amounts
+
+An amount (`instructedAmount.value`, `controlSum`, an extension field of an ISO amount or decimal type, a parameter of type `amount` or `decimal`) is an exact decimal (Issue I-96). In canonical JSON it is either a decimal string, such as `"90071992547409.93"` (`^-?[0-9]+(\.[0-9]+)?$`), or a JSON number. Every reader takes a JSON number by its text, the shortest form that gives back the same binary value, so `0.1` is one tenth, never the binary value just above it. A number of at most 15 significant digits reads the same either way, so every document written before this rule keeps its meaning. A writer MUST write an amount of more than 15 significant digits as a decimal string, because a binary double cannot hold it: the studio's rule service, its script helpers and the interpreter do so, and an engine passes the text on untouched (R-09-47). Arithmetic on amounts is exact; it rounds only where a rule says so (`round2`, Part 4).
 Batch party elements (Issue I-100): `batch.debtor` (PmtInf/Dbtr, the employer: `name`), `batch.debtorAccount` (PmtInf/DbtrAcct) and `batch.initiatingParty` (GrpHdr/InitgPty: `id` only). A file's source format may not carry them; the channel that uploaded the file declares them beside it, and the intake map reads them from what the channel declared.
 
 An account's `type` is CashAccount40/Tp: an ISO `ExternalCashAccountType1Code`, or the scheme's own code. An agent's `name` is FinInstnId/Nm, looked up by its routing code.
 
 Status of the lines (Issue I-100): `status.transactions[]` holds one entry per line a scheme's status report names (pain.002 TxInfAndSts): `lineNo`, `code` (the ISO status), `reasonCode` (ISO), `schemeCode` and `additionalInformation`.
 
-Posting facts (Issue I-100): `facts.posting` carries the posting's entries in the shape of camt.054 (`entries[]`: `creditDebitIndicator`, `amount`, `currency`, the account masked, `branch`, `transactionCode`), the amount debited with charges (`totalAmount`) and its charges (`charges`: ChrgsInf, `amount`, `currency`, `tax` with `rate` and `amount`, and `totalChargesAndTaxAmount`). Amounts follow the decimal rule of amounts below.
+Posting facts (Issue I-100): `facts.posting` carries the posting's entries in the shape of camt.054 (`entries[]`: `creditDebitIndicator`, `amount`, `currency`, the account masked, `branch`, `transactionCode`), the amount debited with charges (`totalAmount`) and its charges (`charges`: ChrgsInf, `amount`, `currency`, `tax` with `rate` and `amount`, and `totalChargesAndTaxAmount`). Amounts follow the decimal rule of amounts above.
 
 ## 2.3 Requirements
 
@@ -69,6 +72,7 @@ Posting facts (Issue I-100): `facts.posting` carries the posting's entries in th
 | R-02-14 | `status` MUST use ISO payment status codes and ISO status reason codes; a scheme code MAY be carried beside the ISO code. | Rule finding schema (L00) |
 | R-02-15 | A block that works on a batch or on an item MUST declare `level`. | Schema `activity` (L00) |
 | R-02-16 | `header.tenant` MUST NOT be read by shared content to change behaviour. Tenant differences come from values and hooks. | Lint L09; review |
+| R-02-17 | An amount MUST be an exact decimal: carried in canonical JSON as a decimal string or as a JSON number read by its text, never by its binary value. An amount of more than 15 significant digits MUST be a decimal string. | Lint L42; conformance CK-MONEY-01; `studio/test/money.test.ts` |
 | R-02-18 | The initiating party of a file (`batch.initiatingParty`) MUST be carried by its id only, never by a name, and is personal data: it lives in the payment record and is masked wherever it is shown. A field the channel declared beside a file (initiator, debtor name and account, channel) MUST reach the context through the intake map, as the source format's fields do. | Canonical model (`studio/src/core/model.ts`, personal data); lint L38 (a view that shows it masks it); test WPS-MAP-003 |
 | R-02-19 | A scheme status report that names lines MUST be read into `status.transactions[]`, one entry per line, each with an ISO status and, where the scheme gives one, its own code beside the ISO reason (R-02-14). | `WpsAckNakTests` in `runtime/tests/TransactHub.Activities.Wps.Tests` |
 

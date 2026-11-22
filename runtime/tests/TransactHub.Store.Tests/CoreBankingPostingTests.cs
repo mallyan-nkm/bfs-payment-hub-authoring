@@ -181,6 +181,19 @@ public sealed class CoreBankingPostingTests
         Assert.Equal(("credit", "9990000000003", 10m), (legs[3].Kind, legs[3].Account, legs[3].Amount));
         Assert.Equal(("debit", 0.50m, "VAT"), (legs[4].Kind, legs[4].Amount, legs[4].TxnCode));
         Assert.Equal(("credit", "9990000000004"), (legs[5].Kind, legs[5].Account));
+        // The posting fact as camt.054 reports it (Issue I-100): the entries with masked accounts, the total debited with the
+        // charge and VAT, and the charges with their tax. Amounts are decimal strings (R-02-17).
+        var fact = (JsonObject)res.Writes["facts.posting"]!;
+        Assert.Equal("3510.50", (string?)fact["totalAmount"]);
+        Assert.Equal("10.00", (string?)fact["charges"]!["amount"]);
+        Assert.Equal("0.50", (string?)fact["charges"]!["tax"]!["amount"]);
+        Assert.Equal("5.00", (string?)fact["charges"]!["tax"]!["rate"]);
+        Assert.Equal("10.50", (string?)fact["charges"]!["totalChargesAndTaxAmount"]);
+        var entries = ((JsonArray)fact["entries"]!).OfType<JsonObject>().ToList();
+        Assert.Equal(6, entries.Count);
+        Assert.Equal(["DBIT", "CRDT", "DBIT", "CRDT", "DBIT", "CRDT"], entries.Select(e => (string?)e["creditDebitIndicator"]));
+        Assert.Equal("*********0001", (string?)entries[0]["account"]);
+        Assert.DoesNotContain(entries, e => ((string?)e["account"])!.Contains("0010000000001"));
         // No slab, no charge.
         Assert.Equal(0m, AccountingTemplate.From(Template()).ChargeFor(3500m));
     }

@@ -7,8 +7,8 @@
 // - what the employer's channel declared beside the file at upload, given as fixture lines before the records
 //   (`# channel:`, `# initiated-by:`, `# debtor-name:`, `# debtor-account:`, like `# file:`): the upload channel, the
 //   initiating party's id (GrpHdr/InitgPty, an id only), the employer's name (Dbtr/Nm) and its debit account (DbtrAcct).
-// Amounts are exact (R-02-17): each is written as the SIF's own text read as a number when it has at most 15 significant
-// digits, else as a decimal string; a line's amount is the exact sum of its fixed and variable pay.
+// Amounts are exact (R-02-17, Issue I-109): each is written as a decimal string with two places, never through a binary
+// double; a line's amount is the exact sum of its fixed and variable pay.
 
 const HUNDRED = BigInt(100);
 const ZERO = BigInt(0);
@@ -40,13 +40,11 @@ function minor(s: string): bigint | null {
   return m[1] ? -v : v;
 }
 
-/** Minor units back to an amount: a number when 15 significant digits hold it exactly, else a decimal string (R-02-17). */
-function amount(v: bigint): number | string {
+/** Minor units back to an amount, as a decimal string with two places (R-02-17, Issue I-109). */
+function amount(v: bigint): string {
   const neg = v < ZERO;
   const a = neg ? -v : v;
-  const text = `${neg ? '-' : ''}${a / HUNDRED}.${String(a % HUNDRED).padStart(2, '0')}`;
-  const digits = text.replace(/[-.]/g, '').replace(/^0+/, '').replace(/0+$/, '');
-  return digits.length > 15 ? text : Number(text);
+  return `${neg ? '-' : ''}${a / HUNDRED}.${String(a % HUNDRED).padStart(2, '0')}`;
 }
 
 export async function run({ ctx, rules }) {
@@ -86,12 +84,12 @@ export async function run({ ctx, rules }) {
     ...(upload.channel ? { uploadChannel: upload.channel } : {}),
   } } };
   // EVP records by person id: the allowances of the line with the same person id.
-  const allowances = new Map<string, Record<string, number | string>>();
+  const allowances = new Map<string, Record<string, string>>();
   const names = ['housingAllowance', 'conveyanceAllowance', 'medicalAllowance', 'annualPassageAllowance', 'overtimeAllowance', 'otherAllowances', 'leaveEncashment'];
   for (const line of evp) {
     const f = line.split(',');
     if (f.length < 10) return { outcome: 'unmappable', reasonCode: 'FF01' };
-    const values: Record<string, number | string> = {};
+    const values: Record<string, string> = {};
     for (let i = 0; i < names.length; i++) {
       const v = minor(f[3 + i]);
       if (v === null) return { outcome: 'unmappable', reasonCode: 'FF01' };

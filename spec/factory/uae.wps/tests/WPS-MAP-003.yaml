@@ -14,8 +14,9 @@ expect:
     batch.debtor.name: Example Trading LLC
     batch.debtorAccount.iban: AE070331234567890123456
     ext.uae.wps.uploadChannel: IB
-    items.0.ext.uae.wps.housingAllowance: 200
-    items.0.ext.uae.wps.otherAllowances: 50
-    items.0.ext.uae.wps.leaveEncashment: 0
-    items.0.payment.instructedAmount.value: 1500
-    items.1.ext.uae.wps.fixedPay: 900
+    items.0.ext.uae.wps.housingAllowance: '200.00'
+    items.0.ext.uae.wps.otherAllowances: '50.00'
+    items.0.ext.uae.wps.leaveEncashment: '0.00'
+    items.0.payment.instructedAmount.value: '1500.00'
+    items.1.ext.uae.wps.fixedPay: '900.00'
+    batch.controlSum: '2400.00'

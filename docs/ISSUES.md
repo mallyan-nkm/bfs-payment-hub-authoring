@@ -1000,6 +1000,14 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** Each folder sets `enabledRails` to the empty list, from 2026-11-22, and no WPS value. BANK-RAIL-001 shows a payment that asks for WPS finds no rail, and `studio/test/platform-bank-packs.test.ts` shows a salary file is refused at routing, before anything is sent.
 
+
+**Done (owner's decision of 2026-11-22): ADIB runs WPS.** ENBD and FAB stay platform only.
+
+- ADIB's folder (`content-configurations/banks/adib/`) carries the WPS values the source holds for it: the rail (`enabledRails` `[uae.wps]`, the base seed's subscription in `infra/docker/mssql/init.sql`); VAT 5 per cent and the four general-ledger names of `dsl/workflows/wps-outward.v2.workflow.json` (the WPS workflow only `AdibWpsActivities` serves); the file transfer the bank's WPS plugin uses (`file-transfer.yaml`: `/wps/inbound`, `/wps/outbound`, `/cb/wps/ack`, `/cb/wps/rtc`, `.invalid` hosts, the credential by `secretRef`); the encryption of its salary files (`encryption.yaml`, I-87). Configuration set 1.2.0 on the 1.2.0 packs; the lock file regenerated.
+- Hooks by DIB's rule: the labour ministry notification is bound (`p.wf.corporate.v1#on-close`), since `wps-outward.v2` calls `MohreNotification` with `mohreNotificationEnabled` true; the employer AML check stays built and unbound, since no workflow calls `AdibWpsEmployerAmlCheck`.
+- Not carried, with the reason in the README: no routing code (the source has none for the bank), no CBX values, no decryption (the workflow reads files unencrypted and `AdibDecryptSifFile` names no key), the acknowledgement wait (I-116), core banking (I-85).
+- Tests: BANK-RAIL-001 (routed to WPS), BANK-RTE-001 (no routing code), BANK-WPS-001 (a salary file end to end: routed, the employer's status asked, encrypted, sent, acknowledged, posted, the ministry told), BANK-WPS-002 (a suspended employer refused, nothing sent); `studio/test/adib-wps.test.ts`; `AdibWpsBankFolderTests` and `EncryptionTests` in `runtime/tests/TransactHub.Store.Tests`.
+
 ## I-87. No port encrypts a file
 
 **Issue.** The factory has `p.port.decryption.v1` for files a bank receives, and no port for a file a bank encrypts before it sends it. The source's encryption library has encrypt-only profiles for WPS files (its sample settings give FAB `WPS_SalaryUpload` and `WPS_SIFUpload`, GnuPG, keys by name), so a bank that encrypts its SIF to the Central Bank has nowhere to bind that.
@@ -1008,6 +1016,15 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** Nothing. FAB's README lists the sample's profiles as not carried.
 
+
+**Done (owner's decision of 2026-11-22): a file the bank sends is encrypted by a port of its own** (R-03-24, R-12-13).
+
+- A twelfth activity type, `protect`, of effect `read` with at least one port (schema `activity`, mutation M59). `p.port.encryption.v1` (operation `encrypt`), the pair of `p.port.decryption.v1`, with `p.sim.encryption.v1` carrying the standard outward scenarios. `p.protect.encrypt-file.v1` encrypts the outgoing file; its parameter `recipientKey` names the recipient's key by id, and the bank's binding holds the key by reference (`keys.<id>.secretRef`).
+- The salary file's send path encrypts first: `uae.wps.sub.submit-salary-file.v1` 1.2.0 (step `encrypt`; a refusal returns `rejected` and nothing is sent). Tests WPS-OUT-001, 003 and 008, WPS-EXC-001 to 003, P-ENC-001 and 002.
+- DIB and ADIB bind it (`encryption.yaml`, adapter `openpgp`, the Central Bank's public key by `env:TH_<BANK>_CB_WPS_PUBLIC_KEY`, binary output as the source's profiles wrote it) and set `recipientKey` to `cbuae-wps`. The source has no encrypt profile for either bank, so the id is the folder's own name for the key.
+- The runtime's adapters (`runtime/src/TransactHub.Ports/OpenPgp.cs`): OpenPGP through BouncyCastle.Cryptography 2.6.2, pinned; AES-256 with an integrity packet; encryption and its pair, decryption with a secret key ring and passphrase by reference. `EncryptionTests` makes a key pair when it runs and proves the round trip, armour, a tampered file, another key's holder, an unknown key id and a key that is not a reference.
+- Not done: I-117.
+
 ## I-88. The employer's labour ministry status has no rule
 
 **Issue.** Each bank fork in the source has the same WPS rule step (`{Bank}ValidateWpsRules`): a file needs at least one record, its total must be within the balance, and an employer the labour ministry has suspended is refused. The plan makes the copies one `uae.wps` rule (W6). The factory has the first two (`uae.wps.rule.record-count-matches.v1`, the funds check of `p.reserve.funds.v1`) and nothing for the third: no rule, and no registered field or port that gives the employer's status at the ministry.
@@ -1015,6 +1032,14 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Add a `uae.wps` rule that refuses a salary file whose employer the ministry has suspended, with the status as a registered extension read by an activity (a lookup behind a port), and its reason code from the scheme's code set once confirmed (`uae.wps` is provisional). Do not add it as a bank rule: it is the same for every bank.
 
 **What is built.** Nothing in the factory. ADIB's, ENBD's and FAB's READMEs list the step as not carried; their `rules/` are empty.
+
+
+**Done (owner's decision of 2026-11-22): the rule is the scheme's** (R-12-14).
+
+- The source's behaviour (`AdibValidateWpsRules` and its DIB, ENBD and FAB copies): `mohreStatus` `SUSPENDED` fails the file's WPS rules (`WPS_RULES_FAILED`), and the file stops, a reject, not a hold; an empty status passes.
+- `uae.wps.rule.employer-not-suspended.v1` rejects with RR04 (regulatory reason; the scheme's own code is not confirmed, so the pack stays provisional), in `uae.wps.ruleset.salary-file.v1` 1.1.0; RR04 is in `uae.wps.errors.wps.v1` 1.1.0 as raised by a rule.
+- The status is a declared extension field, `ext.uae.wps.employerStatus` (`uae.wps.ext.salary.v1` 1.1.0), written by `uae.wps.enrich.employer-status.v1` behind `uae.wps.port.labour-ministry.v1`, with `uae.wps.sim.labour-ministry.v1` (`accept`, `suspended`, `not-registered`). The leg `uae.wps.wf.salary-file-out.v1` 1.1.0 asks before the file's checks; an employer the register does not know is not refused for it. Tests WPS-OUT-006 and 007, WPS-ENR-001 and 002, the rule's four examples, BANK-WPS-002.
+- The employer AML check stays a bank hook (`b.hook.employer-aml-check.v1`). Not done: I-118.
 
 ## I-89. The Flowable binding keeps a run's state in memory
 
@@ -1062,6 +1087,17 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** The builder makes amounts in quarters of a dirham, whose sums are exact in binary, so its files are valid unless an error is injected on purpose; the `sanctioned-name` injection names the `sanctions-hit` bench to go with it. The README lists both.
 
+**Done (2026-11-22): money is exact everywhere.** Issue 1 and Recommendation (1) are built; Recommendation (2) is written down; (3) stays open.
+
+- Part 2 states the rule (R-02-17): an amount is an exact decimal, carried in canonical JSON as a decimal string or as a JSON number read by its text (its shortest round-trip form), never by its binary value. One of more than 15 significant digits is a decimal string. Documents written before keep their meaning, since a number of up to 15 digits reads the same either way.
+- The rule language computes on exact decimals (R-04-23): `studio/src/core/decimal.ts`, a small fixed-point module on BigInt (no dependency to pin; the same semantics as .NET `decimal` and Java `BigDecimal` for these operations). Literals keep their text; `+ - * %`, comparisons, `sum`, `sumWhere`, `min`, `max` and table bounds are exact; `round2` is half away from zero on the exact value; `/` keeps 20 places. A result of up to 15 digits is a number, a longer one a decimal string. The factory's `uae.wps.rule.control-total-matches.v1` now accepts the 7894.87 file unchanged: no factory artefact changed.
+- Scripts get the same arithmetic on `rules.money` (TypeScript) and `api.rules.money` (Python, on `decimal`).
+- Engines: rules run in the one rule service (R-04-21), so DTFx, Elsa, Temporal and Flowable compute nothing on amounts; they carry them as received (R-09-47). The Flowable kit harness now reads JSON with exact `BigDecimal`s. The runtime's .NET code was already `decimal` (CBX rules, the SIF writer, the posting activities, the views' `lines.sum`); `OperationsViewTests` proves the sum of the same lines.
+- Lint L42 refuses a floating-point tolerance in a rule (`a - b < 0.01`) and a number of more than 15 significant digits in examples, parameters, configuration values and tests (mutation cases M57, M58; the studio's `check` runs the same).
+- Conformance scenario CK-MONEY-01: seven lines that sum to 7894.870000000001 in doubles match their control total; `round2` gives 0.13, -0.13 and 2.68 where half-even or binary rounding would not; an amount of 90071992547409.93, whose minor units are 2^53 + 1, is computed and carried exactly; the `amounts` check reads the context each engine ends with. The kit is 51 scenarios.
+- Recommendation (2) is in Part 7, 7.3: a simulator decides by its scenario, and a test that means a sanctions hit names that scenario in its bench.
+- Not done: the factory's SIF map (`studio/scripts/uae.wps.map.sif-in.v1.ts`) writes amounts as numbers; see I-109.
+
 ## I-97. The store holds no end of a payment and no files of a deployment
 
 **Issue.** The operations read model shows what the store's facts say (R-05-49). Two things a WPS operator saw are not facts yet. (1) A payment's end: the outcome the engine reaches (`end:settled`, `end:rejected`) is the engine's, not the store's; the read model shows the ISO status the workflow state last carried and each leg's last outcome, but no end and no duration. (2) Files: the inbound SIF, the SIF sent to WPS and the ACK or NAK are not kept in the store's `message` table on a deployment (the native host keeps the rendered SIF in its own memory, `GET /files`), so the views' file names and the documents tab stay empty, and the old Raw File downloads have nothing to serve.
@@ -1093,6 +1129,15 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Register the allowances and the leave encashment as item fields of `uae.wps.ext.salary.v1` (provisional until the rulebook confirms them) and map them in `uae.wps.map.sif-in.v1`; carry the channel, the employer's name and the debit account from the channel's upload into the bulk at intake; write the NAK's DER records and the posting's charge, VAT and legs as step writes (state, with masked accounts); and add the reports as projections of their own (I-68). Decide whether an unmask is needed at all: if it is, it reads the store, needs a permission of its own, and is a fact on the payment's chain.
 
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
+
+
+**Done (owner's decision of 2026-11-22: the recommendation, with ISO 20022 homes).** Coverage went from 101 mapped (15 empty) and 27 not mapped to 124 mapped (10 empty) and 4 not mapped of 128 rows (`docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`).
+
+- Canonical model (studio `studio/src/core/model.ts`, runtime `TransactHub.Model/Iso20022.cs`): `batch.initiatingParty.id` (GrpHdr/InitgPty, an id only, personal data, R-02-18), `batch.debtor` and `batch.debtorAccount` (Dbtr/Nm, DbtrAcct), an account's `type` (CdtrAcct/Tp), an agent's `name` (FinInstnId/Nm), `status.transactions[]` (pain.002 TxInfAndSts, R-02-19); the store keeps the initiator as a party and the account type (migration `WpsConsoleFields` on SQL Server and PostgreSQL).
+- `uae.wps.ext.salary.v1` 1.1.0: the seven EVP allowance fields (item level, personal data, RmtInf/Strd semantics, provisional), `uploadChannel` and `employerStatus` (declared extensions, SplmtryData semantics).
+- `uae.wps.map.sif-in.v1` 1.1.0 reads the EVP record and what the channel declared beside the file at upload; amounts as decimal strings (I-109). `uae.wps.map.ack-in.v1` 1.2.0: the runtime's ACK reader writes each DER record as a TxInfAndSts (`WpsAckNakTests`). The runtime's posting writes camt.054 entries (accounts to their last four characters), the total debited and ChrgsInf with its tax (`CoreBankingPostingTests`).
+- Views: `uae.wps.view.operations.v1` 1.2.0 and `p.view.operations.v1` 1.1.0; the read model projects the initiator, the account type and the agent's name. The dashboard's counts are the list filtered.
+- Left: the account type and bank name have no writer (I-115); duration is derived when the end fact exists (I-97, not on this branch's head when this was done); the RRI, RRR and DCR flows (plan P2). The unmask stays not built.
 
 ## I-101. Troubleshooting actions with no engine path from the runtime
 
@@ -1155,6 +1200,39 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** After I-77 and I-78 a line of a WPS salary file costs about 0.06 CPU seconds across the Temporal server, the harness, the workers and the database (`docs/runtime/LOAD-TEST.md`): two activity attempts, each with a claim-check commit as a local activity (another workflow task), a staged-write fact, a commit fact and a step fact. The proposed 50 lines a second sustained therefore needs about three dedicated cores for these processes alone; the shared 4-vCPU machine of the runs gave 25 to 29 lines a second with four to eight files at once. A single file is held by its one workflow: its workflow tasks run one after another, about 17 lines a second here.
 
 **Recommendation.** Measure on a reference installation before deciding (I-68). If the target is not met there: commit an item's staged writes with its attempt's result (one claim-check call per item, not per attempt), or check a chunk of lines in one activity attempt (one attempt per chunk, R-09-13), so a file's cost grows with its chunks; give Temporal more history shards than the four of the harness's server; and run more than one worker per queue.
+
+## I-109. The factory's SIF map writes a large total as a number
+
+**Issue.** R-02-17 says an amount of more than 15 significant digits is a decimal string in canonical JSON. The factory's SIF intake map (`studio/scripts/uae.wps.map.sif-in.v1.ts`, behind `uae.wps.map.sif-in.v1`) parses each amount with `Number` and writes `batch.controlSum`, `fixedPay`, `variablePay` and `instructedAmount.value` as JSON numbers. Every amount below 10^13 dirhams has at most 15 digits and is exact, so no realistic salary file is affected; a control total of 10^13 or more would lose its last digits before any rule reads it.
+
+**Recommendation.** In a new release of the map (the factory's RELEASES in `spec/tools/build_factory.py`, after the WPS 1.1.0 work), write each amount with `rules.money.str` (or keep the SIF's own text) and compute `instructedAmount.value` with `rules.money.add`. Add a sample with a 16-digit total to the map's round-trip tests.
+
+
+**Done (2026-11-22).** `uae.wps.map.sif-in.v1` 1.1.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.1.0.ts`) reads every amount from the file's own text into exact minor units and writes it as a decimal string with two places; a line's amount is the exact sum of its fixed and variable pay. WPS-MAP-004 maps a sixteen-digit total (`samples/wps-sif-large-total.sif`) with every digit. The runtime's `CanonicalMapper` reads an amount given as a string.
+
+## I-115. A line's account type and bank name have no writer
+
+**Issue.** The model has homes for both (CdtrAcct/Tp, CdtrAgt/FinInstnId/Nm; Issue I-100) and the WPS view shows them, but nothing fills them. The SIF carries no account type (the source's screen showed a constant, "Own bank account"). A bank's name is reference data by routing code: shared content may not name a bank, the participant directory port's simulator answers a status and no data, and the runtime has no adapter for the directory.
+
+**Recommendation.** Build a participant directory adapter on the runtime that answers a member's name by routing code, and call it in a new release of `uae.p.enrich.participant.v1` that writes `creditorAgent.name` (a major: writes added). Decide with the scheme whether the account type is the PIF's EDR account type or a classification (own bank, other bank); if the latter, it is derived in the view, not stored.
+
+## I-116. ADIB's WPS values the source does not hold, or holds outside the bounds
+
+**Issue.** ADIB runs WPS (I-86), but the source holds no WPS routing code, CBX value, decryption profile or Central Bank bank code for it. Its WPS workflow waits for the acknowledgement 20 minutes (60 s between polls, 20 polls; the step's 1200 s timeout), below the bound of `uae.wps.exchange.submit-salary-file.v1#ackWait` (PT1H to P7D). The four general-ledger "accounts" of the workflow (`CB-NOSTRO-WPS` and the others) read as names, not account numbers.
+
+**Recommendation.** Ask the bank for its routing code, its CBX values and its acknowledgement wait, and whether the four names are its general-ledger accounts. Until then the folder leaves the routing code unset (a payment file to the bank is refused, BANK-RTE-001) and the wait at the factory default (one business day). Do not widen the bound for one bank's poll loop without the scheme's word.
+
+## I-117. Only the salary file is encrypted
+
+**Issue.** The owner's decision (I-87) is that outgoing files are encrypted. The factory encrypts the SIF only. The refund request (RFR), the receipt confirmation (PRC), the disbursement file (DIF) and the returns file (RFA) are sent unencrypted; no check refuses a send of a file that was not encrypted. The encryption block has no native code-behind, so on the runtime the encrypted bytes are not yet what the file-transfer adapter sends (the native host keeps the rendered SIF in memory, I-97), and DIB's decryption binding names a `gnupg` adapter this runtime does not build (I-67).
+
+**Recommendation.** Encrypt each outgoing file in a new release of its subflow, then add a lint that an exchange of mode `send` or `report` on a `wire: file` scheme is preceded by a `protect` step, with a mutation case. Give `p.protect.encrypt-file.v1` a native code-behind on `OpenPgpEncryption` once the native host keeps files in the store, and bind DIB's decryption to `openpgp` with its key ring by reference.
+
+## I-118. The labour ministry status comes only from a simulator
+
+**Issue.** `uae.wps.port.labour-ministry.v1` has a simulator and no runtime adapter, and the scheme's reason code for a suspended employer is not confirmed (RR04 is the ISO code the factory uses). The source read `mohreStatus` from its input without saying where it came from.
+
+**Recommendation.** Agree with each bank where the establishment register is reached (a labour ministry service, or the bank's own copy of it) and build its adapter; confirm the scheme's code with the rulebook and carry it beside RR04 (R-02-14).
 
 ## Not done, and why
 

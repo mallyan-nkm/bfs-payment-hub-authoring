@@ -369,8 +369,13 @@ artefacts:
   - name: WPS-MAP-003
     kind: test
     release: 1.0.0
-    hash: sha256:ad36af2855983722f7b9657e712944ad4b72fb7a9f3185d23a2e5abda4c967dc
+    hash: sha256:595d935d855953cc4dd46b17a3d225256a4d2f9a05d9be5125ab757b56cf6969
     path: tests/WPS-MAP-003.yaml
+  - name: WPS-MAP-004
+    kind: test
+    release: 1.0.0
+    hash: sha256:cfd03f39912735695773c5cd0f6c707bf896d47cb187647a45ec8ceed029ce5e
+    path: tests/WPS-MAP-004.yaml
   - name: WPS-OUT-001
     kind: test
     release: 1.0.0

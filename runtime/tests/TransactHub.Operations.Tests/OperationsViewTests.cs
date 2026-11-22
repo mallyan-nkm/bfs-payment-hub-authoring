@@ -14,6 +14,19 @@ public sealed class OperationsViewTests
     static readonly ViewCatalog Views = Repo.Views();
 
     [Fact]
+    public void A_sum_of_lines_is_exact_decimal_arithmetic_as_in_the_rule_service()
+    {
+        // R-02-17, R-04-23 (Issue I-96): these lines sum to 7894.870000000001 in binary floating point; an amount beyond
+        // a double's exact range, carried as a decimal string, is read exactly.
+        var lines = new[] { "0.1", "0.2", "0.05", "0.2", "2697.81", "1395.44", "3801.07" }
+            .Select(v => new JsonObject { ["amount"] = JsonNode.Parse(v) }).ToList();
+        var c = new SourceContext { Lines = lines };
+        Assert.Equal("7894.87", Sources.Eval("lines.sum(line.amount)", c)!.ToJsonString());
+        var big = new SourceContext { Lines = [new JsonObject { ["amount"] = "90071992547409.93" }, new JsonObject { ["amount"] = JsonNode.Parse("0.01") }] };
+        Assert.Equal(90071992547409.94m, Sources.Number(Sources.Eval("lines.sum(line.amount)", big)));
+    }
+
+    [Fact]
     public void The_platform_and_the_WPS_views_are_published_and_every_source_is_one_the_console_reads()
     {
         Assert.Equal(["p.view.operations.v1", "uae.wps.view.operations.v1"], Views.All.Select(v => v.Name));
@@ -81,6 +94,8 @@ public sealed class OperationsViewTests
         }
         Assert.True(problems.Count == 0, string.Join('\n', problems));
         var coverage = doc.Single(l => l.StartsWith("Of the "));
-        Assert.Equal($"Of the {rows.Count} rows above: {mapped} mapped ({empty} of them empty until the store keeps the files or the channel's fields, I-97 and I-100), {notMapped} not mapped. Of the {notMapped}, {deliberately} are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and {notMapped - deliberately} have no source in the new model, each in Issue I-100.", coverage);
+        Assert.StartsWith($"Of the {rows.Count} rows above: {mapped} mapped ({empty} of them empty until the store keeps the files or a lookup answers them, I-97 and I-115), {notMapped} not mapped. Of the {notMapped}, {deliberately} are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and {notMapped - deliberately} wait for a flow or a fact not built yet (plan P2, I-97).", coverage);
+        // The owner's decision of 2026-11-22 (Issue I-100): every field with no source before has one now, or waits for a flow or a fact.
+        Assert.DoesNotContain(rows, r => r[1] == "not mapped" && !r[4].StartsWith("Deliberately") && !r[4].Contains("I-97") && !r[4].Contains("plan P2"));
     }
 }

@@ -1,9 +1,13 @@
 // The rule expression language (Part 4, 4.3; C06-S1).
 // Literals, paths on bound variables, comparison, and/or/not, arithmetic, `in`, lambdas for
 // aggregate functions, and a fixed library of pure functions. Side-effect free and deterministic.
+// Numbers are exact decimals (R-04-23): a literal and a value are read by their text, arithmetic,
+// comparison, `sum`, `sumWhere`, `min`, `max` and `round2` never pass through binary floating point.
+
+import { Decimal, plain } from '../core/decimal.js';
 
 export type Node =
-  | { t: 'num'; v: number }
+  | { t: 'num'; v: number; text?: string }
   | { t: 'str'; v: string }
   | { t: 'bool'; v: boolean }
   | { t: 'null' }
@@ -123,7 +127,10 @@ export function parse(src: string): Node {
 
   function primary(): Node {
     const t = next();
-    if (t.k === 'num') return { t: 'num', v: Number(t.v) };
+    if (t.k === 'num') {
+      if (!Decimal.parse(t.v)) throw new ExprError(`Bad number ${t.v} at ${t.pos} in: ${src}`);
+      return { t: 'num', v: Number(t.v), text: t.v };
+    }
     if (t.k === 'str') return { t: 'str', v: t.v };
     if (t.k === 'op' && t.v === '(') {
       const e = expr();
@@ -195,13 +202,14 @@ const FUNCS: Record<string, (args: any[], lambdas: ((x: any) => any)[]) => any> 
   startsWith: ([s, p]) => typeof s === 'string' && typeof p === 'string' && s.startsWith(p),
   matches: ([s, re]) => s !== undefined && s !== null && new RegExp(re).test(String(s)),
   count: ([xs]) => (Array.isArray(xs) ? xs.length : 0),
-  sum: ([xs], [f]) => (Array.isArray(xs) ? xs.reduce((a, x) => a + num(f ? f(x) : x), 0) : 0),
+  // Exact sums (R-04-23): sum(items, i => i.fixedPay + i.variablePay) of 0.1, 0.2 and 7894.57 is 7894.87.
+  sum: ([xs], [f]) => out(Array.isArray(xs) ? xs.reduce<Decimal>((a, x) => a.plus(num(f ? f(x) : x)), Decimal.ZERO) : Decimal.ZERO),
   // The sum over the items a condition holds for (Issue I-39): sumWhere(items, i => cond, i => value).
-  sumWhere: ([xs], [cond, f]) => (Array.isArray(xs) ? round(xs.reduce((a, x) => (cond && truthy(cond(x)) ? a + num(f ? f(x) : x) : a), 0)) : 0),
-  // Money to two decimals, half away from zero (Issue I-39): round2(1500.005) is 1500.01, round2(-0.005) is -0.01.
-  round2: ([v]) => round2(num(v)),
-  min: ([xs], [f]) => (Array.isArray(xs) && xs.length ? Math.min(...xs.map((x) => num(f ? f(x) : x))) : null),
-  max: ([xs], [f]) => (Array.isArray(xs) && xs.length ? Math.max(...xs.map((x) => num(f ? f(x) : x))) : null),
+  sumWhere: ([xs], [cond, f]) => out(Array.isArray(xs) ? xs.reduce<Decimal>((a, x) => (cond && truthy(cond(x)) ? a.plus(num(f ? f(x) : x)) : a), Decimal.ZERO) : Decimal.ZERO),
+  // Money to two decimals, half away from zero (Issue I-39): round2(1500.005) is 1500.01, round2(-0.125) is -0.13.
+  round2: ([v]) => out(num(v).round(2)),
+  min: ([xs], [f]) => extreme(xs, f, -1),
+  max: ([xs], [f]) => extreme(xs, f, 1),
   concat: (args) => args.map((a) => (a === undefined || a === null ? '' : String(a))).join(''),
   ibanValid: ([v]) => ibanValid(v),
   in: ([x, xs]) => Array.isArray(xs) && xs.some((y) => eq(x, y)),
@@ -209,30 +217,57 @@ const FUNCS: Record<string, (args: any[], lambdas: ((x: any) => any)[]) => any> 
 
 export const FUNCTION_NAMES = Object.keys(FUNCS);
 
-function num(v: any): number {
-  if (v === undefined || v === null || v === '') return 0;
-  const n = Number(v);
-  return Number.isNaN(n) ? 0 : n;
+/** A value as an exact decimal; blank or not a number is zero. */
+function num(v: any): Decimal {
+  return Decimal.parse(v) ?? Decimal.ZERO;
+}
+
+/** A result: a number when it has at most 15 significant digits, else a Decimal (a decimal string in JSON). */
+function out(d: Decimal | undefined): number | Decimal | null {
+  return d === undefined ? null : d.toValue();
+}
+
+/** A number, or the exact result of arithmetic: compared as a decimal. */
+function isNum(v: any): boolean {
+  return typeof v === 'number' || v instanceof Decimal;
+}
+
+function extreme(xs: any, f: ((x: any) => any) | undefined, sign: number): number | Decimal | null {
+  if (!Array.isArray(xs) || !xs.length) return null;
+  let best = num(f ? f(xs[0]) : xs[0]);
+  for (const x of xs.slice(1)) {
+    const v = num(f ? f(x) : x);
+    if (v.cmp(best) * sign > 0) best = v;
+  }
+  return out(best);
 }
 
 function eq(a: any, b: any): boolean {
   if (a === undefined) a = null;
   if (b === undefined) b = null;
-  if (typeof a === 'number' || typeof b === 'number') {
+  if (isNum(a) || isNum(b)) {
     if (a === null || b === null) return a === b;
-    return Number(a) === Number(b);
+    const x = Decimal.parse(a);
+    const y = Decimal.parse(b);
+    return !!x && !!y && x.cmp(y) === 0;
   }
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function cmp(a: any, b: any): number {
-  if (typeof a === 'number' || typeof b === 'number') return num(a) - num(b);
+  if (isNum(a) || isNum(b)) return num(a).cmp(num(b));
   return String(a ?? '').localeCompare(String(b ?? ''));
+}
+
+/** Two decimal strings add as numbers; any other two strings join. */
+function isDecimalText(v: any): boolean {
+  return typeof v === 'string' && /^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(v);
 }
 
 export function evaluate(n: Node, env: Env): any {
   switch (n.t) {
-    case 'num': case 'str': case 'bool': return n.v;
+    case 'num': return n.text === undefined ? n.v : out(Decimal.parse(n.text));
+    case 'str': case 'bool': return n.v;
     case 'null': return null;
     case 'list': return n.items.map((x) => evaluate(x, env));
     case 'path': {
@@ -257,7 +292,7 @@ export function evaluate(n: Node, env: Env): any {
     }
     case 'un': {
       const v = evaluate(n.e, env);
-      return n.op === 'not' ? !truthy(v) : -num(v);
+      return n.op === 'not' ? !truthy(v) : out(num(v).neg());
     }
     case 'bin': {
       if (n.op === 'and') return truthy(evaluate(n.l, env)) && truthy(evaluate(n.r, env));
@@ -272,31 +307,30 @@ export function evaluate(n: Node, env: Env): any {
         case '>': return l !== undefined && l !== null && cmp(l, r) > 0;
         case '>=': return l !== undefined && l !== null && cmp(l, r) >= 0;
         case 'in': return Array.isArray(r) && r.some((y) => eq(l, y));
-        case '+': return typeof l === 'string' && typeof r === 'string' ? l + r : round(num(l) + num(r));
-        case '-': return round(num(l) - num(r));
-        case '*': return round(num(l) * num(r));
-        case '/': return num(r) === 0 ? null : num(l) / num(r);
-        case '%': return num(l) % num(r);
+        case '+': return typeof l === 'string' && typeof r === 'string' && !(isDecimalText(l) && isDecimalText(r)) ? l + r : out(num(l).plus(num(r)));
+        case '-': return out(num(l).minus(num(r)));
+        case '*': return out(num(l).times(num(r)));
+        case '/': return out(num(l).div(num(r)));
+        case '%': return out(num(l).mod(num(r)));
       }
     }
   }
   throw new ExprError(`Cannot evaluate ${(n as any).t}`);
 }
 
-/** Two decimals, half away from zero, on the decimal value: 1500.005 is 1500.01 although its binary form is just below. */
-function round2(x: number): number {
-  const sign = x < 0 ? -1 : 1;
-  return (sign * Math.floor(Math.abs(x) * 100 + 0.5 + 1e-7)) / 100;
-}
-
-/** Money arithmetic: round to 1e-9 to avoid binary noise such as 0.1 + 0.2. */
-function round(x: number): number {
-  return Math.round(x * 1e9) / 1e9;
-}
-
 export function truthy(v: any): boolean {
+  if (v instanceof Decimal) return !v.isZero();
   return !(v === false || v === null || v === undefined || v === 0 || v === '');
 }
+
+/** Exact comparison of two values as the language compares them (tables use it for lt, lte, gt, gte). */
+export function compareValues(a: any, b: any): number | undefined {
+  const x = Decimal.parse(a);
+  const y = Decimal.parse(b);
+  return x && y ? x.cmp(y) : undefined;
+}
+
+export { plain };
 
 const cache = new Map<string, Node>();
 export function compile(src: string): Node {
