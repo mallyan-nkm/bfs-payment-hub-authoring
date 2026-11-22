@@ -294,10 +294,10 @@ public class EngineHostTests(Servers servers)
         }
     }
 
-    sealed class Supervisor(Process p, string url) : IAsyncDisposable
+    sealed class Supervisor(Process p, string url, StringBuilder log) : IAsyncDisposable
     {
         public readonly string Url = url;
-        public readonly StringBuilder Log = new();
+        public string Log { get { lock (log) return log.ToString(); } }
         public Process Process => p;
         public async Task<(int status, JsonObject body)> Call(string method, string path, JsonObject? body = null)
         {
@@ -337,8 +337,7 @@ public class EngineHostTests(Servers servers)
         var log = new StringBuilder();
         _ = Task.Run(async () => { while (await p.StandardOutput.ReadLineAsync() is string l) if (l.StartsWith("LISTENING ")) ready.TrySetResult(l[10..].Trim()); ready.TrySetException(new Exception("the supervisor exited:\n" + log)); });
         _ = Task.Run(async () => { while (await p.StandardError.ReadLineAsync() is string l) lock (log) log.AppendLine(l); });
-        var s = new Supervisor(p, await ready.Task.WaitAsync(TimeSpan.FromMinutes(2)));
-        return s;
+        return new Supervisor(p, await ready.Task.WaitAsync(TimeSpan.FromMinutes(2)), log);
     }
 
     /// <summary>The switch-over on one engine, end to end through the supervisor, the store and the engine.</summary>
@@ -358,6 +357,16 @@ public class EngineHostTests(Servers servers)
             await Install(bank, idB);
             await WithRegistry(r => r.Activate(distA, Environment, "test", "e2e"));
             await using var sup = await StartSupervisor(engine, bank, plans);
+            try { await Steps(sup); }
+            catch (Exception e) when (e is not Xunit.Sdk.XunitException || !e.Message.Contains("--- the supervisor's log ---"))
+            {
+                throw new Xunit.Sdk.XunitException($"{e.Message}\n{e.StackTrace}\n--- the supervisor's log ---\n{sup.Log}");
+            }
+        }
+        finally { try { Directory.Delete(plans, true); } catch { } }
+
+        async Task Steps(Supervisor sup)
+        {
             // Both installed distributions have a host side by side; A's is current on the engine.
             await Until(async () => J.Truthy(J.P(J.P(await sup.Distribution(distA), "host"), "current")), TimeSpan.FromMinutes(3), $"{distA} current");
             Assert.NotNull(J.P(await sup.Distribution(distB), "host"));
@@ -438,7 +447,6 @@ public class EngineHostTests(Servers servers)
             var p3 = $"P3-{bank}";
             Assert.Equal(distB, J.S((await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p3, ["context"] = Context(p3) })).body, "distribution"));
         }
-        finally { try { Directory.Delete(plans, true); } catch { } }
     }
 
     [Fact] public Task Temporal_worker_versioning_on_a_real_server() => SwitchOver("temporal");

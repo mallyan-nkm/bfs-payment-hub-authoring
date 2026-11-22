@@ -18,7 +18,9 @@ public sealed class BindingJournal(StoreOptions store, string key)
 {
     public const string SubjectKind = "engine-run";
     public string Key => key;
-    public string Subject => $"flowable-run:{key}";
+    /// <summary>The journal's subject: the run key, or its hash where the key is longer than a subject id may be (64 characters).</summary>
+    public string Subject => key.Length <= 48 ? $"flowable-run:{key}"
+        : $"flowable-run:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)))[..48]}";
     /// <summary>The facts this process wrote.</summary>
     public int Written { get; private set; }
 

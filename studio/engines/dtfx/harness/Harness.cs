@@ -129,8 +129,10 @@ public sealed class Harness : IDisposable
         {
             Schedule(await party.Call(new JsonObject { ["op"] = "start", ["now"] = start, ["conversation"] = J.S(J.P(ctx, "header"), "conversation") ?? "conv-1" }));
             var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
-            roots.Add(("root", "root"));
-            Clock.Schedule(start, () => StartRoot("root", $"{workflow}@{J.S(doc, "release")}", ctx));
+            // A long-running host runs many payments on one store: each root's instance id is its own (rootId), its label stays root.
+            var rootId = J.S(input, "rootId") ?? "root";
+            roots.Add(("root", rootId));
+            Clock.Schedule(start, () => StartRoot(rootId, $"{workflow}@{J.S(doc, "release")}", ctx));
         }
 
         // Run on after the roots end, so that late messages reach the front door and are recorded.
@@ -154,7 +156,7 @@ public sealed class Harness : IDisposable
         // The legs the front door chose from the dispatch table fill the platform workflow's slots (R-05-08).
         if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
         client.CreateOrchestrationInstanceAsync(DtfxEngine.OrchestrationName, "", id, J.Str(inp)).GetAwaiter().GetResult();
-        if (id == "root") FollowLive(id, r, J.P(state, "header"), "dtfx");
+        if (id == (J.S(input, "rootId") ?? "root")) FollowLive(id, r, J.P(state, "header"), "dtfx");
         // Signals are external events, raised at their virtual times (R-05-12).
         foreach (var s in J.A(config, "signals"))
         {

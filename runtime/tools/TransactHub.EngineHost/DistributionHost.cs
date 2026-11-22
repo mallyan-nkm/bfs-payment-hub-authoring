@@ -199,6 +199,9 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
         throw new FileNotFoundException($"TransactHub.{name}Harness.dll: build runtime/tools/TransactHub.{name}Harness");
     }
 
+    /// <summary>A short key of its own for a payment's run: the store's subject ids are at most 64 characters.</summary>
+    static string Key(string s) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s)))[..24];
+
     protected override Task Open(CancellationToken ct)
     {
         HarnessDll(Engine);
@@ -212,6 +215,8 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
         built["context"] = context;
         built["id"] = paymentId;
         input["distribution"] = Distribution;
+        // Many payments on one store: each root's instance, and so its payload's chain, is the payment's own.
+        input["rootId"] = $"root-{Key(paymentId)}";
         var dir = Path.Combine(Path.GetTempPath(), $"th-host-{Supervisor.Safe(Distribution)}-{Guid.NewGuid():N}"[..48]);
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, "plan.json");
@@ -224,7 +229,7 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
             if (Engine == "flowable")
             {
                 psi.Environment["TH_FLOWABLE_MODE"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MODE") ?? "production";
-                psi.Environment["TH_FLOWABLE_RUN"] = $"{Supervisor.Safe(Distribution)}:{paymentId}";
+                psi.Environment["TH_FLOWABLE_RUN"] = Key($"{Distribution}|{paymentId}");
                 psi.Environment["TH_FLOWABLE_MAX_WAIT"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MAX_WAIT") ?? System.Xml.XmlConvert.ToString(patience);
             }
             for (var attempt = 0; ; attempt++)
