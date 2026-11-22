@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseYaml, toYaml } from '../src/core/yaml.js';
 import { analyse, apply, readBundle, type BundleFile } from '../src/import/bundle.js';
 import { wpsTrainingBundle } from '../src/import/sample.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { freshEnv } from './helpers.js';
 
 // Import of an extraction bundle (I-33): the training bundle (WPS, extracted as uae.wpsx) imports
@@ -139,14 +139,29 @@ describe('import: what it refuses', () => {
     const zip = await call('GET', '/api/import/sample');
     expect(zip.status).toBe(200);
     const bundle = Buffer.from(zip.body).toString('base64');
-    const pv = await call('POST', '/api/import/preview', { bundle, bankTenant: 'example-bank' });
-    expect(pv.body.ok).toBe(true);
-    const ap = await call('POST', '/api/import/apply', { bundle, bankTenant: 'example-bank', actor: 'shared.designer', bankActor: 'example.maker' });
+    // A platform user imports the shared part and may not name a bank; the bank part is left for the bank (R-11-30).
+    expect((await call('POST', '/api/import/preview', { bundle, bankTenant: 'example-bank' })).status).toBe(403);
+    const pv = await call('POST', '/api/import/preview', { bundle });
+    expect(pv.body.ok, JSON.stringify(pv.body.issues)).toBe(true);
+    expect(pv.body.issues.some((i: any) => i.code === 'I15')).toBe(true);
+    const ap = await call('POST', '/api/import/apply', { bundle, actor: 'shared.designer' });
     expect(ap.body.applied).toBe(true);
-    // An auditor may not author: refused whole, before anything is saved.
+    expect(env.store.drafts('example-bank')).toEqual([]);
+    expect(ap.body.skipped.some((x: string) => /bank part/.test(x))).toBe(true);
+    for (const set of ap.body.changeSets) {
+      const r = await call('POST', '/api/publish', { key: set[0], checker: 'shared.checker' });
+      expect(r.status, JSON.stringify(r.body).slice(0, 300)).toBe(200);
+    }
+    // The bank configurator imports the bank part, into its own tenant only.
+    const bank = (method: string, p: string, body: any = {}) => dispatch(env, { method, path: p, query: {}, body, user: 'example.maker' });
+    expect((await bank('POST', '/api/import/apply', { bundle, bankTenant: 'second-bank' })).status).toBe(403);
+    const bp = await bank('POST', '/api/import/apply', { bundle });
+    expect(bp.body.applied, JSON.stringify(bp.body.report?.issues ?? bp.body).slice(0, 600)).toBe(true);
+    expect(env.store.drafts('example-bank').map((d) => d.kind)).toEqual(['configuration-set']);
+    // An auditor may not import: refused whole, before anything is saved.
     const env2 = freshEnv();
-    const refused = await dispatch(env2, { method: 'POST', path: '/api/import/apply', query: {}, body: { bundle, actor: 'shared.auditor', bankTenant: 'example-bank', bankActor: 'example.maker' } });
-    expect(refused.status).toBe(409);
+    const refused = await dispatch(env2, { method: 'POST', path: '/api/import/apply', query: {}, body: { bundle, actor: 'shared.auditor' } });
+    expect(refused.status).toBe(403);
     expect(refused.body.error).toMatch(/auditor/i);
     expect(env2.store.drafts('owner')).toEqual([]);
     const prompt = await call('GET', '/api/import/prompt');

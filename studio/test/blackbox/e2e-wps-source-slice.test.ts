@@ -71,24 +71,27 @@ afterAll(() => {
 
 describe('the source WPS outward flow, through the north-star path', () => {
   let changeSets: string[][] = [];
+  let bundleB64 = "";
 
   it('1. the extraction imports as drafts: every step of the source flow and every class is accounted for', async () => {
     const files: { name: string; content: Buffer }[] = [];
     const walk = (d: string): void => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else files.push({ name: path.relative(BUNDLE, p).split(path.sep).join('/'), content: fs.readFileSync(p) }); } };
     walk(BUNDLE);
     const bundle = zip(files).toString('base64');
-    const pv = await api.post('/api/import/preview', { bundle, bankTenant: TENANT });
+    // A platform user imports the shared part; the bank's configurator imports the bank part (R-11-30).
+    const pv = await api.post('/api/import/preview', { bundle });
     expect(pv.data.ok, JSON.stringify(pv.data.issues?.filter((i: any) => i.severity === 'error'))).toBe(true);
     expect(pv.data.inventory.sourceFiles).toMatchObject({ missing: [] });
     expect(pv.data.summary.testsFailed).toBe(0);
-    const ap = await api.post('/api/import/apply', { bundle, bankTenant: TENANT, actor: 'shared.designer', bankActor: 'example.maker' });
+    const ap = await api.post('/api/import/apply', { bundle, actor: 'shared.designer' });
     expect(ap.data.applied, JSON.stringify(ap.data).slice(0, 500)).toBe(true);
     changeSets = ap.data.changeSets;
+    bundleB64 = bundle;
   }, 300000);
 
   it('2. it publishes through maker-checker, and each change set lands on the connected branch', async () => {
     expect((await api.post('/api/drafts', {})).status).not.toBe(500);
-    const c = await fetch(`${server.url}/api/git`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actor: 'shared.checker', target: 'temporal', environment: 'test' }) });
+    const c = await api.put('/api/git', { actor: 'shared.checker', target: 'temporal', environment: 'test' });
     expect(c.status).toBe(200);
     const drafts = [...(await api.get('/api/drafts?tenant=owner')).data, ...(await api.get(`/api/drafts?tenant=${TENANT}`)).data];
     for (const set of changeSets) {
@@ -100,6 +103,13 @@ describe('the source WPS outward flow, through the north-star path', () => {
     }
     const leg = (await api.get('/api/catalogue?q=uae.wps.wf.salary-file-out.v1')).data.items.find((e: any) => e.release === '1.1.0');
     expect(leg?.status).toBe('published');
+    // The bank part, once the shared part is a version: imported by the bank configurator, approved by the bank approver.
+    const bank = await api.post('/api/import/apply', { bundle: bundleB64, actor: 'example.maker' });
+    expect(bank.data.applied, JSON.stringify(bank.data.report?.issues?.filter((i: any) => i.severity === 'error') ?? bank.data).slice(0, 600)).toBe(true);
+    for (const set of bank.data.changeSets) {
+      const pub = await api.post('/api/publish', { tenant: TENANT, key: set[0], checker: 'example.checker' });
+      expect(pub.status, JSON.stringify(pub.data).slice(0, 600)).toBe(200);
+    }
   }, 600000);
 
   it("3. the published leg and the factory's own tests of it are green, with the source's writer in it", async () => {

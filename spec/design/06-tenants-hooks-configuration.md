@@ -29,7 +29,7 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | R-06-01 | A tenant MUST see shared content and its own content, and nothing of another tenant. | Isolation tests (C17) |
 | R-06-02 | Shared content MUST be authored in the owner tenant and published as releases to every tenant. | Tenancy tests (C17) |
 | R-06-03 | A bank tenant MUST NOT create or change an artefact outside scope `b`. | Store test (C17) |
-| R-06-04 | Every change in every tenant MUST pass maker-checker. Maker and checker MUST differ. | Governance tests (C17) |
+| R-06-04 | Every change in every tenant MUST pass maker-checker before it is a version. Maker and checker MUST differ. A draft is saved without a checker; the checker approves the change set into a version (R-11-31). | Governance tests (C17); `studio/test/permissions.test.ts` |
 | R-06-05 | A hook point MUST declare name, type, contract and policy (timeout and failure mode). | Schema `workflow#hookPoints` (L00) |
 | R-06-06 | A hook MUST name the hook point it implements and the workflow or segment that declares it, and MUST have the hook point's type. | Schema `hook` (L00); lint L13 |
 | R-06-07 | A hook MUST read and write only what the hook point's contract allows. `facts` written by a hook are its own. | Lint L13; sandbox test |
@@ -50,12 +50,17 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 
 ## 6.5 Roles
 
+The roles were decided on 22 November 2026 (R-11-29 to R-11-31). The permission table is `studio/src/governance/permissions.ts`.
+
 | Role | Tenant | May |
 | --- | --- | --- |
-| Shared designer | Owner | Author shared content |
-| Shared checker | Owner | Approve shared content and releases |
-| Bank designer | Bank | Author hooks and configuration |
-| Bank checker | Bank | Approve the bank's hooks, configuration and release acceptance |
+| Bank Configurator | One bank | Author in scope `b`: hooks and their activities and scripts, rules and their values, dials and hook bindings (the configuration set), simulators and scenarios, tests and port bindings; run the test bench on every workflow the bank can configure |
+| Bank Approver | One bank | Approve the bank's change sets as versions, its configuration among them; accept a shared release |
+| Workflow Designer | Owner | Compose workflows, subflows and schemes from existing blocks, with hook points, parameters and bounds |
+| Workflow Developer | Owner | Build the blocks: activities, scripts, native bindings, ports, rules, rule sets, tables, simulators, extensions |
+| Platform Approver | Owner | Approve designer and developer change sets as versions; retire; waive; hand over a supersession; the publishing settings |
+| Administrator | Owner | Propose and approve changes to the users and roles, never one's own |
+| Service operations | Owner | In-flight counts, retirement, the publishing settings |
 | Auditor | Either | Read everything in its tenant; change nothing |
 
 ## 6.6 Examples

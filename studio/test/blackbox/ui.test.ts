@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startServer, STUDIO, type Server } from './server.js';
+import { signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box: the studio's web app in a real browser (the pre-installed Chromium through Playwright).
 
@@ -25,9 +25,10 @@ afterAll(async () => {
   server?.stop();
 });
 
-/** A page that records script errors and server errors as it goes. */
-async function page(viewport = { width: 1280, height: 900 }) {
+/** A page, signed in as a user, that records script errors and server errors as it goes. */
+async function page(viewport = { width: 1280, height: 900 }, user = 'shared.designer') {
   const p = await browser.newPage({ viewport });
+  await signInPage(p, server.url, user);
   const problems: string[] = [];
   p.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   p.on('console', (m: any) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
@@ -36,8 +37,10 @@ async function page(viewport = { width: 1280, height: 900 }) {
 }
 
 describe('the web app', () => {
+  // The Tenant view is a bank's: its configurator opens it (R-10-08).
+  const userOf = (view: string) => (view === 'tenant' ? 'example.maker' : 'shared.designer');
   it.each(VIEWS)('opens the %s view with no script or server errors', async (view, heading) => {
-    const { p, problems } = await page();
+    const { p, problems } = await page(undefined, userOf(view));
     await p.goto(`${server.url}/#/${view}`);
     await p.getByRole('heading', { name: heading, exact: true }).first().waitFor();
     await p.waitForLoadState('networkidle');
@@ -46,7 +49,7 @@ describe('the web app', () => {
   });
 
   it.each(VIEWS)('fits the %s view on a phone, with no horizontal scroll', async (view, heading) => {
-    const { p } = await page({ width: 390, height: 844 });
+    const { p } = await page({ width: 390, height: 844 }, userOf(view));
     await p.goto(`${server.url}/#/${view}`);
     await p.getByRole('heading', { name: heading, exact: true }).first().waitFor();
     await p.waitForLoadState('networkidle');
@@ -106,17 +109,6 @@ describe('the web app', () => {
     await p.getByLabel('Instruction').fill('Write a policy rule named b.rule.file-limit.v1 comparing each line and the file total with a parameter fileLimit, default 100000, which the bank sets. Above it, reject with AM02.');
     expect(await p.getByRole('button', { name: 'Ask for a draft' }).isDisabled()).toBe(false);
     expect(problems).toEqual([]);
-    await p.close();
-  });
-
-  it('marks a user who may not author or approve', async () => {
-    const { p } = await page();
-    await p.goto(`${server.url}/#/catalogue`);
-    await p.getByLabel('Tenant').selectOption('example-bank');
-    await p.getByLabel('Acting as').selectOption('example.auditor');
-    await p.getByText('read and review only').waitFor();
-    await p.getByLabel('Acting as').selectOption('example.maker');
-    await expect.poll(async () => p.getByText('read and review only').count()).toBe(0);
     await p.close();
   });
 });

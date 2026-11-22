@@ -9,10 +9,14 @@ export interface StudioCtx {
   meta?: Meta;
   /** The studio's users in this tenant (GET /api/users). */
   users: User[];
+  /** The signed-in user's roles (R-11-29). */
+  roles: string[];
+  /** The surfaces the web app shows this user (R-10-08). */
+  surfaces: string[];
   setActor: (id: string) => void;
   go: (path: string) => void;
 }
-export const Studio = createContext<StudioCtx>({ tenant: 'owner', actor: 'shared.designer', users: [], setActor: () => {}, go: () => {} });
+export const Studio = createContext<StudioCtx>({ tenant: 'owner', actor: '', users: [], roles: [], surfaces: [], setActor: () => {}, go: () => {} });
 export const useStudio = () => useContext(Studio);
 
 /** Load data from the API; reloads when deps change. */

@@ -36,14 +36,23 @@ import { samplesFor, messagesWithSamples } from '../samples/samples.js';
 import { compareBindings } from '../export/bindings.js';
 import * as pathmod from 'node:path';
 import type { StudioEnv } from '../env.js';
+import { ROLES, effectiveRoles, landingOf, permissionRows, surfacesOf, type Action } from '../governance/permissions.js';
 
-// The studio's HTTP API. Every call names the tenant it acts for; a tenant sees shared content
-// and its own, and nothing of another tenant (R-06-01, R-10-05). The studio never touches a
-// running payment (R-10-01): it has no connection to one.
+// The studio's HTTP API. Every call acts as the signed-in user (R-11-32): the server sets `user` from
+// the session, never from the request's body or query. The tenant is the user's; a call that names
+// another tenant is refused (R-06-01, R-10-05). Every write, publish and approval asks the permission
+// table (R-11-30). The studio never touches a running payment (R-10-01): it has no connection to one.
 
 export class HttpError extends Error {
   constructor(public status: number, message: string, public body?: any) {
     super(message);
+  }
+}
+
+/** A call that names another tenant than the user's (R-06-01): 403, and audited when it would change something. */
+class TenantRefusal extends HttpError {
+  constructor(public tenant: string, message: string) {
+    super(403, message);
   }
 }
 
@@ -52,6 +61,10 @@ export interface Req {
   path: string;
   query: Record<string, string>;
   body: any;
+  /** The signed-in user's id in governance/users.yaml, set by the server from the session. */
+  user?: string;
+  /** The identity the session signed in with, when it maps to no user of the studio. */
+  identity?: string;
 }
 
 type Handler = (env: StudioEnv, req: Req, params: Record<string, string>) => Promise<any> | any;
@@ -70,6 +83,13 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
     const m = r.pattern.exec(req.path);
     if (!m) continue;
     const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+    // Who is asking (R-11-32): nobody signed in is 401; an identity that is not a user of the studio,
+    // or a user no longer in governance/users.yaml, is 403.
+    if (!req.user) return req.identity ? { status: 403, body: { error: `${req.identity} is signed in but is not a user of the studio`, code: 'R-11-32' } } : { status: 401, body: { error: 'Sign in first', code: 'R-11-32' } };
+    const who = gov.userById(env, req.user);
+    if (!who) return { status: 403, body: { error: `${req.user} is not a user of the studio`, code: 'R-11-32' } };
+    userTenant.set(req.user, who.tenant);
+    if (params.tenant !== undefined && params.tenant !== who.tenant) return { status: 403, body: { error: `${req.user} works for tenant ${who.tenant}, not ${params.tenant} (R-06-01)`, code: 'R-06-01' } };
     try {
       const body = await r.handler(env, req, params);
       // A change is on the branch before the answer goes back (R-11-21): wait for its commits.
@@ -88,7 +108,12 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
         await env.store.reload().catch(() => undefined);
         return { status: 409, body: { error: wrote.message, code: wrote instanceof ContentError ? wrote.code : 'github' } };
       }
+      if (e instanceof TenantRefusal && req.method !== 'GET') {
+        env.store.record({ tenant: e.tenant, actor: req.user, action: req.path === '/api/publish' ? 'approve' : 'author', key: req.path, outcome: 'refused', detail: e.message });
+        await env.store.flush().catch(() => undefined);
+      }
       if (e instanceof HttpError) return { status: e.status, body: { error: e.message, ...(e.body ?? {}) } };
+      if (e instanceof gov.Forbidden) return { status: 403, body: { error: e.message, code: e.code } };
       if (e instanceof StoreError) return { status: 409, body: { error: e.message, code: e.code } };
       return { status: 500, body: { error: String(e?.message ?? e) } };
     }
@@ -96,7 +121,36 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
   return { status: 404, body: { error: `No route ${req.method} ${req.path}` } };
 }
 
-const tenantOf = (req: Req) => req.query.tenant || req.body?.tenant || OWNER_TENANT;
+/** The tenant of each user, refreshed on every call so a change to the users applies at once. */
+const userTenant = new Map<string, string>();
+
+/** The signed-in user. A body or query that names another acting user is refused, not obeyed (R-11-32). */
+function actorOf(req: Req): string {
+  const user = req.user!;
+  for (const k of ['actor', 'checker', 'maker']) {
+    const named = req.body?.[k] ?? (k === 'actor' ? req.query.actor : undefined);
+    if (named && named !== user) throw new HttpError(403, `The acting user is the signed-in user, ${user}; ${k} ${named} is not taken from a request (R-11-32)`);
+  }
+  return user;
+}
+
+/** The user's tenant. A call that names another tenant, in the query or the body, is refused (R-06-01). */
+function tenantOf(req: Req): string {
+  const u = req.user ? userTenant.get(req.user) : undefined;
+  if (!u) throw new HttpError(401, 'Sign in first');
+  for (const named of [req.query.tenant, req.body?.tenant]) {
+    if (named && named !== u) throw new TenantRefusal(named, `${req.user} works for tenant ${u}, not ${named} (R-06-01)`);
+  }
+  return u;
+}
+
+/** Refuse unless the permission table allows it (R-11-30). */
+function must(env: StudioEnv, req: Req, action: Action, key: string, target: gov.Target) {
+  enforce(env, actorOf(req), tenantOf(req), action, key, target);
+}
+function mayRun(env: StudioEnv, req: Req, kind: 'bench' | 'import' | 'export' | 'deploy' | 'assistant', key: string = kind) {
+  must(env, req, 'run', key, { kind, scope: tenantOf(req) === OWNER_TENANT ? 'p' : 'b' });
+}
 
 function visibleEntries(env: StudioEnv, tenant: string) {
   return env.store.all().filter((e) => e.tenant === OWNER_TENANT || e.tenant === tenant);
@@ -115,16 +169,18 @@ function summary(e: any) {
 
 // ------------------------------------------------------------------- meta
 
-route('GET', '/api/meta', (env) => {
+route('GET', '/api/meta', (env, req) => {
+  const tenant = tenantOf(req);
   const counts: Record<string, number> = {};
   for (const e of env.store.all()) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
   return {
-    tenants: env.store.tenants(),
+    // A bank sees its own tenant and the owner's; the owner sees every tenant's name.
+    tenants: tenant === OWNER_TENANT ? env.store.tenants() : [OWNER_TENANT, tenant],
     owner: OWNER_TENANT,
     counts,
     checks: CHECK_CATALOGUE,
     contextParts: CONTEXT_PARTS,
-    roles: ['shared designer', 'shared checker', 'bank designer', 'bank checker', 'auditor'],
+    roles: ROLES,
     scripts: env.scripts.list(),
   };
 });
@@ -161,6 +217,7 @@ route('GET', '/api/artefacts/:name', (env, req, { name }) => {
   const release = req.query.release;
   const e = req.query.key ? env.store.entries.get(req.query.key) : release ? env.store.get(name, release) : env.store.latest(name) ?? env.store.test(name) ?? env.store.all().find((x) => x.name === name);
   if (!e || (e.tenant !== OWNER_TENANT && e.tenant !== tenant)) throw new HttpError(404, `No artefact ${name} for tenant ${tenant}`);
+  const kind = (e.doc?.kind ?? e.kind) as any;
   const doc = e.doc;
   const checker = Checker.fromEnv(env);
   const usedBy = env.store.all().filter((x) => x.status === 'published' && refsOf(x.doc).has(name)).map(summary);
@@ -170,7 +227,8 @@ route('GET', '/api/artefacts/:name', (env, req, { name }) => {
     entry: summary(e), doc, yaml: toYaml(doc), hash: e.hash, path: e.path, generated: e.generated,
     releases, usedBy, tests, uses: [...refsOf(doc)].sort(),
     issues: checkDocument(env, doc),
-    readOnly: e.tenant === OWNER_TENANT && tenant !== OWNER_TENANT,
+    // Read-only to a user the permission table does not let author it (R-11-30).
+    readOnly: (e.tenant === OWNER_TENANT && tenant !== OWNER_TENANT) || !!gov.permit(env, req.user!, tenant, 'author', { kind, scope: e.scope }),
   };
   if (e.kind === 'rule' || e.kind === 'table') out.examples = runExamples(doc, (n) => env.store.doc(n));
   if (e.kind === 'table') out.analysis = analyseTable(doc);
@@ -316,15 +374,18 @@ route('POST', '/api/drafts', (env, req) => {
   const tenant = tenantOf(req);
   const doc = req.body.doc ?? safeParse(req.body.yaml ?? '');
   if (doc.__parseError) throw new HttpError(400, `YAML does not parse: ${doc.__parseError}`);
-  const actor = req.body.actor ?? '';
-  enforce(env, actor, tenant, 'author', keyOf(doc), doc.kind === 'configuration-set' ? 'b' : (doc.name ? parseName(doc.name)?.scope : doc.scope));
+  const actor = actorOf(req);
+  enforce(env, actor, tenant, 'author', keyOf(doc), gov.targetOf(doc));
   const e = env.store.saveDraft(tenant, actor, doc);
   // Checked with the tenant's other drafts in place: a designer builds related artefacts together.
   return { draft: summary(e), issues: checkDocument(env, doc, tenant, gov.draftSet(env, tenant)), interface: interfaceFor(env, doc) };
 });
 
 route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
-  env.store.deleteDraft(tenantOf(req), req.query.actor ?? 'designer', key);
+  const e = env.store.entries.get(key);
+  if (!e || e.tenant !== tenantOf(req)) throw new HttpError(404, `No draft ${key}`);
+  must(env, req, 'author', key, gov.targetOf(e.doc));
+  env.store.deleteDraft(tenantOf(req), actorOf(req), key);
   return { ok: true };
 });
 
@@ -333,8 +394,8 @@ route('DELETE', '/api/drafts/:key', (env, req, { key }) => {
 route('POST', '/api/publish', async (env, req) => {
   const tenant = tenantOf(req);
   const keys: string[] = Array.isArray(req.body?.keys) ? req.body.keys : req.body?.key ? [req.body.key] : [];
-  for (const k of keys) if (!env.store.entries.get(k)) throw new HttpError(404, `No draft ${k}`);
-  const r = await gov.approveChangeSet(env, tenant, req.body?.checker, keys);
+  for (const k of keys) if (env.store.entries.get(k)?.tenant !== tenant) throw new HttpError(404, `No draft ${k}`);
+  const r = await gov.approveChangeSet(env, tenant, actorOf(req), keys);
   // The change set is one commit on the content branch, or in pull-request mode one on its own branch and a pull request (R-11-22, R-09-22).
   const git = r.write ? await r.write : undefined;
   return { changeSet: r.changeSet, published: r.published.map(summary), ...(git ? { git: { changeSet: r.changeSet.id, skipped: r.skipped, ...git } } : {}) };
@@ -348,19 +409,31 @@ route('GET', '/api/change-set', (env, req) => {
   return { key: req.query.key, members: keys.map((k) => summary(env.store.entries.get(k)!)) };
 });
 
-route('GET', '/api/change-sets', (env, req) => (env.store.extra.changeSets ?? []).filter((c: any) => !req.query.tenant || c.tenant === tenantOf(req)));
+route('GET', '/api/change-sets', (env, req) => (env.store.extra.changeSets ?? []).filter((c: any) => c.tenant === tenantOf(req) || (tenantOf(req) === OWNER_TENANT && !req.query.tenant)));
 
 route('POST', '/api/review', (env, req) => {
-  submitForReview(env, tenantOf(req), req.body.actor, req.body.key);
+  submitForReview(env, tenantOf(req), actorOf(req), req.body.key);
   return { ok: true };
+});
+
+// A maker asks for the change set a draft is in to become a version (R-11-31). Saving needed no
+// approval; this is the request an approver answers.
+route('POST', '/api/request-release', (env, req) => {
+  const tenant = tenantOf(req);
+  const key = req.body?.key;
+  const e = key ? env.store.entries.get(key) : undefined;
+  if (!e || e.tenant !== tenant) throw new HttpError(404, `No draft ${key}`);
+  const keys = gov.changeSetFor(env, tenant, key);
+  for (const k of keys) if (env.store.entries.get(k)?.status === 'draft') submitForReview(env, tenant, actorOf(req), k);
+  return { requested: keys };
 });
 
 route('POST', '/api/new', (env, req) => {
   const { kind, wfKind, from, name, title, source } = req.body ?? {};
   const tenant = tenantOf(req);
   if (from === 'clone') {
-    const src = env.store.latest(source);
-    if (!src) throw new HttpError(404, `No ${source} to clone`);
+    const src = env.store.latest(source, tenant) ?? env.store.latest(source);
+    if (!src || (src.tenant !== OWNER_TENANT && src.tenant !== tenant)) throw new HttpError(404, `No ${source} to clone`);
     const doc = JSON.parse(JSON.stringify(src.doc));
     if (name) doc.name = name;
     const parsed = parseName(doc.name);
@@ -401,7 +474,8 @@ route('GET', '/api/tests/:id', (env, _req, { id }) => {
 
 route('POST', '/api/tests/:id/run', async (env, req, { id }) => {
   const t = env.store.test(id);
-  if (!t) throw new HttpError(404, `No test ${id}`);
+  if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenantOf(req))) throw new HttpError(404, `No test ${id}`);
+  mayRun(env, req, 'bench', id);
   const test = { ...t.doc, ...(req.body?.override ?? {}) };
   const r = await runTest(env, test, req.body?.config ?? {});
   lastRun = [...lastRun.filter((x) => x.id !== id), r];
@@ -410,18 +484,25 @@ route('POST', '/api/tests/:id/run', async (env, req, { id }) => {
 
 route('POST', '/api/tests/run-all', async (env, req) => {
   const tenant = tenantOf(req);
+  mayRun(env, req, 'bench', 'run-all');
   const r = await runAllTests(env, (t) => !t.tenant || t.tenant === tenant || tenant === OWNER_TENANT);
   lastRun = r;
   return r.map((x) => ({ id: x.id, target: x.target, level: x.level, passed: x.passed, outcome: x.outcome, elapsed: x.elapsed, error: x.error?.split('\n')[0], failed: x.checks.filter((c) => !c.passed) }));
 });
 
 /** Run an ad hoc bench: any target, any bench, any context (F-16). */
-route('POST', '/api/bench/run', async (env, req) => benchRun(env, req.body ?? {}, false));
+route('POST', '/api/bench/run', async (env, req) => benchRun(env, req, false));
 // The debugger (F-17): the same run, with the data after every event and what each step decided.
-route('POST', '/api/debug/run', async (env, req) => benchRun(env, req.body ?? {}, true));
+route('POST', '/api/debug/run', async (env, req) => benchRun(env, req, true));
 
-async function benchRun(env: StudioEnv, b: any, debug: boolean) {
-  const target = env.store.latest(b.target)?.doc;
+/** A bench run: any workflow the tenant may see, with the tenant's own configuration (R-11-30). */
+async function benchRun(env: StudioEnv, req: Req, debug: boolean) {
+  const b = { ...(req.body ?? {}) };
+  const tenant = tenantOf(req);
+  mayRun(env, req, 'bench', String(b.target ?? 'bench'));
+  if (tenant !== OWNER_TENANT) b.tenant = tenant;
+  const e = b.target ? env.store.latest(b.target, tenant) ?? env.store.latest(b.target) : undefined;
+  const target = e && (e.tenant === OWNER_TENANT || e.tenant === tenant) ? e.doc : undefined;
   if (!target) throw new HttpError(404, `No ${b.target}`);
   const level = b.level ?? (target.kind === 'activity' ? 'activity' : target.kind === 'hook' ? 'hook' : target.wfKind === 'handler' ? 'handler' : target.wfKind === 'leg' ? 'leg' : target.wfKind === 'platform' ? (b.inbound ? 'end-to-end' : 'leg') : 'activity');
   const test = {
@@ -435,8 +516,8 @@ async function benchRun(env: StudioEnv, b: any, debug: boolean) {
 
 route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => !req.query.port || s.doc.port === req.query.port).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
 
-route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: req.body?.actor, activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
-route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: req.body?.actor, name: req.body?.name, content: req.body?.content }));
+route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: actorOf(req), activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
+route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: actorOf(req), name: req.body?.name, content: req.body?.content }));
 route('GET', '/api/samples', (env) => sampleNames(env).map((f) => `samples/${f}`));
 
 import * as nodefs from 'node:fs';
@@ -475,7 +556,8 @@ route('POST', '/api/tenants/:tenant/configuration/check', (env, req, { tenant })
 });
 
 /** The compatibility run (F-29, R-06-17): the tenant's hook tests against the current shared releases. */
-route('POST', '/api/tenants/:tenant/compatibility', async (env, _req, { tenant }) => {
+route('POST', '/api/tenants/:tenant/compatibility', async (env, req, { tenant }) => {
+  mayRun(env, req, 'bench', 'compatibility');
   const tests = env.store.byKind('test').filter((t) => t.doc.tenant === tenant);
   const out: any[] = [];
   for (const t of tests) {
@@ -491,6 +573,7 @@ route('GET', '/api/supersessions', (env) => env.store.byKind('supersession').map
 
 /** Test a supersession (F-25): rerun the pinned workflows' tests with the replacement swapped in. */
 route('POST', '/api/supersessions/test', async (env, req) => {
+  mayRun(env, req, 'bench', 'supersession');
   const { artefact, replaces, with: by, workflows } = req.body ?? {};
   if (!artefact || !by) throw new HttpError(400, 'Name the artefact and the release that replaces it: { artefact, replaces, with }');
   if (!env.store.get(artefact, by)) throw new HttpError(404, `${artefact}@${by} is not published`);
@@ -507,7 +590,9 @@ route('POST', '/api/supersessions/test', async (env, req) => {
 // ------------------------------------------------------------------ export
 
 route('POST', '/api/export', (env, req) => {
-  const { workflows, target, tenant, withSimulators } = req.body ?? {};
+  const { workflows, target, withSimulators } = req.body ?? {};
+  const tenant = tenantOf(req);
+  mayRun(env, req, 'export');
   if (!Array.isArray(workflows) || !workflows.length) throw new HttpError(400, 'Name at least one workflow: { workflows: [...], target }');
   const pkg = exportOr400(() => exportPackage(env, { workflows, target: (target ?? 'temporal') as Target, tenant: tenant && tenant !== OWNER_TENANT ? tenant : undefined, withSimulators: !!withSimulators }));
   return { manifest: pkg.manifest, issues: pkg.issues, files: Object.fromEntries(Object.entries(pkg.files).map(([k, v]) => [k, v.length])), preview: Object.fromEntries(Object.entries(pkg.files).filter(([k]) => k.endsWith('.bpmn20.xml') || k === 'manifest.yaml' || k.startsWith('workflows/') || k === 'portability.json').slice(0, 12)) };
@@ -517,7 +602,9 @@ route('GET', '/api/export/download', (env, req) => {
   const workflows = (req.query.workflows ?? '').split(',').filter(Boolean);
   if (!workflows.length) throw new HttpError(400, 'Name at least one workflow: ?workflows=a,b&target=...');
   const target = (req.query.target ?? 'temporal') as Target;
-  const tenant = req.query.tenant && req.query.tenant !== OWNER_TENANT ? req.query.tenant : undefined;
+  const own = tenantOf(req);
+  mayRun(env, req, 'export');
+  const tenant = own !== OWNER_TENANT ? own : undefined;
   const pkg = exportOr400(() => exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' }));
   return { __binary: true, data: exportZip(pkg), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
 });
@@ -526,7 +613,7 @@ route('GET', '/api/export/download', (env, req) => {
 
 // The connection comes from the environment; what can change is how the studio publishes (R-09-19).
 route('GET', '/api/git', (env) => gitExport.gitStatus(env));
-route('PUT', '/api/git', (env, req) => ({ settings: gitExport.changeSettings(env, req.body?.actor ?? '', req.body ?? {}) }));
+route('PUT', '/api/git', (env, req) => ({ settings: gitExport.changeSettings(env, actorOf(req), req.body ?? {}) }));
 route('POST', '/api/git/reload', async (env) => {
   await env.store.reload();
   return gitExport.gitStatus(env);
@@ -534,9 +621,9 @@ route('POST', '/api/git/reload', async (env) => {
 
 // ------------------------------------------------- users and roles (R-11-23)
 
-route('GET', '/api/users/proposals', (env) => env.store.extra.userProposals ?? []);
-route('POST', '/api/users/proposals', (env, req) => gov.proposeUsers(env, req.body?.actor ?? '', req.body?.users));
-route('POST', '/api/users/proposals/:id/approve', (env, req, { id }) => gov.approveUsers(env, req.body?.checker ?? '', id));
+route('GET', '/api/users/proposals', (env, req) => (tenantOf(req) === OWNER_TENANT ? env.store.extra.userProposals ?? [] : []));
+route('POST', '/api/users/proposals', (env, req) => gov.proposeUsers(env, actorOf(req), req.body?.users));
+route('POST', '/api/users/proposals/:id/approve', (env, req, { id }) => gov.approveUsers(env, actorOf(req), id));
 
 void keyOf;
 
@@ -616,14 +703,24 @@ route('GET', '/api/expanded/:name', (env, req, { name }) => {
 // --------------------------------------------------------------- packs (C05-S2, C19)
 
 route('GET', '/api/packs', (env) => ['p', 'uae.p', 'uae.wps', 'b'].map((scope) => ({ scope, ...compareManifest(env, scope) })));
-route('GET', '/api/packs/:scope/manifest', (env, req, { scope }) => ({ manifest: packManifest(env, scope, req.query.tenant), compare: compareManifest(env, scope, req.query.tenant) }));
+route('GET', '/api/packs/:scope/manifest', (env, req, { scope }) => {
+  const t = tenantOf(req) !== OWNER_TENANT ? tenantOf(req) : undefined;
+  return { manifest: packManifest(env, scope, t), compare: compareManifest(env, scope, t) };
+});
 route('POST', '/api/packs/build', (env, req) => {
-  const { scope, kind, tenant } = req.body ?? {};
+  const { scope, kind } = req.body ?? {};
+  mayRun(env, req, 'export', 'pack');
+  const own = tenantOf(req);
+  if (kind === 'bank' && own === OWNER_TENANT) throw new HttpError(403, 'A bank pack is built by its own bank (R-06-01)');
+  const tenant = kind === 'bank' ? own : undefined;
   const b = buildPack(env, scope, kind ?? 'shared', tenant);
   return { manifest: b.manifest, refused: b.refused, files: Object.keys(b.files) };
 });
 route('GET', '/api/packs/download', (env, req) => {
-  const b = buildPack(env, req.query.scope, (req.query.kind ?? 'shared') as any, req.query.tenant);
+  mayRun(env, req, 'export', 'pack');
+  const own = tenantOf(req);
+  if (req.query.kind === 'bank' && own === OWNER_TENANT) throw new HttpError(403, 'A bank pack is built by its own bank (R-06-01)');
+  const b = buildPack(env, req.query.scope, (req.query.kind ?? 'shared') as any, req.query.kind === 'bank' ? own : undefined);
   if (b.refused) throw new HttpError(422, 'The pack has red checks', { issues: b.refused });
   return { __binary: true, data: packZip(b), contentType: 'application/zip', filename: `pack-${req.query.scope}-${req.query.kind ?? 'shared'}.zip` };
 });
@@ -632,7 +729,21 @@ route('GET', '/api/packs/:scope/release-gate', async (env, _req, { scope }) => g
 // ------------------------------------------------------------ roles and audit (C17)
 
 route('GET', '/api/users', (env, req) => gov.users(env).filter((u) => tenantOf(req) === OWNER_TENANT || u.tenant === tenantOf(req)));
-route('GET', '/api/permit', (env, req) => ({ allowed: !gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope), reason: gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope) }));
+// Ask the permission table about a user of this tenant (R-11-30). It reads; it allows nothing.
+route('GET', '/api/permit', (env, req) => {
+  const tenant = tenantOf(req);
+  const who = gov.userById(env, req.query.user ?? req.user);
+  if (!who || (who.tenant !== tenant && tenant !== OWNER_TENANT)) throw new HttpError(404, `No user ${req.query.user} in ${tenant}`);
+  const reason = gov.permit(env, who.id, who.tenant, (req.query.action ?? 'author') as Action, { kind: (req.query.kind ?? 'workflow') as any, scope: req.query.scope });
+  return { allowed: !reason, reason };
+});
+route('GET', '/api/permissions', () => ({ roles: ROLES, grants: permissionRows() }));
+/** Who is signed in, the roles, and the surfaces the web app shows (R-10-08). */
+route('GET', '/api/me', (env, req) => {
+  const u = gov.userById(env, req.user)!;
+  const roles = effectiveRoles(u.roles);
+  return { user: u.id, tenant: u.tenant, roles, surfaces: surfacesOf(roles), landing: landingOf(roles) };
+});
 route('GET', '/api/audit/verify', async (env) => env.store.verifyAudit());
 
 // --------------------------------------------------- releases, retirement, propagation (C19, C05-S4)
@@ -643,9 +754,9 @@ route('GET', '/api/releases/:name/pins', (env, req, { name }) => {
   const flying = gov.inFlight(env, name, release);
   return { name, release, pinnedBy, inFlight: flying, mayRetire: pinnedBy.length === 0 && flying.count === 0 };
 });
-route('POST', '/api/retire', (env, req) => ({ retired: summary(gov.retire(env, req.body.actor, req.body.name, req.body.release)) }));
+route('POST', '/api/retire', (env, req) => ({ retired: summary(gov.retire(env, actorOf(req), req.body.name, req.body.release)) }));
 route('POST', '/api/in-flight', (env, req) => {
-  gov.importInFlight(env, req.body.actor, req.body.counts ?? {}, req.body.asOf);
+  gov.importInFlight(env, actorOf(req), req.body.counts ?? {}, req.body.asOf);
   return { ok: true };
 });
 route('GET', '/api/propagate', async (env, req) => {
@@ -655,33 +766,42 @@ route('GET', '/api/propagate', async (env, req) => {
 
 // ------------------------------------------------------------ supersession (C19-S4, S5)
 
-route('POST', '/api/supersessions/draft', (env, req) => gov.draftSupersession(env, req.body));
+route('POST', '/api/supersessions/draft', (env, req) => gov.draftSupersession(env, { ...req.body, maker: actorOf(req) }));
 const supersessionDoc = (req: Req) => {
   const doc = req.body?.doc;
   if (!doc || doc.kind !== 'supersession') throw new HttpError(400, 'Send the supersession document as doc');
   return doc;
 };
-route('POST', '/api/supersessions/evidence', async (env, req) => gov.testSupersession(env, supersessionDoc(req)));
-route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, supersessionDoc(req), req.body.checker));
+route('POST', '/api/supersessions/evidence', async (env, req) => {
+  mayRun(env, req, 'bench', 'supersession');
+  return gov.testSupersession(env, supersessionDoc(req));
+});
+route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, supersessionDoc(req), actorOf(req)));
 route('GET', '/api/supersessions/handed-over', (env) => env.store.extra.supersessions ?? []);
 
 // ------------------------------------------------- tenants and configuration (C18)
 
 route('GET', '/api/tenants/:tenant/settable', (env, _req, { tenant }) => gov.settableParameters(env, tenant));
-route('POST', '/api/tenants/:tenant/configuration', (env, req, { tenant }) => ({ saved: summary(gov.saveConfiguration(env, tenant, req.body.actor, req.body.yaml)) }));
+// A bank configurator's dials and hook bindings: saved as a draft with no approval; a bank approver
+// who is not its maker makes it the version the runtime is given, through /api/publish (R-11-31).
+route('POST', '/api/tenants/:tenant/configuration', (env, req, { tenant }) => {
+  const d = summary(gov.saveConfiguration(env, tenant, actorOf(req), req.body.yaml));
+  return { draft: d, saved: d };
+});
 route('POST', '/api/tenants/:tenant/configuration/validate', (env, req, { tenant }) => {
   const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
   if (doc.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: doc.__parseError }] };
   return { issues: gov.checkConfiguration(env, tenant, doc) };
 });
-route('POST', '/api/tenants/:tenant/compatibility-run', async (env, req, { tenant }) => gov.compatibilityRun(env, tenant, (req.body?.candidates ?? []).map((c: any) => (typeof c === 'string' ? safeParse(c) : c))));
+route('POST', '/api/tenants/:tenant/compatibility-run', async (env, req, { tenant }) => mayRun(env, req, 'bench', 'compatibility') ?? gov.compatibilityRun(env, tenant, (req.body?.candidates ?? []).map((c: any) => (typeof c === 'string' ? safeParse(c) : c))));
 route('GET', '/api/tenants/:tenant/export', (env, _req, { tenant }) => gov.tenantExport(env, tenant));
 
 // ------------------------------------------------------ conformance report (C23-S3)
 
 route('GET', '/api/conformance/report', async (env, req) => gov.conformanceReport(env, req.query.target ?? 'studio'));
 route('POST', '/api/conformance/waivers', (env, req) => {
-  return { ok: true, ...gov.addWaiver(env, req.body.actor, { target: req.body.target ?? 'studio', scenario: req.body.scenario, reason: req.body.reason, approver: req.body.actor }) };
+  const actor = actorOf(req);
+  return { ok: true, ...gov.addWaiver(env, actor, { target: req.body.target ?? 'studio', scenario: req.body.scenario, reason: req.body.reason, approver: actor }) };
 });
 
 // ------------------------------------------------------------------ simulators (C10)
@@ -716,8 +836,11 @@ route('GET', '/api/ai/templates', (_env, req) => TEMPLATES.filter((t) => !req.qu
 // labels as a replay.
 route('POST', '/api/ai/agent', async (env, req) => {
   const body = req.body ?? {};
-  const ctx = { ...(body.context ?? {}), tenant: tenantOf(req), actor: body.context?.actor ?? '' };
+  const actor = actorOf(req);
+  if (body.context?.actor && body.context.actor !== actor) throw new HttpError(403, `The assistant acts as the signed-in user, ${actor} (R-11-32)`);
+  const ctx = { ...(body.context ?? {}), tenant: tenantOf(req), actor };
   if (!ctx.surface) throw new HttpError(400, 'Send context.surface');
+  mayRun(env, req, 'assistant');
   const replay = process.env.TH_AI_REPLAY;
   let model: AgentModel;
   if (replay) model = replayModel(JSON.parse(nodefs.readFileSync(replay, 'utf8')));
@@ -726,7 +849,8 @@ route('POST', '/api/ai/agent', async (env, req) => {
     if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);
     model = anthropicAgentModel();
   }
-  const inner = (method: string, path: string, b: any = {}) => dispatch(env, { method, path, query: { tenant: ctx.tenant }, body: { tenant: ctx.tenant, ...b } });
+  // The assistant's actions go through the same API as the user, so the same table decides (R-11-30).
+  const inner = (method: string, path: string, b: any = {}) => dispatch(env, { method, path, query: { tenant: ctx.tenant }, body: { tenant: ctx.tenant, ...b }, user: actor });
   return agentTurn(env, { ...body, context: ctx }, model, inner);
 });
 
@@ -736,11 +860,26 @@ const bundleOf = (body: any) => {
   if (!body?.bundle) throw new HttpError(400, 'Send bundle: the extraction bundle zip, in base64');
   return readBundle(Buffer.from(String(body.bundle), 'base64'));
 };
-route('POST', '/api/import/preview', async (env, req) => analyseImport(env, bundleOf(req.body), { tenant: tenantOf(req), bankTenant: req.body?.bankTenant || undefined, runTests: req.body?.runTests !== false }));
+// Import (R-11-30): a platform user imports the shared part of a bundle, a bank configurator the bank
+// part, into its own tenant. Neither names the other tenant; the other part is reported, not saved.
+function importOpts(req: Req) {
+  const tenant = tenantOf(req);
+  if (req.body?.bankActor && req.body.bankActor !== req.user) throw new HttpError(403, `The bank part is saved as the signed-in user, ${req.user}, not ${req.body.bankActor} (R-11-32)`);
+  if (tenant === OWNER_TENANT) {
+    if (req.body?.bankTenant) throw new HttpError(403, `A platform user imports the shared part only; a configurator of ${req.body.bankTenant} imports the bank part (R-06-01)`);
+    return { tenant: OWNER_TENANT, part: 'shared' as const };
+  }
+  if (req.body?.bankTenant && req.body.bankTenant !== tenant) throw new HttpError(403, `${req.user} works for tenant ${tenant}, not ${req.body.bankTenant} (R-06-01)`);
+  return { tenant: OWNER_TENANT, bankTenant: tenant, part: 'bank' as const };
+}
+route('POST', '/api/import/preview', async (env, req) => {
+  mayRun(env, req, 'import');
+  return analyseImport(env, bundleOf(req.body), { ...importOpts(req), runTests: req.body?.runTests !== false });
+});
 route('POST', '/api/import/apply', async (env, req) => {
-  const actor = req.body?.actor ?? '';
-  if (!actor) throw new HttpError(400, 'Send actor: the designer the drafts are saved as');
-  return applyImport(env, bundleOf(req.body), { tenant: tenantOf(req), actor, bankTenant: req.body?.bankTenant || undefined, bankActor: req.body?.bankActor || undefined, force: !!req.body?.force });
+  mayRun(env, req, 'import');
+  const actor = actorOf(req);
+  return applyImport(env, bundleOf(req.body), { ...importOpts(req), actor, bankActor: actor, force: !!req.body?.force });
 });
 route('GET', '/api/import/sample', (env) => ({ __binary: true, data: bundleZip(wpsTrainingBundle(env)), contentType: 'application/zip', filename: 'extraction-uae.wpsx-training.zip' }));
 route('GET', '/api/import/prompt', (env) => {
@@ -761,6 +900,7 @@ route('POST', '/api/explain', async (env, req) => {
 });
 
 route('POST', '/api/ai/draft', async (env, req) => {
+  mayRun(env, req, 'assistant');
   const st = assistantConfigured();
   if (!st.configured) throw new HttpError(503, `The assistant has no model credentials. ${st.how}`);
   return draft(env, { ...req.body, tenant: tenantOf(req) });

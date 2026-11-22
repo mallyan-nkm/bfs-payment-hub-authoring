@@ -1,4 +1,5 @@
-// A thin client for the studio's HTTP API. Every call names the tenant it acts for.
+// A thin client for the studio's HTTP API. The server takes the user, and with it the tenant, from
+// the session cookie (R-11-32); a state-changing call carries the session's CSRF token (R-11-33).
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body: any) {
@@ -7,16 +8,20 @@ export class ApiError extends Error {
 }
 
 let currentTenant = 'owner';
+let csrf = '';
+let onSignedOut: () => void = () => {};
 export function setApiTenant(t: string) {
   currentTenant = t;
 }
 export function apiTenant() {
   return currentTenant;
 }
-
-function withTenant(path: string, tenant?: string) {
-  const sep = path.includes('?') ? '&' : '?';
-  return `${path}${sep}tenant=${encodeURIComponent(tenant ?? currentTenant)}`;
+export function setCsrf(token: string) {
+  csrf = token;
+}
+/** Called when a call finds the session gone (401): the app shows sign-in again. */
+export function onUnauthorized(fn: () => void) {
+  onSignedOut = fn;
 }
 
 async function parse(res: Response) {
@@ -27,36 +32,53 @@ async function parse(res: Response) {
   } catch {
     /* not JSON */
   }
+  if (res.status === 401) onSignedOut();
   if (!res.ok) throw new ApiError(res.status, (body && body.error) || `${res.status} ${res.statusText}`, body);
   return body;
 }
 
-export async function get<T = any>(path: string, tenant?: string): Promise<T> {
-  return parse(await fetch(withTenant(path, tenant)));
+const send = (method: string, body?: any): RequestInit => ({
+  method,
+  credentials: 'same-origin',
+  headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), 'x-csrf-token': csrf },
+  body: body !== undefined ? JSON.stringify(body) : undefined,
+});
+
+// The tenant argument is kept for the views' calls; the server answers for the user's tenant only.
+export async function get<T = any>(path: string, _tenant?: string): Promise<T> {
+  return parse(await fetch(path, { credentials: 'same-origin' }));
 }
 
-export async function post<T = any>(path: string, body: any = {}, tenant?: string): Promise<T> {
-  const t = tenant ?? currentTenant;
-  const res = await fetch(withTenant(path, t), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ tenant: t, ...body }),
-  });
-  return parse(res);
+export async function post<T = any>(path: string, body: any = {}, _tenant?: string): Promise<T> {
+  return parse(await fetch(path, send('POST', body)));
 }
 
-export async function put<T = any>(path: string, body: any = {}, tenant?: string): Promise<T> {
-  const t = tenant ?? currentTenant;
-  const res = await fetch(withTenant(path, t), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tenant: t, ...body }) });
-  return parse(res);
+export async function put<T = any>(path: string, body: any = {}, _tenant?: string): Promise<T> {
+  return parse(await fetch(path, send('PUT', body)));
 }
 
-export async function del<T = any>(path: string, tenant?: string): Promise<T> {
-  return parse(await fetch(withTenant(path, tenant), { method: 'DELETE' }));
+export async function del<T = any>(path: string, _tenant?: string): Promise<T> {
+  return parse(await fetch(path, send('DELETE')));
 }
 
-export function downloadUrl(path: string, tenant?: string) {
-  return withTenant(path, tenant);
+export function downloadUrl(path: string, _tenant?: string) {
+  return path;
+}
+
+/** Who is signed in (GET /auth/me): the user, its tenant and roles, the surfaces to show and where to land. */
+export interface Me { signedIn: boolean; provider: string; identity?: string; user?: string; tenant?: string; roles: string[]; surfaces: string[]; landing?: string; csrfToken?: string }
+
+export async function me(): Promise<Me> {
+  const r = await fetch('/auth/me', { credentials: 'same-origin' });
+  const body = await r.json().catch(() => ({ signedIn: false, roles: [], surfaces: [] }));
+  return { roles: [], surfaces: [], ...body };
+}
+
+export async function signOut() {
+  const r = await fetch('/auth/logout', send('POST', {}));
+  const body = await r.json().catch(() => ({}));
+  csrf = '';
+  if (body.redirect) window.location.href = body.redirect;
 }
 
 export const q = (params: Record<string, string | undefined>) => {
@@ -97,9 +119,11 @@ export interface User { id: string; tenant: string; roles: string[] }
 export interface Gate { gate: string; passed: boolean; detail?: any }
 export interface GateResult { gates: Gate[]; passed: boolean; firstRed?: Gate }
 
-/** The roles that may author and approve in a tenant (Part 6). */
-export const isDesigner = (u: User) => u.roles.some((r) => r.endsWith('designer'));
-export const isChecker = (u: User) => u.roles.some((r) => r.endsWith('checker'));
+/** The roles that make changes and the roles that approve them as versions (R-11-29). */
+export const MAKER_ROLES = ['workflow designer', 'workflow developer', 'bank configurator'];
+export const APPROVER_ROLES = ['platform approver', 'bank approver'];
+export const isDesigner = (u: User) => u.roles.some((r) => MAKER_ROLES.includes(r) || r.endsWith('designer'));
+export const isChecker = (u: User) => u.roles.some((r) => APPROVER_ROLES.includes(r) || r.endsWith('checker'));
 
 /** An error message with the HTTP status in front, so a refusal reads as one. */
 export function refusal(e: any): string {

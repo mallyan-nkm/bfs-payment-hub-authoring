@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import YAML from 'yaml';
-import { get, isDesigner, post, refusal, type Issue, type User } from '../api';
+import { get, post, refusal, type Issue } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Issues, KV, Loading, PassFail, Section, Val, useDebounced, useLoad, useStudio } from '../ui';
 import { toYamlText } from '../authoring';
 import { useAssist } from '../assist';
@@ -10,11 +10,8 @@ import { useAssist } from '../assist';
 
 export function Tenant() {
   const { tenant, meta } = useStudio();
-  const banks = (meta?.tenants ?? []).filter((t) => t !== meta?.owner);
-  const [who, setWho] = useState(tenant !== (meta?.owner ?? 'owner') ? tenant : banks[0] ?? '');
-  useEffect(() => {
-    if (!who && banks[0]) setWho(banks[0]);
-  }, [banks, who]);
+  // A bank's own configuration only: the signed-in user's tenant (R-06-01).
+  const who = tenant !== (meta?.owner ?? 'owner') ? tenant : '';
   const cfg = useLoad(() => (who ? get(`/api/tenants/${encodeURIComponent(who)}/configuration`) : Promise.resolve(undefined)), [who]);
   const [yaml, setYaml] = useState('');
   const [checked, setChecked] = useState<Issue[]>();
@@ -55,20 +52,16 @@ export function Tenant() {
   }
   useAssist({ surface: 'tenant', kind: 'configuration-set', doc: cfgDoc, setDoc: (d) => setYaml(toYamlText(d)), tenant: who || undefined, topic: who });
   const [candidates, setCandidates] = useState('');
-  const bankUsers = useLoad(() => (who ? get<User[]>('/api/users', who) : Promise.resolve([])), [who]);
-  const [saveAs, setSaveAs] = useState('');
-  useEffect(() => {
-    const us = bankUsers.data ?? [];
-    if (!us.some((u) => u.id === saveAs)) setSaveAs((us.find(isDesigner) ?? us[0])?.id ?? '');
-  }, [bankUsers.data, saveAs]);
+  const { actor, roles } = useStudio();
+  const mayConfigure = roles.includes('bank configurator');
   const [saveMsg, setSaveMsg] = useState<{ tone: string; text: string }>();
   const settable = useLoad(() => (who ? get<any[]>(`/api/tenants/${encodeURIComponent(who)}/settable`, who) : Promise.resolve([])), [who]);
   const exp = useLoad(() => (who ? get(`/api/tenants/${encodeURIComponent(who)}/export`, who) : Promise.resolve(undefined)), [who]);
   const save = async () => {
     setSaveMsg(undefined);
     try {
-      const r = await post(`/api/tenants/${encodeURIComponent(who)}/configuration`, { actor: saveAs, yaml }, who);
-      setSaveMsg({ tone: 'pass', text: `Saved ${r.saved.key} as ${saveAs}.` });
+      const r = await post(`/api/tenants/${encodeURIComponent(who)}/configuration`, { yaml }, who);
+      setSaveMsg({ tone: 'pass', text: `Saved ${r.draft.key} as ${actor}, as a draft. A bank approver who is not you approves it as a version in Governance.` });
       cfg.reload();
       exp.reload();
     } catch (e: any) {
@@ -116,13 +109,8 @@ export function Tenant() {
         <p className="muted">A bank sees shared content read-only. It sets parameter values inside bounds and binds hooks to declared hook points, with effective dates.</p>
       </div>
       <div className="toolbar">
-        <label className="field-inline">
-          <span>Bank</span>
-          <select value={who} onChange={(e) => setWho(e.target.value)} aria-label="Bank">
-            {banks.map((b) => <option key={b}>{b}</option>)}
-          </select>
-        </label>
-        {tenant === meta?.owner && <span className="muted small">You act as the shared content owner. Switch the tenant at the top to act for a bank.</span>}
+        <span className="field-inline"><span>Bank</span> <b className="mono">{who || 'none'}</b></span>
+        {tenant === meta?.owner && <span className="muted small">You work for the shared content owner. A bank's configuration is its own: its configurator and approver sign in to see it.</span>}
       </div>
       <ErrorBox error={cfg.error} />
       {cfg.loading && !d ? <Loading what="the configuration set" /> : d && (
@@ -193,19 +181,13 @@ export function Tenant() {
           <div className="cols">
             <div className="col">
               <Section title="Edit the configuration set" actions={yaml !== d.yaml ? <button onClick={() => setYaml(d.yaml)}>Reset</button> : undefined}>
-                <p className="muted small">Change a value or a binding, with its effective dates. The set is validated on every edit: a value outside its bounds or an overlapping period shows L14. Save writes a new release of the set.</p>
+                <p className="muted small">Change a value or a binding, with its effective dates. The set is validated on every edit: a value outside its bounds or an overlapping period shows L14. Save writes a new release of the set as a draft; a bank approver makes it the version the runtime is given.</p>
                 <textarea className="yaml-editor short" spellCheck={false} value={yaml} onChange={(e) => setYaml(e.target.value)} aria-label="Configuration set YAML" />
                 <ErrorBox error={checkErr} />
                 {editedIssues ? <Issues issues={editedIssues} empty="The edited set passes every check." /> : <p className="muted small">{yaml === d.yaml ? 'Unchanged.' : 'Validating…'}</p>}
                 <div className="row-actions">
                   <button onClick={bump}>Bump the release</button>
-                  <label className="field-inline">
-                    <span>Save as</span>
-                    <select value={saveAs} onChange={(e) => setSaveAs(e.target.value)} aria-label="Save as">
-                      {(bankUsers.data ?? []).map((u) => <option key={u.id} value={u.id}>{u.id} ({u.roles.join(', ')})</option>)}
-                    </select>
-                  </label>
-                  <button className="primary" disabled={!saveAs || yaml === d.yaml || !!editedIssues?.some((i) => i.severity === 'error')} onClick={save}>Save the configuration set</button>
+                  <button className="primary" disabled={!mayConfigure || yaml === d.yaml || !!editedIssues?.some((i) => i.severity === 'error')} onClick={save}>Save the configuration set</button>
                 </div>
                 {saveMsg && <div className={`alert ${saveMsg.tone}`} role="status">{saveMsg.text}</div>}
               </Section>

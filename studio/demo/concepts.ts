@@ -23,7 +23,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       say: 'Everything you do is done as a user, in a tenant. The owner tenant holds shared content: the platform and the schemes. Each bank is a tenant of its own. Roles are enforced, and whoever makes a change never approves it.',
-      do: async () => { await d.hover(p().getByLabel('Tenant', { exact: true }), 900); await d.hover(p().getByLabel('Acting as'), 900); },
+      do: async () => { await d.hover(p().getByLabel('Signed in as'), 1800); },
     },
     {
       say: 'The catalogue lists every artefact. A name has four parts: a scope, a type, a name, and the major version. Let us search for IBAN.',
@@ -90,6 +90,7 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'Now a whole payment, end to end, for the example bank. We bind each port to a simulator, choose a salary file, and name the message it is.',
       do: async () => {
+        await d.forTenant('example-bank');
         await d.go('tests');
         await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
         await d.select(p().getByLabel('Target', { exact: true }), 'p.wf.corporate.v1');
@@ -125,7 +126,6 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'An export is the package an engine runs. Each task queue gets its own worker, which serves only its own tasks. The manifest also lists the change sets that every artefact was published in.',
       do: async () => {
-        await d.as('owner', 'shared.designer');
         await d.go('export?workflows=p.wf.corporate.v1&target=dtfx');
         await d.select(p().getByLabel('Export tenant'), 'example-bank');
         await d.click(p().getByRole('button', { name: 'Preview' }));

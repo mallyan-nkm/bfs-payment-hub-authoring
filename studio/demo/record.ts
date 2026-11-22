@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { startServer, STUDIO, type Server } from '../test/blackbox/server.js';
+import { client, signInPage, startServer, STUDIO, type Server } from '../test/blackbox/server.js';
 
 // Records a narrated demo of the studio: a real browser session on a fresh workspace, driven click
 // by click, with a visible cursor, a highlight before each click, captions, chapter cards, and a
@@ -97,6 +97,10 @@ export class Director {
   // ------------------------------------------------------------- actions a viewer can follow
 
   async go(hash: string) {
+    // A surface that is not the signed-in role's is opened as a user whose it is (R-10-08).
+    const view = hash.split(/[?/]/)[0];
+    if (this.user.startsWith('example.') && ['kit', 'import'].includes(view)) await this.as('owner', 'shared.designer');
+    if (!this.user.startsWith('example.') && ['tenant', 'bank'].includes(view)) await this.as('example-bank', 'example.maker');
     await this.page.goto(`${this.server.url}/#/${hash}`);
     await this.page.waitForLoadState('networkidle');
     await this.wait(this.pace.after);
@@ -161,9 +165,54 @@ export class Director {
     await this.page.mouse.wheel(0, px);
     await this.wait(this.pace.after);
   }
-  async as(tenant: string, actor: string) {
-    await this.select(this.page.getByLabel('Tenant', { exact: true }), tenant);
-    await this.select(this.page.getByLabel('Acting as'), actor);
+  /** The signed-in user. The studio takes the user from the session, so acting as another is signing in as them (R-11-32). */
+  user = '';
+  async as(_tenant: string, actor: string) {
+    if (this.user === actor) return;
+    await signInPage(this.page, this.server.url, actor);
+    this.user = actor;
+    await this.wait(this.pace.after);
+  }
+  /** Sign in as the maker of a tenant, unless the signed-in user already works for it. */
+  async forTenant(tenant: string) {
+    const bank = this.user.startsWith('example.');
+    if (tenant === 'owner' && bank) await this.as('owner', 'shared.designer');
+    if (tenant !== 'owner' && !bank) await this.as(tenant, 'example.maker');
+  }
+  /** An API client signed in as a user, for what a scene reads beside the page. */
+  api(user = this.user) {
+    return client(this.server.url, { as: user });
+  }
+  /**
+   * The maker requests the release of the change set on screen; the approver signs in and approves it
+   * as a version in Governance; the maker signs in again (R-11-31).
+   */
+  async release(approver: string, maker: string) {
+    await this.click(this.page.getByRole('button', { name: 'Request release' }).first());
+    await this.page.waitForTimeout(500);
+    await this.as('', approver);
+    await this.go('governance');
+    await this.approveRow('in-review');
+    await this.as('', maker);
+  }
+  /** As the approver signed in: approve the first draft row that matches, and wait for the answer. */
+  async approveRow(match: string) {
+    await this.click(this.page.locator('tr', { hasText: match }).first().getByRole('button', { name: 'Approve as version' }));
+    for (let i = 0; i < 120; i++) {
+      const t = (await this.page.locator('[role="status"]').allTextContents()).join(' ');
+      if (/approved as a version/.test(t)) return;
+      if (/Refused/.test(t)) throw new Error(t);
+      await this.page.waitForTimeout(250);
+    }
+    throw new Error('No approval answered');
+  }
+  /** The bank approver makes the bank configurator's configuration set the version. */
+  async approveConfiguration() {
+    const maker = this.user;
+    await this.as('example-bank', 'example.checker');
+    await this.go('governance');
+    await this.approveRow('config:example-bank');
+    await this.as('example-bank', maker);
   }
   /** A terminal panel over the page, showing real command output. */
   async terminal(command: string, output: string) {
@@ -262,6 +311,7 @@ export async function record(prod: Production, outDir: string) {
   await context.addInitScript(() => { try { if (localStorage.getItem('th.dock') === null) localStorage.setItem('th.dock', '0'); } catch { /* no storage */ } });
   const page = await context.newPage();
   d.start(page);
+  await d.as('owner', 'shared.designer');
   let length = 0;
   try {
     if (prod.open) await prod.open(d);

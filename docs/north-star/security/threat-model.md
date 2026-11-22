@@ -6,7 +6,7 @@ STRIDE over the north star's trust boundaries. It replaces the source's threat m
 
 | # | Boundary | Crossed by |
 | --- | --- | --- |
-| TB1 | A designer's browser to the studio server | HTTP API calls carrying the acting user |
+| TB1 | A designer's browser to the studio server | HTTP API calls with the session cookie and its CSRF token; the sign-in with the studio's identity provider (NEST's) |
 | TB2 | The studio server to GitHub | The GitHub REST and Git Data APIs, with `TH_GITHUB_TOKEN` |
 | TB3 | The studio server to the Claude API | The assistant's drafting calls, with `ANTHROPIC_API_KEY` |
 | TB4 | The content branch to the runtime | The pipeline calling the release API |
@@ -22,7 +22,9 @@ The studio and the runtime share no connection: the studio never reaches a runni
 
 | Threat | Control | Status |
 | --- | --- | --- |
-| Someone acts in the studio as another user | Roles are enforced on every write, but the acting user comes from the request | Open: no sign-in ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) |
+| Someone acts in the studio as another user | OpenID Connect sign-in with PKCE against the studio's own identity provider; a signed, http-only, same-site session cookie; the user is taken from the session, never the request; one permission table on every write (R-11-30, R-11-32) | Proved: `studio/test/auth.test.ts`, `studio/test/blackbox/auth.test.ts`, `studio/test/permissions.test.ts` |
+| A runtime or bank token is replayed against the studio | The studio accepts no bearer token, only ID tokens for its own client from its one issuer, and shares no session with the runtime (R-11-34) | Proved: `studio/test/auth.test.ts` |
+| A page elsewhere makes a signed-in designer's browser change something | CSRF token on every state-changing call, origin check, same-site cookie (R-11-33) | Proved: `studio/test/blackbox/auth.test.ts` |
 | Someone calls the release API | The API records the actor it is given | Open: no authentication ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)); reach it from the pipeline's network only |
 | A forged file arrives as a scheme's | The dispatch table and intake map accept only a declared message; duplicate files are known by content | Partly: `StoreTests.A_file_seen_before_is_known_by_its_content`; transport security is per port binding |
 | A tenant claims another tenant's content | A bank tenant writes only scope `b` (R-06-03) and sees only its own content (R-06-01) | Proved: tenant isolation suite |

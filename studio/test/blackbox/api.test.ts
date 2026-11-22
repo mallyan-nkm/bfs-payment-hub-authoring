@@ -20,7 +20,7 @@ describe('reading', () => {
     'meta', 'catalogue?q=iban', 'artefacts/uae.p.validate.iban.v1', 'schemes', 'schemes/uae.wps', 'data', 'checks', 'drafts', 'audit', 'tests', 'tests/WPS-OUT-001',
     'simulators', 'samples', 'kit', 'tenants/example-bank/configuration', 'supersessions', 'model', 'types/uae.p.validate.iban.v1', 'registry',
     'registry/lookup?set=ExternalStatusReason1Code&code=AM04', 'expanded/uae.wps.wf.salary-file-out.v1', 'packs', 'packs/uae.wps/manifest', 'packs/uae.wps/release-gate',
-    'users', 'permit?actor=example.maker&action=publish&tenant=example-bank', 'audit/verify', 'releases/uae.p.validate.iban.v1/pins', 'supersessions/handed-over',
+    'users', 'permit?user=example.maker&action=author&kind=hook&scope=b', 'permissions', 'me', 'audit/verify', 'releases/uae.p.validate.iban.v1/pins', 'supersessions/handed-over',
     'tenants/example-bank/settable', 'tenants/example-bank/export', 'conformance/report', 'coverage/uae.wps', 'test-coverage', 'test-coverage/uae.wps.wf.salary-file-out.v1',
     'sample-messages', 'bindings', 'ai/status',
   ];
@@ -71,7 +71,7 @@ describe('bad requests', () => {
   });
 
   it('refuses malformed JSON, unparseable YAML and YAML that is not a document', async () => {
-    const r = await fetch(server.url + '/api/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{nope' });
+    const r = await fetch(server.url + '/api/check', { method: 'POST', headers: { 'content-type': 'application/json', ...(await api.headers()) }, body: '{nope' });
     expect(r.status).toBe(400);
     // The editor's check reports a parse error as an issue, so that it can show it as the designer types.
     expect((await api.post('/api/check', { yaml: 'a: [1, 2' })).data.issues[0]).toMatchObject({ code: 'L00', severity: 'error' });
@@ -96,16 +96,19 @@ describe('roles, tenancy and the audit log', () => {
   });
 
   it('answers the permission question per role', async () => {
-    const permit = async (actor: string, action: string, tenant: string) => (await api.get(`/api/permit?actor=${actor}&action=${action}&tenant=${tenant}`)).data.allowed;
-    expect(await permit('example.maker', 'author', 'example-bank')).toBe(true);
-    expect(await permit('example.checker', 'approve', 'example-bank')).toBe(true);
-    expect(await permit('example.maker', 'approve', 'example-bank')).toBe(false);
-    expect(await permit('example.auditor', 'author', 'example-bank')).toBe(false);
-    expect(await permit('example.auditor', 'export', 'example-bank')).toBe(false);
-    expect(await permit('example.maker', 'author', 'owner')).toBe(false);
-    expect(await permit('second.maker', 'author', 'example-bank')).toBe(false);
-    expect(await permit('nobody', 'read', 'owner')).toBe(false);
-    expect(await permit('example.maker', 'publish', 'example-bank')).toBe(false); // not an action the studio knows
+    // The permission table answers for a user, an action, a kind and a scope (R-11-30).
+    const permit = async (user: string, action: string, kind: string, scope?: string) => (await api.get(`/api/permit?user=${user}&action=${action}&kind=${kind}${scope ? `&scope=${scope}` : ''}`)).data.allowed;
+    expect(await permit('example.maker', 'author', 'hook', 'b')).toBe(true);
+    expect(await permit('example.checker', 'approve', 'hook', 'b')).toBe(true);
+    expect(await permit('example.maker', 'approve', 'hook', 'b')).toBe(false);
+    expect(await permit('example.auditor', 'author', 'hook', 'b')).toBe(false);
+    expect(await permit('example.auditor', 'run', 'export', 'b')).toBe(false);
+    expect(await permit('example.maker', 'author', 'workflow', 'b')).toBe(false);
+    expect(await permit('example.maker', 'author', 'rule', 'uae.p')).toBe(false);
+    expect(await permit('workflow.designer', 'author', 'workflow', 'p')).toBe(true);
+    expect(await permit('workflow.designer', 'author', 'activity', 'p')).toBe(false);
+    expect(await permit('example.maker', 'publish', 'hook', 'b')).toBe(false); // not an action the studio knows
+    expect((await api.get('/api/permit?user=nobody&action=author&kind=hook')).status).toBe(404);
   });
 
   it('keeps a bank draft inside its tenant', async () => {
@@ -115,7 +118,7 @@ describe('roles, tenancy and the audit log', () => {
     expect(mine).toContain('b.rule.amount-check.v1');
     for (const t of ['second-bank', 'owner']) expect((await api.get(`/api/drafts?tenant=${t}`)).data.map((d: any) => d.name)).not.toContain('b.rule.amount-check.v1');
     const crossed = await api.post('/api/drafts', { tenant: 'example-bank', actor: 'second.maker', doc: RULE('b.rule.amount-check.v1') });
-    expect(crossed.status).toBe(409);
+    expect(crossed.status).toBe(403);
   });
 
   it('publishes through maker and checker, once, and never in place', async () => {
@@ -123,8 +126,8 @@ describe('roles, tenancy and the audit log', () => {
     const saved = await api.post('/api/drafts', { tenant: 'owner', actor: 'shared.designer', doc: RULE(name) });
     expect(saved.status, JSON.stringify(saved.data)).toBe(200);
     const key = saved.data.draft.key;
-    expect((await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.designer' })).status).toBe(409); // maker approving
-    expect((await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.auditor' })).status).toBe(409); // not a checker
+    expect((await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.designer' })).status).toBe(403); // a maker holds no approver right
+    expect((await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.auditor' })).status).toBe(403); // not an approver
     expect((await api.post('/api/review', { tenant: 'owner', actor: 'shared.designer', key })).status).toBe(200);
     const pub = await api.post('/api/publish', { tenant: 'owner', key, checker: 'shared.checker' });
     expect(pub.status, JSON.stringify(pub.data)).toBe(200);
@@ -173,7 +176,7 @@ describe('running', () => {
   });
 
   it('serves a deployable simulator stub', async () => {
-    const r = await fetch(server.url + '/api/simulators/uae.wps.sim.wps-outward.v1/stub');
+    const r = await fetch(server.url + '/api/simulators/uae.wps.sim.wps-outward.v1/stub', { headers: await api.headers() });
     expect(r.status).toBe(200);
     expect(await r.text()).toMatch(/^#!\/usr\/bin\/env node/);
   });

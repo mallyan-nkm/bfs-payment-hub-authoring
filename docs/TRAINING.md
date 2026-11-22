@@ -55,7 +55,7 @@ The studio keeps nothing on disk: its drafts, releases, scripts, samples and aud
 npm run studio:dev
 ```
 
-Open http://localhost:4317. You should see the catalogue, with about 200 documents listed in the footer of the left-hand menu. To use another port, set `PORT=4400` before `npm start`.
+Open http://localhost:4317 and click **Sign in**. `npm run studio:dev` uses the built-in development sign-in (`TH_AUTH_DEV=1`): its page lists the training users; choose `shared.designer`. You land on the workflow designer, with about 200 documents listed in the footer of the left-hand menu. To use another port, set `PORT=4400` before `npm start`. **Sign out** is at the top right; to act as another user, sign out and sign in as that user. A shared installation signs in with the studio's own identity provider instead (`studio/README.md`, "Sign-in and roles").
 
 ### A4. Check the installation
 
@@ -101,20 +101,23 @@ A design-time tool. A payments designer defines, tests and exports payment workf
 
 One studio serves several banks. Each bank is a **tenant**. The **owner** tenant holds shared content (the platform and the schemes). A bank reads shared content but never changes it; it sets its own configuration values and writes hooks.
 
-The header of the web app has two selectors: **Tenant** and **Acting as**. Everything you do is done as that user in that tenant, and roles are enforced.
+You sign in to the studio, and everything you do is done as that user, in that user's tenant. The header shows who is signed in and the roles. The server checks every change against one permission table (R-11-30): hiding a button is never the control.
 
 | User | Tenant | Roles | May |
 | --- | --- | --- | --- |
-| `shared.designer` | owner | shared designer | Author shared content |
-| `shared.checker` | owner | shared checker | Approve and publish shared content |
+| `shared.designer` | owner | workflow designer, workflow developer | Compose workflows and schemes, and build the blocks they use |
+| `workflow.designer` | owner | workflow designer | Compose workflows, subflows and schemes from existing blocks, with no code |
+| `workflow.developer` | owner | workflow developer | Build the blocks: activities, scripts, ports, rules, tables, simulators, extensions |
+| `shared.checker` | owner | platform approver | Approve shared change sets as versions; waive; retire |
 | `shared.auditor` | owner | auditor | Read only |
 | `service.operations` | owner | service operations | Retire releases, import in-flight counts |
-| `example.maker` | example-bank | bank designer | Author the bank's content and configuration |
-| `example.checker` | example-bank | bank checker | Approve the bank's content |
+| `users.admin`, `users.approver` | owner | administrator | Change the users and roles: one proposes, the other approves |
+| `example.maker` | example-bank | bank configurator | The bank's hooks, rules, dials, simulators, bindings and test bench, in scope `b` |
+| `example.checker` | example-bank | bank approver | Approve the bank's change sets as versions |
 | `example.auditor` | example-bank | auditor | Read only |
-| `second.maker`, `second.checker` | second-bank | bank designer, bank checker | Only their own bank |
+| `second.maker`, `second.checker` | second-bank | bank configurator, bank approver | Only their own bank |
 
-**Maker-checker.** The person who makes a change never approves it. Every publish needs a different checker with the checker role.
+**Maker-checker.** A maker's saves need no approval. A change set becomes a version, the thing that is exported, only when an approver for its area approves it, and the approver is never one of its makers (R-11-31).
 
 ### B3. Names and scopes
 
@@ -167,7 +170,7 @@ A run happens on a virtual clock that starts on the **evaluation date**. Waits o
 
 ## Part C. Exercises in the web app
 
-Start the studio as in A3 before each session. Unless an exercise says otherwise, act as tenant **owner** and user **shared.designer**.
+Start the studio as in A3 before each session. Unless an exercise says otherwise, sign in as **shared.designer**. "Sign in as" a user means: **Sign out**, then **Sign in** and choose that user.
 
 ### Exercise 1. Find your way around (10 minutes)
 
@@ -210,7 +213,7 @@ Check yourself: why does `WPS-OUT-004` end after a business day and not a calend
 
 This runs the path in B5: front door, intake, workflow-select, the corporate workflow and the WPS leg in its slot.
 
-1. In **Ad hoc bench**, **Target**: `p.wf.corporate.v1`. **Tenant for the run**: `example-bank`.
+1. Sign in as `example.maker`: a bank runs a payment with its own configuration, and only its own. In the Bank workspace, **Test bench by workflow** lists `p.wf.corporate.v1`; open it, or in **Ad hoc bench** choose **Target** `p.wf.corporate.v1`. **Tenant for the run** is `example-bank`, the only one offered.
 2. Bind five ports, each to its simulator with scenario `accept`:
    - `p.port.core-banking.v1` to `p.sim.core-banking.v1`;
    - `p.port.sanctions.v1` to `p.sim.sanctions.v1`;
@@ -222,7 +225,7 @@ This runs the path in B5: front door, intake, workflow-select, the corporate wor
 5. Read the **Warnings** box: ports you did not bind used their default simulators. That is expected.
 6. Open **Instances**: the intake, the platform workflow, the leg, and the bank's hooks each ran as an instance.
 
-Check yourself: change **Tenant for the run** to `owner` and run again. What happens and why? (The route finds no enabled rail, because the owner has no configuration set enabling `uae.wps`: `route:no-match`, `undo:reserve`, `end:rejected`.)
+Check yourself: sign in as `shared.designer` and run the same bench. What happens and why? (The owner runs with no bank's configuration, and no configuration set of its own enables `uae.wps`: `route:no-match`, `undo:reserve`, `end:rejected`. The owner cannot run with `example-bank`'s configuration: that is the bank's.)
 
 ### Exercise 4a. The same payment in the debugger (15 minutes)
 
@@ -243,7 +246,7 @@ The same 48 scenarios run on DTFx, Elsa and Flowable; see Part D.
 
 ### Exercise 6. Author and publish a rule, with maker and checker (25 minutes)
 
-1. Act as `owner` / `shared.designer`. Open **Artefact editors**, choose **Rule**, click **Start new**.
+1. Sign in as `shared.designer`. Open **Artefact editors**, choose **Rule**, click **Start new**.
 2. Click **Edit the YAML** and replace the document with:
 
    ```yaml
@@ -286,27 +289,27 @@ The same 48 scenarios run on DTFx, Elsa and Flowable; see Part D.
 
 3. Read the **Gates** panel. Both examples run; the panel is green.
 4. Break it on purpose: change the second example's `amount` to `5`. The example fails and the gate goes red. Change it back.
-5. Under **Save and publish**, click **Save draft as shared.designer**, then **Submit for review**.
-6. Choose **Checker** `shared.auditor` and click **Publish as shared.auditor**. It is refused: an auditor is not a checker.
-7. Switch **Acting as** to `shared.checker`. Open **Governance**, tab **Review and approve**. Your draft is listed; **Publishes with** says `alone`, because no other draft refers to it. Choose **Checker** `shared.checker` and click **Approve as shared.checker**. Approval reruns the tests that target the draft, then publishes it as change set `CS-<date>-<n>`.
+5. Under **Save and publish**, click **Save draft**. It needs no approval. Then click **Request release**.
+6. There is no **Approve as version** button for you: a maker holds no approver right. Over the API, `POST /api/publish` as `shared.designer` answers 403.
+7. Sign in as `shared.checker`. You land on **Governance**, tab **Review and approve**. Your draft is listed, in review; **Publishes with** says `alone`, because no other draft refers to it. Click **Approve as version**. Approval reruns the tests that target the draft, then publishes it as change set `CS-<date>-<n>`.
 8. Open the rule in the **Catalogue**: release `1.0.0`, maker `shared.designer`, checker `shared.checker`.
 9. Try to change it: edit the title, keep release `1.0.0`, save and publish. It is refused: a published release never changes. Bump the release to `1.0.1` and it publishes.
 10. Open **Governance**, tab **Audit log**. Every save, submission, publish and refusal is there. Click **Verify the chain**: the hash chain verifies.
 
 ### Exercise 7. Tenancy and roles (10 minutes)
 
-1. Switch **Tenant** to `example-bank` and **Acting as** to `example.maker`.
+1. Sign in as `example.maker`, a Bank Configurator. You land on the **Bank workspace**: the bank's hooks, rules, dials, simulators, hook bindings, and the test bench by workflow. There is no **Conformance kit** or **Import** of shared content in the menu.
 2. Open `uae.p.validate.iban.v1` in the catalogue. It is marked shared content, read only for a bank.
-3. In **Artefact editors**, try to save a rule named `uae.wps.rule.my-copy.v1`. It is refused: a bank may author only in scope `b`.
-4. Switch **Acting as** to `example.auditor`. The header shows **read and review only**.
-5. Open the **Acting as** list: in `example-bank` it offers only that bank's users. A user of `second-bank` cannot act in it; over the API such a request is refused (R-06-01).
+3. In **Artefact editors**, try to save a rule named `uae.wps.rule.my-copy.v1`. It is refused (403): a bank may author only in scope `b`. A workflow, a scheme or a port is refused the same way, even in scope `b`.
+4. Sign in as `example.auditor`. The menu offers reading only, and any save is refused.
+5. A user of `second-bank` cannot see or change `example-bank`: over the API, a request that names another tenant is refused with 403 (R-06-01).
 
 ### Exercise 8. Change a bank's configuration (20 minutes)
 
-1. Act as `example-bank` / `example.maker`. Open **Tenant**.
+1. Sign in as `example.maker`. Open **Tenant** (or **Set dials** in the Bank workspace).
 2. Read **Configuration set**, **Parameters** and **Hook points**. The bank enables the rail `uae.wps`, and binds three hooks.
 3. In **Edit the configuration set**, click **Bump the release** (it becomes `1.1.0`). In the YAML, change the value of `p.table.rail-choice.v1#enabledRails` to `[]`, so that the bank runs no rail.
-4. Click **Save the configuration set**. It is saved as release `1.1.0`.
+4. Click **Save the configuration set**. It is saved as a draft of release `1.1.0`. Sign in as `example.checker`, open **Governance**, and click **Approve as version** on `config:example-bank`. Sign in as `example.maker` again. Each later save in this exercise is approved the same way.
 5. Repeat Exercise 4 with **Tenant for the run** `example-bank`. The payment is now rejected at `route:no-match`, and the reservation is undone (`undo:reserve`).
 6. Bump the release again to `1.2.0`. Set `enabledRails` back to `[uae.wps]`, and delete the binding whose `hookPoint` is `p.wf.corporate.v1#before-release`. Save.
 7. Run Exercise 4 again. The payment settles, and the trace no longer has `hook:continue` before the leg: the bank's pre-release hook is unbound.
@@ -319,19 +322,19 @@ The same 48 scenarios run on DTFx, Elsa and Flowable; see Part D.
 
 ### Exercise 9. The workflow designer (25 minutes)
 
-1. Act as `owner` / `shared.designer`. Open **Workflow designer**.
+1. Sign in as `shared.designer`. Open **Workflow designer**.
 2. Under **Open**, pick `p.wf.corporate.v1` and click **Open**. Switch between **Canvas**, **Outline** and **Expanded form**. In the expanded form, composite steps inside legs become blocks.
 3. Under **New**: **Start from** `From a template`, **Kind** `workflow`, **Workflow kind** `leg`, **Name** `uae.wps.wf.training-leg.v1`, **Title** `Training leg`. Click **Create**.
 4. On the canvas, use **+ Add a step** to add a call to `uae.p.enrich.business-date.v1`. Watch the **Checks** panel: an unhandled non-primary outcome or a missing reference shows at once.
 5. Add a step calling an activity that does not exist, for example `uae.wps.validate.nothing.v1`. Check `L03` appears: the reference does not resolve. Remove it.
 6. Read **Interface and release**: the studio proposes the next release from the interface change.
-7. Click **Save draft as shared.designer** to keep it. You need not publish it. To delete it, use **Delete** in **Governance**, **Review and approve**.
+7. Click **Save draft** to keep it. You need not publish it. To delete it, use **Delete** in **Governance**, **Review and approve**.
 
 Why a new leg in WPS would not run on its own: the WPS dispatch table names one leg for the salary file. A new leg starts from real files only when a new release of the scheme's manifest names it. See Part E for a new scheme built that way.
 
 ### Exercise 10. Export a package (10 minutes)
 
-1. Act as `owner` / `shared.designer`. Open **Export**.
+1. Sign in as `shared.designer`. Open **Export**.
 2. Tick `p.wf.corporate.v1`. **Target**: `dtfx`. **Tenant**: `example-bank` (bank pack).
 3. Click **Preview**. Read the manifest:
    - **workers**: one per task queue. Here, `th-bank`, `th-p`, `th-uae-p` and `th-uae-wps`: the platform, the bank's hooks, the cluster platform and the WPS leg that fills the slot.

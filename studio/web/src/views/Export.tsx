@@ -83,7 +83,7 @@ export function Export({ query }: { query: URLSearchParams }) {
               <label className="field">
                 <span>Tenant</span>
                 <select value={exTenant} onChange={(e) => setExTenant(e.target.value)} aria-label="Export tenant">
-                  {(meta?.tenants ?? [tenant]).map((t) => <option key={t} value={t}>{t === meta?.owner ? `${t} (shared pack)` : `${t} (bank pack)`}</option>)}
+                  {(meta?.tenants ?? [tenant]).filter((t) => t === tenant).map((t) => <option key={t} value={t}>{t === meta?.owner ? `${t} (shared pack)` : `${t} (bank pack)`}</option>)}
                 </select>
               </label>
               <label className="check">

@@ -15,7 +15,7 @@ import { compareBindings } from '../src/export/bindings.js';
 import { untestedOutcomes } from '../src/testing/coverage.js';
 import { runTest } from '../src/testing/runner.js';
 import { draft } from '../src/ai/assistant.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { toYaml } from '../src/core/yaml.js';
 import { freshEnv } from './helpers.js';
 
@@ -66,8 +66,8 @@ describe('C05, C19 packs', () => {
 describe('C17 roles, maker-checker, audit and isolation', () => {
   it('refuses a bank designer outside scope b with the rule named (C17-S2, S3)', () => {
     const env = freshEnv();
-    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', 'uae.wps')).toMatch(/R-06-03/);
-    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', 'b')).toBeUndefined();
+    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', { kind: 'hook', scope: 'uae.wps' })).toMatch(/R-06-03/);
+    expect(gov.permit(env, 'example.maker', 'example-bank', 'author', { kind: 'hook', scope: 'b' })).toBeUndefined();
   });
   it('refuses a maker who approves their own publish, and logs the attempt in a chained audit (C17-S4)', async () => {
     const env = freshEnv();
@@ -97,7 +97,7 @@ describe('C17 roles, maker-checker, audit and isolation', () => {
     const other = await dispatch(env, { method: 'GET', path: '/api/artefacts/b.hook.pre-release-approval.v1', query: { tenant: 'second-bank', key: 'example-bank/b.hook.pre-release-approval.v1@1.1.0#draft' }, body: undefined });
     expect(other.status).toBe(404);
     const write = await dispatch(env, { method: 'POST', path: '/api/drafts', query: {}, body: { tenant: 'second-bank', actor: 'example.maker', doc: { ...base, release: '1.2.0' } } });
-    expect(write.status).toBe(409);
+    expect(write.status).toBe(403);
     expect(env.store.audit.some((a) => a.outcome === 'refused' && a.actor === 'example.maker' && a.tenant === 'second-bank')).toBe(true);
   });
 });

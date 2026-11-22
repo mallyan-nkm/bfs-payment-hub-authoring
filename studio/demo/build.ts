@@ -39,14 +39,11 @@ export function scenes(d: Director): Scene[] {
     await d.click(p().getByRole('button', { name: 'Done' }).first());
   };
   const save = async () => {
-    await d.click(p().getByRole('button', { name: /^Save draft as / }).first());
+    await d.click(p().getByRole('button', { name: /^Save draft$/ }).first());
     await status(/Saved draft/);
   };
   const publish = async () => {
-    await d.select(p().getByLabel('Checker').first(), 'shared.checker');
-    await p().waitForTimeout(600);
-    await d.click(p().getByRole('button', { name: 'Publish as shared.checker' }).first());
-    await status(/Change set CS-\S+ published/);
+    await d.release('shared.checker', 'shared.designer');
     await p().waitForTimeout(700);
   };
   const designer = async (wfKind: string, doc: any) => {
@@ -62,6 +59,7 @@ export function scenes(d: Director): Scene[] {
     await p().waitForTimeout(900);
   };
   const bench = async (target: string, tenant: string, ports: [string, string][], sample: string, message?: string) => {
+    await d.forTenant(tenant);
     await d.go('tests');
     await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
     await d.select(p().getByLabel('Target', { exact: true }), target);
@@ -173,13 +171,15 @@ export function scenes(d: Director): Scene[] {
         await d.go('tenant');
         await d.as('example-bank', 'example.maker');
         await d.go('tenant');
-        const cs = await (await fetch(`${d.server.url}/api/tenants/example-bank/configuration`)).json();
+        const cs = (await d.api().get('/api/tenants/example-bank/configuration')).data;
         const next = JSON.parse(JSON.stringify(cs.configurationSet));
         next.release = '1.1.0';
         next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
         next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
         await d.paste(p().getByLabel('Configuration set YAML'), toYaml(next));
         await d.click(p().getByRole('button', { name: 'Save the configuration set' }));
+        await p().waitForTimeout(800);
+        await d.approveConfiguration();
         await p().waitForTimeout(800);
       },
     },
@@ -195,7 +195,6 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'Time to export. We export the corporate workflow for the bank, for D T F X, with simulators for a test deployment. The new scheme gets a worker of its own, beside the platform, the cluster and the bank.',
       do: async () => {
-        await d.as('owner', 'shared.designer');
         await d.go('export?workflows=p.wf.corporate.v1&target=dtfx');
         await d.select(p().getByLabel('Export tenant'), 'example-bank');
         await d.click(p().getByLabel('With simulators'));

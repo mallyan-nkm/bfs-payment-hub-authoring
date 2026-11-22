@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { client, startServer, STUDIO, type Server } from './server.js';
+import { client, signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: the content branch (R-09-19 to R-09-22, R-11-21, R-11-22). The studio
 // shows the repository and branch its environment names; a draft is a commit on its change set's
@@ -25,6 +25,7 @@ beforeAll(async () => {
   await page.addInitScript(() => localStorage.setItem('th.dock', '0'));
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+  await signInPage(page, server.url, 'shared.designer');
 }, 180000);
 afterAll(async () => {
   await browser?.close();
@@ -71,7 +72,9 @@ describe('the content branch in the web app', () => {
   }, 90000);
 
   it('in pull-request mode, approval opens a pull request and the content branch is not written', async () => {
-    await page.getByLabel('Act as').selectOption('shared.checker');
+    // How the studio publishes is a platform approver's setting: sign in as one (R-11-30).
+    await signInPage(page, server.url, 'shared.checker', '#/export');
+    await page.waitForLoadState('networkidle');
     await page.getByLabel('Mode').selectOption('pull-request');
     await page.getByRole('button', { name: 'Save settings' }).click();
     await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 20000 }).toMatch(/Saved: pull-request/);
