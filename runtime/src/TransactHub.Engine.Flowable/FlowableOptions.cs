@@ -28,7 +28,9 @@ public enum FlowableMode
 /// TH_FLOWABLE_MAX_WAIT (how long one run may wait for its payments, default PT1H),
 /// TH_FLOWABLE_SIM_SCALE (a simulator reply's delay is multiplied by it, as the stub's --time-scale; default 1),
 /// and, for tests only, TH_FLOWABLE_FAULT: crash:&lt;step&gt; (the binding takes the step's first job and stops
-/// as a crashed worker would, holding the lock) or down:&lt;step&gt; (the step's worker never answers).
+/// as a crashed worker would, holding the lock), down:&lt;step&gt; (the step's worker never answers) or exit:&lt;step&gt; (the
+/// binding's process exits once the step's answer is recorded in its journal; a binding started with the same TH_FLOWABLE_RUN
+/// goes on, Issue I-89).
 /// </summary>
 public sealed record FlowableOptions
 {
@@ -42,6 +44,8 @@ public sealed record FlowableOptions
     public string? CrashAt { get; init; }
     /// <summary>Test only: the step whose worker never answers, so the job is retried by Flowable until it is a dead letter.</summary>
     public string? DownAt { get; init; }
+    /// <summary>Test only: the step after whose answer the binding's process exits, as a killed host would, once per run (Issue I-89).</summary>
+    public string? ExitAt { get; init; }
 
     public bool Production => Mode == FlowableMode.Production;
 
@@ -68,12 +72,13 @@ public sealed record FlowableOptions
         var fault = env("TH_FLOWABLE_FAULT");
         if (!string.IsNullOrWhiteSpace(fault))
         {
-            var (kind, step) = fault.Split(':', 2) is [var k, var st] ? (k.Trim(), st.Trim()) : throw new ArgumentException($"TH_FLOWABLE_FAULT is crash:<step> or down:<step>, not {fault}");
+            var (kind, step) = fault.Split(':', 2) is [var k, var st] ? (k.Trim(), st.Trim()) : throw new ArgumentException($"TH_FLOWABLE_FAULT is crash:<step>, down:<step> or exit:<step>, not {fault}");
             o = kind switch
             {
                 "crash" => o with { CrashAt = step },
                 "down" => o with { DownAt = step },
-                _ => throw new ArgumentException($"TH_FLOWABLE_FAULT is crash:<step> or down:<step>, not {fault}"),
+                "exit" => o with { ExitAt = step },
+                _ => throw new ArgumentException($"TH_FLOWABLE_FAULT is crash:<step>, down:<step> or exit:<step>, not {fault}"),
             };
         }
         return o;

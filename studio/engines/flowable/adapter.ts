@@ -14,6 +14,7 @@ import { DEFAULT_CALENDAR, durationMs } from '../../src/core/duration.js';
 import { callsComposite, expandWorkflow } from '../../src/core/expand.js';
 import { compareReleases } from '../../src/core/names.js';
 import { generateBpmn, safe, SIGNAL_MESSAGES } from '../../src/export/bpmn.js';
+import { bindingOf } from '../../src/export/bindings.js';
 import { Run, type RunConfig } from '../../src/interp/interpreter.js';
 import type { StudioEnv } from '../../src/env.js';
 
@@ -80,6 +81,7 @@ export function makePlan(env: StudioEnv, b: BuiltScenario, dir: string) {
     const pins = new Map<string, string>((doc.artefacts ?? []).map((a: any) => [a.name, a.release]));
     return (name: string) => (pins.has(name) ? run.resolveDoc(name, pins.get(name)) : run.resolveDoc(name));
   };
+  const forEachConcurrency = bindingOf(env, 'flowable')?.doc?.defaults?.forEachConcurrency;
   const processes: { key: string; file: string; name: string; release: string }[] = [];
   const generated = new Set<string>();
   const generate = (doc: any, asHook = false) => {
@@ -91,7 +93,8 @@ export function makePlan(env: StudioEnv, b: BuiltScenario, dir: string) {
     // The engine receives the expanded form only (R-09-17).
     if (callsComposite(wf, resolve)) wf = expandWorkflow(wf, resolve);
     if (asHook) wf = { ...wf, kind: 'hook' };
-    const xml = generateBpmn(wf, { queueOf: (n) => `th-${n.split('.').slice(0, 2).join('-')}`, resolve });
+    // The binding's concurrency for a forEach that declares none (R-09-45, Issue I-107).
+    const xml = generateBpmn(wf, { queueOf: (n) => `th-${n.split('.').slice(0, 2).join('-')}`, resolve, forEachConcurrency });
     const file = path.join(dir, `${key}.bpmn20.xml`);
     fs.writeFileSync(file, xml);
     processes.push({ key, file, name: doc.name, release: doc.release });

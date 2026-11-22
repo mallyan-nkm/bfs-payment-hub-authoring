@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-22-010
+events:
+  - at: 2026-11-22T21:12:02.374Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-22-010
+    detail: 1 file(s) from spec/examples/bindings
+    changeSet: CS-2026-11-22-010
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:9666836701b19240f8d503c5d8bba96c294081be2aa8f1d679a67b62e8fb234f
+  - at: 2026-11-22T21:12:02.375Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-22-010
+    detail: p.binding.flowable.v1@1.1.0
+    changeSet: CS-2026-11-22-010
+    prevHash: sha256:9666836701b19240f8d503c5d8bba96c294081be2aa8f1d679a67b62e8fb234f
+    hash: sha256:e6a6eedcccd129c96c26cf877b7f6620634f7c6fd13f98da0a42f627ba38a7c0

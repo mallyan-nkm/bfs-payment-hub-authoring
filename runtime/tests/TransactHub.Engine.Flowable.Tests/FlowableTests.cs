@@ -22,7 +22,8 @@ public sealed class FlowableServer : IAsyncLifetime
 
     public Task InitializeAsync() => container.StartAsync();
     public Task DisposeAsync() => container.DisposeAsync().AsTask();
-    public FlowableRest Client() => new($"http://{container.Hostname}:{container.GetMappedPublicPort(8080)}/flowable-rest", User, Password);
+    public string Url => $"http://{container.Hostname}:{container.GetMappedPublicPort(8080)}/flowable-rest";
+    public FlowableRest Client() => new(Url, User, Password);
 }
 
 [CollectionDefinition(Name)]

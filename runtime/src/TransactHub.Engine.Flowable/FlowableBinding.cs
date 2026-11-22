@@ -25,7 +25,7 @@ namespace TransactHub.Engine.Flowable;
 /// The plan and the observation are those of the other engines' harnesses, so the kit runner and the
 /// studio's deploy runner read them unchanged.
 /// </summary>
-public sealed class FlowableBinding
+public sealed partial class FlowableBinding
 {
     public const string WorkerId = "th-flowable-binding";
     public const string BindingTopic = "th.binding";
@@ -70,9 +70,10 @@ public sealed class FlowableBinding
     readonly Dictionary<string, string> timerValue = new(), lastTimerValue = new();
     int unmatched, duplicates, earlyKept, jobsWorked, bindingJobs, asyncJobs, timersFired, lateAbandoned, retriedOnFailure;
 
-    sealed record Ev(long At, string Kind, Func<Task> Run);
+    /// <summary>What the binding has scheduled: data only, so that it can be kept in the journal (Issue I-89).</summary>
+    sealed record Ev(long At, string Kind, JsonObject Data);
 
-    sealed class Inst
+    sealed partial class Inst
     {
         public string Pid = "", Label = "", Name = "?", Release = "?", Kind = "workflow", Key = "", Ref = "";
         public Inst? Parent;
@@ -84,11 +85,14 @@ public sealed class FlowableBinding
         /// trace together, in item order, before anything else the instance records.
         /// </summary>
         public readonly SortedDictionary<int, List<(bool detail, string entry)>> Items = new();
+        /// <summary>The first item that stopped the forEach (R-05-53, Issue I-107): no entry of a later item reaches the trace.</summary>
+        public int StopAt = int.MaxValue;
         void FlushItems()
         {
             if (Items.Count == 0) return;
-            foreach (var (_, es) in Items) foreach (var (d, e) in es) (d ? detail : trace).Add(e);
+            foreach (var (n, es) in Items) if (n <= StopAt) foreach (var (d, e) in es) (d ? detail : trace).Add(e);
             Items.Clear();
+            StopAt = int.MaxValue;
         }
         public List<string> Trace { get { FlushItems(); return trace; } }
         public List<string> Detail { get { FlushItems(); return detail; } }
@@ -158,7 +162,31 @@ public sealed class FlowableBinding
         return v;
     }
 
-    void Schedule(long at, string kind, Func<Task> run) => queue.Enqueue(new Ev(at, kind, run), (at, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), seq++));
+    void Schedule(long at, string kind, JsonObject data) => queue.Enqueue(new Ev(at, kind, data), (at, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), seq++));
+
+    /// <summary>Runs what was scheduled: a root's start, a party's message, a signal, or an attempt's answer after its latency.</summary>
+    async Task RunEv(Ev ev)
+    {
+        var d = ev.Data;
+        switch (ev.Kind)
+        {
+            case "start":
+                pendingStarts--;
+                await StartRoot(J.S(d, "label")!, J.S(d, "workflow")!, J.S(d, "release")!, (JsonObject)J.Clone(J.P(d, "ctx"))!);
+                break;
+            case "delivery": await FrontDoor((JsonObject)J.Clone(J.P(d, "message"))!); break;
+            case "signal": await Signal(J.S(d, "signal")!); break;
+            case "complete":
+            {
+                var job = JobOf((JsonObject)J.P(d, "job")!);
+                if (!insts.TryGetValue(job.ProcessInstanceId, out var inst) || !byDef.TryGetValue(job.ProcessDefinitionId, out var def)) { notes.Add($"a late answer for an unknown instance {job.ProcessInstanceId}"); break; }
+                int? index = J.Num(d, "index") is double ix ? (int)ix : null;
+                await Finish(job, inst, J.S(d, "step")!, J.S(d, "label")!, index, def.Ann(job.ElementId, "task")!, (JsonObject)J.Clone(J.P(d, "res"))!);
+                break;
+            }
+            default: notes.Add($"an event of an unknown kind {ev.Kind}"); break;
+        }
+    }
 
     static long Wall() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -176,7 +204,7 @@ public sealed class FlowableBinding
             var at = (long)(J.Num(d, "at") ?? now);
             // A simulator's reply delay, scaled in production as the stub's --time-scale scales it.
             if (opts.Production && opts.SimScale != 1 && at > now) at = now + (long)Math.Round((at - now) * opts.SimScale);
-            Schedule(at, "delivery", () => FrontDoor(m));
+            Schedule(at, "delivery", new JsonObject { ["message"] = m });
         }
     }
 
@@ -184,16 +212,6 @@ public sealed class FlowableBinding
 
     public async Task<JsonObject> Run()
     {
-        var runId = Guid.NewGuid().ToString("N")[..8];
-        tenant = $"th-{runId}";
-        start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
-        now = start;
-        wallStart = Wall();
-        offset = start - wallStart;
-        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
-        Deployment.Current = dep;
-        using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!) : new PartyClient(J.S(input, "studioRoot")!);
-        party = given ?? p!;
         var storeOpts = StoreFromEnvironment();
         if (storeOpts is not null)
         {
@@ -202,6 +220,26 @@ public sealed class FlowableBinding
             StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
         }
         claim = storeOpts is null ? new MemoryClaimCheck() : new DurableClaimCheck(storeOpts);
+        // The binding's state as facts in the store (Issue I-89): a binding that restarts with the same run key goes on from them.
+        var runKey = J.S(input, "run") ?? Environment.GetEnvironmentVariable("TH_FLOWABLE_RUN");
+        if (storeOpts is not null && !string.IsNullOrWhiteSpace(runKey)) journal = new BindingJournal(storeOpts, runKey);
+        var saved = journal is null ? null : await journal.Last();
+        if (saved is not null && J.S(saved, "closed") is string closedAt) throw new InvalidOperationException($"run {runKey} ended at {closedAt}; a new run needs a new key (TH_FLOWABLE_RUN)");
+        var resumed = saved is not null;
+        if (resumed) Restore(saved!);
+        else
+        {
+            runId = Guid.NewGuid().ToString("N")[..8];
+            tenant = $"th-{runId}";
+            start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
+            now = start;
+            wallStart = Wall();
+            offset = start - wallStart;
+        }
+        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
+        Deployment.Current = dep;
+        using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!) : new PartyClient(J.S(input, "studioRoot")!);
+        party = given ?? p!;
 
         // Deploy every process of the plan as one deployment, in a tenant of this run's own.
         var files = new Dictionary<string, string>();
@@ -214,49 +252,59 @@ public sealed class FlowableBinding
         }
         if (files.Count == 0) throw new InvalidOperationException("The plan has no BPMN: the package must be exported for flowable");
         var server = await rest.Engine();
-        log.Add($"Flowable {J.S(server, "version")} at the REST server, tenant {tenant}");
-        log.Add(opts.Production
-            ? $"production mode: the server's async executor runs the jobs and fires the timers in real time; the binding is its external worker (lock {System.Xml.XmlConvert.ToString(opts.LockFor)}, retry after {System.Xml.XmlConvert.ToString(opts.RetryWait)})"
-            : "virtual mode: the server's async executor is off; the binding runs the jobs and fires the timers on its clock");
         // One deployment per distribution (R-09-55): its name carries the distribution, and instances start from its own definitions.
         var distribution = J.S(input, "distribution");
-        var deploymentId = await rest.Deploy(distribution is null ? $"transacthub-{runId}" : $"transacthub-{distribution}-{runId}", files, tenant);
-        log.Add($"deployed {files.Count} process(es) as deployment {deploymentId}");
+        if (!resumed)
+        {
+            log.Add($"Flowable {J.S(server, "version")} at the REST server, tenant {tenant}");
+            log.Add(opts.Production
+                ? $"production mode: the server's async executor runs the jobs and fires the timers in real time; the binding is its external worker (lock {System.Xml.XmlConvert.ToString(opts.LockFor)}, retry after {System.Xml.XmlConvert.ToString(opts.RetryWait)})"
+                : "virtual mode: the server's async executor is off; the binding runs the jobs and fires the timers on its clock");
+            deploymentId = await rest.Deploy(distribution is null ? $"transacthub-{runId}" : $"transacthub-{distribution}-{runId}", files, tenant);
+            log.Add($"deployed {files.Count} process(es) as deployment {deploymentId}");
+        }
         foreach (var d in await rest.ProcessDefinitions(deploymentId))
             if (byKey.TryGetValue(J.S(d, "key")!, out var proc)) byDef[J.S(d, "id")!] = proc;
         var missing = byKey.Keys.Where(k => !byDef.Values.Any(v => v.Key == k)).ToList();
         if (missing.Count > 0) throw new InvalidOperationException($"The server did not deploy {string.Join(", ", missing)}");
+        if (resumed) await Resume(saved!);
 
         try
         {
             await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
-            var ctx = (JsonObject)J.Clone(J.P(built, "context"))!;
-            var workflow = J.S(built, "workflow")!;
-            if (J.Truthy(J.P(spec, "handler"))) throw new NotSupportedException("A handler runs as a plain request handler at the interop boundary, not on Flowable (R-09-14)");
-            Deliveries(J.P(await party.Call(new JsonObject { ["op"] = "start", ["now"] = start, ["conversation"] = J.S(J.P(ctx, "header"), "conversation") ?? "conv-1" }), "deliveries"));
-            if (J.P(spec, "instances") is JsonArray instances)
+            if (!resumed)
             {
-                foreach (var s in instances)
+                var ctx = (JsonObject)J.Clone(J.P(built, "context"))!;
+                var workflow = J.S(built, "workflow")!;
+                if (J.Truthy(J.P(spec, "handler"))) throw new NotSupportedException("A handler runs as a plain request handler at the interop boundary, not on Flowable (R-09-14)");
+                Deliveries(J.P(await party.Call(new JsonObject { ["op"] = "start", ["now"] = start, ["conversation"] = J.S(J.P(ctx, "header"), "conversation") ?? "conv-1" }), "deliveries"));
+                if (J.P(spec, "instances") is JsonArray instances)
                 {
-                    var label = J.S(s, "label")!;
-                    var release = J.S(s, "workflowRelease")!;
-                    pendingStarts++;
-                    Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", () => { pendingStarts--; return StartRoot(label, workflow, release, (JsonObject)J.Clone(ctx)!); });
+                    foreach (var s in instances)
+                    {
+                        var label = J.S(s, "label")!;
+                        var release = J.S(s, "workflowRelease")!;
+                        pendingStarts++;
+                        Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", new JsonObject { ["label"] = label, ["workflow"] = workflow, ["release"] = release, ["ctx"] = J.Clone(ctx) });
+                    }
                 }
-            }
-            else
-            {
-                var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
-                pendingStarts++;
-                Schedule(start, "start", () => { pendingStarts--; return StartRoot("root", workflow, J.S(doc, "release")!, ctx); });
-            }
-            foreach (var s in J.A(config, "signals"))
-            {
-                var signal = J.S(s, "signal")!;
-                Schedule(start + Duration.Ms(J.S(s, "after")!), "signal", () => Signal(signal));
+                else
+                {
+                    var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
+                    pendingStarts++;
+                    Schedule(start, "start", new JsonObject { ["label"] = "root", ["workflow"] = workflow, ["release"] = J.S(doc, "release"), ["ctx"] = J.Clone(ctx) });
+                }
+                foreach (var s in J.A(config, "signals"))
+                {
+                    var signal = J.S(s, "signal")!;
+                    Schedule(start + Duration.Ms(J.S(s, "after")!), "signal", new JsonObject { ["signal"] = signal });
+                }
+                await Save(null);
             }
             if (opts.Production) await LiveLoop(); else await Loop();
             await SurfaceDeadLetters();
+            // The run has ended: its journal is closed, and a binding started with its key refuses to run it again.
+            if (journal is not null) await journal.Close(new JsonObject { ["roots"] = J.Arr(roots.Select(r => r.Pid)), ["ended"] = roots.All(r => r.Ended), ["restarts"] = restarts });
 
             var sent = await party.Call(new JsonObject { ["op"] = "sent" });
             JsonObject? storeReport = storeOpts is null ? null : await StoreReport.Of(storeOpts, r => claim.Full(null, r));
@@ -278,6 +326,8 @@ public sealed class FlowableBinding
                     ["server"] = J.S(server, "version"),
                     ["mode"] = opts.Production ? "production" : "virtual",
                     ["deployment"] = deploymentId,
+                    ["restarts"] = restarts,
+                    ["journal"] = journal is null ? null : new JsonObject { ["run"] = journal.Key, ["facts"] = journal.Written },
                     ["distribution"] = distribution is null ? null : new JsonObject { ["id"] = distribution, ["deploymentName"] = $"transacthub-{distribution}-{runId}" },
                     ["processes"] = byDef.Count,
                     ["processInstances"] = insts.Count,
@@ -311,10 +361,16 @@ public sealed class FlowableBinding
         var key = Safe($"{workflow}@{release}");
         if (!byKey.ContainsKey(key)) throw new InvalidOperationException($"{workflow}@{release} is not in the deployment");
         Tick();
+        await Save(new JsonObject { ["op"] = "start", ["label"] = label, ["workflow"] = workflow, ["release"] = release, ["ctx"] = J.Clone(ctx) });
         Mark();
         var started = await rest.StartProcess(key, tenant, businessKey: $"{label}-{tenant}");
-        var pid = J.S(started, "id")!;
-        // The process waits at its first binding task (processStart); it is registered here.
+        await RegisterRoot(label, workflow, release, ctx, J.S(started, "id")!);
+    }
+
+    /// <summary>A root the server has started: the process waits at its first binding task (processStart); it is registered here.</summary>
+    async Task RegisterRoot(string label, string workflow, string release, JsonObject ctx, string pid)
+    {
+        var key = Safe($"{workflow}@{release}");
         var (state, payload) = ClaimCheckStore.Split(ctx);
         var header = J.P(state, "header");
         var docKey = $"{workflow}@{release}";
@@ -353,7 +409,7 @@ public sealed class FlowableBinding
             if (await PollLive()) await Settle();
             if (liveFeed is not null && await HoldClock())
             {
-                if (queue.TryPeek(out var due, out var dk) && dk.at <= now) { queue.Dequeue(); await due.Run(); await Settle(); continue; }
+                if (queue.TryPeek(out var due, out var dk) && dk.at <= now) { queue.Dequeue(); await RunEv(due); await Settle(); continue; }
                 await Task.Delay(250);
                 continue;
             }
@@ -374,14 +430,13 @@ public sealed class FlowableBinding
             if (at > now) now = at;
             if (useTimer)
             {
-                Mark();
-                await rest.MoveTimer(J.S(timer, "id")!);
                 timersFired++;
+                await MoveTimerNow(J.S(timer, "id")!);
             }
             else
             {
                 queue.Dequeue();
-                await next!.Run();
+                await RunEv(next!);
             }
             await Settle();
         }
@@ -471,7 +526,7 @@ public sealed class FlowableBinding
             while (queue.TryPeek(out var ev, out var k) && k.at <= now)
             {
                 queue.Dequeue();
-                await ev.Run();
+                await RunEv(ev);
                 moved = true;
                 Tick();
             }
@@ -484,7 +539,7 @@ public sealed class FlowableBinding
             if (pendingStarts == 0 && roots.All(r => r.DeadLetter is not null || r.Ended) && await Finished())
             {
                 // What is still queued can only meet a payment that has ended: it is counted as the virtual run counts it.
-                while (queue.TryDequeue(out var ev, out _)) await ev.Run();
+                while (queue.TryDequeue(out var ev, out _)) await RunEv(ev);
                 return;
             }
             if (Wall() > until)
@@ -541,7 +596,7 @@ public sealed class FlowableBinding
             {
                 if (armed.Contains(J.S(t, "executionId") ?? "")) continue;
                 if (FlowableRest.Time(J.S(t, "dueDate")).ToUnixTimeMilliseconds() - Wall() < TimeSpan.FromHours(12).TotalMilliseconds
-                    && await rest.RescheduleTimer(id, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + (long)TimeSpan.FromDays(1).TotalMilliseconds)))
+                    && await Reschedule(id, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + (long)TimeSpan.FromDays(1).TotalMilliseconds)))
                 {
                     attemptTimersParked++;
                     moved = true;
@@ -559,7 +614,7 @@ public sealed class FlowableBinding
             var wallDue = vdue - offset;
             if (Math.Abs(wallDue - due) < 1000) continue;
             placedDue[where] = wallDue;
-            if (await rest.RescheduleTimer(id, DateTimeOffset.FromUnixTimeMilliseconds(wallDue)))
+            if (await Reschedule(id, DateTimeOffset.FromUnixTimeMilliseconds(wallDue)))
             {
                 timersPlaced++;
                 moved = true;
@@ -592,7 +647,7 @@ public sealed class FlowableBinding
         if (timers.Count != 1) return;
         var exec = J.S(timers[0], "executionId") ?? "";
         armed.Add(exec);
-        if (await rest.RescheduleTimer(J.S(timers[0], "id")!, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + Duration.Ms(iso)))) attemptTimersArmed++;
+        if (await Reschedule(J.S(timers[0], "id")!, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + Duration.Ms(iso)))) attemptTimersArmed++;
     }
 
     /// <summary>
@@ -729,11 +784,20 @@ public sealed class FlowableBinding
         {
             ["op"] = "attempt", ["instance"] = PathOf(inst), ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
             ["call"] = call, ["attempt"] = attempt, ["now"] = now, ["ctx"] = ctx, ["level"] = index is not null && level == "item" ? "item" : null,
-            ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null,
+            ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null, ["item"] = index,
         };
         // A worker that does not answer is a technical failure, not an attempt: the job's retries cover it.
         JsonObject? res = null;
-        if (opts.Production)
+        // A job the binding had answered before it restarted (Issue I-89) is answered from the journal, not called again.
+        var reused = answered.TryGetValue(job.Id, out var kept);
+        if (reused)
+        {
+            // Its answer waits for the stub's latency in the binding's schedule: that completes it.
+            if (queue.UnorderedItems.Any(x => x.Element.Kind == "complete" && J.S(J.P(x.Element.Data, "job"), "id") == job.Id)) return;
+            res = (JsonObject)J.Clone(kept)!;
+            log.Add($"{label}: job {job.Id} handed out again after the restart; answered from the journal, not called again");
+        }
+        else if (opts.Production)
         {
             // Production: Flowable's own retry. The job is failed with one retry fewer; the server hands it out
             // again once its retry timeout has passed, and with none left it is a dead letter.
@@ -746,7 +810,7 @@ public sealed class FlowableBinding
                 log.Add(left > 0
                     ? $"{label}: {e.Message}; failed with {left} retr{(left == 1 ? "y" : "ies")} left, Flowable hands it out again after {System.Xml.XmlConvert.ToString(opts.RetryWait)}"
                     : $"{label}: {e.Message}; failed with no retries left: a dead letter");
-                await rest.Fail(job.Id, workerId, e.Message, left, left > 0 ? opts.RetryWait : TimeSpan.Zero);
+                await FailJob(job.Id, e.Message, left, left > 0 ? opts.RetryWait : TimeSpan.Zero);
                 return;
             }
         }
@@ -764,23 +828,29 @@ public sealed class FlowableBinding
                     if (left > 1) { await Task.Delay(TimeSpan.FromMilliseconds(250 * (job.Retries - left + 1))); continue; }
                     inst.Attempts[step]--;
                     notes.Add($"{label}: {e.Message}; no retries left, the job is a dead letter");
-                    Mark();
-                    await rest.Fail(job.Id, workerId, e.Message, 0, TimeSpan.Zero);
+                    await FailJob(job.Id, e.Message, 0, TimeSpan.Zero);
                     return;
                 }
             }
         }
-        Deliveries(J.P(res, "deliveries"));
-        if (J.S(res, "kind") == "hang") { hung.Add(job.Id); return; } // the attempt never answers; the timer boundary ends it
+        if (!reused)
+        {
+            Deliveries(J.P(res, "deliveries"));
+            if (J.S(res, "kind") == "hang") hung.Add(job.Id);
+            // The answer, before anything follows from it (Issue I-89): a binding that restarts from here does not call again.
+            answered[job.Id] = (JsonObject)J.Clone(res)!;
+            await Save(null);
+            await ExitIfAsked(step);
+        }
+        if (J.S(res, "kind") == "hang") return; // the attempt never answers; the timer boundary ends it
         if (J.S(res, "kind") == "held")
         {
             // A hold opened its item: the instance awaits the operator's decision until the hold's expiry (Issue I-98, R-05-56).
-            Mark();
-            await rest.Complete(job.Id, workerId, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = J.S(res, "expiry") ?? "P1D" });
+            await CompleteJob(job.Id, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = J.S(res, "expiry") ?? "P1D" });
             return;
         }
         var latency = J.S(dep.Stub(step, activity), "latency") is string l ? Duration.Ms(l) : 0;
-        if (latency > 0) Schedule(now + latency, "complete", () => Finish(job, inst, step, label, index, task, res));
+        if (latency > 0) Schedule(now + latency, "complete", new JsonObject { ["job"] = JobJson(job), ["step"] = step, ["label"] = label, ["index"] = index, ["res"] = J.Clone(res) });
         else await Finish(job, inst, step, label, index, task, res);
     }
 
@@ -797,8 +867,7 @@ public sealed class FlowableBinding
             var retryable = J.Truthy(J.P(res, "retryable"));
             var name = J.S(res, "name") ?? "Error";
             inst.LastFatal = $"{task["activity"]} failed: {J.S(res, "message") ?? name}";
-            Mark();
-            if (!await rest.BpmnError(job.Id, workerId, retryable ? name : "th:nonRetryable")) lateAbandoned++;
+            if (!await ErrorJob(job.Id, retryable ? name : "th:nonRetryable")) lateAbandoned++;
             return;
         }
         // The rule trace is stored with the payment record (R-04-20).
@@ -819,13 +888,17 @@ public sealed class FlowableBinding
             else staged.Add((path, J.Clone(v)));
             delta.Add(new JsonObject { ["path"] = path, ["before"] = J.Clone(J.Get(before, path)), ["after"] = J.Clone(v) });
         }
-        var token = staged.Count > 0 ? await claim.Stage(inst.Ref, staged) : null;
+        var token = staged.Count > 0 ? await claim.StageAs(inst.Ref, staged, job.Id) : null;
         var vars = new Dictionary<string, JsonNode?>();
         if (task.GetValueOrDefault("record") != "silent") vars[$"outcome_{Safe(step)}"] = J.S(res, "outcome");
         foreach (var (k, v) in J.Obj(J.P(res, "decisions")))
             vars[$"decision_{Safe(k)}"] = v is JsonValue ? J.AsKey(v) : J.Str(v);
-        Mark();
-        if (!await rest.Complete(job.Id, workerId, vars))
+        var after = new JsonObject
+        {
+            ["token"] = token, ["pid"] = inst.Pid, ["label"] = label, ["delta"] = J.Clone(delta),
+            ["stateWrites"] = new JsonArray(stateWrites.Select(w => (JsonNode?)new JsonObject { ["path"] = w.path, ["value"] = J.Clone(w.value) }).ToArray()),
+        };
+        if (!await CompleteJob(job.Id, vars, after))
         {
             // A timer boundary ended the attempt; the late result is abandoned and never reaches the payment.
             lateAbandoned++;
@@ -924,6 +997,10 @@ public sealed class FlowableBinding
                 // A wait from a duration parameter records the value its timer took (R-05-45).
                 Record(inst, p, p.GetValueOrDefault("timer") is string tm && lastTimerValue.TryGetValue($"{inst.Pid}|{tm}", out var tv) ? $"{p["prefix"]}:{tv}" : p["text"]);
                 break;
+            case "itemStop":
+                // The item that stops a forEach whose items run side by side (R-05-53): a later item's entries are dropped.
+                if (Int(job.Variables.GetValueOrDefault("th_item")) is int stopped) inst.StopAt = Math.Min(inst.StopAt, stopped);
+                break;
             case "blockStart":
                 // When the composite step began (R-05-43): the block sub-process this point opens.
                 if (def.Ancestry(job.ElementId).Skip(1).FirstOrDefault(e => def.Ann(e, "block") is not null) is string block) inst.BlockStarted[block] = now;
@@ -970,8 +1047,7 @@ public sealed class FlowableBinding
 
     async Task Complete(ExternalJob job, Dictionary<string, JsonNode?> vars)
     {
-        Mark();
-        if (!await rest.Complete(job.Id, workerId, vars)) notes.Add($"the binding task {job.ElementId} was gone before it completed");
+        if (!await CompleteJob(job.Id, vars)) notes.Add($"the binding task {job.ElementId} was gone before it completed");
     }
 
     /// <summary>A process instance, root or called, reaches its first task: the binding learns of it here.</summary>
@@ -1126,8 +1202,8 @@ public sealed class FlowableBinding
         msgs["lastReceived"] = J.Clone(reff);
         Mark();
         // The operator's decision carries its status to the hold's gateway (R-05-56).
-        if (J.S(m, "type") == Interp.DecisionMessage) await rest.MessageReceived(executionId, J.S(m, "type")!, new Dictionary<string, string> { ["th_decision"] = J.S(m, "status") ?? "" });
-        else await rest.MessageReceived(executionId, J.S(m, "type")!);
+        if (J.S(m, "type") == Interp.DecisionMessage) await Message(executionId, J.S(m, "type")!, new Dictionary<string, string> { ["th_decision"] = J.S(m, "status") ?? "" });
+        else await Message(executionId, J.S(m, "type")!);
     }
 
     async Task<bool> DeliverHeld()
@@ -1163,7 +1239,7 @@ public sealed class FlowableBinding
             var busy = (await rest.Executions(pid)).Any(e => J.S(e, "activityId") is string a && def?.UndoOf(a) is not null);
             if (busy) continue;
             Mark();
-            await rest.MessageReceived(J.S(s, "executionId")!, "th.compensated");
+            await Message(J.S(s, "executionId")!, "th.compensated");
             moved = true;
         }
         return moved;
@@ -1181,7 +1257,7 @@ public sealed class FlowableBinding
         if (subs.Count == 0) { notes.Add($"no parked step waits for {control}"); return false; }
         root.Trace.Add($"operator:{control}");
         Mark();
-        await rest.MessageReceived(J.S(subs[0], "executionId")!, name);
+        await Message(J.S(subs[0], "executionId")!, name);
         return true;
     }
 
@@ -1262,7 +1338,7 @@ public sealed class FlowableBinding
         var subs = await rest.EventSubscriptions(tenant, "message", SignalMessages.GetValueOrDefault(signal) ?? signal, root.Pid);
         if (subs.Count == 0) { notes.Add($"no handler waits for signal {signal}"); return; }
         Mark();
-        await rest.MessageReceived(J.S(subs[0], "executionId")!, SignalMessages[signal]);
+        await Message(J.S(subs[0], "executionId")!, SignalMessages[signal]);
     }
 
     // ================================================================ the observation

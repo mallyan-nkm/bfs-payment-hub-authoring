@@ -90,7 +90,7 @@ describe('the web app', () => {
     const { p, problems } = await page();
     await p.goto(`${server.url}/#/kit`);
     await p.getByRole('button', { name: 'Run all 50' }).click();
-    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(/50 of 50/);
+    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(/51 of 51/);
     expect(problems).toEqual([]);
     await p.close();
   }, 150000);

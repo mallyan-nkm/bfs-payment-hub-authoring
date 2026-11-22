@@ -122,7 +122,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     // its hook point.
     if (req.target === 'flowable' && ((out.kind === 'workflow' && out.wfKind !== 'handler') || out.kind === 'hook')) {
       const doc = out.kind === 'hook' ? { ...out, exit: { outcomes: out.outcomes ?? [] } } : out;
-      files[`bpmn/${n}@${out.release}.bpmn20.xml`] = generateBpmn(doc, { queueOf: (name) => queueOf(binding, name), resolve: (x) => env.store.doc(x), binding: 'rest' });
+      files[`bpmn/${n}@${out.release}.bpmn20.xml`] = generateBpmn(doc, { queueOf: (name) => queueOf(binding, name), resolve: (x) => env.store.doc(x), binding: 'rest', forEachConcurrency: binding?.defaults?.forEachConcurrency });
     }
     if (out.kind === 'workflow' && out.wfKind === 'handler') {
       // Handlers run as plain request handlers at the interop boundary, outside the engine (R-09-14).

@@ -122,9 +122,15 @@ public final class Harness {
         final List<String> releaseTrace = new ArrayList<>(), pending = new ArrayList<>();
         /** What the items of a forEach recorded, by item, while they ran side by side: put into the trace in item order (R-05-53). */
         final TreeMap<Integer, List<String[]>> items = new TreeMap<>();
+        /** The first item that stopped the forEach (R-05-53): no entry of a later item reaches the trace. */
+        int stopAt = Integer.MAX_VALUE;
         void flushItems() {
-            for (List<String[]> es : items.values()) for (String[] e : es) ("detail".equals(e[0]) ? detail : trace).add(e[1]);
+            for (Map.Entry<Integer, List<String[]>> it : items.entrySet()) {
+                if (it.getKey() > stopAt) continue;
+                for (String[] e : it.getValue()) ("detail".equals(e[0]) ? detail : trace).add(e[1]);
+            }
             items.clear();
+            stopAt = Integer.MAX_VALUE;
         }
         List<String> trace() { flushItems(); return trace; }
         List<String> detail() { flushItems(); return detail; }
@@ -859,6 +865,9 @@ public final class Harness {
         Map<String, String> p = a.get("point");
         if (p == null) return;
         switch (p.get("kind")) {
+            case "itemStop" -> {
+                if (ex.getVariable("th_item") instanceof Number n) inst.stopAt = Math.min(inst.stopAt, n.intValue());
+            }
             case "gate" -> {
                 // A signal is seen at the next step boundary (the interpreter's gate).
                 if (!inst.pending.isEmpty()) { inst.trace().addAll(inst.pending); inst.pending.clear(); }

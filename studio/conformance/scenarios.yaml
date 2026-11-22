@@ -126,6 +126,19 @@ scenarios:
               - { id: b, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
         - end: done
 
+  # R-05-53: three items side by side, the second stops the forEach; no entry of the third is in the trace (Issue I-107).
+  - id: CK-FOREACH-04
+    stubs: { "step:item": { outcomes: [ok, other, ok] } }
+    context: { items: [ { payment: { instructedAmount: { value: 1 } } }, { payment: { instructedAmount: { value: 2 } } }, { payment: { instructedAmount: { value: 3 } } } ] }
+    workflow:
+      do:
+        - forEach:
+            in: "items[]"
+            concurrency: 3
+            do:
+              - { id: item, call: ck.kit.enrich.task.v1, level: item, handle: { other: { end: item-failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
   - id: CK-LOOP-01
     stubs: { "step:q": { outcomes: [pending, pending, final] } }
     workflow:

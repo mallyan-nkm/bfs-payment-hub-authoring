@@ -22,10 +22,39 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
     readonly FactWriter writer = new(options, clock);
     static readonly string[] HeaderKeys = ["scheme", "direction", "kind", "segment", "fileId", "endToEndId", "leg", "slot"];
 
+    /// <summary>The recorder installed in this process, if any.</summary>
+    public static StepFacts? Current { get; private set; }
+
+    /// <summary>
+    /// Set by a host that restarted (Issue I-89): an attempt its predecessor had answered just before it stopped may be answered
+    /// again, and a step the payment's chain already records for that instance, step, call, attempt and item is not recorded twice.
+    /// </summary>
+    volatile bool skipRecorded;
+    readonly ConcurrentDictionary<string, HashSet<string>> recorded = new();
+
+    public void SkipRecorded() => skipRecorded = true;
+
+    static string KeyOf(JsonObject d, string code) =>
+        $"{J.S(d, "instance")}|{J.S(d, "step")}|{J.Num(d, "call")}|{J.Num(d, "attempt")}|{J.S(d, "level")}|{J.Num(d, "item")}|{code}";
+
+    async Task<bool> AlreadyRecorded(string subject, JsonObject data, string code)
+    {
+        if (!skipRecorded) return false;
+        if (!recorded.TryGetValue(subject, out var keys))
+        {
+            await using var db = StoreDbContext.Open(options);
+            var rows = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").Select(f => new { f.Code, f.DataJson }).ToListAsync();
+            keys = rows.Select(r => KeyOf(JsonNode.Parse(r.DataJson) as JsonObject ?? new JsonObject(), r.Code ?? "")).ToHashSet();
+            recorded[subject] = keys;
+        }
+        lock (keys) return !keys.Add(KeyOf(data, code));
+    }
+
     /// <summary>Installs the recorder on every worker router of this process.</summary>
     public static StepFacts Install(StoreOptions options, TimeProvider? clock = null)
     {
         var s = new StepFacts(options, clock);
+        Current = s;
         WorkerRouter.Answered = async (req, res) =>
         {
             try { await s.Record(req, res); }
@@ -60,14 +89,14 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
         return null;
     }
 
-    public Task Record(JsonObject req, JsonObject res)
+    public async Task Record(JsonObject req, JsonObject res)
     {
         var instance = J.S(req, "instance") ?? "";
         {
             (string id, string kind)? found;
             if (subjects.TryGetValue(instance, out var known) && known is not null) found = known;
             else using (var db = StoreDbContext.Open(options)) found = SubjectOf(db, instance);
-            if (found is not { } subject) return Task.CompletedTask;
+            if (found is not { } subject) return;
             var ctx = J.P(req, "ctx") as JsonObject;
             var header = new JsonObject();
             foreach (var k in HeaderKeys) if (J.S(J.P(ctx, "header"), k) is string v) header[k] = v;
@@ -77,6 +106,8 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
                 ["instance"] = instance, ["step"] = J.S(req, "step"), ["activity"] = J.S(req, "activity"), ["release"] = J.S(req, "release"),
                 ["call"] = J.Num(req, "call"), ["attempt"] = J.Num(req, "attempt"), ["level"] = J.S(req, "level"), ["header"] = header,
             };
+            // The item of a forEach an attempt belongs to, where the engine names it (the Flowable binding does).
+            if (J.Num(req, "item") is double item) data["item"] = (int)item;
             if (J.P(ctx, "status") is JsonNode status) data["status"] = J.Clone(status);
             if (kind == "result")
             {
@@ -94,7 +125,8 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
             }
             else if (kind == "error") data["error"] = new JsonObject { ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone() };
             var code = kind == "result" ? J.S(res, "outcome") ?? "result" : kind;
-            return writer.Append(subject.id, subject.kind, new NewFact("step", code, data, Actor: "engine"));
+            if (await AlreadyRecorded(subject.id, data, code)) return;
+            await writer.Append(subject.id, subject.kind, new NewFact("step", code, data, Actor: "engine"));
         }
     }
 }

@@ -156,6 +156,10 @@ public sealed class FlowableRest : IDisposable
         return (JsonObject)(await Json("start", HttpMethod.Post, $"{service}/runtime/process-instances", body))!;
     }
 
+    /// <summary>The running process instances of a tenant with a business key: how a binding that restarted finds a root it was starting.</summary>
+    public Task<List<JsonObject>> ProcessInstances(string? tenant, string businessKey) =>
+        List("instances", $"{service}/runtime/process-instances?businessKey={Uri.EscapeDataString(businessKey)}{(string.IsNullOrEmpty(tenant) ? "" : $"&tenantId={Uri.EscapeDataString(tenant)}")}");
+
     public Task<List<JsonObject>> Executions(string processInstanceId) => List("executions", $"{service}/runtime/executions?processInstanceId={processInstanceId}");
 
     public Task<List<JsonObject>> EventSubscriptions(string? tenant, string eventType, string? eventName = null, string? processInstanceId = null)
@@ -251,6 +255,18 @@ public sealed class FlowableRest : IDisposable
     /// </summary>
     public Task<bool> Fail(string jobId, string workerId, string message, int retries, TimeSpan retryTimeout) =>
         Finish("fail", jobId, new JsonObject { ["workerId"] = workerId, ["errorMessage"] = message, ["retries"] = retries, ["retryTimeout"] = System.Xml.XmlConvert.ToString(retryTimeout) });
+
+    /// <summary>
+    /// Hands back every job a worker has locked in a tenant (<c>POST /external-job-api/unacquire/jobs</c>), so that a worker that
+    /// restarted takes them again at once instead of waiting for their locks to expire (Issue I-89).
+    /// </summary>
+    public async Task Unacquire(string workerId, string? tenant)
+    {
+        var body = new JsonObject { ["workerId"] = workerId };
+        if (!string.IsNullOrEmpty(tenant)) body["tenantId"] = tenant;
+        var (status, text) = await Send("unacquire", HttpMethod.Post, $"{external}/unacquire/jobs", new StringContent(J.Str(body), Encoding.UTF8, "application/json"));
+        if ((int)status >= 300) throw new FlowableException(status, $"unacquire: {(int)status} {Short(text)}");
+    }
 
     public void Dispose() => http.Dispose();
 }

@@ -1,0 +1,6 @@
+# The files change set CS-2026-11-22-010 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+kind: release-ledger
+changeSet: CS-2026-11-22-010
+files:
+  - path: artefacts/bindings/p.binding.flowable.v1/1.1.0.yaml
+    sha256: 307a54bfa03bb97c458d992224cbb1d491b033e776f35a4125bafed17a21c61f

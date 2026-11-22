@@ -9,15 +9,15 @@ import type { StudioEnv } from '../env.js';
 const TARGETS: Record<string, { strategy: string; defaults?: any; extensions?: any }> = {
   temporal: { strategy: 'interpreter', defaults: { queueTimeout: 'PT30S', heartbeat: 'PT10S', forEachChunk: 500, forEachConcurrency: 64, historyLimit: 10000 } },
   dtfx: { strategy: 'interpreter', defaults: { forEachChunk: 500, forEachConcurrency: 64 }, extensions: { attemptTimeout: 'timer-race' } },
-  flowable: { strategy: 'generation', extensions: { activityTask: 'external-worker', retry: 'modelled-loop' } },
+  flowable: { strategy: 'generation', defaults: { forEachConcurrency: 64 }, extensions: { activityTask: 'external-worker', retry: 'modelled-loop' } },
   elsa: { strategy: 'interpreter', defaults: { forEachChunk: 500, forEachConcurrency: 64 }, extensions: { suspension: 'bookmark', replay: 'journal-in-workflow-state', attemptTimeout: 'timer-race' } },
 };
 
 /**
  * Each binding's current release (Issue I-83, owner's decision of 2026-11-22): a binding is released like every other artefact,
- * as `p.binding.<target>.v1`, and a change is a new release. 1.1.0 added forEachConcurrency (R-09-45).
+ * as `p.binding.<target>.v1`, and a change is a new release. 1.1.0 added forEachConcurrency (R-09-45; Flowable's 1.1.0, Issue I-107).
  */
-export const BINDING_RELEASES: Record<string, string> = { temporal: '1.1.0', dtfx: '1.1.0', flowable: '1.0.0', elsa: '1.1.0' };
+export const BINDING_RELEASES: Record<string, string> = { temporal: '1.1.0', dtfx: '1.1.0', flowable: '1.1.0', elsa: '1.1.0' };
 export const bindingName = (target: string) => `p.binding.${target}.v1`;
 
 /** The binding of an engine: its latest published release (a binding with no release only when none has one). */
