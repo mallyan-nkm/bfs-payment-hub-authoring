@@ -1,6 +1,7 @@
 import { OWNER_TENANT, StoreError, identifiers, mentions, type Entry } from '../core/store.js';
 import { USERS_PATH, handedOverPath, inFlightPath } from '../content/layout.js';
 import { commitMessage, filesFor } from '../export/git.js';
+import { buildPlanned, planOnApproval, type Plan } from './distributions.js';
 import { compareReleases, isShared, parseName } from '../core/names.js';
 import { toYaml, parseYaml } from '../core/yaml.js';
 import { Checker, checkDocument, interfaceDiff, pinnable, proposeRelease, refsOf } from '../checks/checks.js';
@@ -207,6 +208,15 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
       throw new StoreError('signing', err.message);
     }
   }
+  // The distributions and the configuration release the approval builds (R-11-40): asked of the permission table and
+  // checked against the slot and parameter contracts before anything is published.
+  let plan: Plan;
+  try {
+    plan = await planOnApproval(env, tenant, checker, docs);
+  } catch (err: any) {
+    env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: String(err?.message ?? err) });
+    throw err;
+  }
   // One commit on the content branch, or in pull-request mode one on the change set's branch and a
   // pull request (R-11-22, R-09-20, R-09-22). The change set keeps the id of its branch.
   // The change set takes the id of the approved draft's branch, across branches if its closure must (Issue I-44).
@@ -222,8 +232,11 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
       members: published.map(({ e, maker }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key, maker })).sort((a, b) => a.key.localeCompare(b.key)),
     };
     const { files, skipped, tags } = filesFor(env, changeSet, env.store.settings);
+    const bundles = buildPlanned(env, plan, changeSet);
+    Object.assign(files, bundles.files);
+    tags.push(...bundles.tags);
     const write = env.store.commitChangeSet(changeSet, branches, files, commitMessage(changeSet, skipped), { pullRequest, tags });
-    return { changeSet, published: published.map((p) => p.e), write, skipped, pullRequest };
+    return { changeSet, published: published.map((p) => p.e), write, skipped, pullRequest, bundles: bundles.built.map((b) => ({ kind: b.kind, releaseId: b.releaseId, tag: b.tag.name, folder: b.folder })) };
   });
 }
 

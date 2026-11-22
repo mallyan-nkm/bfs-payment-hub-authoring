@@ -24,6 +24,9 @@ export interface ExportRequest {
   includeTests?: boolean;
   /** A test deployment: each worker carries the simulators of the ports its tasks reach. Never promotable (R-07-12). */
   withSimulators?: boolean;
+  /** A distribution (R-09-47): only the legs of the schemes the bank licenses, and no values (they come in a configuration release). */
+  schemes?: string[];
+  values?: false;
 }
 
 export interface ExportPackage {
@@ -68,6 +71,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   };
   for (const w of req.workflows) addFlow(w);
   for (const scheme of env.store.byKind('scheme').map((e) => e.doc)) {
+    if (req.schemes && !req.schemes.includes(scheme.scope)) continue;
     const legs = (scheme.legs ?? []).filter((l: string) => {
       const d = env.store.doc(l);
       return d && (flows.has(l) || (d.implements?.of ?? []).some((o: string) => flows.has(o)));
@@ -97,7 +101,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
       const h = env.store.doc(b.hook, b.release);
       if (h) flows.set(h.name, h);
     }
-    files[`configuration/${req.tenant}.yaml`] = toYaml(config);
+    if (req.values !== false) files[`configuration/${req.tenant}.yaml`] = toYaml(config);
   }
 
   const blocks = new Map<string, any>();

@@ -198,7 +198,7 @@ export class GitHubClient {
    * is made, and never moved: GitHub refuses a second ref of the same name, and the studio never forces one.
    */
   async createReleaseTag(name: string, message: string, commit: string): Promise<string> {
-    if (!/^release\/[a-z0-9.-]+\/[0-9]+\.[0-9]+\.[0-9]+\/[a-z]+$/.test(name)) throw new GitHubError(0, 'POST /git/tags', `The studio makes only release tags (release/<workflow>/<release>/<target>), not ${name}`);
+    if (!/^release\/[a-z0-9.-]+\/[0-9]+\.[0-9]+\.[0-9]+\/[a-z]+$/.test(name) && !/^dist\/[a-z0-9-]+\/[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[1-9][0-9]*$/.test(name) && !/^config\/[a-z0-9-]+\/[0-9]+\.[0-9]+\.[0-9]+$/.test(name)) throw new GitHubError(0, 'POST /git/tags', `The studio makes only release tags (release/<workflow>/<release>/<target>, dist/<bank>/<id>, config/<bank>/<release>), not ${name}`);
     const date = new Date().toISOString();
     const tag = (await this.call<{ sha: string }>('POST', '/git/tags', { tag: name, message, object: commit, type: 'commit', tagger: { ...AUTHOR, date } }))!.sha;
     await this.call('POST', '/git/refs', { ref: `refs/tags/${name}`, sha: tag });

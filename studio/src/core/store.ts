@@ -70,6 +70,8 @@ export interface Settings {
   mode: 'commit' | 'pull-request';
   /** The engine whose package each published workflow carries under `releases/`. */
   target: string;
+  /** On approval, also build and publish the distributions and configuration releases the change set calls for (R-11-40). */
+  distributions?: boolean;
   /** When set, each publish also writes an activation for this environment. */
   environment?: string;
   changedBy?: string;
