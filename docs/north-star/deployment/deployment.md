@@ -14,7 +14,7 @@ The studio is never deployed beside a runtime in a way that lets it reach a paym
 ## The studio
 
 - Set `TH_CONTENT_REPO`, `TH_CONTENT_BRANCH` and `TH_GITHUB_TOKEN`. Without `TH_CONTENT_REPO` it does not start. The token needs contents write on the repository, and pull requests write in pull-request mode.
-- Optional: `TH_GITHUB_API` (a GitHub Enterprise base), `TH_CONTENT_ROOT`, `TH_BANKS`, `PORT`, `TH_SPEC_ROOT`, and `ANTHROPIC_API_KEY` for the assistant.
+- Optional: `TH_GITHUB_API` (a GitHub Enterprise base), `TH_CONTENT_ROOT`, `TH_BANKS`, `PORT`, `TH_SPEC_ROOT`, and `ANTHROPIC_API_KEY` for the assistant. Behind a proxy: `HTTPS_PROXY` (or `HTTP_PROXY`) and `NO_PROXY` for the GitHub client, and `NODE_EXTRA_CA_CERTS` for a proxy's or the bank's own certificate authority.
 - It keeps no state of its own: stop it, start it elsewhere, and it reads the branch again.
 - Before banks share one installation, the studio needs a sign-in ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) and scripts need an isolated worker (D14).
 - Set `TH_SIGNING_KEY` to a reference to the studio's package-signing key (`npm run studio -- signing-key <dir>` makes one). Without it the studio publishes no workflow release.

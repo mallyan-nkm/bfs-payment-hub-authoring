@@ -173,7 +173,8 @@ public sealed class FlowableRest : IDisposable
 
     // ------------------------------------------------------------------ jobs the async executor would run
 
-    public Task<List<JsonObject>> Jobs(string? tenant) => List("jobs", $"{service}/management/jobs?{Q(tenant)}");
+    public Task<List<JsonObject>> Jobs(string? tenant, string? processInstanceId = null) =>
+        List("jobs", $"{service}/management/jobs?{Q(tenant)}{(processInstanceId is null ? "" : $"&processInstanceId={processInstanceId}")}");
     public Task<List<JsonObject>> TimerJobs(string? tenant) => List("timers", $"{service}/management/timer-jobs?{Q(tenant)}");
     public Task<List<JsonObject>> DeadLetterJobs(string? tenant) => List("dead-letters", $"{service}/management/deadletter-jobs?{Q(tenant)}");
 
@@ -193,6 +194,20 @@ public sealed class FlowableRest : IDisposable
     /// <summary>A timer is due on the binding's clock: it becomes an executable job.</summary>
     public async Task MoveTimer(string id) =>
         await Json("move-timer", HttpMethod.Post, $"{service}/management/timer-jobs/{id}", new JsonObject { ["action"] = "move" });
+
+    /// <summary>
+    /// Gives a timer the due date the binding computed (production mode: the business calendar and a
+    /// duration from a parameter). The server replaces the timer job by a new one, with a new id; false when
+    /// the timer is gone (it fired, or its scope ended).
+    /// </summary>
+    public async Task<bool> RescheduleTimer(string id, DateTimeOffset due)
+    {
+        var body = new JsonObject { ["action"] = "reschedule", ["dueDate"] = due.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture) };
+        var (status, text) = await Send("reschedule-timer", HttpMethod.Post, $"{service}/management/timer-jobs/{id}", new StringContent(J.Str(body), Encoding.UTF8, "application/json"));
+        if (status == HttpStatusCode.NotFound) return false;
+        if ((int)status >= 300) throw new FlowableException(status, $"reschedule {id}: {(int)status} {Short(text)}");
+        return true;
+    }
 
     // ------------------------------------------------------------------ the external worker API
 
@@ -225,7 +240,8 @@ public sealed class FlowableRest : IDisposable
 
     /// <summary>
     /// Fails a locked job after a technical failure. With retries left the server hands it out again once
-    /// its async executor resets the lock after the timeout; with none left it becomes a dead letter.
+    /// its async executor resets the lock after the retry timeout (production mode); with none left it
+    /// becomes a dead letter.
     /// </summary>
     public Task<bool> Fail(string jobId, string workerId, string message, int retries, TimeSpan retryTimeout) =>
         Finish("fail", jobId, new JsonObject { ["workerId"] = workerId, ["errorMessage"] = message, ["retries"] = retries, ["retryTimeout"] = System.Xml.XmlConvert.ToString(retryTimeout) });

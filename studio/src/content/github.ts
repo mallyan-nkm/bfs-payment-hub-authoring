@@ -10,8 +10,29 @@
 // The token is read from the environment at each request and is never stored on an object, shown,
 // logged or written anywhere (R-09-19). An error names the endpoint and GitHub's message, with the
 // token taken out.
+//
+// Requests go through the proxy the environment names, as curl and git do: HTTPS_PROXY (or HTTP_PROXY for an
+// http: API base), unless NO_PROXY names the host. Node's fetch ignores those variables, so the client sends
+// its requests with undici's EnvHttpProxyAgent. TLS trusts Node's store, which takes NODE_EXTRA_CA_CERTS (a
+// proxy's or a bank's own certificate authority).
+
+import { EnvHttpProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 
 export const TOKEN_ENV = 'TH_GITHUB_TOKEN';
+
+const PROXY_ENV = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy'];
+let dispatcher: { key: string; agent: Dispatcher } | undefined;
+
+/** The dispatcher for the API: the environment's proxy settings, read again when they change. */
+export function proxyDispatcher(env: NodeJS.ProcessEnv = process.env): Dispatcher {
+  const key = PROXY_ENV.map((n) => env[n] ?? '').join('\n');
+  if (dispatcher?.key !== key) {
+    const old = dispatcher?.agent;
+    dispatcher = { key, agent: new EnvHttpProxyAgent() };
+    void old?.close().catch(() => undefined);
+  }
+  return dispatcher.agent;
+}
 
 export interface TreeItem { path: string; mode: string; type: 'blob' | 'tree' | 'commit'; sha: string; size?: number }
 export interface Tree { sha: string; tree: TreeItem[]; truncated: boolean }
@@ -75,11 +96,12 @@ export class GitHubClient {
 
   private async call<T>(method: string, endpoint: string, body?: any, allow404 = false): Promise<T | undefined> {
     const token = this.token();
-    let res: Response;
+    let res: Awaited<ReturnType<typeof undiciFetch>>;
     // A read is tried once more when the connection drops (a kept-alive socket closed under it).
     for (let attempt = 0; ; attempt++) {
       try {
-        res = await fetch(this.base + endpoint, {
+        res = await undiciFetch(this.base + endpoint, {
+          dispatcher: proxyDispatcher(),
           method,
           headers: {
             accept: 'application/vnd.github+json',

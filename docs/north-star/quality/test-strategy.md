@@ -29,12 +29,12 @@ Run in this repository while writing these docs, on Linux with Node 22, .NET 10 
 | `cd studio && npm test` | 18 files; 223 tests pass, 1 skipped |
 | `cd studio && npm run typecheck` | No errors |
 | `cd studio && npm run studio -- test` | 19 of 19 tests pass |
-| `cd studio && npm run studio -- kit` | 46 of 46 on the studio interpreter |
+| `cd studio && npm run studio -- kit` | 48 of 48 on the studio interpreter |
 | `cd studio && npm run studio -- check` | 0 errors, 13 warnings |
 | `cd studio && npm run studio -- seed-content` | 163 of 163 seeded files current |
-| `cd studio && npx tsx engines/dtfx/run-kit.ts` | 46 of 46 on DTFx |
-| `cd studio && npx tsx engines/elsa/run-kit.ts` | 46 of 46 on Elsa |
-| `cd studio && npx tsx engines/temporal/run-kit.ts` | 46 of 46 on Temporal |
+| `cd studio && npx tsx engines/dtfx/run-kit.ts` | 48 of 48 on DTFx |
+| `cd studio && npx tsx engines/elsa/run-kit.ts` | 48 of 48 on Elsa |
+| `cd studio && npx tsx engines/temporal/run-kit.ts` | 48 of 48 on Temporal |
 | `cd runtime && dotnet build TransactHub.Runtime.slnx` | Builds |
 
 The runtime's `dotnet test`, the black-box suites, the Flowable kit and Temporal on SQL Server were not run for this page; their latest results are in `README.md`, `docs/runtime/NSTAR-CONVERGENCE-PLAN.md` and `runtime/temporal-mssql/README.md`.

@@ -37,6 +37,7 @@ export interface DeployRequest {
   environment: DeployEnvironment;
   inbound?: { message?: string; payload: string };
   context?: any;
+  /** The first worker port, the next ones after it; by default each worker takes a free port the system gives it. */
   basePort?: number;
   studioRoot: string; // where the engine harnesses live
   keep?: boolean;
@@ -84,6 +85,23 @@ async function waitHealthy(url: string, ms = 15000) {
     if (Date.now() > until) throw new Error(`Worker at ${url} did not start`);
     await new Promise((r) => setTimeout(r, 100));
   }
+}
+
+/** The port a worker started with --port 0 listens on: its first line says so (`worker <queue> on <port>: ...`). */
+function listening(child: ChildProcess, queue: string, ms = 15000): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let out = '';
+    const done = (f: () => void) => { clearTimeout(timer); child.stdout?.off('data', onData); child.off('exit', onExit); f(); };
+    const onData = (d: Buffer) => {
+      out += d;
+      const m = /^worker \S+ on (\d+):/m.exec(out);
+      if (m) done(() => resolve(Number(m[1])));
+    };
+    const onExit = (code: number | null) => done(() => reject(new Error(`Worker ${queue} exited ${code} before it listened: ${out.slice(-500)}`)));
+    const timer = setTimeout(() => done(() => reject(new Error(`Worker ${queue} did not say which port it listens on`))), ms);
+    child.stdout?.on('data', onData);
+    child.on('exit', onExit);
+  });
 }
 
 function scopeOf(name: string) {
@@ -143,13 +161,13 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   const envFile = path.join(tmp, 'environment.json');
   fs.writeFileSync(envFile, JSON.stringify(environment));
 
-  // 1. Workers: one process per queue.
+  // 1. Workers: one process per queue, each on a free port (port 0: the system picks it, the worker says which).
   const procs: { queue: string; port: number; child: ChildProcess; url: string; tasks: string[] }[] = [];
-  let port = req.basePort ?? 7400 + Math.floor(Math.random() * 400);
+  let port = req.basePort;
   try {
     for (const w of manifest.workers ?? []) {
       const wdir = path.join(dir, w.path);
-      const p = port++;
+      const p = port === undefined ? 0 : port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
         env: { PATH: process.env.PATH, TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -158,6 +176,10 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       procs.push({ queue: w.queue, port: p, child, url: `http://127.0.0.1:${p}`, tasks: w.tasks });
     }
     for (const pr of procs) {
+      if (pr.port === 0) {
+        pr.port = await listening(pr.child, pr.queue);
+        pr.url = `http://127.0.0.1:${pr.port}`;
+      }
       const h = await waitHealthy(pr.url);
       log.push(`worker ${h.queue} up on ${pr.port} with ${h.tasks.length} task(s), pid ${pr.child.pid}`);
     }

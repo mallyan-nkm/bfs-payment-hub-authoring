@@ -17,8 +17,11 @@ namespace TransactHub.Engine.Flowable;
 /// The engine holds references and flow variables only. A payload lives in the claim check: in memory,
 /// or, with TH_STORE_PROVIDER set, in the store, as the Temporal binding keeps it (<see cref="DurableClaimCheck"/>).
 ///
-/// Time is the binding's: the server's async executor is off, so the binding runs the jobs it would run,
-/// and fires a timer when the binding's virtual clock reaches it. A wait of days takes no wall time.
+/// Time has two modes (<see cref="FlowableMode"/>). Virtual: the server's async executor is off, so the
+/// binding runs the jobs it would run, and fires a timer when the binding's virtual clock reaches it; a
+/// wait of days takes no wall time (the kit and the tests). Production: the executor is on and time is
+/// real; the binding is a pure external worker, Flowable runs its own jobs, fires its timers, retries a
+/// failed job and hands out a job whose lock expired, and the binding surfaces every dead letter.
 /// The plan and the observation are those of the other engines' harnesses, so the kit runner and the
 /// studio's deploy runner read them unchanged.
 /// </summary>
@@ -26,11 +29,25 @@ public sealed class FlowableBinding
 {
     public const string WorkerId = "th-flowable-binding";
     public const string BindingTopic = "th.binding";
-    static readonly TimeSpan LockFor = TimeSpan.FromMinutes(10);
     static readonly Dictionary<string, string> SignalMessages = new() { ["pause"] = "th.signal.pause", ["resume"] = "th.signal.resume", ["cancel"] = "th.signal.cancel", ["re-screen"] = "th.signal.re-screen" };
 
     readonly JsonObject input, built, spec, config;
     readonly FlowableRest rest;
+    readonly FlowableOptions opts;
+    /// <summary>The worker id the binding locks jobs with; a new one after a crash (test fault), as a restarted worker would have.</summary>
+    string workerId = WorkerId;
+    /// <summary>Production: business time is the wall clock plus this offset, so a run starts at the plan's evaluation date and start time.</summary>
+    long offset, wallStart;
+    bool crashed, executorWarned;
+    int idle;
+    /// <summary>Every job the binding has begun; a job handed out again (a failure, an expired lock) is the same attempt.</summary>
+    readonly HashSet<string> begun = new(), hung = new();
+    /// <summary>Production: timers the binding has placed, by job id, and the due date it gave each execution's timer.</summary>
+    readonly HashSet<string> placed = new();
+    readonly Dictionary<string, long> placedDue = new();
+    readonly List<JsonObject> deadLetters = new();
+    readonly HashSet<string> deadSeen = new();
+    int timersPlaced, handedOutAgain, crashes, pendingStarts;
     readonly List<string> log = new(), notes = new();
     Deployment dep = null!;
     IParty party = null!;
@@ -70,17 +87,19 @@ public sealed class FlowableBinding
         public bool Registered, Ended;
         public long StartedAt;
         public long? EndedAt;
-        public string? Failed, LastFatal;
+        public string? Failed, LastFatal, DeadLetter;
         public List<JsonObject> Bindings = new();
     }
 
     readonly IParty? given;
 
     /// <param name="party">Who answers the attempts; by default the plan's workers (a deployment) or the studio's party service (a kit run).</param>
-    public FlowableBinding(JsonObject input, FlowableRest rest, IParty? party = null)
+    /// <param name="options">Virtual (the default) or production mode, and its timings.</param>
+    public FlowableBinding(JsonObject input, FlowableRest rest, IParty? party = null, FlowableOptions? options = null)
     {
         this.input = input;
         this.rest = rest;
+        opts = options ?? new FlowableOptions();
         given = party;
         built = (JsonObject)J.P(input, "built")!;
         spec = J.P(built, "spec") as JsonObject ?? new JsonObject();
@@ -108,6 +127,7 @@ public sealed class FlowableBinding
     /// </summary>
     void Mark()
     {
+        if (opts.Production) return; // the server's own clock places its timers
         var wall = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (marks.Count > 0 && marks[^1].virt != now)
             while (wall <= marks[^1].wall) { Thread.SpinWait(200); wall = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(); }
@@ -123,12 +143,23 @@ public sealed class FlowableBinding
 
     void Schedule(long at, string kind, Func<Task> run) => queue.Enqueue(new Ev(at, kind, run), (at, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), seq++));
 
+    static long Wall() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    /// <summary>Production: business time follows the wall clock.</summary>
+    void Tick()
+    {
+        if (opts.Production) now = Math.Max(now, Wall() + offset);
+    }
+
     void Deliveries(JsonNode? ds)
     {
         foreach (var d in ds as JsonArray ?? new JsonArray())
         {
             var m = (JsonObject)J.Clone(J.P(d, "message"))!;
-            Schedule((long)(J.Num(d, "at") ?? now), "delivery", () => FrontDoor(m));
+            var at = (long)(J.Num(d, "at") ?? now);
+            // A simulator's reply delay, scaled in production as the stub's --time-scale scales it.
+            if (opts.Production && opts.SimScale != 1 && at > now) at = now + (long)Math.Round((at - now) * opts.SimScale);
+            Schedule(at, "delivery", () => FrontDoor(m));
         }
     }
 
@@ -140,6 +171,8 @@ public sealed class FlowableBinding
         tenant = $"th-{runId}";
         start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
         now = start;
+        wallStart = Wall();
+        offset = start - wallStart;
         dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100));
         Deployment.Current = dep;
         using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!) : new PartyClient(J.S(input, "studioRoot")!);
@@ -164,6 +197,9 @@ public sealed class FlowableBinding
         if (files.Count == 0) throw new InvalidOperationException("The plan has no BPMN: the package must be exported for flowable");
         var server = await rest.Engine();
         log.Add($"Flowable {J.S(server, "version")} at the REST server, tenant {tenant}");
+        log.Add(opts.Production
+            ? $"production mode: the server's async executor runs the jobs and fires the timers in real time; the binding is its external worker (lock {System.Xml.XmlConvert.ToString(opts.LockFor)}, retry after {System.Xml.XmlConvert.ToString(opts.RetryWait)})"
+            : "virtual mode: the server's async executor is off; the binding runs the jobs and fires the timers on its clock");
         var deploymentId = await rest.Deploy($"transacthub-{runId}", files, tenant);
         log.Add($"deployed {files.Count} process(es) as deployment {deploymentId}");
         foreach (var d in await rest.ProcessDefinitions(deploymentId))
@@ -184,20 +220,23 @@ public sealed class FlowableBinding
                 {
                     var label = J.S(s, "label")!;
                     var release = J.S(s, "workflowRelease")!;
-                    Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", () => StartRoot(label, workflow, release, (JsonObject)J.Clone(ctx)!));
+                    pendingStarts++;
+                    Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", () => { pendingStarts--; return StartRoot(label, workflow, release, (JsonObject)J.Clone(ctx)!); });
                 }
             }
             else
             {
                 var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
-                Schedule(start, "start", () => StartRoot("root", workflow, J.S(doc, "release")!, ctx));
+                pendingStarts++;
+                Schedule(start, "start", () => { pendingStarts--; return StartRoot("root", workflow, J.S(doc, "release")!, ctx); });
             }
             foreach (var s in J.A(config, "signals"))
             {
                 var signal = J.S(s, "signal")!;
                 Schedule(start + Duration.Ms(J.S(s, "after")!), "signal", () => Signal(signal));
             }
-            await Loop();
+            if (opts.Production) await LiveLoop(); else await Loop();
+            await SurfaceDeadLetters();
 
             var sent = await party.Call(new JsonObject { ["op"] = "sent" });
             JsonObject? storeReport = storeOpts is null ? null : await StoreReport.Of(storeOpts, r => claim.Full(null, r));
@@ -217,6 +256,7 @@ public sealed class FlowableBinding
                 ["engine"] = new JsonObject
                 {
                     ["server"] = J.S(server, "version"),
+                    ["mode"] = opts.Production ? "production" : "virtual",
                     ["deployment"] = deploymentId,
                     ["processes"] = byDef.Count,
                     ["processInstances"] = insts.Count,
@@ -226,6 +266,11 @@ public sealed class FlowableBinding
                     ["timersFired"] = timersFired,
                     ["lateResultsAbandoned"] = lateAbandoned,
                     ["retriedOnFailure"] = retriedOnFailure,
+                    ["handedOutAgain"] = handedOutAgain,
+                    ["crashes"] = crashes,
+                    ["timersPlaced"] = timersPlaced,
+                    ["deadLetters"] = new JsonArray(deadLetters.Select(d => (JsonNode?)J.Clone(d)).ToArray()),
+                    ["wallMs"] = Wall() - wallStart,
                     ["requests"] = requests,
                     ["virtualEnd"] = Duration.Iso(now),
                     ["log"] = J.Arr(log),
@@ -243,6 +288,7 @@ public sealed class FlowableBinding
     {
         var key = Safe($"{workflow}@{release}");
         if (!byKey.ContainsKey(key)) throw new InvalidOperationException($"{workflow}@{release} is not in the deployment");
+        Tick();
         Mark();
         var started = await rest.StartProcess(key, tenant, businessKey: $"{label}-{tenant}");
         var pid = J.S(started, "id")!;
@@ -373,6 +419,140 @@ public sealed class FlowableBinding
         notes.Add("settle did not converge");
     }
 
+    // ================================================================ production: real time, the server's executor
+
+    /// <summary>
+    /// Production mode. Flowable's async executor runs the jobs and fires the timers; the binding only works
+    /// the external jobs, places the timers it computes, delivers held messages, and surfaces dead letters,
+    /// until every payment has ended (or stopped at a dead letter), or the run's time is up.
+    /// </summary>
+    async Task LiveLoop()
+    {
+        var until = wallStart + (long)opts.MaxWait.TotalMilliseconds;
+        for (;;)
+        {
+            Tick();
+            var moved = false;
+            while (queue.TryPeek(out var ev, out var k) && k.at <= now)
+            {
+                queue.Dequeue();
+                await ev.Run();
+                moved = true;
+                Tick();
+            }
+            moved |= await PlaceTimers();
+            moved |= await WorkExternalJobs();
+            moved |= await DeliverHeld();
+            moved |= await ReleaseCompensation();
+            await SurfaceDeadLetters();
+            if (pendingStarts == 0 && roots.All(r => r.DeadLetter is not null || r.Ended) && await Finished())
+            {
+                // What is still queued can only meet a payment that has ended: it is counted as the virtual run counts it.
+                while (queue.TryDequeue(out var ev, out _)) await ev.Run();
+                return;
+            }
+            if (Wall() > until)
+            {
+                notes.Add($"stopped after {System.Xml.XmlConvert.ToString(opts.MaxWait)} of real time with {roots.Count(r => !r.Ended)} payment(s) still running (TH_FLOWABLE_MAX_WAIT)");
+                return;
+            }
+            if (moved) { idle = 0; continue; }
+            if (++idle % 120 == 0) await CheckExecutor();
+            var wait = (long)opts.Poll.TotalMilliseconds;
+            if (queue.TryPeek(out _, out var nk)) wait = Math.Min(wait, Math.Max(0, nk.at - now));
+            await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(5, wait)));
+        }
+    }
+
+    /// <summary>Every root that ended has left the server: its finally, its notify hooks and its children are done.</summary>
+    async Task<bool> Finished()
+    {
+        foreach (var r in roots.Where(r => r.Ended && r.DeadLetter is null))
+            if ((await rest.Executions(r.Pid)).Count > 0) return false;
+        return true;
+    }
+
+    /// <summary>An executable job nobody runs for a long while: the server's async executor is off, and production mode needs it on.</summary>
+    async Task CheckExecutor()
+    {
+        if (executorWarned) return;
+        var old = (await rest.Jobs(tenant)).Where(j => Wall() - FlowableRest.Time(J.S(j, "createTime")).ToUnixTimeMilliseconds() > 30_000).ToList();
+        if (old.Count == 0) return;
+        executorWarned = true;
+        notes.Add($"{old.Count} executable job(s) have waited more than 30 s: production mode needs the server's async executor on (FLOWABLE_ASYNC_EXECUTOR_ACTIVATE=true)");
+    }
+
+    /// <summary>
+    /// Production mode: a timer on the business calendar, or whose duration or calendar is a parameter, was
+    /// written with the model's default (Issue I-55, R-05-45, R-05-47). When the server creates it, the
+    /// binding computes its due date as the virtual mode would (the tenant's value in force on the date it
+    /// was created, counted on the business calendar where it says so) and reschedules it to that date.
+    /// Every other timer is fired by Flowable as written.
+    /// </summary>
+    async Task<bool> PlaceTimers()
+    {
+        var moved = false;
+        foreach (var t in await rest.TimerJobs(tenant))
+        {
+            var id = J.S(t, "id")!;
+            if (!placed.Add(id)) continue;
+            var element = J.S(t, "elementId") ?? "";
+            var def = byDef.GetValueOrDefault(J.S(t, "processDefinitionId") ?? "");
+            var meta = def?.Ann(element, "timer");
+            if (meta is null || !(meta.ContainsKey("parameter") || meta.ContainsKey("calendarParameter") || meta.GetValueOrDefault("calendar") == "business")) continue;
+            var due = FlowableRest.Time(J.S(t, "dueDate")).ToUnixTimeMilliseconds();
+            var where = $"{J.S(t, "executionId")}|{element}";
+            // The timer the binding rescheduled comes back as a new job with the due date it was given.
+            if (placedDue.TryGetValue(where, out var given) && Math.Abs(given - due) < 1000) continue;
+            var created = FlowableRest.Time(J.S(t, "createTime")).ToUnixTimeMilliseconds();
+            var vdue = VirtualDue(t, created + offset, due - created);
+            var wallDue = vdue - offset;
+            if (Math.Abs(wallDue - due) < 1000) continue;
+            placedDue[where] = wallDue;
+            if (await rest.RescheduleTimer(id, DateTimeOffset.FromUnixTimeMilliseconds(wallDue)))
+            {
+                timersPlaced++;
+                moved = true;
+                log.Add($"timer {element} placed at {Duration.Iso(vdue)} (business time), {Duration.Iso(wallDue)} on the server; written {Duration.Iso(due + offset)}");
+            }
+        }
+        return moved;
+    }
+
+    /// <summary>
+    /// Every dead letter of this run's tenant: a job whose retries are spent. It is reported once, with its
+    /// step, and the payment it stops is marked: an operator moves it back (retry) or ends the payment.
+    /// </summary>
+    async Task SurfaceDeadLetters()
+    {
+        var all = await rest.DeadLetterJobs(tenant);
+        foreach (var d in all)
+        {
+            var id = J.S(d, "id")!;
+            if (!deadSeen.Add(id)) continue;
+            var pid = J.S(d, "processInstanceId") ?? "";
+            var element = J.S(d, "elementId") ?? "";
+            var def = byDef.GetValueOrDefault(J.S(d, "processDefinitionId") ?? "");
+            var task = def?.Ann(element, "task");
+            var step = task?.GetValueOrDefault("step") ?? element;
+            var message = J.S(d, "exceptionMessage") ?? "";
+            insts.TryGetValue(pid, out var inst);
+            var root = inst;
+            while (root?.Parent is not null) root = root.Parent;
+            deadLetters.Add(new JsonObject
+            {
+                ["job"] = id, ["processInstance"] = pid, ["element"] = element, ["step"] = step, ["activity"] = task?.GetValueOrDefault("activity"),
+                ["workflow"] = inst?.Name, ["payment"] = root?.Label, ["message"] = message, ["at"] = Elapsed,
+            });
+            notes.Add($"dead letter: the job of {step} ({element}) in {inst?.Name ?? pid} has no retries left: {message}. An operator moves it back to retry, or ends the payment");
+            if (root is not null)
+            {
+                root.DeadLetter ??= $"{step}: {message}";
+                root.Failed ??= $"dead letter at {step}: {message}";
+            }
+        }
+    }
+
     // ================================================================ the external worker
 
     async Task<bool> WorkExternalJobs()
@@ -387,14 +567,33 @@ public sealed class FlowableBinding
             else foreach (var d in byDef.Values) foreach (var x in d.Topics) topics.Add(x);
         }
         var all = new List<ExternalJob>();
-        foreach (var t in topics) all.AddRange(await rest.Acquire(t, 1000, LockFor, WorkerId, tenant));
+        foreach (var t in topics) all.AddRange(await rest.Acquire(t, 1000, opts.LockFor, workerId, tenant));
         all.Sort((a, b) => a.CreateTime != b.CreateTime ? a.CreateTime.CompareTo(b.CreateTime) : string.CompareOrdinal(a.Id, b.Id));
-        foreach (var j in all) await Work(j);
+        string? last = null;
+        foreach (var j in all)
+        {
+            // Production: the server's executor runs each completion on a thread of its own, so two completions
+            // of one instance (parallel branches) could create what follows them in either order. The binding
+            // lets the first take effect before it works the next, so the jobs that follow come in the order the
+            // virtual run gives them, and so does the trace.
+            if (opts.Production && last == j.ProcessInstanceId) await Quiet(j.ProcessInstanceId);
+            await Work(j);
+            last = j.ProcessInstanceId;
+        }
         return all.Count > 0;
+    }
+
+    /// <summary>Production: until the instance has no executable job, that is until the server has run what the binding's last completion started.</summary>
+    async Task Quiet(string pid)
+    {
+        for (var until = Wall() + 30_000; Wall() < until; await Task.Delay(20))
+            if ((await rest.Jobs(tenant, pid)).Count == 0) return;
+        notes.Add($"instance {pid}: the server did not run its jobs within 30 s");
     }
 
     async Task Work(ExternalJob job)
     {
+        Tick();
         jobsWorked++;
         if (!byDef.TryGetValue(job.ProcessDefinitionId, out var def)) { notes.Add($"a job of an unknown process {job.ProcessDefinitionId}"); return; }
         if (def.Ann(job.ElementId, "point") is { } point) { bindingJobs++; await Point(job, def, point); return; }
@@ -411,7 +610,21 @@ public sealed class FlowableBinding
         var attempt = Int(job.Variables.GetValueOrDefault("th_attempt")) ?? 1;
         int? index = task.GetValueOrDefault("item") == "true" ? Int(job.Variables.GetValueOrDefault("th_item")) : null;
         var label = index is null ? step : $"{step}[{index}]";
-        if (attempt == 1) inst.Calls[step] = inst.Calls.GetValueOrDefault(step) + 1;
+        if (opts.CrashAt == step && !crashed)
+        {
+            // Test fault: the worker took the job and stopped before it called anyone, holding the lock. The job
+            // comes back only when Flowable finds the lock expired; the binding goes on as a restarted worker.
+            crashed = true;
+            crashes++;
+            workerId = $"{WorkerId}-restarted";
+            log.Add($"{label}: the worker stopped holding job {job.Id} (TH_FLOWABLE_FAULT); its lock expires after {System.Xml.XmlConvert.ToString(opts.LockFor)}, and the binding goes on as {workerId}");
+            return;
+        }
+        // A job handed out again, after a technical failure or an expired lock, is the attempt it was.
+        var first = begun.Add(job.Id);
+        if (!first) handedOutAgain++;
+        if (hung.Contains(job.Id)) return; // an attempt that never answers stays unanswered when its job comes back
+        if (attempt == 1 && first) inst.Calls[step] = inst.Calls.GetValueOrDefault(step) + 1;
         var call = inst.Calls.GetValueOrDefault(step, 1);
         // Supersession: a step not yet started runs the superseding release (CK-SUP-01).
         var runRelease = release;
@@ -422,7 +635,7 @@ public sealed class FlowableBinding
             runRelease = J.S(s, "with")!;
             if (inst.Superseded.Add($"{activity}|{step}")) inst.ReleaseTrace.Add($"supersede:{ShortName(activity)} {release} to {runRelease}");
         }
-        if (attempt == 1)
+        if (attempt == 1 && first)
         {
             if (def.UndoOf(job.ElementId) is { } undo) inst.Trace.Add($"undo:{undo["step"]}");
             if (!silent) inst.ReleaseTrace.Add($"{ShortName(activity)}@{runRelease}");
@@ -431,7 +644,7 @@ public sealed class FlowableBinding
             inst.Steps.Add(rec);
             inst.OpenStep[label] = rec;
         }
-        inst.Attempts[step] = inst.Attempts.GetValueOrDefault(step) + 1;
+        if (first) inst.Attempts[step] = inst.Attempts.GetValueOrDefault(step) + 1;
         if (inst.Snapshots++ < 200) foreach (var k in job.Variables.Keys) inst.StateKeys.Add(k);
         var level = task.GetValueOrDefault("level");
         var ctx = index is int ix && level == "item" ? claim.FullForItem(inst.State, inst.Ref, ix) : claim.Full(inst.State, inst.Ref);
@@ -442,30 +655,54 @@ public sealed class FlowableBinding
             ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null,
         };
         // A worker that does not answer is a technical failure, not an attempt: the job's retries cover it.
-        // Flowable hands a failed job out again only when its async executor resets the expired lock, and
-        // that executor is off (the binding keeps the clock), so the binding retries the call itself while
-        // the job's retries last, and fails the job with none left when they are spent: a dead letter.
         JsonObject? res = null;
-        for (var left = Math.Max(1, job.Retries); res is null; left--)
+        if (opts.Production)
         {
-            try { res = await party.Call(req); }
+            // Production: Flowable's own retry. The job is failed with one retry fewer; the server hands it out
+            // again once its retry timeout has passed, and with none left it is a dead letter.
+            try { res = await CallParty(req, step); }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
             {
                 retriedOnFailure++;
-                if (left > 1) { await Task.Delay(TimeSpan.FromMilliseconds(250 * (job.Retries - left + 1))); continue; }
-                inst.Attempts[step]--;
-                notes.Add($"{label}: {e.Message}; no retries left, the job is a dead letter");
-                Mark();
-                await rest.Fail(job.Id, WorkerId, e.Message, 0, TimeSpan.Zero);
+                var left = Math.Max(0, job.Retries - 1);
+                if (left == 0) inst.Attempts[step]--;
+                log.Add(left > 0
+                    ? $"{label}: {e.Message}; failed with {left} retr{(left == 1 ? "y" : "ies")} left, Flowable hands it out again after {System.Xml.XmlConvert.ToString(opts.RetryWait)}"
+                    : $"{label}: {e.Message}; failed with no retries left: a dead letter");
+                await rest.Fail(job.Id, workerId, e.Message, left, left > 0 ? opts.RetryWait : TimeSpan.Zero);
                 return;
             }
         }
+        else
+        {
+            // Virtual: Flowable hands a failed job out again only when its async executor resets the expired
+            // lock, and that executor is off (the binding keeps the clock), so the binding retries the call itself
+            // while the job's retries last, and fails the job with none left when they are spent: a dead letter.
+            for (var left = Math.Max(1, job.Retries); res is null; left--)
+            {
+                try { res = await CallParty(req, step); }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
+                {
+                    retriedOnFailure++;
+                    if (left > 1) { await Task.Delay(TimeSpan.FromMilliseconds(250 * (job.Retries - left + 1))); continue; }
+                    inst.Attempts[step]--;
+                    notes.Add($"{label}: {e.Message}; no retries left, the job is a dead letter");
+                    Mark();
+                    await rest.Fail(job.Id, workerId, e.Message, 0, TimeSpan.Zero);
+                    return;
+                }
+            }
+        }
         Deliveries(J.P(res, "deliveries"));
-        if (J.S(res, "kind") == "hang") return; // the attempt never answers; the timer boundary ends it
+        if (J.S(res, "kind") == "hang") { hung.Add(job.Id); return; } // the attempt never answers; the timer boundary ends it
         var latency = J.S(dep.Stub(step, activity), "latency") is string l ? Duration.Ms(l) : 0;
         if (latency > 0) Schedule(now + latency, "complete", () => Finish(job, inst, step, label, index, task, res));
         else await Finish(job, inst, step, label, index, task, res);
     }
+
+    /// <summary>The party's answer to an attempt; a step whose worker is down (test fault) never answers.</summary>
+    Task<JsonObject> CallParty(JsonObject req, string step) =>
+        opts.DownAt == step ? throw new HttpRequestException($"the worker of {step} does not answer (TH_FLOWABLE_FAULT)") : party.Call(req);
 
     static int? Int(JsonNode? n) => J.D(n) is double d ? (int)d : n is JsonValue v && int.TryParse(J.AsKey(v), out var i) ? i : null;
 
@@ -477,7 +714,7 @@ public sealed class FlowableBinding
             var name = J.S(res, "name") ?? "Error";
             inst.LastFatal = $"{task["activity"]} failed: {J.S(res, "message") ?? name}";
             Mark();
-            if (!await rest.BpmnError(job.Id, WorkerId, retryable ? name : "th:nonRetryable")) lateAbandoned++;
+            if (!await rest.BpmnError(job.Id, workerId, retryable ? name : "th:nonRetryable")) lateAbandoned++;
             return;
         }
         // The rule trace is stored with the payment record (R-04-20).
@@ -504,7 +741,7 @@ public sealed class FlowableBinding
         foreach (var (k, v) in J.Obj(J.P(res, "decisions")))
             vars[$"decision_{Safe(k)}"] = v is JsonValue ? J.AsKey(v) : J.Str(v);
         Mark();
-        if (!await rest.Complete(job.Id, WorkerId, vars))
+        if (!await rest.Complete(job.Id, workerId, vars))
         {
             // A timer boundary ended the attempt; the late result is abandoned and never reaches the payment.
             lateAbandoned++;
@@ -551,6 +788,7 @@ public sealed class FlowableBinding
 
     async Task Point(ExternalJob job, BpmnProcess def, IReadOnlyDictionary<string, string> p)
     {
+        Tick();
         var vars = new Dictionary<string, JsonNode?>();
         var kind = p.GetValueOrDefault("kind");
         insts.TryGetValue(job.ProcessInstanceId, out var inst);
@@ -637,7 +875,7 @@ public sealed class FlowableBinding
     async Task Complete(ExternalJob job, Dictionary<string, JsonNode?> vars)
     {
         Mark();
-        if (!await rest.Complete(job.Id, WorkerId, vars)) notes.Add($"the binding task {job.ElementId} was gone before it completed");
+        if (!await rest.Complete(job.Id, workerId, vars)) notes.Add($"the binding task {job.ElementId} was gone before it completed");
     }
 
     /// <summary>A process instance, root or called, reaches its first task: the binding learns of it here.</summary>
@@ -755,6 +993,7 @@ public sealed class FlowableBinding
 
     async Task FrontDoor(JsonObject m)
     {
+        Tick();
         var type = J.S(m, "type") ?? "";
         var disposition = J.P(dep.CatalogueEntry(type), "disposition");
         if (J.P(disposition, "handler") is not null || J.P(disposition, "start") is not null)
