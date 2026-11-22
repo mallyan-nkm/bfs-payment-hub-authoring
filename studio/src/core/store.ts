@@ -18,7 +18,10 @@ import {
 
 export const OWNER_TENANT = 'owner';
 
-/** Documents in a bank's folder that the runtime reads, not the studio: port bindings and configuration values. */
+/**
+ * Documents in a bank's folder that the runtime reads, not the studio: port bindings and configuration values. The
+ * studio's own releases of a bank's port bindings sit in `port-bindings/` and are its artefacts (R-11-47).
+ */
 export const RUNTIME_KINDS = ['port-bindings', 'configuration-values'];
 
 /** The first line of a file the seed command published: it names the file in `spec/` it came from (R-11-25). */
@@ -98,7 +101,7 @@ function scopeOfDoc(doc: any): string {
     const t = doc.target ? parseName(doc.target) : null;
     return t?.scope ?? 'p';
   }
-  if (doc.kind === 'configuration-set') return 'b';
+  if (doc.kind === 'configuration-set' || doc.kind === 'port-bindings') return 'b';
   return 'p';
 }
 
@@ -107,7 +110,7 @@ function nameOfDoc(doc: any): string {
   if (doc.kind === 'pack') return `pack:${doc.scope}${doc.tenant ? ':' + doc.tenant : ''}`;
   if (doc.kind === 'inventory') return 'inventory';
   if (doc.kind === 'conformance-kit') return 'conformance-kit';
-  return doc.name ?? doc.id ?? (doc.kind === 'configuration-set' ? `config:${doc.tenant}` : doc.kind === 'engine-binding' ? `binding:${doc.target}` : doc.scope ?? doc.kind);
+  return doc.name ?? doc.id ?? (doc.kind === 'configuration-set' ? `config:${doc.tenant}` : doc.kind === 'port-bindings' ? `bindings:${doc.tenant}` : doc.kind === 'engine-binding' ? `binding:${doc.target}` : doc.scope ?? doc.kind);
 }
 
 /** A bank's own content is keyed by tenant, so two banks may use one name (C17-S1). */
@@ -486,6 +489,13 @@ export class Store {
   /** A scheme's manifest: its latest release, as every other artefact (R-11-35: an earlier release stays on the branch). */
   scheme(scope: string): any {
     const all = this.byKind('scheme').filter((e) => e.scope === scope).sort((x, y) => compareReleases(x.release, y.release));
+    return all[all.length - 1]?.doc;
+  }
+
+  /** A bank's port bindings as the studio last released them (R-11-47), or undefined while it has released none. */
+  portBindings(tenant: string): any {
+    const all = this.byKind('port-bindings').filter((e) => e.doc.tenant === tenant);
+    all.sort((a, b) => compareReleases(a.release, b.release));
     return all[all.length - 1]?.doc;
   }
 

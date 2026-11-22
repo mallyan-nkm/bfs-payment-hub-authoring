@@ -241,6 +241,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L45 | A step that parks (`policy.park`, R-05-55) is a call outside a handler, to an activity that is pure, read or carries an idempotency key, and parks for at least PT1M and at most P30D | Yes |
 | L46 | On a scheme whose wire is a file, a step that sends or reports a file (an exchange of mode `send` or `report` that is not a composite) comes after a protect step that encrypts it (R-12-17) | Yes |
 | L47 | A leg that fills a slot of a platform workflow which blocks or posts money (calls a `reserve` or `post` activity) calls no `reserve` or `post` activity itself, directly, through a segment or through a composite's subflow: the order's money is the platform's (R-12-19) | Yes |
+| L48 | A bank's port bindings (R-11-47) have the port-bindings shape, name their folder's tenant, bind each port to an adapter from a `validFrom`, bind only a published port of the factory or of the bank's pack, never bind one port twice from one `validFrom` in one document, and hold a credential as a `secretRef` only; a studio release sits at `port-bindings/<release>.yaml` | Yes |
 
 ## 5.8 Examples
 

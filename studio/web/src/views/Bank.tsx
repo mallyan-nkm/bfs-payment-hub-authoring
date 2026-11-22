@@ -1,5 +1,6 @@
 import { get, type Summary } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Loading, Section, useLoad, useStudio } from '../ui';
+import { PortBindings } from './PortBindings';
 
 // The bank workspace (R-10-11): where a Bank Configurator lands. Its own hooks, rules, dials,
 // simulators and hook bindings in scope b, and the test bench for every workflow the bank can
@@ -47,7 +48,7 @@ export function Bank() {
       <div className="view-head">
         <h2>Bank workspace</h2>
         <p className="muted">
-          {tenant}: hooks, rules, dials, simulators and hook bindings in scope <code>b</code>, and the test bench by workflow. Shared workflows, activities, rules, schemes and ports are read-only to a bank.
+          {tenant}: hooks, rules, dials, simulators, hook bindings and port bindings in scope <code>b</code>, and the test bench by workflow. Shared workflows, activities, rules, schemes and ports are read-only to a bank.
           {configurator ? ' Your saves need no approval; a bank approver who is not you approves a change set as a version.' : ' You approve what the bank configurator changed, as a version.'}
         </p>
       </div>
@@ -64,6 +65,9 @@ export function Bank() {
           </Section>
           <Section title="Simulators and scenarios" count={sims.data?.length} actions={configurator && <button onClick={() => go('/editors?kind=simulator')}>New simulator</button>}>
             <Items items={sims.data} empty="No bank simulator yet." edit="simulator" />
+          </Section>
+          <Section title="Port bindings">
+            <PortBindings />
           </Section>
         </div>
         <div className="col side">

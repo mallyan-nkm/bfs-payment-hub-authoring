@@ -1,4 +1,4 @@
-import { parseYaml, toYaml } from '../core/yaml.js';
+import { parseYaml, parseYamlAll, toYaml } from '../core/yaml.js';
 import { OWNER_TENANT, StoreError, keyOf } from '../core/store.js';
 import { parseName } from '../core/names.js';
 import { CONTEXT_PARTS, coveredByAny } from '../core/paths.js';
@@ -600,6 +600,49 @@ route('POST', '/api/tenants/:tenant/configuration/check', (env, req, { tenant })
   if (cs.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: cs.__parseError }] };
   if (cs.tenant !== tenant) return { issues: [{ code: 'R-01-07', severity: 'error', message: `The configuration set names tenant ${cs.tenant}, not ${tenant}` }] };
   return { issues: checkDocument(env, cs) };
+});
+
+// --------------------------------------------------------------- port bindings (R-11-47, Issue I-70)
+
+/** The bank folder's own runtime documents of kind port-bindings: what the runtime reads before the studio releases any. */
+function runtimeBindingDocs(env: StudioEnv, tenant: string): { file: string; doc: any }[] {
+  const folder = env.store.bankPacks.get(tenant) ?? tenant;
+  const out: { file: string; doc: any }[] = [];
+  for (const [p, text] of [...(env.store.content?.files ?? new Map<string, string>())].sort(([a], [b]) => a.localeCompare(b))) {
+    if (!p.startsWith(`banks/${folder}/`) || p.split('/').length !== 3 || !/\.ya?ml$/.test(p)) continue;
+    // A file that is not YAML gives nothing here: L37 and the checks say so.
+    for (const d of parseYamlAllSafe(text)) if (d?.kind === 'port-bindings' && d.tenant === tenant) out.push({ file: p, doc: d });
+  }
+  return out;
+}
+const parseYamlAllSafe = (text: string): any[] => { try { return parseYamlAll(text); } catch { return []; } };
+
+/**
+ * A bank's port bindings, for its editor: the release the studio last published, the draft in progress, the bank folder's
+ * runtime documents, the ports the bank may bind (published port contracts it sees), and the document to start a draft
+ * from: the draft, else the release, else the folder's documents gathered into one.
+ */
+route('GET', '/api/tenants/:tenant/port-bindings', (env, req, { tenant }) => {
+  const released = env.store.portBindings(tenant);
+  const draft = env.store.drafts(tenant).find((e) => e.kind === 'port-bindings')?.doc;
+  const runtime = runtimeBindingDocs(env, tenant);
+  const ports = env.store.byKind('port').filter((e) => e.tenant === OWNER_TENANT || e.tenant === tenant)
+    .map((e) => ({ name: e.name, release: e.release, title: e.doc.title, party: e.doc.party, operations: (e.doc.operations ?? []).map((o: any) => o.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const bump = (r: string) => r.split('.').map((x, i) => (i === 1 ? Number(x) + 1 : i === 2 ? 0 : Number(x))).join('.');
+  const start = draft ?? (released ? { ...released, release: bump(released.release) } : {
+    kind: 'port-bindings', tenant, release: '1.0.0', title: `Port bindings of ${tenant}`,
+    bindings: runtime.flatMap((r) => r.doc.bindings ?? []).map((b: any) => ({ ...b, validFrom: String(b.validFrom) })),
+  });
+  return { released: released ?? null, draft: draft ?? null, runtime, ports, start, yaml: toYaml(start), issues: checkDocument(env, start, tenantOf(req), gov.draftSet(env, tenantOf(req))) };
+});
+
+/** Check a bank's port bindings without saving them: the schema and L48 against the port contracts. */
+route('POST', '/api/tenants/:tenant/port-bindings/check', (env, req, { tenant }) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: doc.__parseError }] };
+  if (doc.tenant !== tenant) return { issues: [{ code: 'R-01-07', severity: 'error', message: `The port bindings name tenant ${doc.tenant}, not ${tenant}` }] };
+  return { issues: checkDocument(env, doc, tenant, gov.draftSet(env, tenant)) };
 });
 
 /** The compatibility run (F-29, R-06-17): the tenant's hook tests against the current shared releases. */

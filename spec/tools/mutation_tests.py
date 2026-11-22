@@ -192,6 +192,8 @@ CASES = [
     ("M66", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-request-in.v1.yaml",
      "  - id: render-answer\n", "  - id: debit-employee\n    call: p.post.accounting.v1\n    handle:\n      rejected: { end: pending }\n      unknown: { end: pending }\n  - id: render-answer\n",
      "the WPS leg posts the refund the platform workflow owns"),
+    ("M67", "ERROR L48", "../content-configurations/banks/dib/core-banking.yaml",
+     "  - port: p.port.core-banking.v1", "  - port: p.port.core-ledger.v1", "a bank binds a port that no pack holds"),
 ]
 
 

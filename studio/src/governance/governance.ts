@@ -106,7 +106,7 @@ export function enforce(env: StudioEnv, actor: string, tenant: string, action: A
 export function targetOf(doc: any): Target {
   const kind = kindOf(doc);
   if (!kind) throw new StoreError('L00', `${doc?.kind ?? 'A document without a kind'} is not a kind the studio authors`);
-  return { kind, scope: doc.kind === 'configuration-set' ? 'b' : doc.name ? parseName(doc.name)?.scope : doc.scope };
+  return { kind, scope: doc.kind === 'configuration-set' || doc.kind === 'port-bindings' ? 'b' : doc.name ? parseName(doc.name)?.scope : doc.scope };
 }
 
 // --------------------------------------------------------- release flow (C19-S2)

@@ -88,6 +88,34 @@ describe('sign-in in the web app', () => {
     await p.close();
   });
 
+  it('lets a bank configurator edit its port bindings, check them against the ports and save a draft (R-11-47)', async () => {
+    const { p, problems } = await fresh();
+    await signInFromStudio(p, 'example.maker');
+    await p.getByRole('heading', { name: 'Port bindings' }).first().waitFor();
+    const table = p.getByRole('table', { name: 'Port bindings' });
+    await table.waitFor();
+    const before = await table.locator('tbody tr').count();
+    expect(before).toBeGreaterThan(0);
+    // A new binding: the gateway from a later date, its credential by reference.
+    await p.getByRole('button', { name: 'Add binding' }).click();
+    const n = before + 1;
+    await p.getByLabel(`Port ${n}`).selectOption('p.port.core-banking.v1');
+    await p.getByLabel(`Adapter ${n}`).fill('gateway-rest');
+    await p.getByLabel(`Valid from ${n}`).fill('2027-02-01T00:00:00Z');
+    // A literal credential as a setting is refused by the check (L48) ...
+    await p.getByLabel(`Settings ${n}`).fill('baseUrl=https://core-banking.example.invalid/\napiToken=synthetic-literal');
+    await p.getByRole('button', { name: 'Check' }).click();
+    await p.getByText(/apiToken holds a value/).first().waitFor();
+    // ... and accepted as a reference.
+    await p.getByLabel(`Settings ${n}`).fill('baseUrl=https://core-banking.example.invalid/');
+    await p.getByLabel(`Secret reference ${n}`).fill('env:TH_EXAMPLE_CORE_BANKING_TOKEN');
+    await p.getByRole('button', { name: 'Save draft' }).click();
+    await p.getByText(/Saved as draft/).waitFor();
+    await p.getByText(/draft 1\.0\.0/).waitFor();
+    expect(problems).toEqual([]);
+    await p.close();
+  });
+
   it('signs out: the session ends and the API answers 401', async () => {
     const { p } = await fresh();
     await signInFromStudio(p, 'workflow.designer');

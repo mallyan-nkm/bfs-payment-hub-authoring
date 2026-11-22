@@ -552,3 +552,4 @@ body.with-dock .main { margin-right: var(--dock-w); }
 .signin-card h1 { font-size: 1.25rem; display: flex; align-items: center; gap: 8px; margin: 0; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 2px 0; overflow-wrap: anywhere; }
+.port-bindings { overflow-x: auto; }

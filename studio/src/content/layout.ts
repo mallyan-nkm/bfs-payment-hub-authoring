@@ -22,6 +22,8 @@ export const safe = (s: string) => String(s).replace(/[^A-Za-z0-9._@-]+/g, '-').
 export function documentPath(doc: any, tenant: string): string {
   const bank = tenant && tenant !== OWNER_TENANT;
   if (doc.kind === 'configuration-set') return `banks/${safe(tenant || doc.tenant)}/configuration-sets/${safe(doc.release)}.yaml`;
+  // A bank's port bindings, as the studio releases them (R-11-47, Issue I-70): one file per release, beside the bank's runtime documents.
+  if (doc.kind === 'port-bindings') return `banks/${safe(tenant || doc.tenant)}/port-bindings/${safe(doc.release)}.yaml`;
   const base = bank ? `banks/${safe(tenant)}/artefacts` : 'artefacts';
   if (doc.kind === 'test') return `${base}/${safe(scopeOfTest(doc))}/tests/${safe(doc.id)}.yaml`;
   if (doc.kind === 'scheme') return `${base}/${safe(doc.scope)}/scheme/${safe(doc.release)}.yaml`;
@@ -73,7 +75,7 @@ export const inFlightPath = (at: string) => `governance/in-flight/${at.replace(/
 export const handedOverPath = (id: string) => `supersessions/handed-over/${safe(id)}.yaml`;
 
 /** Folders of a bank that the studio writes itself, beside the bank pack's own layout. */
-export const BANK_STUDIO_FOLDERS = ['artefacts', 'configuration-sets', 'scripts'];
+export const BANK_STUDIO_FOLDERS = ['artefacts', 'configuration-sets', 'port-bindings', 'scripts'];
 
 /** Prefixes of what the studio reads into memory; `releases/` and `environments/` are the runtime's. */
 export const READ_PREFIXES = ['artefacts/', 'banks/', 'change-sets/', 'audit/', 'governance/', 'supersessions/', 'samples/', 'scripts/'];

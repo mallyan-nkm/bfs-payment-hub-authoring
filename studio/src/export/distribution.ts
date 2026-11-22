@@ -3,7 +3,7 @@ import { canonicalJson, clone } from '../core/canonical.js';
 import { parseYaml, toYaml } from '../core/yaml.js';
 import { expandWorkflow } from '../core/expand.js';
 import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
-import { withinBounds } from '../checks/checks.js';
+import { portBindingProblems, withinBounds } from '../checks/checks.js';
 import { packEntries } from '../governance/packs.js';
 import { exportPackage, signPackage, type Target } from './exporter.js';
 import { bindingOf } from './bindings.js';
@@ -267,8 +267,13 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   const { bank } = req;
   const set = clone(req.set ?? env.store.configurationSet(bank));
   if (!set) throw new DistributionRefused(`${bank} has no configuration set`);
-  const release = req.release ?? set.release;
-  set.release = release;
+  // The bank's port bindings go out in its configuration release (R-11-47): those given, else the ones the studio last released.
+  // A release of the bindings names the configuration release with build metadata, so that one with the same values and
+  // other bindings is a release of its own: <configuration set release>+bindings.<port bindings release>.
+  const released = req.bindings === undefined ? env.store.portBindings(bank) : undefined;
+  if (req.bindings === undefined && released?.bindings?.length) req = { ...req, bindings: released.bindings };
+  const release = req.release ?? (released?.release ? `${set.release}+bindings.${released.release}` : set.release);
+  set.release = req.release ?? set.release;
   if (!req.against.length) throw new DistributionRefused(`A configuration release of ${bank} is checked against a distribution's parameter contract: build one first`);
   const problems: string[] = [];
   for (const v of set.values ?? []) {
@@ -280,6 +285,8 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
     }
     if (!v.validFrom) problems.push(`${v.parameter} has no validFrom`);
   }
+  const isPort = (n: string) => env.store.all().some((e) => e.kind === 'port' && e.name === n && e.status !== 'draft' && (e.tenant === OWNER_TENANT || e.tenant === bank));
+  if (req.bindings?.length) problems.push(...portBindingProblems({ bindings: req.bindings }, isPort));
   for (const b of req.bindings ?? []) {
     if (!b.validFrom) problems.push(`the binding of ${b.port} has no validFrom`);
     for (const [k, val] of Object.entries<any>(b.settings ?? {})) if (/(password|passphrase|secret|token|apikey|accesskey|privatekey|credential)$/i.test(k)) problems.push(`the binding of ${b.port} holds ${k} as a setting: give it as secretRef`);
@@ -288,11 +295,11 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   if (problems.length) throw new DistributionRefused(`The configuration release ${bank}@${release} is refused: ${problems.join('; ')}`);
   const files: Record<string, string> = {};
   files['configuration/configuration-set.yaml'] = toYaml(set);
-  if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, bindings: req.bindings });
+  if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, ...(released?.release ? { release: released.release } : {}), bindings: req.bindings });
   for (const c of req.calendars ?? []) files[`calendars/${c.name}.yaml`] = toYaml(c);
   const requiresContract = req.against.map((d) => ({ distribution: d.releaseId, sha256: sha(canonicalJson(d.parameterContract)) })).sort((a, b) => a.distribution.localeCompare(b.distribution));
   const billOfMaterials = { artefacts: Object.entries(files).map(([p, t]) => ({ path: p, sha256: sha(t) })).sort((a, b) => a.path.localeCompare(b.path)) };
-  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length };
+  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length, ...(released?.release ? { portBindings: released.release } : {}) };
   files['manifest.yaml'] = toYaml(manifest);
   const releaseId = `config/${bank}@${release}`;
   const signed = signFiles(files, { kind: 'configuration', releaseId, workflow: '', release, target: '', tenant: bank, changeSet: req.changeSet ?? null, extra: { billOfMaterials } }) as Record<string, string>;

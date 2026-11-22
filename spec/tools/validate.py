@@ -6,6 +6,7 @@ Run:  python3 tools/validate.py
 This script is the reference for build spec C04 (static checks). It is not the product.
 """
 import hashlib
+import datetime
 import json
 import pathlib
 import re
@@ -673,7 +674,7 @@ for path, d in docs:
 BANKS = ROOT.parent / "content-configurations" / "banks"
 RUNTIME_KINDS = ("port-bindings", "configuration-values")
 # packs/ keeps a bank pack's earlier lock files, as published (R-11-35); L41 holds them to their hashes.
-STUDIO_FOLDERS = ("artefacts", "configuration-sets", "scripts", "packs")
+STUDIO_FOLDERS = ("artefacts", "configuration-sets", "port-bindings", "scripts", "packs")
 factory_names = set(by_name)
 for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
     where = "content-configurations/banks/%s" % bank.name
@@ -778,6 +779,58 @@ for top, label in [(ROOT / b, b) for b in ("factory", "examples", "conformance")
             found.append(("", "holds a private key"))
         for at, why in found:
             err("L37", where, "%s%s" % ("at %s " % at if at else "", why))
+# ------------------------------------------------------- port bindings
+# L48 a bank's port bindings (R-11-47, Issue I-70) are values the runtime reads: each document in a bank folder of
+# content-configurations/banks/ has the port-bindings shape, names its folder's tenant, and binds each port to an
+# adapter from a validFrom; every port it binds is a published port of the factory or the bank's own; no port is bound
+# twice from one validFrom in one document; a credential is a secretRef. The studio's releases sit in port-bindings/,
+# one file per release, named by it. The studio runs the same check on a draft (studio/src/checks/checks.ts).
+PORT_NAMES = {n for n, d in by_name.items() if d.get("kind") == "port"}
+
+
+def as_text(v):
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return v.isoformat().replace("+00:00", "Z")
+    if isinstance(v, dict):
+        return {k: as_text(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [as_text(x) for x in v]
+    return v
+
+
+for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
+    where = "content-configurations/banks/%s" % bank.name
+    pf = bank / "pack.yaml"
+    tenant = (yaml.safe_load(pf.read_text()) or {}).get("tenant") if pf.is_file() else None
+    own_ports, bound = set(), []
+    for f in sorted(bank.rglob("*.yaml")):
+        rel = f.relative_to(bank)
+        if rel.parts[0] == "packs":
+            continue
+        for d in yaml.safe_load_all(f.read_text()):
+            if isinstance(d, dict) and d.get("kind") == "port" and d.get("name"):
+                own_ports.add(d["name"])
+            elif isinstance(d, dict) and d.get("kind") == "port-bindings":
+                bound.append((rel, as_text(d)))
+    for rel, d in bound:
+        at = "%s/%s" % (where, rel)
+        for e in sorted(Draft202012Validator(schemas["urn:th:schema:port-bindings"], registry=registry).iter_errors(d), key=lambda e: list(e.path)):
+            err("L48", at, "%s at /%s" % (e.message[:160], "/".join(str(x) for x in e.path)))
+        if tenant and d.get("tenant") != tenant:
+            err("L48", at, "names tenant %s, but its folder is %s's" % (d.get("tenant"), tenant))
+        if rel.parts[0] == "port-bindings" and (not d.get("release") or rel.name != "%s.yaml" % d.get("release")):
+            err("L48", at, "a released set of port bindings is port-bindings/<release>.yaml and names that release")
+        seen = set()
+        for b in d.get("bindings") or []:
+            if not isinstance(b, dict):
+                continue
+            port = b.get("port")
+            if port not in PORT_NAMES and port not in own_ports:
+                err("L48", at, "binds %s, which is no port of the factory or of the bank's pack" % port)
+            if (port, b.get("validFrom")) in seen:
+                err("L48", at, "binds %s twice from %s" % (port, b.get("validFrom")))
+            seen.add((port, b.get("validFrom")))
+
 # ------------------------------------------------------- operations views
 # L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
 # apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
