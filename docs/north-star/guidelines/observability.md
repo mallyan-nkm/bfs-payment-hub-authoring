@@ -30,6 +30,8 @@ These hold for every log, span and metric, in every host:
 
 The deploy runner opens the span `th.payment` and `th.payment.intake` for the front door. Every process it starts continues the trace: a worker through `traceparent` on each request, the engine harness through `TRACEPARENT`. On Temporal the interceptor carries the trace through the front door, the interpreter workflows, each activity and each signal; on DTFx, Elsa and Flowable each attempt joins it through `EngineTelemetry`'s parent. Inside: `th.engine.run`, one `th.attempt <activity>` per attempt (engine side), one `th.activity <activity>` per attempt (worker side), one `th.port.call <port>` per port call, one `th.store.write <row kinds>` per save (R-09-24, R-09-25).
 
+Shown on 22 November 2026, across processes: the WPS salary file deployed on DTFx with the store on PostgreSQL (`npm run studio -- deploy ...` with `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at a local OTLP receiver) exported 100 spans in one trace from six processes: the studio CLI (`th.payment`, `th.payment.intake`), the DTFx host (`th.engine.run`, 21 `th.attempt`, 13 `th.store.write`, the HTTP calls) and the four workers (22 `th.activity`, 12 `th.port.call`). None of the exported bytes held the file's IBAN, employee number or employer number. The .NET hosts send OTLP/HTTP protobuf; the Node processes send OTLP/HTTP JSON (`@opentelemetry/exporter-*-otlp-http`), which a collector takes on the same port.
+
 ## Names
 
 Lower case and dotted, the same in every host. Attributes carry ids, document names and outcomes only.
