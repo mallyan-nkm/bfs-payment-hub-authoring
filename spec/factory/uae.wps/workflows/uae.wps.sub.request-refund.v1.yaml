@@ -1,7 +1,7 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.request-refund.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: Request a refund, read the acknowledgement, wait for the settlement
 description: What the request-refund block does underneath. Two waits. The first takes the reply time of the calling step. The second is the scheme wait for settlement and is fixed here.

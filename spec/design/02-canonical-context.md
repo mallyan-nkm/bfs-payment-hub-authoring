@@ -65,7 +65,7 @@ An amount (`instructedAmount.value`, `controlSum`, an extension field of an ISO 
 | R-02-14 | `status` MUST use ISO payment status codes and ISO status reason codes; a scheme code MAY be carried beside the ISO code. | Rule finding schema (L00) |
 | R-02-15 | A block that works on a batch or on an item MUST declare `level`. | Schema `activity` (L00) |
 | R-02-16 | `header.tenant` MUST NOT be read by shared content to change behaviour. Tenant differences come from values and hooks. | Lint L09; review |
-| R-02-17 | An amount MUST be an exact decimal: carried in canonical JSON as a decimal string or as a JSON number read by its text, never by its binary value. An amount of more than 15 significant digits MUST be a decimal string. | Lint L40; conformance CK-MONEY-01; `studio/test/money.test.ts` |
+| R-02-17 | An amount MUST be an exact decimal: carried in canonical JSON as a decimal string or as a JSON number read by its text, never by its binary value. An amount of more than 15 significant digits MUST be a decimal string. | Lint L42; conformance CK-MONEY-01; `studio/test/money.test.ts` |
 
 ## 2.4 The ISO data capability in the studio
 

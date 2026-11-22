@@ -110,7 +110,7 @@ export class Decimal {
   toValue(): number | Decimal { return this.digits() <= NUMBER_DIGITS ? Number(this.toString()) : this; }
 }
 
-/** The significant digits of a number or decimal string as a reader takes it (L40); 0 when it is neither. */
+/** The significant digits of a number or decimal string as a reader takes it (L42); 0 when it is neither. */
 export function significantDigits(v: unknown): number {
   return Decimal.parse(v)?.digits() ?? 0;
 }

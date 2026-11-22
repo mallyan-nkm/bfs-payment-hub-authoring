@@ -153,7 +153,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
   it('pays end to end once the bank accepts the scheme and enables its rail in a new configuration', async () => {
     const cs = (await api.get(`/api/tenants/${BANK}/configuration`)).data.configurationSet;
     const next = JSON.parse(JSON.stringify(cs));
-    next.release = '1.1.0';
+    next.release = '1.2.0';
     next.accepts.push({ scope: S, release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push(S);
     const check = await api.post(`/api/tenants/${BANK}/configuration/validate`, { doc: next });
@@ -182,7 +182,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(parseYaml(files.get('binding.yaml')!).queues[S]).toBe('th-uae-demo'); // derived from the scope (R-09-05)
     expect(parseYaml(files.get(`schemes/${S}.yaml`)!).legs).toEqual([LEG.name]);
     expect(files.get(`workers/th-uae-demo/scripts/${FILE_IN.name}.js`)).toContain('mapped');
-    expect(parseYaml(files.get(`configuration/${BANK}.yaml`)!).release).toBe('1.1.0');
+    expect(parseYaml(files.get(`configuration/${BANK}.yaml`)!).release).toBe('1.2.0');
     // The export lists the change sets its artefacts were published in (R-11-20).
     const listed = manifest.changeSets.map((c: any) => c.id);
     for (const id of changeSets) expect(listed).toContain(id);

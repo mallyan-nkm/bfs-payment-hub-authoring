@@ -173,7 +173,8 @@ export function scenes(d: Director): Scene[] {
         await d.go('tenant');
         const cs = (await d.api().get('/api/tenants/example-bank/configuration')).data;
         const next = JSON.parse(JSON.stringify(cs.configurationSet));
-        next.release = '1.1.0';
+        // A later release than the shipped one, whatever it is (R-11-35).
+        next.release = next.release.replace(/^(\d+)\.(\d+)\..*/, (_: string, M: string, m: string) => `${M}.${Number(m) + 1}.0`);
         next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
         next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
         await d.paste(p().getByLabel('Configuration set YAML'), toYaml(next));

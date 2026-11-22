@@ -2,7 +2,7 @@
 kind: test
 id: WPS-IN-007
 title: After a refused disbursement file the refused credits are still returned, and the leg ends pending
-target: uae.wps.wf.agent-payment-in.v1
+target: uae.wps.wf.agent-payment-in.v2
 level: end-to-end
 evaluationDate: '2026-11-17'
 tenant: example-bank
@@ -38,6 +38,7 @@ expect:
     - file-checks:pass
     - render-receipt:mapped
     - confirm-receipt:accepted
+    - posting-window:open
     - credit[0]:rejected
     - credit[1]:posted
     - render-disbursement:mapped
@@ -52,6 +53,7 @@ expect:
     - confirm-receipt.send:accepted
     - confirm-receipt.await-ack:received
     - confirm-receipt.read-ack:ack
+    - posting-window.window:open
     - report-disbursement.send:accepted
     - report-disbursement.await-ack:received
     - report-disbursement.read-ack:nak

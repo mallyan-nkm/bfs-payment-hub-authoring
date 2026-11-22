@@ -52,7 +52,48 @@ def make_iban(bban, country="AE"):
 IBAN_OK = make_iban("0331234567890123456")
 
 
+# Releases (spec/CLAUDE.md "Versions", R-11-35, R-11-36). A published release is never edited: an artefact that changed after
+# its first publish carries its new release here, with the reason, and everything else stays at REL. An interface change is a
+# major (a new name), an improvement a minor, a fix a patch. The earlier release stays on the content branch as it was seeded.
+# The minor releases. Each was first published at 1.0.0 (CS-2026-11-21-001) and changed after it, so the change is its own release
+# (Issue I-83 lists each one). A change that the interface check (L26, studio/src/checks/checks.ts interfaceDiff) calls a major
+# is a new major line instead: uae.wps.decide.returns.v2 (an outcome added), uae.wps.map.prc-out.v2 and uae.wps.map.dif-out.v2
+# (reads added), uae.wps.map.rtc-in.v2 (writes added) and uae.wps.wf.agent-payment-in.v2 (an exit write added).
+RELEASES = {
+    # R-12-12: the accounting template's parameters (2026-11-22)
+    "p.post.accounting.v1": ("1.1.0", "the accounting template's parameters"),
+    "uae.wps.post.return.v1": ("1.1.0", "the accounting template's parameters"),
+    # Issue I-39: the core-banking simulator's scenarios for a refused, a twice refused and an unknown credit
+    "p.sim.core-banking.v1": ("1.1.0", "scenarios for refused and unknown credits"),
+    # Issues I-41, I-51 and R-05-47: the replies' waits are the bank's values
+    "uae.wps.exchange.return-credits.v1": ("1.1.0", "replyWait, replyWaitCalendar and uploadHold"),
+    "uae.wps.exchange.submit-salary-file.v1": ("1.1.0", "ackWait and ackWaitCalendar"),
+    # Issue I-41: each acknowledgement names the family of the file it answers
+    "uae.wps.sim.wps-inward.v1": ("1.1.0", "the returns scenarios; acknowledgements carry their family"),
+    "uae.wps.sim.wps-outward.v1": ("1.1.0", "acknowledgements carry their family"),
+    # Issue I-39: the amount rule and the scope of a return
+    "uae.wps.table.returns.v1": ("1.1.0", "the amount, the scope and the unverified row"),
+    # plan P2: the source's PIF layout (EDR, EVP, PCR) read beside the factory's first layout, and a native code-behind (R-08-16)
+    "uae.wps.map.pif-in.v1": ("1.1.0", "reads the source's PIF layout too; native code-behind"),
+    # plan P2: the WPS files' native code-behinds, the source's builder or reader (R-08-16)
+    "uae.wps.map.rfa-out.v1": ("1.1.0", "the bank's headRoutingCode; native code-behind"),
+    "uae.wps.map.ack-in.v1": ("1.1.0", "native code-behind"),
+    # the new major lines, at 2.0.0 (R-01-08: the major is in the name); their v1 lines stay at 1.0.0 as first published
+    "uae.wps.decide.returns.v2": ("2.0.0", "the outcome unverified (Issue I-39)"),
+    "uae.wps.map.prc-out.v2": ("2.0.0", "reads the items and the file name; the bank's agentId; native code-behind (plan P2)"),
+    "uae.wps.map.dif-out.v2": ("2.0.0", "reads the PRC's name; the bank's agentId; native code-behind (plan P2)"),
+    "uae.wps.map.rtc-in.v2": ("2.0.0", "writes the payment-level creditor account; a script-behind and a native code-behind (plan P2)"),
+}
+# Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
+SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1"}
+# The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
+PACK_RELEASES = {"p": "1.1.0", "uae.p": "1.1.0", "uae.wps": "1.1.0", "b": "1.1.0"}
+FACTORY_RELEASE = "1.1.0"
+
+
 def emit(doc, base=FACTORY):
+    if doc.get("name") in RELEASES and "release" in doc:
+        doc["release"] = RELEASES[doc["name"]][0]
     OUT.append((base, doc))
     return doc
 
@@ -63,7 +104,7 @@ BUILTIN = {"validate": "rule-service", "decide": "rule-service"}
 
 def act(name, title, reads, writes, outcomes, effect, *, level=None, mode=None, ports=None,
         rule_sets=None, policy=None, comp=None, params=None, map_=None, service=None,
-        lang="typescript", p=None, base=FACTORY, invoked_by=None, sub=None):
+        lang="typescript", p=None, base=FACTORY, invoked_by=None, sub=None, script=False, native=False):
     typ = name.split(".")[-3]
     doc = {"kind": "activity", "name": name, "release": REL, "title": title, "type": typ}
     if mode:
@@ -94,9 +135,13 @@ def act(name, title, reads, writes, outcomes, effect, *, level=None, mode=None, 
         doc["compensation"] = comp
     if map_:
         doc["map"] = map_
-    svc = service or BUILTIN.get(typ)
+    svc = None if script else (service or BUILTIN.get(typ))
+    stem = "%s@%s" % (name, RELEASES[name][0]) if name in SCRIPT_RELEASES else name
     doc["implementation"] = {"binding": "subflow", "subflow": sub} if sub else ({"binding": "builtin", "service": svc} if svc
-                             else {"binding": "script", "language": lang, "script": "scripts/%s.%s" % (name, "ts" if lang == "typescript" else "py")})
+                             else {"binding": "script", "language": lang, "script": "scripts/%s.%s" % (stem, "ts" if lang == "typescript" else "py")})
+    # R-08-16: the runtime's native host implements the same contract; a run that gives it the activity calls the host
+    if native:
+        doc["implementation"]["native"] = True
     doc["provenance"] = prov(**(p or {}))
     return emit(doc, base)
 
@@ -176,6 +221,18 @@ act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"],
     ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
     ports=["p.port.core-banking.v1"], policy=STD, service="accounting")
+# Posting windows (plan P2): the hours core banking takes postings, the bank's values. The decision reads the engine's time; the
+# composite waits and asks again while the window is closed, so a payment waits for the window instead of retrying into it
+# (the source's AwaitCbPostingWindow). The defaults are always open.
+HHMM = {"pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"}
+WINDOW = {"windowStart": {"type": "string", "default": "00:00", "bounds": dict(HHMM), "description": "When core banking starts taking postings, HH:mm business-local."},
+          "windowEnd": {"type": "string", "default": "23:59", "bounds": dict(HHMM), "description": "When it stops, HH:mm business-local, inclusive. Before the start is an overnight window."}}
+act("p.decide.posting-window.v1", "Is core banking taking postings now", ["header"], ["facts.postingWindow"], ["open", "closed"], "read",
+    params=WINDOW, script=True, native=True, p=dict(status="provisional", clauses=["TransactHub source 666f1ee"],
+    note="The source's call-hours gate (CbCallWindowGate). The bank sets the window."))
+act("p.decide.await-posting-window.v1", "Wait for core banking's posting window", ["header"], ["facts.postingWindow"], ["open", "closed"], "read",
+    sub="p.sub.await-posting-window.v1", p=dict(status="provisional", clauses=["TransactHub source 666f1ee"],
+    note="The source's AwaitCbPostingWindow: the payment waits for the window. Asked again every fifteen minutes for a day."))
 act("p.notify.channel.v1", "Tell the originating channel", ["header", "status"], ["facts.notified"], ["notified"],
     "write", ports=["p.port.channel.v1"], policy=STD)
 act("p.notify.publish-fact.v1", "Publish a fact outward", ["header", "status"], ["facts.published"], ["notified"],
@@ -202,10 +259,17 @@ W = "ext.uae.wps"
 WP = PROVISIONAL_WPS
 
 
-def wmap(name, title, direction, model, reads, writes, outcomes=("mapped", "unmappable"), **kw):
+def wmap(name, title, direction, model, reads, writes, outcomes=("mapped", "unmappable"), params=None, native=False, **kw):
     m = {"direction": direction, "sourceModel": model, "roundTrip": direction == "in"}
     m.update(kw)
-    return act(name, title, reads, writes, list(outcomes), "pure", map_=m, p=WP)
+    return act(name, title, reads, writes, list(outcomes), "pure", map_=m, p=WP, params=params, native=native)
+
+
+# The bank's identities in the files the agent writes (plan P2, the source's InwardPrcParameters and InwardRfaParameters).
+AGENT_ID = {"agentId": {"type": "code", "default": "000", "bounds": {"pattern": "^[A-Za-z0-9]{3}$"},
+                        "description": "The bank's three-character WPS agent id, in the names of its PRC and DIF files. The default names no bank."}}
+HEAD_ROUTING = {"headRoutingCode": {"type": "code", "default": "0000", "bounds": {"pattern": "^[A-Za-z0-9]{4,20}$"},
+                                    "description": "The bank's head-office routing code; characters 2 to 4 begin the name of its returns file. The default names no bank."}}
 
 
 wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: EDR and SCR records",
@@ -230,21 +294,33 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              {"from": "constant SALA", "to": "batch.categoryPurpose"}])
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
      ["batch", "items[]", W], ["messages"])
-wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK", ["messages"], ["status"],
-     outcomes=("ack", "nak"))
-wmap("uae.wps.map.pif-in.v1", "Payment file and details to inward batch", "in", "WPS PIF with PSI",
-     ["messages"], ["header", "batch", "items[]", W])
-wmap("uae.wps.map.prc-out.v1", "Receipt confirmation", "out", "WPS PRC", ["header", "batch", "status"], ["messages"])
-wmap("uae.wps.map.dif-out.v1", "Disbursement file", "out", "WPS DIF", ["header", "batch", "items[]", "status"], ["messages"])
+wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
+     outcomes=("ack", "nak"), native=True)
+wmap("uae.wps.map.pif-in.v1", "Payment file and details to inward batch", "in", "WPS PIF: EDR, EVP and PCR records",
+     ["messages"], ["header", "batch", "items[]", W], native=True)
+wmap("uae.wps.map.prc-out.v2", "Receipt confirmation", "out", "WPS PRC: one RDR and one RCR", ["header", "batch", "items[]", W, "status"], ["messages"],
+     params=AGENT_ID, native=True)
+wmap("uae.wps.map.dif-out.v2", "Disbursement file", "out", "WPS DIF: one DIR per credit posted and a DCR",
+     ["header", "batch", "items[]", W, "status", "messages"], ["messages"], params=AGENT_ID, native=True)
+# The supplementary file and the refund request instruction: the source's parsers, native only (plan P2). No factory leg reads
+# them yet: the PSI is held by reference (OP-A7), and the RRI's account block needs an operation the core-banking port lacks (I-82).
+wmap("uae.wps.map.psi-in.v1", "Supplementary file to its pairing", "in", "WPS PSI: one CSI and its ESI records",
+     ["header", "messages"], [W], outcomes=("mapped", "unmappable", "unmatched"))
+wmap("uae.wps.map.rri-in.v1", "Refund request instruction to canonical request", "in", "WPS RRI: one DRC and its DRR records",
+     ["messages"], ["header", "batch", "items[]", W],
+     params={"fileNameAgentCode": {"type": "code", "default": "000", "bounds": {"pattern": "^[A-Za-z0-9]{3}$"},
+                                   "description": "Characters 4 to 6 of an RRI file name that is for this bank."}})
 wmap("uae.wps.map.rfr-out.v1", "Refund request", "out", "WPS RFR", ["header", "batch", "items[]"], ["messages"])
 wmap("uae.wps.map.rsu-in.v1", "Refund settlement to status", "in", "WPS RSU", ["messages"], ["status", "facts.settlement"],
      outcomes=("settled", "declined"))
 wmap("uae.wps.map.refund-order-in.v1", "Employer refund order to canonical request", "in", "Employer refund order",
      ["messages"], ["header", "batch", "items[]"])
-wmap("uae.wps.map.rtc-in.v1", "Return file to canonical return", "in", "WPS RTC", ["messages"], ["header", "batch", "items[]", "status"])
+# The RTC layout is the factory's (the source parses none): RTH, the employer and its account, then RTD per employee.
+wmap("uae.wps.map.rtc-in.v2", "Return file to canonical return", "in", "WPS RTC: RTH and RTD records (provisional)", ["messages"],
+     ["header", "batch", "payment", "items[]", W, "status"], native=True)
 # The returns file from the agent: one line per employee credit that is returned, then a control line (Issue I-39).
-wmap("uae.wps.map.rfa-out.v1", "Returns file", "out", "WPS RFA: one line per returned credit and a control line",
-     ["header", "batch", "items[]", W, "facts.returns"], ["messages"])
+wmap("uae.wps.map.rfa-out.v1", "Returns file", "out", "WPS RFA: one ARI per returned credit and an ARC",
+     ["header", "batch", "items[]", W, "facts.returns"], ["messages"], params=HEAD_ROUTING, native=True)
 act("uae.wps.validate.salary-file.v1", "Salary file checks", ["batch", "items[]", W], ["facts.validation"],
     ["pass", "repair", "reject"], "pure", level="batch", rule_sets=["uae.wps.ruleset.salary-file.v1"], p=WP)
 act("uae.wps.validate.salary-record.v1", "Salary record checks", ["items[]"], ["facts.validation"],
@@ -284,17 +360,21 @@ act("uae.wps.exchange.report-disbursement.v1", "Report disbursement and get the 
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="report", ports=WPS_PORT,
     policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.report-disbursement.v1", p=WP)
 # The returns exchange (Issue I-41): how long it waits for the acknowledgement and how long the upload is held are
-# the bank's values, not constants. The source waits 30 days and may hold the upload for up to 10 minutes.
+# the bank's values, not constants. The source waits 30 calendar days (2,592,000 s) and may hold the upload for up to
+# 10 minutes. The owner decided on 2026-11-22 that the default is the source's, 30 calendar days (Issue I-51).
 act("uae.wps.exchange.return-credits.v1", "Return the credits that failed and get the acknowledgement", ["header", "messages"],
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
-    policy={"replyCalendar": "business"}, sub="uae.wps.sub.return-credits.v1", p=WP,
+    policy={"replyTimeout": "P30D", "replyCalendar": "elapsed", "replyTimeoutParameter": "replyWait",
+            "replyCalendarParameter": "replyWaitCalendar"}, sub="uae.wps.sub.return-credits.v1", p=WP,
     params={"replyWait": {"type": "duration", "default": "P30D", "bounds": {"min": "P1D", "max": "P30D"},
-                          "description": "How long to wait for WPS to acknowledge the returns file, on the business calendar."},
+                          "description": "How long to wait for WPS to acknowledge the returns file, counted on replyWaitCalendar."},
+            "replyWaitCalendar": {"type": "code", "default": "elapsed", "bounds": {"allowed": ["elapsed", "business"]},
+                                  "description": "Whether the wait counts calendar days (elapsed, the source's) or business days."},
             "uploadHold": {"type": "duration", "default": "PT0S", "bounds": {"min": "PT0S", "max": "PT10M"},
                            "description": "How long to hold the returns file before it is uploaded."}})
 
 # the agent's returns: which credits go back, and the posting once WPS has accepted the returns file
-act("uae.wps.decide.returns.v1", "Find the employee credits to return", ["items[]"], ["facts.returns"],
+act("uae.wps.decide.returns.v2", "Find the employee credits to return", ["items[]"], ["facts.returns"],
     ["none", "returns", "unverified"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
 act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the returns file", ["header", "batch", "facts.returns"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
@@ -849,7 +929,7 @@ test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement rep
                   ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
 # The agent's returns file (RFA): one of the two credits is refused, so the leg returns it to WPS.
 PIF = {"inbound": "samples/wps-pif-valid.pif"}
-AGENT_LEG = "uae.wps.wf.agent-payment-in.v1"
+AGENT_LEG = "uae.wps.wf.agent-payment-in.v2"
 
 
 def returns_bench(wps_scenario, core="reject-first-then-accept"):
@@ -859,7 +939,7 @@ def returns_bench(wps_scenario, core="reject-first-then-accept"):
 
 
 def rfa_head(credits=("credit[0]:rejected", "credit[1]:posted"), dif="accepted"):
-    return (["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:accepted", *credits,
+    return (["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:accepted", "posting-window:open", *credits,
              "render-disbursement:mapped", "report-disbursement:%s" % dif, "returns:returns", "render-returns:mapped"])
 
 
@@ -871,7 +951,7 @@ TRACE_RFA = {"ack": _RFA_HEAD + ["return-credits:accepted", "record-return:poste
 
 def rfa_detail(dif="ack"):
     return ["supplement.await-supplement:received", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
-            "confirm-receipt.read-ack:ack", "report-disbursement.send:accepted", "report-disbursement.await-ack:received",
+            "confirm-receipt.read-ack:ack", "posting-window.window:open", "report-disbursement.send:accepted", "report-disbursement.await-ack:received",
             "report-disbursement.read-ack:%s" % dif, "return-credits.upload-hold:PT0S", "return-credits.send:accepted"]
 
 
@@ -910,6 +990,20 @@ test("WPS-IN-007", "After a refused disbursement file the refused credits are st
       "trace": rfa_head(dif="rejected") + ["return-credits:accepted", "record-return:posted", "end:pending"],
       "detail": rfa_detail("nak") + ["return-credits.await-ack:received", "return-credits.read-ack:ack"]},
      bench_=returns_bench("payment-file-disbursement-refused-returns-accepted"), tenant="example-bank")
+# Plan P2: the source's PIF layout (EDR, EVP, PCR), mapped by the 1.1.0 map, and by the runtime's native code-behind when the
+# run gives it to the runtime (R-08-16, e2e-wps-inward-native). The same file as WPS-IN-001 otherwise.
+test("WPS-IN-008", "A payment file in the source's layout is confirmed, credited and reported", "p.wf.inward.v1", "end-to-end",
+     {"inbound": "samples/wps-pif-ssm.pif"},
+     {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
+                                         {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},
+     bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "payment-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank", scope="uae.wps")
+# Plan P2: a return to the employer's bank; the map names the employer's account, and the leg credits it in the posting window.
+test("WPS-RTC-001", "A return file credits the employer's account", "uae.wps.wf.return-in.v1", "end-to-end",
+     {"inbound": "samples/wps-rtc-valid.rtc"},
+     {"outcome": "settled", "trace": ["posting-window:open", "credit-employer:posted", "end:settled"], "detail": ["posting-window.window:open"]},
+     bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "return-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
+                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank")
 test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)
@@ -978,7 +1072,7 @@ def main():
             if f not in written and f.read_text().startswith(HEADER):
                 f.unlink()
                 print("removed stale", f.relative_to(ROOT))
-    inventory = {"kind": "inventory", "date": DATE, "packs": []}
+    inventory = {"kind": "inventory", "release": FACTORY_RELEASE, "date": DATE, "packs": []}
     packs = [(FACTORY / s, s, "shared") for s in SHARED_PACKS] + [(EXAMPLES / "bank", "b", "bank")]
     for folder, scope, ptype in packs:
         arts, has_sim = [], False
@@ -993,7 +1087,7 @@ def main():
             has_sim = has_sim or kind == "simulator"
             arts.append({"name": name, "kind": kind, "release": doc.get("release", REL), "hash": canon_hash(doc),
                          "path": str(f.relative_to(folder))})
-        pack = {"kind": "pack", "scope": scope, "release": REL, "title": "Factory pack for %s" % scope if ptype == "shared" else "Example bank pack",
+        pack = {"kind": "pack", "scope": scope, "release": PACK_RELEASES[scope], "title": "Factory pack for %s" % scope if ptype == "shared" else "Example bank pack",
                 "packType": ptype, "origin": "factory" if ptype == "shared" else "authored"}
         if ptype == "bank":
             pack["tenant"] = "example-bank"
@@ -1010,7 +1104,7 @@ def main():
                 reach |= {"p"} | ({"%s.p" % s_.split(".")[0]} if s_ not in ("p",) and not s_.endswith(".p") else set())
             deps = [d for d in SHARED_PACKS if d in reach]
         if deps:
-            pack["dependsOn"] = [{"scope": d, "release": REL} for d in deps]
+            pack["dependsOn"] = [{"scope": d, "release": PACK_RELEASES[d]} for d in deps]
         pack["artefacts"] = arts
         pack["containsSimulators"] = has_sim
         pack["promotable"] = not has_sim

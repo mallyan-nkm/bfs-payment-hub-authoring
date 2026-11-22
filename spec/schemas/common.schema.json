@@ -272,6 +272,10 @@
         "service": {
           "type": "string"
         },
+        "native": {
+          "description": "binding script or builtin only: the runtime's native host implements the same contract at the same release (R-08-16). A run that gives the activity to the runtime calls the host; every other run keeps the script or the builtin.",
+          "const": true
+        },
         "subflow": {
           "description": "binding subflow only: the subflow that implements this activity. The activity is then a composite.",
           "$ref": "#/$defs/artefactName"

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { compareReleases, parseName, parseRelease } from '../core/names.js';
@@ -11,6 +12,7 @@ import { addDuration, durationMs } from '../core/duration.js';
 import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
 import { flowablePortable } from '../export/bpmn.js';
 import { literalSecretsInText } from '../secrets/scan.js';
+import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
@@ -64,6 +66,9 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
+  L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
+  L41: 'A published release never changes once seeded',
+  L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
 };
 
 // ---------------------------------------------------------------- walking
@@ -158,7 +163,7 @@ export class Checker {
   extensionRoots: string[] = [];
   denyNames: string[] = [];
 
-  constructor(docs: any[], denyNames: string[] = [], private scriptOf?: (name: string) => { source: string; language: string } | undefined) {
+  constructor(docs: any[], denyNames: string[] = [], private scriptOf?: (name: string, release?: string) => { source: string; language: string } | undefined) {
     this.docs = docs;
     for (const d of docs) {
       if (d.name && d.kind !== 'pack') {
@@ -173,14 +178,15 @@ export class Checker {
   }
 
   static fromEnv(env: StudioEnv, overlay: any[] = [], tenant?: string): Checker {
-    const docs = env.store.all().filter((e) => e.status === 'published' && (!tenant || e.tenant === 'owner' || e.tenant === tenant)).map((e) => e.doc);
+    // The latest release of each name: an earlier one was checked when it was published, and stays as it was (R-11-35).
+    const docs = env.store.current().filter((e) => !tenant || e.tenant === 'owner' || e.tenant === tenant).map((e) => e.doc);
     const names = new Set(overlay.map((d) => `${d.kind}:${d.name ?? d.scope ?? d.id}`));
     const merged = [...docs.filter((d) => !names.has(`${d.kind}:${d.name ?? d.scope ?? d.id}`)), ...overlay];
     let deny: string[] = [];
     const f = path.join(env.specRoot, 'tools', 'deny-names.txt');
     if (fs.existsSync(f)) deny = fs.readFileSync(f, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
     // Script-behinds are files on the branch, the factory's among them (R-11-25).
-    return new Checker(merged, deny, (name) => env.scripts.find(name));
+    return new Checker(merged, deny, (name, release) => env.scripts.find(name, release));
   }
 
   hookPoints(d: any, depth = 0): Record<string, any> {
@@ -239,7 +245,7 @@ export class Checker {
         if (m?.fact === 'Param' && !declared.has(m.as)) err('L17', `Uses parameter ${m.as} but does not declare it`);
       }
     }
-    if (['rule', 'table', 'activity', 'configuration-set', 'test'].includes(kind)) for (const m of moneyIssues(d)) err('L40', m);
+    if (['rule', 'table', 'activity', 'configuration-set', 'test'].includes(kind)) for (const m of moneyIssues(d)) err('L42', m);
     if (kind === 'ruleset') this.checkRuleSet(d, err);
     if (kind === 'table') this.checkTable(d, err, warn);
     if (kind === 'activity') this.checkActivity(d, err, warn);
@@ -592,7 +598,7 @@ export class Checker {
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {
-      const sc = this.scriptOf(d.name);
+      const sc = this.scriptOf(d.name, d.release);
       if (sc && sc.language === 'typescript') for (const m of lintScript(sc.source)) err('L28', m);
     }
     // L11: unused blocks.
@@ -758,7 +764,7 @@ function* longNumbers(v: any, at = ''): Generator<[string, number]> {
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) yield* longNumbers(x, at ? `${at}.${k}` : k);
 }
 
-/** L40 (R-02-17, R-04-23): no floating-point tolerance in a rule; no number a double cannot hold where an amount may be. */
+/** L42 (R-02-17, R-04-23): no floating-point tolerance in a rule; no number a double cannot hold where an amount may be. */
 export function moneyIssues(d: any): string[] {
   const out: string[] = [];
   if (d.kind === 'rule' || d.kind === 'table') {
@@ -917,16 +923,52 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
   return out;
 }
 
+/**
+ * L41 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
+ * it; a path is published once, except a bank pack's lock file and the engine bindings, which a later ledger replaces; every
+ * seeded file is in a ledger.
+ * `files` are the content branch's files, path to text, relative to its root. The same check as tools/validate.py.
+ */
+export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
+  const out: Issue[] = [];
+  const err = (file: string, message: string) => out.push({ code: 'L41', severity: 'error', key: file, message, file });
+  const sha = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex');
+  const recorded = new Map<string, { sha256: string; ledger: string }>();
+  const ledgers = [...files.keys()].filter((p) => /^change-sets\/ledger\/[^/]+\.yaml$/.test(p)).sort();
+  for (const lp of ledgers) {
+    const led = parseYamlAll(files.get(lp)!).find((d: any) => d && typeof d === 'object') ?? {};
+    const replaced = new Map<string, any>((led.replaced ?? []).map((r: any) => [r.path, r]));
+    for (const row of led.files ?? []) {
+      const prev = recorded.get(row.path);
+      if (prev && !(/^(banks\/[^/]+\/pack|artefacts\/bindings\/bindings)\.yaml$/.test(row.path) && replaced.get(row.path)?.sha256 === prev.sha256)) err(lp, `publishes ${row.path} again; ${prev.ledger} published it, and a published file is never replaced`);
+      recorded.set(row.path, { sha256: row.sha256, ledger: lp });
+    }
+  }
+  for (const [p, r] of [...recorded].sort(([a], [b]) => a.localeCompare(b))) {
+    const text = files.get(p);
+    if (text === undefined) err(p, `${r.ledger} published it, and it is gone`);
+    else if (sha(text) !== r.sha256) err(p, `has changed since ${r.ledger} published it; a published release is never edited: release a new one`);
+  }
+  for (const [p, text] of files) {
+    if (text.slice(0, text.indexOf('\n')).includes('Generated by `npm run studio -- seed-content`') && !recorded.has(p)) err(p, 'is a seeded file that no change set\'s ledger records');
+  }
+  return out;
+}
+
 export function checkAll(env: StudioEnv): Issue[] {
   const c = Checker.fromEnv(env);
   const issues = c.checkAll();
+  // R-11-36: what the seeds published is as they published it. Read only when a ledger exists (a branch seeded with ledgers).
+  const content = env.store.content;
+  if (content && [...content.files.keys()].some((p) => p.startsWith('change-sets/ledger/'))) issues.push(...releaseLedgerIssues(content.files));
   // The factory as the seed published it (R-11-25): each entry names its source in spec/factory, so
   // the pack folders are read from the branch, not from spec/ on disk.
   const spec = env.store.all().filter((e) => e.source === 'spec');
   const seeded = spec.filter((e) => e.path.split(/[\\/]/)[0] === 'factory');
   if (seeded.length) {
     const folders = [...new Set(seeded.map((e) => e.path.split(/[\\/]/)).filter((p) => p.length > 2).map((p) => p[1]))].sort();
-    const inventory = seeded.find((e) => e.kind === 'inventory')?.doc;
+    // The latest inventory: an earlier one stays on the branch as it was published (R-11-35).
+    const inventory = seeded.filter((e) => e.kind === 'inventory').sort((x, y) => compareReleases(x.release || '0.0.0', y.release || '0.0.0')).pop()?.doc;
     issues.push(...factoryPackIssues(inventory, folders, spec.map((e) => ({ path: e.path, doc: e.doc }))));
   }
   for (const e of env.store.all().filter((x) => x.status === 'published')) {

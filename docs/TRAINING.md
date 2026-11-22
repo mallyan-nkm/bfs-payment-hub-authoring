@@ -181,7 +181,7 @@ Start the studio as in A3 before each session. Unless an exercise says otherwise
 5. In **Code registry**, look up code `AM04`. You should see `Insufficient funds`.
 6. In **ISO data**, find the scheme message catalogues. Open `uae.wps` and read its dispatch table: `uae.wps.sif` starts an outward corporate payment, with the leg `uae.wps.wf.salary-file-out.v1` and the intake map `uae.wps.map.sif-in.v1`.
 
-Check yourself: which leg does a WPS payment file (`uae.wps.pif`) start? (Answer: `uae.wps.wf.agent-payment-in.v1`.)
+Check yourself: which leg does a WPS payment file (`uae.wps.pif`) start? (Answer: `uae.wps.wf.agent-payment-in.v2`.)
 
 ### Exercise 2. Run a factory test and read the report (15 minutes)
 

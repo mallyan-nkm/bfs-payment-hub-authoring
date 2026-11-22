@@ -51,12 +51,13 @@ afterAll(() => {
   fs.rmSync(work, { recursive: true, force: true });
 });
 
-async function deploy(engine: string, label: string, sample = SAMPLE, extra: any[] = []) {
-  const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
+async function deploy(engine: string, label: string, sample = SAMPLE, extra: any[] = [], flow = { platform: PLATFORM, message: MESSAGE, bench: BENCH }) {
+  const z = await api.get(`/api/export/download?workflows=${flow.platform}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
   const file = path.join(work, `${engine}-${label}.zip`);
   fs.writeFileSync(file, z.data);
-  const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...[...BENCH, ...extra].flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
+  const bench = [...flow.bench.filter((b) => !extra.some((o) => o.port === b.port)), ...extra];
+  const args = ['src/cli.ts', 'deploy', file, '--workflow', flow.platform, '--message', flow.message, '--inbound', path.join(STUDIO, 'fixtures', sample), '--tenant', TENANT, ...bench.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   // Asynchronous, so the studio server's kept-alive connections stay open while the engine runs.
   const out = await new Promise<string>((resolve) => {
     let text = '';
@@ -71,6 +72,24 @@ async function deploy(engine: string, label: string, sample = SAMPLE, extra: any
 }
 
 const NAMES: Record<string, string> = { dtfx: 'DTFx', elsa: 'Elsa' };
+// Plan P2: the WPS payment file with the bank as the agent, in the source's layout: confirmed, credited (one credit refused),
+// reported, the refused credit returned in a returns file and the return recorded, each way the studio's interpreter gives it.
+const INWARD = {
+  platform: 'p.wf.inward.v1', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
+  bench: [
+    { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-accepted' },
+    { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'reject-first-then-accept' },
+    ...['sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
+    { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'reject' },
+  ],
+  // A simulator's scenario state is its worker's, one per queue: the return's posting (queue th-uae-wps) would be the first call
+  // its core-banking simulator sees, not the third (Issue I-84). The return recorded through core banking is on the runtime, one
+  // core banking for every queue, in e2e-wps-inward-native.
+  cases: [
+    ['every credit posted: confirmed, credited and reported', [{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file' }, { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'accept' }]],
+    ['a returns file WPS refuses, handed to operations', [{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-refused' }]],
+  ] as [string, any[]][],
+};
 
 for (const engine of ENGINES) {
   describe(`the WPS parity suite on ${NAMES[engine]} (${engine})`, () => {
@@ -98,6 +117,20 @@ for (const engine of ENGINES) {
       ['a file of two lines, with operations declining any hold', [OPS('decline')]],
       ['a file of two lines, with operations approving any hold', [OPS('approve')]],
     ];
+    for (const [what, override] of INWARD.cases) {
+      it(`${engine}: the inward payment file, ${what}: the same trace as the studio interpreter`, async () => {
+        const bench = [...INWARD.bench.filter((b) => !override.some((o) => o.port === b.port)), ...override];
+        const expected = await api.post('/api/bench/run', { target: INWARD.platform, tenant: TENANT, inbound: INWARD.sample, message: INWARD.message, bench });
+        expect(expected.status, JSON.stringify(expected.data).slice(0, 400)).toBe(200);
+        expect(expected.data.trace).toContain('disposition:accept');
+        const d = await deploy(engine, `inward-${what.replace(/\W+/g, '-')}`, INWARD.sample, override, INWARD);
+        expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
+        expect(d.outcome).toBe(expected.data.outcome);
+        expect(d.out).toContain('front door: uae.wps.wf.agent-payment-in.v2 fills scheme-leg');
+        // The leg ran past the supplementary file to the disbursement file: the PSI reached it (R-05-30).
+        expect(d.out).toContain('"uae.wps.map.dif-out.v2@2.0.0":1');
+      }, RUN_MS);
+    }
     for (const [what, override] of cases) {
       it(`${engine}: ${what}: the same trace as the studio interpreter`, async () => {
         const bench = [...BENCH.filter((b) => !override.some((o) => o.port === b.port)), ...override];

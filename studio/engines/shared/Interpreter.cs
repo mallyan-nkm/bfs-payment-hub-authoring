@@ -297,6 +297,9 @@ public sealed partial class Interp
         PayloadRef = J.S(input, "payloadRef")!;
         partyKey = J.S(input, "partyKey") ?? eng.InstanceId;
         if (J.P(input, "legs") is JsonObject lg) foreach (var kv in lg) legs[kv.Key] = J.AsKey(kv.Value)!;
+        // A leg takes over what its platform workflow kept for the payment before the leg began (R-05-30): a message the scheme sends
+        // with the one that started the run, such as the PSI with its payment file, reaches the platform workflow first.
+        foreach (var m in J.A(input, "mailbox")) mailbox.Add((JsonObject)J.Clone(m)!);
         StartedAt = eng.Now;
         // Pins are taken when the instance starts (R-01-16); hook bindings likewise (R-06-13).
         foreach (var a in J.A(doc, "artefacts")) pins[J.S(a, "name")!] = J.S(a, "release")!;
@@ -468,9 +471,19 @@ public sealed partial class Interp
             return;
         }
         if (type is not null && expiredAwaits.Contains(type)) { Unmatched++; return; }
+        // While a leg runs in this instance's slot, a message for the payment that this instance does not await is the leg's: it may
+        // have come before the leg told the front door it began (R-05-30).
+        if (activeLeg is not null)
+        {
+            try { eng.SendEvent(activeLeg, "message", m); return; }
+            catch (NotSupportedException) { /* an engine that cannot send keeps it, as before */ }
+        }
         mailbox.Add(m);
         EarlyKept++;
     }
+
+    /// <summary>The leg running in this instance's slot, while it runs.</summary>
+    string? activeLeg;
 
     /// <summary>An await that names a family takes only a message of that family; a message with none fits any (R-05-44).</summary>
     static bool FamilyFits(string? family, JsonObject m) => family is null || J.S(m, "family") is not string f || f == family;
@@ -1155,8 +1168,13 @@ public sealed partial class Interp
             ["state"] = J.Clone(frame.State), ["payloadRef"] = childRef,
         };
         if (extra is not null) foreach (var (k, v) in extra.ToList()) input[k] = J.Clone(v);
-        var t = eng.Child(id, input);
-        return raceWith is null ? await t : await Race(t, raceWith);
+        if (childKind == "leg") activeLeg = id;
+        try
+        {
+            var t = eng.Child(id, input);
+            return raceWith is null ? await t : await Race(t, raceWith);
+        }
+        finally { if (childKind == "leg") activeLeg = null; }
     }
 
     /// <summary>Copy paths written by a child back to this frame: state here, the rest through the claim-check store.</summary>
@@ -1185,7 +1203,10 @@ public sealed partial class Interp
         // A leg is pinned when it starts (R-01-16).
         var legDoc = dep.Resolve(legName, null, Elapsed) ?? throw new StepFailure(id, $"Leg {legName} does not resolve");
         ReleaseTrace.Add($"leg@{J.S(legDoc, "release")}");
-        var child = await StartChild("leg", legDoc, frame, null, frame.Scope);
+        // What this instance kept for the payment goes to the leg, which awaits it; this instance awaits nothing of a leg's (R-05-30).
+        var handOver = new JsonObject { ["mailbox"] = new JsonArray(mailbox.Select(m => (JsonNode?)J.Clone(m)).ToArray()) };
+        mailbox.Clear();
+        var child = await StartChild("leg", legDoc, frame, handOver, frame.Scope);
         frame.Scope.ThrowIfCancelled();
         // The slot contract says what the leg may write back.
         await CopyBack(frame, child, J.Strings(J.P(J.P(slot, "contract"), "writes")));

@@ -26,22 +26,8 @@ effect: external
 idempotencyKey: concat(header.paymentId, ':return-credits')
 ports:
   - uae.wps.port.wps.v1
-parameters:
-  replyWait:
-    type: duration
-    default: P30D
-    bounds:
-      min: P1D
-      max: P30D
-    description: How long to wait for WPS to acknowledge the returns file, on the business calendar.
-  uploadHold:
-    type: duration
-    default: PT0S
-    bounds:
-      min: PT0S
-      max: PT10M
-    description: How long to hold the returns file before it is uploaded.
 policy:
+  replyTimeout: P1D
   replyCalendar: business
 implementation:
   binding: subflow

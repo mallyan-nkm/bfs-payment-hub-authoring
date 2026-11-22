@@ -102,7 +102,7 @@ describe('scripts get the same arithmetic on rules.money', () => {
   });
 });
 
-describe('lint L40 (R-02-17, R-04-23)', () => {
+describe('lint L42 (R-02-17, R-04-23)', () => {
   const rule = (having: string, given: any = { Batch: { controlSum: 300 } }) => ({ kind: 'rule', name: 'b.rule.t.v1', when: [{ match: { fact: 'Batch', as: 'b' } }, { having }], examples: [{ name: 'x', given }] });
   it('refuses a floating-point tolerance', () => {
     expect(moneyIssues(rule('b.total - b.controlSum > 0.001'))).toHaveLength(1);

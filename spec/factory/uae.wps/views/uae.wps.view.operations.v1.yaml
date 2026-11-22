@@ -1,6 +1,6 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.0.0
+release: 1.1.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
@@ -103,7 +103,7 @@ legs:
     actions:
       - { action: resend, label: Send the file again, role: Operator, secondApprover: Supervisor, remarks: required }
       - { action: retry, label: Retry the failed step, role: Operator, remarks: required }
-  - leg: uae.wps.wf.agent-payment-in.v1
+  - leg: uae.wps.wf.agent-payment-in.v2
     title: Payment file as the agent (PIF)
     selectBy: { direction: inward, steps: [supplement] }
     groups:

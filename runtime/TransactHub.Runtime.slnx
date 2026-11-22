@@ -24,6 +24,7 @@
     <Project Path="src/TransactHub.Telemetry/TransactHub.Telemetry.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TransactHub.Activities.Wps.Tests/TransactHub.Activities.Wps.Tests.csproj" />
     <Project Path="tests/TransactHub.Engine.Flowable.Tests/TransactHub.Engine.Flowable.Tests.csproj" />
     <Project Path="tests/TransactHub.Security.Tests/TransactHub.Security.Tests.csproj" />
     <Project Path="tests/TransactHub.Operations.Tests/TransactHub.Operations.Tests.csproj" />

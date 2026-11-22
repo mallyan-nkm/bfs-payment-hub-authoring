@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 COPY = ("schemas", "factory", "examples", "conformance", "tools")
 # The bank packs on the branch (check L35) sit beside spec/, so a case copies them too.
 BANKS = ROOT.parent / "content-configurations" / "banks"
+CONTENT = ROOT.parent / "content-configurations"
 EB = "../content-configurations/banks/example-bank"
 
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
@@ -145,10 +146,24 @@ CASES = [
      "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - port\n",
      "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - rule\n",
      "a party's reason code is in the dictionary only as a rule's"),
-    ("M52", "ERROR L40", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
+    # R-08-16: only an activity with a script-behind or a builtin may say the native host implements it too (L40)
+    ("M53", "ERROR L40", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
+     "  subflow: uae.wps.sub.return-credits.v1\n", "  subflow: uae.wps.sub.return-credits.v1\n  native: true\n",
+     "a composite says the native host implements it"),
+    # R-11-36: a file a seed published keeps the text its ledger records (L41)
+    ("M54", "ERROR L41", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
+     "title: ACK or NAK to status", "title: ACK or NAK to a status", "a published release is edited on the branch"),
+    # R-11-35: a factory artefact changed at a release the branch already holds (L41)
+    ("M55", "ERROR L41", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
+     "title: ", "title: Changed ", "a factory artefact is changed without a new release"),
+    # R-11-36: a seeded file no ledger records (L41)
+    ("M56", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
+     "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
+     "a seeded file is in no ledger"),
+    ("M57", "ERROR L42", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
      "  - having: total != b.controlSum", "  - having: total - b.controlSum > 0.001",
      "a rule compares money with a floating-point tolerance"),
-    ("M53", "ERROR L40", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
+    ("M58", "ERROR L42", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
      "        controlSum: 300\n", "        controlSum: 1234567890123456.78\n",
      "an example gives an amount a binary double cannot hold as a number"),
 ]
@@ -160,9 +175,11 @@ def run_case(case):
         tmp = pathlib.Path(top) / "spec"
         for d in COPY:
             shutil.copytree(ROOT / d, tmp / d, ignore=shutil.ignore_patterns("__pycache__"))
-        if BANKS.is_dir():
-            shutil.copytree(BANKS, pathlib.Path(top) / "content-configurations" / "banks")
-        f = tmp / rel
+        # the content branch's copy beside spec/: the bank packs (L35) and what the seeds published (L41)
+        if CONTENT.is_dir():
+            shutil.copytree(CONTENT, pathlib.Path(top) / "content-configurations")
+        rel_path = pathlib.Path(rel)
+        f = (pathlib.Path(top) / rel_path.relative_to("..")) if rel.startswith("../") else tmp / rel
         text = f.read_text()
         if text.count(old) < 1:
             return cid, "SETUP", "text to mutate not found in %s" % rel

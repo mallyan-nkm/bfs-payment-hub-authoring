@@ -554,6 +554,8 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 
 **What is built.** The pin is exact in `go.mod`, and the README says each upgrade must re-run the proof. The CI job runs the whole proof on every push to `runtime/**`.
 
+**Decision (2026-11-22).** The owner of `runtime/temporal-mssql` is the team that owns this GitHub repository. An upgrade of Temporal is one change by that team that moves the pin, ports any new schema version and store method from the PostgreSQL plugin, and passes CI job `temporal-sqlserver`; until it is green the runtime stays on the pinned release. `runtime/temporal-mssql/README.md` records it.
+
 ## I-43. Where a bank pack may live
 
 **Issue.** The owner decided on 2026-11-21 that a real bank's configuration lives in this repository, in `content-configurations/banks/<bank>/` (D5 as amended in `docs/runtime/NSTAR-CONVERGENCE-PLAN.md` section 8). The spec knows one bank pack only, the example bank in `spec/examples/bank/`. It says nothing of a bank pack anywhere else: which folders hold one, how the studio finds its tenant, or which documents in a bank's folder are studio artefacts and which are the runtime's own (port bindings, configuration values). `tools/validate.py` reads `spec/` only, so it never sees a bank's folder.
@@ -572,7 +574,6 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 - **The note above is fixed.** The studio's `packManifest` now counts the references of a bank pack's tests, which are in its lock file, and `tools/build_factory.py` derives the example bank's dependencies the same way instead of naming them. Both give `p` for the example bank, and `p`, `uae.p` and `uae.wps` for the bank in `banks/dib/` (its tests run WPS). `compareManifest(env, 'b')` is equal, and `studio/test/bank-packs.test.ts` now asserts it whole.
 - `Store.reload` no longer asks for the example bank's folder by name, so `seed-content --write-local` can regenerate the example bank's `pack.yaml`.
 - **The bank's hooks.** `banks/dib/` carries the employer AML check and the labour ministry notification complete (hook, activity, script-behind in `banks/dib/scripts/`, port, simulator, tests) and switched off: the shipped `bindings` is empty. `studio/test/dib-hooks.test.ts` binds them in a test-only configuration and runs a salary file end to end (cleared, refused, ministry refusing), and fails if either is bound in the shipped configuration. `banks/dib/README.md` says how to switch them on.
-
 
 ## I-44. The content branch as the studio's only store
 
@@ -673,11 +674,17 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **Recommendation.** Keep R-05-30, and state the time rule as R-05-43 does: once an earlier await of the same instance has waited for the same message, an await takes only a message received after the composite step that holds it began; the first await of a message takes one kept since the instance began. This is what the interpreter and the engines do, and what CK-AWAIT-06 proves. If the owner wants the rule as worded, R-05-30 must change and CK-AWAIT-04 go.
 
+**Decision (2026-11-22).** The owner accepted the narrower time rule as built: R-05-30 stays, R-05-43 states the rule, CK-AWAIT-04 and CK-AWAIT-06 prove both. Nothing more is to be built.
+
 ## I-51. Thirty days, or thirty business days
 
 **Issue.** The source waits 2,592,000 s, 30 calendar days, for the RFA acknowledgement. The decision asks for a wait of 30 days by default, bounded 1 to 30 days, on the business calendar. On the UAE business calendar 30 business days are about six weeks.
 
 **Recommendation.** Keep the parameter on the business calendar, as decided, and confirm the default with the rulebook (D10). If the scheme counts calendar days, 30 of them are about 22 business days: set the default to `P22D`, or let the parameter carry its own calendar.
+
+**Decision (2026-11-22).** The owner decided that the reply wait defaults to **30 calendar days**, as the source waits (2,592,000 s). The bounds stay 1 to 30 days.
+
+**What is built.** `uae.wps.exchange.return-credits.v1` takes its wait the way the salary file's acknowledgement does (R-05-47): `policy.replyTimeout: P30D`, `policy.replyCalendar: elapsed`, and the bank's parameters `replyWait` (default `P30D`, bounds `P1D` to `P30D`) and, new, `replyWaitCalendar` (default `elapsed`, allowed `elapsed` and `business`). The subflow's await no longer fixes its timeout or calendar; the expanded await names both parameters. Annex A, A.4 says so. The example bank keeps its ten business days by setting both values, so WPS-IN-004 is unchanged. `studio/test/wps-returns.test.ts` shows the default, thirty days of elapsed time, and the business calendar on request; `studio/test/export.test.ts` the Flowable timer's marks.
 
 ## I-52. On Flowable an await counts as having waited only once it ends
 
@@ -923,6 +930,60 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **Recommendation.** (1) Add the trace id to the payload's `create` fact as a correlation reference, outside the hashed business data, in the store's next migration. (2) Ask OpenTelemetry .NET for a way to filter events in a processor, and drop the private field when there is one. (3) Keep the rule that hosts write ids only, and add a scan of the collector's output for the party values in the load harness. (4) Write the alerts with the targets of I-68. (5) Accept it, or load OpenTelemetry in the worker only when an endpoint is set.
 
+## I-81. A test case carries no release
+
+**Issue.** A published release never changes (spec/CLAUDE.md, "Versions"). A test case is keyed by its id and has no release (`test-case.schema.json`), so a factory test that changes after it was seeded has no new release to go to: the seed rewrote `artefacts/<scope>/tests/<id>.yaml` in place. WPS-IN-002 to 004 were rewritten that way on 2026-11-22, and plan P2 changes the agent leg's trace again (the posting window).
+
+**Recommendation.** Give a test case a release, or state in Part 1 that a test is released with its pack. Until then, publish a changed test beside the earlier one, under its pack's release.
+
+**What is built.** R-11-35. The seed publishes every factory test of a pack at a release above 1.0.0 to `artefacts/<scope>/tests/<id>@<pack release>.yaml`; the file of the earlier pack release stays as it was published. The studio reads both and takes the later. Only the latest pack's tests are held to its lock file (`studio/test/core.test.ts`). WPS-IN-002 to 004 are back as first published; their 1.1.0 texts are at `tests/WPS-IN-00n@1.1.0.yaml`.
+
+## I-82. The source's RRI and DE flows have no factory home yet
+
+**Issue.** Plan P2 lists RRI and DE among the WPS flows. The source has both (DATA, `TransactHub-src`, `dsl/workflows/`):
+- **RRI**, the refund request instruction (`dib-wps-inward-rri.v1` 1.2.0): one run per RRI file; the file is verified, parsed and saved (`wps.ParseAndSaveInwardRri`, `InwardRriParser`), a rejected file is raised to the exception queue, and a saved file goes into an automated account block (`wps.BlockInwardRriLines`): one `cbs.amount.block` call per line, parked on the `CbPostingWindow` signal between passes, ending `RRI-Block-Completed` or `RRI-Block-Expired`. An unblock flow (`RriUnblock`) and reject reasons follow.
+- **DE**, inside the agent's payment file flow (`dib-wps-inward-paf.v1` 1.20.0, Activities 12 to 15 and the repost and lost-file activities): the bank's credits posted as one bulk file to its core system (generate the DE bulk file, transfer it by SFTP, submit the upload, determine the outcome from `getDeuploadStatus`, repost the failed lines).
+
+Neither is a scheme step the factory can author with what it has. The RRI's block needs an amount-block operation on an employee's account; `p.port.core-banking.v1` has posting, balance, reversal and verification only. DE is the bank's route to its own core banking, one bank's bulk upload: in the north-star layout it is a mode of a core-banking adapter, not a WPS step.
+
+**Recommendation.**
+1. **RRI.** Add `block` and `release` operations to `p.port.core-banking.v1` (an additive change: a minor) and an activity `p.reserve.block.v1`, then author `uae.wps.wf.refund-request-in.v1`: map the RRI, block each line in the posting window (`p.decide.await-posting-window.v1`), hand an expired block to operations. It needs the owner to decide what the RRI's reject reasons (000, 002) mean to the leg and to give `uae.wps.rri` a dispatch entry (D10 for the scheme facts).
+2. **DE.** Make it a `bulk` adapter of the core-banking binding: the leg's credits posted as one upload, the outcome read back per line, chosen per bank by its binding. No factory flow.
+
+**What is built.** The RRI parser as a native runtime activity, `uae.wps.map.rri-in.v1` (the source's `InwardRriParser`, proved by its own 671-line unit test, `runtime/tests/TransactHub.Activities.Wps.Tests`), with its factory contract. No flow reads it yet (L11 warns). Nothing of DE.
+
+## I-83. Factory releases that were edited in place
+
+**Issue.** The factory was first published at 1.0.0 by change set CS-2026-11-21-001. Later work changed 20 of those artefacts, the three pack lock files, the scheme, the inventory, three tests and the example bank's configuration set and lock file, all still at 1.0.0, and `seed-content --write-local` rewrote the published files with them. A change set record lists its members but not their hashes, so nothing on the branch shows a release changed. Two parallel branches also both used the id CS-2026-11-22-001; the merge kept one record.
+
+**Recommendation.** Release every change (R-11-35) and record what each seed publishes with its hash (R-11-36). Version the bank folders' own configuration sets as the example bank's are (`configuration-sets/<release>.yaml`) once the banks agree. Allocate change set ids per branch so parallel seeds cannot clash.
+
+**What is built.**
+- **The earlier releases, as first published.** Every changed file is back as its first publish had it, from the commit that added it. The changes are new releases (`tools/build_factory.py`, `RELEASES`):
+  - minor, 1.1.0: `p.post.accounting.v1`, `p.sim.core-banking.v1`, `uae.wps.exchange.return-credits.v1`, `uae.wps.exchange.submit-salary-file.v1`, `uae.wps.post.return.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1`, `uae.wps.table.returns.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.submit-salary-file.v1`, the `uae.wps` scheme; with plan P2 `uae.wps.map.pif-in.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.rfa-out.v1`, `uae.wps.wf.return-in.v1`;
+  - a new major line, at 2.0.0, where the interface check (L26) calls the change a major: `uae.wps.decide.returns.v2` (outcome `unverified` added), `uae.wps.wf.agent-payment-in.v2` (exit write `facts.returns` added), and with plan P2 `uae.wps.map.prc-out.v2` and `uae.wps.map.dif-out.v2` (reads added) and `uae.wps.map.rtc-in.v2` (writes added). Each v1 line stays at 1.0.0; the studio's packs leave a line a later major replaces out of the next pack release;
+  - the packs `p`, `uae.p` (its dependency moved), `uae.wps` and the example bank at 1.1.0, the inventory at 1.1.0;
+  - the banks: the example bank's configuration set 1.1.0 (`configuration-sets/1.1.0.yaml`), DIB's 1.2.0 and ADIB's, ENBD's and FAB's 1.1.0 accept the 1.1.0 packs; their lock files depend on them (each bank folder's pack 1.1.0). A bank folder's configuration set is the bank's own working file, not seeded, and was changed where it is, as DIB's was from 1.0.0 to 1.1.0.
+  - the operations view `uae.wps.view.operations.v1` at 1.1.0: its payment-file leg is `uae.wps.wf.agent-payment-in.v2`, the leg of the scheme at 1.1.0 (its 1.0.0 names the v1 leg). The packs `p` and `uae.wps` at 1.1.0 carry the views; the packs `p`, `uae.p` and `uae.wps` at 1.1.0 carry the error dictionaries too; their 1.0.0 lock files and the inventory, which the views' and the dictionaries' seeds (CS-2026-11-22-003 and 004) had rewritten, are back as first published.
+- **The seed adds, never rewrites** (R-11-35). `seed-content --write-local` no longer regenerates a changed file: it stops and names it, as on a connected branch. The bank pack's lock file is the one file a seed replaces, after keeping the earlier one at `packs/<release>.yaml`.
+- **Ledgers** (R-11-36). Each seed writes `change-sets/ledger/<id>.yaml`. The ledgers of the six seeds before this (CS-2026-11-21-001, CS-2026-11-22-001 to 005) were recorded from the commits that published them; this work's own seed is CS-2026-11-22-006. The engine bindings (`artefacts/bindings/bindings.yaml`) carry no release, so a seed that changes them replaces the file, as a bank pack's lock file is replaced, and its ledger names the hash it replaces (CS-2026-11-22-005, `forEachConcurrency`); the earlier text is in the branch's history. Recommendation: give an engine binding a release, then publish it beside the earlier one like any artefact; the change set whose record the merge lost is `CS-2026-11-22-001-7d74785.yaml`. Lint L41 (`tools/validate.py`, mutations M54 to M56) and `studio check` hold every recorded file to its hash and every seeded file to a ledger, and a factory artefact at a published release to what was seeded.
+- **Not recoverable.** Nothing: every first publish is in the repository's history. The change set records of the earlier seeds are not edited (they are published); their hashes are in the new ledgers instead.
+
+## I-84. What a native code-behind and its script-behind are held to
+
+**Issue.** R-08-16 lets an activity carry a script-behind for the studio and a native code-behind on the runtime. The native ones are the source's parsers and builders, and read the files the source reads; the factory's scripts and simulators were written from public sources and use their own shapes. Three gaps follow:
+- the factory's first PIF layout (`PDR` lines, an eleven-field `PCR`, `samples/wps-pif-valid.pif`) is not the source's (`EDR`, `EVP`, `PCR`); the native parser reads the source's only;
+- the WPS simulators send acknowledgements and the PSI as a status with no file, so the native ACK reader reads a status there, and the PSI map has nothing to read (OP-A7);
+- the native builders write more than the reference (file names, hashes, counts), so the two agree on outcomes and the business trace, not on every write.
+
+**Recommendation.** Move the factory's samples and tests to the source's PIF layout and drop the first layout in the next major of the map. Give the inward simulator files to send (an ACK or NAK file, a PSI), so the native readers are exercised on every engine. Decide whether the agent leg reads the PSI (a step after the await) before the map is wired.
+
+**What is built.** `uae.wps.map.pif-in.v1` 1.1.0's script reads both layouts; WPS-IN-008 runs the source's layout on the studio and, in `e2e-wps-inward-native`, on the native host, with the same trace. The native ACK reader takes a file when the message is one (it starts `AHR,`), else the status. `uae.wps.map.psi-in.v1` and `uae.wps.map.rri-in.v1` are native only and called by no leg.
+
+**On the engines.** The PSI the inward simulator sends with the payment file reached the platform workflow before its leg began, and the engines' leg (a child instance) never saw it. Now a leg takes over what its platform workflow kept for the payment, a message arriving while the leg runs is sent on to it (`studio/engines/shared/Interpreter.cs`), and an inward simulator's opening messages are due a second after the run starts (`studio/src/conformance/party.ts`). The inward payment file then runs on DTFx and Elsa with the studio's trace (`e2e-wps-parity`). On Temporal the platform workflow now hands a kept message to its leg once the leg has started (R-09-16, the engine fix of 2026-11-22), and the cases run green there and on the Flowable REST binding with the store on PostgreSQL (`e2e-wps-temporal`, `e2e-wps-engines-store`), no longer skipped. And a simulator's scenario state is its worker's, one per queue, so a scenario ordered across queues (the core-banking simulator's `reject-first-then-accept` when the return's posting runs on `th-uae-wps`) is not what the interpreter plays: the engine suites compare the inward cases whose calls stay on one queue, and the return through core banking is shown on the runtime.
+
+**Recommendation (engines).** Give the deployed simulators one state per port, not per worker.
+
 ## I-85. ADIB's, ENBD's and FAB's core-banking settings are not in the source
 
 **Issue.** By the owner's decision of 2026-11-22, ADIB, ENBD and FAB each have a bank folder in `content-configurations/banks/`, set up as DIB's is. DIB's core-banking binding carries thirteen settings from the source (`CoreBanking:*` in its compose overlay). The three other banks' forks read no `CoreBanking:*` setting: they call core banking through a named HTTP client, and every route they call is the bank simulator's (`/api/simulator/...`). So the source holds no service code, host id, branch, flags, paths or function ids for them. Carrying DIB's values or the simulator's routes would present them as the bank's.
@@ -1007,19 +1068,10 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 - The rule language computes on exact decimals (R-04-23): `studio/src/core/decimal.ts`, a small fixed-point module on BigInt (no dependency to pin; the same semantics as .NET `decimal` and Java `BigDecimal` for these operations). Literals keep their text; `+ - * %`, comparisons, `sum`, `sumWhere`, `min`, `max` and table bounds are exact; `round2` is half away from zero on the exact value; `/` keeps 20 places. A result of up to 15 digits is a number, a longer one a decimal string. The factory's `uae.wps.rule.control-total-matches.v1` now accepts the 7894.87 file unchanged: no factory artefact changed.
 - Scripts get the same arithmetic on `rules.money` (TypeScript) and `api.rules.money` (Python, on `decimal`).
 - Engines: rules run in the one rule service (R-04-21), so DTFx, Elsa, Temporal and Flowable compute nothing on amounts; they carry them as received (R-09-47). The Flowable kit harness now reads JSON with exact `BigDecimal`s. The runtime's .NET code was already `decimal` (CBX rules, the SIF writer, the posting activities, the views' `lines.sum`); `OperationsViewTests` proves the sum of the same lines.
-- Lint L40 refuses a floating-point tolerance in a rule (`a - b < 0.01`) and a number of more than 15 significant digits in examples, parameters, configuration values and tests (mutation cases M52, M53; the studio's `check` runs the same).
+- Lint L42 refuses a floating-point tolerance in a rule (`a - b < 0.01`) and a number of more than 15 significant digits in examples, parameters, configuration values and tests (mutation cases M57, M58; the studio's `check` runs the same).
 - Conformance scenario CK-MONEY-01: seven lines that sum to 7894.870000000001 in doubles match their control total; `round2` gives 0.13, -0.13 and 2.68 where half-even or binary rounding would not; an amount of 90071992547409.93, whose minor units are 2^53 + 1, is computed and carried exactly; the `amounts` check reads the context each engine ends with. The kit is 51 scenarios.
 - Recommendation (2) is in Part 7, 7.3: a simulator decides by its scenario, and a test that means a sanctions hit names that scenario in its bench.
 - Not done: the factory's SIF map (`studio/scripts/uae.wps.map.sif-in.v1.ts`) writes amounts as numbers; see I-109.
-
-## Not done, and why
-
-| Story | Why |
-| --- | --- |
-| C25-S1 Confirm the pack against the rulebook | Needs the current CBUAE WPS rulebook (D10). Nothing here confirms a scheme fact. |
-| C25-S6 Planned message groups | Each needs a business decision to build, defer or drop. |
-| C25-S5 Refund | Needs the refund order layout, which the pack marks unconfirmed; writing it would invent scheme facts. |
-| C24-S1 to S5 Scripts and tests for every platform block | The reference behaviour runs every block; six blocks have scripts. Writing a test per outcome for every block is factory content for the generator, not yet done. |
 
 ## I-97. The store holds no end of a payment and no files of a deployment
 
@@ -1123,3 +1175,9 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 ## Not done, and why
 
+| Story | Why |
+| --- | --- |
+| C25-S1 Confirm the pack against the rulebook | Needs the current CBUAE WPS rulebook (D10). Nothing here confirms a scheme fact. |
+| C25-S6 Planned message groups | Each needs a business decision to build, defer or drop. |
+| C25-S5 Refund | Needs the refund order layout, which the pack marks unconfirmed; writing it would invent scheme facts. |
+| C24-S1 to S5 Scripts and tests for every platform block | The reference behaviour runs every block; six blocks have scripts. Writing a test per outcome for every block is factory content for the generator, not yet done. |
