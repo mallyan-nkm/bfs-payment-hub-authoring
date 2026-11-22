@@ -12,7 +12,7 @@
     "artefactName": {
       "description": "<scope>.<type>.<name>.v<major>. The major is part of the name.",
       "type": "string",
-      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})\\.(map|validate|enrich|screen|decide|reserve|exchange|post|notify|hold|reconcile|rule|ruleset|table|sim|wf|seg|sub|handler|hook|port|ext)\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$"
+      "pattern": "^(p|b|[a-z]{2,8}\\.p|[a-z]{2,8}\\.[a-z0-9]{2,12})\\.(map|validate|enrich|screen|decide|reserve|exchange|post|notify|hold|reconcile|rule|ruleset|table|sim|wf|seg|sub|handler|hook|port|ext|view)\\.[a-z0-9]+(-[a-z0-9]+)*\\.v[1-9][0-9]*$"
     },
     "release": {
       "description": "major.minor.patch. Major for an interface change, minor for improved function, patch for a bug fix.",

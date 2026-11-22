@@ -1,0 +1,197 @@
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
+import * as net from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+// End to end (R-05-50, R-06-22): a WPS salary file of two lines runs on the runtime (the runtime's DTFx build, its claim
+// check and its steps journalled to the store on PostgreSQL). The bank's internal limit holds it before release, and
+// the hold is the runtime's (p.port.operations-queue.v1 given to the runtime): the native host opens it on the file's
+// chain and waits. In a real browser an operator signs in, filters the list to held WPS files, opens the file, sees
+// its declared fields, and approves the hold. The file then goes on: the WPS leg submits it, the acknowledgement comes
+// back, and the console shows the leg with its CB response. All values are synthetic.
+
+const require = createRequire(import.meta.url);
+const here = path.dirname(fileURLToPath(import.meta.url));
+const CONSOLE = path.resolve(here, '..', '..');
+const RUNTIME = path.resolve(CONSOLE, '..');
+const REPO = path.resolve(RUNTIME, '..');
+const STUDIO = path.join(REPO, 'studio');
+const PASSWORD = 'Th-Test-Only-1234';
+const DB = `th-ops-e2e-pg-${process.pid}`;
+const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ops-e2e-'));
+const procs: ChildProcess[] = [];
+const logs: Record<string, string> = {};
+let browser: any;
+let apiUrl = '';
+let deployRun: Promise<string> | undefined;
+
+const docker = (...a: string[]) => spawnSync('docker', a, { encoding: 'utf8' });
+const dotnetEnv = { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
+
+function freePort(): Promise<number> {
+  return new Promise((resolve) => {
+    const s = net.createServer();
+    s.listen(0, '127.0.0.1', () => { const p = (s.address() as net.AddressInfo).port; s.close(() => resolve(p)); });
+  });
+}
+
+function start(name: string, cmd: string, args: string[], env: Record<string, string | undefined>, cwd = REPO) {
+  logs[name] = '';
+  const p = spawn(cmd, args, { cwd, env: { ...process.env, ...env } as NodeJS.ProcessEnv });
+  p.stdout?.on('data', (d) => (logs[name] += d));
+  p.stderr?.on('data', (d) => (logs[name] += d));
+  procs.push(p);
+  return p;
+}
+
+async function until<T>(what: string, f: () => Promise<T | undefined | null | false>, ms = 120000): Promise<T> {
+  const end = Date.now() + ms;
+  for (;;) {
+    try { const v = await f(); if (v) return v; } catch { /* not yet */ }
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}\n${Object.entries(logs).map(([k, v]) => `--- ${k}\n${v.slice(-2000)}`).join('\n')}`);
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+/** A command run to its end without blocking the test worker (a blocked worker misses vitest's own heartbeats). */
+function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<{ status: number | null; out: string }> {
+  return new Promise((resolve) => {
+    let out = '';
+    const p = spawn(cmd, args, { cwd, env });
+    p.stdout.on('data', (d) => (out += d));
+    p.stderr.on('data', (d) => (out += d));
+    p.on('close', (status) => resolve({ status, out }));
+  });
+}
+
+async function build(project: string) {
+  const b = await run('dotnet', ['build', project, '-c', 'Release', '--nologo', '-v', 'q'], RUNTIME, dotnetEnv);
+  if (b.status !== 0) throw new Error(`dotnet build ${project} failed:\n${b.out}`);
+}
+
+beforeAll(async () => {
+  if (!fs.existsSync(path.join(CONSOLE, 'dist', 'index.html'))) await run('npx', ['vite', 'build'], CONSOLE);
+  for (const p of ['src/TransactHub.Operations.Api', 'src/TransactHub.Native', 'tools/TransactHub.DtfxHarness']) await build(p);
+  // The store and the read model: one PostgreSQL, in a container of this run's own.
+  const created = docker('run', '-d', '--name', DB, '-e', `POSTGRES_PASSWORD=${PASSWORD}`, '-p', '127.0.0.1::5432', 'postgres:16-alpine');
+  if (created.status !== 0) throw new Error(created.stderr);
+  await until('PostgreSQL', async () => docker('exec', DB, 'pg_isready', '-U', 'postgres').status === 0 && docker('exec', DB, 'psql', '-U', 'postgres', '-c', 'select 1').status === 0);
+  const port = docker('port', DB, '5432').stdout.split('\n')[0].split(':').pop()!.trim();
+  const connection = `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_ops_e2e`;
+  const store = { TH_STORE_PROVIDER: 'PostgreSql', TH_STORE_CONNECTION: connection };
+
+  // The console's API, with the dev sign-in (Development only), serving the built web app. It migrates the store.
+  const apiPort = await freePort();
+  apiUrl = `http://127.0.0.1:${apiPort}`;
+  start('api', 'dotnet', [path.join(RUNTIME, 'src/TransactHub.Operations.Api/bin/Release/net10.0/TransactHub.Operations.Api.dll')], {
+    ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: apiUrl, TH_AUTH_DEV: '1',
+    Store__Provider: 'PostgreSql', Store__Connection: connection, Operations__PollMilliseconds: '200',
+    Operations__Views: path.join(REPO, 'content-configurations', 'artefacts'), Operations__Console: path.join(CONSOLE, 'dist'),
+  });
+  await until('the console API', async () => (await fetch(`${apiUrl}/ops/api/health`)).ok);
+
+  // The native host: it answers the operations-queue port's holds from the store.
+  const nativePort = await freePort();
+  start('native', 'dotnet', [path.join(RUNTIME, 'src/TransactHub.Native/bin/Release/net10.0/TransactHub.Native.dll')], {
+    ...store, TH_NATIVE_URLS: `http://127.0.0.1:${nativePort}`, TH_OPS_HOLD_WAIT_SECONDS: '280',
+  });
+  await until('the native host', async () => (await fetch(`http://127.0.0.1:${nativePort}/health`)).ok);
+
+  // The WPS file: the factory's corporate workflow exported for DTFx, the bank's internal limit lowered so a file of two lines is held.
+  const tsx = path.join(STUDIO, 'node_modules', '.bin', 'tsx');
+  const zip = path.join(work, 'corporate-dtfx.zip');
+  const ex = await run(tsx, ['src/cli.ts', 'export-zip', 'p.wf.corporate.v1', 'dtfx', zip, '--with-simulators', '--tenant', 'example-bank'], STUDIO);
+  if (ex.status !== 0) throw new Error(ex.out);
+  const config = path.join(work, 'low-limit.yaml');
+  fs.writeFileSync(config, fs.readFileSync(path.join(REPO, 'spec', 'examples', 'bank', 'configuration-set.yaml'), 'utf8').replace('value: 250000', 'value: 1000'));
+  const bench = ['p.port.core-banking.v1=p.sim.core-banking.v1:accept', 'p.port.sanctions.v1=p.sim.sanctions.v1:accept', 'p.port.fraud.v1=p.sim.fraud.v1:accept',
+    'uae.wps.port.wps.v1=uae.wps.sim.wps-outward.v1:accept', 'uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept', 'p.port.operations-queue.v1=runtime'];
+  const child = start('deploy', tsx, ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', 'uae.wps.sif', '--inbound', path.join(STUDIO, 'fixtures', 'samples', 'wps-sif-two-lines.sif'),
+    '--tenant', 'example-bank', '--config', config, ...bench.flatMap((b) => ['--bench', b])], { ...store, TH_NATIVE_HOST: `http://127.0.0.1:${nativePort}` }, STUDIO);
+  deployRun = new Promise((resolve) => child.on('close', () => resolve(logs.deploy)));
+  browser = await require('playwright').chromium.launch();
+}, 900000);
+
+afterAll(async () => {
+  await browser?.close();
+  for (const p of procs) if (p.exitCode === null) p.kill('SIGKILL');
+  docker('rm', '-f', DB);
+  fs.rmSync(work, { recursive: true, force: true });
+});
+
+describe('the operations console on a WPS file run through the runtime', () => {
+  it('filters to held WPS files, opens one with its declared fields, approves the hold, and shows the leg it then runs', async () => {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    const problems: string[] = [];
+    page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    await page.goto(apiUrl);
+    await page.getByRole('button', { name: /Sign in as Example operator/ }).click();
+    await page.getByRole('heading', { name: 'Payments' }).waitFor();
+
+    // Filter: the WPS scheme, held, outward. The held file appears once the hold is in the read model.
+    await until('the held file in the list', async () => {
+      await page.goto(`${apiUrl}/#/payments?scheme=uae.wps&hold=open&direction=outward`);
+      await page.reload();
+      await page.getByRole('heading', { name: 'Payments' }).waitFor();
+      return (await page.getByTestId('payment-row').count()) === 1;
+    }, 240000);
+    expect(await page.locator('select[name=scheme]').inputValue()).toBe('uae.wps');
+    expect(await page.locator('select[name=hold]').inputValue()).toBe('open');
+    const row = page.getByTestId('payment-row').first();
+    expect(await row.textContent()).toContain('1,500.00 AED');
+    // A declared column of the scheme's view: the MOL establishment id, masked.
+    expect(await page.getByRole('columnheader', { name: 'MOL establishment id' }).count()).toBe(1);
+    expect(await row.textContent()).toContain('0000*****4567');
+    await row.click();
+
+    // The detail: the hold and why, the platform's and the scheme's declared fields, masked where the old screens masked.
+    await page.getByTestId('hold-badge').waitFor();
+    expect(await page.getByTestId('hold-badge').textContent()).toContain('AM02');
+    const wps = page.getByTestId('fields-uae.wps.view.operations.v1');
+    expect(await wps.locator('[data-field=employerId] dd').textContent()).toBe('0000*****4567');
+    expect(await wps.locator('[data-field=salaryMonth] dd').textContent()).toBe('102026');
+    expect(await wps.locator('[data-field=totalRecords] dd').textContent()).toBe('2');
+    expect(await page.getByTestId('fields-p.view.operations.v1').locator('[data-field=sanctions] dd').textContent()).toBe('clear');
+    await page.getByRole('tab', { name: /Lines/ }).click();
+    expect(await page.getByRole('table', { name: 'Lines' }).textContent()).toContain('AE07***************3456');
+    expect(await page.content()).not.toContain('AE070331234567890123456');
+    await page.getByRole('tab', { name: /Timeline/ }).click();
+    expect(await page.getByRole('list', { name: 'Timeline' }).textContent()).toContain('internal-limit');
+
+    // Approve the hold: the operator's decision reaches the waiting hold through the operations-queue port.
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await page.locator('textarea[name=remarks]').fill('Within the employer agreement (synthetic)');
+    await page.getByRole('button', { name: 'Confirm approve' }).click();
+    await page.getByRole('status').filter({ hasText: 'Approve: done' }).waitFor();
+
+    // The file goes on: the deployment ends settled, through the hold approved and the WPS leg.
+    const out = await Promise.race([deployRun!, new Promise<string>((_, rej) => setTimeout(() => rej(new Error('deploy did not finish')), 600000))]);
+    expect(out, out.slice(-3000)).toMatch(/^outcome settled/m);
+    expect(/^trace  (.*)$/m.exec(out)?.[1]).toContain('hook:hold | hold:approved | leg:settled');
+
+    // The console shows the leg with its declared fields, and who approved.
+    await until('the WPS leg in the console', async () => {
+      await page.reload();
+      await page.getByRole('tab', { name: /Legs \(1\)/ }).click();
+      return (await page.getByTestId('leg').count()) === 1;
+    }, 60000);
+    const leg = page.getByTestId('leg').first();
+    expect(await leg.getAttribute('data-leg')).toBe('uae.wps.wf.salary-file-out.v1');
+    expect(await leg.locator('[data-field=cbResponse] dd').textContent()).toBe('ack');
+    expect(await page.getByTestId('fields-p.view.operations.v1').locator('[data-field=approvedBy] dd').textContent()).toBe('operator:ops.operator');
+    expect(await page.getByTestId('hold-badge').count()).toBe(0);
+    expect(await page.getByTestId('lag').textContent()).toContain('up to date');
+
+    // The list filtered by the leg and its CB response, a declared filter, finds it.
+    await page.goto(`${apiUrl}/#/payments?leg=uae.wps.wf.salary-file-out.v1&f:uae.wps.view.operations.v1:uae.wps.wf.salary-file-out.v1:cbResponse=ack`);
+    await page.reload();
+    await until('the leg filter', async () => (await page.getByTestId('payment-row').count()) === 1, 20000);
+    expect(problems).toEqual([]);
+    await page.close();
+  });
+});

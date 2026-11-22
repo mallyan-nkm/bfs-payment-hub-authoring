@@ -47,6 +47,7 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | R-06-19 | Shared packs MUST be identical for every tenant on the same release. | Hash comparison in export test (C18) |
 | R-06-20 | A hook that two tenants implement SHOULD be offered to the owner as a shared block. | Studio usage report (advisory) |
 | R-06-21 | Bounds apply by type: `min` and `max` to a number or a duration, `allowed` and `pattern` (a regular expression) to a code or a string, and every bound to each item of a list, and to each field of an item that is an object. A value outside them is refused. | Lint L14 (`tools/validate.py`, studio check) |
+| R-06-22 | The runtime's operators MUST be identified by the bank's identity provider (OIDC: the authorisation code flow with PKCE for the console, a validated bearer token for its API), never by the studio's issuer and never by a name in the request. Their roles, Operator and Supervisor, MUST be per tenant and come from the bank's claims or groups through a configured mapping; the runtime keeps no identity store. An operator sees and acts on the payments of their tenants only. A dev sign-in MAY exist for synthetic users only, and MUST be refused when the host runs in production. | `OperatorAuthTests`; `OperatorApiTests` |
 
 ## 6.5 Roles
 
@@ -57,6 +58,13 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | Bank designer | Bank | Author hooks and configuration |
 | Bank checker | Bank | Approve the bank's hooks, configuration and release acceptance |
 | Auditor | Either | Read everything in its tenant; change nothing |
+
+The roles above are the studio's, for authoring. The runtime's operators are not studio users and the studio never touches a running payment (R-10-01). They have two roles of their own, per tenant, from the bank's identity provider (R-06-22):
+
+| Runtime role | May |
+| --- | --- |
+| Operator | See the tenant's payments in the operations console; take the actions an operations view offers with role Operator; ask for one that needs a second approver |
+| Supervisor | All an operator may, and approve or reject an action another person asked for (maker-checker, R-05-50); rebuild the read model |
 
 ## 6.6 Examples
 

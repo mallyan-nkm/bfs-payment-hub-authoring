@@ -185,11 +185,13 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
         var hash = Convert.ToHexStringLower(SHA256.HashData(content));
         var seen = await db.Messages.AsNoTracking().AnyAsync(m => m.Tenant == tenant && m.Scheme == scheme && m.Kind == kind && m.ContentHash == hash, ct);
         var id = NewId();
-        db.Messages.Add(new MessageRow
+        var row = new MessageRow
         {
             Id = id, Tenant = tenant, Scheme = scheme, Direction = direction.ToString(), Kind = kind, FileName = fileName,
             Content = content, ContentHash = hash, SubjectId = subjectId, At = StoreTime.Of(clock.GetUtcNow()),
-        });
+        };
+        db.Messages.Add(row);
+        db.Outbox.Add(Outbox.Of(row));
         await db.SaveChangesAsync(ct);
         return (id, seen);
     }

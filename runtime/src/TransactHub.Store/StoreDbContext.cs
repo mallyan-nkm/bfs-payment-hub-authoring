@@ -41,6 +41,22 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
 
     public static StoreDbContext Open(StoreOptions o) => new(Configure(o));
 
+    /// <summary>
+    /// The same provider choice for another of the runtime's contexts (the operations read model): its own
+    /// migrations assembly and history table, nothing else provider-specific.
+    /// </summary>
+    public static DbContextOptions<T> ConfigureFor<T>(StoreOptions o, string migrationsAssembly, string historyTable) where T : DbContext
+    {
+        var b = new DbContextOptionsBuilder<T>();
+        _ = o.Provider switch
+        {
+            StoreProvider.SqlServer => b.UseSqlServer(o.ConnectionString, x => x.MigrationsAssembly(migrationsAssembly).MigrationsHistoryTable(historyTable)),
+            StoreProvider.PostgreSql => b.UseNpgsql(o.ConnectionString, x => x.MigrationsAssembly(migrationsAssembly).MigrationsHistoryTable(historyTable)),
+            _ => throw new ArgumentOutOfRangeException(nameof(o)),
+        };
+        return b.Options;
+    }
+
     /// <summary>Each provider has its own migrations, generated from this one model.</summary>
     public static string MigrationsAssembly(StoreProvider p) => $"TransactHub.Store.Migrations.{p}";
 

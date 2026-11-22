@@ -1,5 +1,6 @@
 node_modules/
 studio/web/dist/
+runtime/ops-console/dist/
 *.log
 docs/demo/.voice/
 docs/demo/training/.voice/

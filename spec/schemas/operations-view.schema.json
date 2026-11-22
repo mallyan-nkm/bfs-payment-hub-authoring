@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:operations-view",
+  "title": "Operations view",
+  "description": "How operators see a pack's payments and legs in the runtime's operations console: fields and their sources in the store, labels, groups, list columns and filters, a bulk's lines, documents and the operator actions that apply. Data only; the console renders any view the same way. See design/05 section 5.10 (R-05-48 to R-05-50).",
+  "type": "object",
+  "required": ["kind", "name", "release", "title"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "operations-view" },
+    "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "scheme": { "description": "The scheme whose payments and legs this view shows. Absent for the platform's view (scope p), which applies to every payment.", "$ref": "urn:th:schema:common#/$defs/scope" },
+    "platform": { "description": "The platform view only: the platform workflows it shows.", "type": "array", "items": { "$ref": "urn:th:schema:common#/$defs/artefactName" } },
+    "subject": { "$ref": "#/$defs/section" },
+    "legs": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/section" },
+          {
+            "type": "object",
+            "required": ["leg", "selectBy"],
+            "properties": {
+              "leg": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+              "selectBy": {
+                "description": "How the projection tells this leg's engine instance from another: the header's direction and kind, and steps only this leg has.",
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "direction": { "enum": ["inward", "outward"] },
+                  "kind": { "enum": ["payment", "request", "return"] },
+                  "steps": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  },
+  "$defs": {
+    "fieldId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "field": {
+      "type": "object",
+      "required": ["id", "label", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/fieldId" },
+        "label": { "type": "string" },
+        "group": { "type": "string" },
+        "source": { "type": "string", "minLength": 3, "description": "Where the value comes from in the store. See design/05 section 5.10." },
+        "format": { "enum": ["text", "amount", "count", "date", "datetime", "status", "code", "json"] },
+        "mask": { "enum": ["account", "id", "name", "full", "none"], "description": "How a value that is personal data is masked in the read model (R-05-49). none shows it whole, as the old screen named in oldScreen did." },
+        "description": { "type": "string" },
+        "oldScreen": { "type": "string", "description": "Where the source system's screen showed it, for the mapping (Issue I-100)." }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": { "id": { "type": "string" }, "title": { "type": "string" } }
+    },
+    "filter": {
+      "type": "object",
+      "required": ["field"],
+      "additionalProperties": false,
+      "properties": {
+        "field": { "$ref": "#/$defs/fieldId" },
+        "match": { "enum": ["exact", "contains", "range"] },
+        "label": { "type": "string" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["action", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "enum": ["approve", "decline", "release", "reject", "cancel", "re-screen", "pause", "resume", "retry", "resend"] },
+        "label": { "type": "string" },
+        "role": { "enum": ["Operator", "Supervisor"] },
+        "secondApprover": { "enum": ["Operator", "Supervisor"], "description": "Maker-checker: carried out only when another person with this role approves." },
+        "remarks": { "enum": ["required", "optional"] },
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hold": { "enum": ["approval", "repair"] },
+            "status": { "type": "array", "items": { "type": "string" } },
+            "notStatus": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/fieldId" } },
+        "filters": { "type": "array", "items": { "$ref": "#/$defs/filter" } },
+        "lines": {
+          "type": "object",
+          "required": ["fields"],
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string" },
+            "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+            "columns": { "type": "array", "items": { "$ref": "#/$defs/fieldId" } }
+          }
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "label"],
+            "additionalProperties": false,
+            "properties": { "kind": { "type": "string" }, "label": { "type": "string" } }
+          }
+        },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "leg": true,
+        "selectBy": true
+      },
+      "additionalProperties": false
+    }
+  }
+}

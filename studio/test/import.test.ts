@@ -28,7 +28,7 @@ describe('import: the training bundle', () => {
     const r = await analyse(env, readBundle(wpsTrainingBundle(env)), OPTS);
     expect(errors(r)).toEqual([]);
     expect(r.ok).toBe(true);
-    expect(r.summary).toMatchObject({ documents: 60, activities: 27, rules: 11, workflows: 11, schemes: 1, configurationSets: 1, tests: 16, scripts: 2, samples: 7, new: 77, testsPassed: 16, testsFailed: 0 });
+    expect(r.summary).toMatchObject({ documents: 61, activities: 27, rules: 11, workflows: 11, schemes: 1, configurationSets: 1, tests: 16, scripts: 2, samples: 7, new: 78, testsPassed: 16, testsFailed: 0 });
     expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 86, excluded: 1, missing: [] });
     // Nothing was saved by a preview.
     expect(env.store.drafts('owner')).toEqual([]);

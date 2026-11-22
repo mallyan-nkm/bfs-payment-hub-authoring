@@ -25,8 +25,15 @@ var files = new ConcurrentDictionary<string, (string name, byte[] content)>();
 var served = new ConcurrentDictionary<string, int>();
 var banksDir = Environment.GetEnvironmentVariable("TH_BANKS_DIR");
 var coreBanking = new CoreBankingResolver(banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings());
+// With TH_STORE_PROVIDER and TH_STORE_CONNECTION the platform's holds are answered here too (p.port.operations-queue.v1 given to
+// the runtime): a hold is opened on the payment's chain and waits for the operator's decision from the operations console (R-05-50).
+var storeProvider = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
+var storeConnection = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
+INativeActivity[] holds = string.IsNullOrEmpty(storeProvider) || string.IsNullOrEmpty(storeConnection) ? []
+    : TransactHub.Operations.StoreHold.For(new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(storeProvider, true), storeConnection),
+        TimeSpan.FromSeconds(double.TryParse(Environment.GetEnvironmentVariable("TH_OPS_HOLD_WAIT_SECONDS"), out var w) ? w : 240));
 INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif((sha, name, content) => files[sha] = (name, content)),
-    .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking)];
+    .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking), .. holds];
 var byName = activities.ToDictionary(x => x.Name);
 
 app.MapGet("/health", () => Results.Ok(new { activities = byName.Keys.Order(), served }));
