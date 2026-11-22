@@ -5,6 +5,8 @@ users:
     roles:
       - workflow designer
       - workflow developer
+      - operations
+      - service engineer
   - id: workflow.designer
     tenant: owner
     roles:
@@ -13,6 +15,14 @@ users:
     tenant: owner
     roles:
       - workflow developer
+  - id: operations.designer
+    tenant: owner
+    roles:
+      - operations
+  - id: service.engineer
+    tenant: owner
+    roles:
+      - service engineer
   - id: shared.checker
     tenant: owner
     roles:

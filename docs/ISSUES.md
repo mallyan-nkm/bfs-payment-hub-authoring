@@ -788,6 +788,8 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built for operators (2026-11-22, the owner's decision of that day).** The owner decided (1) an API and a console, (2) the bank's identity provider over OIDC, the runtime keeping no identity store, roles Operator and Supervisor per tenant from the bank's claims or groups through a configured mapping, never the studio's issuer, and (3) that every operator action is authorised server-side and recorded on the payment's fact chain. Built: `runtime/src/TransactHub.Operations.Api` and `runtime/ops-console/` (R-05-48 to R-05-50, R-06-24). The API is behind the runtime's authentication library (`TransactHub.Auth`, `AddRuntimeAuth` with the roles Operator and Supervisor and the bank's role map) and refuses the studio's issuer (`TH_STUDIO_ISSUER`); the console signs in with the authorisation code flow and PKCE; a dev sign-in (`TH_AUTH_DEV=1`) is refused when the host runs in Production. Second approvers (4) are declared per action in the packs' operations views (`secondApprover`): for the factory, releasing a repair item and cancelling a payment, as the source's business exceptions were dual control. Each request, approval and result is a fact with the operator's identity. Left open: the role map grants roles and tenants together, so a person who is an operator in one tenant and a supervisor in another is a supervisor in both; a grant per tenant pair in `RoleMap` would close it. Signals do not yet reach an engine (I-99).
 
+**Decided (22 November 2026).** The owner accepted per-tenant role grants in the runtime's role map, so one person may be an operator in one bank and a supervisor in another.
+
 ## I-66. Observability of the runtime and the studio
 
 **Issue.** The plan and the spec say nothing of traces, metrics, structured logs or health checks for the runtime, the engine hosts or the studio. The runtime has no telemetry today: no `ActivitySource`, no `Meter`, no OpenTelemetry package. The spec's rule that personal data stays out of logs and traces (`spec/CLAUDE.md`, Data) is stated, but nothing checks it in logs, because there are none. Each engine has its own telemetry, so a payment's trace crosses four kinds of host.
@@ -845,6 +847,8 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 **Issue 4.** The error dictionary (R-05-51) also came after the decision. The table gives it to the Workflow Developer, who builds the activities, rules and ports whose errors it documents, and its version to the Platform Approver. A bank has no dictionary of its own in scope `b`.
 
 **Recommendation 4.** Confirm that, and decide whether a bank documents the errors of its own hooks in a dictionary of scope `b`, authored by its Bank Configurator.
+
+**Decided (22 November 2026).** The owner decided: the Workflow Designer and Developer are studio roles for workflows and their building blocks only. Operations views belong to a new studio role, **Operations**, and error dictionaries to a new studio role, **Service Engineer** (who also uses the runtime's service console). The Platform Approver approves both. A new kind of connection (a bank-only port or extension) is created by the Workflow Developer; a bank then binds it. Built in `studio/src/governance/permissions.ts` and its test.
 
 ## I-70. Port bindings have no editor in the studio
 
@@ -951,6 +955,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 2. **DE.** Make it a `bulk` adapter of the core-banking binding: the leg's credits posted as one upload, the outcome read back per line, chosen per bank by its binding. No factory flow.
 
 **What is built.** The RRI parser as a native runtime activity, `uae.wps.map.rri-in.v1` (the source's `InwardRriParser`, proved by its own 671-line unit test, `runtime/tests/TransactHub.Activities.Wps.Tests`), with its factory contract. No flow reads it yet (L11 warns). Nothing of DE.
+
+**Decided (22 November 2026).** DE is a bank's bulk posting to its own core banking by file (generate the bulk file, transfer it, submit the upload, read the upload status, repost the failed lines). It is not a WPS step: it is another connection, built as a file-based bulk mode of the core-banking port (a `file-bulk` adapter beside `gateway-rest`), which a bank chooses in its binding.
 
 ## I-83. Factory releases that were edited in place
 
@@ -1077,6 +1083,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** The mapping in `runtime/tools/TransactHub.TestBench/Inputs.cs`, the `platform-iso-*` profiles, and three cases; TB-ISO-002 is marked as known to differ (I-95).
 
+**Owner (22 November 2026).** To be designed later.
+
 ## I-96. What synthetic test data can and cannot drive
 
 **Issue 1.** The factory's rules add money as binary floating point: `uae.wps.rule.control-total-matches.v1` sums `fixedPay + variablePay` and compares the sum with the control total exactly, so a correct file whose amounts sum to 7894.87 is refused with AM10 (the sum is 7894.870000000001). The factory's samples use round amounts and never show it. A bank's real salary file would.
@@ -1200,6 +1208,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** After I-77 and I-78 a line of a WPS salary file costs about 0.06 CPU seconds across the Temporal server, the harness, the workers and the database (`docs/runtime/LOAD-TEST.md`): two activity attempts, each with a claim-check commit as a local activity (another workflow task), a staged-write fact, a commit fact and a step fact. The proposed 50 lines a second sustained therefore needs about three dedicated cores for these processes alone; the shared 4-vCPU machine of the runs gave 25 to 29 lines a second with four to eight files at once. A single file is held by its one workflow: its workflow tasks run one after another, about 17 lines a second here.
 
 **Recommendation.** Measure on a reference installation before deciding (I-68). If the target is not met there: commit an item's staged writes with its attempt's result (one claim-check call per item, not per attempt), or check a chunk of lines in one activity attempt (one attempt per chunk, R-09-13), so a file's cost grows with its chunks; give Temporal more history shards than the four of the harness's server; and run more than one worker per queue.
+
+**Decided (22 November 2026).** The owner accepted 50 lines a second as the go-live target, with each runtime node sized at four or more cores, to be confirmed by a load test on the bank's hardware.
 
 ## I-109. The factory's SIF map writes a large total as a number
 
