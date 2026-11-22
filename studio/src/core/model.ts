@@ -29,6 +29,8 @@ const ACCOUNT = {
   // CashAccount40/Tp (Issue I-100): an ExternalCashAccountType1Code, or the scheme's own code as Prtry.
   type: ['CashAccountType2Choice', false, 'The kind of account: an ISO cash account type code, or the scheme\'s own'],
   proxy: { type: ['ExternalProxyAccountType1Code', false], value: ['Max2048Text', true] },
+  // CashAccount40/Ccy (R-12-20): the account's currency, where the intake or core banking knows it; an order converts into it.
+  currency: ['ActiveOrHistoricCurrencyCode', false, 'The currency of the account (CashAccount40/Ccy)'],
 };
 // FinInstnId/Nm (Issue I-100): the agent's name, looked up by its routing code.
 const AGENT = { bicfi: ['BICFIDec2014Identifier', false], clearingMemberId: ['Max35Text', false, 'Clearing system member id, the routing code'], name: ['Max140Text', false, 'The agent\'s name, from the participant directory by its routing code'] };
@@ -41,7 +43,9 @@ const TREE: Record<string, any> = {
     paymentId: ['Max35Text', false, 'Platform id, assigned at intake. The root of every idempotency key.'],
     endToEndId: ['Max35Text', false, 'End-to-end identification from the originator'],
     uetr: ['UUIDv4Identifier', false], fileId: ['Max35Text', false, 'File or batch id; the correlation key for file rails'],
-    kind: ['Code', false, 'payment, request or return'], direction: ['Code', false, 'inward or outward'],
+    kind: ['Code', false, 'payment, request, return or refund'], direction: ['Code', false, 'inward or outward'],
+    // camt.056 Undrlyg/TxInf/OrgnlTxId (R-12-19): a refund order is a new order that refers to the earlier payment by its id.
+    originalPaymentId: ['Max35Text', false, 'The id of the earlier payment a refund order refers to (camt.056 OrgnlTxId)'],
     segment: ['Code', false, 'corporate or commercial'], scheme: ['Code', false, 'The scope of the scheme'],
     channel: ['Code', false], receivedAt: ['ISODateTime', false], businessDate: ['ISODate', false],
     tenant: ['Max35Text', false, 'The bank tenant. For lookup, never for branching (R-02-16)'],

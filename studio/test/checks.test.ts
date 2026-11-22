@@ -24,10 +24,17 @@ describe('static checks over the store (C04)', () => {
     const errors = checkAll(env).filter((i) => i.severity === 'error');
     expect(errors).toEqual([]);
   });
-  it('warns on the planned messages of the scheme (L10)', () => {
+  it('warns on the planned messages of a scheme (L10)', () => {
+    // The WPS scheme's last planned messages (the agent's refund cycle) are built since release 1.2.0 (R-12-21).
     const env = freshEnv();
-    const w = checkAll(env).filter((i) => i.code === 'L10');
-    expect(w.map((i) => i.key).sort()).toEqual(['uae.wps']);
+    expect(checkAll(env).filter((i) => i.code === 'L10')).toEqual([]);
+    const planned = fire('L10', (find) => {
+      find('uae.wps').messages.push({ id: 'uae.wps.later', title: 'A later message', direction: 'in', confirmed: false, disposition: { planned: 'Later' } });
+    });
+    expect(planned).toEqual([]); // a warning, not an error
+    const { docs } = docsOf();
+    docs.find((d) => d.kind === 'scheme' && d.scope === 'uae.wps').messages.push({ id: 'uae.wps.later', title: 'A later message', direction: 'in', confirmed: false, disposition: { planned: 'Later' } });
+    expect(new Checker(docs, []).checkAll().filter((i) => i.code === 'L10').map((i) => i.key)).toEqual(['uae.wps']);
   });
   it('holds the factory to the packs its inventory lists (L34, R-12-11)', () => {
     const env = freshEnv();

@@ -37,6 +37,10 @@ The factory pack is the default content that ships with the studio: the platform
 | R-12-16 | The labour ministry's establishment register MUST be reached through the bank's binding of `uae.wps.port.labour-ministry.v1`: on the runtime the `gateway-rest` adapter (its credential by reference) or the simulator; the native code-behind of `uae.wps.enrich.employer-status.v1` writes what it answers. A bank that has not said where its register is binds a placeholder host and no path, and every call is refused. | `FileProtectionAndRegisterTests`; tests WPS-ENR-001, WPS-ENR-002 |
 | R-12-17 | On a scheme whose wire is a file, every file a bank sends MUST be encrypted through `p.protect.encrypt-file.v1` before it is sent, and a file the encryption service refuses MUST NOT be sent: the salary file, the receipt confirmation, the disbursement file, the returns file and the refund request. A file a bank receives encrypted is decrypted through `p.protect.decrypt-file.v1`. On the runtime both have a native code-behind on the bank's bindings (OpenPGP, or the source's GnuPG key folder as `gnupg`), and the file sent is the encrypted one. | Lint L46 (mutation M65); tests WPS-IN-001 to WPS-IN-009, P-DEC-001, P-DEC-002; `FileProtectionAndRegisterTests` |
 | R-12-18 | A salary line's account type MUST be the one its channel declared at upload, where it declared one, and its bank's name MUST come from the scheme's participant directory (`uae.wps.table.participant-names.v1`, a value looked up by date) by the line's routing code. Shared content names no bank: the directory's default is empty. | Test WPS-MAP-005; the table's examples |
+| R-12-19 | A refund of an earlier payment MUST be a new order of the platform workflow `p.wf.refund.v1`, which `p.table.workflow-select.v1` picks for `header.kind` refund: pinned to the distribution active when it is accepted, it names the earlier payment by `header.originalPaymentId`. The platform workflow owns the order's lifecycle: the earlier payment, FX, charges, the block on the account, the approval, the posting (which parks, R-05-55) and its verification. A scheme fills its `scheme-leg` and `scheme-refuse` slots and calls no `reserve` or `post` activity; a second scheme fills the same slots with no change to the platform workflow. | Lint L47 (mutation M66), L33; the table's example `refund`; tests WPS-RRI-001 to WPS-RRI-006; `studio/test/refund-order.test.ts` (a second scheme in the same slots) |
+| R-12-20 | FX and charges on an order MUST be platform activities, `p.enrich.fx-rate.v1` and `p.enrich.charges.v1`. Their rates, charge slabs, floor, ceiling and VAT are the bank's values: parameters with defaults and bounds, set by date in the bank's configuration. The factory sets no rate and no charge, and no scheme pack holds one. The arithmetic is exact (R-02-17): each line is converted and priced, then rounded to two decimals half away from zero, and an order's totals are the sums of its rounded lines. | Tests P-FX-001 to P-FX-003, P-CHG-001, P-CHG-002; `studio/test/refund-order.test.ts`; lint L44 |
+| R-12-21 | A WPS refund request instruction (RRI, ISO 20022 camt.056) MUST start a refund order (R-12-19). The agent's refund leg returns the funds of the order's lines in a disbursement cancellation request (DCR, pacs.004) and then answers with a refund request response (RRR, camt.029), each encrypted before it is sent (R-12-17) and acknowledged; the refuse leg answers a refused order with an RRR alone. Neither leg moves money. | Tests WPS-RRI-001 to WPS-RRI-007; lints L33, L46, L47 |
+| R-12-22 | The operations console MUST show a refund order through the operations views, not a screen of its own: the platform view's order fields (the earlier payment, FX, charges, approval, posting) and the scheme view's refund legs, told apart by `selectBy` (kind `refund`). | Lint L38; `studio/test/blackbox/e2e-refund-order.test.ts` (the read model over the store, on Temporal and DTFx) |
 
 ## 12.4 Contents
 
@@ -47,11 +51,11 @@ The table is generated from `factory/inventory.yaml`.
 <!-- INVENTORY:summary -->
 | Pack | Type | Activity | Rule | Ruleset | Table | Port | Simulator | Workflow | Scheme | Extension | Hook | Test | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `factory/p/` | shared | 23 | 7 | 2 | 3 | 11 | 11 | 6 |  |  |  | 6 | 71 |
+| `factory/p/` | shared | 25 | 7 | 2 | 3 | 11 | 11 | 7 |  |  |  | 11 | 79 |
 | `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 14 |
-| `factory/uae.wps/` | shared | 30 | 12 | 3 | 2 | 3 | 4 | 11 | 1 | 1 |  | 28 | 97 |
+| `factory/uae.wps/` | shared | 36 | 12 | 3 | 2 | 3 | 5 | 15 | 1 | 1 |  | 35 | 115 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 59 | 25 | 7 | 5 | 18 | 19 | 17 | 1 | 2 | 3 | 38 | 199 |
+| Total | | 67 | 25 | 7 | 5 | 18 | 20 | 22 | 1 | 2 | 3 | 50 | 225 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack

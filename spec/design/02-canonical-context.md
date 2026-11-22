@@ -26,7 +26,7 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 | `header.endToEndId` | Max35Text | End-to-end identification from the originator. |
 | `header.uetr` | UUIDv4Identifier | Optional. Carried when the rail uses it. |
 | `header.fileId` | Max35Text | File or batch id; the correlation key for file rails. |
-| `header.kind` | Code | `payment`, `request` or `return`. |
+| `header.kind` | Code | `payment`, `request`, `return` or `refund`. |
 | `header.direction` | Code | `inward` or `outward`. |
 | `header.segment` | Code | `corporate` or `commercial`. Extensible by registry. |
 | `header.scheme` | Code | The scope of the scheme, for example `uae.wps`. Set at intake or by the route decision. |
@@ -34,10 +34,11 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 | `header.receivedAt` | ISODateTime | When the platform received the request. |
 | `header.businessDate` | ISODate | The business date the payment runs on. |
 | `header.tenant` | Max35Text | The bank tenant. Used for lookup, never for branching. |
+| `header.originalPaymentId` | Max35Text | A refund order only: the id of the earlier payment it refers to (camt.056 Undrlyg/TxInf/OrgnlTxId). |
 
 ### Payment elements (minimum set)
 
-`debtor`, `debtorAccount` (`iban`, `other`, `type`), `debtorAgent` (`bicfi`, `clearingMemberId`, `name`), `creditor`, `creditorAccount` (`iban`, `other`, `type`, `proxy`), `creditorAgent`, `instructedAmount` (`value`, `currency`), `requestedExecutionDate`, `purpose`, `categoryPurpose`, `remittanceInformation`, `chargeBearer`. A party carries `name` and `postalAddress` with structured elements (`townName`, `country`, and the others ISO defines).
+`debtor`, `debtorAccount` (`iban`, `other`, `type`, `currency`), `debtorAgent` (`bicfi`, `clearingMemberId`, `name`), `creditor`, `creditorAccount` (`iban`, `other`, `type`, `proxy`), `creditorAgent`, `instructedAmount` (`value`, `currency`), `requestedExecutionDate`, `purpose`, `categoryPurpose`, `remittanceInformation`, `chargeBearer`. A party carries `name` and `postalAddress` with structured elements (`townName`, `country`, and the others ISO defines).
 
 Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch.currency`, `batch.categoryPurpose`, `batch.debtorAgent`, `batch.creditorAgent`.
 
@@ -75,6 +76,7 @@ Posting facts (Issue I-100): `facts.posting` carries the posting's entries in th
 | R-02-17 | An amount MUST be an exact decimal: carried in canonical JSON as a decimal string or as a JSON number read by its text, never by its binary value. An amount of more than 15 significant digits MUST be a decimal string. | Lint L42; conformance CK-MONEY-01; `studio/test/money.test.ts` |
 | R-02-18 | The initiating party of a file (`batch.initiatingParty`) MUST be carried by its id only, never by a name, and is personal data: it lives in the payment record and is masked wherever it is shown. A field the channel declared beside a file (initiator, debtor name and account, channel) MUST reach the context through the intake map, as the source format's fields do. | Canonical model (`studio/src/core/model.ts`, personal data); lint L38 (a view that shows it masks it); test WPS-MAP-003 |
 | R-02-19 | A scheme status report that names lines MUST be read into `status.transactions[]`, one entry per line, each with an ISO status and, where the scheme gives one, its own code beside the ISO reason (R-02-14). | `WpsAckNakTests` in `runtime/tests/TransactHub.Activities.Wps.Tests` |
+| R-02-20 | A refund order MUST carry `header.kind` refund and the id of the earlier payment it refers to in `header.originalPaymentId`; it is a new order, never a change to the earlier one. An account's currency, where the intake or core banking knows it, is `currency` on the account (CashAccount40/Ccy). | Canonical model (`studio/src/core/model.ts`); test WPS-RRI-001 |
 
 ## 2.4 The ISO data capability in the studio
 

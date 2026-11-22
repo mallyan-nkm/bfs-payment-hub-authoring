@@ -1,0 +1,64 @@
+// WPS refund request instruction (RRI) to a canonical refund order (release 1.1.0, R-12-19, R-12-21).
+//
+// The source's layout (TransactHub InwardRriParser, which the runtime's native code-behind runs): DRR lines and exactly one DRC,
+// ten comma-separated fields each, the file all or nothing. The file name names the bank (characters 4 to 6, the bank's
+// fileNameAgentCode), the employer's establishment (characters 7 to 19) and the WPS file (the last twelve characters of its base).
+// Each DRR is a line to refund: its establishment equals the file name's, its amount is positive with at most two decimals, and
+// the DRC's count and total match the lines, exactly. A refund order is a new order (ISO 20022 camt.056): it names the earlier
+// payment file by its WPS reference (header.originalPaymentId), the reference every line gives (Issue I-134 for several).
+
+const AMOUNT = /^\d{1,14}(\.\d{1,2})?$/;
+const PRINTABLE = /^[\x20-\x7e]+$/;
+
+function lines(text: string) {
+  let fileName: string | undefined;
+  const ls = text.split(/\r\n|\n|\r/).filter((l) => {
+    if (!l.trim()) return false;
+    if (l.startsWith('#')) { const m = /^#\s*file:\s*(\S+)/.exec(l); if (m) fileName = m[1]; return false; }
+    return true;
+  });
+  return { ls, fileName };
+}
+
+export async function run({ ctx, params, rules }) {
+  const m = rules.money;
+  const unmappable = { outcome: 'unmappable', reasonCode: 'FF01' };
+  const inbound = ctx.messages?.inbound;
+  const text: string = inbound?.payload ?? '';
+  if (!text || inbound?.malformed) return unmappable;
+  const { ls, fileName: named } = lines(text);
+  const fileName = inbound?.fileName ?? named ?? '';
+  const agent = String(params.fileNameAgentCode ?? '');
+  if (!fileName || fileName.length > 100 || agent.length !== 3) return unmappable;
+  const base = fileName.includes('.') ? fileName.slice(0, fileName.lastIndexOf('.')) : fileName;
+  if (base.length < 19 || base.slice(3, 6) !== agent) return unmappable;
+  const establishmentReference = base.slice(6, 19);
+  const fileId = base.slice(-12);
+  if (!PRINTABLE.test(establishmentReference) || !PRINTABLE.test(fileId)) return unmappable;
+  const drr: string[][] = [];
+  const drc: string[][] = [];
+  for (const l of ls) {
+    const f = l.split(',');
+    const tag = f[0].trim();
+    if (tag !== 'DRR' && tag !== 'DRC') continue;
+    if (f.length !== 10) return unmappable;
+    (tag === 'DRR' ? drr : drc).push(f);
+  }
+  if (drc.length !== 1 || drr.length === 0) return unmappable;
+  for (const d of drr) {
+    if (d[1] !== establishmentReference || !AMOUNT.test(d[3]) || m.cmp(d[3], 0) <= 0) return unmappable;
+    for (const i of [2, 4, 5, 6, 7]) if (!d[i] || !d[i].trim()) return unmappable;
+  }
+  const head = drc[0];
+  if (!AMOUNT.test(head[3]) || !/^\d+$/.test(head[4]) || Number(head[4]) < 1) return unmappable;
+  if (Number(head[4]) !== drr.length || !m.eq(head[3], m.sum(drr, (d) => d[3]))) return unmappable;
+  const payrolls = [...new Set(drr.map((d) => d[6]))];
+  ctx.header = { ...(ctx.header ?? {}), fileId, endToEndId: fileId, ...(payrolls.length === 1 ? { originalPaymentId: payrolls[0] } : {}) };
+  ctx.batch = { id: fileId, numberOfTransactions: drr.length, controlSum: m.round2(head[3]), currency: 'AED' };
+  ctx.ext = { uae: { wps: { establishmentReference, fileName } } };
+  ctx.items = drr.map((d) => ({
+    payment: { debtorAccount: { iban: d[7] }, instructedAmount: { value: m.round2(d[3]), currency: 'AED' } },
+    ext: { uae: { wps: { personId: d[2], refundReason: d[4], payrollWpsFileReference: d[6] } } },
+  }));
+  return 'mapped';
+}

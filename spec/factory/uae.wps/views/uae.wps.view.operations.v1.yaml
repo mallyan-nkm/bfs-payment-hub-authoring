@@ -1,6 +1,6 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.2.0
+release: 1.3.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
@@ -8,7 +8,8 @@ description: >-
   (RFR, RSU). Each field names the source system's screen that showed it (oldScreen); docs/runtime/ops-console-wps-mapping.md
   lists every field of those screens and the ones with no source in the new model (Issue I-100). Release 1.2.0 adds the
   fields the owner's decision of 2026-11-22 gave an ISO 20022 home: the initiator, the channel, the labour ministry status,
-  the allowances, the account type and bank name of a line, the encryption of the SIF and the NAK's per-line errors.
+  the allowances, the account type and bank name of a line, the encryption of the SIF and the NAK's per-line errors. Release
+  1.3.0 adds the agent's refund legs of a refund order (RRI, DCR, RRR), which the platform's view shows with its FX and charges.
 scheme: uae.wps
 subject:
   title: WPS file
@@ -78,6 +79,12 @@ subject:
       - { id: lineStatus, label: Status, source: line.facts.validation.worst, format: status, oldScreen: "File Detail, Status; SIF Detail report, EDR Status" }
       - { id: lineFindings, label: Findings, source: line.facts.validation.findings, format: json, oldScreen: "Upload History, Error Details (per record)" }
       - { id: endToEndId, label: End-to-end id, source: line.endToEndId, format: code }
+      # A refund order's lines (1.3.0, R-12-22): the reason WPS gives, and the platform's FX and charge on the line.
+      - { id: refundReason, label: Refund reason, source: line.ext.uae.wps.refundReason, format: code, oldScreen: "Refund cycle dashboard, refund line reason code" }
+      - { id: refundConverted, label: Refund converted, source: line.facts.fx.amount, format: amount, oldScreen: "RRI posting, the exchange-rate-adjusted amount" }
+      - { id: refundRate, label: Exchange rate, source: line.facts.fx.rate, format: text, oldScreen: "RRI posting, Exchange rate" }
+      - { id: refundCharge, label: Charge, source: line.facts.charges.amount, format: amount }
+      - { id: refundChargeVat, label: VAT, source: line.facts.charges.tax.amount, format: amount }
     columns: [lineNo, employeeId, creditAccount, routingCode, payStartDate, payEndDate, daysInPeriod, fixedPay, variablePay, leaveDays, totalSalary, lineStatus]
   documents:
     - { kind: uae.wps.sif, label: Original SIF }
@@ -91,6 +98,9 @@ subject:
     - { kind: uae.wps.rtc, label: Return file (RTC) }
     - { kind: uae.wps.rfr, label: Refund request (RFR) }
     - { kind: uae.wps.rsu, label: Refund settlement (RSU) }
+    - { kind: uae.wps.rri, label: Refund request instruction (RRI) }
+    - { kind: uae.wps.dcr, label: Disbursement cancellation request (DCR) }
+    - { kind: uae.wps.rrr, label: Refund request response (RRR) }
 legs:
   - leg: uae.wps.wf.salary-file-out.v1
     title: Salary file to WPS (SIF)
@@ -164,6 +174,31 @@ legs:
       - { id: settlement, label: Refund settlement (RSU), source: "step:request.read-settlement.outcome", format: status, oldScreen: "WPS dashboard, RSU, Return Status Update" }
       - { id: employerCredit, label: Employer credited, source: "step:credit-employer.outcome", format: status }
     columns: [rfrStatus, settlement]
+  # The agent's legs of a refund order (R-12-22): the order, its FX, charges, block, approval and posting are the platform's view.
+  - leg: uae.wps.wf.refund-request-in.v1
+    title: Refund request answered (DCR and RRR)
+    selectBy: { direction: inward, kind: refund, steps: [return-funds] }
+    groups:
+      - { id: files, title: Files and acknowledgements }
+    fields:
+      - { id: dcrRendered, label: DCR rendered, group: files, source: "step:render-return.outcome", format: status }
+      - { id: dcrSentAt, label: DCR sent at, group: files, source: "step:return-funds.send.at", format: datetime, oldScreen: "Refund cycle dashboard, DCR generated and uploaded" }
+      - { id: dcrStatus, label: DCR ACK or NAK, group: files, source: "step:return-funds.read-ack.outcome", format: status, oldScreen: "Refund cycle dashboard, DCR acknowledgement or rejection" }
+      - { id: rrrSentAt, label: RRR sent at, group: files, source: "step:answer.send.at", format: datetime, oldScreen: "Refund cycle dashboard, RRR generated and pushed" }
+      - { id: rrrStatus, label: RRR ACK or NAK, group: files, source: "step:answer.read-ack.outcome", format: status, oldScreen: "Refund cycle dashboard, RRR acknowledgement" }
+    columns: [dcrStatus, rrrStatus]
+    filters:
+      - { field: dcrStatus, match: exact }
+      - { field: rrrStatus, match: exact }
+    actions:
+      - { action: resend, label: Send the file again, role: Operator, secondApprover: Supervisor, remarks: required }
+  - leg: uae.wps.wf.refund-request-refuse.v1
+    title: Refund request refused (RRR)
+    selectBy: { direction: inward, kind: refund, steps: [answer] }
+    fields:
+      - { id: rrrSentAt, label: RRR sent at, source: "step:answer.send.at", format: datetime }
+      - { id: rrrStatus, label: RRR ACK or NAK, source: "step:answer.read-ack.outcome", format: status, oldScreen: "Refund cycle dashboard, RRR NAK acknowledged" }
+    columns: [rrrStatus]
   - leg: uae.wps.wf.inward-refuse.v1
     title: Payment file refused
     selectBy: { direction: inward, steps: [operations] }

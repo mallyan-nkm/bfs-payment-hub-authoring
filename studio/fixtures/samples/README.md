@@ -32,5 +32,10 @@ Format of a SIF line, comma separated:
 
 A line that starts with `# channel:`, `# initiated-by:`, `# debtor-name:` or `# debtor-account:` is what the employer's channel declared beside the file at upload. Like `# file:`, it is not part of the message.
 
+`wps-rri-valid.rri` is a refund request instruction from WPS to the bank as the employees' bank, in the source's layout (TransactHub `InwardRriParser`): the name's characters 4 to 6 are the bank's agent code (`999`, the example bank's synthetic value of `uae.wps.map.rri-in.v1#fileNameAgentCode`), 7 to 19 the employer's establishment and its last twelve the WPS file; then ten fields a line:
+
+- `DRR,<establishment 13>,<person id 14>,<refund amount>,<reason code>,<payroll file name>,<payroll WPS file reference>,<account>, ,EWPMS`
+- `DRC,,<WPS reference>,<total>,<count>, , , , ,EWPMS`
+
 The SIF layout follows the public bank guides the factory pack was written from. It is
 provisional, as `uae.wps` is.

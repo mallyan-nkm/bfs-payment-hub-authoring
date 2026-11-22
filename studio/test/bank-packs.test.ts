@@ -94,7 +94,7 @@ describe('a bank pack from content-configurations/banks (I-43)', () => {
     // same dependencies: the scopes every artefact reaches, its tests among them (I-43, "Found, not fixed").
     expect(compareManifest(e, 'b')).toEqual({ equal: true, differences: [] });
     expect(e.store.doc('pack:b:dib')?.dependsOn ?? e.store.all().find((x) => x.kind === 'pack' && x.tenant === TENANT)?.doc.dependsOn).toEqual([
-      { scope: 'p', release: '1.3.0' }, { scope: 'uae.p', release: '1.3.0' }, { scope: 'uae.wps', release: '1.3.0' },
+      { scope: 'p', release: '1.4.0' }, { scope: 'uae.p', release: '1.4.0' }, { scope: 'uae.wps', release: '1.4.0' },
     ]);
     const pack = buildPack(e, 'b', 'bank', TENANT);
     expect(pack.refused).toBeUndefined();

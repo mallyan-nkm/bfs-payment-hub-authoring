@@ -1,0 +1,15 @@
+kind: change-set
+id: CS-2026-11-22-011
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T22:59:56.515Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/examples/bindings
+members:
+  - kind: engine-binding
+    name: p.binding.flowable.v1
+    release: 1.1.0
+    key: p.binding.flowable.v1@1.1.0

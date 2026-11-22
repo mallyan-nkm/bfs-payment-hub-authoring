@@ -48,15 +48,15 @@ Generated from `factory/inventory.yaml`.
 <!-- INVENTORY:p -->
 | Kind | Count | Artefacts |
 | --- | --- | --- |
-| Activity | 23 | `p.decide.await-posting-window.v1`, `p.decide.inward-disposition.v1`, `p.decide.posting-window.v1`, `p.decide.rail.v1`, `p.decide.workflow.v1`, `p.enrich.payment-record.v1`, `p.hold.approval.v1`, `p.hold.repair.v1`, `p.notify.channel.v1`, `p.notify.publish-fact.v1`, `p.post.accounting.v1`, `p.post.reverse.v1`, `p.post.verify.v1`, `p.protect.decrypt-file.v1`, `p.protect.encrypt-file.v1`, `p.reconcile.scheme-report.v1`, `p.reserve.funds.v1`, `p.reserve.release.v1`, `p.screen.fraud.v1`, `p.screen.sanctions.v1`, `p.validate.canonical.v1`, `p.validate.duplicate.v1`, `p.validate.limits.v1` |
+| Activity | 25 | `p.decide.await-posting-window.v1`, `p.decide.inward-disposition.v1`, `p.decide.posting-window.v1`, `p.decide.rail.v1`, `p.decide.workflow.v1`, `p.enrich.charges.v1`, `p.enrich.fx-rate.v1`, `p.enrich.payment-record.v1`, `p.hold.approval.v1`, `p.hold.repair.v1`, `p.notify.channel.v1`, `p.notify.publish-fact.v1`, `p.post.accounting.v1`, `p.post.reverse.v1`, `p.post.verify.v1`, `p.protect.decrypt-file.v1`, `p.protect.encrypt-file.v1`, `p.reconcile.scheme-report.v1`, `p.reserve.funds.v1`, `p.reserve.release.v1`, `p.screen.fraud.v1`, `p.screen.sanctions.v1`, `p.validate.canonical.v1`, `p.validate.duplicate.v1`, `p.validate.limits.v1` |
 | Rule | 7 | `p.rule.amount-positive.v1`, `p.rule.amount-within-platform-limit.v1`, `p.rule.creditor-account-present.v1`, `p.rule.creditor-town-country.v1`, `p.rule.currency-present.v1`, `p.rule.debtor-account-present.v1`, `p.rule.end-to-end-id-present.v1` |
 | Ruleset | 2 | `p.ruleset.canonical.v1`, `p.ruleset.limits.v1` |
 | Table | 3 | `p.table.inward-disposition.v1`, `p.table.rail-choice.v1`, `p.table.workflow-select.v1` |
 | Port | 11 | `p.port.channel.v1`, `p.port.core-banking.v1`, `p.port.decryption.v1`, `p.port.encryption.v1`, `p.port.facts-out.v1`, `p.port.file-transfer.v1`, `p.port.fraud.v1`, `p.port.liquidity.v1`, `p.port.operations-queue.v1`, `p.port.payment-record.v1`, `p.port.sanctions.v1` |
 | Simulator | 11 | `p.sim.channel.v1`, `p.sim.core-banking.v1`, `p.sim.decryption.v1`, `p.sim.encryption.v1`, `p.sim.facts-out.v1`, `p.sim.file-transfer.v1`, `p.sim.fraud.v1`, `p.sim.liquidity.v1`, `p.sim.operations.v1`, `p.sim.payment-record.v1`, `p.sim.sanctions.v1` |
-| Workflow | 6 | `p.seg.check-and-screen.v1`, `p.sub.await-posting-window.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v1`, `p.wf.request.v1` |
-| Test | 6 | `P-DEC-001`, `P-DEC-002`, `P-ENC-001`, `P-ENC-002`, `P-RES-001`, `P-RES-002` |
-| Total | 71 | |
+| Workflow | 7 | `p.seg.check-and-screen.v1`, `p.sub.await-posting-window.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v1`, `p.wf.refund.v1`, `p.wf.request.v1` |
+| Test | 11 | `P-CHG-001`, `P-CHG-002`, `P-DEC-001`, `P-DEC-002`, `P-ENC-001`, `P-ENC-002`, `P-FX-001`, `P-FX-002`, `P-FX-003`, `P-RES-001`, `P-RES-002` |
+| Total | 79 | |
 <!-- /INVENTORY:p -->
 
 ## D.5 Artefacts in `uae.p`

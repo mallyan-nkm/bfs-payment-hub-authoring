@@ -1,20 +1,22 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.1.0
+release: 1.2.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
   reservation, route, posting, notification), its hold, and the actions the platform's workflows can take while it runs.
   A scheme's own view (for example uae.wps.view.operations.v1) adds the fields of its legs. Release 1.1.0 adds the posting's
   amount with charges, its charge and VAT and its legs, from the posting fact (camt.054 entries and ChrgsInf), and the payment's end and
-  duration, from its payment.end fact (Issues I-97, I-100).
-platform: [p.wf.corporate.v1, p.wf.inward.v1]
+  duration, from its payment.end fact (Issues I-97, I-100). Release 1.2.0 adds the refund order (p.wf.refund.v1): the earlier
+  payment it refers to, its FX and its charges, from the platform's own steps; its approval shows in the hold fields (R-12-22).
+platform: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.refund.v1]
 subject:
   title: Payment
   groups:
     - { id: lifecycle, title: Lifecycle }
     - { id: posting, title: Posting }
     - { id: hold, title: Hold }
+    - { id: order, title: Refund order }
   fields:
     - { id: status, label: Status, group: lifecycle, source: subject.status, format: status }
     - { id: lastStep, label: Last step, group: lifecycle, source: subject.lastStep, format: code }
@@ -38,6 +40,16 @@ subject:
     - { id: endedAt, label: Ended at, group: lifecycle, source: subject.endedAt, format: datetime }
     - { id: endOutcome, label: End, group: lifecycle, source: subject.endOutcome, format: status }
     - { id: duration, label: Duration, group: lifecycle, source: subject.duration, format: code, oldScreen: "WPS dashboard, Recent transactions, duration (derived: the end less the acceptance)" }
+    - { id: originalPaymentId, label: Earlier payment, group: order, source: header.originalPaymentId, format: code, oldScreen: "Refund cycle dashboard, the payroll file a refund line names" }
+    - { id: originalFound, label: Earlier payment found, group: order, source: "step:original.outcome", format: status }
+    - { id: fx, label: FX, group: order, source: "step:fx.outcome", format: status }
+    - { id: fxRate, label: Exchange rate, group: order, source: "step:fx.writes.facts.fx.rate", format: text, oldScreen: "RRI posting, Exchange rate" }
+    - { id: fxAmount, label: Converted amount, group: order, source: "step:fx.writes.facts.fx.amount", format: amount, oldScreen: "RRI posting, the exchange-rate-adjusted amount" }
+    - { id: fxCurrency, label: Converted into, group: order, source: "step:fx.writes.facts.fx.currency", format: code }
+    - { id: refundCharges, label: Charges, group: order, source: "step:charges.outcome", format: status }
+    - { id: refundCharge, label: Charge on the order, group: order, source: "step:charges.writes.facts.charges.amount", format: amount }
+    - { id: refundChargeVat, label: VAT on the charge, group: order, source: "step:charges.writes.facts.charges.tax.amount", format: amount }
+    - { id: refundChargeTotal, label: Charge and VAT, group: order, source: "step:charges.writes.facts.charges.totalChargesAndTaxAmount", format: amount }
     - { id: holdStatus, label: Hold, group: hold, source: hold.status, format: status }
     - { id: holdKind, label: Hold kind, group: hold, source: hold.kind, format: code }
     - { id: holdReason, label: Held because, group: hold, source: hold.reason }
@@ -50,6 +62,7 @@ subject:
     - { field: sanctions, match: exact }
     - { field: posting, match: exact }
     - { field: rail, match: exact }
+    - { field: fx, match: exact }
   actions:
     - { action: approve, label: Approve, role: Operator, remarks: optional, when: { hold: approval } }
     - { action: decline, label: Decline, role: Operator, remarks: required, when: { hold: approval } }
@@ -58,6 +71,8 @@ subject:
     - { action: reject, label: Reject, role: Operator, remarks: required, when: { hold: repair } }
     - { action: cancel, label: Cancel, role: Operator, secondApprover: Supervisor, remarks: required }
     - { action: re-screen, label: Screen again, role: Operator, remarks: required }
+    # A step that parked (the refund order's posting, R-05-55) is tried once more on an operator's retry.
+    - { action: retry, label: Retry the parked step, role: Operator, remarks: required }
 provenance:
   origin: factory
   status: confirmed

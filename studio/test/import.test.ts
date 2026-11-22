@@ -31,8 +31,9 @@ describe('import: the training bundle', () => {
     // Plan P2 added the PSI and RRI maps, the RTC map's script, two samples and two tests (WPS-IN-008, WPS-RTC-001); the operations view and the error dictionary one more each.
     // The labour ministry lookup, its port, simulator and rule, its script, two samples and eight tests (Issues I-88, I-100, I-109).
     // The participant directory, a sample and two tests (WPS-MAP-005, WPS-IN-009; Issues I-115, I-117).
-    expect(r.summary).toMatchObject({ documents: 69, activities: 30, rules: 12, workflows: 11, schemes: 1, configurationSets: 1, tests: 28, scripts: 4, samples: 12, new: 98, testsPassed: 28, testsFailed: 0 });
-    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 114, excluded: 1, missing: [] });
+    // The agent's refund cycle (I-133): six activities, four workflows, a simulator, the RRI map's script, a sample and seven tests.
+    expect(r.summary).toMatchObject({ documents: 80, activities: 36, rules: 12, workflows: 15, schemes: 1, configurationSets: 1, tests: 35, scripts: 5, samples: 13, new: 116, testsPassed: 35, testsFailed: 0 });
+    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 134, excluded: 1, missing: [] });
     // Nothing was saved by a preview.
     expect(env.store.drafts('owner')).toEqual([]);
   });

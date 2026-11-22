@@ -42,6 +42,7 @@ The source's workflow JSON files, its DSL schema and its workflow-builder agents
 
 - A name is `<scope>.<type>.<name>.v<major>`. Scopes are `p` (platform), `<cluster>.p` (for example `uae.p`), `<cluster>.<scheme>` (for example `uae.wps`) and `b` (bank). See `spec/CLAUDE.md`.
 - A scheme is a leg on the common lifecycle. WPS is the only factory scheme (I-37), and it is provisional.
+- A refund is an order of its own on the platform's refund lifecycle (`p.wf.refund.v1`): the platform finds the earlier payment by id, converts and prices on the bank's rates and charges, blocks, approves and posts; the scheme only answers and returns funds in its slot (R-12-19 to R-12-22, I-133). Built.
 - A bank is a tenant. Its content lives in `content-configurations/banks/<bank>/`: its bank pack, configuration sets, hook bindings and port bindings, effective-dated.
 - `BankConfigurationTests.No_shared_code_names_a_bank` fails the runtime build if shared code names a bank. `spec/tools/deny-names.txt` does the same for the spec.
 
