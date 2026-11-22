@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-008
+title: 'Builder, bad-pay-period: the record is refused'
+request:
+  profile: wps-all-engines
+  data: { build: { template: wps-sif, lines: 2, seed: 43, inject: [bad-pay-period] } }
+expect:
+  outcome: rejected

@@ -1,0 +1,18 @@
+# The synthetic-data check of the test bench (runtime/testbench/README.md, "Test data"). Saving a sample, from the
+# CLI, the API or the UI, is refused when the data looks real by these rules. They are simple on purpose; the README
+# lists what they cannot catch.
+kind: testbench-synthetic
+# A valid UAE IBAN must use one of these bank codes (characters 5 to 7). No UAE bank has them.
+reservedBankCodes: ["999"]
+# The synthetic IBANs of the factory's own samples (content-configurations/samples), written before the test bench.
+allowedIbans:
+  - AE070331234567890123456
+  - AE970336543210987654321
+  - AE570330000000000000002
+  - AE110260000000000000003
+# Every party name in an ISO 20022 message starts with this.
+namePrefix: "TB "
+# E-mail addresses may use only these domains (RFC 2606).
+emailDomains: [example.com, example.org, example.net, example.invalid]
+# Names that must never appear in test data (lower case, matched anywhere).
+denyNames: []

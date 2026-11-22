@@ -1,0 +1,98 @@
+# The runtime test bench (runtime/testbench/README.md): the shipped regression suite on Temporal, DTFx, Elsa and
+# Flowable, each compared with the studio interpreter, with the store on PostgreSQL and on SQL Server; and its web UI
+# in a browser (sign-in with PKCE, run a profile, see the results). Exit non-zero on any mismatch.
+name: testbench
+on:
+  push:
+    paths: [runtime/**, studio/src/**, studio/engines/**, content-configurations/**, .github/workflows/testbench.yml]
+  pull_request:
+    paths: [runtime/**, studio/src/**, studio/engines/**, content-configurations/**]
+  workflow_dispatch:
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [PostgreSql, SqlServer]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install the studio
+        working-directory: studio
+        run: npm ci
+      - name: Temporal's test server
+        run: runtime/tools/temporal-test-server/setup.sh
+      - name: Pull the images the bench starts (Testcontainers)
+        run: |
+          docker pull postgres:16-alpine
+          docker pull mcr.microsoft.com/mssql/server:2022-latest
+          docker pull flowable/flowable-rest:7.1.0@sha256:b7ae287502cd5c243b577a0ca2894172e1c18cd75aea4fd67dc7d58f1b40db44
+      - name: Build the test bench
+        working-directory: runtime/tools/TransactHub.TestBench
+        run: dotnet build -c Release -v q
+      - name: The shipped suite on four engines and the interpreter, the store on ${{ matrix.database }}
+        working-directory: runtime
+        run: dotnet tools/TransactHub.TestBench/bin/Release/net10.0/testbench.dll suite testbench/suite --databases ${{ matrix.database }} --report suite.md
+      - name: Summary
+        if: always()
+        run: cat runtime/suite.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testbench-${{ matrix.database }}
+          path: |
+            runtime/suite.md
+            runtime/testbench/local/runs/*/result.json
+            runtime/testbench/local/runs/*/report.*
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install the studio (the bench's driver runs on it)
+        working-directory: studio
+        run: npm ci
+      - name: Install and build the UI
+        working-directory: runtime/testbench/web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+      - name: Playwright's Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/pw" playwright@1.63.0
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Sign in, run a profile, see the results (the developer identity provider, TH_AUTH_DEV=1)
+        working-directory: runtime/testbench/web
+        env:
+          PLAYWRIGHT_MODULE: ${{ runner.temp }}/pw/node_modules/playwright
+        run: npm run test:ui

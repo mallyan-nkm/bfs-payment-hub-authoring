@@ -1,0 +1,13 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-ISO-002
+title: 'An ISO 20022 pacs.008 as the inward workflow context'
+request:
+  profile: platform-iso-inward
+  data: { sample: iso-pacs008-credit }
+expect:
+  outcome: failed
+knownIssue:
+  id: I-95
+  engines: [temporal, dtfx, elsa, flowable]
+  note: From a context, the inward workflow with no leg in its slot fails on the interpreter and waits for review on the engines

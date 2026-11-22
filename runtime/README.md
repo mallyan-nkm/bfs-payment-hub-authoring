@@ -13,8 +13,10 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest, stored once), `POST /activations`, `GET /activations/active`, `POST /import-branch` (the branch the studio exports to). PUT, PATCH and DELETE are refused. |
 | `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
 | `tools/TransactHub.FlowableHarness` | Runs a deployment's plan on the Flowable REST server at `TH_FLOWABLE_URL` and prints the observation. |
+| `tools/TransactHub.TestBench` | The test bench: send data, it runs on the engines a profile names with the store on its database and compares each with the studio interpreter. CLI, service and web UI; profiles, benches, the sample library, the data builder and the shipped suite in `testbench/`. See [testbench/README.md](testbench/README.md). |
 | `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |
 | `tests/TransactHub.Store.Tests` | Every store test on SQL Server 2022 and PostgreSQL 16 (Testcontainers), and the database-independence check. |
+| `tests/TransactHub.TestBench.Tests` | The test bench's profiles, data builder, judge and service sign-in. |
 | `tests/TransactHub.Engine.Flowable.Tests` | The BPMN reader, and the worker client and the binding against the Flowable REST server 7.1.0 (Testcontainers). |
 
 ## Commands

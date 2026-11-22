@@ -1,0 +1,87 @@
+# The named benches of the test bench: which simulator plays each port, in which scenario. A bench may extend
+# another; a port it names replaces the one it extends. The simulators are the factory's and the banks' own
+# (content-configurations/artefacts/*/…sim…, content-configurations/banks/<bank>/simulators). A request may change
+# any port with ports: [port=simulator:scenario].
+kind: testbench-benches
+benches:
+  wps-happy:
+    title: WPS outward, every party accepts and WPS acknowledges (ACK)
+    ports:
+      - p.port.core-banking.v1=p.sim.core-banking.v1:accept
+      - p.port.sanctions.v1=p.sim.sanctions.v1:accept
+      - p.port.fraud.v1=p.sim.fraud.v1:accept
+      - uae.wps.port.wps.v1=uae.wps.sim.wps-outward.v1:accept
+      - uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept
+  wps-nak:
+    title: WPS outward, WPS refuses the salary file (NAK)
+    extends: wps-happy
+    ports:
+      - uae.wps.port.wps.v1=uae.wps.sim.wps-outward.v1:reject
+  sanctions-hit:
+    title: WPS outward, sanctions screening hits and operations decline the review
+    extends: wps-happy
+    ports:
+      - p.port.sanctions.v1=p.sim.sanctions.v1:reject
+      - p.port.operations-queue.v1=p.sim.operations.v1:decline
+  sanctions-hit-released:
+    title: WPS outward, sanctions screening hits and operations release the payment after review
+    extends: wps-happy
+    ports:
+      - p.port.sanctions.v1=p.sim.sanctions.v1:reject
+      - p.port.operations-queue.v1=p.sim.operations.v1:release
+  fraud-hit:
+    title: WPS outward, fraud screening refuses
+    extends: wps-happy
+    ports:
+      - p.port.fraud.v1=p.sim.fraud.v1:reject
+  wps-duplicate:
+    title: WPS outward, the payment record has seen the file before
+    extends: wps-happy
+    ports:
+      - p.port.payment-record.v1=p.sim.payment-record.v1:reject
+  ops-decline:
+    title: WPS outward, operations decline any hold
+    extends: wps-happy
+    ports:
+      - p.port.operations-queue.v1=p.sim.operations.v1:decline
+  ops-approve:
+    title: WPS outward, operations approve any hold
+    extends: wps-happy
+    ports:
+      - p.port.operations-queue.v1=p.sim.operations.v1:approve
+  wps-inward-happy:
+    title: WPS inward, the payment file and its supplement arrive, every credit posts
+    ports:
+      - uae.wps.port.wps.v1=uae.wps.sim.wps-inward.v1:payment-file
+      - p.port.core-banking.v1=p.sim.core-banking.v1:accept
+      - p.port.sanctions.v1=p.sim.sanctions.v1:accept
+      - p.port.fraud.v1=p.sim.fraud.v1:accept
+      - p.port.operations-queue.v1=p.sim.operations.v1:reject
+  wps-inward-returns:
+    title: WPS inward, one credit is refused and returned; WPS accepts the returns file (as WPS-IN-002)
+    extends: wps-inward-happy
+    ports:
+      - uae.wps.port.wps.v1=uae.wps.sim.wps-inward.v1:payment-file-returns-accepted
+      - p.port.core-banking.v1=p.sim.core-banking.v1:reject-first-then-accept
+  wps-inward-returns-refused:
+    title: WPS inward, WPS refuses the returns file (as WPS-IN-003)
+    extends: wps-inward-returns
+    ports:
+      - uae.wps.port.wps.v1=uae.wps.sim.wps-inward.v1:payment-file-returns-refused
+  wps-inward-all-returned:
+    title: WPS inward, every credit is refused and the whole file returned (as WPS-IN-005)
+    extends: wps-inward-returns
+    ports:
+      - p.port.core-banking.v1=p.sim.core-banking.v1:reject-two-then-accept
+  wps-inward-duplicate:
+    title: WPS inward, the payment record has seen the file before
+    extends: wps-inward-happy
+    ports:
+      - p.port.payment-record.v1=p.sim.payment-record.v1:reject
+  platform-happy:
+    title: The platform alone, every party accepts
+    ports:
+      - p.port.core-banking.v1=p.sim.core-banking.v1:accept
+      - p.port.sanctions.v1=p.sim.sanctions.v1:accept
+      - p.port.fraud.v1=p.sim.fraud.v1:accept
+      - uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept

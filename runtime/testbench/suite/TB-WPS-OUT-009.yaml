@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-009
+title: 'Builder, bad-record-count: the file is refused'
+request:
+  profile: wps-all-engines
+  data: { build: { template: wps-sif, lines: 2, seed: 44, inject: [bad-record-count] } }
+expect:
+  outcome: rejected

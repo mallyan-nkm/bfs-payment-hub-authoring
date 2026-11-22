@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-ISO-001
+title: 'An ISO 20022 pain.001 as the corporate workflow context'
+request:
+  profile: platform-iso-outward
+  data: { sample: iso-pain001-salary }
+expect:
+  outcome: rejected

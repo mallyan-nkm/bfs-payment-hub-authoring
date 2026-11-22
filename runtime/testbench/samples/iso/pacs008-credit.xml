@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic test data from the TransactHub test bench. No real party, account or bank. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08">
+  <FIToFICstmrCdtTrf>
+    <GrpHdr>
+      <MsgId>TB-0022</MsgId>
+      <CreDtTm>2026-11-17T08:30:00</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <SttlmInf><SttlmMtd>CLRG</SttlmMtd></SttlmInf>
+    </GrpHdr>
+    <CdtTrfTxInf>
+      <PmtId><InstrId>TB-0022-0001</InstrId><EndToEndId>TB-0022-E2E-0001</EndToEndId><TxId>TB-0022-TX-0001</TxId></PmtId>
+      <IntrBkSttlmAmt Ccy="AED">1726.50</IntrBkSttlmAmt>
+      <IntrBkSttlmDt>2026-11-17</IntrBkSttlmDt>
+      <ChrgBr>SLEV</ChrgBr>
+      <Dbtr><Nm>TB Synthetic Payer 0001</Nm></Dbtr>
+      <DbtrAcct><Id><IBAN>AE049990220000000000001</IBAN></Id></DbtrAcct>
+      <DbtrAgt><FinInstnId><ClrSysMmbId><MmbId>999000101</MmbId></ClrSysMmbId></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><ClrSysMmbId><MmbId>302620122</MmbId></ClrSysMmbId></FinInstnId></CdtrAgt>
+      <Cdtr><Nm>TB Synthetic Payee 0001</Nm></Cdtr>
+      <CdtrAcct><Id><IBAN>AE749990220000000000002</IBAN></Id></CdtrAcct>
+    </CdtTrfTxInf>
+  </FIToFICstmrCdtTrf>
+</Document>
