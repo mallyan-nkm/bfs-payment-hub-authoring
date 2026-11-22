@@ -596,6 +596,44 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 
 **What is built.** `runtime/temporal-mssql/scripts/kit-on-sqlserver.sh` runs the kit on several servers on SQL Server side by side. The CI job `temporal-sqlserver` runs it without the six long-wait scenarios, and says so. `runtime/temporal-mssql/README.md` gives the result of the full run, scenario by scenario.
 
+## I-65. The runtime's operator surface and who may use it
+
+**Issue.** The plan lets a running payment change only through declared operator actions (retry, repair, cancel, decide), each with a permission and a second approver where the package says so (W4). It does not say where an operator takes those actions, how an operator is identified, or where the permissions live. The studio's users and roles (`governance/users.yaml`, maker-checker) are for authoring, and the studio never touches a running payment (R-10-01), so they cannot be the operators' roles. The runtime's release API (`runtime/src/TransactHub.Api/Program.cs`) has no authentication today: anyone who reaches it can store a release or record an activation. The source had an operations console, an identity service and a permission catalogue; none of them is carried, and the source's own security suite fails on that catalogue (N15).
+
+**Recommendation.** Decide, in one change to the plan: (1) the operator surface (an API only, or an API and a console), (2) the identity provider an installation uses and the claims it needs (tenant, roles), (3) that every operator action and every call to `POST /releases` and `POST /activations` is authorised server-side and audited on the payment's fact chain, and (4) which actions need a second approver. Until then, run the release API only on a network the pipeline alone can reach, and do not build a console.
+
+**The same gap in the studio.** The studio enforces roles on every write, but it takes the acting user from the request (`actor`), chosen in the web app's header; it has no sign-in. That is enough for the walking skeleton, not for a shared installation. Decide the studio's sign-in with the same identity provider, so that `actor` comes from a verified identity and never from the request body.
+
+**What is built.** Nothing for operators. The studio's roles, maker-checker and hash-chained audit are built and tested (C17). `docs/north-star/guidelines/access-control.md` keeps the two apart.
+
+## I-66. Observability of the runtime and the studio
+
+**Issue.** The plan and the spec say nothing of traces, metrics, structured logs or health checks for the runtime, the engine hosts or the studio. The runtime has no telemetry today: no `ActivitySource`, no `Meter`, no OpenTelemetry package. The spec's rule that personal data stays out of logs and traces (`spec/CLAUDE.md`, Data) is stated, but nothing checks it in logs, because there are none. Each engine has its own telemetry, so a payment's trace crosses four kinds of host.
+
+**Recommendation.** Add a short section to the plan: OpenTelemetry for traces, metrics and logs in every runtime host, with no named backend in shared code; one set of attribute names (payment id, release, scheme, leg, tenant, engine, step), never a party value; health and readiness endpoints on each host; and a test that runs the WPS salary file and scans every exported span and log for any value from the party records, as the plan already does for engine history (W1).
+
+**What is built.** Nothing. `docs/north-star/guidelines/observability.md` states only the rules that already hold.
+
+## I-67. Secrets, keys and file encryption at deployment
+
+**Issue.** `content-configurations/README.md` says a secret is named by reference and set at deployment. No format for that reference exists: the port bindings in `banks/<bank>/core-banking.yaml` carry settings only, and the runtime reads no secret. The plan puts a decrypt activity in `p.*` (section 2 and W6), the factory has none yet, and WPS files can arrive encrypted (`.SIF.GPG`), but the runtime has no decryption and no key store, and the source's encryption library is not carried. This repository is public and its CI has no secret scan and no dependency audit.
+
+**Recommendation.** Decide: (1) a reference form for a secret in a binding (for example `secretRef: <name>`), resolved by the host from the installation's secret store and never written to the branch, the store or a log; (2) that decryption is an activity behind a port, with one key ring per scheme and per bank, chosen by configuration and never by a file name; (3) a secret scan and a dependency audit as CI jobs on every push; (4) how personal data is erased from an insert-only store when the law asks for it (for example a key per party, destroyed on erasure), and how long it is kept. Each with a requirement id and a check, as `spec/CLAUDE.md` asks.
+
+**What is built.** The file-name rules that tell an encrypted SIF from a plain one (`CbxFileNameRules`, golden against the source). Nothing else. `docs/north-star/guidelines/encryption-and-secrets.md` keeps the rules from the source that still hold.
+
+## I-68. Non-functional targets, deployment sizes and the reporting read side
+
+**Issue 1. Targets.** The source stated latency, throughput, availability and recovery targets per deployment size. The plan states none for the runtime, and the spec forbids load tests in the studio. Without targets there is nothing to size an installation against, and no test to fail. Beyond the engine hosting of D3, the plan also does not say how an installation is packaged and fronted: container images, orchestration, the gateway and where TLS ends.
+
+**Recommendation.** Write the targets an installation must meet (latency per step, salary-file size and time, availability, recovery point and time) in the plan, measured by a runtime performance suite outside the studio, on each engine and each database. Add a deployment section with one reference installation per engine, and grow it into sizes once the suite has measured them.
+
+**Issue 2. Reports.** The plan decides only that the report database is fed from the outbox, not from change data capture (W2). Which reports exist, their shape, and how an operator searches payments are not decided. I-46 recommends free-text search on the runtime's store, not in Temporal.
+
+**Recommendation.** Decide the reports of the first drop (WPS) and the read model behind them, as projections from `outbox`, in the same change as the code that builds them.
+
+**What is built.** The `outbox` table in the store. Nothing reads it yet.
+
 ## Not done, and why
 
 | Story | Why |
