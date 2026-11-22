@@ -5,7 +5,7 @@ Who may do what. It replaces the source's RBAC guidelines and agent, its IAM and
 There are two kinds of user, and they never mix:
 
 - **Authors** work in the studio. They change content, never a running payment (R-10-01).
-- **Operators** act on running payments in the runtime. Their surface, identity and permissions are not decided: [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it).
+- **Operators** act on running payments in the runtime, in the operations console. They sign in at the bank's identity provider; their roles, Operator and Supervisor, are per tenant (R-06-22, [the console's design](../design/operations-console.md)).
 
 The source had one identity service, a permission catalogue in five stores, rail gates and field masks for both. None of it is carried. Its own security suite fails on that catalogue (N15 in the plan).
 
@@ -42,4 +42,4 @@ What the source's user-management screens did, and where it went:
 - A tenant comes from a verified identity, never from a request header or body a client sets.
 - Personal data is masked in any response to an operator unless the operator holds a permission to see it, and seeing it is audited. The source's masking catalogue is a good starting list; which permission unmasks what is part of I-65.
 
-Do not build a permission catalogue, a console or role screens for operators before I-65 is decided.
+Decided on 2026-11-22 (I-65): the console and its API are built (`runtime/ops-console`, `runtime/src/TransactHub.Operations.Api`). Each operator action is offered only as a pack's operations view declares it, authorised server-side by tenant and role, and recorded on the payment's chain with the operator's identity; maker-checker where the view names a second approver. Masking is in the read model, as each view declares (R-05-49); an unmask is not built (I-100). Do not build a permission catalogue or role screens beyond the two roles: the bank's identity provider holds the users and groups.
