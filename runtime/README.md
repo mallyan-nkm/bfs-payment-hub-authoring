@@ -5,7 +5,9 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | Project | What |
 | --- | --- |
 | `src/TransactHub.Model` | The internal payment model on ISO 20022 (pain.001 / pacs.008 shapes), and `PaymentContext`, which is what a workflow carries: ids, release, as-of date and branch facts, never personal data. |
-| `src/TransactHub.Store` | The generalized store, insert-only, through EF Core only: payments, bulks, parties, hash-chained facts, messages, exception items, releases and activations, effective-dated rules, lists and configuration values, the outbox. |
+| `src/TransactHub.Store` | The generalized store, insert-only, through EF Core only: payments, bulks, parties, hash-chained facts, messages, the files a deployment received or sent with their signed hashes and their bytes once per hash (`stored_file`, `file_content`, R-09-58), exception items, releases and activations, effective-dated rules, lists and configuration values, the outbox. |
+| `src/TransactHub.Ports` | The port adapters a bank binds (`PortBindings`, effective-dated): core banking (`simulator`, `gateway-rest`, and `file-bulk`, posting by bulk file through the file-transfer port, R-12-15), file transfer (`simulator`, `directory`), file encryption and decryption (`openpgp`, and `gnupg` on the source's key folder, R-12-17), and the labour ministry's establishment register (`simulator`, `gateway-rest`, R-12-16). |
+| `src/TransactHub.Native` | The native host (R-08-14): the runtime's code-behind of the activities bound `native`, on the banks' port bindings; with a store, it keeps every file it reads, renders, encrypts or decrypts there. |
 | `src/TransactHub.Store.Migrations.SqlServer`, `…PostgreSql` | The migrations of each provider, generated from the one model. |
 | `src/TransactHub.Interpreter` | The studio's interpreter (`studio/engines/shared`), compiled into the runtime: one interpreter for every engine. |
 | `src/TransactHub.Engine.Temporal` | The Temporal binding: the generic interpreter workflow, the front-door workflow, and the host activities (attempts, claim check, handlers). See `studio/engines/temporal/README.md`. |
