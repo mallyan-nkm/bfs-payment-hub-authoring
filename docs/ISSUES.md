@@ -596,6 +596,38 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 
 **What is built.** `runtime/temporal-mssql/scripts/kit-on-sqlserver.sh` runs the kit on several servers on SQL Server side by side. The CI job `temporal-sqlserver` runs it without the six long-wait scenarios, and says so. `runtime/temporal-mssql/README.md` gives the result of the full run, scenario by scenario.
 
+## I-53. The Flowable REST server runs on the binding's clock, with its async executor off
+
+**Issue.** Plan D3 runs Flowable as its own server, worked over REST. The REST server has no clock a client can move. With its async executor on, it fires timers and runs async continuations in real time, so an attempt timeout, a backoff or an await timeout of days takes that long, and the trace depends on how fast the workers answer. The kit and the WPS run need the engine's own time control (R-C-06). The runtime's binding (`runtime/src/TransactHub.Engine.Flowable`) therefore needs the server started with `FLOWABLE_ASYNC_EXECUTOR_ACTIVATE=false`: it runs every executable job itself, and moves a timer to an executable job when its virtual clock reaches the timer's due time. That server cannot be shared with workers or executors that expect real time, and a payment waits only while the binding runs. A production installation needs the async executor on and real time.
+
+**Recommendation.** Keep the executor off for the kit and the deploy runner, which prove the flow. For production, decide whether the binding (with its clock) or the server's async executor drives jobs and timers, and add a run of the WPS e2e with the executor on and short real waits, to show the same trace. Until then, document that a Flowable installation's REST server is the binding's alone.
+
+**What is built.** The binding keeps the virtual clock and fires timers by the model's duration (I-55 for the business calendar). The e2e test and the runtime tests start the server with the executor off. Each run deploys in a tenant of its own and deletes its deployment afterwards (`TH_FLOWABLE_KEEP=1` keeps it).
+
+## I-54. A failed external job comes back only when the async executor resets its lock
+
+**Issue.** Flowable's external worker API fails a job with `POST /external-job-api/acquire/jobs/{id}/fail` and a number of retries left. The job's lock owner is cleared, but its lock expiry is set, and only the async executor's expired-lock reset hands the job out again. With the executor off (I-53), a failed job with retries left is never acquired again, and `unacquire` is refused once the worker no longer holds the lock. Shown by `FlowableRestTests` on Flowable 7.1.0.
+
+**Recommendation.** Treat a worker that does not answer as a technical failure inside the binding: retry the call while the job's retries last, and fail the job with no retries left when they are spent, so it becomes a dead letter an operator sees. This is what the binding does. If the async executor is turned on for production (I-53), use the server's retries instead and remove the binding's loop.
+
+**What is built.** `FlowableBinding` retries a worker call up to the job's retries, with a short back-off, and then fails the job with none left. A BPMN error (an activity's retryable or fatal error) is unchanged: it goes to the model's error boundary, as on the embedded engine.
+
+## I-55. The REST server has no business calendar
+
+**Issue.** An `await` with `calendar: business` is generated with `flowable:businessCalendarName="business"`. The kit's embedded engine registers that calendar. The Flowable REST server has only its standard calendars, so the timer would fail when it is created. Adding a calendar to the server means adding Java to it, which D3 does not foresee.
+
+**Recommendation.** Keep the calendar in the binding. Confirm that a bank's business calendar (weekends and holidays) belongs to the binding for every engine, as it already does for Temporal, DTFx and Elsa.
+
+**What is built.** For a REST binding the generator leaves the calendar name out and marks the timer `th:timer calendar="business"`. The binding fires that timer at the model's duration counted in business days (`Duration.Add`, the interpreter's calendar).
+
+## I-56. A parallel join waited for one token per exit of a branch
+
+**Issue.** The generator joined a parallel step by flowing every exit of every branch into the join gateway. A branch with a handled outcome that continues has more than one exit, and a BPMN parallel join waits for a token on each incoming flow. The corporate workflow's screening (sanctions and fraud, each with a handled outcome) had five incoming flows for two branches, so it never joined on Flowable: the payment stopped after `fraud:clear`. No kit scenario has such a branch, so the kit on Flowable did not see it.
+
+**Recommendation.** Add a conformance scenario with a parallel branch whose handled outcome continues, so every engine is checked on it. The kit is in `spec/conformance`; that change belongs with the spec work.
+
+**What is built.** The generator merges a branch's exits with an exclusive gateway before the join (`src/export/bpmn.ts`, `parallel`). The WPS salary file now settles on Flowable, and the kit still passes 46 of 46 on the embedded harness.
+
 ## Not done, and why
 
 | Story | Why |

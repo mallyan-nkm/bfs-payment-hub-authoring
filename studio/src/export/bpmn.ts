@@ -26,11 +26,21 @@ import { effectivePolicy, isRetryable, retryInterval } from '../interp/policy.js
 export interface Ctx {
   queueOf: (name: string) => string;
   resolve: (name: string) => any;
+  /**
+   * Who runs the binding. `embedded` (the default, the kit's Java harness): the binding listens to
+   * the engine in its process and writes the trace as elements start. `rest` (a deployment on the
+   * Flowable REST server, D3): the binding is an external worker too, so every place it acts on is a
+   * wait state, an external worker task on the topic BINDING_TOPIC, and it sets what the flow reads
+   * when it completes that task. The flow is the same in both.
+   */
+  binding?: 'embedded' | 'rest';
 }
 
 export const TH_NS = 'urn:transacthub:flowable:1';
 export const SIGNAL_MESSAGES: Record<string, string> = { pause: 'th.signal.pause', resume: 'th.signal.resume', cancel: 'th.signal.cancel', 're-screen': 'th.signal.re-screen' };
 export const COMPENSATED_MESSAGE = 'th.compensated';
+/** The topic of the binding's own tasks when the binding is a REST worker (Ctx.binding 'rest'). */
+export const BINDING_TOPIC = 'th.binding';
 const RESERVED = new Set(['start', 'main', 'deadline', 'end']);
 
 interface Frag { entry: string; exits: string[] }
@@ -74,7 +84,31 @@ class Gen {
   processLevel: string[] = []; // event sub-processes at process level (notify hooks)
   markers: { id: string; tries: TryScope[] }[] = []; // compensation markers in document order
   screenSteps: { st: any; opts: Opts }[] = [];
-  constructor(readonly wf: any, readonly ctx: Ctx) {}
+  readonly rest: boolean;
+  constructor(readonly wf: any, readonly ctx: Ctx) {
+    this.rest = ctx.binding === 'rest';
+  }
+
+  /**
+   * A place the binding acts: a none event its listener sees start (embedded), or an external worker
+   * task on the binding's topic, a wait state the binding completes (rest).
+   */
+  pointElement(id: string, name: string | undefined, inner: string) {
+    const nm = name ? ` name="${esc(name)}"` : '';
+    return this.rest
+      ? `<serviceTask id="${id}"${nm} flowable:type="external-worker" flowable:topic="${BINDING_TOPIC}" flowable:exclusive="false">${inner}</serviceTask>`
+      : `<intermediateThrowEvent id="${id}"${nm}>${inner}</intermediateThrowEvent>`;
+  }
+
+  /** A called process tells a REST binding who called it, and from where (`slot:<step>`, `hook:<point>`). */
+  callerMappings(via: string) {
+    return this.rest ? `<flowable:in sourceExpression="\${execution.processInstanceId}" target="th_parent"/><flowable:in sourceExpression="\${'${esc(via)}'}" target="th_via"/>` : '';
+  }
+
+  /** Call activities of a REST deployment call the processes of their own deployment. */
+  get sameDeployment() {
+    return this.rest ? ' flowable:sameDeployment="true"' : '';
+  }
 
   id(prefix: string) {
     this.n += 1;
@@ -156,8 +190,13 @@ class B {
   /** A none event that only marks a place: the binding writes the trace there. */
   point(attrs: Record<string, any>, name?: string, extra = '') {
     const id = this.g.id('rec');
-    this.els.push(`<intermediateThrowEvent id="${id}"${name ? ` name="${esc(name)}"` : ''}>${ext(ann('point', attrs), extra)}</intermediateThrowEvent>`);
+    this.els.push(this.g.pointElement(id, name, ext(ann('point', attrs), extra)));
     return id;
+  }
+
+  /** A place only a REST binding needs (it has no listener): null when the binding is embedded. */
+  restPoint(attrs: Record<string, any>): string | null {
+    return this.g.rest ? this.point(attrs) : null;
   }
 
   /** A none event that sets a variable on the way through. */
@@ -273,7 +312,8 @@ class B {
     if (!real) return null;
     const gate = this.g.id('gate');
     const wait = this.g.id('paused');
-    this.els.push(`<exclusiveGateway id="${gate}" default="${gate}_go">${ext(ann('point', { kind: 'gate' }))}</exclusiveGateway>`);
+    // A REST binding has no listener on the gate: a signal it holds is written at the next point.
+    this.els.push(`<exclusiveGateway id="${gate}" default="${gate}_go">${this.g.rest ? '' : ext(ann('point', { kind: 'gate' }))}</exclusiveGateway>`);
     this.els.push(`<intermediateCatchEvent id="${wait}" name="paused"><signalEventDefinition signalRef="sig_th_resume"/></intermediateCatchEvent>`);
     this.flow(gate, wait, `\${${v('paused')} == true}`, 'paused');
     this.flow(wait, gate);
@@ -521,7 +561,13 @@ class B {
       const f = this.steps(branch);
       if (!f) { this.flow(fork, join); continue; }
       this.flow(fork, f.entry);
-      f.exits.forEach((e) => this.flow(e, join));
+      // A parallel join waits for one token per incoming flow: a branch that can leave by more than
+      // one exit (a handled outcome that continues) merges them first, so it gives the join one.
+      if (f.exits.length > 1) {
+        const merge = this.gateway(this.g.id('branchDone'));
+        f.exits.forEach((e) => this.flow(e, merge));
+        this.flow(merge, join);
+      } else f.exits.forEach((e) => this.flow(e, join));
     }
     const p = this.point({ kind: 'text', text: `join:${st.parallel.join ?? 'all'}`, record: this.o.record });
     this.flow(join, p);
@@ -561,6 +607,9 @@ class B {
       }
     }
     const meta = ext(ann('forEach', { in: fe.in, count, onItemFailure: fe.onItemFailure ?? 'stop', concurrency: conc }));
+    // A REST binding counts the items before the multi-instance starts (embedded: as it starts).
+    const counted = this.restPoint({ kind: 'forEachStart', in: fe.in, count });
+    if (counted) this.flow(counted, id);
     if (conc <= 1) {
       this.els.push(`<subProcess id="${id}" name="forEach ${esc(fe.in)}">${meta}`,
         `  <multiInstanceLoopCharacteristics isSequential="true"><loopCardinality>\${${v(count)}}</loopCardinality></multiInstanceLoopCharacteristics>`,
@@ -579,7 +628,7 @@ class B {
         `  <sequenceFlow id="${id}_chunkOut" sourceRef="${id}__chunk" targetRef="${id}_chunkEnd"/>`,
         '</subProcess>');
     }
-    return { entry: id, exits: [id] };
+    return { entry: counted ?? id, exits: [id] };
   }
 
   // ---------------------------------------------------------------------- loop
@@ -633,8 +682,12 @@ class B {
     this.flow(msg, got);
     const exits = [got];
     if (aw.timeout) {
-      const cal = aw.calendar === 'business' ? ' flowable:businessCalendarName="business"' : '';
-      this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout"><timerEventDefinition${cal}><timeDuration>${esc(aw.timeout)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      // The business calendar is the binding's: registered in the embedded engine, or, on a REST
+      // server that has no such calendar, applied by the binding when it fires the timer.
+      const business = aw.calendar === 'business';
+      const cal = business && !this.g.rest ? ' flowable:businessCalendarName="business"' : '';
+      const meta = business && this.g.rest ? ext(ann('timer', { calendar: 'business', duration: aw.timeout })) : '';
+      this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout">${meta}<timerEventDefinition${cal}><timeDuration>${esc(aw.timeout)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
       this.flow(gw, tmr);
       const out = this.point({ kind: 'awaitTimeout', step: stepId, message: aw.message, record: this.o.record, item: this.o.item ? 'true' : undefined });
       this.flow(tmr, out);
@@ -652,15 +705,19 @@ class B {
     const id = this.g.stepId(stepId);
     const slot = (this.g.wf.slots ?? []).find((s: any) => s.name === st.slot);
     const ov = outcomeVar(stepId);
-    this.els.push(`<callActivity id="${id}" name="${esc(stepId)}" calledElement="\${${v(`th_leg_${safe(st.slot)}`)}}" flowable:inheritBusinessKey="true">${ext(
+    // A REST binding names the leg before the call activity starts (embedded: as it starts).
+    const chosen = this.restPoint({ kind: 'slotStart', slot: st.slot, step: stepId });
+    if (chosen) this.flow(chosen, id);
+    this.els.push(`<callActivity id="${id}" name="${esc(stepId)}" calledElement="\${${v(`th_leg_${safe(st.slot)}`)}}" flowable:inheritBusinessKey="true"${this.g.sameDeployment}>${ext(
       `<flowable:out source="th_outcome" target="${ov}"/>`,
+      this.g.callerMappings(`slot:${stepId}`),
       ann('slot', { slot: st.slot, step: stepId, writes: (slot?.contract?.writes ?? []).join(',') }),
     )}</callActivity>`);
     const rec = this.point({ kind: 'slot', step: stepId, slot: st.slot, var: ov, record: this.o.record, writes: (slot?.contract?.writes ?? []).join(',') });
     this.flow(id, rec);
     const primary = slot?.contract?.primaryOutcome ?? slot?.contract?.outcomes?.[0];
     const f = this.outcomes(rec, st, ov, primary, slot?.contract?.outcomes ?? []);
-    return { entry: id, exits: f.exits };
+    return { entry: chosen ?? id, exits: f.exits };
   }
 
   // ----------------------------------------------------------------------- try
@@ -718,7 +775,7 @@ class B {
     this.flow(gw, after, `\${${v(hv)} == null}`, 'unbound');
     const callHook = (into: B, from: string, fromId?: string): string => {
       const id = this.g.stepId(`hook-${name}`);
-      into.els.push(`<callActivity id="${id}" name="hook ${esc(name)}" calledElement="\${${v(hv)}}" flowable:inheritBusinessKey="true">${ext(`<flowable:out source="th_outcome" target="${raw}"/>`, ann('hook', meta))}</callActivity>`);
+      into.els.push(`<callActivity id="${id}" name="hook ${esc(name)}" calledElement="\${${v(hv)}}" flowable:inheritBusinessKey="true"${this.g.sameDeployment}>${ext(`<flowable:out source="th_outcome" target="${raw}"/>`, this.g.callerMappings(`hook:${key}`), ann('hook', meta))}</callActivity>`);
       into.flow(from, id, undefined, undefined, fromId);
       const res = into.point({ kind: 'hookResult', ...meta });
       into.flow(id, res);
@@ -735,8 +792,11 @@ class B {
       // A notify hook must not delay or change the flow (R-06-09): it runs in an event sub-process.
       const sig = `sig_th_notify_${safe(name)}`;
       const thr = this.g.id('notify');
-      this.els.push(`<intermediateThrowEvent id="${thr}" name="notify ${esc(name)}">${ext(ann('point', { kind: 'hookStart', ...meta }))}<signalEventDefinition signalRef="${sig}"/></intermediateThrowEvent>`);
-      this.flow(gw, thr, undefined, 'bound', `${gw}_bound`);
+      // A REST binding marks the hook's place in the trace before the throw (embedded: on the throw).
+      const marked = this.restPoint({ kind: 'hookStart', ...meta });
+      this.els.push(`<intermediateThrowEvent id="${thr}" name="notify ${esc(name)}">${marked ? '' : ext(ann('point', { kind: 'hookStart', ...meta }))}<signalEventDefinition signalRef="${sig}"/></intermediateThrowEvent>`);
+      if (marked) this.flow(marked, thr);
+      this.flow(gw, marked ?? thr, undefined, 'bound', `${gw}_bound`);
       this.flow(thr, after);
       const es = new B(this.g, { record: 'business', item: false, hookOwner: this.o.hookOwner });
       const esId = `th_onNotify_${safe(name)}`;
@@ -802,7 +862,7 @@ class B {
     }
     // The block's own trace entry is written where its step id is the element id.
     const rec = this.g.stepId(st.id);
-    this.els.push(`<intermediateThrowEvent id="${rec}" name="${esc(st.id)}">${ext(ann('point', { kind: 'call', step: st.id, var: ov, record: this.o.record, item: this.o.item ? 'true' : undefined }))}</intermediateThrowEvent>`);
+    this.els.push(this.g.pointElement(rec, st.id, ext(ann('point', { kind: 'call', step: st.id, var: ov, record: this.o.record, item: this.o.item ? 'true' : undefined }))));
     this.flow(join, rec);
     const fr = this.outcomes(rec, st, ov, primary, (act?.outcomes ?? []).map((o: any) => o.name));
     return { entry: id, exits: fr.exits };
@@ -906,7 +966,12 @@ export function generateBpmn(wf: any, ctx: Ctx): string {
   const f = main.steps(wf.do ?? []);
   const handlers = durable ? signalHandlers(g, main) : [];
   lines.push(...container('main', 'main', main, f, handlers));
-  proc.flow('start', 'main', undefined, undefined, 'th_f_start');
+  if (g.rest) {
+    // A REST binding learns of each instance here, root or called, and gives it its hook bindings.
+    lines.push(g.pointElement('th_started', 'started', ext(ann('point', { kind: 'processStart' }))));
+    proc.flow('start', 'th_started', undefined, undefined, 'th_f_start');
+    proc.flow('th_started', 'main', undefined, undefined, 'th_f_started');
+  } else proc.flow('start', 'main', undefined, undefined, 'th_f_start');
   const mainDone = proc.gateway('th_main_done', 'cancelled?', 'th_f_main_done');
   proc.flow('main', mainDone, undefined, undefined, 'th_f_main');
   proc.flow(mainDone, g.endpoint(primaryExit), undefined, primaryExit, 'th_f_main_done');
@@ -941,7 +1006,7 @@ export function generateBpmn(wf: any, ctx: Ctx): string {
     proc.flow('th_finally', 'th_end', undefined, undefined, 'th_f_finally_done');
     proc.flow('th_finally_stopped', 'th_end', undefined, undefined, 'th_f_finally_stopped');
   } else proc.flow('th__finally', 'th_end', undefined, undefined, 'th_f_finally');
-  endpointLines.push(`<intermediateThrowEvent id="th_end" name="end">${ext(ann('point', { kind: 'end' }))}</intermediateThrowEvent>`, '<endEvent id="end"/>');
+  endpointLines.push(g.pointElement('th_end', 'end', ext(ann('point', { kind: 'end' }))), '<endEvent id="end"/>');
   proc.flow('th_end', 'end', undefined, undefined, 'th_f_end');
 
   const out: string[] = [];

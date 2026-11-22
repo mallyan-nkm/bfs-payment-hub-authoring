@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/TransactHub.Activities.Wps/TransactHub.Activities.Wps.csproj" />
     <Project Path="src/TransactHub.Api/TransactHub.Api.csproj" />
+    <Project Path="src/TransactHub.Engine.Flowable/TransactHub.Engine.Flowable.csproj" />
     <Project Path="src/TransactHub.Engine.Temporal/TransactHub.Engine.Temporal.csproj" />
     <Project Path="src/TransactHub.Engines.Durable/TransactHub.Engines.Durable.csproj" />
     <Project Path="src/TransactHub.Interpreter/TransactHub.Interpreter.csproj" />
@@ -13,11 +14,13 @@
     <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TransactHub.Engine.Flowable.Tests/TransactHub.Engine.Flowable.Tests.csproj" />
     <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/TransactHub.DtfxHarness/TransactHub.DtfxHarness.csproj" />
     <Project Path="tools/TransactHub.ElsaHarness/TransactHub.ElsaHarness.csproj" />
+    <Project Path="tools/TransactHub.FlowableHarness/TransactHub.FlowableHarness.csproj" />
     <Project Path="tools/TransactHub.TemporalHarness/TransactHub.TemporalHarness.csproj" />
   </Folder>
 </Solution>

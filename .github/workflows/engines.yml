@@ -1,7 +1,8 @@
 # The engines: the studio's black-box suites in the browser and on deployed packages; the conformance kit
 # on Temporal, DTFx, Elsa and Flowable; and the store matrix, the WPS salary file deployed on each runtime
-# engine against PostgreSQL and SQL Server (plan N4; Flowable is not yet a runtime engine, see
-# docs/runtime/NSTAR-CONVERGENCE-PLAN.md section 7). Heavier: on pushes to the runtime or the engines, and by hand.
+# engine against PostgreSQL and SQL Server (plan N4, P3). Flowable runs as its own server there, the Flowable
+# REST server (plan D3), with the runtime's binding as its external worker. Heavier: on pushes to the runtime
+# or the engines, and by hand.
 name: engines
 on:
   push:
@@ -95,7 +96,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [temporal, dtfx, elsa]
+        engine: [temporal, dtfx, elsa, flowable]
         database: [PostgreSql, SqlServer]
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -122,6 +123,9 @@ jobs:
       - name: Temporal's test server
         if: matrix.engine == 'temporal'
         run: runtime/tools/temporal-test-server/setup.sh
+      - name: The Flowable REST server's image (the test starts it as a container, its async executor off)
+        if: matrix.engine == 'flowable'
+        run: docker pull flowable/flowable-rest:7.1.0@sha256:b7ae287502cd5c243b577a0ca2894172e1c18cd75aea4fd67dc7d58f1b40db44
       - name: WPS on ${{ matrix.engine }} with the store on ${{ matrix.database }}
         working-directory: studio
         run: |

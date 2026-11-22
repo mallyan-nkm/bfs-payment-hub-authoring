@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Flowable binding (plan D3): the Flowable REST server runs the BPMN the studio exports; this
+       binding is its external worker over REST, with the payloads in the claim check (the store). -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Interpreter\TransactHub.Interpreter.csproj" />
+    <ProjectReference Include="..\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

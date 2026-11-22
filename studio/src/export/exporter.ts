@@ -111,8 +111,12 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     files[`${KIND_DIR[out.kind] ?? 'workflows'}/${n}@${out.release}.yaml`] = toYaml(out);
     flowEntries.push({ name: n, kind: out.kind, wfKind: out.wfKind, release: out.release, hash: contentHash(d), form: out.form ?? 'authored', pins: out.artefacts.length });
     if (out.kind === 'workflow' && out.wfKind === 'segment') continue;
-    if (req.target === 'flowable' && out.kind === 'workflow' && out.wfKind !== 'handler') {
-      files[`bpmn/${n}@${out.release}.bpmn20.xml`] = generateBpmn(out, { queueOf: (name) => queueOf(binding, name), resolve: (x) => env.store.doc(x) });
+    // On Flowable the package is deployed to the Flowable REST server, with the binding as an external
+    // worker (D3): the BPMN is generated for a REST binding. A bound hook is a process too, called from
+    // its hook point.
+    if (req.target === 'flowable' && ((out.kind === 'workflow' && out.wfKind !== 'handler') || out.kind === 'hook')) {
+      const doc = out.kind === 'hook' ? { ...out, exit: { outcomes: out.outcomes ?? [] } } : out;
+      files[`bpmn/${n}@${out.release}.bpmn20.xml`] = generateBpmn(doc, { queueOf: (name) => queueOf(binding, name), resolve: (x) => env.store.doc(x), binding: 'rest' });
     }
     if (out.kind === 'workflow' && out.wfKind === 'handler') {
       // Handlers run as plain request handlers at the interop boundary, outside the engine (R-09-14).
