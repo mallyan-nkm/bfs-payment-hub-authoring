@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-22-003
+events:
+  - at: 2026-11-22T05:39:36.598Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-22-003
+    detail: 4 file(s) from spec/examples/bank, spec/factory/uae.wps
+    changeSet: CS-2026-11-22-003
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:9b3bc3aa82e4533620a980901e87cf8f93fa93af9000d367bf1c9df78cf40dae
+  - at: 2026-11-22T05:39:36.601Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-22-003
+    detail: example-bank/config:example-bank@1.0.0, pack:uae.wps@1.0.0, uae.wps.exchange.return-credits.v1@1.0.0, uae.wps.sub.return-credits.v1@1.0.0
+    changeSet: CS-2026-11-22-003
+    prevHash: sha256:9b3bc3aa82e4533620a980901e87cf8f93fa93af9000d367bf1c9df78cf40dae
+    hash: sha256:6d857a11f02d6fd735b99d0721e5d9312b4c4599cba157cb9e6f237a3cb2588f

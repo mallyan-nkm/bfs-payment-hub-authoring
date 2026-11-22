@@ -284,12 +284,16 @@ act("uae.wps.exchange.report-disbursement.v1", "Report disbursement and get the 
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="report", ports=WPS_PORT,
     policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.report-disbursement.v1", p=WP)
 # The returns exchange (Issue I-41): how long it waits for the acknowledgement and how long the upload is held are
-# the bank's values, not constants. The source waits 30 days and may hold the upload for up to 10 minutes.
+# the bank's values, not constants. The source waits 30 calendar days (2,592,000 s) and may hold the upload for up to
+# 10 minutes. The owner decided on 2026-11-22 that the default is the source's, 30 calendar days (Issue I-51).
 act("uae.wps.exchange.return-credits.v1", "Return the credits that failed and get the acknowledgement", ["header", "messages"],
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
-    policy={"replyCalendar": "business"}, sub="uae.wps.sub.return-credits.v1", p=WP,
+    policy={"replyTimeout": "P30D", "replyCalendar": "elapsed", "replyTimeoutParameter": "replyWait",
+            "replyCalendarParameter": "replyWaitCalendar"}, sub="uae.wps.sub.return-credits.v1", p=WP,
     params={"replyWait": {"type": "duration", "default": "P30D", "bounds": {"min": "P1D", "max": "P30D"},
-                          "description": "How long to wait for WPS to acknowledge the returns file, on the business calendar."},
+                          "description": "How long to wait for WPS to acknowledge the returns file, counted on replyWaitCalendar."},
+            "replyWaitCalendar": {"type": "code", "default": "elapsed", "bounds": {"allowed": ["elapsed", "business"]},
+                                  "description": "Whether the wait counts calendar days (elapsed, the source's) or business days."},
             "uploadHold": {"type": "duration", "default": "PT0S", "bounds": {"min": "PT0S", "max": "PT10M"},
                            "description": "How long to hold the returns file before it is uploaded."}})
 

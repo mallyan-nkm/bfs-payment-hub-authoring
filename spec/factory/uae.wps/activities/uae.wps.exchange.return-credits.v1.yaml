@@ -32,7 +32,15 @@ parameters:
     bounds:
       min: P1D
       max: P30D
-    description: How long to wait for WPS to acknowledge the returns file, on the business calendar.
+    description: How long to wait for WPS to acknowledge the returns file, counted on replyWaitCalendar.
+  replyWaitCalendar:
+    type: code
+    default: elapsed
+    bounds:
+      allowed:
+        - elapsed
+        - business
+    description: Whether the wait counts calendar days (elapsed, the source's) or business days.
   uploadHold:
     type: duration
     default: PT0S
@@ -41,7 +49,10 @@ parameters:
       max: PT10M
     description: How long to hold the returns file before it is uploaded.
 policy:
-  replyCalendar: business
+  replyTimeout: P30D
+  replyCalendar: elapsed
+  replyTimeoutParameter: replyWait
+  replyCalendarParameter: replyWaitCalendar
 implementation:
   binding: subflow
   subflow: uae.wps.sub.return-credits.v1

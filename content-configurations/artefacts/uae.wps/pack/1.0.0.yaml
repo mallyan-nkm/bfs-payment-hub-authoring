@@ -40,7 +40,7 @@ artefacts:
   - name: uae.wps.exchange.return-credits.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:cc41bcc9d47d9b1b2a0efd6f4fb60ce7050308241a114215829dd32c5e47b52e
+    hash: sha256:b77c64ab7668d765266555ac3e553647d30d941744cadff6848dd3f2e5b3730c
     path: activities/uae.wps.exchange.return-credits.v1.yaml
   - name: uae.wps.exchange.send-disbursement-file.v1
     kind: activity
@@ -360,7 +360,7 @@ artefacts:
   - name: uae.wps.sub.return-credits.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:df4495990e77f96807d3e98abb713f587d04682e794246d048539f8643c1561b
+    hash: sha256:c17f6afe60e63b07c855fa24bcadc5a3db5ed39a64440f2f177151dcb72cb3df
     path: workflows/uae.wps.sub.return-credits.v1.yaml
   - name: uae.wps.sub.submit-salary-file.v1
     kind: workflow

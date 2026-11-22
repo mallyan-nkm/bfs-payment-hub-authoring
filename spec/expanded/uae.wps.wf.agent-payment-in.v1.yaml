@@ -185,10 +185,10 @@ do:
                   message: uae.wps.ack
                   correlateBy: header.fileId
                   family: rfa
-                  timeout:
-                    parameter: uae.wps.exchange.return-credits.v1#replyWait
-                    default: P30D
-                  calendar: business
+                  timeout: P30D
+                  timeoutParameter: uae.wps.exchange.return-credits.v1#replyWait
+                  calendar: elapsed
+                  calendarParameter: uae.wps.exchange.return-credits.v1#replyWaitCalendar
                   onTimeout:
                     return: pending
               - id: return-credits.read-ack

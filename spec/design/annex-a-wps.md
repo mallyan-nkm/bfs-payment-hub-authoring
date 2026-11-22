@@ -59,7 +59,7 @@ Each exchange that waits is one block to the designer. The steps underneath are 
 | `uae.wps.exchange.request-refund.v1` | `rejected`, `pending` | Send the RFR; await and read the acknowledgement; await the RSU for up to ten business days; read it |
 | `uae.wps.exchange.receive-supplement.v1` | `missing` | Await the PSI for the reply time of the step |
 | `uae.wps.exchange.report-disbursement.v1` | `rejected`, `pending` | Send the DIF; await the acknowledgement of the DIF; read ACK or NAK |
-| `uae.wps.exchange.return-credits.v1` | `rejected`, `pending` | Hold the upload for `uploadHold` (0 to 10 minutes, default 0); send the RFA; await the acknowledgement of the RFA for `replyWait` on the business calendar (1 to 30 business days, default 30, the source's wait); read ACK or NAK |
+| `uae.wps.exchange.return-credits.v1` | `rejected`, `pending` | Hold the upload for `uploadHold` (0 to 10 minutes, default 0); send the RFA; await the acknowledgement of the RFA for `replyWait` counted on `replyWaitCalendar` (1 to 30 days; by default 30 calendar days, the source's wait, Issue I-51; R-05-47); read ACK or NAK |
 
 Each composite that awaits `uae.wps.ack` names the family of the file it waits on: `sif`, `rfr`, `prc`, `dif` or `rfa` (R-05-44). The front door reads the family from the acknowledgement's file name. The time rule (R-05-43) covers a scheme whose acknowledgements cannot be told apart.
 

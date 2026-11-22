@@ -1,0 +1,28 @@
+kind: change-set
+id: CS-2026-11-22-003
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T05:39:36.597Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/examples/bank
+  - spec/factory/uae.wps
+members:
+  - kind: configuration-set
+    name: config:example-bank
+    release: 1.0.0
+    key: example-bank/config:example-bank@1.0.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.0.0
+    key: pack:uae.wps@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.return-credits.v1
+    release: 1.0.0
+    key: uae.wps.exchange.return-credits.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.return-credits.v1
+    release: 1.0.0
+    key: uae.wps.sub.return-credits.v1@1.0.0

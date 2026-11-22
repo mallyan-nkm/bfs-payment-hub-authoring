@@ -554,6 +554,8 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 
 **What is built.** The pin is exact in `go.mod`, and the README says each upgrade must re-run the proof. The CI job runs the whole proof on every push to `runtime/**`.
 
+**Decision (2026-11-22).** The owner of `runtime/temporal-mssql` is the team that owns this GitHub repository. An upgrade of Temporal is one change by that team that moves the pin, ports any new schema version and store method from the PostgreSQL plugin, and passes CI job `temporal-sqlserver`; until it is green the runtime stays on the pinned release. `runtime/temporal-mssql/README.md` records it.
+
 ## I-43. Where a bank pack may live
 
 **Issue.** The owner decided on 2026-11-21 that a real bank's configuration lives in this repository, in `content-configurations/banks/<bank>/` (D5 as amended in `docs/runtime/NSTAR-CONVERGENCE-PLAN.md` section 8). The spec knows one bank pack only, the example bank in `spec/examples/bank/`. It says nothing of a bank pack anywhere else: which folders hold one, how the studio finds its tenant, or which documents in a bank's folder are studio artefacts and which are the runtime's own (port bindings, configuration values). `tools/validate.py` reads `spec/` only, so it never sees a bank's folder.
@@ -673,11 +675,17 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **Recommendation.** Keep R-05-30, and state the time rule as R-05-43 does: once an earlier await of the same instance has waited for the same message, an await takes only a message received after the composite step that holds it began; the first await of a message takes one kept since the instance began. This is what the interpreter and the engines do, and what CK-AWAIT-06 proves. If the owner wants the rule as worded, R-05-30 must change and CK-AWAIT-04 go.
 
+**Decision (2026-11-22).** The owner accepted the narrower time rule as built: R-05-30 stays, R-05-43 states the rule, CK-AWAIT-04 and CK-AWAIT-06 prove both. Nothing more is to be built.
+
 ## I-51. Thirty days, or thirty business days
 
 **Issue.** The source waits 2,592,000 s, 30 calendar days, for the RFA acknowledgement. The decision asks for a wait of 30 days by default, bounded 1 to 30 days, on the business calendar. On the UAE business calendar 30 business days are about six weeks.
 
 **Recommendation.** Keep the parameter on the business calendar, as decided, and confirm the default with the rulebook (D10). If the scheme counts calendar days, 30 of them are about 22 business days: set the default to `P22D`, or let the parameter carry its own calendar.
+
+**Decision (2026-11-22).** The owner decided that the reply wait defaults to **30 calendar days**, as the source waits (2,592,000 s). The bounds stay 1 to 30 days.
+
+**What is built.** `uae.wps.exchange.return-credits.v1` takes its wait the way the salary file's acknowledgement does (R-05-47): `policy.replyTimeout: P30D`, `policy.replyCalendar: elapsed`, and the bank's parameters `replyWait` (default `P30D`, bounds `P1D` to `P30D`) and, new, `replyWaitCalendar` (default `elapsed`, allowed `elapsed` and `business`). The subflow's await no longer fixes its timeout or calendar; the expanded await names both parameters. Annex A, A.4 says so. The example bank keeps its ten business days by setting both values, so WPS-IN-004 is unchanged. `studio/test/wps-returns.test.ts` shows the default, thirty days of elapsed time, and the business calendar on request; `studio/test/export.test.ts` the Flowable timer's marks.
 
 ## I-52. On Flowable an await counts as having waited only once it ends
 

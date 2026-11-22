@@ -151,7 +151,8 @@ content-configurations/      what the studio publishes and what a bank configure
   - The WPS salary file settles on Temporal on SQL Server with the runtime's payments store on SQL Server too (`e2e-wps-temporal.test.ts`, "database on SqlServer", with `TH_TEMPORAL_ADDRESS`).
   - CI job `temporal-sqlserver` runs all of it.
 - **P4 status: met, with one gap.** The plugin passes Temporal's persistence suites and runs the kit and the WPS salary file. The kit's scenarios that wait hours or days are proved on the time-skipping server, not on SQL Server, until I-48 is decided. CI runs the fast subset of 40.
-- **Left open.** Who keeps the plugin on each Temporal release (I-42); ids are bytes, not characters, on SQL Server (I-45); Text search attributes are not indexed (I-46); what a bank's SQL Server must allow (I-47: the server now runs, and passes the durability check and the persistence suites, as a login with only read, write and execute on its two databases); the kit's long business waits on a real server (I-48).
+- **Decided.** The team that owns this GitHub repository keeps the plugin on each Temporal release (I-42, decided 2026-11-22).
+- **Left open.** ids are bytes, not characters, on SQL Server (I-45); Text search attributes are not indexed (I-46); what a bank's SQL Server must allow (I-47: the server now runs, and passes the durability check and the persistence suites, as a login with only read, write and execute on its two databases); the kit's long business waits on a real server (I-48).
 
 ### W6. WPS as a leg; the bank mined into rules, hooks and configuration (N* items 10 and 11)
 - **Splitting the 112 activities** (the full list is in `SURVEY.md` section 3):

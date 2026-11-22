@@ -32,15 +32,18 @@ describe('the returns exchange: the wait and the upload hold are the bank\'s val
   it('declares both as bounded duration parameters with the source\'s defaults', () => {
     const p = env().store.doc(RETURN).parameters;
     expect(p.replyWait).toMatchObject({ type: 'duration', default: 'P30D', bounds: { min: 'P1D', max: 'P30D' } });
+    expect(p.replyWaitCalendar).toMatchObject({ type: 'code', default: 'elapsed', bounds: { allowed: ['elapsed', 'business'] } });
     expect(p.uploadHold).toMatchObject({ type: 'duration', default: 'PT0S', bounds: { min: 'PT0S', max: 'PT10M' } });
   });
 
-  it('waits thirty business days by default, and the example bank\'s ten when it sets them', async () => {
+  it('waits thirty calendar days by default (I-51, the source\'s 2,592,000 s), and the example bank\'s ten business days when it sets them', async () => {
     const byDefault = await runTest(env(), { ...test('WPS-IN-004'), tenant: undefined, expect: { outcome: 'pending' } }, { values: [ROUTING] });
     expect(byDefault.passed, JSON.stringify(byDefault.checks)).toBe(true);
-    // Thirty business days from Tuesday 17 November 2026 on the UAE calendar is six weeks of elapsed time.
-    expect(byDefault.record!.elapsedMs).toBeGreaterThanOrEqual(durationMs('P42D'));
-    expect(byDefault.record!.elapsedMs).toBeLessThan(durationMs('P45D'));
+    expect(byDefault.record!.elapsedMs).toBeGreaterThanOrEqual(durationMs('P30D'));
+    expect(byDefault.record!.elapsedMs).toBeLessThan(durationMs('P31D'));
+    // On the business calendar the same thirty would be about six weeks from Tuesday 17 November 2026.
+    const business = await runTest(env(), { ...test('WPS-IN-004'), tenant: undefined, expect: { outcome: 'pending' } }, { values: [ROUTING, { parameter: `${RETURN}#replyWaitCalendar`, value: 'business', validFrom: '2026-01-01' }] });
+    expect(business.record!.elapsedMs).toBeGreaterThanOrEqual(durationMs('P42D'));
     const bank = await runTest(env(), test('WPS-IN-004'));
     expect(bank.passed, JSON.stringify(bank.checks)).toBe(true);
     expect(bank.record!.elapsedMs).toBeLessThan(durationMs('P15D'));
