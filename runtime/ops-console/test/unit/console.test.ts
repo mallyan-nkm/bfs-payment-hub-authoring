@@ -11,7 +11,7 @@ import type { View } from '../../src/ops/api';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..', '..', '..', '..');
 
-describe('the sign-in (R-06-22)', () => {
+describe('the sign-in (R-06-24)', () => {
   it('makes the S256 challenge of RFC 7636, appendix B', async () => {
     expect(await pkceChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
     expect(base64url(new Uint8Array([251, 255, 0]))).toBe('-_8A');

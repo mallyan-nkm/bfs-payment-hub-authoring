@@ -107,21 +107,26 @@ CASES = [
     # R-05-47: a reply wait a bank may set names a parameter the composite declares (L30)
     ("M37", "ERROR L30", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "replyTimeoutParameter: ackWait", "replyTimeoutParameter: noSuchWait", "a composite's reply wait names a parameter it does not declare"),
-    # R-05-48, R-05-49: an operations view says only what the store can answer (L37)
-    ("M38", "ERROR L37", OPV,
+    # R-06-23: no literal secret in a binding, a configuration or a package (L37)
+    ("M38", "ERROR L37", "../content-configurations/banks/dib/core-banking.yaml",
+     "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: synthetic-literal-value", "a binding's secretRef holds a value, not a reference"),
+    ("M39", "ERROR L37", "../content-configurations/banks/dib/file-transfer.yaml",
+     "secretRef: env:TH_DIB_SFTP_CREDENTIAL", "secretRef: env:TH_DIB_SFTP_CREDENTIAL\n      password: synthetic-literal-value", "a binding carries a password as a value beside its reference"),
+    # R-05-48, R-05-49: an operations view says only what the store can answer (L38)
+    ("M40", "ERROR L38", OPV,
      '"step:submit.read-ack.outcome"', '"step:submit.read-acks.outcome"', "a view's field reads a step the leg does not have"),
-    ("M39", "ERROR L37", OPV,
+    ("M41", "ERROR L38", OPV,
      "source: line.ext.uae.wps.personId, mask: id,", "source: line.ext.uae.wps.personId,", "a view shows a personal value with no mask"),
-    ("M40", "ERROR L37", OPV,
+    ("M42", "ERROR L38", OPV,
      "action: retry, label: Retry the failed step", "action: approve, label: Retry the failed step", "a view offers a hold decision where no flow holds for one"),
-    ("M41", "ERROR L37", OPV,
+    ("M43", "ERROR L38", OPV,
      "columns: [cbResponse, ackReceivedAt]", "columns: [cbResponse, ackAt]", "a view's list column is not a declared field"),
-    ("M42", "ERROR L37", OPV,
+    ("M44", "ERROR L38", OPV,
      "leg: uae.wps.wf.return-in.v1", "leg: uae.wps.wf.return-out.v1", "a view declares a leg the scheme does not have"),
-    ("M43", "ERROR L37", OPV,
+    ("M45", "ERROR L38", OPV,
      "mask: none, oldScreen: \"SIF Summary report, Corporate Name (an organisation's name, shown whole)\" }", "mask: none }",
      "a view shows a value unmasked without naming the old screen that did"),
-    ("M44", "ERROR L37", OPV,
+    ("M46", "ERROR L38", OPV,
      "source: ext.uae.wps.salaryMonth,", "source: ext.uae.wps.salaryMonths,", "a view reads an extension field nobody registers"),
 ]
 

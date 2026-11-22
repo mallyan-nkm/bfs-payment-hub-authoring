@@ -5,14 +5,16 @@ using TransactHub.Operations;
 using TransactHub.Operations.Api;
 using TransactHub.Store;
 
-// The operations console's API (R-05-48 to R-05-50, R-06-22) and its web app (runtime/ops-console). It reads the operations
+// The operations console's API (R-05-48 to R-05-50, R-06-24) and its web app (runtime/ops-console). It reads the operations
 // read model, which a background projection keeps from the store's outbox, and records operator actions as facts on the
 // payment's chain. Configuration:
 //   Store:Provider, Store:Connection         the store (as the release API)
 //   Operations:Connection                    the read model's database (default: the store's)
 //   Operations:Views                         the folder of published artefacts holding the operations views
 //   Operations:Console                       the built web app (runtime/ops-console/dist)
-//   TH_OIDC_AUTHORITY, TH_OIDC_AUDIENCE, TH_OIDC_CLIENT_ID, TH_OIDC_SCOPES, TH_STUDIO_ISSUER   the bank's identity provider
+//   Auth:Oidc:Issuer, Auth:Oidc:Audience, Auth:Oidc:Authority, Auth:Oidc:SigningKeys, Auth:RoleMap   the bank's identity
+//                                            provider and role map (TransactHub.Auth, roles Operator and Supervisor)
+//   Auth:Oidc:ClientId, Auth:Oidc:Scopes      the console's public client (code flow with PKCE); TH_STUDIO_ISSUER refused
 //   TH_AUTH_DEV=1                             dev sign-in, refused in Production
 var builder = WebApplication.CreateBuilder(args);
 var provider = Enum.Parse<StoreProvider>(builder.Configuration["Store:Provider"] ?? "SqlServer", ignoreCase: true);
@@ -21,7 +23,7 @@ var ops = new StoreOptions(provider, builder.Configuration["Operations:Connectio
 var viewsDir = builder.Configuration["Operations:Views"] ?? Find("content-configurations/artefacts") ?? "content-configurations/artefacts";
 var views = ViewCatalog.FromFolder(viewsDir);
 var clock = TimeProvider.System;
-var auth = builder.AddOperatorAuthentication();
+var auth = await builder.AddOperatorAuthentication();
 builder.Services.AddSingleton(views);
 builder.Services.AddSingleton(new Projector(store, ops, views, clock));
 builder.Services.AddSingleton<IEngineSignals>(new OutboxSignals(store, clock));
@@ -36,6 +38,15 @@ if (app.Configuration["Store:Migrate"] != "false")
     await app.Services.GetRequiredService<Projector>().Migrate();
 }
 
+// The web app (runtime/ops-console/dist) is public, like any sign-in page: its files hold no data. Served before the
+// authentication, and its routes fall back to index.html.
+var consoleDir = app.Configuration["Operations:Console"] ?? Find("runtime/ops-console/dist");
+var consoleFiles = consoleDir is not null && Directory.Exists(consoleDir) ? new PhysicalFileProvider(Path.GetFullPath(consoleDir)) : null;
+if (consoleFiles is not null)
+{
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = consoleFiles });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = consoleFiles });
+}
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -46,8 +57,8 @@ OperatorIdentity? Who(HttpContext http) => http.RequestServices.GetRequiredServi
 var api = app.MapGroup("/ops/api");
 
 // How the console signs in: the bank's identity provider (authorisation code with PKCE), or dev mode.
-api.MapGet("/auth/config", () => Results.Ok(auth));
-api.MapGet("/health", async (Projector p) => Results.Ok(new { lag = await p.Lag(), views = views.All.Select(v => v.Key) }));
+api.MapGet("/auth/config", () => Results.Ok(auth)).AllowAnonymous();
+api.MapGet("/health", async (Projector p) => Results.Ok(new { lag = await p.Lag(), views = views.All.Select(v => v.Key) })).AllowAnonymous();
 
 api.MapGet("/me", (HttpContext http) => Who(http) is { } who
     ? Results.Ok(new { who.Subject, who.DisplayName, tenants = who.RolesByTenant.ToDictionary(kv => kv.Key, kv => kv.Value.Order()) })
@@ -60,8 +71,8 @@ api.MapGet("/views", (HttpContext http) => Who(http) is null ? Problem(401, "Sig
 api.MapGet("/facets", async (HttpContext http) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
-    var tenants = who.Tenants.ToList();
     await using var o = OpsDbContext.Open(ops);
+    var tenants = await TenantsOf(who, o);
     var subj = o.Subjects.AsNoTracking().Where(x => tenants.Contains(x.Tenant));
     return Results.Ok(new
     {
@@ -81,9 +92,9 @@ api.MapGet("/payments", async (HttpContext http) =>
     if (Who(http) is not { } who) return Problem(401, "Sign in");
     var q = http.Request.Query;
     string? S(string k) => q.TryGetValue(k, out var v) && v.ToString().Length > 0 ? v.ToString() : null;
-    var tenants = who.Tenants.ToList();
-    if (S("tenant") is { } t) { if (!tenants.Contains(t)) return Problem(403, $"No role for tenant {t}"); tenants = [t]; }
     await using var o = OpsDbContext.Open(ops);
+    var tenants = await TenantsOf(who, o);
+    if (S("tenant") is { } t) { if (!who.Has(t, OperatorRoles.Operator)) return Problem(403, $"No role for tenant {t}"); tenants = [t]; }
     var x = o.Subjects.AsNoTracking().Where(s => tenants.Contains(s.Tenant));
     if (S("scheme") is { } scheme) x = x.Where(s => s.Scheme == scheme);
     if (S("kind") is { } kind) x = x.Where(s => s.Kind == kind);
@@ -133,7 +144,7 @@ api.MapGet("/payments/{id}", async (string id, HttpContext http, OperatorActions
     if (Who(http) is not { } who) return Problem(401, "Sign in");
     await using var o = OpsDbContext.Open(ops);
     var s = await o.Subjects.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
-    if (s is null || !who.Tenants.Contains(s.Tenant)) return Problem(404, $"No payment or bulk {id} for your tenants");
+    if (s is null || !who.Has(s.Tenant, OperatorRoles.Operator)) return Problem(404, $"No payment or bulk {id} for your tenants");
     var legs = await o.Legs.AsNoTracking().Where(l => l.SubjectId == id).OrderBy(l => l.Instance).ToListAsync();
     var lines = await o.Lines.AsNoTracking().Where(l => l.BulkId == id).OrderBy(l => l.LineNo).Take(1000).ToListAsync();
     var timeline = await o.Timeline.AsNoTracking().Where(t => t.SubjectId == id).OrderBy(t => t.Seq).ToListAsync();
@@ -190,8 +201,8 @@ api.MapPost("/payments/{id}/actions/{action}/decision", async (string id, string
 api.MapGet("/actions/pending", async (HttpContext http) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
-    var tenants = who.Tenants.ToList();
     await using var o = OpsDbContext.Open(ops);
+    var tenants = await TenantsOf(who, o);
     var rows = await o.Actions.AsNoTracking().Where(a => tenants.Contains(a.Tenant) && a.Status == "pending-approval").OrderBy(a => a.RequestedAt).ToListAsync();
     return Results.Ok(rows.Where(a => a.SecondApprover is null || who.Has(a.Tenant, a.SecondApprover)));
 });
@@ -205,21 +216,16 @@ api.MapPost("/rebuild", async (HttpContext http, Projector p) =>
     return Results.Ok(new { lag = await p.Lag() });
 });
 
-api.MapMethods("/{**rest}", ["PUT", "PATCH", "DELETE"], () => Problem(405, "The operations console changes a payment only through its declared actions"));
+api.MapMethods("/{**rest}", ["PUT", "PATCH", "DELETE"], () => Problem(405, "The operations console changes a payment only through its declared actions")).AllowAnonymous();
 
-// The web app: runtime/ops-console/dist, with its routes falling back to index.html.
-var consoleDir = app.Configuration["Operations:Console"] ?? Find("runtime/ops-console/dist");
-if (consoleDir is not null && Directory.Exists(consoleDir))
+if (consoleFiles is { } files)
 {
-    var files = new PhysicalFileProvider(Path.GetFullPath(consoleDir));
-    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
     app.MapFallback(async ctx =>
     {
         if (ctx.Request.Path.StartsWithSegments("/ops/api")) { ctx.Response.StatusCode = 404; return; }
         ctx.Response.ContentType = "text/html";
         await ctx.Response.SendFileAsync(files.GetFileInfo("index.html"));
-    });
+    }).AllowAnonymous();
 }
 
 app.Run();
@@ -231,6 +237,11 @@ static object Row(OpsSubject s, IEnumerable<OpsLeg> legs) => new
     fields = JsonNode.Parse(s.FieldsJson),
     legs = legs.Select(l => new { l.Id, l.Instance, l.Leg, l.Title, l.Direction, l.LastStep, l.LastOutcome, l.UpdatedAt, fields = JsonNode.Parse(l.FieldsJson) }),
 };
+
+// The tenants an operator may see: those the role map names, or every tenant in the read model for "*".
+static async Task<List<string>> TenantsOf(OperatorIdentity who, OpsDbContext o) =>
+    (who.AllTenants ? await o.Subjects.AsNoTracking().Select(s => s.Tenant).Distinct().ToListAsync() : who.Tenants.ToList())
+        .Where(t => who.Has(t, OperatorRoles.Operator)).ToList();
 
 static string? Find(string rel)
 {

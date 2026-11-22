@@ -18,9 +18,11 @@ public sealed class ReleaseRegistry(StoreDbContext db, TimeProvider? clock = nul
     /// Stores a release. The same release with the same content is accepted again and changes nothing;
     /// the same release with other content is refused.
     /// </summary>
-    public async Task<StoreResult> Store(string scope, string release, byte[] package, JsonObject manifest, string actor, CancellationToken ct = default)
+    /// <param name="contentHash">The release's content hash, when it is not the hash of the stored bytes (a signed package
+    /// is hashed without its signature, so a package signed again is the same release).</param>
+    public async Task<StoreResult> Store(string scope, string release, byte[] package, JsonObject manifest, string actor, CancellationToken ct = default, string? contentHash = null)
     {
-        var hash = HashOf(package);
+        var hash = contentHash ?? HashOf(package);
         var existing = await db.Releases.AsNoTracking().FirstOrDefaultAsync(r => r.Scope == scope && r.Release == release, ct);
         if (existing is not null)
         {
@@ -38,7 +40,7 @@ public sealed class ReleaseRegistry(StoreDbContext db, TimeProvider? clock = nul
         {
             // Another writer stored it first: the same rule applies to what it stored.
             db.ChangeTracker.Clear();
-            return await Store(scope, release, package, manifest, actor, ct);
+            return await Store(scope, release, package, manifest, actor, ct, contentHash);
         }
         return new StoreResult(id, true);
     }

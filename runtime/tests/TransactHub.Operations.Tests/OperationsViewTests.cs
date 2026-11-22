@@ -6,8 +6,8 @@ namespace TransactHub.Operations.Tests;
 /// <summary>
 /// The factory's operations views (R-05-48, R-05-49) as the runtime reads them, and the WPS field mapping
 /// (docs/runtime/ops-console-wps-mapping.md): every field the mapping calls mapped is declared in the view it names, with
-/// the source it names, and the coverage it states is what its rows say. The static checks are lint L37
-/// (spec/tools/validate.py, with mutation cases M38 to M44).
+/// the source it names, and the coverage it states is what its rows say. The static checks are lint L38
+/// (spec/tools/validate.py, with mutation cases M40 to M46).
 /// </summary>
 public sealed class OperationsViewTests
 {

@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using TransactHub.Security;
 using YamlDotNet.Serialization;
 
 namespace TransactHub.Api;
@@ -45,6 +46,15 @@ public sealed class Package
     public bool Promotable => Manifest["promotable"]?.GetValue<bool>() == true && Manifest["containsSimulators"]?.GetValue<bool>() != true;
     /// <summary>The registry's scope for this package: one line per workflow and engine.</summary>
     public string Scope => $"{Workflow}/{Target}";
+    /// <summary>The release id the registry stores it as, and its signature names.</summary>
+    public string ReleaseId => $"{Scope}@{Release}";
+    /// <summary>The tenant the package was exported for; none for shared content.</summary>
+    public string? Tenant => (string?)Manifest["tenant"];
+    /// <summary>The release's content hash: the canonical zip of its files without the signature, so a package signed again is the same release.</summary>
+    public string ContentHash => Convert.ToHexStringLower(SHA256.HashData(CanonicalZip(withSignature: false)));
+
+    /// <summary>Verifies the package's signature against the signers the installation trusts (R-09-24).</summary>
+    public Verification VerifySignature(TrustedSigners trust) => ReleaseSignature.Verify(Files, new ReleaseExpectation(ReleaseId, Tenant), trust);
 
     public static Package FromZip(byte[] zip)
     {
@@ -76,7 +86,8 @@ public sealed class Package
         return FromFiles(files);
     }
 
-    static Package FromFiles(Dictionary<string, byte[]> files)
+    /// <summary>A package from its files, as a package source gives them; checked against its manifest.</summary>
+    public static Package FromFiles(Dictionary<string, byte[]> files)
     {
         if (!files.TryGetValue("manifest.yaml", out var m)) throw new PackageRejected("The package has no manifest.yaml");
         var yaml = new DeserializerBuilder().Build().Deserialize<object>(Encoding.UTF8.GetString(m));
@@ -91,7 +102,7 @@ public sealed class Package
     {
         _ = Workflow; _ = Release; _ = Target;
         var listed = Manifest["files"] as JsonArray ?? throw new PackageRejected("The manifest lists no files");
-        var seen = new HashSet<string>(StringComparer.Ordinal) { "manifest.yaml", "README.md" };
+        var seen = new HashSet<string>(StringComparer.Ordinal) { "manifest.yaml", "README.md", ReleaseSignature.StatementFile, ReleaseSignature.SignatureFile };
         foreach (var f in listed)
         {
             var path = (string?)f?["path"] ?? throw new PackageRejected("A manifest file entry has no path");
@@ -105,13 +116,13 @@ public sealed class Package
         if (extra.Count > 0) throw new PackageRejected($"Files not in the manifest: {string.Join(", ", extra.Take(5))}");
     }
 
-    /// <summary>The canonical zip: entries in ordinal order, all at one fixed time, stored the same way.</summary>
-    public byte[] CanonicalZip()
+    /// <summary>The canonical zip: entries in ordinal order, all at one fixed time, stored the same way. The stored form keeps the signature.</summary>
+    public byte[] CanonicalZip(bool withSignature = true)
     {
         var ms = new MemoryStream();
         using (var a = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var (path, content) in Files.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            foreach (var (path, content) in Files.Where(f => withSignature || !ReleaseSignature.IsSignatureFile(f.Key)).OrderBy(kv => kv.Key, StringComparer.Ordinal))
             {
                 var e = a.CreateEntry(path, CompressionLevel.Optimal);
                 e.LastWriteTime = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);

@@ -686,8 +686,54 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
     if bool(pack.get("containsSimulators")) != any(a["kind"] == "simulator" for a in found.values()) or pack.get("promotable") == pack.get("containsSimulators"):
         err("L35", where + "/pack.yaml", "containsSimulators and promotable do not match the folder")
 
+# ------------------------------------------------- no literal secret
+# L37 no binding, configuration or package carries a literal secret (R-06-23). A key that names a secret (password,
+# passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a camel-case name ending in one)
+# holds a reference (env:, file:, vault:, akv:) or nothing; a secretRef holds a reference; no text is a private key.
+# It reads the spec's content and everything under content-configurations/. The studio check is the same rule.
+SECRET_KEY = re.compile(r"(^|[a-z0-9_])(password|passwd|passphrase|secret|token|apikey|api_key|accesskey|access_key|privatekey|private_key|clientsecret|client_secret|credentials?)$", re.I)
+SECRET_REF = re.compile(r"^(env|file|vault|akv):\S+$")
+PRIVATE_KEY_PEM = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
+
+
+def literal_secrets(v, at="", key=None):
+    if isinstance(v, str):
+        if PRIVATE_KEY_PEM.search(v):
+            yield at, "is a private key"
+        elif key and key.lower().endswith("secretref") and not SECRET_REF.match(v):
+            yield at, "%s must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value" % key
+        elif key and SECRET_KEY.search(key) and v and not SECRET_REF.match(v):
+            yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, (int, float)) and not isinstance(v, bool) and key and SECRET_KEY.search(key):
+        yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from literal_secrets(x, "%s[%d]" % (at, i), key)
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield from literal_secrets(x, "%s.%s" % (at, k) if at else str(k), str(k))
+
+
+CONTENT = ROOT.parent / "content-configurations"
+for top, label in [(ROOT / b, b) for b in ("factory", "examples", "conformance")] + [(CONTENT, "../content-configurations")]:
+    if not top.is_dir():
+        continue
+    for f in sorted(p for p in top.rglob("*") if p.is_file() and p.suffix in (".yaml", ".yml", ".json", ".js", ".py", ".ts", ".md")):
+        where = "%s/%s" % (label, f.relative_to(top))
+        text = f.read_text(errors="replace")
+        found = []
+        if f.suffix in (".yaml", ".yml", ".json"):
+            try:
+                for d in (yaml.safe_load_all(text) if f.suffix != ".json" else [json.loads(text)]):
+                    found.extend(literal_secrets(d))
+            except Exception:
+                pass
+        if not found and PRIVATE_KEY_PEM.search(text):
+            found.append(("", "holds a private key"))
+        for at, why in found:
+            err("L37", where, "%s%s" % ("at %s " % at if at else "", why))
 # ------------------------------------------------------- operations views
-# L37 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
+# L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
 # apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
 # registered, a message of the scheme's catalogue or a known column; a personal value declares its mask; columns and
 # filters name declared fields; and an action applies only where the flow can take it (a hold decision where that
@@ -775,7 +821,7 @@ for path, d in docs:
     if scheme_scope:
         sch = schemes.get(scheme_scope)
         if sch is None or own != scheme_scope:
-            err("L37", path, "%s is a view of scheme %s, which is not its own scope's scheme" % (d["name"], scheme_scope))
+            err("L38", path, "%s is a view of scheme %s, which is not its own scope's scheme" % (d["name"], scheme_scope))
             continue
         platform = []
         leg_names = set(sch.get("legs") or [])
@@ -783,10 +829,10 @@ for path, d in docs:
     else:
         platform = d.get("platform") or []
         if own != "p" or not platform:
-            err("L37", path, "a view with no scheme is the platform's: it is in scope p and lists the platform workflows it shows")
+            err("L38", path, "a view with no scheme is the platform's: it is in scope p and lists the platform workflows it shows")
         for w in platform:
             if (by_name.get(w) or {}).get("wfKind") != "platform":
-                err("L37", path, "%s is not a platform workflow" % w)
+                err("L38", path, "%s is not a platform workflow" % w)
         leg_names, catalogue = set(), set()
     platform_steps = {}
     for w in platform:
@@ -800,15 +846,15 @@ for path, d in docs:
         if leg is not None:
             wf = by_name.get(leg)
             if leg not in leg_names or not wf or wf.get("wfKind") != "leg":
-                err("L37", at, "%s is not a leg of scheme %s" % (leg, scheme_scope))
+                err("L38", at, "%s is not a leg of scheme %s" % (leg, scheme_scope))
                 continue
             steps = flow_steps(wf)
             sel = sec.get("selectBy") or {}
             if sel.get("direction") and sel["direction"] != wf.get("direction"):
-                err("L37", at, "selects direction %s, but the leg is %s" % (sel["direction"], wf.get("direction")))
+                err("L38", at, "selects direction %s, but the leg is %s" % (sel["direction"], wf.get("direction")))
             for s in sel.get("steps") or []:
                 if s not in steps:
-                    err("L37", at, "is told apart by step %s, which the leg does not have" % s)
+                    err("L38", at, "is told apart by step %s, which the leg does not have" % s)
             flows = [leg]
         else:
             steps = platform_steps if not scheme_scope else all_leg_steps
@@ -818,7 +864,7 @@ for path, d in docs:
             for f in fields:
                 key = (kind_, f["id"])
                 if key in ids:
-                    err("L37", at, "declares %s %s twice" % (kind_, f["id"]))
+                    err("L38", at, "declares %s %s twice" % (kind_, f["id"]))
                 ids[key] = f
                 src = f["source"].strip()
                 root = re.split(r"[.:(]", src, maxsplit=1)[0]
@@ -856,38 +902,38 @@ for path, d in docs:
                 else:
                     problem = "is not a source the console can read"
                 if problem:
-                    err("L37", at, "%s %s %s" % (kind_, f["id"], problem))
+                    err("L38", at, "%s %s %s" % (kind_, f["id"], problem))
                 # R-05-49: a value that is personal data says how it is masked; showing it whole is a choice the old screen made
                 if personal and "mask" not in f:
-                    err("L37", at, "%s %s reads personal data (%s) and declares no mask" % (kind_, f["id"], src))
+                    err("L38", at, "%s %s reads personal data (%s) and declares no mask" % (kind_, f["id"], src))
                 if f.get("mask") == "none" and not f.get("oldScreen"):
-                    err("L37", at, "%s %s is shown unmasked without naming the old screen that showed it" % (kind_, f["id"]))
+                    err("L38", at, "%s %s is shown unmasked without naming the old screen that showed it" % (kind_, f["id"]))
         fields = {i for (k, i) in ids if k == "field"}
         lfields = {i for (k, i) in ids if k == "line field"}
         for c in sec.get("columns") or []:
             if c not in fields:
-                err("L37", at, "column %s is not a declared field" % c)
+                err("L38", at, "column %s is not a declared field" % c)
         for c in (sec.get("lines") or {}).get("columns") or []:
             if c not in lfields:
-                err("L37", at, "line column %s is not a declared line field" % c)
+                err("L38", at, "line column %s is not a declared line field" % c)
         for flt in sec.get("filters") or []:
             if flt["field"] not in fields:
-                err("L37", at, "filter %s is not a declared field" % flt["field"])
+                err("L38", at, "filter %s is not a declared field" % flt["field"])
         for g in {f.get("group") for (k, _), f in ids.items() if f.get("group")} - {g["id"] for g in sec.get("groups") or []}:
-            err("L37", at, "group %s is not declared" % g)
+            err("L38", at, "group %s is not declared" % g)
         for a in sec.get("actions") or []:
             name = a["action"]
             if name in OPS_HOLDS:
                 act, outcome = OPS_HOLDS[name]
                 hold = by_name.get(act) or {}
                 if outcome not in {o["name"] for o in hold.get("outcomes") or []} or not any(reached([w], act) for w in flows):
-                    err("L37", at, "action %s decides %s, which no flow of this view reaches" % (name, act))
+                    err("L38", at, "action %s decides %s, which no flow of this view reaches" % (name, act))
             elif name in ("cancel", "re-screen", "pause", "resume"):
                 hosts = flows if not scheme_scope else sorted({w for l in flows for w in ((by_name.get(l) or {}).get("implements") or {}).get("of") or []})
                 if not hosts or not all(name in (by_name.get(w) or {}).get("signals", []) for w in hosts):
-                    err("L37", at, "action %s is a signal that the platform workflows here do not all handle" % name)
+                    err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
-                err("L37", at, "action %s asks a supervisor's action to be approved by an operator" % name)
+                err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
 
 # ---------------------------------------------------------------- report
 kinds = {}

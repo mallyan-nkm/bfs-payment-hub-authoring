@@ -49,6 +49,7 @@ export const ENDPOINTS = [
   'PATCH /git/refs/heads/{branch}',
   'DELETE /git/refs/heads/studio/{id}',
   'POST /pulls',
+  'POST /git/tags',
 ] as const;
 
 const AUTHOR = { name: 'TransactHub Studio', email: 'studio@transacthub.invalid' };
@@ -168,6 +169,18 @@ export class GitHubClient {
   async deleteChangeSetBranch(branch: string): Promise<void> {
     if (!/^studio\/CS-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3,}$/.test(branch)) throw new GitHubError(0, 'DELETE /git/refs', `The studio deletes only a change set branch (studio/CS-<date>-<n>), not ${branch}`);
     await this.call('DELETE', `/git/refs/heads/${branch}`, undefined, true);
+  }
+
+  /**
+   * An annotated tag on a commit: a tag object, then its ref (R-09-30). Only a release tag (`release/<workflow>/<release>/<target>`)
+   * is made, and never moved: GitHub refuses a second ref of the same name, and the studio never forces one.
+   */
+  async createReleaseTag(name: string, message: string, commit: string): Promise<string> {
+    if (!/^release\/[a-z0-9.-]+\/[0-9]+\.[0-9]+\.[0-9]+\/[a-z]+$/.test(name)) throw new GitHubError(0, 'POST /git/tags', `The studio makes only release tags (release/<workflow>/<release>/<target>), not ${name}`);
+    const date = new Date().toISOString();
+    const tag = (await this.call<{ sha: string }>('POST', '/git/tags', { tag: name, message, object: commit, type: 'commit', tagger: { ...AUTHOR, date } }))!.sha;
+    await this.call('POST', '/git/refs', { ref: `refs/tags/${name}`, sha: tag });
+    return tag;
   }
 
   async createPullRequest(head: string, base: string, title: string, body: string): Promise<PullRequest> {

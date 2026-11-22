@@ -149,5 +149,6 @@ The source's startup prompt for Temporal on SQLite and PostgreSQL is not carried
 | `.github/workflows/studio.yml` | Typecheck, `npm test`, `check`, `seed-content` |
 | `.github/workflows/runtime.yml` | Build and test the runtime solution |
 | `.github/workflows/engines.yml` | Black-box suites, the kit on four engines, the store matrix, Temporal on SQL Server |
+| `.github/workflows/security.yml` | Secret scan (gitleaks, pinned), check L37, `npm audit --omit=dev`, `dotnet list package --vulnerable` |
 
-There is no secret scan or dependency audit in CI ([I-67](../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)). To run them by hand, see [security/secure-coding.md](security/secure-coding.md).
+The secret scan and the dependency audits gate every push (`security.yml`). To run them by hand, see [security/secure-coding.md](security/secure-coding.md). A test run makes its own signing key (`studio/test/support/signing-env.ts`); to run the studio or a deploy by hand, `npm run studio -- signing-key <dir>` and set the two variables it prints (`npm run studio:dev` makes one for the run).

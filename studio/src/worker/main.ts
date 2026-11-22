@@ -5,6 +5,7 @@ import { Store } from '../core/store.js';
 import { parseYaml } from '../core/yaml.js';
 import { ScriptRegistry } from '../interp/sandbox.js';
 import { PartyService, type AttemptRequest } from '../conformance/party.js';
+import { resolveSecret } from '../secrets/secrets.js';
 
 // A deployed activity worker (Part 9; R-09-04, R-09-05). One process per task queue. It serves only
 // the tasks its manifest lists, registered as <name>@<release>, and refuses any other. It holds
@@ -85,7 +86,9 @@ const server = http.createServer(async (req, res) => {
       if (runtime && environment.tenant) {
         try {
           const at = new Date(b.now ?? Date.now()).toISOString();
-          const r = await fetch(`${runtime.replace(/\/$/, '')}/values?tenant=${encodeURIComponent(environment.tenant)}&at=${encodeURIComponent(at)}`);
+          // The runtime's values API takes a caller it knows (R-09-27): the token by reference, TH_RUNTIME_TOKEN.
+          const headers: Record<string, string> = process.env.TH_RUNTIME_TOKEN ? { authorization: `Bearer ${(await resolveSecret(process.env.TH_RUNTIME_TOKEN)).reveal()}` } : {};
+          const r = await fetch(`${runtime.replace(/\/$/, '')}/values?tenant=${encodeURIComponent(environment.tenant)}&at=${encodeURIComponent(at)}`, { headers });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           (party.run.cfg as any).liveValues = Object.fromEntries(((await r.json()) as any[]).map((v) => [v.parameter, v.value]));
           valuesRead++;

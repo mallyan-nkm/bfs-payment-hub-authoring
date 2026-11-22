@@ -23,7 +23,8 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | Threat | Control | Status |
 | --- | --- | --- |
 | Someone acts in the studio as another user | Roles are enforced on every write, but the acting user comes from the request | Open: no sign-in ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) |
-| Someone calls the release API | The API records the actor it is given | Open: no authentication ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)); reach it from the pipeline's network only |
+| Someone calls the release API | A bearer JWT from the bank's identity provider on every call; roles from the bank's role map; the actor is the verified caller (R-09-27, R-09-29) | Proved: `ApiAuthTests` |
+| A package is forged, or signed by a stolen key | Every package is signed by the studio's key; the runtime and the deploy runner trust only the keys the bank lists, and refuse a revoked one even for a release stored before (R-09-23 to R-09-26) | Proved: `ReleaseApiTests`, `SigningTests`, `signing.test.ts`; the key in the studio's process is [I-74](../../ISSUES.md#i-74-the-studios-signing-key-is-held-in-its-process) |
 | A forged file arrives as a scheme's | The dispatch table and intake map accept only a declared message; duplicate files are known by content | Partly: `StoreTests.A_file_seen_before_is_known_by_its_content`; transport security is per port binding |
 | A tenant claims another tenant's content | A bank tenant writes only scope `b` (R-06-03) and sees only its own content (R-06-01) | Proved: tenant isolation suite |
 
@@ -33,7 +34,7 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | --- | --- | --- |
 | A published file is changed | Insert-only branch, fast-forward only, no force push (R-09-21) | Proved: `content.test.ts` |
 | A stored release is replaced | Same id with another hash refused; no PUT, PATCH, DELETE | Proved: `ReleaseApiTests` |
-| A package is altered between branch and runtime | The API checks the package against its manifest and hashes | Proved: `ReleaseApiTests.A_package_that_does_not_match_its_manifest_is_refused` |
+| A package is altered between branch and runtime | The API checks the package against its manifest and against the signed statement of every file's hash, at storage and at activation | Proved: `ReleaseApiTests.A_package_that_does_not_match_its_manifest_or_its_signature_is_refused`; `e2e-p6-hot-update.test.ts` step 2b |
 | A payment's record is edited in the database | Insert-only guard; hash chain per subject | Proved for the application path; a database administrator can still write rows, and the chain then shows it |
 | A running worker runs code its release did not name | Tasks registered as `name@release`; a worker refuses a task not on its queue | Proved in the studio's export; runtime versioned workers are target |
 
@@ -50,7 +51,8 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | --- | --- | --- |
 | Personal data in engine history | `PaymentContext` carries ids only | Built; the history scan of plan W1 is target |
 | Personal data in logs or traces | No logging of party values (`spec/CLAUDE.md`) | No telemetry yet ([I-66](../../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio)) |
-| A secret in this public repository | Secrets come from the environment; folders name them by reference | Review only: no scan in CI ([I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)) |
+| A secret in this public repository | Secrets are named by reference (R-06-22); check L37 refuses a literal one; gitleaks scans history and tree in CI | Proved: L37 mutation cases M38, M39; CI job `security` |
+| A secret in a log or an error | One secret interface; a value prints as `[secret]`; errors name the reference only | Proved: `SecretsTests`, `VaultTests`, `signing.test.ts` |
 | A bank's values in shared content | Bank values only in the bank's folder; bank names checked out of shared code | Proved: `BankConfigurationTests` |
 | Content sent to the Claude API | The studio holds design content, configuration and synthetic samples, never payment or personal data | By design (R-10-01); a bank's configuration can reach the assistant when its designer asks for help with it |
 | An error answer shows internals | Problem responses with a message, never a stack trace | Review |

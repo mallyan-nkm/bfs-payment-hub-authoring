@@ -5,9 +5,11 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Every released package is signed (R-09-23): a key of this run's own, from the studio's test support.
+import '../../../../studio/test/support/signing-env';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-// End to end (R-05-50, R-06-22): a WPS salary file of two lines runs on the runtime (the runtime's DTFx build, its claim
+// End to end (R-05-50, R-06-24): a WPS salary file of two lines runs on the runtime (the runtime's DTFx build, its claim
 // check and its steps journalled to the store on PostgreSQL). The bank's internal limit holds it before release, and
 // the hold is the runtime's (p.port.operations-queue.v1 given to the runtime): the native host opens it on the file's
 // chain and waits. In a real browser an operator signs in, filters the list to held WPS files, opens the file, sees

@@ -9,7 +9,7 @@ using TransactHub.Store;
 namespace TransactHub.Operations.Tests;
 
 /// <summary>
-/// The console's API (R-05-48, R-05-50, R-06-22): who may call it, what the list filters by, the detail of a payment with
+/// The console's API (R-05-48, R-05-50, R-06-24): who may call it, what the list filters by, the detail of a payment with
 /// several legs, an action through the API; dev sign-in refused in Production and the studio's issuer never trusted.
 /// </summary>
 [Collection(DatabaseCollection.Name)]
@@ -103,40 +103,90 @@ public sealed class OperatorApiTests(Databases dbs)
         Assert.Contains("TH_AUTH_DEV=1 is refused in Production", e.ToString());
     }
 
+
+    const string Issuer = "https://idp.bank.example.test/realms/ops";
+    const string Audience = "transacthub-ops";
+    const string RoleMapJson = """
+        { "kind": "runtime-role-map",
+          "grants": [ { "claim": "groups", "value": "ops-wps-operators", "roles": ["Operator"], "tenants": ["example-bank"] },
+                      { "claim": "groups", "value": "ops-wps-supervisors", "roles": ["Supervisor"], "tenants": ["example-bank"] } ] }
+        """;
+
+    /// <summary>A synthetic identity provider: a key pair, its JWKS, and tokens signed with it.</summary>
+    sealed class Idp : IDisposable
+    {
+        readonly System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
+        public string Jwks
+        {
+            get
+            {
+                var p = rsa.ExportParameters(false);
+                return new JsonObject { ["keys"] = new JsonArray(new JsonObject { ["kty"] = "RSA", ["kid"] = "ops-1", ["use"] = "sig", ["alg"] = "RS256", ["n"] = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(p.Modulus), ["e"] = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(p.Exponent) }) }.ToJsonString();
+            }
+        }
+        public string Token(string sub, string[] groups, string issuer = Issuer) => new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler().CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Issuer = issuer, Audience = Audience, Expires = DateTime.UtcNow.AddMinutes(10),
+            Claims = new Dictionary<string, object> { ["sub"] = sub, ["groups"] = groups },
+            SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(new Microsoft.IdentityModel.Tokens.RsaSecurityKey(rsa) { KeyId = "ops-1" }, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.RsaSha256),
+        });
+        public void Dispose() => rsa.Dispose();
+    }
+
     [Fact]
     public void The_studios_issuer_is_never_the_operators_identity_provider()
     {
         var store = dbs.Fresh(StoreProvider.PostgreSql);
-        using var host = new Host(store, "Production", new() { ["TH_OIDC_AUTHORITY"] = "https://studio.example.invalid/", ["TH_OIDC_AUDIENCE"] = "th-ops", ["TH_STUDIO_ISSUER"] = "https://studio.example.invalid" });
+        using var idp = new Idp();
+        using var host = new Host(store, "Production", new() { ["Auth:Oidc:Issuer"] = "https://studio.example.invalid/", ["Auth:Oidc:Audience"] = Audience, ["Auth:Oidc:SigningKeys"] = idp.Jwks, ["Auth:RoleMap"] = RoleMapJson, ["TH_STUDIO_ISSUER"] = "https://studio.example.invalid" });
         var e = Assert.ThrowsAny<Exception>(() => host.CreateClient());
         Assert.Contains("the studio's issuer", e.ToString());
     }
 
     [Fact]
-    public async Task With_the_banks_identity_provider_a_request_without_a_valid_token_is_refused()
+    public async Task With_the_banks_identity_provider_only_its_valid_tokens_are_taken_and_its_groups_give_the_roles()
     {
         var (store, _) = await dbs.Pair(StoreProvider.PostgreSql);
-        await using var host = new Host(store, "Production", new() { ["TH_OIDC_AUTHORITY"] = "https://idp.example.invalid/realms/bank", ["TH_OIDC_AUDIENCE"] = "th-ops", ["TH_OIDC_CLIENT_ID"] = "th-ops-console" });
-        var c = As(host.CreateClient(), "op-1", "example-bank:Supervisor");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await c.GetAsync("/ops/api/payments")).StatusCode);
-        var cfg = await Json(await c.GetAsync("/ops/api/auth/config"));
+        var mine = await WpsRun.Seed(store);
+        await WpsRun.Seed(store, tenant: "other-bank", fileId: "0000001234567261117083444");
+        using var idp = new Idp();
+        await using var host = new Host(store, "Production", new() { ["Auth:Oidc:Issuer"] = Issuer, ["Auth:Oidc:Audience"] = Audience, ["Auth:Oidc:SigningKeys"] = idp.Jwks, ["Auth:RoleMap"] = RoleMapJson, ["Auth:Oidc:ClientId"] = "th-ops-console" });
+        var anon = host.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anon.GetAsync("/ops/api/payments")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await As(host.CreateClient(), "op-1", "example-bank:Supervisor").GetAsync("/ops/api/payments")).StatusCode);
+        var cfg = await Json(await anon.GetAsync("/ops/api/auth/config"));
         Assert.Equal("oidc", (string?)cfg["mode"]);
         Assert.Equal("th-ops-console", (string?)cfg["clientId"]);
+        Assert.Equal(HttpStatusCode.OK, (await anon.GetAsync("/ops/api/health")).StatusCode);
+
+        HttpClient Bearer(string token) { var c = host.CreateClient(); c.DefaultRequestHeaders.Authorization = new("Bearer", token); return c; }
+        var op = Bearer(idp.Token("op-1", ["ops-wps-operators"]));
+        var list = await Until(op, "/ops/api/payments", j => (int)j["total"]! == 1);
+        Assert.Equal(mine, (string?)list["rows"]![0]!["id"]);
+        Assert.Equal(HttpStatusCode.Forbidden, (await op.GetAsync("/ops/api/payments?tenant=other-bank")).StatusCode);
+        var me = await Json(await op.GetAsync("/ops/api/me"));
+        Assert.Equal("op-1", (string?)me["subject"]);
+        // An operator may not rebuild; a supervisor may.
+        Assert.Equal(HttpStatusCode.Forbidden, (await op.PostAsync("/ops/api/rebuild", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Bearer(idp.Token("sup-1", ["ops-wps-supervisors"])).PostAsync("/ops/api/rebuild", null)).StatusCode);
+        // A token of another issuer, or one with no group the map knows, gives nothing.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Bearer(idp.Token("op-1", ["ops-wps-operators"], issuer: "https://studio.example.invalid")).GetAsync("/ops/api/payments")).StatusCode);
+        Assert.Equal(0, (int)(await Json(await Bearer(idp.Token("x-1", ["unrelated"])).GetAsync("/ops/api/payments")))["total"]!);
     }
 
     [Fact]
-    public void Roles_come_from_the_banks_claims_through_the_mapping()
+    public void Roles_come_from_the_banks_claims_through_the_runtimes_role_map()
     {
-        var m = new RoleMapping([new RoleRule("groups", "PH-WPS-Ops", OperatorRoles.Operator, "example-bank"), new RoleRule("groups", "PH-WPS-Sup", OperatorRoles.Supervisor, "example-bank")]);
-        var who = m.Resolve(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-            [new("sub", "u-1"), new("groups", "PH-WPS-Ops"), new("groups", "Unrelated")], "jwt")))!;
+        var map = TransactHub.Auth.RoleMap.Parse(RoleMapJson, OperatorRoles.All);
+        var id = new System.Security.Claims.ClaimsIdentity([new("sub", "u-1"), new("groups", "ops-wps-operators"), new("groups", "unrelated")], "jwt");
+        map.Apply(id);
+        var who = new RuntimeAuthOperators().Resolve(new System.Security.Claims.ClaimsPrincipal(id))!;
         Assert.True(who.Has("example-bank", OperatorRoles.Operator));
         Assert.False(who.Has("example-bank", OperatorRoles.Supervisor));
         Assert.False(who.Has("other-bank", OperatorRoles.Operator));
-        var dflt = RoleMapping.Default.Resolve(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-            [new("sub", "u-2"), new("th_roles", "example-bank:Supervisor")], "jwt")))!;
-        Assert.True(dflt.Has("example-bank", OperatorRoles.Operator));
-        Assert.True(dflt.Has("example-bank", OperatorRoles.Supervisor));
-        Assert.Null(RoleMapping.Default.Resolve(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity())));
+        Assert.Contains("which this host does not know", Assert.Throws<InvalidOperationException>(() => TransactHub.Auth.RoleMap.Parse("""{ "kind": "runtime-role-map", "grants": [ { "claim": "groups", "value": "x", "roles": ["release-importer"] } ] }""", OperatorRoles.All)).Message);
+        var all = new OperatorIdentity("s", "s", new Dictionary<string, IReadOnlySet<string>> { [OperatorIdentity.AnyTenant] = new HashSet<string> { OperatorRoles.Supervisor } });
+        Assert.True(all.Has("any-bank", OperatorRoles.Operator));
+        Assert.Null(new RuntimeAuthOperators().Resolve(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity())));
     }
 }

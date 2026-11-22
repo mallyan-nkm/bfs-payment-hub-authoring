@@ -1,6 +1,6 @@
 # The operations console
 
-Operators see and act on running payments in the runtime, never in the studio (R-10-01). In the new architecture a scheme is a leg, so the console is leg-generic: it has no code for any scheme, and shows each leg as its pack's operations view declares it (R-05-48). Requirements: R-05-48 to R-05-50, R-06-22. Owner's decision: 2026-11-22 (I-65).
+Operators see and act on running payments in the runtime, never in the studio (R-10-01). In the new architecture a scheme is a leg, so the console is leg-generic: it has no code for any scheme, and shows each leg as its pack's operations view declares it (R-05-48). Requirements: R-05-48 to R-05-50, R-06-24. Owner's decision: 2026-11-22 (I-65).
 
 ## The picture
 
@@ -54,7 +54,7 @@ Operators see and act on running payments in the runtime, never in the studio (R
 
 ## Leg-generic detail: the operations view
 
-A pack declares an `operations-view` artefact (schema `spec/schemas/operations-view.schema.json`, Part 5 section 5.10): the platform's in `p` (`p.view.operations.v1`) and each scheme's in its scope (`uae.wps.view.operations.v1`). It declares fields with a source, label, group, format and mask; list columns and filters; a bulk's lines; documents by message kind; and actions with their role, second approver, remarks and when they apply. Each leg says how its engine instance is told apart (`selectBy`: direction, kind, steps only it has), so a payment with several legs (a slot leg and a refuse leg, a platform with two slots) shows each one. Lint L37 checks a view against the flows it names; mutation cases M38 to M44 prove the check.
+A pack declares an `operations-view` artefact (schema `spec/schemas/operations-view.schema.json`, Part 5 section 5.10): the platform's in `p` (`p.view.operations.v1`) and each scheme's in its scope (`uae.wps.view.operations.v1`). It declares fields with a source, label, group, format and mask; list columns and filters; a bulk's lines; documents by message kind; and actions with their role, second approver, remarks and when they apply. Each leg says how its engine instance is told apart (`selectBy`: direction, kind, steps only it has), so a payment with several legs (a slot leg and a refuse leg, a platform with two slots) shows each one. Lint L38 checks a view against the flows it names; mutation cases M40 to M46 prove the check.
 
 The WPS view covers every field the source's WPS screens showed that the new model has: `docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`. The fields with no source are Issue I-100.
 
@@ -74,10 +74,10 @@ The WPS view covers every field the source's WPS screens showed that the new mod
 ## Who may: OIDC and roles
 
 - The console signs in at the bank's identity provider with the authorisation code flow and PKCE (`runtime/ops-console/src/shell/auth.ts`). The API validates the bearer JWT (issuer, audience, signature, lifetime) and refuses a token of the studio's issuer. The runtime keeps no identity store.
-- Roles come from the bank's claims or groups through `Operations:Roles` (`RoleMapping`): Operator and Supervisor per tenant. An operator sees and acts on their tenants' payments only.
+- The API is behind the runtime's one authentication library, `runtime/src/TransactHub.Auth` (`AddRuntimeAuth` with the roles Operator and Supervisor): the bank's one OIDC issuer, and the bank's role map (`Auth:RoleMap`) from its claims and groups to the roles and the tenants. An operator sees and acts on their tenants' payments only. The library grants roles and tenants together, not a role per tenant (I-65).
 - Dev mode (`TH_AUTH_DEV=1`) takes a synthetic identity from a header and is refused when the host runs in Production (`OperatorApiTests`).
-- The seam for the runtime's own authentication library is `OperatorAuth.AddOperatorAuthentication` (it registers the scheme) and `IOperatorIdentityResolver` (claims to roles). The web app's shell (`src/shell/`) is shared: the test bench can be a second section of the same app with the same sign-in.
+- `OperatorAuth.AddOperatorAuthentication` calls the library, adds the dev sign-in outside production and refuses the studio's issuer; `RuntimeAuthOperators` turns the library's claims into an operator identity. The web app's shell (`src/shell/`) is shared: the test bench can be a second section of the same app with the same sign-in.
 
 ## Personal data
 
-The read model holds the declared fields only, masked as declared (account and id values keep four characters at each end, as the source's screens did). A field that reads personal data must declare its mask; `none` only where the source's screen showed it whole, named in `oldScreen` (L37). The step facts carry no payload and no error text. A document's content is served from the store to the payment's operators, as the source's Raw File tab did. An unmask is not built (I-100).
+The read model holds the declared fields only, masked as declared (account and id values keep four characters at each end, as the source's screens did). A field that reads personal data must declare its mask; `none` only where the source's screen showed it whole, named in `oldScreen` (L38). The step facts carry no payload and no error text. A document's content is served from the store to the payment's operators, as the source's Raw File tab did. An unmask is not built (I-100).

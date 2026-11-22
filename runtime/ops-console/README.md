@@ -1,6 +1,6 @@
 # The operations console
 
-Where operators see and act on running payments (R-05-48 to R-05-50, R-06-22). It is leg-generic: every payment shows its tenant, scheme, direction, ISO status, last outcome, hold, amounts, ids and file names, and each leg shows what its pack's operations view declares (`spec/factory/*/views/*.view.operations.v1.yaml`). There is no code for any scheme here; a new scheme gets its console by declaring its view. The design is `docs/north-star/design/operations-console.md`.
+Where operators see and act on running payments (R-05-48 to R-05-50, R-06-24). It is leg-generic: every payment shows its tenant, scheme, direction, ISO status, last outcome, hold, amounts, ids and file names, and each leg shows what its pack's operations view declares (`spec/factory/*/views/*.view.operations.v1.yaml`). There is no code for any scheme here; a new scheme gets its console by declaring its view. The design is `docs/north-star/design/operations-console.md`.
 
 | Part | Where |
 | --- | --- |
@@ -27,8 +27,9 @@ Then open http://127.0.0.1:7400. Configuration:
 | `Operations:Views` | The published artefacts that hold the operations views; by default `content-configurations/artefacts` |
 | `Operations:Console` | The built app; by default `runtime/ops-console/dist` |
 | `Operations:PollMilliseconds` | How often the projection reads the outbox (500) |
-| `Operations:Roles` | The role mapping: `[{ "ClaimType": "groups", "Value": "<bank group>", "Tenant": "<tenant>", "Role": "Operator" }]`; by default the claim `th_roles` read as `<tenant>:<role>` |
-| `TH_OIDC_AUTHORITY`, `TH_OIDC_AUDIENCE`, `TH_OIDC_CLIENT_ID`, `TH_OIDC_SCOPES` | The bank's identity provider: the API validates its bearer tokens; the app signs in with the authorisation code flow and PKCE as a public client |
+| `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:Oidc:Authority`, `Auth:Oidc:SigningKeys` | The bank's identity provider, through the runtime's authentication library (`runtime/src/TransactHub.Auth`, `AddRuntimeAuth`): the API validates its bearer tokens |
+| `Auth:RoleMap` | The bank's role map (kind `runtime-role-map`, or a reference to it): its claims and groups to the roles `Operator` and `Supervisor` and the tenants |
+| `Auth:Oidc:ClientId`, `Auth:Oidc:Scopes` | The console's public client: the app signs in with the authorisation code flow and PKCE |
 | `TH_STUDIO_ISSUER` | The studio's issuer, which is refused as an operator's |
 | `TH_AUTH_DEV=1` | Dev sign-in with synthetic users (`X-TH-Dev-Identity`); refused when the host runs in Production (the default environment) |
 

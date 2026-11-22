@@ -2,20 +2,21 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using TransactHub.Auth;
 using TransactHub.Operations;
+using TransactHub.Security;
 
 namespace TransactHub.Operations.Api;
 
 /// <summary>
-/// How the console's API knows who is calling (R-06-22). The runtime has no identity store: it trusts the bank's
-/// identity provider over OIDC. The API validates the bearer JWT the console got by the authorisation code flow with
-/// PKCE (issuer, audience, signature, lifetime), never a token of the studio's issuer, and maps the bank's claims or
-/// groups to Operator and Supervisor per tenant (<see cref="RoleMapping"/>). Dev mode (TH_AUTH_DEV=1) takes a
-/// synthetic identity from a header instead, and is refused when the host runs in Production.
-/// This is the small seam the runtime's own authentication library replaces at merge: it registers a scheme
-/// that yields a principal; the role mapping and everything after it stay.
+/// How the console's API knows who is calling (R-06-24). It uses the runtime's one authentication library
+/// (<c>TransactHub.Auth</c>, <see cref="RuntimeAuth.AddRuntimeAuth"/>): bearer JWTs of the bank's one OIDC issuer, the bank's
+/// role map giving the roles Operator and Supervisor and the tenants. The console gets the token by the authorisation
+/// code flow with PKCE. The studio's issuer is never the operators' (<c>TH_STUDIO_ISSUER</c> is refused as
+/// <c>Auth:Oidc:Issuer</c>). Dev mode (TH_AUTH_DEV=1) takes a synthetic identity from a header instead, and is refused
+/// when the host runs in Production.
 /// </summary>
 public static class OperatorAuth
 {
@@ -24,52 +25,29 @@ public static class OperatorAuth
 
     public sealed record ClientConfig(string Mode, string? Authority, string? ClientId, string? Scopes, string? Audience);
 
-    public static ClientConfig AddOperatorAuthentication(this WebApplicationBuilder b)
+    public static async Task<ClientConfig> AddOperatorAuthentication(this WebApplicationBuilder b)
     {
-        var dev = b.Configuration["TH_AUTH_DEV"] == "1";
-        var rules = b.Configuration.GetSection("Operations:Roles").Get<List<RoleRule>>();
-        b.Services.AddSingleton<IOperatorIdentityResolver>(rules is { Count: > 0 } ? new RoleMapping(rules) : RoleMapping.Default);
-        if (dev)
+        b.Services.AddSingleton<IOperatorIdentityResolver, RuntimeAuthOperators>();
+        if (b.Configuration["TH_AUTH_DEV"] == "1")
         {
             if (b.Environment.IsProduction())
                 throw new InvalidOperationException("TH_AUTH_DEV=1 is refused in Production: the operations console takes identities only from the bank's identity provider there.");
             b.Services.AddAuthentication(DevScheme).AddScheme<AuthenticationSchemeOptions, DevAuthentication>(DevScheme, _ => { });
-            b.Services.AddAuthorization();
+            b.Services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
             return new ClientConfig("dev", null, null, null, null);
         }
-        var authority = b.Configuration["TH_OIDC_AUTHORITY"] ?? throw new InvalidOperationException("Set TH_OIDC_AUTHORITY (the bank's identity provider) or, outside Production, TH_AUTH_DEV=1");
-        var audience = b.Configuration["TH_OIDC_AUDIENCE"] ?? throw new InvalidOperationException("Set TH_OIDC_AUDIENCE (the API's audience at the bank's identity provider)");
+        var issuer = b.Configuration["Auth:Oidc:Issuer"];
         var studio = b.Configuration["TH_STUDIO_ISSUER"];
-        if (studio is { Length: > 0 } && Same(studio, authority))
-            throw new InvalidOperationException("TH_OIDC_AUTHORITY is the studio's issuer: operators sign in at the bank's identity provider, never the studio's.");
-        b.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
-        {
-            o.Authority = authority;
-            o.Audience = audience;
-            o.MapInboundClaims = false;
-            o.RequireHttpsMetadata = !b.Environment.IsDevelopment();
-            o.TokenValidationParameters.ValidateIssuer = true;
-            o.TokenValidationParameters.ValidateAudience = true;
-            o.TokenValidationParameters.ValidateLifetime = true;
-            o.Events = new JwtBearerEvents
-            {
-                OnTokenValidated = ctx =>
-                {
-                    var iss = ctx.Principal?.FindFirst("iss")?.Value;
-                    if (studio is { Length: > 0 } && iss is not null && Same(iss, studio)) ctx.Fail("a token of the studio's issuer is never accepted here");
-                    return Task.CompletedTask;
-                },
-            };
-        });
-        b.Services.AddAuthorization();
-        return new ClientConfig("oidc", authority, b.Configuration["TH_OIDC_CLIENT_ID"], b.Configuration["TH_OIDC_SCOPES"] ?? "openid profile", audience);
+        if (issuer is { Length: > 0 } && studio is { Length: > 0 } && string.Equals(issuer.TrimEnd('/'), studio.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Auth:Oidc:Issuer is the studio's issuer: operators sign in at the bank's identity provider, never the studio's.");
+        await b.Services.AddRuntimeAuth(b.Configuration, SecretResolver.FromEnvironment(k => b.Configuration[k]), OperatorRoles.All);
+        return new ClientConfig("oidc", b.Configuration["Auth:Oidc:Authority"] ?? issuer, b.Configuration["Auth:Oidc:ClientId"],
+            b.Configuration["Auth:Oidc:Scopes"] ?? "openid profile", b.Configuration["Auth:Oidc:Audience"]);
     }
-
-    static bool Same(string a, string b) => string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Dev mode only: the identity is a JSON object in a header, <c>{"sub","name","roles":["tenant:Role"]}</c>, as the console's
-    /// dev sign-in sends it. Synthetic users only.
+    /// dev sign-in sends it, turned into the same claims the role map gives. Synthetic users only.
     /// </summary>
     sealed class DevAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
@@ -82,10 +60,31 @@ public static class OperatorAuth
             try { o = JsonNode.Parse(raw) as JsonObject; } catch { return Task.FromResult(AuthenticateResult.Fail("the dev identity is not JSON")); }
             var sub = (string?)o?["sub"];
             if (string.IsNullOrWhiteSpace(sub)) return Task.FromResult(AuthenticateResult.Fail("the dev identity has no sub"));
-            var claims = new List<Claim> { new("sub", sub), new("name", (string?)o!["name"] ?? sub), new("iss", "th-dev") };
-            foreach (var r in (o["roles"] as JsonArray ?? [])) if ((string?)r is { } role) claims.Add(new Claim("th_roles", role));
-            var p = new ClaimsPrincipal(new ClaimsIdentity(claims, DevScheme, "name", "th_roles"));
+            var claims = new List<Claim> { new("sub", sub), new("name", (string?)o!["name"] ?? sub) };
+            foreach (var r in (o["roles"] as JsonArray ?? []))
+                if ((string?)r is { } pair && pair.Split(':') is [var tenant, var role])
+                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role)]);
+            var p = new ClaimsPrincipal(new ClaimsIdentity(claims, DevScheme, "sub", RuntimeAuth.RoleClaim));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(p, DevScheme)));
         }
+    }
+}
+
+/// <summary>
+/// An operator from the runtime's claims: the role map's roles (<see cref="RuntimeAuth.RoleClaim"/>) in each tenant it grants
+/// (<see cref="RuntimeAuth.TenantClaim"/>, <c>*</c> for every tenant). The library grants roles and tenants together, not a
+/// role per tenant (Issue I-101).
+/// </summary>
+public sealed class RuntimeAuthOperators : IOperatorIdentityResolver
+{
+    public OperatorIdentity? Resolve(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true) return null;
+        var sub = user.FindFirst("sub")?.Value ?? RuntimeAuth.Actor(user);
+        var roles = user.FindAll(RuntimeAuth.RoleClaim).Select(c => c.Value).Where(OperatorRoles.All.Contains).ToHashSet();
+        var tenants = user.FindAll(RuntimeAuth.TenantClaim).Select(c => c.Value).Distinct();
+        var name = user.FindFirst("name")?.Value ?? user.FindFirst("preferred_username")?.Value ?? sub;
+        return new OperatorIdentity(sub, name, roles.Count == 0 ? new Dictionary<string, IReadOnlySet<string>>()
+            : tenants.ToDictionary(t => t, _ => (IReadOnlySet<string>)roles));
     }
 }
