@@ -64,4 +64,16 @@ describe('export (C05, C20, C22)', () => {
     expect(x).toMatch(/<subProcess id="block_\d+" name="submit">/);
     expect(x).toMatch(/errorRef="ret_pending"/);
   });
+  it('marks a duration parameter, an await family and a block start for the Flowable binding (R-05-43 to R-05-45)', () => {
+    const pkg = exportPackage(env, { workflows: ['uae.wps.wf.agent-payment-in.v1'], target: 'flowable' });
+    const x = pkg.files['bpmn/uae.wps.wf.agent-payment-in.v1@1.0.0.bpmn20.xml'];
+    expect(x).not.toMatch(/object Object/);
+    // The wait and the timeout are written with the default, and marked with the parameter the binding resolves.
+    expect(x).toMatch(/<intermediateCatchEvent id="return-credits\.upload-hold" name="wait:PT0S"><extensionElements><th:timer parameter="uae\.wps\.exchange\.return-credits\.v1#uploadHold" default="PT0S"\/><\/extensionElements><timerEventDefinition><timeDuration>PT0S<\/timeDuration>/);
+    expect(x).toMatch(/<th:timer calendar="business" parameter="uae\.wps\.exchange\.return-credits\.v1#replyWait" default="P30D"\/><\/extensionElements><timerEventDefinition><timeDuration>P30D<\/timeDuration>/);
+    expect(x).toMatch(/<th:point kind="text" text="return-credits\.upload-hold:PT0S" record="detail" timer="return-credits\.upload-hold" prefix="return-credits\.upload-hold"\/>/);
+    expect(x).toMatch(/<th:await step="return-credits\.await-ack" message="uae\.wps\.ack" correlateBy="header\.fileId" family="rfa"\/>/);
+    // The REST binding learns when each composite step began at a point of its own.
+    expect(x).toMatch(/<th:point kind="blockStart" step="return-credits"\/>/);
+  });
 });

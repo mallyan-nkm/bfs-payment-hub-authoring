@@ -20,7 +20,7 @@ describe.skipIf(!on)('the conformance kit on real engines', () => {
     expect(r.stdout).toContain('48 of 48 conformance scenarios pass on Elsa');
   }, 1500000);
 
-  // Red until the Flowable binding applies R-05-43 to R-05-45 (docs/ISSUES.md I-49).
+  // The Flowable binding applies R-05-43 to R-05-45 (docs/ISSUES.md I-49).
   it('passes 48 of 48 on Flowable', () => {
     const r = run('engines/flowable/run-kit.ts');
     expect(r.stdout).toMatch(/48 of 48 conformance scenarios pass on Flowable/);

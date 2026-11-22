@@ -45,6 +45,9 @@ public sealed class FlowableBinding
     readonly PriorityQueue<Ev, (long at, long wall, long seq)> queue = new();
     long seq;
     readonly List<JsonObject> mailbox = new();
+    readonly Dictionary<JsonObject, long> receivedAt = new(ReferenceEqualityComparer.Instance);
+    /// <summary>The value a timer from a duration parameter took (R-05-45): by timer job id, and by instance and timer element.</summary>
+    readonly Dictionary<string, string> timerValue = new(), lastTimerValue = new();
     int unmatched, duplicates, earlyKept, jobsWorked, bindingJobs, asyncJobs, timersFired, lateAbandoned, retriedOnFailure;
 
     sealed record Ev(long At, string Kind, Func<Task> Run);
@@ -61,6 +64,8 @@ public sealed class FlowableBinding
         public readonly HashSet<string> Expired = new(), Consumed = new(), Superseded = new();
         public readonly Dictionary<string, string> LastChild = new();
         public readonly SortedSet<string> StateKeys = new(StringComparer.Ordinal);
+        public readonly HashSet<string> Awaited = new(); // the message of every await this instance has waited for (R-05-43)
+        public readonly Dictionary<string, long> BlockStarted = new(); // block element id -> when it last began
         public int Snapshots;
         public bool Registered, Ended;
         public long StartedAt;
@@ -304,16 +309,37 @@ public sealed class FlowableBinding
     /// <summary>
     /// When a timer is due on the virtual clock: its duration from the model when it is written out (on the
     /// business calendar when the model says so), else the server's due date less its create time, which
-    /// the server reads from its clock a moment apart, so it is rounded to a tenth of a second.
+    /// the server reads from its clock a moment apart, so it is rounded to a tenth of a second. A timer from
+    /// a duration parameter (R-05-45) takes the tenant's value in force on the business date it was created,
+    /// else the default the model was written with.
     /// </summary>
     long VirtualDue(JsonObject timer, long vCreated, long serverDuration)
     {
         var element = J.S(timer, "elementId") ?? "";
         var def = byDef.GetValueOrDefault(J.S(timer, "processDefinitionId") ?? "");
-        var business = def?.Ann(element, "timer")?.GetValueOrDefault("calendar") == "business";
+        var meta = def?.Ann(element, "timer");
+        var business = meta?.GetValueOrDefault("calendar") == "business";
         var written = def?.DurationOf(element);
+        if (meta?.GetValueOrDefault("parameter") is string parameter)
+        {
+            var id = J.S(timer, "id") ?? "";
+            if (!timerValue.TryGetValue(id, out var value))
+                timerValue[id] = value = ParamValue(parameter, meta.GetValueOrDefault("default") ?? written ?? "PT0S", Duration.Today(vCreated));
+            lastTimerValue[$"{J.S(timer, "processInstanceId")}|{element}"] = value;
+            written = value;
+        }
         if (written is not null && Duration.IsDuration(written)) return Duration.Add(vCreated, written, business);
         return vCreated + (long)Math.Round(serverDuration / 100.0, MidpointRounding.AwayFromZero) * 100;
+    }
+
+    /// <summary>A parameter's value in force on a date (the tenant's configuration), else its default (R-01-17).</summary>
+    string ParamValue(string parameter, string dflt, string date)
+    {
+        var inForce = J.A(dep.Config, "values").OfType<JsonObject>()
+            .Where(x => J.S(x, "parameter") == parameter && string.CompareOrdinal(J.S(x, "validFrom") ?? "", date) <= 0
+                        && (J.S(x, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0))
+            .OrderBy(x => J.S(x, "validFrom"), StringComparer.Ordinal).LastOrDefault();
+        return inForce is not null ? J.S(inForce, "value") ?? dflt : dflt;
     }
 
     /// <summary>Until nothing moves: run the jobs the async executor would, work the external jobs, deliver held messages.</summary>
@@ -560,9 +586,20 @@ public sealed class FlowableBinding
                 Record(inst, p, $"{step}:{Text(job.Variables.GetValueOrDefault(p["var"]))}");
                 break;
             }
-            case "text": Record(inst, p, p["text"]); break;
-            case "awaitReceived": Record(inst, p, $"{LabelOf(job, p, p["step"])}:received"); break;
+            case "text":
+                // A wait from a duration parameter records the value its timer took (R-05-45).
+                Record(inst, p, p.GetValueOrDefault("timer") is string tm && lastTimerValue.TryGetValue($"{inst.Pid}|{tm}", out var tv) ? $"{p["prefix"]}:{tv}" : p["text"]);
+                break;
+            case "blockStart":
+                // When the composite step began (R-05-43): the block sub-process this point opens.
+                if (def.Ancestry(job.ElementId).Skip(1).FirstOrDefault(e => def.Ann(e, "block") is not null) is string block) inst.BlockStarted[block] = now;
+                break;
+            case "awaitReceived":
+                inst.Awaited.Add(p["message"]);
+                Record(inst, p, $"{LabelOf(job, p, p["step"])}:received");
+                break;
             case "awaitTimeout":
+                inst.Awaited.Add(p["message"]);
                 inst.Expired.Add(p["message"]);
                 Record(inst, p, $"{LabelOf(job, p, p["step"])}:timeout");
                 break;
@@ -687,10 +724,29 @@ public sealed class FlowableBinding
     static string DedupeId(JsonObject m) =>
         J.S(m, "inReplyTo") is string r ? $"{J.S(m, "type")}:{r}:{J.S(m, "status") ?? ""}" : J.S(m, "id") ?? "";
 
-    async Task<string?> Waiting(Inst i, string type)
+    /// <summary>A catch of this instance waiting for this message: of its type and, where the await names one, its family (R-05-44).</summary>
+    async Task<JsonObject?> Waiting(Inst i, JsonObject m)
     {
-        var subs = await rest.EventSubscriptions(tenant, "message", type, i.Pid);
-        return subs.Count == 0 ? null : J.S(subs[0], "executionId");
+        foreach (var s in await rest.EventSubscriptions(tenant, "message", J.S(m, "type"), i.Pid))
+        {
+            var def = byDef.GetValueOrDefault(J.S(s, "processDefinitionId") ?? "");
+            var family = def?.Ann(J.S(s, "activityId") ?? "", "await")?.GetValueOrDefault("family");
+            if (family is null || J.S(m, "family") is not string got || got == family) return s;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// R-05-43: once an earlier await of this instance has waited for this message, a held message received
+    /// before the composite step that holds the waiting await began answered the earlier exchange.
+    /// </summary>
+    bool Stale(Inst i, JsonObject m, JsonObject sub)
+    {
+        if (!i.Awaited.Contains(J.S(m, "type") ?? "")) return false;
+        var def = byDef.GetValueOrDefault(J.S(sub, "processDefinitionId") ?? "");
+        var block = def?.Ancestry(J.S(sub, "activityId") ?? "").Skip(1).FirstOrDefault(e => def.Ann(e, "block") is not null);
+        var since = block is not null && i.BlockStarted.TryGetValue(block, out var began) ? began : now;
+        return receivedAt.TryGetValue(m, out var at) && at < since;
     }
 
     async Task FrontDoor(JsonObject m)
@@ -706,16 +762,17 @@ public sealed class FlowableBinding
         }
         var candidates = insts.Values.Where(i => Correlates(i, m)).ToList();
         Inst? alive = null;
-        foreach (var i in candidates) if (!i.Ended && await Waiting(i, type) is not null) { alive = i; break; }
+        foreach (var i in candidates) if (!i.Ended && await Waiting(i, m) is not null) { alive = i; break; }
         alive ??= candidates.LastOrDefault(i => !i.Ended);
         var target = alive ?? candidates.LastOrDefault();
         if (target is null) { unmatched++; return; }
         var id = DedupeId(m);
         if (candidates.Any(c => c.Consumed.Contains(id)) || mailbox.Any(x => DedupeId(x) == id)) { duplicates++; return; }
         if (target.Ended) { unmatched++; return; }
-        if (await Waiting(target, type) is string exec) { await Deliver(target, m, exec); return; }
+        if (await Waiting(target, m) is { } w) { await Deliver(target, m, J.S(w, "executionId")!); return; }
         if (target.Expired.Contains(type)) { unmatched++; return; }
         // Early: the binding holds the message until a catch is waiting (R-09-16).
+        receivedAt[m] = now;
         mailbox.Add(m);
         earlyKept++;
     }
@@ -739,9 +796,15 @@ public sealed class FlowableBinding
             foreach (var i in insts.Values)
             {
                 if (i.Ended || !Correlates(i, m)) continue;
-                if (await Waiting(i, J.S(m, "type")!) is not string exec) continue;
+                if (await Waiting(i, m) is not { } w) continue;
                 mailbox.Remove(m);
-                await Deliver(i, m, exec);
+                if (Stale(i, m, w))
+                {
+                    unmatched++;
+                    notes.Add($"a held {J.S(m, "type")} received before its step began is unmatched (R-05-43)");
+                    return true;
+                }
+                await Deliver(i, m, J.S(w, "executionId")!);
                 return true;
             }
         }
