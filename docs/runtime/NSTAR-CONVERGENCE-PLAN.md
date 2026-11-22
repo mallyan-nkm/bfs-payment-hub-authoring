@@ -227,7 +227,7 @@ content-configurations/      what the studio publishes and what a bank configure
 The results, pass by pass and project by project, with each failure classified (missing input, this machine, finding), are in `docs/runtime/BASELINE.md`. In short:
 - **Build:** 153 projects, no errors.
 - **Restored inputs:** with `dsl.zip` restored and Temporal available, the source's WPS unit, workflow and engine-conformance tests pass. Engine conformance passes 223 of 226 on its own Temporal and DTFx lanes.
-- **Still missing:** two recorded histories and the `.github/` docs.
+- **Still missing:** two recorded histories and the corporate-registration SQL scripts. The `.github/` docs arrived in `TransactHub-Package.zip` on 2026-11-22; their north-star versions are in `docs/north-star/` (inventory: `docs/north-star/INVENTORY.md`).
 - **Findings:** the largest is in the security suite (N15). `PaymentHub.UnitTests.Wps` never builds (N16).
 
 ## 6. Phases and exit criteria
@@ -306,3 +306,5 @@ The decision table:
 
 ## 9. Survey notes (where each finding is in the source)
 See `docs/runtime/SURVEY.md`: the data model and databases, the engines and deployment, and the WPS and bank inventory, with file paths.
+
+The source's engineering and AI docs (its `.github/` folder), rewritten for this plan, are in `docs/north-star/`: start at `docs/north-star/README.md`.

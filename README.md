@@ -8,6 +8,7 @@ The design-time tool in which a payments workflow designer defines, scripts, tes
 | `studio/` | The studio: server, interpreter, rule service, sandboxes, simulators, checks, export, governance and the web app. See `studio/README.md`. |
 | `studio/engines/` | The conformance kit on real engines: DTFx (C#) and Flowable (Java). |
 | `docs/` | The stack decision record and the issues found in the spec while building. |
+| `docs/north-star/` | The source's engineering and AI docs rewritten for the north star: architecture essentials, build and run, how an AI agent works here, guidelines, design, requirements, quality, security and deployment, with an inventory of every source file. Start at `docs/north-star/README.md`. |
 
 ## Start
 

@@ -1,0 +1,77 @@
+# Threat model
+
+STRIDE over the north star's trust boundaries. It replaces the source's threat model, which covered its gateway, eleven services and their shared database. Each threat names its control and whether a test proves it. Where the control is not decided, the Issue is linked.
+
+## Trust boundaries
+
+| # | Boundary | Crossed by |
+| --- | --- | --- |
+| TB1 | A designer's browser to the studio server | HTTP API calls carrying the acting user |
+| TB2 | The studio server to GitHub | The GitHub REST and Git Data APIs, with `TH_GITHUB_TOKEN` |
+| TB3 | The studio server to the Claude API | The assistant's drafting calls, with `ANTHROPIC_API_KEY` |
+| TB4 | The content branch to the runtime | The pipeline calling the release API |
+| TB5 | Outside parties to the runtime | Channel files and scheme messages into the front door; answers from core banking |
+| TB6 | Runtime workers to the store and the engine's state | EF Core to SQL Server or PostgreSQL; engine clients to their servers |
+| TB7 | A script-behind to the studio | The injected interface of the sandbox |
+
+The studio and the runtime share no connection: the studio never reaches a running payment (R-10-01). The branch is the only path between them.
+
+## STRIDE
+
+### Spoofing
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| Someone acts in the studio as another user | Roles are enforced on every write, but the acting user comes from the request | Open: no sign-in ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) |
+| Someone calls the release API | The API records the actor it is given | Open: no authentication ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)); reach it from the pipeline's network only |
+| A forged file arrives as a scheme's | The dispatch table and intake map accept only a declared message; duplicate files are known by content | Partly: `StoreTests.A_file_seen_before_is_known_by_its_content`; transport security is per port binding |
+| A tenant claims another tenant's content | A bank tenant writes only scope `b` (R-06-03) and sees only its own content (R-06-01) | Proved: tenant isolation suite |
+
+### Tampering
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| A published file is changed | Insert-only branch, fast-forward only, no force push (R-09-21) | Proved: `content.test.ts` |
+| A stored release is replaced | Same id with another hash refused; no PUT, PATCH, DELETE | Proved: `ReleaseApiTests` |
+| A package is altered between branch and runtime | The API checks the package against its manifest and hashes | Proved: `ReleaseApiTests.A_package_that_does_not_match_its_manifest_is_refused` |
+| A payment's record is edited in the database | Insert-only guard; hash chain per subject | Proved for the application path; a database administrator can still write rows, and the chain then shows it |
+| A running worker runs code its release did not name | Tasks registered as `name@release`; a worker refuses a task not on its queue | Proved in the studio's export; runtime versioned workers are target |
+
+### Repudiation
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| A maker or checker denies a change | Change set records name maker and checker; the audit is hash-chained on the branch | Proved: audit tests |
+| An operator denies an action | Operator actions on the payment's fact chain | Open: [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) |
+
+### Information disclosure
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| Personal data in engine history | `PaymentContext` carries ids only | Built; the history scan of plan W1 is target |
+| Personal data in logs or traces | No logging of party values (`spec/CLAUDE.md`) | No telemetry yet ([I-66](../../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio)) |
+| A secret in this public repository | Secrets come from the environment; folders name them by reference | Review only: no scan in CI ([I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)) |
+| A bank's values in shared content | Bank values only in the bank's folder; bank names checked out of shared code | Proved: `BankConfigurationTests` |
+| Content sent to the Claude API | The studio holds design content, configuration and synthetic samples, never payment or personal data | By design (R-10-01); a bank's configuration can reach the assistant when its designer asks for help with it |
+| An error answer shows internals | Problem responses with a message, never a stack trace | Review |
+
+### Denial of service
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| A huge file at the front door | Streaming parse; limits per port | Not decided: [I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) |
+| An outside party never answers | Every await has a timeout (check L32) | Proved: mutation case |
+| The studio's branch grows without bound | Reads cached by commit; old branches cost one request | Open in part: I-44, issue 6 |
+
+### Elevation of privilege
+
+| Threat | Control | Status |
+| --- | --- | --- |
+| A bank designer changes shared content | Scope rules (R-06-03) | Proved |
+| A designer publishes without a checker | Maker-checker (R-06-04, R-11-19) | Proved |
+| A script-behind escapes its sandbox | Only the injected interface; no network, file system, clock or environment | Honest scripts only: not a security boundary against hostile code (D14) |
+| SQL injection | No raw SQL anywhere in the runtime | Proved: `NeutralityTests` |
+
+## The source's findings
+
+The source's own audit findings and its failing security tests (N15 in the plan) are about its services. They are raised with the source's owners (`docs/runtime/BASELINE.md`) and not carried here.
