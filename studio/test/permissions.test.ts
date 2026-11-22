@@ -9,7 +9,7 @@ import { freshEnv } from './helpers.js';
 
 const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'];
 const DESIGN: Kind[] = ['workflow', 'scheme', 'operations-view', 'test', 'sample'];
-const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'];
+const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'test', 'sample'];
 const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP])];
 
 type Cell = `${ScopeClass}|${Kind}|${Action}`;

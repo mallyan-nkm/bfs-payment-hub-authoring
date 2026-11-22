@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The service console's API host (spec R-06-25, R-09-39 to R-09-44), under /service/api, and the runtime's web app
+       (runtime/ops-console) with its Service section. -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Service\TransactHub.Service.csproj" />
+    <ProjectReference Include="..\TransactHub.Operations.Migrations.SqlServer\TransactHub.Operations.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Operations.Migrations.PostgreSql\TransactHub.Operations.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The release API (referenced for its package model and package source) has a Program of its own. -->
+    <StartupObject>TransactHub.Service.Api.ServiceHost</StartupObject>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+</Project>

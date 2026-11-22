@@ -39,7 +39,7 @@ export const ROLE_TENANT: Record<Role, 'bank' | 'owner' | 'either'> = {
 /** What a permission is about. Artefact kinds are the documents' `kind`; the rest are studio functions. */
 export const ARTEFACT_KINDS = [
   'workflow', 'scheme', 'activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table',
-  'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'operations-view',
+  'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'operations-view', 'error-dictionary',
 ] as const;
 export const STUDIO_KINDS = ['bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant'] as const;
 export type Kind = (typeof ARTEFACT_KINDS)[number] | (typeof STUDIO_KINDS)[number];
@@ -63,7 +63,8 @@ export interface Grant { role: Role; scope: ScopeClass; kinds: readonly Kind[]; 
 const BANK_KINDS = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'] as const;
 // An operations view (R-05-48) declares a workflow's operator actions; it is designed with the workflow (I-69).
 const DESIGNER_KINDS = ['workflow', 'scheme', 'operations-view', 'test', 'sample'] as const;
-const DEVELOPER_KINDS = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'] as const;
+// An error dictionary (R-05-51) documents the errors and codes the blocks raise; it is built with them (I-69).
+const DEVELOPER_KINDS = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'test', 'sample'] as const;
 const SHARED_KINDS = [...new Set<Kind>([...DESIGNER_KINDS, ...DEVELOPER_KINDS])];
 
 /**

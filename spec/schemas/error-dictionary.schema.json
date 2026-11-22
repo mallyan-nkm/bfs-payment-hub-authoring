@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:error-dictionary",
+  "title": "Error dictionary",
+  "description": "The errors a pack's artefacts, or the runtime beneath them, can raise: each with its code as it is raised, whether it is a business or a technical error, whether it is retryable, the ISO 20022 reason code where one exists, what it means, its likely causes, and a runbook (checks, safe actions, the service console's troubleshooting actions, escalation). Data only; the service console shows it and links every error it shows to its entry. Ships in every export package under errors/. See design/05 section 5.11 (R-05-51, R-05-52).",
+  "type": "object",
+  "required": ["kind", "name", "release", "title", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "error-dictionary" },
+    "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "entries": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/entry" } },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  },
+  "$defs": {
+    "action": {
+      "description": "A troubleshooting action of the service console (design/05 section 5.11). Each needs a person's confirmation; some need a second person, a ServiceApprover.",
+      "enum": [
+        "retry-attempt", "redrive-workflow", "requeue-dead-letter", "reset-activity", "resend-file", "re-screen",
+        "release-hold", "expire-hold", "reconcile-posting", "pause-intake", "resume-intake", "drain-worker", "restart-worker",
+        "replay-read-model", "rebuild-read-model", "reverify-package", "rotate-trusted-key"
+      ]
+    },
+    "raiser": {
+      "description": "What raises the error: an activity's declared errors, a rule's reason code, a port's party (as its simulators answer), an engine binding or the interpreter every binding runs, or a part of the runtime.",
+      "enum": [
+        "activity", "rule", "port", "interpreter", "engine:temporal", "engine:dtfx", "engine:flowable", "engine:elsa",
+        "native", "store", "read-model", "signing", "package-source", "auth", "operations-console", "service-console", "assistant"
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "required": ["code", "category", "retryable", "raisedBy", "meaning", "causes", "runbook"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "description": "The code exactly as it is raised: an activity error name, an ISO 20022 reason code, or a runtime code.", "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "title": { "type": "string" },
+        "category": { "enum": ["business", "technical"] },
+        "retryable": { "type": "boolean" },
+        "isoReasonCode": { "description": "The ISO 20022 external status reason code it maps to, where one exists.", "type": "string", "pattern": "^[A-Z0-9]{4}$" },
+        "raisedBy": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/raiser" } },
+        "meaning": { "type": "string", "minLength": 10 },
+        "causes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "runbook": {
+          "type": "object",
+          "required": ["checks", "safeActions", "escalation"],
+          "additionalProperties": false,
+          "properties": {
+            "checks": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "safeActions": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "actions": { "description": "The service console's troubleshooting actions this runbook relies on.", "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/action" } },
+            "escalation": { "type": "string", "minLength": 10 }
+          }
+        }
+      }
+    }
+  }
+}

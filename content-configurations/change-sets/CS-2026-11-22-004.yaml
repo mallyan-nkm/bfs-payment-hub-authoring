@@ -1,0 +1,42 @@
+kind: change-set
+id: CS-2026-11-22-004
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T08:23:40.852Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/factory/inventory.yaml
+  - spec/factory/p
+  - spec/factory/uae.p
+  - spec/factory/uae.wps
+members:
+  - kind: inventory
+    name: inventory
+    release: ""
+    key: inventory
+  - kind: error-dictionary
+    name: p.errors.platform.v1
+    release: 1.0.0
+    key: p.errors.platform.v1@1.0.0
+  - kind: pack
+    name: pack:p
+    release: 1.0.0
+    key: pack:p@1.0.0
+  - kind: pack
+    name: pack:uae.p
+    release: 1.0.0
+    key: pack:uae.p@1.0.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.0.0
+    key: pack:uae.wps@1.0.0
+  - kind: error-dictionary
+    name: uae.p.errors.cluster.v1
+    release: 1.0.0
+    key: uae.p.errors.cluster.v1@1.0.0
+  - kind: error-dictionary
+    name: uae.wps.errors.wps.v1
+    release: 1.0.0
+    key: uae.wps.errors.wps.v1@1.0.0
