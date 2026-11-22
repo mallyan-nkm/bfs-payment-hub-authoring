@@ -213,10 +213,18 @@ public sealed class TemporalEngine : IEngine, IAttemptDeadlines
         logical = Math.Max(logical, at);
     }
 
+    // A child is known to the server only once its start is confirmed; an event this run sends it before then waits for that
+    // (a message the platform workflow hands to the leg it has just begun, R-09-16), rather than fail as sent to no workflow.
+    readonly Dictionary<string, Task> started = new();
+
     public async Task<JsonObject> Child(string instanceId, JsonObject input)
     {
-        var raw = await Workflow.ExecuteChildWorkflowAsync<string>(InterpreterWorkflow.Name, new object?[] { J.Str(Envelope.Wrap(input, offset, frontDoor, logical)) },
+        var envelope = J.Str(Envelope.Wrap(input, offset, frontDoor, logical));
+        var start = Workflow.StartChildWorkflowAsync((InterpreterWorkflow wf) => wf.RunAsync(envelope),
             new ChildWorkflowOptions { Id = instanceId, TaskQueue = Workflow.Info.TaskQueue });
+        started[instanceId] = start;
+        var handle = await start;
+        var raw = await handle.GetResultAsync();
         var o = (JsonObject)J.Parse(raw)!;
         // The child's end is an arrival: the parent goes on from the business time the child ended at.
         if (J.Num(o, "endedAt") is double ended) Arrived((long)ended);
@@ -243,8 +251,13 @@ public sealed class TemporalEngine : IEngine, IAttemptDeadlines
     // An event is sent at once, but the run does not end or continue as new until every event it sent has
     // gone: a batch generation reports its chunk to the parent, then continues as new.
     readonly List<Task> sent = new();
-    public void SendEvent(string instanceId, string name, JsonObject data) =>
-        sent.Add(Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { J.Str(data), logical }));
+    public void SendEvent(string instanceId, string name, JsonObject data) => sent.Add(Send(instanceId, name, J.Str(data), logical));
+
+    async Task Send(string instanceId, string name, string data, long at)
+    {
+        if (started.TryGetValue(instanceId, out var s)) await s;
+        await Workflow.GetExternalWorkflowHandle(instanceId).SignalAsync(name, new object?[] { data, at });
+    }
 
     public Task Flush() => sent.Count == 0 ? Task.CompletedTask : Workflow.WhenAllAsync(sent.ToArray());
 
