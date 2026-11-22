@@ -1,4 +1,6 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { clone } from '../core/canonical.js';
+import { attrs, meters } from '../telemetry/telemetry.js';
 import { durationMs } from '../core/duration.js';
 import { getPath, setPath, coveredByAny } from '../core/paths.js';
 import { Cancelled, Scope } from '../interp/clock.js';
@@ -37,6 +39,10 @@ export type AttemptResponse =
 
 export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'family' | 'copy'> }
 
+/** The attempt in progress on this async path: its deliveries and whether it is a hold (a worker runs many at once). */
+interface AttemptOwner { due: Delivery[]; holding: boolean }
+const owners = new AsyncLocalStorage<AttemptOwner>();
+
 export class PartyService {
   readonly run: Run;
   private instances = new Map<string, Instance>();
@@ -72,11 +78,12 @@ export class PartyService {
         if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push(m);
         // A hold waits within its own attempt for its decision: the operations decision
         // answers the hold on this service, not the workflow.
-        if (this.holding) {
+        const owner = owners.getStore();
+        if (owner ? owner.holding : this.holding) {
           this.run.mailbox.push(m);
           continue;
         }
-        this.due.push({ at: t, message: pickMsg(m) });
+        (owner?.due ?? this.due).push({ at: t, message: pickMsg(m) });
       }
       return () => {};
     };
@@ -95,7 +102,27 @@ export class PartyService {
     return d.sort((a, b) => a.at - b.at);
   }
 
+  /**
+   * An attempt and the deliveries it caused, kept apart from any other attempt in flight: a deployed worker serves
+   * attempts of many payments at once, and each must get back only the replies its own call set off.
+   */
+  async attemptOwn(req: AttemptRequest): Promise<{ result: AttemptResponse; deliveries: Delivery[] }> {
+    const owner: AttemptOwner = { due: [], holding: false };
+    const result = await owners.run(owner, () => this.attempt(req));
+    return { result, deliveries: owner.due.sort((a, b) => a.at - b.at) };
+  }
+
   async attempt(req: AttemptRequest): Promise<AttemptResponse> {
+    const act = req.release ? this.run.resolveDoc(req.activity, req.release) : this.run.resolveDoc(req.activity);
+    if (act?.type !== 'hold') return this.attemptOnce(req);
+    // A hold waits for its decision within its attempt (R-09-34: holds raised and holds open).
+    const a = attrs({ 'th.activity': req.activity });
+    meters().holds.add(1, a);
+    meters().holdsOpen.add(1, a);
+    try { return await this.attemptOnce(req); } finally { meters().holdsOpen.add(-1, a); }
+  }
+
+  private async attemptOnce(req: AttemptRequest): Promise<AttemptResponse> {
     this.run.clock.now = req.now;
     // Messages the context refers to by claim-check, handed over with the request (a deployed worker holds no payloads).
     for (const m of req.messages ?? []) if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push({ port: '', from: 'simulator', at: req.now, correlation: {}, ...m } as Message);
@@ -109,6 +136,8 @@ export class PartyService {
     const act = req.release ? this.run.resolveDoc(req.activity, req.release) : this.run.resolveDoc(req.activity);
     if (!act) return { kind: 'error', name: 'NotFound', retryable: false, message: `${req.activity} does not resolve` };
     this.holding = act.type === 'hold';
+    const owner = owners.getStore();
+    if (owner) owner.holding = this.holding;
     const scope = new Scope();
     let ctx = inst.ctx;
     let item: Frame['item'];

@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Engine.Flowable\TransactHub.Engine.Flowable.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

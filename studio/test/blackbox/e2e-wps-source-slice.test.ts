@@ -6,6 +6,8 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { zip } from '../../src/export/zip.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
+import { runtimeApiEnv, runtimeHeaders } from './runtime-auth.js';
+import { TEST_TOKEN } from '../support/content.js';
 
 // The north-star vertical slice (plan step 2), end to end, black box:
 //   the TransactHub source's WPS outward flow, extracted (docs/import/extract_wps_outward_cbx.py) ->
@@ -137,25 +139,43 @@ describe('the source WPS outward flow, through the north-star path', () => {
     for (let i = 0; i < 60 && spawnSync('docker', ['exec', name, 'pg_isready', '-U', 'postgres']).status !== 0; i++) await new Promise((r) => setTimeout(r, 1000));
     const apiUrl = `http://127.0.0.1:${await freePort()}`;
     const rt = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Api', 'bin', 'Release', 'net10.0', 'TransactHub.Api.dll'), '--urls', apiUrl], {
-      env: { ...DOTNET_ENV, Store__Provider: 'PostgreSql', Store__Connection: `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_slice` }, stdio: 'ignore',
+      env: {
+        ...DOTNET_ENV, ...runtimeApiEnv(),
+        // The studio's content repository as the runtime's package source (R-09-30): read-only, its token by reference.
+        PackageSource__GitHub__Repository: server.repo, PackageSource__GitHub__Api: server.fake.url, PackageSource__GitHub__TokenRef: 'env:TH_BB_GH_READ_TOKEN', TH_BB_GH_READ_TOKEN: TEST_TOKEN,
+        Store__Provider: 'PostgreSql', Store__Connection: `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_slice` }, stdio: 'ignore',
     });
     try {
       for (let i = 0; i < 120; i++) { try { await fetch(`${apiUrl}/activations/active?environment=x&scope=x`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
-      const imp = await (await fetch(`${apiUrl}/import-branch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: look, actor: 'pipeline' }) })).json();
+      const imp = await (await fetch(`${apiUrl}/import-branch`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ path: look }) })).json();
       expect(imp.problems, JSON.stringify(imp.problems)).toEqual([]);
+      // Every engine package the studio published on the branch carried its signature, and the runtime verified each.
+      const onBranch = Object.keys(server.fake.files(server.repo, 'main')).filter((p) => /^content-configurations\/releases\/.+\/manifest\.yaml$/.test(p));
+      for (const m of onBranch) expect(server.fake.files(server.repo, 'main')[m.replace(/manifest\.yaml$/, 'release.sig')], m).toBeDefined();
+      expect(imp.stored.length).toBe(onBranch.length);
+      // The same releases, as the runtime's package source sees them on GitHub: one annotated tag per version, each
+      // downloaded, verified against the studio's key and found already stored (R-09-30).
+      const versions = await (await fetch(`${apiUrl}/sources/versions`, { headers: runtimeHeaders() })).json();
+      expect(versions.length, JSON.stringify(versions)).toBe(onBranch.length);
+      for (const v of versions) {
+        expect(v.stored, v.tag).toBe(true);
+        const inst = await fetch(`${apiUrl}/sources/install`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ tag: v.tag }) });
+        expect(inst.status, v.tag).toBe(200);
+        expect((await inst.json()).signedBy).toMatch(/^[0-9a-f]{32}$/);
+      }
       // A leg is packaged with the platform workflow that uses it: the corporate workflow's Temporal
       // package, which now carries leg 1.1.0 and the native writer, is stored once and activated for test.
       const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
-      const stored = await (await fetch(`${apiUrl}/releases?actor=pipeline`, { method: 'POST', body: z.data })).json();
+      const stored = await (await fetch(`${apiUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
       expect(stored, JSON.stringify(stored)).toMatchObject({ scope: `${PLATFORM}/temporal`, stored: true, promotable: false });
-      const again = await (await fetch(`${apiUrl}/releases?actor=pipeline`, { method: 'POST', body: z.data })).json();
+      const again = await (await fetch(`${apiUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
       expect(again.stored).toBe(false);
-      const act = await fetch(`${apiUrl}/activations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ environment: 'test', scope: `${PLATFORM}/temporal`, release: stored.release, actor: 'ops' }) });
+      const act = await fetch(`${apiUrl}/activations`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ environment: 'test', scope: `${PLATFORM}/temporal`, release: stored.release }) });
       expect(act.status).toBe(201);
       // A package with simulators never reaches production.
-      const prod = await fetch(`${apiUrl}/activations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ environment: 'prod', scope: `${PLATFORM}/temporal`, release: stored.release, actor: 'ops' }) });
+      const prod = await fetch(`${apiUrl}/activations`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ environment: 'prod', scope: `${PLATFORM}/temporal`, release: stored.release }) });
       expect(prod.status).toBe(409);
-      const got = await (await fetch(`${apiUrl}/releases?scope=${encodeURIComponent(`${PLATFORM}/temporal`)}&release=${stored.release}`)).json();
+      const got = await (await fetch(`${apiUrl}/releases?scope=${encodeURIComponent(`${PLATFORM}/temporal`)}&release=${stored.release}`, { headers: runtimeHeaders() })).json();
       expect(JSON.stringify(got.manifest.flows)).toContain('uae.wps.wf.salary-file-out.v1');
       expect(JSON.stringify(got.manifest.tasks)).toContain('uae.wps.map.cb-sif-out.v1@1.0.0');
     } finally {

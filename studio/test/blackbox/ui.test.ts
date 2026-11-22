@@ -37,7 +37,7 @@ async function page(viewport = { width: 1280, height: 900 }, user = 'shared.desi
 }
 
 describe('the web app', () => {
-  // The Tenant view is a bank's: its configurator opens it (R-10-08).
+  // The Tenant view is a bank's: its configurator opens it (R-10-11).
   const userOf = (view: string) => (view === 'tenant' ? 'example.maker' : 'shared.designer');
   it.each(VIEWS)('opens the %s view with no script or server errors', async (view, heading) => {
     const { p, problems } = await page(undefined, userOf(view));

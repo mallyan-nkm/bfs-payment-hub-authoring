@@ -113,6 +113,11 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
         {
             throw new NativeFailure("BusinessReject", e.Message, false);
         }
+        catch (TransactHub.Security.SecretUnavailable e)
+        {
+            // Read before anything is sent, so nothing reached core banking. The message names the reference, never a value.
+            throw new NativeFailure("SecretUnavailable", e.Message, false);
+        }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
         {
             // It may have reached core banking: never posted again automatically (the source's Indeterminate).
@@ -156,6 +161,7 @@ public sealed class ReserveFunds(CoreBankingResolver resolver) : CoreBankingActi
         BalanceAnswer bal;
         try { bal = cb.Balance(BranchFor(account, b), account).GetAwaiter().GetResult(); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException) { throw new NativeFailure("TransientError", $"Balance enquiry failed: {e.GetType().Name}", true); }
+        catch (TransactHub.Security.SecretUnavailable e) { throw new NativeFailure("SecretUnavailable", e.Message, false); }
         // The statuses core banking posts to are a setting of the binding (the source's CoreBanking:PostableAccountStatuses).
         var postable = b.Setting("postableStatuses", "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var statusOk = postable.Length == 0 || postable.Contains(bal.Status, StringComparer.OrdinalIgnoreCase);

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startServer, STUDIO, type Server } from './server.js';
 
-// Black box, in the browser: sign-in, sign-out, and the view each role lands in (R-10-08, R-11-32).
+// Black box, in the browser: sign-in, sign-out, and the view each role lands in (R-10-11, R-11-32).
 // The studio runs with the built-in development provider (TH_AUTH_DEV=1), whose sign-in page lists
 // the studio's users.
 

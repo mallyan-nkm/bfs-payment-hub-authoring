@@ -56,7 +56,7 @@ Generated from `factory/inventory.yaml`.
 | Simulator | 10 | `p.sim.channel.v1`, `p.sim.core-banking.v1`, `p.sim.decryption.v1`, `p.sim.facts-out.v1`, `p.sim.file-transfer.v1`, `p.sim.fraud.v1`, `p.sim.liquidity.v1`, `p.sim.operations.v1`, `p.sim.payment-record.v1`, `p.sim.sanctions.v1` |
 | Workflow | 5 | `p.seg.check-and-screen.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v1`, `p.wf.request.v1` |
 | Test | 2 | `P-RES-001`, `P-RES-002` |
-| Total | 58 | |
+| Total | 59 | |
 <!-- /INVENTORY:p -->
 
 ## D.5 Artefacts in `uae.p`

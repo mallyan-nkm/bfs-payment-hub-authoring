@@ -97,7 +97,7 @@ export class Director {
   // ------------------------------------------------------------- actions a viewer can follow
 
   async go(hash: string) {
-    // A surface that is not the signed-in role's is opened as a user whose it is (R-10-08).
+    // A surface that is not the signed-in role's is opened as a user whose it is (R-10-11).
     const view = hash.split(/[?/]/)[0];
     if (this.user.startsWith('example.') && ['kit', 'import'].includes(view)) await this.as('owner', 'shared.designer');
     if (!this.user.startsWith('example.') && ['tenant', 'bank'].includes(view)) await this.as('example-bank', 'example.maker');

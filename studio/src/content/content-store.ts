@@ -65,12 +65,19 @@ export function forgetCache(): void {
 /** A change to one file. `create`: append-only, refused if the file exists with other text (R-09-21, R-11-23). `replace`: the file must still hold `expect`. `free`: a draft branch's own file. */
 export interface Change { path: string; text: string | null; guard: 'create' | 'replace' | 'free'; expect?: string | null }
 
-export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true }; deletedBranches?: string[] }
+export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true }; deletedBranches?: string[]; tags?: string[]; keptBranches?: KeptBranch[] }
+/** A change set branch the studio would have deleted, and kept: it moved since the studio saw it (Issue I-61). */
+export interface KeptBranch { branch: string; expected: string; found?: string; reason: string }
+
+/** An annotated release tag to put on the commit a publish makes (R-09-30). */
+export interface ReleaseTag { name: string; message: string }
 
 interface Op {
   branch: string;
   message: string;
   changes: Change[];
+  /** Release tags on the commit, once it is on the content branch. */
+  tags?: ReleaseTag[];
   /** A commit to add as a second parent: the change set's branch, when its publish takes it whole. */
   merge?: () => string | undefined;
   pull?: { title: string; body: string };
@@ -157,6 +164,8 @@ export class ContentStore {
   readonly unread = new Map<string, string>();
   /** Change set branches the studio deleted, newest last (R-11-26). */
   readonly deletedBranches: string[] = [];
+  /** Change set branches the studio did not delete because someone else had moved them (Issue I-61). */
+  readonly keptBranches: KeptBranch[] = [];
   readonly drafts = new Map<string, DraftBranch>();
   /** Every `studio/` branch seen, open or not: a change set id is never used twice. */
   readonly branchesSeen = new Set<string>();
@@ -250,11 +259,20 @@ export class ContentStore {
 
   /**
    * Delete a change set branch the content branch has taken in, if it still points where the studio saw
-   * it. A failure is not an error: the branch is tried again at the next read.
+   * it. GitHub's delete takes no expected SHA (Issue I-61), so the studio reads the ref again right before
+   * the delete and refuses when it has moved: the branch is kept, with the commit it found, and named in
+   * the result. What is left is the moment between that read and the delete: a push in it is lost with the
+   * branch. A failure is not an error: the branch is tried again at the next read.
    */
-  private async deleteMerged(branch: string, sha: string): Promise<boolean> {
+  private async deleteMerged(branch: string, sha: string): Promise<boolean | KeptBranch> {
     try {
-      if ((await this.client.getRef(branch)) !== sha) return false;
+      const now = await this.client.getRef(branch);
+      if (now === undefined) return false;
+      if (now !== sha) {
+        const kept: KeptBranch = { branch, expected: sha, found: now, reason: `${branch} moved from ${sha.slice(0, 12)} to ${now.slice(0, 12)} since the studio saw it; it is kept, and what was pushed to it is not lost` };
+        this.keptBranches.push(kept);
+        return kept;
+      }
       await this.client.deleteChangeSetBranch(branch);
       this.deletedBranches.push(branch);
       this.drafts.delete(branch.slice(DRAFT_PREFIX.length));
@@ -367,7 +385,7 @@ export class ContentStore {
    * Write to the content branch or to a change set's branch. The in-memory view changes at once; the
    * commit goes out in order, in the background. `flush()` waits for it and reports a failure.
    */
-  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string }; prune?: string[] } = {}): Promise<WriteResult> {
+  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string }; prune?: string[]; tags?: ReleaseTag[] } = {}): Promise<WriteResult> {
     if (branch === this.conn.branch) {
       for (const c of changes) {
         if (c.text === null) this.files.delete(c.path);
@@ -383,7 +401,7 @@ export class ContentStore {
       }
     }
     const p = new Promise<WriteResult>((done, failed) => {
-      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, prune: opts.prune, done, failed };
+      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, prune: opts.prune, tags: opts.tags, done, failed };
       if (this.tx) this.tx.push(op);
       else this.send(op);
     });
@@ -514,13 +532,29 @@ export class ContentStore {
       // Each change set branch the publish emptied is done with: everything on it is now on the content
       // branch. It is deleted if it is still where the studio saw it (R-11-26).
       const deletedBranches: string[] = [];
+      const keptBranches: KeptBranch[] = [];
       if (onContent && changes.length) {
         for (const id of op.prune ?? []) {
           const at = this.drafts.get(id)?.head;
-          if (at && (await this.deleteMerged(draftBranch(id), at))) deletedBranches.push(draftBranch(id));
+          const r = at ? await this.deleteMerged(draftBranch(id), at) : false;
+          if (r === true) deletedBranches.push(draftBranch(id));
+          else if (r) keptBranches.push(r);
         }
       }
-      return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}) };
+      // Each released package's version is an annotated tag on this commit: created once, never moved (R-09-30).
+      const tags: string[] = [];
+      if (onContent && changes.length) {
+        for (const t of op.tags ?? []) {
+          try {
+            await this.client.createReleaseTag(t.name, t.message, commit);
+          } catch (e) {
+            if (e instanceof GitHubError && e.status === 422) throw new ContentError('R-09-30', `The release tag ${t.name} already exists on ${this.repository}: a release tag is never moved. The commit ${commit.slice(0, 12)} is on ${this.conn.branch}; publish a new release.`);
+            throw e;
+          }
+          tags.push(t.name);
+        }
+      }
+      return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}), ...(tags.length ? { tags } : {}), ...(keptBranches.length ? { keptBranches } : {}) };
     }
   }
 }
@@ -541,6 +575,7 @@ function merge(ops: Op[]): Op[] {
       merge: list.find((o) => o.merge)?.merge,
       pull: list.find((o) => o.pull)?.pull,
       prune: [...new Set(list.flatMap((o) => o.prune ?? []))],
+      tags: list.flatMap((o) => o.tags ?? []),
       done: (r) => list.forEach((o) => o.done(r)),
       failed: (e) => list.forEach((o) => o.failed(e)),
     };

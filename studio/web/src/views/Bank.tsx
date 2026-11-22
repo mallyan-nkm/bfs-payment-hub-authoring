@@ -1,7 +1,7 @@
 import { get, type Summary } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Loading, Section, useLoad, useStudio } from '../ui';
 
-// The bank workspace (R-10-08): where a Bank Configurator lands. Its own hooks, rules, dials,
+// The bank workspace (R-10-11): where a Bank Configurator lands. Its own hooks, rules, dials,
 // simulators and hook bindings in scope b, and the test bench for every workflow the bank can
 // configure, run with its own configuration. Nothing here reaches shared content: the server refuses
 // a change outside scope b of the signed-in user's bank (R-11-30).

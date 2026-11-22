@@ -92,7 +92,7 @@ export function App() {
     get<Meta>('/api/meta').then(setMeta, (e) => setMetaError(String(e.message ?? e)));
     get<User[]>('/api/users').then(setAllUsers, () => setAllUsers([]));
   }, [signedIn]);
-  // A role lands on its own surface (R-10-08).
+  // A role lands on its own surface (R-10-11).
   useEffect(() => {
     if (signedIn && !window.location.hash.replace(/^#\/?/, '') && who?.landing) window.location.hash = `/${who.landing}`;
   }, [signedIn, route.parts, who?.landing]);

@@ -7,6 +7,7 @@ import { dispatch } from './api.js';
 import { DevProvider, OidcClient, Sessions, type AuthConfig, type Session } from './auth.js';
 import { userById, users, withAssertedRoles } from '../governance/governance.js';
 import { effectiveRoles, landingOf, surfacesOf } from '../governance/permissions.js';
+import { attrs, contextFrom, inSpan, meters, SpanKind } from '../telemetry/telemetry.js';
 
 // The studio's HTTP server: sign-in under /auth (R-11-32), the API under /api, the built web app
 // from web/dist. Every API call takes its user from the session; a state-changing call needs the
@@ -15,6 +16,12 @@ import { effectiveRoles, landingOf, surfacesOf } from '../governance/permissions
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** The route of a request without its ids: /api/<first segment>, so a metric's dimensions stay few. */
+function routeOf(p: string): string {
+  const parts = p.split('/').filter(Boolean);
+  return parts[0] === 'api' ? `/api/${parts[1] ?? ''}` : p.startsWith('/health') ? p : p.startsWith('/auth/') ? `/auth/${parts[1] ?? ''}` : '/';
+}
 
 /** The user a session's identity maps to: the user whose `subject` is the identity, else whose id is (R-11-32). */
 export function userFor(env: StudioEnv, subject: string): string | undefined {
@@ -60,11 +67,30 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
     return { signedIn: true, provider: cfg.dev ? 'development' : 'oidc', identity: s.subject, user: u?.id, tenant: u?.tenant, roles, surfaces: u ? surfacesOf(roles) : [], landing: u ? landingOf(roles) : undefined, csrfToken: s.csrf };
   };
 
-  return http.createServer(async (req, res) => {
+  return http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', publicOrigin);
+    // Liveness and readiness (R-10-09), with no sign-in: the process answers; it has read the content branch.
+    if (url.pathname === '/health/live') return send(res, 200, { status: 'live' });
+    if (url.pathname === '/health/ready') {
+      const c = env.store.content;
+      const ready = !!c && !!c.head;
+      return send(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not ready', content: ready ? c!.head.slice(0, 12) : null });
+    }
+    // A request is a span, its route a dimension (R-10-07).
+    const route = routeOf(url.pathname);
+    const t0 = performance.now();
+    res.on('finish', () => meters().httpServer.record((performance.now() - t0) / 1000, attrs({ 'http.request.method': req.method, 'http.route': route, 'http.response.status_code': res.statusCode })));
+    void inSpan(`${req.method} ${route}`, attrs({ 'http.request.method': req.method, 'http.route': route, 'url.path': url.pathname }), async (span) => {
+      await handle(req, res, url);
+      span.setAttribute('http.response.status_code', res.statusCode);
+    }, { kind: SpanKind.SERVER, parent: contextFrom(req.headers) }).catch(() => {
+      if (!res.headersSent) send(res, 500, { error: 'Internal error' });
+    });
+  });
+
+  async function handle(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
     const method = req.method ?? 'GET';
     try {
-      if (url.pathname === '/healthz') return send(res, 200, { ok: true });
 
       // The development provider (TH_AUTH_DEV=1 only).
       if (url.pathname.startsWith('/auth/dev/')) {
@@ -159,5 +185,5 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
     } catch (e: any) {
       if (!res.headersSent) send(res, 500, { error: String(e?.message ?? e) });
     }
-  });
+  }
 }

@@ -11,7 +11,7 @@ export interface StudioCtx {
   users: User[];
   /** The signed-in user's roles (R-11-29). */
   roles: string[];
-  /** The surfaces the web app shows this user (R-10-08). */
+  /** The surfaces the web app shows this user (R-10-11). */
   surfaces: string[];
   setActor: (id: string) => void;
   go: (path: string) => void;

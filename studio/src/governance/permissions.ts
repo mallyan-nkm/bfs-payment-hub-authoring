@@ -1,6 +1,6 @@
 // The studio's permission table (R-11-29 to R-11-33, Issue I-65). One table, from role, scope, kind
 // and action to allowed or not. Every write, publish and approval of the API asks it, through
-// `permit` in governance.ts; the web app reads it only to choose what to show (R-10-08).
+// `permit` in governance.ts; the web app reads it only to choose what to show (R-10-11).
 //
 // Roles, as the owner decided them on 2026-11-22:
 //   bank configurator   a bank's hooks, rules and rule values, dials, simulators and scenarios, port
@@ -39,7 +39,7 @@ export const ROLE_TENANT: Record<Role, 'bank' | 'owner' | 'either'> = {
 /** What a permission is about. Artefact kinds are the documents' `kind`; the rest are studio functions. */
 export const ARTEFACT_KINDS = [
   'workflow', 'scheme', 'activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table',
-  'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession',
+  'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'operations-view',
 ] as const;
 export const STUDIO_KINDS = ['bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant'] as const;
 export type Kind = (typeof ARTEFACT_KINDS)[number] | (typeof STUDIO_KINDS)[number];
@@ -61,7 +61,8 @@ export type ScopeClass = 'bank' | 'shared' | 'studio';
 export interface Grant { role: Role; scope: ScopeClass; kinds: readonly Kind[]; actions: readonly Action[] }
 
 const BANK_KINDS = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'] as const;
-const DESIGNER_KINDS = ['workflow', 'scheme', 'test', 'sample'] as const;
+// An operations view (R-05-48) declares a workflow's operator actions; it is designed with the workflow (I-69).
+const DESIGNER_KINDS = ['workflow', 'scheme', 'operations-view', 'test', 'sample'] as const;
 const DEVELOPER_KINDS = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'] as const;
 const SHARED_KINDS = [...new Set<Kind>([...DESIGNER_KINDS, ...DEVELOPER_KINDS])];
 
@@ -129,7 +130,7 @@ export function kindOf(doc: any): Kind | undefined {
   return (KINDS as string[]).includes(k) ? (k as Kind) : undefined;
 }
 
-/** The web app's surfaces, by role (R-10-08). The API is the control; this only chooses what to show. */
+/** The web app's surfaces, by role (R-10-11). The API is the control; this only chooses what to show. */
 export const SURFACES: Record<Role, string[]> = {
   'bank configurator': ['bank', 'designer', 'catalogue', 'data', 'editors', 'import', 'tests', 'tenant', 'export', 'assistant', 'governance'],
   'bank approver': ['bank', 'catalogue', 'tests', 'tenant', 'governance', 'export'],

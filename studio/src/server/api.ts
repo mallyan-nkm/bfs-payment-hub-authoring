@@ -8,7 +8,8 @@ import { effectivePolicy } from '../interp/policy.js';
 import { missingStandardScenarios } from '../sim/runtime.js';
 import { runTest, runAllTests, sampleNames, type TestRunReport } from '../testing/runner.js';
 import { runKit, loadKit } from '../conformance/kit.js';
-import { exportPackage, exportZip, type Target } from '../export/exporter.js';
+import { exportPackage, signedZip, type Target } from '../export/exporter.js';
+import { SignatureRejected } from '../export/signing.js';
 import * as gitExport from '../export/git.js';
 import { ContentError } from '../content/content-store.js';
 import { GitHubError } from '../content/github.js';
@@ -348,6 +349,7 @@ function exportOr400<T>(fn: () => T): T {
     return fn();
   } catch (e: any) {
     if (/does not resolve|No engine binding/.test(String(e?.message))) throw new HttpError(400, e.message);
+    if (e instanceof SignatureRejected) throw new HttpError(409, e.message);
     throw e;
   }
 }
@@ -606,7 +608,8 @@ route('GET', '/api/export/download', (env, req) => {
   mayRun(env, req, 'export');
   const tenant = own !== OWNER_TENANT ? own : undefined;
   const pkg = exportOr400(() => exportPackage(env, { workflows, target, tenant, withSimulators: req.query.withSimulators === 'true' }));
-  return { __binary: true, data: exportZip(pkg), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
+  // A download is a release a deployment may take: signed with the studio's key (R-09-23).
+  return { __binary: true, data: exportOr400(() => signedZip(pkg)), contentType: 'application/zip', filename: `export-${target}-${workflows.join('+') || 'none'}.zip` };
 });
 
 // ------------------------------------------------------- export to a Git branch (W8)
@@ -738,7 +741,7 @@ route('GET', '/api/permit', (env, req) => {
   return { allowed: !reason, reason };
 });
 route('GET', '/api/permissions', () => ({ roles: ROLES, grants: permissionRows() }));
-/** Who is signed in, the roles, and the surfaces the web app shows (R-10-08). */
+/** Who is signed in, the roles, and the surfaces the web app shows (R-10-11). */
 route('GET', '/api/me', (env, req) => {
   const u = gov.userById(env, req.user)!;
   const roles = effectiveRoles(u.roles);

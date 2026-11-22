@@ -26,7 +26,8 @@ public sealed class FlowableServer : IAsyncLifetime
 }
 
 [CollectionDefinition(Name)]
-public sealed class FlowableCollection : ICollectionFixture<FlowableServer> { public const string Name = "flowable"; }
+// One collection, so the two servers' tests run one after another (the binding sets Deployment.Current).
+public sealed class FlowableCollection : ICollectionFixture<FlowableServer>, ICollectionFixture<FlowableLiveServer> { public const string Name = "flowable"; }
 
 static class Docs
 {

@@ -7,6 +7,7 @@ import { Checker, checkDocument, interfaceDiff, pinnable, proposeRelease, refsOf
 import { runTest } from '../testing/runner.js';
 import { runKit } from '../conformance/kit.js';
 import { exportPackage, packageHash } from '../export/exporter.js';
+import { SignatureRejected, signingKey } from '../export/signing.js';
 import { buildPack } from './packs.js';
 import { ROLES, ROLE_TENANT, effectiveRoles, granted, kindOf, scopeClass, type Action, type Kind } from './permissions.js';
 import type { StudioEnv } from '../env.js';
@@ -195,6 +196,17 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
     env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: `Red tests: ${failing.join(', ')}` });
     throw new StoreError('tests', `Publish needs green tests; red: ${failing.join(', ')}`);
   }
+  // A workflow release is published with its signed engine package (R-09-23): without the studio's signing key,
+  // nothing of the change set is published, and the refusal says why.
+  if (set.some(({ e }) => e.kind === 'workflow')) {
+    try {
+      signingKey();
+    } catch (err) {
+      if (!(err instanceof SignatureRejected)) throw err;
+      env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: err.message });
+      throw new StoreError('signing', err.message);
+    }
+  }
   // One commit on the content branch, or in pull-request mode one on the change set's branch and a
   // pull request (R-11-22, R-09-20, R-09-22). The change set keeps the id of its branch.
   // The change set takes the id of the approved draft's branch, across branches if its closure must (Issue I-44).
@@ -209,8 +221,8 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
       makers: [...new Set(published.map((p) => p.maker))].sort(),
       members: published.map(({ e, maker }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key, maker })).sort((a, b) => a.key.localeCompare(b.key)),
     };
-    const { files, skipped } = filesFor(env, changeSet, env.store.settings);
-    const write = env.store.commitChangeSet(changeSet, branches, files, commitMessage(changeSet, skipped), { pullRequest });
+    const { files, skipped, tags } = filesFor(env, changeSet, env.store.settings);
+    const write = env.store.commitChangeSet(changeSet, branches, files, commitMessage(changeSet, skipped), { pullRequest, tags });
     return { changeSet, published: published.map((p) => p.e), write, skipped, pullRequest };
   });
 }

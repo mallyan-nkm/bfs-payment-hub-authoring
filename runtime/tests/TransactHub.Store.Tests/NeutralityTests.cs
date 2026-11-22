@@ -36,7 +36,8 @@ public sealed class NeutralityTests
         foreach (var f in Directory.EnumerateFiles(src, "*.cs", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(src, f).Replace('\\', '/');
-            if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("TransactHub.Store.Migrations.")) continue;
+            // The generated migrations of each provider: the store's and the operations read model's (R-05-49).
+            if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("TransactHub.Store.Migrations.") || rel.StartsWith("TransactHub.Operations.Migrations.")) continue;
             var lines = File.ReadAllLines(f);
             for (var i = 0; i < lines.Length; i++)
             {

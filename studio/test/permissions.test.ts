@@ -8,7 +8,7 @@ import { freshEnv } from './helpers.js';
 // read from the code: a cell the code grants that is not here, or misses, fails.
 
 const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'];
-const DESIGN: Kind[] = ['workflow', 'scheme', 'test', 'sample'];
+const DESIGN: Kind[] = ['workflow', 'scheme', 'operations-view', 'test', 'sample'];
 const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'];
 const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP])];
 
@@ -65,7 +65,7 @@ describe('the permission table (R-11-30)', () => {
     expect(Object.keys(LEGACY_ROLES).length).toBe(4);
   });
 
-  it('shows each role its surfaces and lands it on its own (R-10-08)', () => {
+  it('shows each role its surfaces and lands it on its own (R-10-11)', () => {
     expect(landingOf(['bank configurator'])).toBe('bank');
     expect(landingOf(['workflow designer'])).toBe('designer');
     expect(landingOf(['workflow developer'])).toBe('editors');

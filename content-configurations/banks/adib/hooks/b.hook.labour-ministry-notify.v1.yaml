@@ -1,0 +1,19 @@
+# The source's labour ministry notification, as a notify hook when a corporate payment closes. Its failure
+# never affects the payment, as in the source.
+kind: hook
+name: b.hook.labour-ministry-notify.v1
+release: 1.0.0
+title: Tell the labour ministry when a salary file closes
+implements:
+  hookPoint: on-close
+  of: p.wf.corporate.v1
+type: notify
+outcomes: [done]
+do:
+  - id: tell-labour-ministry
+    call: b.notify.labour-ministry.v1
+  - end: done
+provenance:
+  origin: authored
+  status: provisional
+  note: From AdibWpsActivities.MohreNotification in the source's bank fork. No live workflow of the bank in the source calls it; see the README.

@@ -43,7 +43,7 @@ export async function startServer(extraEnv: Record<string, string> = {}, opts: {
   child.on('exit', (code, signal) => sink?.write(`\n[server exited ${code ?? ''} ${signal ?? ''}]\n`));
   for (let i = 0; i < 300; i++) {
     try {
-      if ((await fetch(`${url}/healthz`)).ok) break;
+      if ((await fetch(`${url}/health/live`)).ok) break;
     } catch {
       // not up yet
     }

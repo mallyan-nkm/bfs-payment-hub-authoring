@@ -57,7 +57,7 @@ npm run test:blackbox                     # API, command line, web app in Chromi
 | `npm test` | 223 pass, 1 skipped |
 | `npm run typecheck` | No errors |
 | `studio -- test` | 19 of 19 |
-| `studio -- kit` | 46 of 46 |
+| `studio -- kit` | 48 of 48 |
 | `studio -- check` | 0 errors, 13 warnings |
 | `studio -- seed-content` | 163 of 163 seeded files current |
 | `npm run test:blackbox` | Not run here |
@@ -112,10 +112,10 @@ npx tsx engines/flowable/run-kit.ts
 
 | Ran here | Result |
 | --- | --- |
-| DTFx | 46 of 46, about 4 minutes |
-| Elsa | 46 of 46, about 5 minutes |
-| Temporal | 46 of 46, about 8 minutes (the adapter runs CK-FOREACH-02 on a real dev server, as its README says) |
-| Flowable | Not run here |
+| DTFx | 48 of 48, about 4 minutes |
+| Elsa | 48 of 48, about 5 minutes |
+| Temporal | 48 of 48, about 8 minutes (the adapter runs CK-FOREACH-02 on a real dev server, as its README says) |
+| Flowable | 48 of 48, about 26 minutes on a shared machine (7 on its own, as its README says) |
 
 ## The runtime
 
@@ -149,5 +149,6 @@ The source's startup prompt for Temporal on SQLite and PostgreSQL is not carried
 | `.github/workflows/studio.yml` | Typecheck, `npm test`, `check`, `seed-content` |
 | `.github/workflows/runtime.yml` | Build and test the runtime solution |
 | `.github/workflows/engines.yml` | Black-box suites, the kit on four engines, the store matrix, Temporal on SQL Server |
+| `.github/workflows/security.yml` | Secret scan (gitleaks, pinned), check L37, `npm audit --omit=dev`, `dotnet list package --vulnerable` |
 
-There is no secret scan or dependency audit in CI ([I-67](../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)). To run them by hand, see [security/secure-coding.md](security/secure-coding.md).
+The secret scan and the dependency audits gate every push (`security.yml`). To run them by hand, see [security/secure-coding.md](security/secure-coding.md). A test run makes its own signing key (`studio/test/support/signing-env.ts`); to run the studio or a deploy by hand, `npm run studio -- signing-key <dir>` and set the two variables it prints (`npm run studio:dev` makes one for the run).
