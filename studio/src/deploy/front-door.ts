@@ -21,14 +21,14 @@ async function call(rt: RuntimeClient, method: string, p: string, body?: any): P
   return text ? JSON.parse(text) : undefined;
 }
 
-/** A payment the runtime refused because its scheme's intake is paused for the bank (R-09-58). */
+/** A payment the runtime refused because its scheme's intake is paused for the bank (R-09-62). */
 export class IntakePaused extends Error {
   readonly code = 'ops.IntakePaused';
 }
 
 /**
  * Accepts a payment: pins it to the bank's active distribution in the environment, and returns which. With the scheme, the
- * runtime first reads the scheme's intake switch (R-09-58): while it is paused the payment is refused, or, with `queue`, kept here
+ * runtime first reads the scheme's intake switch (R-09-62): while it is paused the payment is refused, or, with `queue`, kept here
  * and offered again every `every` ms until intake is resumed or `queue` ms have passed.
  */
 export async function accept(rt: RuntimeClient, req: { paymentId: string; bank: string; environment: string; scheme?: string }, wait?: { queue: number; every?: number }): Promise<string> {
@@ -88,7 +88,7 @@ export interface AcceptAndRun {
   studioRoot: string;
   cache: string;
   engine?: Engine;
-  /** The payment's scheme, for its intake switch (R-09-58); by default the scope of the inbound message. */
+  /** The payment's scheme, for its intake switch (R-09-62); by default the scope of the inbound message. */
   scheme?: string;
   /** While the scheme's intake is paused: keep the payment and offer it again, for up to this many ms; by default it is refused. */
   queueWhilePaused?: number;

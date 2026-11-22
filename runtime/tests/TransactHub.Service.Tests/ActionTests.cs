@@ -92,14 +92,14 @@ public sealed class ActionTests(Databases dbs)
             Assert.Contains(await db.Facts.AsNoTracking().Where(f => f.SubjectId == bulk && f.Kind == "hold").Select(f => f.Code).ToListAsync(), c => c == "expired");
         }
 
-        // Intake per scheme (R-09-58): paused, the runtime refuses the bank's new payments of the scheme; resumed, it takes them.
+        // Intake per scheme (R-09-62): paused, the runtime refuses the bank's new payments of the scheme; resumed, it takes them.
         var pause = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "pause-intake", target = "uae.wps", reason = "the Central Bank's window is closed", parameters = new { tenant = Seed.Tenant } }));
         Assert.Equal("done", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)pause["action"]!}/decision", new { approve = true, reason = "agreed" })))["status"]);
         await using (var db = StoreDbContext.Open(api.Store)) Assert.True(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
         Assert.Equal("done", (string?)(await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "resume-intake", target = "uae.wps", reason = "open again", parameters = new { tenant = Seed.Tenant } })))["status"]);
         await using (var db = StoreDbContext.Open(api.Store)) Assert.False(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
 
-        // Drain and restart a worker through its own control (R-09-59); one that does not answer is refused with the code.
+        // Drain and restart a worker through its own control (R-09-63); one that does not answer is refused with the code.
         using var worker = new FakeWorker();
         foreach (var a in new[] { "drain-worker", "restart-worker" })
         {
@@ -174,7 +174,7 @@ public sealed class ActionTests(Databases dbs)
             await using (var db = StoreDbContext.Open(api.Store))
                 Assert.Equal(2, await db.Facts.AsNoTracking().CountAsync(f => f.SubjectId == bulk && f.Kind == "message" && f.Code == "resent"));
 
-            // Reconcile (R-08-17): core banking is asked by the posting's reference; posted, the parked step is re-driven; not posted, retried.
+            // Reconcile (R-08-19): core banking is asked by the posting's reference; posted, the parked step is re-driven; not posted, retried.
             var cb = new TransactHub.Ports.SimulatedCoreBanking(new TransactHub.Ports.PortBinding(Seed.Tenant, "p.port.core-banking.v1", "simulator", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), new Dictionary<string, string>()));
             await cb.Post(new TransactHub.Ports.PostingBatch("POST-1", new DateOnly(2026, 11, 17), []));
             var signals = new TransactHub.Operations.OutboxSignals(api.Store);

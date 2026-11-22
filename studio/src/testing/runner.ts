@@ -141,6 +141,8 @@ export interface RunnerEnv {
 
 export function loadSample(env: RunnerEnv, ref: string): { payload: string; name: string } {
   const name = ref.replace(/^samples\//, '');
+  // A sample is one file name: no folder and no climbing out of the samples' folders (R-11-44).
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error(`Sample ${ref} is not a sample name`);
   const first = env.sampleOverlay?.[name];
   if (first !== undefined) return { payload: first, name };
   for (const d of env.samplesDirs) {

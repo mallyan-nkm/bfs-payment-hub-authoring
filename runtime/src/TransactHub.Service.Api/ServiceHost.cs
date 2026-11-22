@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using TransactHub.Api;
+using TransactHub.Auth;
 using TransactHub.Engine.Flowable;
 using TransactHub.Operations;
 using TransactHub.Security;
@@ -127,7 +128,7 @@ public sealed class ServiceHost
             // The file-transfer port the runtime resends on (R-05-58): a folder the scheme's gateway collects from.
             if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
                 book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, new FolderFileTransfer(outFolder), clock)));
-            // Core banking, as the banks' port bindings bind it (R-08-17): what reconcile-posting asks.
+            // Core banking, as the banks' port bindings bind it (R-08-19): what reconcile-posting asks.
             var banks = cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"];
             var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(banks is { Length: > 0 } ? TransactHub.Activities.Platform.Posting.CoreBankingResolver.ReadBanks(banks) : new TransactHub.Ports.PortBindings(), secrets: secrets);
             book.Run("reconcile-posting", ActionBook.ReconcilePosting(store, signals, tenant => { try { return resolver.For(tenant, clock.GetUtcNow()).CoreBanking; } catch (Exception) { return null; } }, clock));
@@ -147,6 +148,8 @@ public sealed class ServiceHost
         s.AddScoped(_ => StoreDbContext.Open(store));
 
         var app = builder.Build();
+        // Security headers and the console page's content security policy on every answer (R-09-60).
+        app.UseRuntimeSecurityHeaders(app.Configuration);
         if (cfg["Store:Migrate"] != "false")
         {
             await using (var db = StoreDbContext.Open(store)) await db.Database.MigrateAsync();

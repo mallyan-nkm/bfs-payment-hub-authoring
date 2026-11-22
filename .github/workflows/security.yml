@@ -1,6 +1,7 @@
-# Security gates on every push and pull request (spec R-09-28, Issue I-67): a secret scan of the whole history, the
-# static check that no binding, configuration or package carries a literal secret (L37), and dependency audits of the
-# studio's runtime dependencies and the runtime's NuGet packages. A finding fails the build.
+# Security gates on every push and pull request (spec R-09-28, R-09-61, Issue I-67): a secret scan of the whole history, the
+# static check that no binding, configuration or package carries a literal secret (L37), dependency audits of the studio's
+# runtime dependencies, the runtime's NuGet packages and the Temporal SQL Server plugin's Go modules, and a check that every
+# action of every workflow is pinned to a full commit SHA. A finding fails the build.
 name: security
 on:
   push:
@@ -17,8 +18,9 @@ jobs:
       GITLEAKS_VERSION: "8.21.2"
       GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Install gitleaks (pinned, checksum verified)
         run: |
@@ -35,22 +37,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: No literal secret in a binding, configuration or package (L37), with the spec's other checks
         working-directory: spec
         run: |
-          pip install pyyaml jsonschema
+          pip install PyYAML==6.0.3 jsonschema==4.26.0 referencing==0.37.0
           python3 tools/validate.py
 
   npm-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -69,8 +75,10 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
       - name: Audit the runtime's NuGet packages, transitive ones included
@@ -82,3 +90,35 @@ jobs:
             echo "::error::A runtime package has a known vulnerability (see above)"
             exit 1
           fi
+
+  go-vulnerabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: runtime/temporal-mssql/go.mod
+          cache-dependency-path: runtime/temporal-mssql/go.sum
+      - name: Known vulnerabilities in the Temporal SQL Server plugin's modules, as its code reaches them
+        working-directory: runtime/temporal-mssql
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  pinned-actions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Every action is pinned to a full commit SHA, and every workflow names its token's permissions (R-09-61)
+        run: |
+          bad=$(grep -nE '^[[:space:]]*-?[[:space:]]*uses:[[:space:]]' .github/workflows/*.yml | grep -vE '@[0-9a-f]{40}([[:space:]]|$)' || true)
+          if [ -n "$bad" ]; then echo "::error::Actions not pinned to a commit SHA:"; echo "$bad"; exit 1; fi
+          for f in .github/workflows/*.yml; do
+            grep -qE '^permissions:' "$f" || { echo "::error::$f does not name its token's permissions"; exit 1; }
+          done

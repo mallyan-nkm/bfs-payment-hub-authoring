@@ -248,7 +248,7 @@ describe('the service console', () => {
     for (const a of ['retry-attempt', 'redrive-workflow', 'reset-activity', 'resend-file', 'expire-hold', 'reconcile-posting', 'pause-intake', 'drain-worker'])
       expect(await catalogue.locator('tr', { hasText: a }).locator('.badge').textContent()).toBe('ok');
 
-    // Intake of a scheme paused and a worker drained (R-09-58, R-09-59): the engineer asks, a ServiceApprover approves, each reaches its target.
+    // Intake of a scheme paused and a worker drained (R-09-62, R-09-63): the engineer asks, a ServiceApprover approves, each reaches its target.
     const calls: string[] = [];
     const worker = http.createServer((req, res) => { calls.push(`${req.method} ${req.url}`); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ draining: true, inFlight: 0 })); });
     await new Promise<void>((r) => worker.listen(0, '127.0.0.1', () => r()));

@@ -7,7 +7,8 @@ import { dispatch } from './api.js';
 import { DevProvider, OidcClient, Sessions, type AuthConfig, type Session } from './auth.js';
 import { userById, users, withAssertedRoles } from '../governance/governance.js';
 import { effectiveRoles, landingOf, surfacesOf } from '../governance/permissions.js';
-import { attrs, contextFrom, inSpan, meters, SpanKind } from '../telemetry/telemetry.js';
+import { attrs, contextFrom, inSpan, log, meters, SpanKind } from '../telemetry/telemetry.js';
+import { RateLimiter, securityHeaders, APP_CSP, DEV_PAGE_CSP, BodyTooLarge, readLimited, safeFilename, maxBodyBytes } from './hardening.js';
 
 // The studio's HTTP server: sign-in under /auth (R-11-32), the API under /api, the built web app
 // from web/dist. Every API call takes its user from the session; a state-changing call needs the
@@ -35,6 +36,12 @@ function same(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+/** The calls that run tests, the kit, an import, an export or the assistant: limited per user (R-11-41). */
+export function isExpensive(method: string, p: string): boolean {
+  if (method === 'GET') return p === '/api/export/download' || p === '/api/packs/download' || p === '/api/conformance/report' || p.endsWith('/release-gate');
+  return /^\/api\/(tests\/|bench\/|debug\/|kit\/|import\/|ai\/|export|packs\/build|gates|supersessions\/(test|evidence)|tenants\/[^/]+\/compatibility|git\/reload|distributions|configuration-releases)/.test(p);
+}
+
 export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
   const sessions = new Sessions(cfg);
   const dev = cfg.dev ? new DevProvider(cfg.issuer, () => users(env).map((u) => u.subject ?? u.id)) : undefined;
@@ -48,15 +55,24 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
   const oidc = new OidcClient(cfg, dev ? devFetch : fetch);
   const webRoot = path.join(env.studioRoot, 'web', 'dist');
   const publicOrigin = new URL(cfg.redirectUri!).origin;
+  // Rate limits (R-11-41): sign-in per client address; the calls that run tests, kits, imports, exports or the assistant per user.
+  const limits = {
+    auth: new RateLimiter(Number(process.env.TH_RATE_AUTH_PER_MINUTE ?? 120)),
+    expensive: new RateLimiter(Number(process.env.TH_RATE_EXPENSIVE_PER_MINUTE ?? 120)),
+  };
+  const bodyLimit = maxBodyBytes(process.env);
+  const clientOf = (req: http.IncomingMessage) => req.socket.remoteAddress ?? 'unknown';
+  /** A security event (R-11-42): a refused sign-in, CSRF or origin, a rate limit, an oversized body. No token, cookie or body is logged. */
+  const security = (event: string, req: http.IncomingMessage, detail: Record<string, unknown> = {}) => {
+    const values = { 'th.security.event': event, 'client.address': clientOf(req), 'http.request.method': req.method, 'url.path': (req.url ?? '').split('?')[0], ...detail };
+    log('warn', 'Security event {th.security.event} from {client.address} on {url.path}', values);
+    if (process.env.TH_SECURITY_LOG !== '0') console.warn(JSON.stringify({ at: new Date().toISOString(), level: 'warn', ...values }));
+  };
 
   const send = (res: http.ServerResponse, status: number, body: any, headers: Record<string, string | string[]> = {}) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers }).end(JSON.stringify(body));
   };
-  const readBody = async (req: http.IncomingMessage) => {
-    let raw = '';
-    for await (const chunk of req) raw += chunk;
-    return raw;
-  };
+  const readBody = (req: http.IncomingMessage) => readLimited(req, bodyLimit);
   /** The roles the identity provider asserts, from its groups, when the studio maps them (R-11-34). */
   const assertedRoles = (s: Session): string[] | undefined => (s.groups ? s.groups.filter((g) => g.startsWith(cfg.groupPrefix)).map((g) => g.slice(cfg.groupPrefix.length)) : undefined);
   const me = (s: Session | undefined) => {
@@ -68,7 +84,14 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
   };
 
   return http.createServer((req, res) => {
-    const url = new URL(req.url ?? '/', publicOrigin);
+    // Security headers on every answer (R-11-43); the web app's own page gets its content security policy below.
+    for (const [k, v] of Object.entries(securityHeaders(cfg.secureCookies))) res.setHeader(k, v);
+    let url: URL;
+    try {
+      url = new URL(req.url ?? '/', publicOrigin);
+    } catch {
+      return send(res, 400, { error: 'Not a request path' });
+    }
     // Liveness and readiness (R-10-09), with no sign-in: the process answers; it has read the content branch.
     if (url.pathname === '/health/live') return send(res, 200, { status: 'live' });
     if (url.pathname === '/health/ready') {
@@ -83,7 +106,8 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
     void inSpan(`${req.method} ${route}`, attrs({ 'http.request.method': req.method, 'http.route': route, 'url.path': url.pathname }), async (span) => {
       await handle(req, res, url);
       span.setAttribute('http.response.status_code', res.statusCode);
-    }, { kind: SpanKind.SERVER, parent: contextFrom(req.headers) }).catch(() => {
+    }, { kind: SpanKind.SERVER, parent: contextFrom(req.headers) }).catch((e) => {
+      console.error(`Internal error on ${req.method} ${route}:`, e?.stack ?? e);
       if (!res.headersSent) send(res, 500, { error: 'Internal error' });
     });
   });
@@ -92,13 +116,19 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
     const method = req.method ?? 'GET';
     try {
 
+      // Sign-in is limited per client address (R-11-41).
+      if (url.pathname.startsWith('/auth/') && !limits.auth.take(clientOf(req))) {
+        security('rate-limited', req, { 'th.limit': 'auth' });
+        return send(res, 429, { error: 'Too many sign-in requests from this address; wait a minute', code: 'R-11-41' }, { 'retry-after': '60' });
+      }
+
       // The development provider (TH_AUTH_DEV=1 only).
       if (url.pathname.startsWith('/auth/dev/')) {
         if (!dev) return send(res, 404, { error: 'No development provider: TH_AUTH_DEV is not set' });
         const raw = method === 'POST' ? await readBody(req) : '';
         const out = dev.handle(method, url, method === 'POST' ? new URLSearchParams(raw) : undefined);
         if (!out) return send(res, 404, { error: 'Not a path of the development provider' });
-        res.writeHead(out.status, out.headers).end(out.body);
+        res.writeHead(out.status, { ...(out.headers['content-type']?.startsWith('text/html') ? { 'content-security-policy': DEV_PAGE_CSP } : {}), ...out.headers }).end(out.body);
         return;
       }
 
@@ -111,19 +141,27 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
       }
       if (url.pathname === '/auth/callback' && method === 'GET') {
         const pending = sessions.finish(url.searchParams.get('state') ?? undefined, req.headers.cookie);
-        if (!pending) return send(res, 400, { error: 'This sign-in is not one the studio started, or it has expired. Sign in again.' }, { 'set-cookie': sessions.clearLoginCookie() });
-        if (url.searchParams.get('error')) return send(res, 401, { error: `The identity provider refused the sign-in: ${url.searchParams.get('error')}` }, { 'set-cookie': sessions.clearLoginCookie() });
+        if (!pending) {
+          security('sign-in-unknown-state', req);
+          return send(res, 400, { error: 'This sign-in is not one the studio started, or it has expired. Sign in again.' }, { 'set-cookie': sessions.clearLoginCookie() });
+        }
+        if (url.searchParams.get('error')) {
+          security('sign-in-refused-by-provider', req, { 'th.oidc.error': String(url.searchParams.get('error')).slice(0, 64) });
+          return send(res, 401, { error: `The identity provider refused the sign-in: ${String(url.searchParams.get('error')).slice(0, 64)}` }, { 'set-cookie': sessions.clearLoginCookie() });
+        }
         let claims: Record<string, any>;
         let idToken: string;
         try {
           ({ claims, idToken } = await oidc.redeem(url.searchParams.get('code') ?? '', pending.verifier, pending.nonce));
         } catch (e: any) {
+          security('sign-in-failed', req, { 'th.reason': String(e?.message ?? e).slice(0, 200) });
           return send(res, 401, { error: `Sign-in failed: ${e.message}` }, { 'set-cookie': sessions.clearLoginCookie() });
         }
         const subject = String(claims[cfg.userClaim] ?? '');
         if (!subject) return send(res, 401, { error: `The ID token has no ${cfg.userClaim} claim` });
         const groups = cfg.groupsClaim ? (Array.isArray(claims[cfg.groupsClaim]) ? claims[cfg.groupsClaim].map(String) : []) : undefined;
         const s = sessions.create(subject, userFor(env, subject), idToken, groups);
+        log('info', 'Signed in {enduser.id}', { 'enduser.id': subject, 'th.user': userFor(env, subject) ?? '' });
         res.writeHead(303, { location: `/${pending.returnTo}`, 'set-cookie': [sessions.sessionCookie(s), sessions.clearLoginCookie()], 'cache-control': 'no-store' }).end();
         return;
       }
@@ -135,9 +173,16 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
       if (!SAFE.has(method) && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/'))) {
         if (!session) return send(res, 401, { error: 'Sign in first', code: 'R-11-32' });
         const origin = req.headers.origin;
-        if (origin && origin !== publicOrigin && origin !== `http://${req.headers.host}`) return send(res, 403, { error: 'A change must come from the studio itself', code: 'R-11-33' });
+        // The studio's public origin only; the address a browser used is accepted too only with the development provider.
+        if (origin && origin !== publicOrigin && !(cfg.dev && origin === `http://${req.headers.host}`)) {
+          security('origin-refused', req, { 'http.request.header.origin': String(origin).slice(0, 200) });
+          return send(res, 403, { error: 'A change must come from the studio itself', code: 'R-11-33' });
+        }
         const token = String(req.headers['x-csrf-token'] ?? '');
-        if (!token || !same(token, session.csrf)) return send(res, 403, { error: 'The CSRF token is missing or wrong; reload the studio', code: 'R-11-33' });
+        if (!token || !same(token, session.csrf)) {
+          security('csrf-refused', req, { 'th.user': session.user ?? '' });
+          return send(res, 403, { error: 'The CSRF token is missing or wrong; reload the studio', code: 'R-11-33' });
+        }
       }
 
       if (url.pathname === '/auth/logout' && method === 'POST') {
@@ -148,7 +193,15 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
 
       if (url.pathname.startsWith('/api/')) {
         // The studio's own sign-in only (R-11-34): no bearer token, from the runtime, a bank or anyone, is accepted.
-        if (req.headers.authorization) return send(res, 401, { error: 'The studio accepts no bearer token: sign in to the studio', code: 'R-11-34' });
+        if (req.headers.authorization) {
+          security('bearer-refused', req);
+          return send(res, 401, { error: 'The studio accepts no bearer token: sign in to the studio', code: 'R-11-34' });
+        }
+        // The calls that run something heavy are limited per user (R-11-41).
+        if (session && isExpensive(method, url.pathname) && !limits.expensive.take(session.subject)) {
+          security('rate-limited', req, { 'th.limit': 'expensive', 'th.user': session.user ?? '' });
+          return send(res, 429, { error: 'Too many runs in a minute; wait a minute and try again', code: 'R-11-41' }, { 'retry-after': '60' });
+        }
         const raw = await readBody(req);
         let body: any = undefined;
         try {
@@ -167,23 +220,31 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig) {
         const user = session ? userFor(env, session.subject) : undefined;
         const out = await withAssertedRoles(user ?? '', session && assertedRoles(session), () => dispatch(env, { method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, user, identity: session?.subject }));
         if (out.contentType) {
-          res.writeHead(out.status, { 'content-type': out.contentType, 'content-disposition': `attachment; filename="${out.filename}"` }).end(out.body);
+          res.writeHead(out.status, { 'content-type': out.contentType, 'content-disposition': `attachment; filename="${safeFilename(out.filename)}"` }).end(out.body);
           return;
         }
+        if (out.status === 403) security('forbidden', req, { 'th.user': user ?? session?.subject ?? '', 'th.code': out.body?.code ?? '' });
         return send(res, out.status, out.body);
       }
 
       // Static web app, with the single-page fallback. The app itself asks /auth/me and shows sign-in.
       let file = path.join(webRoot, url.pathname === '/' ? 'index.html' : url.pathname);
-      if (!file.startsWith(webRoot) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(webRoot, 'index.html');
+      if (!file.startsWith(webRoot + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(webRoot, 'index.html');
       if (!fs.existsSync(file)) {
         res.writeHead(200, { 'content-type': 'text/plain' }).end('The web app is not built. Run: npm run web:build');
         return;
       }
-      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...(path.extname(file) === '.html' ? { 'content-security-policy': APP_CSP } : {}) });
       fs.createReadStream(file).pipe(res);
     } catch (e: any) {
-      if (!res.headersSent) send(res, 500, { error: String(e?.message ?? e) });
+      if (e instanceof BodyTooLarge) {
+        security('body-too-large', req, { 'th.limit.bytes': bodyLimit });
+        if (!res.headersSent) send(res, 413, { error: `The request body is larger than ${bodyLimit} bytes`, code: 'R-11-41' }, { connection: 'close' });
+        return;
+      }
+      // An error answer gives a message and a status, never internals (secure-coding.md): the detail goes to the log.
+      console.error(`Internal error on ${req.method} ${url.pathname}:`, e?.stack ?? e);
+      if (!res.headersSent) send(res, 500, { error: 'Internal error' });
     }
   }
 }

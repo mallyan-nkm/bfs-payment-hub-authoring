@@ -329,13 +329,13 @@ public sealed class WorkerRouter : IParty
         return parts[0] is "p" or "b" ? parts[0] : $"{parts[0]}.{parts[1]}";
     }
 
-    /// <summary>How long an attempt waits for a worker that drains or restarts (R-09-59) before it is answered as an error.</summary>
+    /// <summary>How long an attempt waits for a worker that drains or restarts (R-09-63) before it is answered as an error.</summary>
     public static TimeSpan DrainWait = TimeSpan.FromMinutes(10);
 
     async Task<JsonObject> Post(string url, JsonObject body)
     {
         // A worker that drains answers 503; one that restarts does not answer for a moment. The attempt waits for the worker to
-        // take it again, so no attempt is lost to a drain (R-09-59).
+        // take it again, so no attempt is lost to a drain (R-09-63).
         var until = DateTime.UtcNow + DrainWait;
         HttpResponseMessage res;
         while (true)

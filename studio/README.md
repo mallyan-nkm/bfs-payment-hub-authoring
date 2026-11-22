@@ -45,6 +45,9 @@ The studio has its own sign-in, separate from the runtime's (R-11-32 to R-11-34)
 | `TH_OIDC_USER_CLAIM` | The ID token claim matched to a user's `subject` in `governance/users.yaml`, else its `id` (default `sub`) |
 | `TH_OIDC_GROUPS_CLAIM`, `TH_OIDC_GROUP_PREFIX` | Optional: the provider's groups narrow a user's roles to those it asserts as `<prefix><role>` (default prefix `studio:`); they never add one |
 | `TH_SESSION_KEY_REF`, `TH_SESSION_HOURS`, `TH_COOKIE_SECURE` | The cookie signing key by reference (default: a random key per process), the session length (default 8 hours), and `Secure` cookies (on by default for an `https` address) |
+| `TH_SESSION_IDLE_MINUTES` | A session unused this long ends (default 60) (R-11-42) |
+| `TH_MAX_BODY_MB`, `TH_RATE_AUTH_PER_MINUTE`, `TH_RATE_EXPENSIVE_PER_MINUTE` | The largest request body (default 32 MB), sign-ins per client address and heavy calls (tests, kit, import, export, assistant) per user a minute (default 120 each) (R-11-41) |
+| `TH_NATIVE_TOKEN` | A reference (`env:`, `file:`, `vault:`...) to the worker's token for the runtime's native host, sent as a bearer token (R-08-17) |
 | `TH_AUTH_DEV=1` | The built-in development provider at `/auth/dev`, for local work and tests. Refused when `NODE_ENV=production` |
 
 The session is an id in a signed, http-only, same-site cookie; what it stands for is in memory only, so a restart signs everyone out and nothing is written to disk. Every API call takes its user, and with it its tenant, from the session: a body or query that names another user or tenant is refused. A state-changing call carries the CSRF token that `GET /auth/me` returns, in `x-csrf-token`. No session is 401; an identity that is no user of the studio is 403; a refusal by the permission table is 403 and audited.

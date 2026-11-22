@@ -4,6 +4,7 @@
     <ProjectReference Include="..\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
     <ProjectReference Include="..\TransactHub.Ports\TransactHub.Ports.csproj" />
     <ProjectReference Include="..\TransactHub.Operations\TransactHub.Operations.csproj" />
+    <ProjectReference Include="..\TransactHub.Auth\TransactHub.Auth.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

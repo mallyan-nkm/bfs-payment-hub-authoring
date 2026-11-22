@@ -116,12 +116,8 @@ public sealed class ErrorDictionary
     {
         try
         {
-            using var a = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
-            foreach (var e in a.Entries.Where(x => x.FullName.StartsWith("errors/") && x.FullName.EndsWith(".yaml")))
-            {
-                using var r = new StreamReader(e.Open(), Encoding.UTF8);
-                Add(r.ReadToEnd(), $"{source}:{e.FullName}");
-            }
+            foreach (var (name, bytes) in SafeZip.Read(zip, x => x.StartsWith("errors/") && x.EndsWith(".yaml")))
+                Add(Encoding.UTF8.GetString(bytes), $"{source}:{name}");
         }
         catch (InvalidDataException) { /* not a zip: nothing to add */ }
     }

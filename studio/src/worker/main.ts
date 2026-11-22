@@ -22,7 +22,7 @@ import { resolveSecret } from '../secrets/secrets.js';
 //   GET  /sent        -> messages sent on ports
 //   GET  /stats       -> tasks served and refused
 //   GET  /health/live, /health/ready -> the process answers; it has loaded its tasks (R-10-09)
-//   POST /drain       -> stop taking new attempts (each is answered 503 draining); those in flight run to their end (R-09-59)
+//   POST /drain       -> stop taking new attempts (each is answered 503 draining); those in flight run to their end (R-09-63)
 //   POST /restart     -> drain, then exit with code 75 once nothing is in flight: the deploy runner starts the worker again
 //                        from the same package, at the same version, on the same port
 //
@@ -104,7 +104,7 @@ const server = http.createServer(async (req, res) => {
         await party.attempt({ ...b, activity: '__none__' }).catch(() => undefined);
         return send(res, 200, { kind: 'registered' });
       }
-      // Draining (R-09-59): no new attempt is taken; the engine's router offers it again until the worker is back.
+      // Draining (R-09-63): no new attempt is taken; the engine's router offers it again until the worker is back.
       if (draining) return send(res, 503, { kind: 'error', name: 'WorkerDraining', retryable: true, message: `worker ${manifest.queue} is draining`, deliveries: [] });
       const release = b.release ?? store.latest(b.activity)?.release;
       const task = `${b.activity}@${release}`;

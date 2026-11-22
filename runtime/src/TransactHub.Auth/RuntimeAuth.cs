@@ -32,12 +32,43 @@ public static class RuntimeAuth
     /// <summary>The claim types the role map gives a caller.</summary>
     public const string RoleClaim = "th:role";
     public const string TenantClaim = "th:tenant";
+    /// <summary>
+    /// A role in one tenant, <c>tenant:role</c> (<c>*:role</c> for every tenant): what the role map grants, grant by grant, so
+    /// one person may be an operator in one bank and a supervisor in another (owner's decision of 22 November 2026, R-06-28).
+    /// <see cref="RoleClaim"/> and <see cref="TenantClaim"/> stay the union, for policies that ask for a role anywhere.
+    /// </summary>
+    public const string TenantRoleClaim = "th:tenant-role";
+
+    /// <summary>The value of a <see cref="TenantRoleClaim"/>.</summary>
+    public static string TenantRole(string tenant, string role) => $"{tenant}:{role}";
 
     /// <summary>The caller's name, as a host records it: the configured name claim of the bank's token.</summary>
     public static string Actor(ClaimsPrincipal u) => u.Identity?.Name is { Length: > 0 } n ? n : u.FindFirstValue("sub") ?? "unknown";
 
     /// <summary>Whether the caller is given a tenant, or every tenant (<c>*</c>).</summary>
     public static bool MayActFor(ClaimsPrincipal u, string tenant) => u.FindAll(TenantClaim).Any(c => c.Value == "*" || c.Value == tenant);
+
+    /// <summary>
+    /// Whether the caller holds the role in the tenant: a grant gave that role with that tenant (or every tenant). A role from
+    /// one grant and a tenant from another do not combine (R-06-28).
+    /// </summary>
+    public static bool HasRoleFor(ClaimsPrincipal u, string role, string tenant) =>
+        u.HasClaim(TenantRoleClaim, TenantRole(tenant, role)) || u.HasClaim(TenantRoleClaim, TenantRole("*", role));
+
+    /// <summary>The caller's roles per tenant (<c>*</c> for every tenant), from its <see cref="TenantRoleClaim"/>s.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> RolesByTenant(ClaimsPrincipal u)
+    {
+        var d = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var c in u.FindAll(TenantRoleClaim))
+        {
+            var i = c.Value.LastIndexOf(':');
+            if (i <= 0 || i == c.Value.Length - 1) continue;
+            var (t, r) = (c.Value[..i], c.Value[(i + 1)..]);
+            if (!d.TryGetValue(t, out var set)) d[t] = set = new HashSet<string>(StringComparer.Ordinal);
+            set.Add(r);
+        }
+        return d.ToDictionary(x => x.Key, x => (IReadOnlySet<string>)x.Value, StringComparer.Ordinal);
+    }
 
     /// <summary>
     /// Adds bearer-JWT authentication against the bank's issuer, the role map, one authorisation policy per role (named as
@@ -130,17 +161,30 @@ public sealed class RoleMap
     static IEnumerable<string> Values(ClaimsIdentity id, string type) =>
         id.FindAll(type).SelectMany(c => c.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
-    /// <summary>Adds the roles and tenants the identity's claims are granted.</summary>
+    /// <summary>
+    /// Adds the roles and tenants the identity's claims are granted. Each grant gives its roles in its own tenants: the
+    /// tenants it lists, or, when it lists none, the tenants the token names in <c>tenantsClaim</c> (R-06-28). A role
+    /// granted for one bank is never held in another bank that a second grant names.
+    /// </summary>
     public void Apply(ClaimsIdentity id)
     {
         var roles = new SortedSet<string>(StringComparer.Ordinal);
         var tenants = new SortedSet<string>(StringComparer.Ordinal);
+        var pairs = new SortedSet<string>(StringComparer.Ordinal);
+        var named = TenantsClaim is { Length: > 0 } tc ? Values(id, tc).ToArray() : [];
         foreach (var g in Grants)
-            if (Values(id, g.Claim).Contains(g.Value, StringComparer.Ordinal)) { roles.UnionWith(g.Roles); tenants.UnionWith(g.Tenants); }
-        if (TenantsClaim is { Length: > 0 } tc) tenants.UnionWith(Values(id, tc));
+        {
+            if (!Values(id, g.Claim).Contains(g.Value, StringComparer.Ordinal)) continue;
+            var own = g.Tenants.Length > 0 ? g.Tenants : named;
+            roles.UnionWith(g.Roles);
+            tenants.UnionWith(own);
+            foreach (var t in own) foreach (var r in g.Roles) pairs.Add(RuntimeAuth.TenantRole(t, r));
+        }
+        tenants.UnionWith(named);
         // Only the map gives roles: a claim of the host's own types in the token is not taken.
-        foreach (var c in id.FindAll(RuntimeAuth.RoleClaim).Concat(id.FindAll(RuntimeAuth.TenantClaim)).ToList()) id.RemoveClaim(c);
+        foreach (var c in id.FindAll(RuntimeAuth.RoleClaim).Concat(id.FindAll(RuntimeAuth.TenantClaim)).Concat(id.FindAll(RuntimeAuth.TenantRoleClaim)).ToList()) id.RemoveClaim(c);
         foreach (var r in roles) id.AddClaim(new Claim(RuntimeAuth.RoleClaim, r));
         foreach (var t in tenants) id.AddClaim(new Claim(RuntimeAuth.TenantClaim, t));
+        foreach (var p in pairs) id.AddClaim(new Claim(RuntimeAuth.TenantRoleClaim, p));
     }
 }

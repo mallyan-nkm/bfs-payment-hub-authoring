@@ -86,6 +86,8 @@ Authentication is one library, `runtime/src/TransactHub.Auth` (`RuntimeAuth.AddR
 
 The role map grants roles (and tenants) to a claim value: an app role in `roles`, a group id in `groups`, a scope in `scp`. A role in the token under the runtime's own claim types is ignored: only the map gives roles.
 
+Each grant gives its roles in its own tenants only: the tenants it lists, or, when it lists none, the tenants the token names in `tenantsClaim` (R-06-28, owner's decision of 22 November 2026). One person may so be an Operator in one bank and a Supervisor in another; a role from one grant is never held in a tenant another grant names. A host asks for the pair, `RuntimeAuth.HasRoleFor(user, role, tenant)`.
+
 ```json
 { "kind": "runtime-role-map", "tenantsClaim": "tenants",
   "grants": [
@@ -98,7 +100,10 @@ The role map grants roles (and tenants) to a claim value: an app role in `roles`
 | `release-importer` | `POST /releases`, `POST /import-branch` |
 | `release-activator` | `POST /activations`, and the activations a branch import carries |
 | `release-reader` | `GET /releases`, `GET /releases/package`, `GET /activations/active` |
-| `values-reader` | `GET /values` for the tenants it is given |
+| `values-reader` | `GET /values` and `GET /bindings` for the tenants it is given |
+| `payment-intake` | `POST /payments/pin`, `POST /payments/end`, for the banks it is given |
+
+A distribution action (`/distributions/activate`, `drain`, `remove`, `rollback`) needs `release-activator` in the distribution's bank. `POST /import-branch` reads only under `Releases:ImportRoots` (R-09-58).
 
 No token, or one the bank's provider did not issue (the studio's included), is 401; a caller without the role or the tenant is 403 (`ApiAuthTests`). The actor recorded on a release, an activation and each verification fact is the caller's verified name. The API does not start without the issuer, the audience, a role map naming only roles it knows, and trusted signers.
 
@@ -110,4 +115,6 @@ What still holds for operators:
 
 Decided on 2026-11-22 (I-65): the console and its API are built (`runtime/ops-console`, `runtime/src/TransactHub.Operations.Api`). Each operator action is offered only as a pack's operations view declares it, authorised server-side by tenant and role, and recorded on the payment's chain with the operator's identity; maker-checker where the view names a second approver. Masking is in the read model, as each view declares (R-05-49); an unmask is not built (I-100). Do not build a permission catalogue or role screens beyond the two roles: the bank's identity provider holds the users and groups.
 
-Do not build role screens or a permission store in the runtime: roles come from the bank's provider through the role map. The native host (`TransactHub.Native`) has no authentication yet ([I-75](../../ISSUES.md#i-75-the-native-host-has-no-authentication)).
+Do not build role screens or a permission store in the runtime: roles come from the bank's provider through the role map. The native host (`TransactHub.Native`) takes the bank's machine callers with the role `native-caller` in the attempt's tenant, and answers on loopback only when no identity provider is configured (R-08-17, I-75 done); a worker sends its token by reference in `TH_NATIVE_TOKEN`. What remains is [I-121](../../ISSUES.md#i-121-callers-of-the-native-host-the-harnesses-and-mutual-tls).
+
+Every runtime host sends security headers and a content security policy, and the console hosts limit changes per client address (R-09-60). The studio limits sign-in and its heavy calls, ends an idle session and logs every refusal as a security event (R-11-41 to R-11-43).

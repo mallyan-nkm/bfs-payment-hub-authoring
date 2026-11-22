@@ -15,6 +15,7 @@ import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from '
 import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../core/expand.js';
 import { runPythonScript } from './pysandbox.js';
 import { attrs, inSpan, meters, SpanKind, SpanStatusCode, traceHeaders, tracer } from '../telemetry/telemetry.js';
+import { resolveSecret } from '../secrets/secrets.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
 // reference for every engine. It never evaluates rules, reads values or calls ports inline:
@@ -1043,8 +1044,10 @@ export async function runNative(act: any, view: any, params: Record<string, any>
   const portAttrs = attrs({ 'th.port': 'native-host', 'th.activity': act.name });
   try {
     res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
+      // The native host takes the bank's machine callers only (R-08-17): the worker's token, by reference, TH_NATIVE_TOKEN.
+      const auth: Record<string, string> = process.env.TH_NATIVE_TOKEN ? { authorization: `Bearer ${(await resolveSecret(process.env.TH_NATIVE_TOKEN)).reveal()}` } : {};
       const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
-        method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders() },
+        method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...auth },
         body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
       });
       return r.json();

@@ -1,4 +1,5 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
+import * as os from 'node:os';
 
 // The runtime belongs to the bank: it takes only bearer JWTs from the bank's identity provider, maps the bank's claims to
 // its roles through a role map, and keeps no identities of its own (R-09-27). A black-box run plays the bank's identity
@@ -29,6 +30,8 @@ export function runtimeApiEnv(): Record<string, string> {
     Auth__Oidc__Audience: AUDIENCE,
     Auth__Oidc__SigningKeys: JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'bb-1', use: 'sig', alg: 'RS256' }] }),
     Auth__RoleMap: JSON.stringify({ kind: 'runtime-role-map', grants: [{ claim: 'roles', value: 'TransactHub.Pipeline', roles: ['release-importer', 'release-activator', 'release-reader', 'values-reader', 'payment-intake'], tenants: ['*'] }] }),
+    // The runs' branch checkouts are temporary folders: the only folders POST /import-branch may read (R-09-58).
+    Releases__ImportRoots: os.tmpdir(),
   };
 }
 

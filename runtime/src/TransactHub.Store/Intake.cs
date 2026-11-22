@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace TransactHub.Store;
 
 /// <summary>
-/// The intake switch of a bank's scheme (R-09-58): paused or open, as insert-only facts on the switch's own chain
+/// The intake switch of a bank's scheme (R-09-62): paused or open, as insert-only facts on the switch's own chain
 /// (<c>intake/&lt;tenant&gt;/&lt;scheme&gt;</c>, kind <c>intake</c>, code <c>paused</c> or <c>resumed</c>). The runtime reads the latest
 /// when it accepts a payment: while paused, a new payment of that scheme for that bank is refused (the front door may keep it
 /// and offer it again), and a payment already accepted runs on.
@@ -26,7 +26,7 @@ public static class IntakeSwitch
     }
 }
 
-/// <summary>A payment refused at intake because its scheme's intake is paused for the bank (R-09-58).</summary>
+/// <summary>A payment refused at intake because its scheme's intake is paused for the bank (R-09-62).</summary>
 public sealed class IntakePaused(string tenant, string scheme) : InvalidOperationException($"Intake of {scheme} is paused for {tenant}: the payment is not accepted; offer it again when intake is resumed")
 {
     public string Code => "ops.IntakePaused";

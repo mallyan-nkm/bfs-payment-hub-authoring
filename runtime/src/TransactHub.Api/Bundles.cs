@@ -47,15 +47,11 @@ public sealed class Bundle
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         try
         {
-            using var a = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
-            foreach (var e in a.Entries)
+            // Read within the limits whatever the headers claim: a zip bomb is refused (R-09-59).
+            foreach (var (name, bytes) in SafeZip.Read(zip))
             {
-                if (e.FullName.EndsWith('/')) continue;
-                if (e.FullName.Contains("..") || e.FullName.StartsWith('/')) throw new PackageRejected($"Unsafe path in the bundle: {e.FullName}");
-                using var s = e.Open();
-                using var ms = new MemoryStream();
-                s.CopyTo(ms);
-                files[e.FullName] = ms.ToArray();
+                if (name.Contains("..") || name.StartsWith('/') || name.Contains('\\')) throw new PackageRejected($"Unsafe path in the bundle: {name}");
+                files[name] = bytes;
             }
         }
         catch (InvalidDataException ex) { throw new PackageRejected($"Not a zip: {ex.Message}"); }

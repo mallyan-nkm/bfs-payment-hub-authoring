@@ -229,6 +229,11 @@ public sealed class TelemetryTests(Databases dbs)
         Assert.Equal("****3456", Masking.Scrub("AE070331234567890123456"));
         Assert.Equal("employee ****7890 paid", Masking.Scrub("employee 00001234567890 paid"));
         Assert.Equal("write to [masked-email]", Masking.Scrub("write to someone@example.com"));
+        // A long text with no address in it is masked in linear time (review 2026-11, ReDoS): a megabyte in well under a second.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Masking.Scrub(new string('a', 1_000_000) + "@");
+        Masking.Scrub(new string('1', 1_000_000) + "x");
+        Assert.True(sw.ElapsedMilliseconds < 3000, $"masking a long text took {sw.ElapsedMilliseconds} ms");
         Assert.Equal("call ****4567", Masking.Scrub("call +971 50 123 4567"));
         Assert.Equal("p.port.core-banking.v1 at 2026-11-17 step 12", Masking.Scrub("p.port.core-banking.v1 at 2026-11-17 step 12"));
         Assert.Equal("root-1a2b3c4d", Masking.Scrub("root-1a2b3c4d"));

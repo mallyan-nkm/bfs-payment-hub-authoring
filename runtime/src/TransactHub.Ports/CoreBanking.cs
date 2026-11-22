@@ -13,7 +13,7 @@ public sealed record PostingLeg(string Kind, string Branch, string Account, deci
 public sealed record PostingBatch(string Reference, DateOnly ValueDate, IReadOnlyList<PostingLeg> Legs);
 public sealed record BalanceAnswer(string Account, decimal Available, string Currency, string Status);
 public sealed record PostingAnswer(string Reference, bool Posted, string Code, string? HostReference);
-/// <summary>What core banking knows of a posting by its reference (R-08-17): posted, with its host reference, or not posted.</summary>
+/// <summary>What core banking knows of a posting by its reference (R-08-19): posted, with its host reference, or not posted.</summary>
 public sealed record PostingInquiry(string Reference, bool Known, bool Posted, string? HostReference);
 
 public interface ICoreBanking
@@ -22,7 +22,7 @@ public interface ICoreBanking
     string Adapter { get; }
     Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default);
     Task<PostingAnswer> Post(PostingBatch batch, CancellationToken ct = default);
-    /// <summary>Asks for the fate of a posting by its reference, as sent (R-08-17): what reconciles a posting whose answer was lost.</summary>
+    /// <summary>Asks for the fate of a posting by its reference, as sent (R-08-19): what reconciles a posting whose answer was lost.</summary>
     Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default);
 }
 

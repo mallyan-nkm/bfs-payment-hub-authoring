@@ -63,7 +63,7 @@ public static class OperatorAuth
             var claims = new List<Claim> { new("sub", sub), new("name", (string?)o!["name"] ?? sub) };
             foreach (var r in (o["roles"] as JsonArray ?? []))
                 if ((string?)r is { } pair && pair.Split(':') is [var tenant, var role])
-                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role)]);
+                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role), new Claim(RuntimeAuth.TenantRoleClaim, RuntimeAuth.TenantRole(tenant, role))]);
             var p = new ClaimsPrincipal(new ClaimsIdentity(claims, DevScheme, "sub", RuntimeAuth.RoleClaim));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(p, DevScheme)));
         }
@@ -71,9 +71,10 @@ public static class OperatorAuth
 }
 
 /// <summary>
-/// An operator from the runtime's claims: the role map's roles (<see cref="RuntimeAuth.RoleClaim"/>) in each tenant it grants
-/// (<see cref="RuntimeAuth.TenantClaim"/>, <c>*</c> for every tenant). The library grants roles and tenants together, not a
-/// role per tenant (Issue I-65).
+/// An operator from the runtime's claims: each role in the tenants the role map's grant gives it
+/// (<see cref="RuntimeAuth.TenantRoleClaim"/>, <c>*</c> for every tenant). One person may be an Operator in one bank and a
+/// Supervisor in another (owner's decision of 22 November 2026, R-06-28): a role from one grant and a tenant from another do
+/// not combine.
 /// </summary>
 public sealed class RuntimeAuthOperators : IOperatorIdentityResolver
 {
@@ -81,10 +82,11 @@ public sealed class RuntimeAuthOperators : IOperatorIdentityResolver
     {
         if (user.Identity?.IsAuthenticated != true) return null;
         var sub = user.FindFirst("sub")?.Value ?? RuntimeAuth.Actor(user);
-        var roles = user.FindAll(RuntimeAuth.RoleClaim).Select(c => c.Value).Where(OperatorRoles.All.Contains).ToHashSet();
-        var tenants = user.FindAll(RuntimeAuth.TenantClaim).Select(c => c.Value).Distinct();
         var name = user.FindFirst("name")?.Value ?? user.FindFirst("preferred_username")?.Value ?? sub;
-        return new OperatorIdentity(sub, name, roles.Count == 0 ? new Dictionary<string, IReadOnlySet<string>>()
-            : tenants.ToDictionary(t => t, _ => (IReadOnlySet<string>)roles));
+        var byTenant = RuntimeAuth.RolesByTenant(user)
+            .Select(kv => (kv.Key, Roles: (IReadOnlySet<string>)kv.Value.Where(OperatorRoles.All.Contains).ToHashSet()))
+            .Where(x => x.Roles.Count > 0)
+            .ToDictionary(x => x.Key, x => x.Roles);
+        return new OperatorIdentity(sub, name, byTenant);
     }
 }

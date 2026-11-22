@@ -126,6 +126,33 @@ class ContractViolation(Exception):
     pass
 
 
+# The builtins above are no wall: a script can climb from any object to the interpreter's modules through
+# __class__ and __subclasses__. So the harness also installs an audit hook before the script runs (R-08-18), which
+# CPython does not let Python code remove: from then on, no file is opened, no process, socket, library or new module
+# is reached, and no further code is compiled. The allowed modules are imported first, so their own imports are done.
+for _m in ALLOWED_MODULES:
+    _real_import(_m)
+
+_BLOCKED = ("open", "os.", "subprocess.", "socket.", "ctypes.", "shutil.", "glob.", "pty.", "fcntl.", "mmap.",
+            "urllib.", "http.", "ftplib.", "smtplib.", "telnetlib.", "webbrowser.", "marshal.", "pickle.", "sqlite3.",
+            "sys._getframe", "sys.setprofile", "sys.settrace", "code.__new__", "function.__new__", "cpython.",
+            "_posixsubprocess.", "signal.", "resource.", "syslog.", "winreg.", "msvcrt.", "gc.get_referrers",
+            "gc.get_referents", "gc.get_objects", "object.__setattr__", "object.__delattr__")
+_lock = {"exec": 1}
+
+
+def _audit(event, args):
+    if event == "import":
+        if str(args[0]).split(".")[0] not in ALLOWED_MODULES:
+            raise RuntimeError("module %s is outside the injected interface" % args[0])
+    elif event in ("exec", "compile"):
+        if _lock["exec"] <= 0:
+            raise RuntimeError("a script compiles no code at run time")
+        _lock["exec"] -= 1
+    elif any(event == b or (b.endswith(".") and event.startswith(b)) for b in _BLOCKED):
+        raise RuntimeError("%s is outside the injected interface" % event)
+
+
 class GuardedCtx(dict):
     """The context view. Reading a part that is not declared fails the run (R-03-07)."""
 
@@ -191,7 +218,9 @@ def main():
     api.ports, api.rules, api.clock, api.ids, api.log = Ports(), Rules(), Clock(), Ids(), Log()
     g = {"__builtins__": SAFE_BUILTINS, "__name__": "script"}
     try:
-        exec(compile(first["source"], first.get("file", "script.py"), "exec"), g)
+        code = compile(first["source"], first.get("file", "script.py"), "exec")
+        sys.addaudithook(_audit)
+        exec(code, g)
         if "run" not in g:
             raise ContractViolation("the script defines no run function")
         result = g["run"](api)

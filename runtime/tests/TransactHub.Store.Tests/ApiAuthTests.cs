@@ -135,6 +135,63 @@ public sealed class ApiAuthTests(Databases dbs)
         Assert.Contains("which this host does not know", await StartFails([trust, .. oidc, ("Auth:RoleMap", """{ "kind": "runtime-role-map", "grants": [ { "claim": "roles", "value": "x", "roles": ["superuser"] } ] }""")]));
     }
 
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_role_granted_in_one_bank_is_not_held_in_another_bank_a_second_grant_names(StoreProvider p)
+    {
+        // R-06-28: the bank-operations client activates and accepts payments for example-bank, and only reads values of
+        // other-bank. Its tenants do not lend its roles to each other.
+        using var s = new TestSigners();
+        await using var api = new ApiHost(dbs.Fresh(p), s);
+        var c = api.Client("bank-operations");
+        Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/values?tenant=other-bank")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync(Values)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/distributions/activate", new { environment = "test", id = "dist/other-bank@2026.11.22-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/distributions/rollback", new { environment = "test", bank = "other-bank" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/distributions/drain", new { environment = "test", id = "dist/other-bank@2026.11.22-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/payments/pin", new { paymentId = "PAY-1", bank = "other-bank", environment = "test" })).StatusCode);
+        // In its own bank the call is authorised and reaches the registry, which refuses it for its own reasons.
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/distributions/activate", new { environment = "test", id = "dist/example-bank@2026.11.22-1" })).StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/payments/pin", new { paymentId = "PAY-1", bank = "example-bank", environment = "test" })).StatusCode);
+    }
+
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_branch_is_imported_only_from_under_the_configured_import_roots(StoreProvider p)
+    {
+        // R-09-58: /import-branch is no way to read the host's files.
+        using var s = new TestSigners();
+        await using var api = new ApiHost(dbs.Fresh(p), s);
+        var c = api.Client("pipeline");
+        foreach (var outside in new[] { "/etc", "/", Path.Combine(Path.GetTempPath(), "..", "etc"), "relative/../../etc" })
+            Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/import-branch", new { path = outside })).StatusCode);
+        var inside = Directory.CreateTempSubdirectory("th-root-").FullName;
+        try { Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/import-branch", new { path = inside })).StatusCode); }
+        finally { Directory.Delete(inside, true); }
+        await using var none = new ApiHost(dbs.Fresh(p), s, b => b.UseSetting("Releases:ImportRoots", ""));
+        Assert.Equal(HttpStatusCode.Forbidden, (await none.Client("pipeline").PostAsJsonAsync("/import-branch", new { path = Path.GetTempPath() })).StatusCode);
+    }
+
+    [Fact]
+    public void A_grant_gives_its_roles_in_its_own_tenants_only()
+    {
+        // The owner's decision of 22 November 2026: one person is an operator in one bank and a supervisor in another (R-06-28).
+        var map = RoleMap.Parse("""{ "kind": "runtime-role-map", "tenantsClaim": "tenants", "grants": [ { "claim": "groups", "value": "ops-a", "roles": ["operator"], "tenants": ["bank-a"] }, { "claim": "groups", "value": "sup-b", "roles": ["supervisor"], "tenants": ["bank-b"] }, { "claim": "groups", "value": "readers", "roles": ["reader"] } ] }""", ["operator", "supervisor", "reader"]);
+        var id = new ClaimsIdentity([new Claim("sub", "u1"), new Claim("groups", "ops-a"), new Claim("groups", "sup-b"), new Claim("groups", "readers"), new Claim("tenants", "bank-c"), new Claim(RuntimeAuth.TenantRoleClaim, "*:supervisor")], "test", "sub", RuntimeAuth.RoleClaim);
+        map.Apply(id);
+        var u = new ClaimsPrincipal(id);
+        Assert.True(RuntimeAuth.HasRoleFor(u, "operator", "bank-a"));
+        Assert.False(RuntimeAuth.HasRoleFor(u, "operator", "bank-b"));
+        Assert.True(RuntimeAuth.HasRoleFor(u, "supervisor", "bank-b"));
+        Assert.False(RuntimeAuth.HasRoleFor(u, "supervisor", "bank-a"));
+        // A grant with no tenants of its own takes the tenants the token names; the forged *:supervisor claim was dropped.
+        Assert.True(RuntimeAuth.HasRoleFor(u, "reader", "bank-c"));
+        Assert.False(RuntimeAuth.HasRoleFor(u, "reader", "bank-a"));
+        Assert.False(RuntimeAuth.HasRoleFor(u, "supervisor", "bank-c"));
+        var byTenant = RuntimeAuth.RolesByTenant(u);
+        Assert.Equal(["operator"], byTenant["bank-a"]);
+        Assert.Equal(["supervisor"], byTenant["bank-b"]);
+        Assert.Equal(["reader"], byTenant["bank-c"]);
+    }
+
     [Fact]
     public void The_role_map_is_a_library_another_host_uses_with_its_own_roles()
     {

@@ -43,11 +43,11 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         new("reset-activity", "Reset an activity (Temporal)", "payment", true, "built", "Runs the parked activity again from its first attempt, as Temporal's reset to the failed activity's task would; on every engine the re-drive control (R-05-55)."),
         new("resend-file", "Resend a file to the Central Bank", "payment", true, "built", "Puts the same bytes the exchange sent, as the store kept them, on the file-transfer port again; idempotent by the file's id (R-05-58)."),
         new("expire-hold", "Expire a hold", "payment", true, "built", "Ends the payment's open hold as expired before its expiry; the decision goes to the engine, which awaits it (R-05-56)."),
-        new("reconcile-posting", "Reconcile an unknown posting with core banking", "payment", false, "built", "Asks core banking for the posting by its reference: posted, the parked posting step is re-driven and core banking answers the posting it has; not posted, it is retried (R-08-17)."),
-        new("pause-intake", "Pause intake for a scheme", "scheme", true, "built", "Stops new payments of a scheme for a bank at the front door: the runtime refuses to accept them until intake is resumed (R-09-58)."),
-        new("resume-intake", "Resume intake for a scheme", "scheme", false, "built", "Lets new payments of a scheme for a bank in again (R-09-58)."),
-        new("drain-worker", "Drain a worker", "worker", true, "built", "Stops a worker taking new attempts; the attempts it has run to their end (R-09-59)."),
-        new("restart-worker", "Restart a worker", "worker", true, "built", "Drains a worker and restarts it with the same package and version, on the same port (R-09-59)."),
+        new("reconcile-posting", "Reconcile an unknown posting with core banking", "payment", false, "built", "Asks core banking for the posting by its reference: posted, the parked posting step is re-driven and core banking answers the posting it has; not posted, it is retried (R-08-19)."),
+        new("pause-intake", "Pause intake for a scheme", "scheme", true, "built", "Stops new payments of a scheme for a bank at the front door: the runtime refuses to accept them until intake is resumed (R-09-62)."),
+        new("resume-intake", "Resume intake for a scheme", "scheme", false, "built", "Lets new payments of a scheme for a bank in again (R-09-62)."),
+        new("drain-worker", "Drain a worker", "worker", true, "built", "Stops a worker taking new attempts; the attempts it has run to their end (R-09-63)."),
+        new("restart-worker", "Restart a worker", "worker", true, "built", "Drains a worker and restarts it with the same package and version, on the same port (R-09-63)."),
     ];
 
     readonly Dictionary<string, Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>>> runners = new(StringComparer.Ordinal);
@@ -217,7 +217,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
     };
 
     /// <summary>
-    /// Reconcile an unknown posting (R-08-17): core banking is asked for the posting by its reference (the parameter, else the
+    /// Reconcile an unknown posting (R-08-19): core banking is asked for the posting by its reference (the parameter, else the
     /// reference the payment's posting step wrote). Posted: the answer is recorded and the parked posting step is re-driven, so
     /// core banking answers the posting it has; not posted: it is retried. The answer is a fact on the payment's chain.
     /// </summary>
@@ -246,7 +246,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         return null;
     }
 
-    /// <summary>The intake switch of a bank's scheme (R-09-58): a fact on the switch's own chain, read by the runtime when it accepts a payment.</summary>
+    /// <summary>The intake switch of a bank's scheme (R-09-62): a fact on the switch's own chain, read by the runtime when it accepts a payment.</summary>
     public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> Intake(StoreOptions store, bool pause, TimeProvider clock) => async (who, ask, ct) =>
     {
         var tenant = (string?)ask.Parameters?["tenant"] ?? throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, "An intake switch needs the parameter tenant (the bank) beside the scheme");
@@ -256,7 +256,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         return new JsonObject { ["tenant"] = tenant, ["scheme"] = ask.Target, ["intake"] = pause ? "paused" : "open" };
     };
 
-    /// <summary>Drain or restart a worker through its own control (R-09-59): <c>POST /drain</c> or <c>POST /restart</c> on the worker's address.</summary>
+    /// <summary>Drain or restart a worker through its own control (R-09-63): <c>POST /drain</c> or <c>POST /restart</c> on the worker's address.</summary>
     public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> Worker(string control, HttpMessageHandler? handler = null) => async (_, ask, ct) =>
     {
         if (!Uri.TryCreate(ask.Target, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")) throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, "A worker is named by its address, for example http://127.0.0.1:7401");

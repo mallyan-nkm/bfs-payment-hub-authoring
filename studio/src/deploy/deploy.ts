@@ -191,7 +191,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
     return child;
   };
-  // A worker that was asked to restart (POST /restart, R-09-59) drains and exits with code 75: it is started again from the same
+  // A worker that was asked to restart (POST /restart, R-09-63) drains and exits with code 75: it is started again from the same
   // package, so at the same version, on the same port; the engine's router waits for it meanwhile.
   const superviseRestart = (pr: (typeof procs)[number], w: any) => {
     pr.child.once('exit', (code) => {
@@ -403,11 +403,12 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
  * variable it names when it is an env: reference. The worker resolves it itself; the deploy runner never reads it.
  */
 function runtimeTokenEnv(): Record<string, string> {
-  const ref = process.env.TH_RUNTIME_TOKEN;
-  if (!ref || !isSecretRef(ref)) return {};
-  const out: Record<string, string> = { TH_RUNTIME_TOKEN: ref };
+  // The worker's token for the runtime's values API, and for the native host (R-08-17): each a reference the worker resolves.
+  const refs = (['TH_RUNTIME_TOKEN', 'TH_NATIVE_TOKEN'] as const).filter((k) => process.env[k] && isSecretRef(process.env[k]!));
+  if (!refs.length) return {};
+  const out: Record<string, string> = Object.fromEntries(refs.map((k) => [k, process.env[k]!]));
   for (const k of ['TH_SECRET_FILE_ROOTS', 'TH_VAULT_ADDR', 'TH_VAULT_TOKEN', 'TH_VAULT_NAMESPACE']) if (process.env[k]) out[k] = process.env[k]!;
-  for (const r of [ref, process.env.TH_VAULT_TOKEN]) {
+  for (const r of [...refs.map((k) => process.env[k]), process.env.TH_VAULT_TOKEN]) {
     const name = r?.startsWith('env:') ? r.slice(4) : undefined;
     if (name && process.env[name]) out[name] = process.env[name]!;
   }
