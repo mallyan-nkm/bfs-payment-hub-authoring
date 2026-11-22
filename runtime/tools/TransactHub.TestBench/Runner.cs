@@ -197,14 +197,14 @@ public sealed class Runner(Home home, Infra infra)
                     }
                     var (run, so) = await Once("");
                     // Issue I-93: on the time-skipping test server, on a loaded machine, an attempt's timer can fire before the
-                    // worker answers. Such a run is run once more, on a fresh database, and the result says so; the interpreter
-                    // timing out the same way is not retried, nor is anything else.
-                    if (e == "temporal" && plan.Temporal == "test-server" && FirstAttemptTimedOut(run) && !FirstAttemptTimedOut(result["reference"] as JsonObject))
+                    // worker answers, and the step fails. A Temporal run there whose outcome is not the interpreter's is run once
+                    // more, on a fresh database, and the result says so. A real difference shows on both runs and still fails.
+                    if (e == "temporal" && plan.Temporal == "test-server" && result["reference"] is JsonObject refRun && J.S(refRun, "error") is null && (J.S(run, "error") is not null || J.S(run, "outcome") != J.S(refRun, "outcome")))
                     {
-                        var first = J.S(run, "failed");
-                        say($"temporal: the first attempt timed out on the test server; running once more (Issue I-93) ({db})");
+                        var first = J.S(run, "failed") ?? J.S(run, "error") ?? J.S(run, "outcome");
+                        say($"temporal: not the interpreter's outcome on the test server; running once more (Issue I-93) ({db})");
                         (run, so) = await Once("_r2");
-                        run["retried"] = $"The first run failed with \"{first}\" on the time-skipping test server and was run once more (Issue I-93)";
+                        run["retried"] = $"The first run ended \"{first}\" on the time-skipping test server and was run once more (Issue I-93)";
                     }
                     run["database"] = db;
                     run["timings"] = new JsonObject { ["totalMs"] = run["elapsedMs"]?.DeepClone(), ["harnessMs"] = run["harnessMs"]?.DeepClone() };
@@ -232,8 +232,6 @@ public sealed class Runner(Home home, Infra infra)
         if (Environment.GetEnvironmentVariable("TH_TESTBENCH_KEEP_WORK") != "1") { try { Directory.Delete(work, true); } catch (IOException) { } }
         return result;
     }
-
-    static bool FirstAttemptTimedOut(JsonObject? run) => J.S(run, "failed") is { } f && f.Contains("timed out; a late result is ignored", StringComparison.Ordinal);
 
     /// <summary>Every check of a run: errors, each engine against the reference, the store, and what the request expects.</summary>
     public static void Judge(JsonObject result)

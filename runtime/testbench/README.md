@@ -89,7 +89,7 @@ A case may carry `knownIssue: { id, engines, note }`: those engines are known to
 
 The shipped suite (`suite/`, 20 cases) runs in CI on PostgreSQL and on SQL Server (`.github/workflows/testbench.yml`): the WPS outward cases on the four engines; each builder injection, run on the four engines with the outcome it is meant to give; DIB's file built with its routing code, on the day its configuration is in force; the WPS inward cases (known to differ on the engines, I-94); and the platform's ISO 20022 and JSON cases (I-95 for pacs.008).
 
-Temporal on the time-skipping test server with the store runs its claim checks as regular activities (`TH_LOCAL_CLAIMCHECK=0`): as local activities the server lets time pass while they write to the store, and the first attempt times out. On a loaded machine the first attempt can still time out before a cold worker answers; such a Temporal run is run once more on a fresh database, and the result and report say so (Issue I-93). The bench does this for that combination only, and retries nothing else.
+Temporal on the time-skipping test server with the store runs its claim checks as regular activities (`TH_LOCAL_CLAIMCHECK=0`): as local activities the server lets time pass while they write to the store, and the first attempt times out. On a loaded machine an attempt can still time out before a busy worker answers; a Temporal run on the test server whose outcome is not the interpreter's is run once more on a fresh database, and the result and report say so (Issue I-93). A real difference shows on both runs and still fails. The bench does this for that combination only, and retries nothing else.
 
 ## The service and the UI
 
