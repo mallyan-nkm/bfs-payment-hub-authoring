@@ -152,11 +152,17 @@ describe('the source WPS outward flow, through the north-star path', () => {
       // Every engine package the studio published on the branch carried its signature, and the runtime verified each.
       const onBranch = Object.keys(server.fake.files(server.repo, 'main')).filter((p) => /^content-configurations\/releases\/.+\/manifest\.yaml$/.test(p));
       for (const m of onBranch) expect(server.fake.files(server.repo, 'main')[m.replace(/manifest\.yaml$/, 'release.sig')], m).toBeDefined();
-      expect(imp.stored.length).toBe(onBranch.length);
+      // The branch import stores the workflow packages; the distributions and configuration releases built on approval (on by
+      // default, Issue I-113) are installed from the package source below.
+      const packages = onBranch.filter((p) => !/^content-configurations\/releases\/(distributions|configuration)\//.test(p));
+      expect(imp.stored.length).toBe(packages.length);
       // The same releases, as the runtime's package source sees them on GitHub: one annotated tag per version, each
       // downloaded, verified against the studio's key and found already stored (R-09-30).
-      const versions = await (await fetch(`${apiUrl}/sources/versions`, { headers: runtimeHeaders() })).json();
-      expect(versions.length, JSON.stringify(versions)).toBe(onBranch.length);
+      const all = await (await fetch(`${apiUrl}/sources/versions`, { headers: runtimeHeaders() })).json();
+      // Of every kind (R-09-40): the workflow packages here; the bank's distribution and configuration release beside them.
+      expect(all.some((v: any) => v.kind === 'distribution' && v.workflow === TENANT), JSON.stringify(all)).toBe(true);
+      const versions = all.filter((v: any) => v.kind === 'workflow-package');
+      expect(versions.length, JSON.stringify(all)).toBe(packages.length);
       for (const v of versions) {
         expect(v.stored, v.tag).toBe(true);
         const inst = await fetch(`${apiUrl}/sources/install`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ tag: v.tag }) });
