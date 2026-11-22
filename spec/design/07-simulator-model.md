@@ -28,6 +28,8 @@ Every outward simulator carries these eight scenarios, so timeouts and retries c
 | `fail-twice-then-accept` | Fails transiently twice, then accepts | Retry with one logical message accepted |
 | `malformed-reply` | Replies with an invalid message | Map and validation failure handling |
 
+A simulator decides by its scenario, not by the data of the payment (Issue I-96). Personal data never enters workflow state, so no screening simulator sees a name: a sample whose payee stands for a sanctions hit is screened clear unless its bench gives the sanctions port the scenario that answers a hit (`reject`; the test-data builder's `sanctioned-name` injection names its `sanctions-hit` bench). A test that means a hit names that scenario in its bench, as R-07-09 asks of every test.
+
 ## 7.4 Requirements
 
 | Id | Requirement | Check |

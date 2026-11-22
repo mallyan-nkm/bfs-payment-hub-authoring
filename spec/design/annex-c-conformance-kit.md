@@ -21,7 +21,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 50 scenarios in draft 0.2.
+The machine-readable list is `conformance/kit.yaml`. It holds 51 scenarios in draft 0.2.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |
@@ -37,6 +37,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 50 scenarios in dr
 | Hooks | CK-HOOK-01 to 04 | Halt, transform, notify, unbound |
 | Versions | CK-PIN-01 and 02, CK-LOOKUP-01, CK-SUP-01 | Exact pins, lookup by date, supersession |
 | Record | CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 | Claim-check, deltas, rule trace |
+| Money | CK-MONEY-01 | Exact decimal sums, comparisons and `round2`; an amount beyond a double's exact range carried and computed exactly (R-02-17, R-04-23, R-09-47) |
 
 ## C.4 Coverage of the portable core
 
@@ -57,6 +58,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 50 scenarios in dr
 | Signals | CK-SIGNAL-01 to 03 |
 | Policy | CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 |
 | Handler | CK-HANDLER-01 |
+| Exact amounts (not a construct; every target is held to it) | CK-MONEY-01 |
 
 ## C.5 What the kit does not prove
 

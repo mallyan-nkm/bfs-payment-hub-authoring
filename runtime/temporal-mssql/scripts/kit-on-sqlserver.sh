@@ -2,7 +2,7 @@
 # Run the conformance kit on Temporal servers whose state is in SQL Server. From runtime/temporal-mssql,
 # with SQL Server up (scripts/dev.sh sqlserver) and the binaries built (scripts/dev.sh build):
 #
-#   scripts/kit-on-sqlserver.sh                 all 50 scenarios
+#   scripts/kit-on-sqlserver.sh                 all 51 scenarios
 #   KIT_EXCLUDE="CK-AWAIT-02 ..." scripts/kit-on-sqlserver.sh
 #
 # On a real server the kit runs in real time, so its business waits are real waits (I-48), and run one
@@ -27,7 +27,7 @@ mkdir -p "$OUT"
 SCENARIOS="CK-AWAIT-02:900 CK-AWAIT-03:900 CK-WAIT-01:900 CK-LOOKUP-01:900 CK-BLOCK-02:900 CK-BLOCK-03:900 CK-DEADLINE-01:600 CK-SIGNAL-01:600
 CK-SIGNAL-02:600 CK-SIGNAL-03:600 CK-PIN-01:420 CK-PIN-02:300 CK-AWAIT-05:300
 CK-FOREACH-02:180 CK-LOOP-01:120 CK-LOOP-02:120 CK-AWAIT-01:60 CK-SUP-01:60 CK-CLAIM-01:60 CK-DELTA-01:60
-CK-TRACE-01:60 CK-BLOCK-01:20 CK-TIMEOUT-02:12 CK-UNKNOWN-01:8 CK-TIMEOUT-01:8
+CK-TRACE-01:60 CK-MONEY-01:60 CK-BLOCK-01:20 CK-TIMEOUT-02:12 CK-UNKNOWN-01:8 CK-TIMEOUT-01:8
 CK-SWITCH-01:5 CK-SWITCH-02:5 CK-PAR-01:5 CK-FOREACH-01:5 CK-SEQ-01:5 CK-HANDLE-01:5 CK-HANDLE-02:5
 CK-HANDLE-03:5 CK-RETRY-01:4 CK-RETRY-02:4 CK-POLICY-01:4 CK-AWAIT-04:2 CK-COMP-01:2 CK-FINALLY-01:2
 CK-SLOT-01:2 CK-SLOT-02:4 CK-HOOK-01:4 CK-HOOK-02:2 CK-HOOK-03:2 CK-HOOK-04:4 CK-HANDLER-01:2"

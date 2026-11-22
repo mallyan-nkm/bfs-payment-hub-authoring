@@ -145,6 +145,12 @@ CASES = [
      "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - port\n",
      "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - rule\n",
      "a party's reason code is in the dictionary only as a rule's"),
+    ("M52", "ERROR L40", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
+     "  - having: total != b.controlSum", "  - having: total - b.controlSum > 0.001",
+     "a rule compares money with a floating-point tolerance"),
+    ("M53", "ERROR L40", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
+     "        controlSum: 300\n", "        controlSum: 1234567890123456.78\n",
+     "an example gives an amount a binary double cannot hold as a number"),
 ]
 
 

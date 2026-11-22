@@ -14,6 +14,19 @@ public sealed class OperationsViewTests
     static readonly ViewCatalog Views = Repo.Views();
 
     [Fact]
+    public void A_sum_of_lines_is_exact_decimal_arithmetic_as_in_the_rule_service()
+    {
+        // R-02-17, R-04-23 (Issue I-96): these lines sum to 7894.870000000001 in binary floating point; an amount beyond
+        // a double's exact range, carried as a decimal string, is read exactly.
+        var lines = new[] { "0.1", "0.2", "0.05", "0.2", "2697.81", "1395.44", "3801.07" }
+            .Select(v => new JsonObject { ["amount"] = JsonNode.Parse(v) }).ToList();
+        var c = new SourceContext { Lines = lines };
+        Assert.Equal("7894.87", Sources.Eval("lines.sum(line.amount)", c)!.ToJsonString());
+        var big = new SourceContext { Lines = [new JsonObject { ["amount"] = "90071992547409.93" }, new JsonObject { ["amount"] = JsonNode.Parse("0.01") }] };
+        Assert.Equal(90071992547409.94m, Sources.Number(Sources.Eval("lines.sum(line.amount)", big)));
+    }
+
+    [Fact]
     public void The_platform_and_the_WPS_views_are_published_and_every_source_is_one_the_console_reads()
     {
         Assert.Equal(["p.view.operations.v1", "uae.wps.view.operations.v1"], Views.All.Select(v => v.Name));

@@ -4,6 +4,7 @@ import { coveredByAny, getPath, pick, setPath, type DeltaEntry } from '../core/p
 import { compareReleases } from '../core/names.js';
 import type { Store } from '../core/store.js';
 import { evalExpr } from '../rules/expr.js';
+import { moneyHelpers } from '../core/decimal.js';
 import { runRuleSet, runTable, type SessionResult } from '../rules/service.js';
 import { SimulatorInstance, type Message, type SimResponse } from '../sim/runtime.js';
 import { Cancelled, Scope, VirtualClock } from './clock.js';
@@ -931,7 +932,8 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     const res = await Promise.race([
       runner(script.source, script.file, view, act.reads ?? [], act.writes ?? [], {
         ports: scriptPorts(io, act),
-        rules: { run: (rs: string, facts?: any) => io.rules(rs, level as any, facts), table: (t: string) => io.table(t) },
+        // `rules.money`: exact decimal helpers, the rule language's arithmetic (R-04-23).
+        rules: { run: (rs: string, facts?: any) => io.rules(rs, level as any, facts), table: (t: string) => io.table(t), money: moneyHelpers },
         params,
         clock: { now: () => run.clock.iso(), today: () => run.clock.today() },
         ids: { next: (p = 'id') => `${p}-${inst.id}-${id}-${callNo}` },

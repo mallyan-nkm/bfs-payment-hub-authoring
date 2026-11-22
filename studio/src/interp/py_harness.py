@@ -6,8 +6,84 @@ call is a request to the studio; the studio answers on stdin. No file system, ne
 system clock, randomness or environment: imports are limited to pure modules, and the
 builtins have no open, input, eval, exec or __import__ beyond the allow list.
 """
+import decimal
 import json
 import sys
+
+_D = decimal.Decimal
+_CTX = decimal.Context(prec=1000, rounding=decimal.ROUND_HALF_UP)
+
+
+def _dec(v):
+    """A value as an exact decimal, read by its text: a float by its shortest repr, never its binary value (R-02-17)."""
+    if isinstance(v, bool):
+        return _D(int(v))
+    if isinstance(v, (int, _D)):
+        return _D(v)
+    if isinstance(v, float):
+        return _D(repr(v))
+    if isinstance(v, str):
+        try:
+            return _D(v.strip())
+        except decimal.InvalidOperation:
+            return _D(0)
+    return _D(0)
+
+
+def _text(d):
+    """The canonical text: no exponent, no trailing zeros, no "-0"."""
+    s = format(d, "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return "0" if s in ("-0", "") else s
+
+
+def _value(d):
+    """A number when it has at most 15 significant digits, else the decimal string, as the rule language gives it."""
+    if d is None:
+        return None
+    s = _text(d)
+    if len(s.lstrip("-").replace(".", "").lstrip("0")) > 15:
+        return s
+    return float(s) if "." in s else int(s)
+
+
+class Money:
+    """Exact decimal helpers on api.rules.money, the same arithmetic as the rule language (R-04-23)."""
+
+    def add(self, *xs):
+        acc = _D(0)
+        for x in xs:
+            acc = _CTX.add(acc, _dec(x))
+        return _value(acc)
+
+    def sub(self, a, b):
+        return _value(_CTX.subtract(_dec(a), _dec(b)))
+
+    def mul(self, a, b):
+        return _value(_CTX.multiply(_dec(a), _dec(b)))
+
+    def div(self, a, b):
+        if _dec(b) == 0:
+            return None
+        return _value(_CTX.divide(_dec(a), _dec(b)).quantize(_D(1).scaleb(-20), rounding=decimal.ROUND_HALF_UP, context=_CTX))
+
+    def sum(self, xs, f=None):
+        return self.add(*[(f(x) if f else x) for x in (xs or [])])
+
+    def round2(self, x):
+        return _value(_dec(x).quantize(_D("0.01"), rounding=decimal.ROUND_HALF_UP, context=_CTX))
+
+    def cmp(self, a, b):
+        x, y = _dec(a), _dec(b)
+        return -1 if x < y else 1 if x > y else 0
+
+    def eq(self, a, b):
+        return _dec(a) == _dec(b)
+
+    def str(self, x):
+        return _text(_dec(x))
+
 
 ALLOWED_MODULES = {"re", "math", "decimal", "json", "itertools", "functools", "collections", "string"}
 _real_import = __import__
@@ -89,6 +165,8 @@ def main():
             return _call("send", port=port)
 
     class Rules:
+        money = Money()
+
         def run(self, name, facts=None):
             return _call("rules", name=name, facts=facts)
 

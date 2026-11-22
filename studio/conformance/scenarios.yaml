@@ -623,6 +623,26 @@ scenarios:
         - { id: validate, call: ck.kit.validate.limit.v1, handle: { reject: { end: rejected } } }
         - end: done
 
+  - id: CK-MONEY-01
+    # Amounts that binary floating point gets wrong (R-02-17, R-04-23; Issue I-96): seven lines that sum to
+    # 7894.87 (7894.870000000001 in doubles), and an amount whose minor units are 2^53 + 1 carried as a string.
+    context:
+      batch: { id: F-1, numberOfTransactions: 7, controlSum: 7894.87, currency: AED }
+      items:
+        - { payment: { instructedAmount: { value: 0.1, currency: AED } } }
+        - { payment: { instructedAmount: { value: 0.2, currency: AED } } }
+        - { payment: { instructedAmount: { value: 0.05, currency: AED } } }
+        - { payment: { instructedAmount: { value: 0.2, currency: AED } } }
+        - { payment: { instructedAmount: { value: 2697.81, currency: AED } } }
+        - { payment: { instructedAmount: { value: 1395.44, currency: AED } } }
+        - { payment: { instructedAmount: { value: 3801.07, currency: AED } } }
+      payment: { instructedAmount: { value: "90071992547409.93", currency: AED } }
+    workflow:
+      do:
+        - { id: money, call: ck.kit.validate.money.v1, handle: { reject: { end: rejected } } }
+        - { id: sums, call: ck.kit.decide.money.v1, handle: { no-match: { end: failed } } }
+        - end: done
+
   - id: CK-BLOCK-01
     bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: accept } ]
     workflow:
