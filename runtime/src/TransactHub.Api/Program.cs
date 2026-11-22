@@ -304,7 +304,14 @@ app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrinci
 // and its end is a fact (R-09-54, Issue I-97). A caller may pin only for its own tenants.
 app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
     !ApiAuth.MayReadTenant(user, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
+    // The intake switch of the payment's scheme (R-09-58): while paused, a new payment is refused, with the code, and not pinned.
+    : p.Scheme is { Length: > 0 } scheme && await IntakeSwitch.Paused(db, p.Bank, scheme, ct)
+        ? Results.Json(new { error = new IntakePaused(p.Bank, scheme).Message, code = "ops.IntakePaused" }, statusCode: 423)
     : await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
+
+app.MapGet("/intake", async (string tenant, string scheme, ClaimsPrincipal user, StoreDbContext db, CancellationToken ct) =>
+    !ApiAuth.MayReadTenant(user, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the intake of {tenant}")
+    : Results.Ok(new { tenant, scheme, intake = await IntakeSwitch.Paused(db, tenant, scheme, ct) ? "paused" : "open" })).RequireAuthorization(ApiAuth.Intake);
 
 app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
     Results.Ok(new { paymentId = p.PaymentId, outcome = p.Outcome, recorded = await Distributions(db, clock).End(p.PaymentId, p.Outcome, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
@@ -341,7 +348,7 @@ public sealed record SourceInstall(string Tag);
 /// <summary>An action on a distribution in an environment: its id (activate, drain, remove) or its bank (rollback), and why.</summary>
 public sealed record DistributionAction(string Environment, string? Id = null, string? Bank = null, string? Why = null);
 /// <summary>A payment accepted by the front door: pinned to the active distribution of its bank in its environment.</summary>
-public sealed record PaymentPin(string PaymentId, string Bank, string Environment);
+public sealed record PaymentPin(string PaymentId, string Bank, string Environment, string? Scheme = null);
 /// <summary>A payment's end: the outcome its root instance ended with.</summary>
 public sealed record PaymentEnd(string PaymentId, string Outcome);
 

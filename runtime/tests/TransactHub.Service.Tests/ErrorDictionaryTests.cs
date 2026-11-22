@@ -49,13 +49,16 @@ public sealed class ErrorDictionaryTests
     [Fact]
     public void A_signatures_refusals_and_a_packages_have_their_own_codes()
     {
-        Assert.Equal(ErrorCodes.NotSigned, ErrorCodes.Of(new SignatureRejected("The package is not signed: it has no release.json and release.sig")));
-        Assert.Equal(ErrorCodes.UntrustedKey, ErrorCodes.Of(new SignatureRejected("The package is signed by key ab, which this installation does not trust")));
-        Assert.Equal(ErrorCodes.RevokedKey, ErrorCodes.Of(new SignatureRejected("The package is signed by key ab, which was revoked on 2026-11-22")));
-        Assert.Equal(ErrorCodes.RetiredKey, ErrorCodes.Of(new SignatureRejected("The package was signed on x by key ab, which was retired on y")));
-        Assert.Equal(ErrorCodes.WrongRelease, ErrorCodes.Of(new SignatureRejected("The signature is for a, not b")));
-        Assert.Equal(ErrorCodes.Tampered, ErrorCodes.Of(new SignatureRejected("x.yaml does not match its hash in the signed statement")));
+        // Each refusal carries its code where it is thrown (Issue I-103): the words are the message only.
+        Assert.Equal(ErrorCodes.NotSigned, ErrorCodes.Of(new SignatureRejected("any words", SignatureRejected.NotSigned)));
+        Assert.Equal(ErrorCodes.Tampered, ErrorCodes.Of(new SignatureRejected("The package is not signed (words only)")));
         Assert.Equal(ErrorCodes.PackageRejected, ErrorCodes.Of(new TransactHub.Api.PackageRejected("The package has no manifest.yaml")));
+        Assert.Equal(ErrorCodes.MakerApproves, ErrorCodes.Of(new TransactHub.Operations.ActionRefused(403, "any words", TransactHub.Operations.OpsCodes.MakerApproves)));
+        Assert.Equal(ErrorCodes.ReleaseConflict, ErrorCodes.Of(new TransactHub.Store.ReleaseConflict("x")));
+        // The codes ReleaseSignature.Verify sets for each refusal it gives.
+        var trust = TrustedSigners.Parse("{\"kind\":\"trusted-signers\",\"keys\":[]}");
+        var unsigned = Assert.Throws<SignatureRejected>(() => ReleaseSignature.Verify(new Dictionary<string, byte[]> { ["a.yaml"] = [1] }, new ReleaseExpectation("r@1.0.0", null), trust));
+        Assert.Equal(ErrorCodes.NotSigned, ErrorCodes.Of(unsigned));
         // A scheme's code is looked up in its own scope first, then the cluster's, then the platform's.
         Assert.Equal("uae.wps", Dict.Find("FF01", "uae.wps")!.Scope);
         Assert.Equal("uae.p", Dict.Find("RC01", "uae.wps")!.Scope);

@@ -179,26 +179,42 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
   fs.writeFileSync(envFile, JSON.stringify(environment));
 
   // 1. Workers: one process per queue, each on a free port (port 0: the system picks it, the worker says which).
-  const procs: { queue: string; port: number; child: ChildProcess; url: string; tasks: string[] }[] = [];
+  const procs: { queue: string; port: number; child: ChildProcess; url: string; tasks: string[]; restarts: number }[] = [];
   let port = req.basePort;
+  let stopping = false;
+  const startWorker = (w: any, p: number) => {
+    const wdir = path.join(dir, w.path);
+    const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
+      env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_NATIVE_ACTIVITIES ? { TH_NATIVE_ACTIVITIES: process.env.TH_NATIVE_ACTIVITIES } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
+    return child;
+  };
+  // A worker that was asked to restart (POST /restart, R-09-59) drains and exits with code 75: it is started again from the same
+  // package, so at the same version, on the same port; the engine's router waits for it meanwhile.
+  const superviseRestart = (pr: (typeof procs)[number], w: any) => {
+    pr.child.once('exit', (code) => {
+      if (stopping || code !== 75) return;
+      pr.restarts++;
+      pr.child = startWorker(w, pr.port);
+      log.push(`worker ${pr.queue} restarted on ${pr.port}, pid ${pr.child.pid}`);
+      superviseRestart(pr, w);
+    });
+  };
   try {
     for (const w of manifest.workers ?? []) {
-      const wdir = path.join(dir, w.path);
       const p = port === undefined ? 0 : port++;
-      const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_NATIVE_ACTIVITIES ? { TH_NATIVE_ACTIVITIES: process.env.TH_NATIVE_ACTIVITIES } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
-      procs.push({ queue: w.queue, port: p, child, url: `http://127.0.0.1:${p}`, tasks: w.tasks });
+      procs.push({ queue: w.queue, port: p, child: startWorker(w, p), url: `http://127.0.0.1:${p}`, tasks: w.tasks, restarts: 0 });
     }
-    for (const pr of procs) {
+    for (const [i, pr] of procs.entries()) {
       if (pr.port === 0) {
         pr.port = await listening(pr.child, pr.queue);
         pr.url = `http://127.0.0.1:${pr.port}`;
       }
       const h = await waitHealthy(pr.url);
       log.push(`worker ${h.queue} up on ${pr.port} with ${h.tasks.length} task(s), pid ${pr.child.pid}`);
+      superviseRestart(pr, manifest.workers[i]);
     }
     const urlOf = (queue: string) => procs.find((p) => p.queue === queue)?.url;
 
@@ -368,6 +384,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     };
   } finally {
     // Stop the workers and wait for each to exit, so that none outlives the deploy.
+    stopping = true;
     await Promise.all(procs.map((p) => new Promise<void>((done) => {
       if (p.child.exitCode !== null || p.child.signalCode !== null) return done();
       p.child.once('exit', () => done());

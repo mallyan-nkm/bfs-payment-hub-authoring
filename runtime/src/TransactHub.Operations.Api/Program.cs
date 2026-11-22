@@ -27,7 +27,11 @@ var auth = await builder.AddOperatorAuthentication();
 builder.Services.AddSingleton(views);
 builder.Services.AddSingleton(new Projector(store, ops, views, clock));
 builder.Services.AddSingleton<IEngineSignals>(new OutboxSignals(store, clock));
-builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.GetRequiredService<IEngineSignals>(), clock));
+// Resend (R-05-58): the file-transfer port the runtime sends a kept file on again, a folder the scheme's gateway collects from.
+var resendFolder = builder.Configuration["Operations:FileTransfer:Folder"] ?? builder.Configuration["TH_FILE_TRANSFER_DIR"];
+builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.GetRequiredService<IEngineSignals>(), clock,
+    resendFolder is { Length: > 0 } ? new FileResend(store, new FolderFileTransfer(resendFolder), clock) : null));
+builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
@@ -257,16 +261,26 @@ public sealed record ActionRequest(string Action, string? Remarks);
 public sealed record DecisionRequest(bool Approve, string? Remarks);
 
 /// <summary>Keeps the read model up with the outbox: a poll every Operations:PollMilliseconds (default 500).</summary>
-sealed class ProjectionService(Projector p, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
+sealed class ProjectionService(Projector p, HoldExpiry expiry, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var every = TimeSpan.FromMilliseconds(int.TryParse(cfg["Operations:PollMilliseconds"], out var ms) ? ms : 500);
+        var sweepEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:HoldSweepSeconds"], out var hs) ? hs : 30);
+        var swept = DateTimeOffset.MinValue;
         while (!ct.IsCancellationRequested)
         {
             try { await p.CatchUp(ct); }
             catch (OperationCanceledException) { break; }
             catch (Exception e) { log.LogWarning("projection: {Error}", e.Message); }
+            // A hold whose expiry has passed is expired, and its decision goes to the engine (R-05-56).
+            if (DateTimeOffset.UtcNow - swept > sweepEvery)
+            {
+                swept = DateTimeOffset.UtcNow;
+                try { await expiry.Sweep(ct); }
+                catch (OperationCanceledException) { break; }
+                catch (Exception e) { log.LogWarning("hold expiry: {Error}", e.Message); }
+            }
             try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
         }
     }

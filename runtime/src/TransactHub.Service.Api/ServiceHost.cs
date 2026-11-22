@@ -116,8 +116,25 @@ public sealed class ServiceHost
             book.Run("drain", (who, a, ct) => content.Drain(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));
             book.Run("rebuild-read-model", async (_, _, ct) => { await projector.Rebuild(ct); var l = await projector.Lag(ct); return new JsonObject { ["rebuilt"] = true, ["behind"] = l.Behind, ["applied"] = l.Applied }; });
             book.Run("replay-read-model", async (_, _, ct) => { var before = await projector.Lag(ct); await projector.CatchUp(ct); var l = await projector.Lag(ct); return new JsonObject { ["from"] = before.Through, ["through"] = l.Through, ["behind"] = l.Behind }; });
-            book.Run("release-hold", ActionBook.ReleaseHold(store, clock));
-            book.Run("re-screen", ActionBook.ReScreen(store, sp.GetRequiredService<IEngineSignals>()));
+            book.Run("release-hold", ActionBook.ReleaseHold(store, clock, sp.GetRequiredService<IEngineSignals>()));
+            var signals = sp.GetRequiredService<IEngineSignals>();
+            book.Run("re-screen", ActionBook.ReScreen(store, signals));
+            // The operator's controls of a parked step, through the engine's host (R-05-55, R-05-57).
+            book.Run("retry-attempt", ActionBook.Signal(store, signals, "retry", needsParked: true));
+            book.Run("redrive-workflow", ActionBook.Signal(store, signals, "redrive", needsParked: true));
+            book.Run("reset-activity", ActionBook.Signal(store, signals, "redrive", needsParked: true, new JsonObject { ["reset"] = true }));
+            book.Run("expire-hold", ActionBook.ExpireHold(store, new HoldExpiry(store, signals, clock)));
+            // The file-transfer port the runtime resends on (R-05-58): a folder the scheme's gateway collects from.
+            if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
+                book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, new FolderFileTransfer(outFolder), clock)));
+            // Core banking, as the banks' port bindings bind it (R-08-17): what reconcile-posting asks.
+            var banks = cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"];
+            var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(banks is { Length: > 0 } ? TransactHub.Activities.Platform.Posting.CoreBankingResolver.ReadBanks(banks) : new TransactHub.Ports.PortBindings(), secrets: secrets);
+            book.Run("reconcile-posting", ActionBook.ReconcilePosting(store, signals, tenant => { try { return resolver.For(tenant, clock.GetUtcNow()).CoreBanking; } catch (Exception) { return null; } }, clock));
+            book.Run("pause-intake", ActionBook.Intake(store, true, clock));
+            book.Run("resume-intake", ActionBook.Intake(store, false, clock));
+            book.Run("drain-worker", ActionBook.Worker("drain"));
+            book.Run("restart-worker", ActionBook.Worker("restart"));
             book.Run("rotate-trusted-key", ActionBook.RotateKey(trust, secrets, cfg["Service:TrustWritable"] == "true", clock));
             if ((cfg["Service:Flowable:Url"] ?? cfg["TH_FLOWABLE_URL"]) is { Length: > 0 } fu)
                 book.Run("requeue-dead-letter", ActionBook.RequeueDeadLetter(fu, cfg["TH_FLOWABLE_USER"] ?? "rest-admin", cfg["Service:Flowable:PasswordRef"] ?? "env:TH_FLOWABLE_PASSWORD", secrets,

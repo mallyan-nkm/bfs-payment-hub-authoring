@@ -255,6 +255,9 @@ public sealed partial class Interp
     /// does not jump past the wait's end.
     /// </summary>
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> OperatorWaits = new();
+
+    /// <summary>Told when a step parks (instance as the workers know it, step, call): a runtime host records it as the payment's step fact <c>stuck</c>.</summary>
+    public static Action<string, string, int>? Stuck;
     static readonly string[] StateParts = { "header", "facts", "status", "messages" };
 
     readonly IEngine eng;
@@ -494,6 +497,7 @@ public sealed partial class Interp
         parked = (step, tcs);
         var at = Duration.Add(eng.Now, duration);
         OperatorWaits[key] = at;
+        try { Stuck?.Invoke(partyKey, step, callCounts.GetValueOrDefault(step.Split('[')[0])); } catch (Exception) { /* a fact not recorded does not stop the engine */ }
         var cts = new CancellationTokenSource();
         var timer = eng.Timer(at, cts.Token);
         try
@@ -1013,7 +1017,8 @@ public sealed partial class Interp
             // Retries are spent or the total timeout is reached: the unknown outcome, where declared.
             if (J.A(act, "outcomes").Any(o => J.S(o, "name") == "unknown"))
                 return (new JsonObject { ["kind"] = "result", ["outcome"] = "unknown" }, attempt);
-            throw new StepFailureAfter(new StepFailure(id, $"{J.S(act, "name")} failed after retries: {e.Message}", "RetriesExhausted"), attempt);
+            var spent = new StepFailure(id, $"{J.S(act, "name")} failed after retries: {e.Message}", "RetriesExhausted");
+            throw new StepFailureAfter(spent, attempt);
         }
     }
 

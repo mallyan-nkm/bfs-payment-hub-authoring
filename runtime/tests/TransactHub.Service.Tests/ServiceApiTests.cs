@@ -145,8 +145,7 @@ public sealed class ServiceApiTests(Databases dbs)
         Assert.False((bool)e["retryable"]!);
         Assert.NotEmpty(e["runbook"]!["checks"]!.AsArray());
         var offered = e["actionsOffered"]!.AsArray().ToDictionary(a => (string)a!["id"]!);
-        Assert.Equal("missing", (string?)offered["redrive-workflow"]!["path"]);
-        Assert.Contains("I-101", (string?)offered["redrive-workflow"]!["missing"]);
+        Assert.Equal("built", (string?)offered["redrive-workflow"]!["path"]);
         Assert.Equal("built", (string?)offered["requeue-dead-letter"]!["path"]);
         // A scheme's own entry first.
         Assert.Equal("uae.wps", (string?)(await J.Of(await c.GetAsync("/service/api/errors/AM10?scheme=uae.wps")))["scope"]);

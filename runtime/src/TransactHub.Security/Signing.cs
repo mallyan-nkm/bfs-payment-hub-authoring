@@ -81,15 +81,15 @@ public static class ReleaseSignature
     public static Verification Verify(IReadOnlyDictionary<string, byte[]> files, ReleaseExpectation expected, TrustedSigners trust)
     {
         if (!files.TryGetValue(StatementFile, out var bytes) || !files.TryGetValue(SignatureFile, out var sigText))
-            throw new SignatureRejected($"The package is not signed: it has no {StatementFile} and {SignatureFile}");
+            throw new SignatureRejected($"The package is not signed: it has no {StatementFile} and {SignatureFile}", SignatureRejected.NotSigned);
         JsonObject st;
         try { st = JsonNode.Parse(bytes) as JsonObject ?? throw new JsonException(); }
         catch (JsonException) { throw new SignatureRejected($"{StatementFile} is not a JSON object"); }
         if ((string?)st["format"] != Format) throw new SignatureRejected($"{StatementFile} is not a {Format} statement");
-        if ((string?)st["kind"] != expected.Kind) throw new SignatureRejected($"The signature is for a {(string?)st["kind"] ?? "package of no kind"}, not a {expected.Kind}");
+        if ((string?)st["kind"] != expected.Kind) throw new SignatureRejected($"The signature is for a {(string?)st["kind"] ?? "package of no kind"}, not a {expected.Kind}", SignatureRejected.WrongRelease);
         var keyId = (string?)st["keyId"] ?? throw new SignatureRejected($"{StatementFile} names no key");
-        if (trust.Revoked.TryGetValue(keyId, out var revoked)) throw new SignatureRejected($"The package is signed by key {keyId}, which was revoked on {revoked.RevokedAt:O}");
-        if (!trust.Keys.TryGetValue(keyId, out var signer)) throw new SignatureRejected($"The package is signed by key {keyId}, which this installation does not trust");
+        if (trust.Revoked.TryGetValue(keyId, out var revoked)) throw new SignatureRejected($"The package is signed by key {keyId}, which was revoked on {revoked.RevokedAt:O}", SignatureRejected.RevokedKey);
+        if (!trust.Keys.TryGetValue(keyId, out var signer)) throw new SignatureRejected($"The package is signed by key {keyId}, which this installation does not trust", SignatureRejected.UntrustedKey);
         byte[] sig;
         try { sig = Convert.FromBase64String(Encoding.ASCII.GetString(sigText).Trim()); }
         catch (FormatException) { throw new SignatureRejected($"{SignatureFile} is not Base64"); }
@@ -102,9 +102,9 @@ public static class ReleaseSignature
         if (!DateTimeOffset.TryParse((string?)st["signedAt"], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var signedAt))
             throw new SignatureRejected($"{StatementFile} has no signing time");
         if (signer.RetiredAt is { } retired && signedAt > retired)
-            throw new SignatureRejected($"The package was signed on {signedAt:O} by key {keyId}, which was retired on {retired:O}");
-        if ((string?)st["releaseId"] != expected.ReleaseId) throw new SignatureRejected($"The signature is for {(string?)st["releaseId"]}, not {expected.ReleaseId}");
-        if ((string?)st["tenant"] != expected.Tenant) throw new SignatureRejected($"The signature is for tenant {(string?)st["tenant"] ?? "(shared)"}, not {expected.Tenant ?? "(shared)"}");
+            throw new SignatureRejected($"The package was signed on {signedAt:O} by key {keyId}, which was retired on {retired:O}", SignatureRejected.RetiredKey);
+        if ((string?)st["releaseId"] != expected.ReleaseId) throw new SignatureRejected($"The signature is for {(string?)st["releaseId"]}, not {expected.ReleaseId}", SignatureRejected.WrongRelease);
+        if ((string?)st["tenant"] != expected.Tenant) throw new SignatureRejected($"The signature is for tenant {(string?)st["tenant"] ?? "(shared)"}, not {expected.Tenant ?? "(shared)"}", SignatureRejected.WrongRelease);
         var listed = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var f in st["files"] as JsonArray ?? throw new SignatureRejected($"{StatementFile} lists no files"))
             listed[(string?)f?["path"] ?? throw new SignatureRejected($"A file of {StatementFile} has no path")] = (string?)f?["sha256"] ?? "";
@@ -163,7 +163,13 @@ public sealed record ReleaseExpectation(string ReleaseId, string? Tenant, string
 /// <summary>The outcome of a verification, recorded as a fact on the release. It holds no secret.</summary>
 public sealed record Verification(string KeyId, string StatementSha256, string? ChangeSet, DateTimeOffset SignedAt, int Files, string Kind = ReleaseSignature.WorkflowPackage);
 
-public sealed class SignatureRejected(string message) : Exception(message);
+/// <summary>A signature refused, with the error dictionary's code set where it is thrown (Issue I-103).</summary>
+public sealed class SignatureRejected(string message, string code = SignatureRejected.Tampered) : Exception(message)
+{
+    public const string Tampered = "signing.Tampered", NotSigned = "signing.NotSigned", UntrustedKey = "signing.UntrustedKey", RevokedKey = "signing.RevokedKey",
+        RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid";
+    public string Code { get; } = code;
+}
 
 /// <summary>A public key the installation trusts, with the moment it stopped signing new releases, if it has.</summary>
 public sealed record TrustedSigner(string KeyId, string PublicKeyPem, DateTimeOffset? RetiredAt);
@@ -185,24 +191,24 @@ public sealed class TrustedSigners
     {
         JsonObject o;
         try { o = JsonNode.Parse(json) as JsonObject ?? throw new JsonException(); }
-        catch (JsonException) { throw new SignatureRejected("The trusted signers are not a JSON object"); }
-        if ((string?)o["kind"] != "trusted-signers") throw new SignatureRejected("The trusted signers document is not of kind trusted-signers");
+        catch (JsonException) { throw new SignatureRejected("The trusted signers are not a JSON object", SignatureRejected.TrustListInvalid); }
+        if ((string?)o["kind"] != "trusted-signers") throw new SignatureRejected("The trusted signers document is not of kind trusted-signers", SignatureRejected.TrustListInvalid);
         var keys = new Dictionary<string, TrustedSigner>(StringComparer.Ordinal);
         foreach (var k in o["keys"] as JsonArray ?? [])
         {
-            var id = (string?)k?["keyId"] ?? throw new SignatureRejected("A trusted key has no keyId");
-            var pem = (string?)k?["publicKey"] ?? throw new SignatureRejected($"Trusted key {id} has no publicKey");
+            var id = (string?)k?["keyId"] ?? throw new SignatureRejected("A trusted key has no keyId", SignatureRejected.TrustListInvalid);
+            var pem = (string?)k?["publicKey"] ?? throw new SignatureRejected($"Trusted key {id} has no publicKey", SignatureRejected.TrustListInvalid);
             using var e = ECDsa.Create();
             try { e.ImportFromPem(pem); }
-            catch (Exception ex) when (ex is ArgumentException or CryptographicException) { throw new SignatureRejected($"Trusted key {id} is not a PEM EC public key"); }
-            if (e.KeySize != 256) throw new SignatureRejected($"Trusted key {id} is not on P-256");
-            if (ReleaseSignature.KeyIdOf(e) != id) throw new SignatureRejected($"Trusted key {id} is not the id of its public key ({ReleaseSignature.KeyIdOf(e)})");
+            catch (Exception ex) when (ex is ArgumentException or CryptographicException) { throw new SignatureRejected($"Trusted key {id} is not a PEM EC public key", SignatureRejected.TrustListInvalid); }
+            if (e.KeySize != 256) throw new SignatureRejected($"Trusted key {id} is not on P-256", SignatureRejected.TrustListInvalid);
+            if (ReleaseSignature.KeyIdOf(e) != id) throw new SignatureRejected($"Trusted key {id} is not the id of its public key ({ReleaseSignature.KeyIdOf(e)})", SignatureRejected.TrustListInvalid);
             keys[id] = new TrustedSigner(id, pem, (string?)k?["retiredAt"] is { } r ? DateTimeOffset.Parse(r, CultureInfo.InvariantCulture) : null);
         }
         var revoked = new Dictionary<string, RevokedSigner>(StringComparer.Ordinal);
         foreach (var r in o["revoked"] as JsonArray ?? [])
         {
-            var id = (string?)r?["keyId"] ?? throw new SignatureRejected("A revoked key has no keyId");
+            var id = (string?)r?["keyId"] ?? throw new SignatureRejected("A revoked key has no keyId", SignatureRejected.TrustListInvalid);
             revoked[id] = new RevokedSigner(id, (string?)r?["revokedAt"] is { } at ? DateTimeOffset.Parse(at, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue, (string?)r?["reason"]);
         }
         return new TrustedSigners { Keys = keys, Revoked = revoked };

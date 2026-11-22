@@ -10,8 +10,8 @@ namespace TransactHub.Service;
 
 /// <summary>
 /// A troubleshooting action the service console offers (spec R-09-43, design/05 section 5.11). <paramref name="Path"/> says
-/// how far it reaches today: <c>built</c> end to end, <c>outbox</c> recorded and queued for an engine host that does not read
-/// it yet (Issue I-99), or <c>missing</c>: recorded, permitted and audited, then refused naming what is missing (Issue I-101).
+/// how far it reaches: <c>built</c> end to end (every action now, Issue I-101), or <c>missing</c>: recorded, permitted and
+/// audited, then refused naming what is missing.
 /// </summary>
 public sealed record ActionSpec(string Id, string Title, string Target, bool Risky, string Path, string Does, string? Missing = null);
 
@@ -37,17 +37,17 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         new("replay-read-model", "Replay the read model from its checkpoint", "read-model", false, "built", "Applies the outbox from the read model's checkpoint now. A fact already applied is not applied again (by its number on its chain)."),
         new("release-hold", "Release a hold", "payment", true, "built", "Decides the payment's open hold (approved for an approval hold, released for a repair hold) as the operations-queue port's decision."),
         new("requeue-dead-letter", "Requeue a dead-letter job (Flowable)", "job", false, "built", "Moves a Flowable dead-letter job back to the executable jobs, through the Flowable REST server."),
-        new("re-screen", "Re-screen a payment", "payment", false, "outbox", "Sends the re-screen signal to the payment's engine host through the outbox.", "No engine host reads the engine-signal topic yet, so the running payment is not re-screened (Issue I-99)."),
-        new("retry-attempt", "Retry an attempt", "payment", false, "missing", "Runs a failed activity attempt again.", $"retry is not in the DSL: no construct takes it, and the store does not record an instance's engine id ({I101}, I-99)."),
-        new("redrive-workflow", "Re-drive a stuck workflow", "payment", true, "missing", "Continues a workflow that stopped at a failed step.", $"No engine host has a re-drive path from the runtime, and the store does not record an instance's engine id ({I101})."),
-        new("reset-activity", "Reset an activity (Temporal)", "payment", true, "missing", "Resets the Temporal workflow to before the failed activity.", $"The store does not record the Temporal workflow id and run id, and no host calls Temporal's reset ({I101})."),
-        new("resend-file", "Resend a file to the Central Bank", "payment", true, "missing", "Sends the scheme file again through its exchange.", $"resend is not in the DSL: an exchange declares no resend point ({I101}, I-99)."),
-        new("expire-hold", "Expire a hold", "payment", true, "missing", "Ends an open hold as expired before its expiry.", $"The waiting attempt ends a hold only on a decision or its own timeout; it reads no expiry fact ({I101}, I-98)."),
-        new("reconcile-posting", "Reconcile an unknown posting with core banking", "payment", false, "missing", "Asks core banking for the fate of a posting whose answer was lost.", $"The core-banking port has no inquiry operation, and its gateway adapter no inquiry call ({I101})."),
-        new("pause-intake", "Pause intake for a scheme", "scheme", true, "missing", "Stops new payments of a scheme at the front door.", $"The front door reads no intake switch ({I101})."),
-        new("resume-intake", "Resume intake for a scheme", "scheme", false, "missing", "Lets new payments of a scheme in again.", $"The front door reads no intake switch ({I101})."),
-        new("drain-worker", "Drain a worker", "worker", true, "missing", "Stops a worker taking new tasks and lets it finish those it has.", $"Workers expose no drain control the runtime can call ({I101})."),
-        new("restart-worker", "Restart a worker", "worker", true, "missing", "Restarts a worker process.", $"Workers run under the installation's orchestrator; the runtime has no path to it ({I101})."),
+        new("re-screen", "Re-screen a payment", "payment", false, "built", "Sends the re-screen signal to the payment's engine; its host delivers it and records the delivery on the payment's chain."),
+        new("retry-attempt", "Retry an attempt", "payment", false, "built", "Gives the payment's parked step one more attempt: the retry control through the engine's host (R-05-55)."),
+        new("redrive-workflow", "Re-drive a stuck workflow", "payment", true, "built", "Runs the payment's parked step again with its full retry policy: the re-drive control through the engine's host (R-05-55)."),
+        new("reset-activity", "Reset an activity (Temporal)", "payment", true, "built", "Runs the parked activity again from its first attempt, as Temporal's reset to the failed activity's task would; on every engine the re-drive control (R-05-55)."),
+        new("resend-file", "Resend a file to the Central Bank", "payment", true, "built", "Puts the same bytes the exchange sent, as the store kept them, on the file-transfer port again; idempotent by the file's id (R-05-58)."),
+        new("expire-hold", "Expire a hold", "payment", true, "built", "Ends the payment's open hold as expired before its expiry; the decision goes to the engine, which awaits it (R-05-56)."),
+        new("reconcile-posting", "Reconcile an unknown posting with core banking", "payment", false, "built", "Asks core banking for the posting by its reference: posted, the parked posting step is re-driven and core banking answers the posting it has; not posted, it is retried (R-08-17)."),
+        new("pause-intake", "Pause intake for a scheme", "scheme", true, "built", "Stops new payments of a scheme for a bank at the front door: the runtime refuses to accept them until intake is resumed (R-09-58)."),
+        new("resume-intake", "Resume intake for a scheme", "scheme", false, "built", "Lets new payments of a scheme for a bank in again (R-09-58)."),
+        new("drain-worker", "Drain a worker", "worker", true, "built", "Stops a worker taking new attempts; the attempts it has run to their end (R-09-59)."),
+        new("restart-worker", "Restart a worker", "worker", true, "built", "Drains a worker and restarts it with the same package and version, on the same port (R-09-59)."),
     ];
 
     readonly Dictionary<string, Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>>> runners = new(StringComparer.Ordinal);
@@ -153,8 +153,8 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         return ((string)d["hold"]!, (string?)d["kind"] ?? "approval");
     }
 
-    /// <summary>Release a hold: the decision the hold waits for (as an operator's would be), on the payment's chain.</summary>
-    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ReleaseHold(StoreOptions store, TimeProvider clock) => async (who, ask, ct) =>
+    /// <summary>Release a hold: the decision the hold waits for (as an operator's would be), on the payment's chain and on its way to the engine.</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ReleaseHold(StoreOptions store, TimeProvider clock, IEngineSignals? signals = null) => async (who, ask, ct) =>
     {
         var subject = ask.Target!;
         var open = await OpenHold(store, subject, ct) ?? throw new ServiceRefused(409, ErrorCodes.HoldClosed, $"{subject} has no open hold");
@@ -162,18 +162,114 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         await using var db = StoreDbContext.Open(store);
         var kind = await db.Bulks.AsNoTracking().AnyAsync(b => b.Id == subject, ct) ? "bulk" : "payment";
         await new FactLog(db, clock).Append(subject, kind, new NewFact("hold", "decided", new JsonObject { ["hold"] = open.id, ["decision"] = decision, ["by"] = who.Actor, ["via"] = "service-console" }, Actor: who.Actor), ct);
+        // The decision reaches the engine, which awaits it (R-05-56, Issue I-98).
+        if (signals is not null)
+        {
+            var tenant = await db.Bulks.AsNoTracking().Where(b => b.Id == subject).Select(b => b.Tenant).FirstOrDefaultAsync(ct)
+                ?? await db.Payments.AsNoTracking().Where(p => p.Id == subject).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "";
+            await signals.Send(tenant, subject, null, "decide", Guid.NewGuid().ToString("N"), ct, new JsonObject { ["hold"] = open.id, ["decision"] = decision, ["by"] = who.Actor });
+        }
         return new JsonObject { ["hold"] = open.id, ["decision"] = decision };
     };
 
-    /// <summary>Re-screen: the signal on the outbox for the engine's host (Issue I-99).</summary>
-    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ReScreen(StoreOptions store, IEngineSignals signals) => async (who, ask, ct) =>
+    /// <summary>Re-screen: the signal on the outbox for the engine's host, which delivers it (R-05-57).</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ReScreen(StoreOptions store, IEngineSignals signals) => Signal(store, signals, "re-screen");
+
+    /// <summary>A signal or an operator's control, on the outbox for the payment's engine host (R-05-55, R-05-57).</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> Signal(StoreOptions store, IEngineSignals signals, string signal, bool needsParked = false, JsonObject? data = null) => async (who, ask, ct) =>
+    {
+        var (tenant, _) = await TenantOf(store, ask.Target!, who, ct);
+        if (needsParked && !await Parked(store, ask.Target!, ct)) throw new ServiceRefused(409, ErrorCodes.NoParkedStep, $"{ask.Target} has no parked step: only a step that failed and parks takes {signal} (R-05-55)");
+        var text = await signals.Send(tenant, ask.Target!, null, signal, Guid.NewGuid().ToString("N"), ct, data?.DeepClone() as JsonObject);
+        return new JsonObject { ["signal"] = signal, ["result"] = text, ["queued"] = true };
+    };
+
+    static async Task<(string tenant, string kind)> TenantOf(StoreOptions store, string subject, ServiceIdentity who, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);
-        var tenant = await db.Bulks.AsNoTracking().Where(b => b.Id == ask.Target).Select(b => b.Tenant).FirstOrDefaultAsync(ct)
-            ?? await db.Payments.AsNoTracking().Where(p => p.Id == ask.Target).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "";
+        var b = await db.Bulks.AsNoTracking().Where(x => x.Id == subject).Select(x => x.Tenant).FirstOrDefaultAsync(ct);
+        var (tenant, kind) = b is not null ? (b, "bulk") : (await db.Payments.AsNoTracking().Where(p => p.Id == subject).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "", "payment");
         if (!who.Sees(tenant)) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"No tenant {tenant} for {who.DisplayName}");
-        var text = await signals.Send(tenant, ask.Target!, null, "re-screen", Guid.NewGuid().ToString("N"), ct);
-        return new JsonObject { ["signal"] = "re-screen", ["result"] = text, ["delivered"] = false, ["missing"] = "No engine host reads the engine-signal topic yet (Issue I-99)" };
+        return (tenant, kind);
+    }
+
+    /// <summary>Whether the payment's last step is parked (R-05-55): its last step fact is <c>stuck</c>.</summary>
+    public static async Task<bool> Parked(StoreOptions store, string subject, CancellationToken ct)
+    {
+        await using var db = StoreDbContext.Open(store);
+        return await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").OrderByDescending(f => f.Seq).Select(f => f.Code).FirstOrDefaultAsync(ct) == "stuck";
+    }
+
+    /// <summary>Expire a hold: recorded expired, and the decision on its way to the engine (R-05-56).</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ExpireHold(StoreOptions store, HoldExpiry expiry) => async (who, ask, ct) =>
+    {
+        var (_, kind) = await TenantOf(store, ask.Target!, who, ct);
+        var open = await OpenHold(store, ask.Target!, ct) ?? throw new ServiceRefused(409, ErrorCodes.HoldClosed, $"{ask.Target} has no open hold");
+        return await expiry.Expire(ask.Target!, kind, open.id, who.Actor, null, ask.Reason ?? "expired by a service engineer", ct);
+    };
+
+    /// <summary>Resend a file: the kept bytes on the file-transfer port again (R-05-58).</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ResendFile(StoreOptions store, FileResend resend) => async (who, ask, ct) =>
+    {
+        var (_, kind) = await TenantOf(store, ask.Target!, who, ct);
+        try { return await resend.Resend(ask.Target!, kind, (string?)ask.Parameters?["file"], who.Actor, Guid.NewGuid().ToString("N"), ct); }
+        catch (ActionRefused e) { throw new ServiceRefused(e.Status, e.Code, e.Message); }
+    };
+
+    /// <summary>
+    /// Reconcile an unknown posting (R-08-17): core banking is asked for the posting by its reference (the parameter, else the
+    /// reference the payment's posting step wrote). Posted: the answer is recorded and the parked posting step is re-driven, so
+    /// core banking answers the posting it has; not posted: it is retried. The answer is a fact on the payment's chain.
+    /// </summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> ReconcilePosting(StoreOptions store, IEngineSignals signals, Func<string, TransactHub.Ports.ICoreBanking?> coreBanking, TimeProvider clock) => async (who, ask, ct) =>
+    {
+        var (tenant, kind) = await TenantOf(store, ask.Target!, who, ct);
+        var reference = (string?)ask.Parameters?["reference"] ?? await PostingReference(store, ask.Target!, ct)
+            ?? throw new ServiceRefused(409, ErrorCodes.PostingUnknown, $"{ask.Target} has no posting reference: name it as the parameter reference");
+        var cb = coreBanking(tenant) ?? throw new ServiceRefused(409, ErrorCodes.PostingUnknown, $"No core banking is bound for tenant {tenant} on this host");
+        var answer = await cb.Inquire(reference, ct);
+        var control = answer.Posted ? "redrive" : "retry";
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db, clock).Append(ask.Target!, kind, new NewFact("posting", "reconciled",
+                new JsonObject { ["reference"] = reference, ["posted"] = answer.Posted, ["hostReference"] = answer.HostReference, ["then"] = control }, Actor: who.Actor), ct);
+        var parked = await Parked(store, ask.Target!, ct);
+        if (parked) await signals.Send(tenant, ask.Target!, null, control, Guid.NewGuid().ToString("N"), ct, new JsonObject { ["reconciled"] = answer.Posted ? "posted" : "not posted" });
+        return new JsonObject { ["reference"] = reference, ["posted"] = answer.Posted, ["hostReference"] = answer.HostReference, ["then"] = parked ? control : "nothing parked" };
+    };
+
+    static async Task<string?> PostingReference(StoreOptions store, string subject, CancellationToken ct)
+    {
+        await using var db = StoreDbContext.Open(store);
+        foreach (var d in await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").OrderByDescending(f => f.Seq).Select(f => f.DataJson).Take(50).ToListAsync(ct))
+            foreach (var (_, v) in (JsonNode.Parse(d)?["writes"] as JsonObject) ?? new JsonObject())
+                if ((string?)(v as JsonObject)?["reference"] is { Length: > 0 } r) return r;
+        return null;
+    }
+
+    /// <summary>The intake switch of a bank's scheme (R-09-58): a fact on the switch's own chain, read by the runtime when it accepts a payment.</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> Intake(StoreOptions store, bool pause, TimeProvider clock) => async (who, ask, ct) =>
+    {
+        var tenant = (string?)ask.Parameters?["tenant"] ?? throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, "An intake switch needs the parameter tenant (the bank) beside the scheme");
+        if (!who.Sees(tenant)) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"No tenant {tenant} for {who.DisplayName}");
+        await using var db = StoreDbContext.Open(store);
+        await IntakeSwitch.Set(db, clock, tenant, ask.Target!, pause, who.Actor, ask.Reason, ct);
+        return new JsonObject { ["tenant"] = tenant, ["scheme"] = ask.Target, ["intake"] = pause ? "paused" : "open" };
+    };
+
+    /// <summary>Drain or restart a worker through its own control (R-09-59): <c>POST /drain</c> or <c>POST /restart</c> on the worker's address.</summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> Worker(string control, HttpMessageHandler? handler = null) => async (_, ask, ct) =>
+    {
+        if (!Uri.TryCreate(ask.Target, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")) throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, "A worker is named by its address, for example http://127.0.0.1:7401");
+        using var http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        http.Timeout = TimeSpan.FromSeconds(30);
+        HttpResponseMessage res;
+        try { res = await http.PostAsync(new Uri(url, control), new StringContent("{}", Encoding.UTF8, "application/json"), ct); }
+        catch (HttpRequestException) { throw new ServiceRefused(502, ErrorCodes.WorkerUnreachable, $"The worker at {url} does not answer"); }
+        using (res)
+        {
+            if (!res.IsSuccessStatusCode) throw new ServiceRefused(502, ErrorCodes.WorkerUnreachable, $"The worker at {url} answered {(int)res.StatusCode} to {control}");
+            return JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonObject ?? new JsonObject { ["worker"] = ask.Target, [control] = true };
+        }
     };
 
     /// <summary>Rotate a trusted key: the new list, checked, written where the setting names a writable file.</summary>

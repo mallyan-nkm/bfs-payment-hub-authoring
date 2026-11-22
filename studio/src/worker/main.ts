@@ -22,6 +22,9 @@ import { resolveSecret } from '../secrets/secrets.js';
 //   GET  /sent        -> messages sent on ports
 //   GET  /stats       -> tasks served and refused
 //   GET  /health/live, /health/ready -> the process answers; it has loaded its tasks (R-10-09)
+//   POST /drain       -> stop taking new attempts (each is answered 503 draining); those in flight run to their end (R-09-59)
+//   POST /restart     -> drain, then exit with code 75 once nothing is in flight: the deploy runner starts the worker again
+//                        from the same package, at the same version, on the same port
 //
 // Telemetry (R-10-07): with OTEL_EXPORTER_OTLP_ENDPOINT set, each attempt is a span in the trace the engine sent
 // (traceparent), with the port calls it makes inside it, and the worker's metrics and logs go there too.
@@ -58,6 +61,15 @@ const party = new PartyService({
 const served: Record<string, number> = {};
 let refused = 0;
 let valuesRead = 0;
+let draining = false;
+let restarting = false;
+let inFlight = 0;
+// The version a restarted worker comes back with: the package's own release and the hash of this worker's tasks.
+const version = (() => { try { return `${parseYaml(fs.readFileSync(path.join(dir, '..', '..', 'manifest.yaml'), 'utf8')).release ?? ''}#${manifest.tasks.length}`; } catch { return `#${manifest.tasks.length}`; } })();
+
+function exitWhenIdle() {
+  if (restarting && inFlight === 0) setTimeout(() => process.exit(75), 50);
+}
 
 function send(res: http.ServerResponse, code: number, body: any) {
   res.writeHead(code, { 'content-type': 'application/json' });
@@ -69,7 +81,15 @@ const server = http.createServer(async (req, res) => {
   for await (const c of req) raw += c;
   try {
     const url = new URL(req.url ?? '/', 'http://worker');
-    if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { queue: manifest.queue, tasks: manifest.tasks, simulators: dirs.length > 1 });
+    if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { queue: manifest.queue, tasks: manifest.tasks, simulators: dirs.length > 1, version, pid: process.pid, draining, inFlight });
+    if (req.method === 'POST' && (url.pathname === '/drain' || url.pathname === '/restart')) {
+      draining = true;
+      if (url.pathname === '/restart') restarting = true;
+      log('info', 'Worker {th.queue} drains: {inFlight} attempt(s) in flight', { 'th.queue': manifest.queue, inFlight });
+      send(res, 200, { queue: manifest.queue, version, pid: process.pid, draining, restarting, inFlight });
+      exitWhenIdle();
+      return;
+    }
     if (req.method === 'GET' && url.pathname === '/health/live') return send(res, 200, { status: 'live' });
     if (req.method === 'GET' && url.pathname === '/health/ready') return send(res, tasks.size > 0 ? 200 : 503, { status: tasks.size > 0 ? 'ready' : 'not ready', queue: manifest.queue, tasks: tasks.size });
     if (req.method === 'GET' && url.pathname === '/stats') return send(res, 200, { queue: manifest.queue, served, refused, valuesRead });
@@ -84,6 +104,8 @@ const server = http.createServer(async (req, res) => {
         await party.attempt({ ...b, activity: '__none__' }).catch(() => undefined);
         return send(res, 200, { kind: 'registered' });
       }
+      // Draining (R-09-59): no new attempt is taken; the engine's router offers it again until the worker is back.
+      if (draining) return send(res, 503, { kind: 'error', name: 'WorkerDraining', retryable: true, message: `worker ${manifest.queue} is draining`, deliveries: [] });
       const release = b.release ?? store.latest(b.activity)?.release;
       const task = `${b.activity}@${release}`;
       if (!tasks.has(task)) {
@@ -107,6 +129,8 @@ const server = http.createServer(async (req, res) => {
         }
       }
       served[task] = (served[task] ?? 0) + 1;
+      inFlight++;
+      try {
       const t0 = performance.now();
       const a = attrs({ 'th.activity': b.activity, 'th.release': release, 'th.queue': manifest.queue });
       const { result: r, deliveries } = await inSpan(`th.activity ${b.activity}`, attrs({
@@ -124,6 +148,10 @@ const server = http.createServer(async (req, res) => {
       }
       if (process.env.TH_WORKER_LOG) fs.appendFileSync(process.env.TH_WORKER_LOG, JSON.stringify({ queue: manifest.queue, task, step: b.step, messages: b.ctx?.messages, result: r }) + '\n');
       return send(res, 200, { ...r, deliveries });
+      } finally {
+        inFlight--;
+        exitWhenIdle();
+      }
     }
     send(res, 404, { error: 'not found' });
   } catch (e: any) {

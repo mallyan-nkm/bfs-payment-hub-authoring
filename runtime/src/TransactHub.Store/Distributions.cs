@@ -319,4 +319,8 @@ public static class ParameterContract
     }
 }
 
-public sealed class DistributionRefused(string message) : InvalidOperationException(message);
+public sealed class DistributionRefused(string message) : InvalidOperationException(message)
+{
+    /// <summary>The error dictionary's code (Issue I-103).</summary>
+    public string Code => "service.RemovalRefused";
+}

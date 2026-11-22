@@ -31,7 +31,7 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
         using (var db = StoreDbContext.Open(o)) db.Database.Migrate();
         var j = new StoreJournal(o);
         ClaimCheckStore.DefaultJournal = j;
-        StepFacts.Install(o);
+        StoreSignals.Install(o, StepFacts.Install(o));
         return j;
     }
 

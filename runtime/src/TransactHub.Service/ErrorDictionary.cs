@@ -25,6 +25,10 @@ public static class ErrorCodes
     public const string Unauthenticated = "auth.Unauthenticated", Forbidden = "auth.Forbidden", StudioIssuer = "auth.StudioIssuer", DevRefused = "auth.DevRefused", RoleMapInvalid = "auth.RoleMapInvalid";
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",
         AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", NoEnginePath = "ops.NoEnginePath";
+    // The refusals of an action that does not apply to the payment now (no parked step, no kept file, no posting reference) are
+    // ops.ActionNotOffered; a worker that does not answer its control is service.ProbeFailed. New codes wait for the dictionary's
+    // next release (Issue I-126).
+    public const string NoParkedStep = ActionNotOffered, NoFileKept = ActionNotOffered, PostingUnknown = ActionNotOffered, NotFound = ActionNotOffered, WorkerUnreachable = ProbeFailed;
     public const string ApproverRequired = "service.ApproverRequired", RemovalRefused = "service.RemovalRefused", RestoreRefused = "service.RestoreRefused",
         BackupInvalid = "service.BackupInvalid", ProbeFailed = "service.ProbeFailed", CertificateExpiring = "service.CertificateExpiring", DiskLow = "service.DiskLow";
     public const string AssistantDisabled = "assistant.Disabled", AssistantUnavailable = "assistant.Unavailable";
@@ -34,29 +38,20 @@ public static class ErrorCodes
     public static IEnumerable<string> All => typeof(ErrorCodes).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!);
 
     /// <summary>
-    /// The code of a refusal the runtime's libraries raise. Their exceptions carry a message only (Issue I-103), so a
-    /// signature's refusal is told apart by the words of <see cref="ReleaseSignature.Verify"/>.
+    /// The code of a refusal the runtime's libraries raise: each refusal type carries the dictionary's code, set where it is
+    /// thrown (Issue I-103). Nothing is read from a message's words.
     /// </summary>
     public static string Of(Exception e) => e switch
     {
         ServiceRefused r => r.Code,
-        SignatureRejected s when s.Message.Contains("is not signed") => NotSigned,
-        SignatureRejected s when s.Message.Contains("was revoked") => RevokedKey,
-        SignatureRejected s when s.Message.Contains("does not trust") => UntrustedKey,
-        SignatureRejected s when s.Message.Contains("was retired") => RetiredKey,
-        SignatureRejected s when s.Message.Contains("The signature is for") => WrongRelease,
-        SignatureRejected s when s.Message.StartsWith("Trusted key") || s.Message.StartsWith("The trusted signers") || s.Message.Contains("revoked key has no") => TrustListInvalid,
-        SignatureRejected => Tampered,
-        TransactHub.Api.PackageRejected => PackageRejected,
-        TransactHub.Store.ReleaseConflict => ReleaseConflict,
-        InsertOnlyViolation => InsertOnly,
+        SignatureRejected s => s.Code,
+        TransactHub.Api.PackageRejected p => p.Code,
+        TransactHub.Store.ReleaseConflict r => r.Code,
+        InsertOnlyViolation i => i.Code,
+        TransactHub.Store.DistributionRefused d => d.Code,
         TransactHub.Security.SecretUnavailable => SecretUnavailable,
         HttpRequestException => SourceUnreachable,
-        ActionRefused a when a.Status == 409 && a.Message.Contains("already") => AlreadyDecided,
-        ActionRefused a when a.Status == 409 => ActionNotOffered,
-        ActionRefused a when a.Status == 400 => RemarksRequired,
-        ActionRefused a when a.Message.Contains("may not approve") => MakerApproves,
-        ActionRefused a when a.Status == 403 => Forbidden,
+        ActionRefused a => a.Code,
         _ => "Failure",
     };
 }

@@ -26,12 +26,11 @@ var served = new ConcurrentDictionary<string, int>();
 var banksDir = Environment.GetEnvironmentVariable("TH_BANKS_DIR");
 var coreBanking = new CoreBankingResolver(banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings());
 // With TH_STORE_PROVIDER and TH_STORE_CONNECTION the platform's holds are answered here too (p.port.operations-queue.v1 given to
-// the runtime): a hold is opened on the payment's chain and waits for the operator's decision from the operations console (R-05-50).
+// the runtime): a hold is opened on the payment's chain and answered held; the engine awaits the operator's decision (R-05-50, R-05-56).
 var storeProvider = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
 var storeConnection = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
 INativeActivity[] holds = string.IsNullOrEmpty(storeProvider) || string.IsNullOrEmpty(storeConnection) ? []
-    : TransactHub.Operations.StoreHold.For(new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(storeProvider, true), storeConnection),
-        TimeSpan.FromSeconds(double.TryParse(Environment.GetEnvironmentVariable("TH_OPS_HOLD_WAIT_SECONDS"), out var w) ? w : 240));
+    : TransactHub.Operations.StoreHold.For(new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(storeProvider, true), storeConnection));
 Action<string, string, byte[]> keep = (sha, name, content) => files[sha] = (name, content);
 INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif(keep),
     .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep), .. holds];
@@ -51,6 +50,8 @@ app.MapPost("/native", async (HttpRequest req) =>
         var r = act.Run(new NativeAttempt(name, (string?)body["release"], body["view"] as JsonObject ?? new JsonObject(), body["params"] as JsonObject ?? new JsonObject(), now,
             (string?)body["tenant"], (string?)body["level"]));
         served.AddOrUpdate(name, 1, (_, n) => n + 1);
+        // A hold opened: the engine awaits the operator's decision (R-05-56, Issue I-98).
+        if (r.Held is { } held) return Results.Ok(new JsonObject { ["kind"] = "held", ["hold"] = (string?)held["hold"], ["expiry"] = (string?)held["expiry"] });
         return Results.Ok(new JsonObject { ["kind"] = "result", ["outcome"] = r.Outcome, ["reasonCode"] = r.ReasonCode, ["writes"] = r.Writes });
     }
     catch (NativeFailure e)

@@ -168,8 +168,13 @@ public sealed class FlowableRest : IDisposable
     }
 
     /// <summary>Delivers a message to the execution whose catch (or event sub-process start) waits for it.</summary>
-    public async Task MessageReceived(string executionId, string messageName) =>
-        await Json("message", HttpMethod.Put, $"{service}/runtime/executions/{executionId}", new JsonObject { ["action"] = "messageEventReceived", ["messageName"] = messageName });
+    public async Task MessageReceived(string executionId, string messageName, IReadOnlyDictionary<string, string>? variables = null)
+    {
+        var body = new JsonObject { ["action"] = "messageEventReceived", ["messageName"] = messageName };
+        if (variables is { Count: > 0 })
+            body["variables"] = new JsonArray(variables.Select(kv => (JsonNode?)new JsonObject { ["name"] = kv.Key, ["type"] = "string", ["value"] = kv.Value }).ToArray());
+        await Json("message", HttpMethod.Put, $"{service}/runtime/executions/{executionId}", body);
+    }
 
     // ------------------------------------------------------------------ jobs the async executor would run
 

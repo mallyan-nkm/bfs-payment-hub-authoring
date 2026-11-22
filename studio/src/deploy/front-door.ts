@@ -21,9 +21,29 @@ async function call(rt: RuntimeClient, method: string, p: string, body?: any): P
   return text ? JSON.parse(text) : undefined;
 }
 
-/** Accepts a payment: pins it to the bank's active distribution in the environment, and returns which. */
-export async function accept(rt: RuntimeClient, req: { paymentId: string; bank: string; environment: string }): Promise<string> {
-  return (await call(rt, 'POST', '/payments/pin', req)).distribution;
+/** A payment the runtime refused because its scheme's intake is paused for the bank (R-09-58). */
+export class IntakePaused extends Error {
+  readonly code = 'ops.IntakePaused';
+}
+
+/**
+ * Accepts a payment: pins it to the bank's active distribution in the environment, and returns which. With the scheme, the
+ * runtime first reads the scheme's intake switch (R-09-58): while it is paused the payment is refused, or, with `queue`, kept here
+ * and offered again every `every` ms until intake is resumed or `queue` ms have passed.
+ */
+export async function accept(rt: RuntimeClient, req: { paymentId: string; bank: string; environment: string; scheme?: string }, wait?: { queue: number; every?: number }): Promise<string> {
+  const until = Date.now() + (wait?.queue ?? 0);
+  for (;;) {
+    const r = await fetch(`${rt.url}/payments/pin`, { method: 'POST', headers: { ...rt.headers, 'content-type': 'application/json' }, body: JSON.stringify(req) });
+    const text = await r.text();
+    if (r.status === 423) {
+      if (!wait || Date.now() >= until) throw new IntakePaused(JSON.parse(text).error);
+      await new Promise((res) => setTimeout(res, wait.every ?? 1000));
+      continue;
+    }
+    if (!r.ok) throw new Error(`POST /payments/pin answered ${r.status}: ${text.slice(0, 500)}`);
+    return JSON.parse(text).distribution;
+  }
 }
 
 /** Records a payment's end: the outcome its root instance ended with. */
@@ -68,11 +88,17 @@ export interface AcceptAndRun {
   studioRoot: string;
   cache: string;
   engine?: Engine;
+  /** The payment's scheme, for its intake switch (R-09-58); by default the scope of the inbound message. */
+  scheme?: string;
+  /** While the scheme's intake is paused: keep the payment and offer it again, for up to this many ms; by default it is refused. */
+  queueWhilePaused?: number;
 }
 
 /** Accepts a payment, runs it from the distribution it is pinned to, and records its end. */
 export async function acceptAndRun(req: AcceptAndRun): Promise<{ distribution: string; result: DeployResult; ended: boolean; manifest: any }> {
-  const distribution = await accept(req.runtime, { paymentId: req.paymentId, bank: req.bank, environment: req.environment });
+  const scheme = req.scheme ?? req.inbound?.message?.split('.').slice(0, 2).join('.');
+  const distribution = await accept(req.runtime, { paymentId: req.paymentId, bank: req.bank, environment: req.environment, ...(scheme ? { scheme } : {}) },
+    req.queueWhilePaused ? { queue: req.queueWhilePaused, every: 500 } : undefined);
   return { distribution, ...(await runPinned({ ...req, distribution })) };
 }
 
