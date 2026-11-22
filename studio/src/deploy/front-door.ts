@@ -44,7 +44,9 @@ export async function distributionCopy(rt: RuntimeClient, distribution: string, 
     verifyFiles(files, { releaseId: distribution, tenant: bank, kind: 'distribution' }, await trustedSigners());
     const tmp = `${dir}.part`;
     fs.rmSync(tmp, { recursive: true, force: true });
-    for (const [n, c] of Object.entries(files)) {
+    // Kept: the manifest and the engine packages it runs (each signed, and verified again when deployed); the rest of the
+    // verified distribution is not needed to run a payment, and stays in the runtime's store.
+    for (const [n, c] of Object.entries(files).filter(([n]) => n === 'manifest.yaml' || n.startsWith('engine/'))) {
       const f = path.join(tmp, n);
       fs.mkdirSync(path.dirname(f), { recursive: true });
       fs.writeFileSync(f, c);
