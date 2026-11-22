@@ -47,6 +47,8 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | R-06-19 | Shared packs MUST be identical for every tenant on the same release. | Hash comparison in export test (C18) |
 | R-06-20 | A hook that two tenants implement SHOULD be offered to the owner as a shared block. | Studio usage report (advisory) |
 | R-06-21 | Bounds apply by type: `min` and `max` to a number or a duration, `allowed` and `pattern` (a regular expression) to a code or a string, and every bound to each item of a list, and to each field of an item that is an object. A value outside them is refused. | Lint L14 (`tools/validate.py`, studio check) |
+| R-06-22 | A secret MUST be named by reference, never by value: `secretRef: env:NAME`, `file:/absolute/path` (a mounted secret file) or `vault:mount/path#field` (a HashiCorp Vault KV version 2 field). The host MUST resolve it through its one secret interface (`ISecretResolver` in `runtime/src/TransactHub.Security`, `resolveSecret` in `studio/src/secrets`) at the moment it is used. A value MUST NOT be written to the branch, the store, a package, a log line or an exception message; a reference that cannot be resolved fails the step and names the reference only. | `SecretsTests` and `VaultTests` (`runtime/tests/TransactHub.Security.Tests`, Vault in a container); `CoreBankingPostingTests.The_gateway_s_credential_travels_by_reference_only`; `studio/test/signing.test.ts` ("secrets are read by reference only") |
+| R-06-23 | No binding, configuration set, artefact or export package MAY carry a literal secret. A package that carries one is not promotable and is not signed. | Lint L37 (`tools/validate.py`, studio check, the exporter); CI job `security` |
 
 ## 6.5 Roles
 

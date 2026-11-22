@@ -617,7 +617,7 @@ export class Store {
    * set record, its audit and `extra` (engine packages, an activation). Every path is new: a file that
    * is on the branch with other content stops the publish and is named (R-09-21).
    */
-  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean } = {}): Promise<WriteResult> | undefined {
+  commitChangeSet(changeSet: any, branches: string[], extraFiles: Record<string, string | Change>, message?: string, opts: { pullRequest?: boolean; tags?: { name: string; message: string }[] } = {}): Promise<WriteResult> | undefined {
     const changes: Change[] = [];
     const add = (p: string, text: string) => changes.push({ path: p, text, guard: 'create' });
     const members = changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
@@ -655,6 +655,8 @@ export class Store {
       r = this.write(target, msg, changes, {
         merge: !opts.pullRequest && whole ? () => this.content?.drafts.get(branches[0])?.head : undefined,
         prune: opts.pullRequest ? undefined : emptied,
+        // Release tags go on the content branch's commit; a pull request's are not made (Issue I-76).
+        tags: opts.pullRequest ? undefined : opts.tags,
         pull: opts.pullRequest ? { title: `Release change set ${changeSet.id}`, body: `${msg}\n\nApproved in the studio through maker-checker. Merge the pull request to publish it.` } : undefined,
       });
       // The audit of the change set goes with it.

@@ -6,18 +6,20 @@ import * as path from 'node:path';
 
 // A fake GitHub REST API, in memory: exactly the endpoints the studio's content layer uses (get ref,
 // get tree, get blob, create blob, create tree, create commit, update ref, create ref, delete ref,
-// matching refs, compare, create pull request). Objects are hashed as Git hashes them, so a SHA means what it means
+// matching refs, compare, create pull request, and the annotated release tags: create a tag object and its ref, list
+// and read them). Objects are hashed as Git hashes them, so a SHA means what it means
 // on GitHub, and a ref update that is not a fast-forward is refused with 422, as GitHub refuses it.
 // It holds nothing on disk. Every test of the studio's store runs against it.
 
 type Obj =
   | { type: 'blob'; data: Buffer }
   | { type: 'tree'; entries: TreeEntry[] }
-  | { type: 'commit'; tree: string; parents: string[]; message: string; author: { name: string; email: string; date: string } };
+  | { type: 'commit'; tree: string; parents: string[]; message: string; author: { name: string; email: string; date: string } }
+  | { type: 'tag'; object: string; objectType: string; tag: string; message: string; tagger: { name: string; email: string; date: string } };
 
 interface TreeEntry { name: string; mode: string; type: 'blob' | 'tree'; sha: string }
 
-interface Repo { refs: Map<string, string>; pulls: Pull[] }
+interface Repo { refs: Map<string, string>; tags: Map<string, string>; pulls: Pull[] }
 
 export interface Pull { number: number; title: string; head: string; base: string; body: string; state: 'open' | 'closed'; merged: boolean }
 
@@ -55,6 +57,9 @@ export class FakeGitHub {
       const sorted = [...o.entries].sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
       o.entries = sorted;
       body = Buffer.concat(sorted.map((e) => Buffer.concat([Buffer.from(`${e.mode} ${e.name}\0`), Buffer.from(e.sha, 'hex')])));
+    } else if (o.type === 'tag') {
+      const secs = Math.floor(Date.parse(o.tagger.date) / 1000);
+      body = Buffer.from([`object ${o.object}`, `type ${o.objectType}`, `tag ${o.tag}`, `tagger ${o.tagger.name} <${o.tagger.email}> ${secs} +0000`, '', o.message].join('\n'));
     } else {
       const secs = Math.floor(Date.parse(o.author.date) / 1000);
       const who = `${o.author.name} <${o.author.email}> ${secs} +0000`;
@@ -133,7 +138,7 @@ export class FakeGitHub {
   // --------------------------------------------------------- for tests, in process
 
   repo(full: string): Repo {
-    if (!this.repos.has(full)) this.repos.set(full, { refs: new Map(), pulls: [] });
+    if (!this.repos.has(full)) this.repos.set(full, { refs: new Map(), tags: new Map(), pulls: [] });
     return this.repos.get(full)!;
   }
 
@@ -163,7 +168,7 @@ export class FakeGitHub {
   /** Another repository with the same refs, sharing the objects: as a fork does. */
   fork(from: string, to: string): void {
     const src = this.repo(from);
-    this.repos.set(to, { refs: new Map(src.refs), pulls: [] });
+    this.repos.set(to, { refs: new Map(src.refs), tags: new Map(src.tags), pulls: [] });
   }
 
   head(full: string, branch: string): string | undefined {
@@ -302,6 +307,19 @@ export class FakeGitHub {
       const sha = repo.refs.get(x[1]);
       return sha ? { status: 200, body: refBody(x[1], sha) } : nf;
     }
+    if (method === 'GET' && (x = /^git\/matching-refs\/tags\/(.*)$/.exec(rest))) {
+      const prefix = x[1];
+      return { status: 200, body: [...repo.tags].filter(([n]) => n.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b)).map(([n, s]) => ({ ref: `refs/tags/${n}`, object: { sha: s, type: this.objects.get(s)?.type ?? 'commit' } })) };
+    }
+    if (method === 'GET' && (x = /^git\/tags\/([0-9a-f]{40})$/.exec(rest))) {
+      const t = this.get(x[1], 'tag');
+      return t ? { status: 200, body: { sha: x[1], tag: t.tag, message: t.message, tagger: t.tagger, object: { sha: t.object, type: t.objectType } } } : nf;
+    }
+    if (method === 'POST' && rest === 'git/tags') {
+      if (!this.objects.has(body?.object)) return unprocessable('Object does not exist');
+      const sha = this.put({ type: 'tag', object: body.object, objectType: String(body.type ?? 'commit'), tag: String(body.tag ?? ''), message: String(body.message ?? ''), tagger: body.tagger ?? { name: 'Someone', email: 'someone@example.invalid', date: new Date(this.clock).toISOString() } });
+      return { status: 201, body: { sha, tag: body.tag, object: { sha: body.object, type: body.type } } };
+    }
     if (method === 'GET' && (x = /^git\/matching-refs\/heads\/(.*)$/.exec(rest))) {
       const prefix = x[1];
       return { status: 200, body: [...repo.refs].filter(([n]) => n.startsWith(prefix)).sort(([a], [b]) => a.localeCompare(b)).map(([n, s]) => refBody(n, s)) };
@@ -359,6 +377,14 @@ export class FakeGitHub {
       repo.refs.delete(x[1]);
       this.deleted.push(`${full} ${x[1]}`);
       return { status: 204, body: undefined };
+    }
+    if (method === 'POST' && rest === 'git/refs' && String(body?.ref ?? '').startsWith('refs/tags/')) {
+      // A tag is created once and never moved: GitHub refuses a second ref of the same name.
+      const name = String(body.ref).slice('refs/tags/'.length);
+      if (repo.tags.has(name)) return unprocessable('Reference already exists');
+      if (!this.objects.has(body?.sha)) return unprocessable('Object does not exist');
+      repo.tags.set(name, body.sha);
+      return { status: 201, body: { ref: body.ref, object: { sha: body.sha, type: this.objects.get(body.sha)!.type } } };
     }
     if (method === 'POST' && rest === 'git/refs') {
       const name = String(body?.ref ?? '').replace(/^refs\/heads\//, '');

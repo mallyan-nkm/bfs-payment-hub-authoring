@@ -128,6 +128,11 @@ content-configurations/      what the studio publishes and what a bank configure
     - Each rule says whether it is evaluated as of the payment's acceptance or as of the step.
     - The runtime fixes the source's bug N1 by filtering on date first, then taking the version.
     - They change with no deployment, through maker-checker in the studio. The runtime only reads published versions.
+- **Signed packages and who may call (built 2026-11-22, owner's decision).**
+  - Every package the studio releases is signed: `release.json` (every file's SHA-256, the release id, tenant and change set) and `release.sig` (ECDSA P-256), with the studio's key read by reference (`TH_SIGNING_KEY`). The runtime verifies it at `POST /releases`, `POST /import-branch` and again at activation, against `TH_TRUSTED_SIGNERS` (several keys, retired and revoked), and records each verification as a `release.verified` fact on the release. The deploy runner runs only a verified package. Spec R-09-23 to R-09-26.
+  - The runtime is the bank's: it takes bearer JWTs from the bank's identity provider only, people's and machine callers' client-credentials tokens alike, maps the bank's claims and groups to its roles by the bank's role map, and keeps no identities (`TransactHub.Auth`, R-09-27, R-09-29). The studio's only link to it is the signature.
+  - GitHub is the artefact repository (owner, 2026-11-22). Each published release is its signed folder on the content branch and an annotated tag `release/<workflow>/<release>/<target>`. A runtime takes a version through a package source (`IPackageSource`, `GitHubPackageSource`: list the tags, download the folder at its commit, read-only, its token by reference), only through the same verification (`GET /sources/versions`, `POST /sources/install`). Spec R-09-30.
+  - Secrets are named by reference (`env:`, `file:`, `vault:`) and read through one interface (`TransactHub.Security`, R-06-22); check L37 refuses a literal one (R-06-23); CI scans for secrets and audits dependencies (R-09-28).
 - **Running payments** can change only through declared operator actions (retry, repair, cancel, decide), each with a permission and a second approver where the package says so. `InjectState` and arbitrary key/value edits are not carried over. This closes the review's item 13.
 
 ### W5. Temporal on SQL Server (N* item 8)

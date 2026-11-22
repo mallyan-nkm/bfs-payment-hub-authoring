@@ -106,6 +106,11 @@ CASES = [
     # R-05-47: a reply wait a bank may set names a parameter the composite declares (L30)
     ("M37", "ERROR L30", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "replyTimeoutParameter: ackWait", "replyTimeoutParameter: noSuchWait", "a composite's reply wait names a parameter it does not declare"),
+    # R-06-23: no literal secret in a binding, a configuration or a package (L37)
+    ("M38", "ERROR L37", "../content-configurations/banks/dib/core-banking.yaml",
+     "secretRef: env:TH_DIB_CORE_BANKING_TOKEN", "secretRef: synthetic-literal-value", "a binding's secretRef holds a value, not a reference"),
+    ("M39", "ERROR L37", "../content-configurations/banks/dib/file-transfer.yaml",
+     "secretRef: env:TH_DIB_SFTP_CREDENTIAL", "secretRef: env:TH_DIB_SFTP_CREDENTIAL\n      password: synthetic-literal-value", "a binding carries a password as a value beside its reference"),
 ]
 
 

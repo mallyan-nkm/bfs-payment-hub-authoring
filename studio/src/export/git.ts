@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
 import { toYaml } from '../core/yaml.js';
 import { OWNER_TENANT, StoreError, type Settings } from '../core/store.js';
 import { SETTINGS_PATH, scopeOfName } from '../content/layout.js';
 import { TOKEN_ENV } from '../content/github.js';
 import type { StudioEnv } from '../env.js';
 import { users } from '../governance/governance.js';
-import { exportPackage, packageHash, type Target } from './exporter.js';
+import { exportPackage, packageHash, signPackage, type Target } from './exporter.js';
+import { claimsOf, NoRootWorkflow, SignatureRejected } from './signing.js';
 
 // The content branch (plan W8; R-09-19 to R-09-22 as amended, R-11-21 to R-11-25). The studio is
 // connected to one repository and branch by its environment (TH_CONTENT_REPO, TH_CONTENT_BRANCH,
@@ -65,16 +67,29 @@ export function changeSettings(env: StudioEnv, actor: string, input: Partial<Set
 export function filesFor(env: StudioEnv, changeSet: any, s: Pick<Settings, 'target' | 'environment'>) {
   const files: Record<string, string> = {};
   const skipped: { workflow: string; why: string }[] = [];
+  // One annotated tag per released version, on the publishing commit: what a runtime's package source lists (R-09-30).
+  const tags: { name: string; message: string }[] = [];
   for (const m of changeSet.members) {
     const e = env.store.entries.get(m.key) ?? env.store.all().find((x) => x.name === m.name && x.release === m.release && x.status === 'published');
     if (!e) throw new StoreError('git', `${m.name}@${m.release} of ${changeSet.id} is not in the store`);
     if (e.kind !== 'workflow') continue;
     try {
       const pkg = exportPackage(env, { workflows: [e.name], target: s.target as Target, tenant: changeSet.tenant !== OWNER_TENANT ? changeSet.tenant : undefined });
+      // A package with no root workflow of its own (a subflow, a segment) is not a release the runtime takes.
+      claimsOf(pkg.manifest);
       const dir = `releases/${scopeOfName(e.name)}/${e.name}/${e.release}/${s.target}`;
-      for (const [f, content] of Object.entries(pkg.files)) files[`${dir}/${f}`] = content;
+      // Signed at release (R-09-23): the runtime takes no package from the branch without its signature.
+      const signed = signPackage(pkg, changeSet.id);
+      for (const [f, content] of Object.entries(signed.files)) files[`${dir}/${f}`] = content;
       files[`${dir}/package.sha256`] = `${packageHash(pkg)}\n`;
+      const st = JSON.parse(signed.files['release.json']);
+      tags.push({
+        name: `release/${e.name}/${e.release}/${s.target}`,
+        message: [`Release ${st.releaseId}`, '', `Package: ${dir}/`, `Change set: ${changeSet.id}`, `Signed by key: ${st.keyId}`, `Statement sha256: ${createHash('sha256').update(signed.files['release.json']).digest('hex')}`, `Package hash: ${packageHash(pkg)}`].join('\n'),
+      });
     } catch (err: any) {
+      // Without the studio's signing key nothing is released: the publish stops and says why.
+      if (err instanceof SignatureRejected && !(err instanceof NoRootWorkflow)) throw new StoreError('signing', err.message);
       // A leg or a segment is exported with the workflow that uses it, not on its own.
       skipped.push({ workflow: e.name, why: String(err?.message ?? err) });
     }
@@ -85,7 +100,7 @@ export function filesFor(env: StudioEnv, changeSet: any, s: Pick<Settings, 'targ
       releases: changeSet.members.map((m: any) => ({ name: m.name, release: m.release })),
     });
   }
-  return { files, skipped };
+  return { files, skipped, tags };
 }
 
 /** The commit message of a published change set: its members, its makers and its checker (R-09-20). */

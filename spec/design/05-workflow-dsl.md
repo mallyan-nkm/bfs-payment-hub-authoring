@@ -219,6 +219,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L34 | Factory packs: every folder under `factory/` is a pack the inventory lists, every listed pack has a folder, and every artefact sits in its own scope's folder | Yes |
 | L35 | Bank packs on the branch: each folder in `content-configurations/banks/` has a `pack.yaml` that is a bank pack naming its tenant; every studio artefact there is valid, is that tenant's, is in scope `b` or a test, and refers only to the factory or the folder; its lock file lists every artefact with its kind, release, hash and path, and nothing else (R-11-28) | Yes |
 | L36 | An await's `family` is one its message's dispatch entry declares (R-05-44) | Yes |
+| L37 | No literal secret: a key that names a secret (password, passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a name ending in one) holds a reference (`env:`, `file:`, `vault:`) or nothing, a `secretRef` holds a reference, and no file is a private key; in the factory, the examples, the kit, `content-configurations/` and every export package (R-06-23) | Yes |
 
 ## 5.8 Examples
 

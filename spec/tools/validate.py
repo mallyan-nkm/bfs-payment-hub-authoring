@@ -686,6 +686,53 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
     if bool(pack.get("containsSimulators")) != any(a["kind"] == "simulator" for a in found.values()) or pack.get("promotable") == pack.get("containsSimulators"):
         err("L35", where + "/pack.yaml", "containsSimulators and promotable do not match the folder")
 
+# ------------------------------------------------- no literal secret
+# L37 no binding, configuration or package carries a literal secret (R-06-23). A key that names a secret (password,
+# passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a camel-case name ending in one)
+# holds a reference (env:, file:, vault:, akv:) or nothing; a secretRef holds a reference; no text is a private key.
+# It reads the spec's content and everything under content-configurations/. The studio check is the same rule.
+SECRET_KEY = re.compile(r"(^|[a-z0-9_])(password|passwd|passphrase|secret|token|apikey|api_key|accesskey|access_key|privatekey|private_key|clientsecret|client_secret|credentials?)$", re.I)
+SECRET_REF = re.compile(r"^(env|file|vault|akv):\S+$")
+PRIVATE_KEY_PEM = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
+
+
+def literal_secrets(v, at="", key=None):
+    if isinstance(v, str):
+        if PRIVATE_KEY_PEM.search(v):
+            yield at, "is a private key"
+        elif key and key.lower().endswith("secretref") and not SECRET_REF.match(v):
+            yield at, "%s must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value" % key
+        elif key and SECRET_KEY.search(key) and v and not SECRET_REF.match(v):
+            yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, (int, float)) and not isinstance(v, bool) and key and SECRET_KEY.search(key):
+        yield at, "%s holds a value: name the secret by reference instead" % key
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from literal_secrets(x, "%s[%d]" % (at, i), key)
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield from literal_secrets(x, "%s.%s" % (at, k) if at else str(k), str(k))
+
+
+CONTENT = ROOT.parent / "content-configurations"
+for top, label in [(ROOT / b, b) for b in ("factory", "examples", "conformance")] + [(CONTENT, "../content-configurations")]:
+    if not top.is_dir():
+        continue
+    for f in sorted(p for p in top.rglob("*") if p.is_file() and p.suffix in (".yaml", ".yml", ".json", ".js", ".py", ".ts", ".md")):
+        where = "%s/%s" % (label, f.relative_to(top))
+        text = f.read_text(errors="replace")
+        found = []
+        if f.suffix in (".yaml", ".yml", ".json"):
+            try:
+                for d in (yaml.safe_load_all(text) if f.suffix != ".json" else [json.loads(text)]):
+                    found.extend(literal_secrets(d))
+            except Exception:
+                pass
+        if not found and PRIVATE_KEY_PEM.search(text):
+            found.append(("", "holds a private key"))
+        for at, why in found:
+            err("L37", where, "%s%s" % ("at %s " % at if at else "", why))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

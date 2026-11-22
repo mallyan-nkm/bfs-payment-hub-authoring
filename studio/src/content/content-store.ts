@@ -65,12 +65,17 @@ export function forgetCache(): void {
 /** A change to one file. `create`: append-only, refused if the file exists with other text (R-09-21, R-11-23). `replace`: the file must still hold `expect`. `free`: a draft branch's own file. */
 export interface Change { path: string; text: string | null; guard: 'create' | 'replace' | 'free'; expect?: string | null }
 
-export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true }; deletedBranches?: string[] }
+export interface WriteResult { status: 'committed' | 'unchanged' | 'pull-request'; branch: string; commit?: string; files: string[]; pullRequest?: { url: string; number: number; branch: string; opened: true }; deletedBranches?: string[]; tags?: string[] }
+
+/** An annotated release tag to put on the commit a publish makes (R-09-30). */
+export interface ReleaseTag { name: string; message: string }
 
 interface Op {
   branch: string;
   message: string;
   changes: Change[];
+  /** Release tags on the commit, once it is on the content branch. */
+  tags?: ReleaseTag[];
   /** A commit to add as a second parent: the change set's branch, when its publish takes it whole. */
   merge?: () => string | undefined;
   pull?: { title: string; body: string };
@@ -367,7 +372,7 @@ export class ContentStore {
    * Write to the content branch or to a change set's branch. The in-memory view changes at once; the
    * commit goes out in order, in the background. `flush()` waits for it and reports a failure.
    */
-  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string }; prune?: string[] } = {}): Promise<WriteResult> {
+  write(branch: string, message: string, changes: Change[], opts: { merge?: () => string | undefined; pull?: { title: string; body: string }; prune?: string[]; tags?: ReleaseTag[] } = {}): Promise<WriteResult> {
     if (branch === this.conn.branch) {
       for (const c of changes) {
         if (c.text === null) this.files.delete(c.path);
@@ -383,7 +388,7 @@ export class ContentStore {
       }
     }
     const p = new Promise<WriteResult>((done, failed) => {
-      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, prune: opts.prune, done, failed };
+      const op: Op = { branch, message, changes, merge: opts.merge, pull: opts.pull, prune: opts.prune, tags: opts.tags, done, failed };
       if (this.tx) this.tx.push(op);
       else this.send(op);
     });
@@ -520,7 +525,20 @@ export class ContentStore {
           if (at && (await this.deleteMerged(draftBranch(id), at))) deletedBranches.push(draftBranch(id));
         }
       }
-      return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}) };
+      // Each released package's version is an annotated tag on this commit: created once, never moved (R-09-30).
+      const tags: string[] = [];
+      if (onContent && changes.length) {
+        for (const t of op.tags ?? []) {
+          try {
+            await this.client.createReleaseTag(t.name, t.message, commit);
+          } catch (e) {
+            if (e instanceof GitHubError && e.status === 422) throw new ContentError('R-09-30', `The release tag ${t.name} already exists on ${this.repository}: a release tag is never moved. The commit ${commit.slice(0, 12)} is on ${this.conn.branch}; publish a new release.`);
+            throw e;
+          }
+          tags.push(t.name);
+        }
+      }
+      return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}), ...(tags.length ? { tags } : {}) };
     }
   }
 }
@@ -541,6 +559,7 @@ function merge(ops: Op[]): Op[] {
       merge: list.find((o) => o.merge)?.merge,
       pull: list.find((o) => o.pull)?.pull,
       prune: [...new Set(list.flatMap((o) => o.prune ?? []))],
+      tags: list.flatMap((o) => o.tags ?? []),
       done: (r) => list.forEach((o) => o.done(r)),
       failed: (e) => list.forEach((o) => o.failed(e)),
     };

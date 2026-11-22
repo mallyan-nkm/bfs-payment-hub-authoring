@@ -25,7 +25,7 @@ Each part of the north star: what it does, where it is, and whether it is built.
 | --- | --- | --- | --- |
 | Model | ISO 20022 internal model and `PaymentContext` | `runtime/src/TransactHub.Model` | Yes |
 | Store | Insert-only data on two databases | `runtime/src/TransactHub.Store` | Yes |
-| Release API | Store a release once, activate, import the branch | `runtime/src/TransactHub.Api` | Yes, without authentication ([I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it)) |
+| Release API | Store a release once, activate, import the branch | `runtime/src/TransactHub.Api` | Yes: the bank's bearer JWTs and role map (`TransactHub.Auth`), every package's signature verified (`TransactHub.Security`) |
 | Interpreter | The one C# interpreter for every engine | `studio/engines/shared`, compiled into `runtime/src/TransactHub.Interpreter` | Yes |
 | Temporal binding | Interpreter workflow, front-door workflow, host activities | `runtime/src/TransactHub.Engine.Temporal` | Yes |
 | DTFx and Elsa on the store | The claim check journalled to the store | `runtime/src/TransactHub.Engines.Durable`, `runtime/tools/TransactHub.{Dtfx,Elsa}Harness` | Yes |

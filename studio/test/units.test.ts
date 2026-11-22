@@ -10,7 +10,7 @@ import { zip, unzip } from '../src/export/zip.js';
 import { build, loadKit } from '../src/conformance/kit.js';
 import { PartyService } from '../src/conformance/party.js';
 import { SchemaValidator } from '../src/core/schema.js';
-import { exportPackage, exportZip } from '../src/export/exporter.js';
+import { exportPackage, signedZip } from '../src/export/exporter.js';
 import { deploy } from '../src/deploy/deploy.js';
 import { freshEnv } from './helpers.js';
 
@@ -147,7 +147,8 @@ const dotnet = spawnSync('dotnet', ['--version']).status === 0;
 describe.skipIf(!dotnet)('the deploy runner, in process', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-deploy-'));
   const zipPath = path.join(dir, 'p.zip');
-  fs.writeFileSync(zipPath, exportZip(exportPackage(env, { workflows: ['uae.wps.wf.salary-file-out.v1'], target: 'dtfx', withSimulators: true })));
+  // Signed, as every released package is: the deploy runner takes no other (R-09-26).
+  fs.writeFileSync(zipPath, signedZip(exportPackage(env, { workflows: ['uae.wps.wf.salary-file-out.v1'], target: 'dtfx', withSimulators: true })));
   const inbound = { payload: fs.readFileSync(path.join(env.studioRoot, 'fixtures', 'samples', 'wps-sif-valid.sif'), 'utf8') };
   const environment = (scenario: string) => ({ evaluationDate: '2026-11-17', bench: [{ port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario }] });
 

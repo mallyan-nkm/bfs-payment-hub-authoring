@@ -45,7 +45,9 @@ public sealed class BankFolderConfigurationTests
     {
         var b = PortBindings.FromDirectory(Folder()).InForce(Tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
         var rec = new Recorder();
-        var cb = CoreBankingAdapters.Create(b, new HttpClient(rec));
+        // The gateway credential, by reference: a synthetic value for the test (R-06-22).
+        var token = "synthetic-" + Guid.NewGuid().ToString("N");
+        var cb = CoreBankingAdapters.Create(b, new HttpClient(rec), TransactHub.Security.SecretResolver.FromEnvironment(k => k == "TH_DIB_CORE_BANKING_TOKEN" ? token : null));
         // Synthetic accounts: the bank's settings are real, the payment is not.
         var batch = new PostingBatch("F0001", new DateOnly(2026, 11, 24), [
             new("debit", "001", "0010000000001", 3500.00m, "AED", "SALARY", "Salary file F0001"),

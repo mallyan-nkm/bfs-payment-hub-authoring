@@ -6,7 +6,7 @@ The security habits for a change here. It replaces the source's security instruc
 
 | Rule | Checked by |
 | --- | --- |
-| No secret in code, configuration, samples, tests, docs or commit messages. This repository is public. | Review; no scan in CI yet ([I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment)) |
+| No secret in code, configuration, samples, tests, docs or commit messages. This repository is public. A secret is named by reference (`env:`, `file:`, `vault:`) and read through the one secret interface. | Check L37; gitleaks in CI (`security.yml`) |
 | No internal host, address, default login or customer data from the source in anything written here. | Review |
 | An error answer gives a message and a status, never a stack trace or an inner exception. | API tests (400, 404, 405, 409, 422 shapes) |
 | Validate every input at the boundary: a request body, a package against its manifest, a binding against its port, a document against its schema. | Studio API tests; `ReleaseApiTests`; schema validation (C02) |
@@ -19,7 +19,7 @@ The security habits for a change here. It replaces the source's security instruc
 
 ## Scanning
 
-The source scanned every pull request with SAST, a dependency audit, a file-system scan and a secret scan. This repository's CI (`.github/workflows/`) runs tests only. Until [I-67](../../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment) is decided, run these by hand before a change that adds a dependency or touches configuration:
+The source scanned every pull request with SAST, a dependency audit, a file-system scan and a secret scan. This repository's CI runs a secret scan and dependency audits on every push (`.github/workflows/security.yml`, R-09-28). SAST is not wired. The same audits by hand:
 
 ```
 cd studio && npm audit --audit-level=high

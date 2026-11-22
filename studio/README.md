@@ -22,6 +22,8 @@ TH_CONTENT_REPO=<owner>/<repo> TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=<token> np
 
 Then open http://localhost:4317. Without `TH_CONTENT_REPO` the studio does not start. The token needs contents: write on the repository (and pull requests: write for pull-request mode); where a proxy authenticates the requests to the API host, any placeholder value will do, since the studio never checks its format; it is read from the environment at each request and never stored, shown, logged or audited. `TH_GITHUB_API` changes the API base (default `https://api.github.com`), `TH_CONTENT_ROOT` the folder on the branch (default `content-configurations`), `TH_BANKS` the bank packs to load besides the example bank (folder names under `banks/`). Set `ANTHROPIC_API_KEY` (or run `ant auth login`) for the AI assistant. `PORT` changes the port, `TH_SPEC_ROOT` the spec repository (default `../spec`).
 
+Every workflow release the studio publishes or serves for download is signed (spec R-09-23): set `TH_SIGNING_KEY` to a reference to its P-256 key (`file:/run/secrets/th-signing-key.pem`, `env:NAME` or `vault:mount/path#field`), never the key itself. `npm run studio -- signing-key <dir>` makes a key and the trusted-signers file a runtime and `studio deploy` check against (`TH_TRUSTED_SIGNERS`); `npm run studio:dev` makes one for its run. `studio deploy` runs only a package whose signature verifies, and a deployed worker reads the runtime's values with the bank's client-credentials token, by reference in `TH_RUNTIME_TOKEN`. See `docs/north-star/guidelines/encryption-and-secrets.md`.
+
 For local development, without GitHub:
 
 ```bash
