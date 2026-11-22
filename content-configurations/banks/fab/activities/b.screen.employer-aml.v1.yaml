@@ -1,0 +1,32 @@
+# The source's employer AML check (FabWpsActivities.FabWpsEmployerAmlCheck). A refusal from the service, or the
+# service out of reach, stopped the file; the hook that calls this keeps that by failing closed.
+kind: activity
+name: b.screen.employer-aml.v1
+release: 1.0.0
+title: Employer AML screening
+type: screen
+reads:
+  - header
+  - payment.debtor
+  - payment.debtorAccount
+writes:
+  - facts.screening.employer
+outcomes:
+  - name: clear
+    primary: true
+  - name: hit
+errors:
+  - name: TransientError
+    retryable: true
+  - name: BusinessReject
+    retryable: false
+effect: read
+ports:
+  - b.port.aml-screening.v1
+implementation:
+  binding: builtin
+  service: screening
+provenance:
+  origin: authored
+  status: provisional
+  note: Mined from the source's bank fork. No live workflow of the bank in the source calls it; see the README.

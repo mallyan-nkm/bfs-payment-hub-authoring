@@ -795,6 +795,38 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** The `outbox` table in the store. Nothing reads it yet.
 
+## I-85. ADIB's, ENBD's and FAB's core-banking settings are not in the source
+
+**Issue.** By the owner's decision of 2026-11-22, ADIB, ENBD and FAB each have a bank folder in `content-configurations/banks/`, set up as DIB's is. DIB's core-banking binding carries thirteen settings from the source (`CoreBanking:*` in its compose overlay). The three other banks' forks read no `CoreBanking:*` setting: they call core banking through a named HTTP client, and every route they call is the bank simulator's (`/api/simulator/...`). So the source holds no service code, host id, branch, flags, paths or function ids for them. Carrying DIB's values or the simulator's routes would present them as the bank's.
+
+**Recommendation.** Ask each bank for its core-banking gateway settings and add them as a new binding of `p.port.core-banking.v1`, with a later `validFrom`, in its `core-banking.yaml`. If a bank's core banking is not the gateway's shape, write a new adapter for it in `TransactHub.Ports` and bind that.
+
+**What is built.** Each folder binds `p.port.core-banking.v1` to `gateway-rest` with a `.invalid` host and `secretRef: env:TH_<BANK>_CORE_BANKING_TOKEN`, and nothing else, so the adapter refuses every call ("has no '...'") and no payment of the bank reaches a simulator or a guessed host (`PlatformOnlyBankFolderTests`). Each README lists the settings a deployment must add.
+
+## I-86. Whether ADIB, ENBD and FAB run WPS
+
+**Issue.** The factory has one scheme, WPS. The source contradicts itself on ADIB: its customer overlay licenses IPI and FTS only (`LICENSE_RAILS=ipi,fts`), and its bank worker is built without its WPS plugin; but the base database seed subscribes the `adib` tenant to WPS, two generic WPS workflows call ADIB's WPS steps (one pins them to a queue `wps-adib` that no worker serves), and Smart Integration's WPS templates carry `tenantId: ADIB`. ENBD and FAB have no deployment at all in the source: no overlay, no licence, no WPS parameter (no routing code, CBX value, acknowledgement wait, accounting code, SFTP layout or key). The participant directory lists all three as WPS participants, which is what the scheme knows of them, not what they run here.
+
+**Recommendation.** Ask the owner, and then each bank, whether it runs WPS on this platform. For one that does, collect its WPS values as DIB's were (routing code, CBX values, acknowledgement wait, accounting codes, Central Bank SFTP layout, decryption profile), set the rail (`p.table.rail-choice.v1#enabledRails`), and add them to its folder with a `validFrom`. Until then each folder configures the platform only.
+
+**What is built.** Each folder sets `enabledRails` to the empty list, from 2026-11-22, and no WPS value. BANK-RAIL-001 shows a payment that asks for WPS finds no rail, and `studio/test/platform-bank-packs.test.ts` shows a salary file is refused at routing, before anything is sent.
+
+## I-87. No port encrypts a file
+
+**Issue.** The factory has `p.port.decryption.v1` for files a bank receives, and no port for a file a bank encrypts before it sends it. The source's encryption library has encrypt-only profiles for WPS files (its sample settings give FAB `WPS_SalaryUpload` and `WPS_SIFUpload`, GnuPG, keys by name), so a bank that encrypts its SIF to the Central Bank has nowhere to bind that.
+
+**Recommendation.** Decide whether a file a bank sends is encrypted by the file-transfer adapter (a setting of `p.port.file-transfer.v1`'s binding: profile and key by reference) or by its own port and activity in `p.*`, in one change with a requirement id and a check, together with I-67.
+
+**What is built.** Nothing. FAB's README lists the sample's profiles as not carried.
+
+## I-88. The employer's labour ministry status has no rule
+
+**Issue.** Each bank fork in the source has the same WPS rule step (`{Bank}ValidateWpsRules`): a file needs at least one record, its total must be within the balance, and an employer the labour ministry has suspended is refused. The plan makes the copies one `uae.wps` rule (W6). The factory has the first two (`uae.wps.rule.record-count-matches.v1`, the funds check of `p.reserve.funds.v1`) and nothing for the third: no rule, and no registered field or port that gives the employer's status at the ministry.
+
+**Recommendation.** Add a `uae.wps` rule that refuses a salary file whose employer the ministry has suspended, with the status as a registered extension read by an activity (a lookup behind a port), and its reason code from the scheme's code set once confirmed (`uae.wps` is provisional). Do not add it as a bank rule: it is the same for every bank.
+
+**What is built.** Nothing in the factory. ADIB's, ENBD's and FAB's READMEs list the step as not carried; their `rules/` are empty.
+
 ## Not done, and why
 
 | Story | Why |

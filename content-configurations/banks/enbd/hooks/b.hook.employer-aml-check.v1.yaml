@@ -1,0 +1,22 @@
+# The source's employer AML check, as a halt hook after the file's checks and before screening. A hit rejects
+# the file, as the source's refusal did. The hook point fails closed, so an AML service out of reach stops the
+# file too, as the source's connectivity error did.
+kind: hook
+name: b.hook.employer-aml-check.v1
+release: 1.0.0
+title: Screen the employer of a salary file with the bank's AML service
+implements:
+  hookPoint: after-validate
+  of: p.seg.check-and-screen.v1
+type: halt
+outcomes: [continue, hold, reject]
+do:
+  - id: employer-aml
+    call: b.screen.employer-aml.v1
+    handle:
+      hit: { end: reject }
+  - end: continue
+provenance:
+  origin: authored
+  status: provisional
+  note: From EnbdWpsActivities.EnbdWpsEmployerAmlCheck in the source's bank fork. No live workflow of the bank in the source calls it; see the README.

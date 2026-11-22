@@ -1,0 +1,14 @@
+# The labour ministry's WPS notification, which the source's bank fork sent when a salary file was processed
+# (FabWpsActivities.FabMohreNotifyResult, named client Mohre, POST /api/wps/notify).
+kind: port
+name: b.port.labour-ministry.v1
+release: 1.0.0
+title: Labour ministry WPS notification
+party: labour ministry WPS notification service
+operations:
+  - name: notify
+    style: send
+provenance:
+  origin: authored
+  status: provisional
+  note: Mined from the source's bank fork. Where the service is, and how it is reached, is set at deployment.
