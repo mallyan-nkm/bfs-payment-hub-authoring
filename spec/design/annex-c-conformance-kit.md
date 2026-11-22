@@ -21,7 +21,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 46 scenarios in draft 0.2.
+The machine-readable list is `conformance/kit.yaml`. It holds 48 scenarios in draft 0.2.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 46 scenarios in dr
 | Concurrency | CK-PAR-01, CK-FOREACH-01 and 02 | Parallel join, per-item outcomes, chunking |
 | Business retry | CK-LOOP-01 and 02, CK-UNKNOWN-01 | Bounded loops; inquiry after an unknown send |
 | Technical retry and timeouts | CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 | Retry with idempotency; attempt and total timeouts; policy resolution |
-| Waiting | CK-AWAIT-01 to 05, CK-WAIT-01, CK-DEADLINE-01 | Messages, timers, business calendar, deadlines; early, late and duplicate messages |
+| Waiting | CK-AWAIT-01 to 07, CK-WAIT-01, CK-DEADLINE-01 | Messages, timers, business calendar, deadlines; early, late and duplicate messages; a stale reply to an earlier exchange (R-05-43); the family of a reply (R-05-44) |
 | Undo and close | CK-COMP-01, CK-FINALLY-01 | Compensation in reverse; finally on every end |
 | Composition | CK-SLOT-01 and 02, CK-HANDLER-01 | Slots and legs; handlers without durable state |
 | Composite steps | CK-BLOCK-01 to 03 | Blocks and returns; the reply time of the calling step; the business trace and the detail |
@@ -47,7 +47,7 @@ The machine-readable list is `conformance/kit.yaml`. It holds 46 scenarios in dr
 | Parallel | CK-PAR-01 |
 | For each | CK-FOREACH-01, CK-FOREACH-02 |
 | Loop | CK-LOOP-01, CK-LOOP-02 |
-| Await, wait | CK-AWAIT-01 to 05, CK-WAIT-01 |
+| Await, wait | CK-AWAIT-01 to 07, CK-WAIT-01 |
 | Slot | CK-SLOT-01, CK-SLOT-02 |
 | Block, return | CK-BLOCK-01 to 03 |
 | Use | Covered inside CK-SEQ-01, which inlines a segment |

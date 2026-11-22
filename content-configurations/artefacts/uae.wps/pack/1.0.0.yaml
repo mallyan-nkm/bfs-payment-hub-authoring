@@ -15,7 +15,7 @@ artefacts:
   - name: uae.wps.decide.returns.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:08ca554662c621cf22042e470c8e0c4a4ae28d2ff0121b78c61b269dc3c7395c
+    hash: sha256:6025245af66782c4d02fbbc7178f9519c3b61dc940773530a8187313ec79570c
     path: activities/uae.wps.decide.returns.v1.yaml
   - name: uae.wps.exchange.confirm-receipt.v1
     kind: activity
@@ -27,6 +27,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:581ce5dacc020f7df1d39df54b502797bcc224d0e4b21296e266119fc63025be
     path: activities/uae.wps.exchange.receive-supplement.v1.yaml
+  - name: uae.wps.exchange.report-disbursement.v1
+    kind: activity
+    release: 1.0.0
+    hash: sha256:d3e9603381accdd6767e28d71b29fd22aba8c3be0a6839e75869aeecbccd9799
+    path: activities/uae.wps.exchange.report-disbursement.v1.yaml
   - name: uae.wps.exchange.request-refund.v1
     kind: activity
     release: 1.0.0
@@ -35,7 +40,7 @@ artefacts:
   - name: uae.wps.exchange.return-credits.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:6768664890c92600f315f4826d0fd963485f3cd7c80b3c7e21533613ab4d2640
+    hash: sha256:cc41bcc9d47d9b1b2a0efd6f4fb60ce7050308241a114215829dd32c5e47b52e
     path: activities/uae.wps.exchange.return-credits.v1.yaml
   - name: uae.wps.exchange.send-disbursement-file.v1
     kind: activity
@@ -230,12 +235,12 @@ artefacts:
   - name: uae.wps.table.returns.v1
     kind: table
     release: 1.0.0
-    hash: sha256:23b870d62d39f4040451e90cc32d694ea2351ee8f13dcc1263dcd9b344471d32
+    hash: sha256:f453af23e798bdbc119d356dd1cd04de14b23d8623eb41a55aafbf2dd7ce9684
     path: rules/uae.wps.table.returns.v1.yaml
   - name: uae.wps.scheme
     kind: scheme
     release: 1.0.0
-    hash: sha256:1e98652ee5911fd7dcc32c0cdd0c2037f411a710f4059f95d07a5ffa169fbe4c
+    hash: sha256:e3dabb1b6dbad34e758ceea5e1b0a2b7b41dc4dac73606949e2c7de9d55b8318
     path: scheme.yaml
   - name: uae.wps.sim.employer-channel.v1
     kind: simulator
@@ -245,12 +250,12 @@ artefacts:
   - name: uae.wps.sim.wps-inward.v1
     kind: simulator
     release: 1.0.0
-    hash: sha256:3e03ac3c3d6342dde75a568edcf1295f7de9f6383478608a313eeb824189ec81
+    hash: sha256:28dc15ae7f0421394e6a9d11954e4c1b8440abd455fdd16d21d6850d5b2692f3
     path: simulators/uae.wps.sim.wps-inward.v1.yaml
   - name: uae.wps.sim.wps-outward.v1
     kind: simulator
     release: 1.0.0
-    hash: sha256:38f32581c2372897e39769166065f19aaa023df217331cbe099b63e4a90af543
+    hash: sha256:02fcf6e9adebb6796cd2911dfc0a57bebaf46c58d3701b535d7b89c6baab9369
     path: simulators/uae.wps.sim.wps-outward.v1.yaml
   - name: WPS-EXC-001
     kind: test
@@ -270,18 +275,33 @@ artefacts:
   - name: WPS-IN-002
     kind: test
     release: 1.0.0
-    hash: sha256:769f4bf30d539863eb29210973d77a72fb68cca544e1fb140ce5b5360e4bc45d
+    hash: sha256:36d1e573fe5592a0a0299643ea4997b937ac0873e699cc682df480e42d9db833
     path: tests/WPS-IN-002.yaml
   - name: WPS-IN-003
     kind: test
     release: 1.0.0
-    hash: sha256:0c95b9c3524bb765a8d968f582a6eb93b1c7ca81e843254c6c38f6c4519af6c9
+    hash: sha256:9a3b2813054ff3fef0997dc30b18d0d0714093c44725c9a0567602f5bff5920c
     path: tests/WPS-IN-003.yaml
   - name: WPS-IN-004
     kind: test
     release: 1.0.0
-    hash: sha256:d7aab524600dc712ddf12e888556e65be1c94f8c8c53bed1296e2d24bbee6ddb
+    hash: sha256:bf651b0d99a6e1a7fa523516d968ec1124253dc9628d14d77020cb54c16b21fd
     path: tests/WPS-IN-004.yaml
+  - name: WPS-IN-005
+    kind: test
+    release: 1.0.0
+    hash: sha256:9ced00ce02c1c7723827872e4e784916d881b81366576a8f7d1e05add0ea5aa3
+    path: tests/WPS-IN-005.yaml
+  - name: WPS-IN-006
+    kind: test
+    release: 1.0.0
+    hash: sha256:4fbdd156a0d22ea872e2bafffa6ed2003ad7812bc847a78eb604c19683991d6f
+    path: tests/WPS-IN-006.yaml
+  - name: WPS-IN-007
+    kind: test
+    release: 1.0.0
+    hash: sha256:e3c9a82b9a9beeeb46605c66495b397cab7dc3cd24dc3a04a347b0efb5362c24
+    path: tests/WPS-IN-007.yaml
   - name: WPS-MAP-001
     kind: test
     release: 1.0.0
@@ -320,32 +340,37 @@ artefacts:
   - name: uae.wps.sub.confirm-receipt.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:f9e330c1bbfe416397ed0ba3b7e551cccbdd41d110ce2e1c3310573588076ce7
+    hash: sha256:33b0c1d9cf85a9a7cc7cf5ff7dacf1718bac88f138d9e23605fadbac5d856e54
     path: workflows/uae.wps.sub.confirm-receipt.v1.yaml
   - name: uae.wps.sub.receive-supplement.v1
     kind: workflow
     release: 1.0.0
     hash: sha256:d03df707c23acbfbbc2a0a12465238464c97ae9e53f48e6b88c71583242515c9
     path: workflows/uae.wps.sub.receive-supplement.v1.yaml
+  - name: uae.wps.sub.report-disbursement.v1
+    kind: workflow
+    release: 1.0.0
+    hash: sha256:a1fd83ef7ee89a909e5997843bffdc5daf484ee0b26dcdbcab824161b6d953b5
+    path: workflows/uae.wps.sub.report-disbursement.v1.yaml
   - name: uae.wps.sub.request-refund.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:7bfa209f6b86d3c0e7e710ae7055b5eb3ab85049173c68c70fd82e2d98676f85
+    hash: sha256:107a7cfaa3a450336cd447f544d114a5b31cf50c213683941c86541d4fc4caf3
     path: workflows/uae.wps.sub.request-refund.v1.yaml
   - name: uae.wps.sub.return-credits.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:3cb6358789634b2884123a40959d1c3d164ac75f28176ff48e999717d689a712
+    hash: sha256:df4495990e77f96807d3e98abb713f587d04682e794246d048539f8643c1561b
     path: workflows/uae.wps.sub.return-credits.v1.yaml
   - name: uae.wps.sub.submit-salary-file.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:773df48e80eeaa50a6422a787258610d76bde8a1ca9b45515b788da69172d0fa
+    hash: sha256:53008e068ae4f4e12d54d2b139247e7a3f147199557dd34ee6032242516afd3d
     path: workflows/uae.wps.sub.submit-salary-file.v1.yaml
   - name: uae.wps.wf.agent-payment-in.v1
     kind: workflow
     release: 1.0.0
-    hash: sha256:4929ac8cdb4953ac27b545504c78f1cdd620a749b7198d2a26052495a7671a8c
+    hash: sha256:455a6796e8f4c860dd7fc263fba3c108157d78bfca1fe3c64197e160dc750d0b
     path: workflows/uae.wps.wf.agent-payment-in.v1.yaml
   - name: uae.wps.wf.inward-refuse.v1
     kind: workflow

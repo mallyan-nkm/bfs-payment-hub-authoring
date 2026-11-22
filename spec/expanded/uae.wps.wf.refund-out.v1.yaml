@@ -49,6 +49,7 @@ do:
           await:
             message: uae.wps.ack
             correlateBy: header.fileId
+            family: rfr
             timeout: P1D
             calendar: business
             onTimeout:

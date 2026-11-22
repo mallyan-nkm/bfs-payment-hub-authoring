@@ -26,16 +26,16 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 
 | Evidence | Result |
 | --- | --- |
-| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 4 expected warnings (I-38); `expand.py --check` up to date; 28 of 28 mutations caught; 125 stories render |
+| Spec tools at draft 0.2 (`spec/tools`) | validate 0 errors and the 4 expected warnings (I-38); `expand.py --check` up to date; 34 of 34 mutations caught; 125 stories render |
 | Spec documents valid against their schemas | 157 of 157 |
 | Content hashes (RFC 8785) equal to the pack manifests | All; four of the five pack manifests also regenerate identically (Issue I-20 for the bank pack) |
 | Expansion of composite steps | Identical to `tools/expand.py` on the three reference workflows |
 | Rule and table examples | 60 of 60 |
 | Factory and bank test cases on the studio interpreter | 16 of 16 |
-| Conformance kit, studio interpreter | 46 of 46 |
-| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 46 of 46 |
-| Conformance kit, Flowable 7.1.0 with generated BPMN | 46 of 46 |
-| Conformance kit, Temporal | Not run: see below |
+| Conformance kit, studio interpreter | 48 of 48 |
+| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 48 of 48 |
+| Conformance kit, Flowable 7.1.0 with generated BPMN | 46 of 46 before CK-AWAIT-06 and 07; not yet built for them (I-49) |
+| Conformance kit, Temporal (time-skipping test server) | 48 of 48 |
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
 | Generated samples, each proved valid or failing with its labelled code | 7 of 7 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
@@ -67,7 +67,7 @@ The spec's process is one story per branch and pull request, each reviewed. This
 | C18 Hooks and configuration sets | Done: hooks at hook points, configuration editing with bounds and overlap checks, compatibility run, tenant export |
 | C19 Packs, release, retirement, supersession | Done: pack build, review and approval with green tests, release gate, retirement against pins and an in-flight import, supersession draft, evidence and hand-over |
 | C20 Exporter and Temporal binding | Packages and binding done (expanded forms, pins, `name@release`, a separate worker per task queue, a deploy runner on DTFx). The Temporal run of the kit (C20-S2 to S4) is not built |
-| C21 DTFx | Done: 46 of 46 on DTFx |
+| C21 DTFx | Done: 48 of 48 on DTFx |
 | C22 Flowable | Done: generated BPMN runs on Flowable; patterns and engine gaps recorded in Part 9, section 9.7; L24 uses the portability report |
 | C23 Conformance kit and runner | Done: kit content in `ck`, the adapter interface, a reference adapter, the release-gate report with waivers |
 | C24 to C26 Factory content | Partly: samples for every test, six scripts-behind, WPS-IN-001 fixed (C25-S4). Confirming against the rulebooks and the planned message groups wait on D10 and business decisions; see `docs/ISSUES.md` |

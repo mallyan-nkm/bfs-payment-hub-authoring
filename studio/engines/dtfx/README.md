@@ -2,7 +2,7 @@
 
 This folder runs the conformance kit on the Durable Task Framework (DTFx, `Microsoft.Azure.DurableTask.Core` 3.11.3, .NET 8). One generic orchestration interprets the expanded DSL document. Every activity attempt goes through the studio's party service. The kit runner compares the business trace exactly as it does for the studio.
 
-Result: **45 of 46 conformance scenarios pass on DTFx.** CK-TRACE-01 fails because the party service does not return the rule trace (see Limits). Two full runs gave identical output.
+Result: **48 of 48 conformance scenarios pass on DTFx** (22 November 2026, with CK-AWAIT-06 and 07; the earlier CK-TRACE-01 failure under Limits no longer shows).
 
 ## How to run
 
@@ -10,7 +10,7 @@ From `studio/`:
 
 ```
 apt-get install -y dotnet-sdk-8.0      # once; NuGet restores DurableTask.Core on the first build
-npx tsx engines/dtfx/run-kit.ts        # all 46 scenarios, about 3 minutes
+npx tsx engines/dtfx/run-kit.ts        # all 48 scenarios, about 5 minutes
 npx tsx engines/dtfx/run-kit.ts CK-AWAIT-04 CK-SIGNAL-02 --verbose
 ```
 
@@ -21,7 +21,7 @@ npx tsx engines/dtfx/run-kit.ts CK-AWAIT-04 CK-SIGNAL-02 --verbose
 | File | What it is |
 | --- | --- |
 | `adapter.ts` | The `KitAdapter`. Expands every workflow and hook (`expandWorkflow`), reads the DTFx binding, runs the harness per scenario, parses its `KitObservation` |
-| `run-kit.ts` | The runner. It prints `N of 46 conformance scenarios pass on DTFx` |
+| `run-kit.ts` | The runner. It prints `N of 48 conformance scenarios pass on DTFx` |
 | `../shared/Interpreter.cs` | The interpreter, ported from `src/interp/interpreter.ts` onto engine operations. Shared with the Elsa harness (`../elsa`) |
 | `harness/Engines.cs` | `InterpreterOrchestration` (the one `TaskOrchestration`), `PartyActivity`, the DTFx engine and the plain engine used for handlers |
 | `harness/VirtualTime.cs` | The in-process orchestration service with virtual time (the clock itself is `../shared/Clock.cs`) |

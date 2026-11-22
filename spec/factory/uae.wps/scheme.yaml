@@ -26,7 +26,8 @@ messages:
     direction: in
     confirmed: true
     disposition:
-      deliver: { correlateBy: file id }
+      # The front door reads the acknowledged file's family from the ACK or NAK file's name (Issue I-41).
+      deliver: { correlateBy: file id, families: [sif, rfr, prc, dif, rfa] }
   - id: uae.wps.pif
     title: Payment information file, one per agent
     direction: in

@@ -90,9 +90,12 @@ describe('a bank pack from content-configurations/banks (I-43)', () => {
   it('has a lock file equal to the one the studio generates, and exports without simulators or tests', () => {
     const e = env();
     expect(compareManifest(e, 'b', TENANT)).toEqual({ equal: true, differences: [] });
-    // The example bank's artefacts are unchanged by a second bank. (Its dependsOn differs already: the studio
-    // counts no test's references, tools/build_factory.py does. Not this change's.)
-    expect(compareManifest(e, 'b').differences.filter((d) => !d.startsWith('dependsOn'))).toEqual([]);
+    // The example bank's lock file is unchanged by a second bank, and the studio and tools/build_factory.py derive the
+    // same dependencies: the scopes every artefact reaches, its tests among them (I-43, "Found, not fixed").
+    expect(compareManifest(e, 'b')).toEqual({ equal: true, differences: [] });
+    expect(e.store.doc('pack:b:dib')?.dependsOn ?? e.store.all().find((x) => x.kind === 'pack' && x.tenant === TENANT)?.doc.dependsOn).toEqual([
+      { scope: 'p', release: '1.0.0' }, { scope: 'uae.p', release: '1.0.0' }, { scope: 'uae.wps', release: '1.0.0' },
+    ]);
     const pack = buildPack(e, 'b', 'bank', TENANT);
     expect(pack.refused).toBeUndefined();
     expect(pack.manifest.promotable).toBe(true);

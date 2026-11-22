@@ -36,7 +36,7 @@ describe('rule sessions (C06-S2 to S5)', () => {
         n++;
       }
     }
-    expect(n).toBe(63);
+    expect(n).toBe(66);
   });
   it('stops at a stage with a blocking finding (R-04-14)', () => {
     // a wrong currency (field stage) and a wrong control total (cross-field stage): the cross-field rule never runs

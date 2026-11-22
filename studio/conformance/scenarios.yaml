@@ -245,6 +245,24 @@ scenarios:
         - end: done
     traceDrop: ["wait:PT5M"]
 
+  - id: CK-AWAIT-06
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: stale-reply-between } ]
+    checks: { unmatched: 1 }
+    workflow:
+      do:
+        - { id: x, call: ck.kit.exchange.request.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - wait: PT30S
+        - { id: y, call: ck.kit.exchange.request-b.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - end: done
+
+  - id: CK-AWAIT-07
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: late-a-during-b } ]
+    workflow:
+      do:
+        - { id: x, call: ck.kit.exchange.request-a.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - { id: y, call: ck.kit.exchange.request-b.v1, handle: { rejected: { end: rejected }, pending: { end: pending } } }
+        - end: done
+
   - id: CK-WAIT-01
     checks: { virtualElapsed: PT1H }
     workflow:

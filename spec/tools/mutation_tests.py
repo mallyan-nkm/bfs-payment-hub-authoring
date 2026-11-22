@@ -16,6 +16,9 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 COPY = ("schemas", "factory", "examples", "conformance", "tools")
+# The bank packs on the branch (check L35) sit beside spec/, so a case copies them too.
+BANKS = ROOT.parent / "content-configurations" / "banks"
+EB = "../content-configurations/banks/example-bank"
 
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
 SAL = "factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml"
@@ -81,15 +84,29 @@ CASES = [
      "  - scope: uae.wps\n", "  - scope: uae.retired\n", "a folder under factory/ is not a pack the inventory lists"),
     ("M28", "ERROR L34", "factory/uae.p/ports/uae.p.port.calendar.v1.yaml",
      "name: uae.p.port.calendar.v1", "name: uae.retired.port.calendar.v1", "content of another scope is left in a pack's folder"),
+    ("M29", "ERROR L35", EB + "/configuration-set.yaml",
+     "tenant: example-bank\n", "tenant: other-bank\n", "a document in a bank's folder names another tenant"),
+    ("M30", "ERROR L35", EB + "/activities/b.notify.treasury.v1.yaml",
+     "title: Tell treasury of a settled payment", "title: Tell treasury", "a bank artefact changes and its lock file is not regenerated"),
+    ("M31", "ERROR L35", EB + "/pack.yaml",
+     "packType: bank", "packType: shared", "a bank folder's pack.yaml is not a bank pack"),
+    ("M32", "ERROR L36", "factory/uae.wps/workflows/uae.wps.sub.return-credits.v1.yaml",
+     "family: rfa", "family: rfx", "an await names a family its message's dispatch entry does not declare"),
+    ("M33", "ERROR L17", "factory/uae.wps/workflows/uae.wps.sub.return-credits.v1.yaml",
+     "wait: { parameter: uploadHold }", "wait: { parameter: uploadHolds }", "a wait names a parameter its composite does not declare"),
+    ("M34", "ERROR L14", "examples/bank/configuration-set.yaml",
+     "    value: P10D\n", "    value: P100D\n", "a duration value is longer than its bounds allow (P100D sorts before P30D as text)"),
 ]
 
 
 def run_case(case):
     cid, expect, rel, old, new, what = case
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = pathlib.Path(tmp)
+    with tempfile.TemporaryDirectory() as top:
+        tmp = pathlib.Path(top) / "spec"
         for d in COPY:
             shutil.copytree(ROOT / d, tmp / d, ignore=shutil.ignore_patterns("__pycache__"))
+        if BANKS.is_dir():
+            shutil.copytree(BANKS, pathlib.Path(top) / "content-configurations" / "banks")
         f = tmp / rel
         text = f.read_text()
         if text.count(old) < 1:

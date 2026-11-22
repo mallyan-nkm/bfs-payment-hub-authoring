@@ -45,7 +45,7 @@ Rules are versioned data that return findings or decisions. They never change th
 
 ### Expressions
 
-A small typed expression language: literals, paths on bound variables, comparison, `and`, `or`, `not`, arithmetic, `in`, and a fixed library of pure functions: `isBlank`, `len`, `startsWith`, `matches`, `count`, `sum`, `min`, `max`, `concat`, `ibanValid`. It compiles to what the NRules canonical model expects. The grammar is a deliverable of build spec C06.
+A small typed expression language: literals, paths on bound variables, comparison, `and`, `or`, `not`, arithmetic, `in`, and a fixed library of pure functions: `isBlank`, `len`, `startsWith`, `matches`, `count`, `sum`, `sumWhere`, `min`, `max`, `concat`, `ibanValid`, `round2`. `sumWhere(xs, x => condition, x => value)` sums the values of the items the condition holds for. `round2(x)` rounds money to two decimals, half away from zero, on its decimal value (Issue I-39); the examples of `uae.wps.table.returns.v1` prove both. It compiles to what the NRules canonical model expects. The grammar is a deliverable of build spec C06.
 
 ## 4.4 Requirements
 

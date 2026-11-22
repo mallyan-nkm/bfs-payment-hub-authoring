@@ -159,7 +159,7 @@ describe('running', () => {
     expect(results.length).toBeGreaterThanOrEqual(16);
     expect(results.filter((r: any) => !r.passed).map((r: any) => r.id)).toEqual([]);
     const kit = (await api.post('/api/kit/run')).data;
-    expect(kit.length).toBe(46);
+    expect(kit.length).toBe(48);
     expect(kit.filter((k: any) => !k.passed).map((k: any) => k.id)).toEqual([]);
   }, 120000);
 

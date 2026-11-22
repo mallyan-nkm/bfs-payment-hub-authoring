@@ -29,6 +29,16 @@ def warn(code, where, msg):
     warnings.append("%s  %s: %s" % (code, where, msg))
 
 
+def seconds(d):
+    """The length of an ISO 8601 duration such as P1D or PT10M, in seconds."""
+    import re
+    m = re.fullmatch(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", str(d))
+    if not m:
+        return None
+    dd, hh, mm, ss = (int(x or 0) for x in m.groups())
+    return ((dd * 24 + hh) * 60 + mm) * 60 + ss
+
+
 def scope_of(name):
     parts = name.split(".")
     return parts[0] if parts[0] in ("p", "b") else ".".join(parts[:2])
@@ -252,6 +262,9 @@ for path, d in docs:
                 hit = [m for m in (sch or {}).get("messages", []) if m["id"] == msg]
                 if not hit or "deliver" not in hit[0]["disposition"]:
                     err("L16", path, "awaited message %s is not a deliver message in the scheme catalogue" % msg)
+                elif "family" in st["await"] and st["await"]["family"] not in (hit[0]["disposition"]["deliver"].get("families") or []):
+                    err("L36", path, "await %s takes family %r of %s, which its dispatch entry does not declare" % (
+                        st.get("id", "?"), st["await"]["family"], msg))
 
 # ------------------------------------------- composites and subflows
 def composite(a):
@@ -317,6 +330,19 @@ for path, d in docs:
             act = by_name.get(d["implements"]["activity"]) or {}
             if "replyTimeout" not in (act.get("policy") or {}):
                 err("L32", path, "await %s has no timeout and %s declares no replyTimeout" % (st.get("id", "?"), act.get("name")))
+        # L17 a wait or an await timeout that names a parameter names one of the subflow's composite
+        for holder, key in (((st, "wait"),) if "wait" in st else ()) + (((st["await"], "timeout"),) if "await" in st else ()):
+            ref = holder.get(key)
+            if not isinstance(ref, dict):
+                continue
+            act = by_name.get((d.get("implements") or {}).get("activity")) or {}
+            decl = (act.get("parameters") or {}).get(ref["parameter"]) if sub else None
+            if not sub:
+                err("L17", path, "step %s names parameter %r; only a subflow may, from its composite" % (st.get("id", "?"), ref["parameter"]))
+            elif decl is None:
+                err("L17", path, "step %s names parameter %r, which %s does not declare" % (st.get("id", "?"), ref["parameter"], act.get("name")))
+            elif decl.get("type") != "duration":
+                err("L17", path, "step %s names parameter %r, which is not a duration" % (st.get("id", "?"), ref["parameter"]))
     if not sub:
         for a in actions(d):
             if "return" in a:
@@ -430,7 +456,10 @@ for path, d in docs:
             err("L14", path, "%s is not a declared parameter" % v["parameter"])
             continue
         b = p.get("bounds") or {}
-        if "max" in b and v["value"] > b["max"] or "min" in b and v["value"] < b["min"]:
+        val, lo, hi = v["value"], b.get("min"), b.get("max")
+        if p.get("type") == "duration":
+            val, lo, hi = seconds(val), seconds(lo) if lo is not None else None, seconds(hi) if hi is not None else None
+        if hi is not None and val > hi or lo is not None and val < lo:
             err("L14", path, "%s = %r is outside its bounds %r" % (v["parameter"], v["value"], b))
     for b in d["bindings"]:
         wf, hp = b["hookPoint"].split("#")
@@ -556,6 +585,73 @@ for path, d in docs:
         own = scope_of(d["name"]) if d.get("name") else None
     if folder in listed and own and own != folder:
         err("L34", path, "%s content is in the folder of pack %s" % (own, folder))
+
+# ------------------------------------------------- bank packs on the branch
+# L35 a bank pack may live in content-configurations/banks/<bank>/ (R-11-28, Issue I-43). Its pack.yaml is a bank
+# pack that names its tenant; every studio artefact in the folder is valid, is that tenant's, is in scope b or is
+# a test, and refers only to what the factory or the folder holds; the runtime's documents (port bindings and
+# configuration values) are not pack artefacts; and the lock file lists every artefact with its release, hash and
+# path, and nothing else. The studio's own folders there (artefacts/, configuration-sets/, scripts/) hold what it
+# publishes and are checked by the studio.
+BANKS = ROOT.parent / "content-configurations" / "banks"
+RUNTIME_KINDS = ("port-bindings", "configuration-values")
+STUDIO_FOLDERS = ("artefacts", "configuration-sets", "scripts")
+factory_names = set(by_name)
+for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
+    where = "content-configurations/banks/%s" % bank.name
+    pf = bank / "pack.yaml"
+    if not pf.is_file():
+        err("L35", where + "/", "a bank folder has no pack.yaml")
+        continue
+    pack = yaml.safe_load(pf.read_text()) or {}
+    for e in Draft202012Validator(schemas["urn:th:schema:pack"], registry=registry).iter_errors(pack):
+        err("L35", where + "/pack.yaml", "%s at /%s" % (e.message[:160], "/".join(str(x) for x in e.path)))
+    if pack.get("kind") != "pack" or pack.get("packType") != "bank" or pack.get("scope") != "b" or not pack.get("tenant"):
+        err("L35", where + "/pack.yaml", "is not a bank pack: it needs kind pack, packType bank, scope b and a tenant")
+        continue
+    tenant = pack["tenant"]
+    found, own = {}, {}
+    for f in sorted(bank.rglob("*.yaml")):
+        rel = f.relative_to(bank)
+        if f == pf or rel.parts[0] in STUDIO_FOLDERS:
+            continue
+        for d in yaml.safe_load_all(f.read_text()):
+            if not isinstance(d, dict) or d.get("kind") in RUNTIME_KINDS:
+                continue
+            at = "%s/%s" % (where, rel)
+            kind = d.get("kind")
+            if kind not in SCHEMA_OF:
+                err("L35", at, "unknown kind %r" % kind)
+                continue
+            for e in sorted(Draft202012Validator(schemas["urn:th:schema:" + SCHEMA_OF[kind]], registry=registry).iter_errors(d), key=lambda e: list(e.path)):
+                err("L35", at, "%s at /%s" % (e.message[:160], "/".join(str(x) for x in e.path)))
+            if d.get("tenant") and d["tenant"] != tenant:
+                err("L35", at, "names tenant %s, but its pack is %s's" % (d["tenant"], tenant))
+            if d.get("name") and scope_of(d["name"]) != "b":
+                err("L35", at, "%s is not in scope b; a bank pack holds the bank's own artefacts" % d["name"])
+            if kind == "configuration-set":
+                continue
+            name = d.get("name") or d.get("id")
+            found[name] = {"name": name, "kind": kind, "release": d.get("release", "1.0.0"),
+                           "hash": "sha256:" + __import__("hashlib").sha256(json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest(),
+                           "path": str(rel)}
+            if d.get("name"):
+                own[d["name"]] = d
+    for name, d in sorted(own.items()):
+        for r in sorted(refs_of(d)):
+            if r not in factory_names and r not in own and scope_of(r) != "ck":
+                err("L35", "%s/%s" % (where, found[name]["path"]), "%s refers to %s, which neither the factory nor the folder holds" % (name, r))
+    locked = {a.get("name"): a for a in pack.get("artefacts") or []}
+    for name in sorted(set(found) - set(locked)):
+        err("L35", where + "/pack.yaml", "the lock file does not list %s (%s)" % (name, found[name]["path"]))
+    for name in sorted(set(locked) - set(found)):
+        err("L35", where + "/pack.yaml", "the lock file lists %s, which the folder does not hold" % name)
+    for name in sorted(set(found) & set(locked)):
+        for k in ("kind", "release", "hash", "path"):
+            if locked[name].get(k) != found[name][k]:
+                err("L35", where + "/pack.yaml", "%s: the lock file's %s is %s, the folder's is %s" % (name, k, locked[name].get(k), found[name][k]))
+    if bool(pack.get("containsSimulators")) != any(a["kind"] == "simulator" for a in found.values()) or pack.get("promotable") == pack.get("containsSimulators"):
+        err("L35", where + "/pack.yaml", "containsSimulators and promotable do not match the folder")
 
 # ---------------------------------------------------------------- report
 kinds = {}

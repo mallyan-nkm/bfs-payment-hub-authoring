@@ -685,8 +685,13 @@
             "correlateBy": {
               "$ref": "urn:th:schema:common#/$defs/contextPath"
             },
+            "family": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]*$",
+              "description": "Take only a message of this family: the family the front door reads from the message, for example the file an acknowledgement answers (R-05-44). It MUST be one of the families the message's dispatch entry declares."
+            },
             "timeout": {
-              "$ref": "urn:th:schema:common#/$defs/duration",
+              "$ref": "#/$defs/durationOrParameter",
               "description": "May be left out only in a subflow: the await then waits for the replyTimeout of the step that called the composite."
             },
             "calendar": {
@@ -709,8 +714,12 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "$ref": "#/$defs/stepId"
+        },
         "wait": {
-          "$ref": "urn:th:schema:common#/$defs/duration"
+          "$ref": "#/$defs/durationOrParameter",
+          "description": "A duration, or, in a subflow only, a parameter of its composite activity."
         }
       }
     },
@@ -862,6 +871,30 @@
           "$ref": "#/$defs/onMap"
         }
       }
+    },
+    "durationOrParameter": {
+      "description": "A duration, or a parameter of the composite activity whose subflow holds the step (R-05-45). In the authored subflow the parameter is its bare name; the expanded form names it as <activity>#<name> and carries its default. Its value is looked up on the business date the step starts.",
+      "oneOf": [
+        {
+          "$ref": "urn:th:schema:common#/$defs/duration"
+        },
+        {
+          "type": "object",
+          "required": [
+            "parameter"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "parameter": {
+              "type": "string",
+              "pattern": "^([a-z0-9]+(\\.[a-z0-9-]+)+#)?[A-Za-z][A-Za-z0-9]*$"
+            },
+            "default": {
+              "$ref": "urn:th:schema:common#/$defs/duration"
+            }
+          }
+        }
+      ]
     }
   }
 }

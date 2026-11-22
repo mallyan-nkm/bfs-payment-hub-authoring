@@ -125,6 +125,16 @@
                 "properties": {
                   "correlateBy": {
                     "type": "string"
+                  },
+                  "families": {
+                    "description": "The families the front door tells apart, read from the message (for a WPS acknowledgement, the acknowledged file's family from its name). An await may name one (R-05-44).",
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9][a-z0-9-]*$"
+                    }
                   }
                 }
               },

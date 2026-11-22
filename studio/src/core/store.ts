@@ -203,7 +203,8 @@ export class Store {
   /** Read the branch again: what others published since, and every change set in progress. */
   async reload(): Promise<void> {
     if (!this.content) return;
-    const banks = [...this.bankPacks.keys()];
+    // The folders asked for; the example bank's is read whenever it is there (a seed may be regenerating it).
+    const banks = [...this.bankPacks.values()].filter((f) => f !== 'example-bank');
     await this.content.reload();
     this.entries.clear();
     this.extra = {};

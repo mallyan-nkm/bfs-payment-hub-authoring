@@ -33,7 +33,7 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(19);
+    expect(reports.length).toBe(22);
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual([]);
   });
@@ -75,11 +75,11 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
 });
 
 describe('the conformance kit on the studio interpreter (C23, C09)', () => {
-  it('passes all 46 scenarios', async () => {
+  it('passes all 48 scenarios', async () => {
     const env = freshEnv();
     const res = await runKit(env);
     const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
     expect(red).toEqual([]);
-    expect(res.length).toBe(46);
+    expect(res.length).toBe(48);
   });
 });

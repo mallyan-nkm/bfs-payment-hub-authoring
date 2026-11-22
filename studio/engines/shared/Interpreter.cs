@@ -90,6 +90,7 @@ public sealed class Frame
     public bool Detail;
     public int? Item;
     public Func<string, string>? Label;
+    public long? BlockStartedAt; // when the innermost composite step began (R-05-43)
 
     public Frame With(Action<Frame> change)
     {
@@ -235,7 +236,8 @@ public sealed partial class Interp
     readonly List<JsonObject> mailbox = new();
     public readonly HashSet<string> Consumed = new();
     readonly HashSet<string> expiredAwaits = new();
-    (string type, string stepId, TaskCompletionSource<JsonObject> tcs)? awaiting;
+    (string type, string? family, string stepId, TaskCompletionSource<JsonObject> tcs)? awaiting;
+    readonly HashSet<string> awaitedTypes = new(); // the message of every await this instance has started (R-05-43)
     bool paused;
     readonly List<TaskCompletionSource<bool>> resumeWaiters = new();
     Scope bodyScope = new();
@@ -437,7 +439,8 @@ public sealed partial class Interp
         var type = J.S(m, "type");
         if (Consumed.Contains(id) || mailbox.Any(x => MessageKey(x) == id)) { Duplicates++; return; }
         if (Ended) { Unmatched++; return; }
-        if (awaiting is { } aw && aw.type == type)
+        m["receivedAt"] = eng.Now;
+        if (awaiting is { } aw && aw.type == type && FamilyFits(aw.family, m))
         {
             awaiting = null;
             Consumed.Add(id);
@@ -449,11 +452,41 @@ public sealed partial class Interp
         EarlyKept++;
     }
 
-    JsonObject? TakeEarly(string type)
+    /// <summary>An await that names a family takes only a message of that family; a message with none fits any (R-05-44).</summary>
+    static bool FamilyFits(string? family, JsonObject m) => family is null || J.S(m, "family") is not string f || f == family;
+
+    /// <summary>
+    /// A kept message for this await (R-05-30): of its family (R-05-44), received after the step that holds the await
+    /// began (R-05-43). One received before answered an earlier exchange: it is unmatched (R-05-31).
+    /// </summary>
+    JsonObject? TakeEarly(string type, string? family = null, long since = long.MinValue)
     {
-        var m = mailbox.FirstOrDefault(x => J.S(x, "type") == type);
+        bool fits(JsonObject x) => J.S(x, "type") == type && FamilyFits(family, x);
+        foreach (var stale in mailbox.Where(x => fits(x) && (long)(J.Num(x, "receivedAt") ?? 0) < since).ToList())
+        {
+            mailbox.Remove(stale);
+            Unmatched++;
+        }
+        var m = mailbox.FirstOrDefault(fits);
         if (m is not null) mailbox.Remove(m);
         return m;
+    }
+
+    /// <summary>
+    /// A duration as a step names it: a literal, or a parameter of the composite whose subflow holds the step, named in
+    /// full by the expansion with its default. Its value is the deployment's value in force on the business date the
+    /// step starts, else the default (R-05-45).
+    /// </summary>
+    string? DurationOf(JsonNode? v)
+    {
+        if (v is not JsonObject o) return v?.GetValue<string>();
+        var name = J.S(o, "parameter")!;
+        var today = Duration.Today(eng.Now);
+        var inForce = J.A(dep.Config, "values").OfType<JsonObject>()
+            .Where(x => J.S(x, "parameter") == name && string.CompareOrdinal(J.S(x, "validFrom") ?? "", today) <= 0
+                        && (J.S(x, "validTo") is not string to || string.CompareOrdinal(to, today) >= 0))
+            .OrderBy(x => J.S(x, "validFrom"), StringComparer.Ordinal).LastOrDefault();
+        return inForce is not null ? J.S(inForce, "value") : J.S(o, "default");
     }
 
     public void OnChunk(JsonObject data)
@@ -600,7 +633,8 @@ public sealed partial class Interp
         var act = ResolveFor(J.S(blk, "of")!, id).doc;
         if (J.S(blk, "by") is string by) ResolveFor(by, id);
         var outcome = PrimaryOutcome(act);
-        try { await ExecSteps(J.A(blk, "do"), frame.With(f => f.Detail = true)); }
+        var began = eng.Now;
+        try { await ExecSteps(J.A(blk, "do"), frame.With(f => { f.Detail = true; f.BlockStartedAt = began; })); }
         catch (ReturnFlow r) { outcome = r.Outcome; }
         outcomes[id] = outcome;
         Record(frame, frame.InFinally ? $"finally:{id}" : $"{Label(frame, id)}:{outcome}");
@@ -963,8 +997,13 @@ public sealed partial class Interp
         var aw = J.P(st, "await");
         var id = J.S(st, "id") ?? "await";
         var type = J.S(aw, "message")!;
+        var family = J.S(aw, "family");
         JsonObject? msg;
-        var early = TakeEarly(type);
+        // R-05-43: once an await of this instance has waited for this message, a later one takes only a message
+        // received after the step that holds it began.
+        var since = awaitedTypes.Contains(type) ? frame.BlockStartedAt ?? eng.Now : long.MinValue;
+        awaitedTypes.Add(type);
+        var early = TakeEarly(type, family, since);
         if (early is not null)
         {
             Consumed.Add(MessageKey(early));
@@ -974,11 +1013,11 @@ public sealed partial class Interp
         {
             frame.Scope.ThrowIfCancelled();
             var tcs = new TaskCompletionSource<JsonObject>();
-            awaiting = (type, id, tcs);
+            awaiting = (type, family, id, tcs);
             var cts = new CancellationTokenSource();
             var waits = new List<Task> { tcs.Task, frame.Scope.CancelledTask };
             Task? timer = null;
-            if (J.S(aw, "timeout") is string timeout)
+            if (DurationOf(J.P(aw, "timeout")) is string timeout)
             {
                 var at = Duration.Add(eng.Now, timeout, J.S(aw, "calendar") == "business");
                 timer = eng.Timer(at, cts.Token);
@@ -1006,7 +1045,7 @@ public sealed partial class Interp
 
     async Task ExecWait(JsonObject st, Frame frame)
     {
-        var d = J.S(st, "wait");
+        var d = DurationOf(J.P(st, "wait"));
         if (!Duration.IsDuration(d)) throw new StepFailure(J.S(st, "id") ?? "wait", $"wait needs a duration, not {d}");
         await Sleep(Duration.Add(eng.Now, d!), frame.Scope);
         Record(frame, $"{J.S(st, "id") ?? "wait"}:{d}");

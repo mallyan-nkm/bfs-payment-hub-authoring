@@ -27,8 +27,8 @@ The DSL is the single definition of a workflow. It is block-structured and engin
 | Parallel | `parallel: { branches, join: all }` | Run branches together; wait for all |
 | For each | `forEach: { in, do, concurrency, onItemFailure }` | Run steps per batch item |
 | Loop | `loop: { max, every, until, do }` | A bounded loop, for business retry |
-| Await | `await: { message, correlateBy, timeout, calendar, onTimeout }` | Subflows only: wait for a message, with a timeout |
-| Wait | `wait: <duration>` | A timer |
+| Await | `await: { message, correlateBy, family, timeout, calendar, onTimeout }` | Subflows only: wait for a message, with a timeout. `family` takes only a message of that family (R-05-44) |
+| Wait | `wait: <duration>`, with an optional `id` | A timer. In a subflow its duration MAY be a parameter of the composite, `{ parameter: <name> }` (R-05-45); so MAY an await's timeout |
 | Slot | `slot: <name>` with `handle` | Run the leg that fills the slot |
 | Use | `use: <segment>` | Inline a segment |
 | Try | `try: [...]` with `catch` and `compensate: all` | Scope for errors and compensation |
@@ -100,6 +100,10 @@ What stays in the designer's hands: the business outcomes of the block, and how 
 | R-05-40 | A step that calls a composite MUST have an id. | Lint L30 |
 | R-05-41 | The pins of a workflow MUST include each composite it calls, that composite's subflow, and everything the subflow reaches. | Lint L23 |
 | R-05-42 | A start message's dispatch entry MUST say what payment it starts: kind, direction and, where the platform workflow depends on it, segment. They MUST select, through workflow-select, one platform workflow whose slot the named leg fills. The front door sets them on the header from the dispatch table; an intake map does not route. | Lint L33; front door (C09) |
+| R-05-43 | An `await` takes only a message received after the await began. Precisely: once an earlier await of the same instance has waited for the same message, an `await` MUST take only a message received after the composite step that holds it began (in the expanded form, its block). A message received before answered the earlier exchange: it MUST be recorded as unmatched and handed to operations (R-05-31). The first await of a message in an instance takes one kept since the instance began (R-05-30). | Conformance CK-AWAIT-06 |
+| R-05-44 | A `deliver` disposition MAY declare the families the front door tells apart (`families`), read from the message: for a WPS acknowledgement, the family of the file it answers, from its name. An `await` MAY name one of them (`family`). It MUST then take only a message of that family, or one whose family the front door could not read. | Lint L36; conformance CK-AWAIT-07 |
+| R-05-45 | A wait in a subflow, or an await's timeout, whose length a bank may change MUST be a `duration` parameter of the composite activity, with a default and bounds, named as `{ parameter: <name> }`. The expansion names it in full (`<activity>#<name>`) and carries its default. The interpreter and every engine MUST take the tenant's value in force on the business date the step starts, else the default. A duration value MUST lie inside its bounds by length, not by its text. | Lint L17, L14; studio test `wps-returns.test.ts`; factory test WPS-IN-004 |
+| R-05-46 | An inward leg that paid some items and returned the others MUST end with its primary outcome and record the count and amount returned in `facts.returns`. It MUST end `returned` only when no item was paid and the whole amount went back. A return the scheme refuses, or one that cannot be recorded, MUST end `pending`, with the file at operations. | Factory tests WPS-IN-002 to WPS-IN-007 |
 
 ## 5.5 Messages that are not payments
 
@@ -191,10 +195,10 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L11 | Unused blocks: a block that nothing reaches says what runs it | Yes, as a warning |
 | L12 | Validation sets yield findings only | Yes |
 | L13 | Hook stays inside its hook point contract | Yes |
-| L14 | Configuration values inside bounds; bindings resolve | Yes |
+| L14 | Configuration values inside bounds (a duration by its length); bindings resolve | Yes |
 | L15 | Test bench matches ports and scenarios | Yes |
 | L16 | Awaited messages are deliver messages | Yes |
-| L17 | Parameters declared | Yes |
+| L17 | Parameters declared: a rule's, and a duration parameter a subflow's wait or await timeout names on its composite | Yes |
 | L18 | Extension paths registered | Yes |
 | L19 | Data flow: reads are written earlier | To build (C04) |
 | L20 | Effects: retry needs idempotency; writes have compensation | To build (C04) |
@@ -212,6 +216,8 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L32 | An `await` with no timeout has a reply time to take | Yes |
 | L33 | A start message routes: its kind, direction and segment select one platform workflow, and its leg fills that workflow's slot | Yes |
 | L34 | Factory packs: every folder under `factory/` is a pack the inventory lists, every listed pack has a folder, and every artefact sits in its own scope's folder | Yes |
+| L35 | Bank packs on the branch: each folder in `content-configurations/banks/` has a `pack.yaml` that is a bank pack naming its tenant; every studio artefact there is valid, is that tenant's, is in scope `b` or a test, and refers only to the factory or the folder; its lock file lists every artefact with its kind, release, hash and path, and nothing else (R-11-28) | Yes |
+| L36 | An await's `family` is one its message's dispatch entry declares (R-05-44) | Yes |
 
 ## 5.8 Examples
 
@@ -228,6 +234,6 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 
 D9 (synchronous segment for instant rails; the `synchronous` marker is carried now), D17 (where handlers run).
 
-Open point: an `await` names one catalogue message. Where a scheme answers with different files or message types, the dispatch table maps them to one catalogue message that carries a status, as `uae.wps.ack` does for ACK and NAK. Waiting for the first of several different messages is not in the portable core. Add it only when a scheme needs it, with a mapping for each engine and a conformance scenario.
+Open point: an `await` names one catalogue message. Where a scheme answers with different files or message types, the dispatch table maps them to one catalogue message that carries a status, as `uae.wps.ack` does for ACK and NAK, and, where one message answers several exchanges, a family the await names, as `uae.wps.ack` does for the file it acknowledges (R-05-44). Waiting for the first of several different messages is not in the portable core. Add it only when a scheme needs it, with a mapping for each engine and a conformance scenario.
 
 Open point: composites cover scheme exchanges. A bank-side port (core banking, screening) is request and reply at the interop boundary; an adapter bridges a queue within the attempt timeout. A bank-side reply that can take longer than an attempt timeout needs port-level messages and dispatch, which this draft does not define.

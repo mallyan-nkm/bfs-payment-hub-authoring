@@ -4,7 +4,7 @@ name: uae.wps.wf.agent-payment-in.v1
 release: 1.0.0
 dsl: 1.0.0
 title: WPS payment file, bank as the agent
-description: Waits for the supplementary file that pairs with the payment file, confirms receipt, credits each employee and reports disbursement. Reports are exchanges that move no money. Credits that were refused go back to WPS in a returns file; once WPS accepts it, the return is recorded.
+description: Waits for the supplementary file that pairs with the payment file, confirms receipt, credits each employee and reports disbursement. Reports are exchanges that move no money. A credit whose outcome is unknown is asked about before the returns are decided. Credits that were refused go back to WPS in one returns file, after the disbursement file's ACK or its NAK; once WPS accepts it, the return is recorded. A partial return ends settled, a whole-file return ends returned.
 direction: inward
 implements:
   slot: scheme-leg
@@ -12,7 +12,7 @@ implements:
 entry:
   reads: [header, batch, "items[]", ext.uae.wps, facts.disposition]
 exit:
-  writes: [status, facts.posting, messages]
+  writes: [status, facts.posting, facts.returns, messages]
   outcomes: [settled, rejected, returned, pending]
 do:
   - id: supplement
@@ -42,19 +42,31 @@ do:
           level: item
           handle:
             rejected: { continue: true }
-            unknown: { continue: true }
+            unknown:
+              - id: verify-credit
+                call: p.post.verify.v1
+                level: item
+                handle:
+                  mismatch: { continue: true }
   - id: render-disbursement
     call: uae.wps.map.dif-out.v1
     handle:
       unmappable: { end: pending }
   - id: report-disbursement
-    call: uae.wps.exchange.send-disbursement-file.v1
+    call: uae.wps.exchange.report-disbursement.v1
     handle:
-      rejected: { end: pending }
-      unknown: { end: pending }
+      rejected: { continue: true }
+      pending: { end: pending }
   - id: returns
     call: uae.wps.decide.returns.v1
     handle:
+      unverified:
+        - id: unverified-operations
+          call: p.hold.repair.v1
+          handle:
+            rejected: { end: pending }
+            expired: { end: pending }
+        - end: pending
       returns:
         - id: render-returns
           call: uae.wps.map.rfa-out.v1
@@ -74,11 +86,35 @@ do:
         - id: record-return
           call: uae.wps.post.return.v1
           handle:
-            rejected: { end: pending }
-            unknown: { end: pending }
+            rejected:
+              - id: return-posting-operations
+                call: p.hold.repair.v1
+                handle:
+                  rejected: { end: pending }
+                  expired: { end: pending }
+              - end: pending
+            unknown:
+              - id: return-posting-unknown-operations
+                call: p.hold.repair.v1
+                handle:
+                  rejected: { end: pending }
+                  expired: { end: pending }
+              - end: pending
+  # The disbursement file was refused: its returns went back, and the file stays with operations.
+  - switch:
+      by: { outcomeOf: report-disbursement }
+      cases:
+        rejected:
+          - end: pending
+  # No credit reached an employee and the whole amount went back.
+  - switch:
+      by: { decision: returnScope }
+      cases:
+        whole-file:
+          - end: returned
   - end: settled
 provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: From public sources. Items that fail to credit are reported in the disbursement file. A credit the core system refused is returned in a returns file (RFA); on ACK the return is recorded, on NAK it goes to operations. Which credits are returned, and the leg's outcome after a return, are Issues I-39 and I-40. The supplementary file is held by reference; its map and the wait are to be confirmed.
+  note: From public sources. Items that fail to credit are reported in the disbursement file. A credit whose outcome is unknown is asked about before the returns are decided (Issue I-39). A credit the core system refused, or that the inquiry found not posted, is returned in one returns file (RFA); on ACK the return is recorded, on NAK it goes to operations. A partial return ends settled, a whole-file return ends returned (Issue I-40). Which credits are returned, and whether a payment file may have more than one returns file, still need the rulebook (D10). The supplementary file is held by reference; its map and the wait are to be confirmed.

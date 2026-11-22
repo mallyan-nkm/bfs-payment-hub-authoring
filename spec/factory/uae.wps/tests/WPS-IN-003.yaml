@@ -52,6 +52,10 @@ expect:
     - confirm-receipt.send:accepted
     - confirm-receipt.await-ack:received
     - confirm-receipt.read-ack:ack
+    - report-disbursement.send:accepted
+    - report-disbursement.await-ack:received
+    - report-disbursement.read-ack:ack
+    - return-credits.upload-hold:PT0S
     - return-credits.send:accepted
     - return-credits.await-ack:received
     - return-credits.read-ack:nak

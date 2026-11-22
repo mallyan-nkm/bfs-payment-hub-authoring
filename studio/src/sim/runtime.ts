@@ -17,6 +17,8 @@ export interface Message {
   correlation: Record<string, any>;
   conversation?: string; // the run-level conversation it belongs to
   inReplyTo?: string;
+  family?: string; // what the front door reads from the message, such as the file an acknowledgement answers (R-05-44)
+  receivedAt?: number; // when the front door took it (R-05-43)
   payload?: any; // the raw content; held by the run, referenced from the context
   malformed?: boolean;
   copy?: number;
@@ -153,6 +155,7 @@ export class SimulatorInstance {
       correlation: { ...base.correlation },
       conversation: base.conversation,
       inReplyTo: req?.id,
+      ...(st.family ? { family: st.family } : {}),
       payload,
       malformed: this.malformed || !!st.malformed || (!!this.inbound?.malformed && !req),
       copy,

@@ -196,6 +196,10 @@ const FUNCS: Record<string, (args: any[], lambdas: ((x: any) => any)[]) => any> 
   matches: ([s, re]) => s !== undefined && s !== null && new RegExp(re).test(String(s)),
   count: ([xs]) => (Array.isArray(xs) ? xs.length : 0),
   sum: ([xs], [f]) => (Array.isArray(xs) ? xs.reduce((a, x) => a + num(f ? f(x) : x), 0) : 0),
+  // The sum over the items a condition holds for (Issue I-39): sumWhere(items, i => cond, i => value).
+  sumWhere: ([xs], [cond, f]) => (Array.isArray(xs) ? round(xs.reduce((a, x) => (cond && truthy(cond(x)) ? a + num(f ? f(x) : x) : a), 0)) : 0),
+  // Money to two decimals, half away from zero (Issue I-39): round2(1500.005) is 1500.01, round2(-0.005) is -0.01.
+  round2: ([v]) => round2(num(v)),
   min: ([xs], [f]) => (Array.isArray(xs) && xs.length ? Math.min(...xs.map((x) => num(f ? f(x) : x))) : null),
   max: ([xs], [f]) => (Array.isArray(xs) && xs.length ? Math.max(...xs.map((x) => num(f ? f(x) : x))) : null),
   concat: (args) => args.map((a) => (a === undefined || a === null ? '' : String(a))).join(''),
@@ -277,6 +281,12 @@ export function evaluate(n: Node, env: Env): any {
     }
   }
   throw new ExprError(`Cannot evaluate ${(n as any).t}`);
+}
+
+/** Two decimals, half away from zero, on the decimal value: 1500.005 is 1500.01 although its binary form is just below. */
+function round2(x: number): number {
+  const sign = x < 0 ? -1 : 1;
+  return (sign * Math.floor(Math.abs(x) * 100 + 0.5 + 1e-7)) / 100;
 }
 
 /** Money arithmetic: round to 1e-9 to avoid binary noise such as 0.1 + 0.2. */

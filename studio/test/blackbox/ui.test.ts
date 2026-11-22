@@ -86,8 +86,8 @@ describe('the web app', () => {
   it('runs the whole conformance kit from the browser', async () => {
     const { p, problems } = await page();
     await p.goto(`${server.url}/#/kit`);
-    await p.getByRole('button', { name: 'Run all 46' }).click();
-    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(/46 of 46/);
+    await p.getByRole('button', { name: 'Run all 48' }).click();
+    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(/48 of 48/);
     expect(problems).toEqual([]);
     await p.close();
   }, 150000);
