@@ -214,6 +214,7 @@ describe('the service console', () => {
     expect(await page.getByTestId('log-row').first().getByTestId('error-link').textContent()).toBe('signing.WrongRelease');
 
     // A bank's distribution: offered with its bank, installed through the verification of its kind, shown with its open payments.
+    await page.goto(`${apiUrl}/#/service/content`);
     const dist = page.locator('[data-testid=version-row][data-tag="dist/example-bank/2026.11.22-1"]');
     await dist.waitFor();
     expect(await dist.textContent()).toContain('example-bank');
