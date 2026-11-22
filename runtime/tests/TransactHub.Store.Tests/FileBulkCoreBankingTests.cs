@@ -111,6 +111,22 @@ public sealed class FileBulkCoreBankingTests
     }
 
     [Fact]
+    public async Task A_posting_is_inquired_by_its_batch_from_the_answer_given_or_the_upload_status()
+    {
+        var b = Binding(new() { ["simulator.failAccounts"] = "0336543210987", ["simulator.failTimes"] = "9", ["repostAttempts"] = "0" });
+        var (cb, t, g) = Adapter(b);
+        await cb.Post(Batch("P-1"));
+        Assert.Equal(new PostingInquiry("P-1", true, false, null), await cb.Inquire("P-1"));
+        // After a restart the answer is read from core banking's status of the batch's file.
+        var (again, _, _) = Adapter(b, t, g);
+        Assert.Equal(new PostingInquiry("P-1", true, false, null), await again.Inquire("P-1"));
+        var (ok, _, _) = Adapter();
+        await ok.Post(Batch("P-2", ("debit", "9990000000002", 10m), ("credit", "0331234567890", 10m)));
+        Assert.Equal(new PostingInquiry("P-2", true, true, "DEP-2.txt"), await ok.Inquire("P-2"));
+        Assert.Equal(new PostingInquiry("P-9", false, false, null), await again.Inquire("P-9"));
+    }
+
+    [Fact]
     public async Task The_status_is_read_until_core_banking_answers_and_no_answer_is_an_unknown_fate()
     {
         var (cb, _, _) = Adapter(Binding(new() { ["simulator.pendingPolls"] = "2", ["statusPolls"] = "3" }));
