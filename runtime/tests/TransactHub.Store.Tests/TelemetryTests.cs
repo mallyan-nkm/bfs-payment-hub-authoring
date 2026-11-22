@@ -21,7 +21,7 @@ using Xunit;
 
 namespace TransactHub.Store.Tests;
 
-// Monitoring of the runtime (R-13-01 to R-13-07, I-66): a WPS salary file's attempts through the Temporal host, over
+// Monitoring of the runtime (R-09-23 to R-09-28, I-66): a WPS salary file's attempts through the Temporal host, over
 // HTTP to a worker, with its payload in the store, emit one trace (intake, attempts, store writes), the payments,
 // activity, queue and store metrics, and logs carrying the trace id; and nothing an exporter receives holds a value
 // from the file's party records. The exporters are OpenTelemetry's in-memory ones, behind the masking processors.
@@ -265,6 +265,53 @@ public sealed class TelemetryTests(Databases dbs)
         Assert.Null(span.GetTagItem("th.events.unmasked"));
         var leaks = Strings(exported).Where(s => PartyValues.Any(s.Contains) || s.Contains("AE070331234567890123457") || s.Contains("Employee Two")).ToList();
         Assert.True(leaks.Count == 0, string.Join('\n', leaks));
+    }
+
+    static string Repo()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
+            if (Directory.Exists(Path.Combine(d.FullName, "runtime", "observability"))) return d.FullName;
+        throw new DirectoryNotFoundException("the repository root");
+    }
+
+    [Fact]
+    public void The_local_stack_pins_every_image_and_its_dashboards_read_only_metrics_the_hosts_emit()
+    {
+        var root = Repo();
+        var obs = Path.Combine(root, "runtime", "observability");
+        // Every image by tag and digest (R-09-29).
+        var images = File.ReadAllLines(Path.Combine(obs, "docker-compose.yml")).Select(l => l.Trim()).Where(l => l.StartsWith("image:")).ToList();
+        Assert.Equal(5, images.Count);
+        Assert.All(images, i => Assert.Matches(@"^image: [a-z0-9./-]+:[0-9A-Za-z.]+@sha256:[0-9a-f]{64}$", i));
+
+        // The instruments the hosts define: the runtime's (System.Diagnostics.Metrics) and the studio's (OpenTelemetry JS).
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(root, "runtime", "src"), "*.cs", SearchOption.AllDirectories)
+                     .Concat(Directory.EnumerateFiles(Path.Combine(root, "studio", "engines", "shared"), "*.cs")))
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(f), @"Create(?:Counter|Histogram|ObservableGauge|UpDownCounter)(?:<\w+>)?\(""(th\.[a-z._]+)"""))
+                known.Add(m.Groups[1].Value.Replace('.', '_'));
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(Path.Combine(root, "studio", "src", "telemetry", "telemetry.ts")), @"create(?:Counter|Histogram|UpDownCounter)\('(th\.[a-z._]+)'"))
+            known.Add(m.Groups[1].Value.Replace('.', '_'));
+        Assert.Contains("th_payments", known);
+        Assert.Contains("th_port_call_duration", known);
+
+        // Every th_ metric a dashboard reads, as Prometheus names it (unit and type suffixes), is one of them.
+        var dashboards = Directory.GetFiles(Path.Combine(obs, "grafana", "dashboards"), "*.json");
+        Assert.Equal(["engines.json", "payments.json", "ports.json", "store.json"], dashboards.Select(Path.GetFileName).Order().ToArray());
+        var unknown = new List<string>();
+        foreach (var d in dashboards)
+        {
+            var json = JsonNode.Parse(File.ReadAllText(d))!;
+            // The labels of a grouping (by (...)) are not metrics.
+            foreach (var expr in json["panels"]!.AsArray().SelectMany(p => p!["targets"]!.AsArray()).Select(t => System.Text.RegularExpressions.Regex.Replace((string)t!["expr"]!, @"by \([^)]*\)", "")))
+                foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(expr, @"\bth_[a-z_]+(?=\{|\[|\))"))
+                {
+                    var name = System.Text.RegularExpressions.Regex.Replace(m.Value, "(_bucket|_count|_sum|_total)$", "");
+                    name = System.Text.RegularExpressions.Regex.Replace(name, "_seconds$", "");
+                    if (!known.Contains(name)) unknown.Add($"{Path.GetFileName(d)}: {m.Value}");
+                }
+        }
+        Assert.True(unknown.Count == 0, "dashboards read metrics no host emits:\n" + string.Join('\n', unknown));
     }
 
     sealed class Api(StoreOptions o) : WebApplicationFactory<Program>

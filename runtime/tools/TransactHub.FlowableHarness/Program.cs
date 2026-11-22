@@ -16,7 +16,7 @@ if (args.Length == 0)
     return 2;
 }
 int code;
-// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; the run joins the caller's trace (TRACEPARENT) (R-13-01, R-13-02).
+// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; the run joins the caller's trace (TRACEPARENT) (R-09-23, R-09-24).
 using var telemetry = TelemetryHost.Start("transacthub-engine-flowable");
 EngineTelemetry.LogSink = telemetry.Sink(EngineTelemetry.SourceName);
 try

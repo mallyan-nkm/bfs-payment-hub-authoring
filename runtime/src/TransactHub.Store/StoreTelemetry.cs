@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace TransactHub.Store;
 
 /// <summary>
-/// Every write to the store, seen once, whoever writes it (R-13-03, I-66): a span and the write latency, by
+/// Every write to the store, seen once, whoever writes it (R-09-25, I-66): a span and the write latency, by
 /// what was written (the row kinds) and on which database. It uses only System.Diagnostics; a host attaches
 /// OpenTelemetry. The span names row kinds and counts, never a column value.
 /// </summary>

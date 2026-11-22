@@ -225,7 +225,7 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
   console.log(USAGE);
 }
 
-// Telemetry over OTLP when OTEL_* names an endpoint (R-13-01): a deploy is one trace across every process it starts.
+// Telemetry over OTLP when OTEL_* names an endpoint (R-10-07): a deploy is one trace across every process it starts.
 initTelemetry('transacthub-studio-cli');
 main().catch((e) => {
   if (e instanceof UsageError) {

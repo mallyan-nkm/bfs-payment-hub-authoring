@@ -8,7 +8,7 @@ import { inSpan, initTelemetry, log, shutdownTelemetry, flushTelemetry } from '.
 import { isPersonalKey, MASKED, scrub } from '../src/telemetry/mask.js';
 import { freshEnv } from './helpers.js';
 
-// Monitoring of the studio (R-13-01 to R-13-05, I-66): the WPS salary file run end to end on the studio's
+// Monitoring of the studio (R-10-07, R-10-08, I-66): the WPS salary file run end to end on the studio's
 // interpreter emits one trace (the payment, each port call), the port-call metrics and logs carrying the trace id,
 // and nothing an exporter receives holds a value of the file's party records. In-memory exporters, behind the masking.
 

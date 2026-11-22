@@ -36,7 +36,7 @@ The source wrote 16 user requirements over six schemes and the platform. Under t
 | WPS salary processing | The `uae.wps` legs on the common lifecycle; outward first (P1), inward complete in P2 | Provisional scheme content; outward runs end to end |
 | Multi-tenancy | Tenants in the studio (R-06-01 to R-06-04); tenant as a column in the store | Built |
 | Bank extension and integration | Hooks, configuration sets and port bindings (Part 6; plan W6) | Built for core banking |
-| Observability and monitoring | [I-66](../../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio) | Not decided |
+| Observability and monitoring | OpenTelemetry in every host, R-09-23 to R-09-29 and R-10-07 to R-10-09 ([I-66](../../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio)); load test R-09-30 ([`LOAD-TEST.md`](../../runtime/LOAD-TEST.md)) | Built; targets open (I-68) |
 | Security and access control | Studio roles and maker-checker (C17); operators [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) | Studio built; operators not decided |
 | Immutable audit | The store's fact chain; the studio's audit on the branch | Built |
 | Reporting | [I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) | Not decided |

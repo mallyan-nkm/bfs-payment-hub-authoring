@@ -18,7 +18,7 @@ var options = new StoreOptions(provider, connection);
 var testEnvironments = (builder.Configuration["Releases:TestEnvironments"] ?? "test,dev,kit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
 builder.Services.AddSingleton(TimeProvider.System);
-// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; /health/live and /health/ready (R-13-01, R-13-07).
+// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; /health/live and /health/ready (R-09-23, R-09-28).
 builder.Services.AddTransactHubTelemetry("transacthub-api");
 builder.Services.AddHealthChecks().AddCheck<StoreReady>("store", tags: [WebTelemetry.Ready]);
 var app = builder.Build();

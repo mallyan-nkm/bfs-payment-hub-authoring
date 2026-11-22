@@ -961,7 +961,7 @@ async function runNative(act: any, view: any, params: Record<string, any>, now: 
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
-  // The native host's ports are the bank's: the call is a port call span, and carries the trace (R-13-03).
+  // The native host's ports are the bank's: the call is a port call span, and carries the trace (R-09-25).
   const t0 = performance.now();
   const portAttrs = attrs({ 'th.port': 'native-host', 'th.activity': act.name });
   try {
@@ -1083,7 +1083,7 @@ function makeIO(act: any, frame: Frame, scope: Scope, stepId: string, view: any,
       run.messages.push(msg);
       inst.event('message-out', label(frame, stepId), { port, type: msg.type, id: msg.id });
       const sim = run.simFor(port);
-      // A port call is a span of its own and a latency (R-13-03), made and ended here with no await, so the
+      // A port call is a span of its own and a latency (R-09-25), made and ended here with no await, so the
       // interpreter's order of events is what it was.
       const t0 = performance.now();
       const portAttrs = attrs({ 'th.port': port, 'th.activity': act.name });

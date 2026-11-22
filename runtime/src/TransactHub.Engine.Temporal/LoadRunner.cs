@@ -10,7 +10,7 @@ using TransactHub.Store;
 namespace TransactHub.Engine.Temporal;
 
 /// <summary>
-/// Many payments of one deployment on Temporal, side by side (the runtime's load harness, R-13-09, I-68): the plan the
+/// Many payments of one deployment on Temporal, side by side (the runtime's load harness, R-09-30, I-68): the plan the
 /// deploy runner writes, with <c>runs</c> (one context per file, each already through the front door's intake) and
 /// <c>concurrency</c>. One set of Temporal workers and one claim check serve every run, as a runtime host does; each run
 /// has its own front door and root workflow. It prints per run what it took and how it ended, and never what the
@@ -19,6 +19,24 @@ namespace TransactHub.Engine.Temporal;
 public sealed class LoadRunner(JsonObject input)
 {
     readonly JsonObject built = (JsonObject)J.P(input, "built")!;
+
+    /// <summary>A fresh server has no namespace: register the client's, and wait until the frontend knows it.</summary>
+    public static async Task EnsureNamespace(ITemporalClient c)
+    {
+        var created = false;
+        try
+        {
+            await c.WorkflowService.RegisterNamespaceAsync(new Temporalio.Api.WorkflowService.V1.RegisterNamespaceRequest
+            {
+                Namespace = c.Options.Namespace,
+                WorkflowExecutionRetentionPeriod = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromDays(1)),
+            });
+            created = true;
+        }
+        catch (Temporalio.Exceptions.RpcException e) when (e.Code == Temporalio.Exceptions.RpcException.StatusCode.AlreadyExists) { }
+        // A namespace just registered reaches the frontend's cache within about ten seconds.
+        if (created) await Task.Delay(TimeSpan.FromSeconds(12));
+    }
 
     public async Task<JsonObject> Run(WorkflowEnvironment env)
     {
@@ -114,7 +132,7 @@ public sealed class LoadRunner(JsonObject input)
                     ["signals"] = new JsonArray(), ["deliveries"] = J.Clone(deliveries),
                 };
                 var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), new WorkflowOptions($"front-door-{rootId}", ScenarioRunner.HostQueue));
-                await fd.GetResultAsync();
+                var fdOut = (JsonObject)J.Parse(await fd.GetResultAsync())!;
                 var o = (JsonObject)J.Parse(await env.Client.GetWorkflowHandle(rootId).GetResultAsync<string>())!;
                 if (J.S(o, "outputRef") is string reff && host.Outputs.TryGetValue(reff, out var kept)) o = (JsonObject)J.Parse(kept)!;
                 var trace = J.Strings(J.P(o, "trace")).ToList();
@@ -130,6 +148,7 @@ public sealed class LoadRunner(JsonObject input)
                 {
                     ["label"] = label, ["lines"] = lines, ["outcome"] = outcome, ["trace"] = J.Arr(trace), ["startedMs"] = Math.Round(startedAt),
                     ["acceptMs"] = Math.Round(accepted, 1), ["ms"] = Math.Round(ms, 1), ["failed"] = J.S(o, "failed"),
+                    ["children"] = outcome == "settled" ? null : await Children(fdOut, rootId),
                 };
             }
             catch (Exception e)
@@ -138,6 +157,24 @@ public sealed class LoadRunner(JsonObject input)
                 EngineTelemetry.Payments.Add(1, new TagList { { "th.outcome", "error" }, { "th.scheme", J.S(header, "scheme") }, { "th.tenant", tenant }, { "th.engine", "temporal" } });
                 return new JsonObject { ["label"] = label, ["lines"] = lines, ["outcome"] = "error", ["error"] = e.GetType().Name + ": " + e.Message, ["ms"] = Math.Round(t0.Elapsed.TotalMilliseconds, 1) };
             }
+        }
+
+        // Why a run did not settle: how each of its other runs (the leg, the hooks) ended, the last steps of each.
+        async Task<JsonArray> Children(JsonObject fdOut, string rootId)
+        {
+            var list = new JsonArray();
+            foreach (var id in J.A(fdOut, "runs").Select(x => J.S(x, "id")!).Where(x => x != rootId))
+            {
+                try
+                {
+                    var c = (JsonObject)J.Parse(await env.Client.GetWorkflowHandle(id).GetResultAsync<string>())!;
+                    if (J.S(c, "outputRef") is string cr && host.Outputs.TryGetValue(cr, out var ck)) c = (JsonObject)J.Parse(ck)!;
+                    var t = J.Strings(J.P(c, "trace")).ToList();
+                    list.Add(new JsonObject { ["id"] = id, ["trace"] = J.Arr(t.Skip(Math.Max(0, t.Count - 6))), ["failed"] = J.S(c, "failed") });
+                }
+                catch (Exception e) { list.Add(new JsonObject { ["id"] = id, ["error"] = e.GetType().Name }); }
+            }
+            return list;
         }
 
         await Task.WhenAll(Enumerable.Range(0, runs.Count).Select(one));

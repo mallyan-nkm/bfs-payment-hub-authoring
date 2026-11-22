@@ -1,0 +1,27 @@
+# The local stack's data sources (R-09-29). Grafana runs on the host's network: Prometheus on 19090, Jaeger and Loki on
+# the ports the compose file publishes. A log line links to its trace by trace id.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: th-prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:19090
+    isDefault: true
+  - name: Jaeger
+    uid: th-jaeger
+    type: jaeger
+    access: proxy
+    url: http://127.0.0.1:16686
+  - name: Loki
+    uid: th-loki
+    type: loki
+    access: proxy
+    url: http://127.0.0.1:13100
+    jsonData:
+      derivedFields:
+        - name: trace
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: th-jaeger
+          url: "$${__value.raw}"

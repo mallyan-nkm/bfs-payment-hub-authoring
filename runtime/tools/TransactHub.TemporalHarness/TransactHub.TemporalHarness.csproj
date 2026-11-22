@@ -6,7 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Temporal's spans (workflow, activity, signal) and its SDK metrics, into OpenTelemetry (R-13-02). -->
+    <!-- Temporal's spans (workflow, activity, signal) and its SDK metrics, into OpenTelemetry (R-09-24). -->
     <PackageReference Include="Temporalio.Extensions.OpenTelemetry" Version="1.21.1" />
     <PackageReference Include="Temporalio.Extensions.DiagnosticSource" Version="1.21.1" />
   </ItemGroup>

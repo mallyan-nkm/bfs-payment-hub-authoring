@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace TransactHub.Engines;
 
 /// <summary>
-/// What every engine binding tells an operator (R-13-01 to R-13-06, I-66): one span per activity attempt and
+/// What every engine binding tells an operator (R-09-23 to R-09-28, I-66): one span per activity attempt and
 /// per run, and the payments, activity and queue metrics, under one set of attribute names. It uses only
 /// System.Diagnostics, so it costs nothing when no listener is attached (the studio's own harnesses); a
 /// runtime host attaches OpenTelemetry (TransactHub.Telemetry). Attributes carry ids, names of documents

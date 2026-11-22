@@ -15,10 +15,10 @@ using TransactHub.Telemetry;
 // OBSERVATION <json>, as the DTFx and Elsa harnesses do. With TH_TEMPORAL_ADDRESS it runs on that
 // server in real time; without, on Temporal's time-skipping test server.
 //
-// `--load <plan.json>`: the runtime's load harness (runtime/load, R-13-09). The plan carries many runs of one
+// `--load <plan.json>`: the runtime's load harness (runtime/load, R-09-30). The plan carries many runs of one
 // deployment; it prints LOAD <json>, what each run took and how it ended.
 //
-// Telemetry (R-13-01, R-13-02): with OTEL_EXPORTER_OTLP_ENDPOINT set, traces, metrics and logs go there over OTLP.
+// Telemetry (R-09-23, R-09-24): with OTEL_EXPORTER_OTLP_ENDPOINT set, traces, metrics and logs go there over OTLP.
 // The run joins the caller's trace (TRACEPARENT, as the deploy runner sets it); Temporal's interceptor carries
 // it through every workflow, activity and signal; Temporal's SDK metrics are a meter of their own.
 
@@ -47,6 +47,7 @@ try
         : await ScenarioRunner.StartTestServer(runtime, interceptors);
     if (load)
     {
+        if (Environment.GetEnvironmentVariable("TH_TEMPORAL_ADDRESS") is { Length: > 0 }) await LoadRunner.EnsureNamespace(env.Client);
         var result = await new LoadRunner(input).Run(env);
         Console.Out.WriteLine("LOAD " + J.Str(result));
     }

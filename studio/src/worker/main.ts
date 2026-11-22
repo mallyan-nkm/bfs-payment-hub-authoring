@@ -20,9 +20,9 @@ import { attrs, contextFrom, inSpan, initTelemetry, log, meters, shutdownTelemet
 //   POST /start       -> deliveries from inward simulators
 //   GET  /sent        -> messages sent on ports
 //   GET  /stats       -> tasks served and refused
-//   GET  /health/live, /health/ready -> the process answers; it has loaded its tasks (R-13-07)
+//   GET  /health/live, /health/ready -> the process answers; it has loaded its tasks (R-10-09)
 //
-// Telemetry (R-13-01): with OTEL_EXPORTER_OTLP_ENDPOINT set, each attempt is a span in the trace the engine sent
+// Telemetry (R-10-07): with OTEL_EXPORTER_OTLP_ENDPOINT set, each attempt is a span in the trace the engine sent
 // (traceparent), with the port calls it makes inside it, and the worker's metrics and logs go there too.
 
 const args = process.argv.slice(2);

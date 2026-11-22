@@ -11,7 +11,7 @@ using OpenTelemetry.Trace;
 
 namespace TransactHub.Telemetry;
 
-/// <summary>OpenTelemetry and the health endpoints for a runtime host that serves HTTP (the release API) (R-13-01, R-13-07).</summary>
+/// <summary>OpenTelemetry and the health endpoints for a runtime host that serves HTTP (the release API) (R-09-23, R-09-28).</summary>
 public static class WebTelemetry
 {
     /// <summary>Tag of the checks that decide readiness; liveness runs none.</summary>

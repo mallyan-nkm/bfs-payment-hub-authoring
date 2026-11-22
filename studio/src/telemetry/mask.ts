@@ -1,4 +1,4 @@
-// What keeps personal data out of the studio's telemetry (R-13-05): the same two rules as the runtime's
+// What keeps personal data out of the studio's telemetry (R-10-08): the same two rules as the runtime's
 // (runtime/src/TransactHub.Telemetry/Masking.cs). A key that names personal data has its value replaced; every
 // string value has IBANs, emails and runs of eight or more digits masked, keeping the last four characters.
 

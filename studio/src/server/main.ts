@@ -20,7 +20,7 @@ try {
   console.error(`The studio does not start: ${e?.message ?? e}`);
   process.exit(1);
 }
-// Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-13-01); a request is a span, its route a dimension.
+// Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-10-07); a request is a span, its route a dimension.
 initTelemetry('transacthub-studio');
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void shutdownTelemetry().finally(() => process.exit(0)); });
 const port = Number(process.env.PORT ?? 4317);
@@ -36,7 +36,7 @@ function routeOf(p: string): string {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
-  // Liveness and readiness (R-13-07): the process answers; it has read the content branch and is not mid-change.
+  // Liveness and readiness (R-10-09): the process answers; it has read the content branch and is not mid-change.
   if (url.pathname === '/health/live') return void res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ status: 'live' }));
   if (url.pathname === '/health/ready') {
     const c = env.store.content;

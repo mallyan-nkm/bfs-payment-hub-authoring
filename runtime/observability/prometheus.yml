@@ -1,0 +1,21 @@
+# The local stack's Prometheus (R-09-29), on the host's network. What the hosts export over OTLP comes through the
+# collector; each Temporal server's own metrics (frontend, history, matching and the persistence layer: persistence_requests,
+# persistence_latency and persistence_errors by operation, which is where our SQL Server plugin shows) are scraped
+# from its metrics port: 8000 plus the server's TEMPORAL_PORT_OFFSET. The load harness uses offsets 2000 (SQL Server)
+# and 3000 (PostgreSQL).
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: transacthub
+    static_configs:
+      - targets: ["127.0.0.1:18889"]
+  - job_name: temporal
+    static_configs:
+      - targets: ["127.0.0.1:8000"]
+        labels: { temporal_store: sqlserver, temporal_server: dev }
+      - targets: ["127.0.0.1:10000"]
+        labels: { temporal_store: sqlserver, temporal_server: load }
+      - targets: ["127.0.0.1:11000"]
+        labels: { temporal_store: postgres, temporal_server: load }

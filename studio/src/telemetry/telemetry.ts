@@ -11,11 +11,11 @@ import { MeterProvider, PeriodicExportingMetricReader, type PushMetricExporter }
 import { BatchSpanProcessor, SimpleSpanProcessor, TracerProvider, type ReadableSpan, type SpanExporter } from '@opentelemetry/sdk-trace';
 import { maskAttributes, maskValue, scrub } from './mask.js';
 
-// OpenTelemetry for the studio's processes (R-13-01, I-66): the studio server, the deploy runner and the deployed
+// OpenTelemetry for the studio's processes (R-10-07, I-66): the studio server, the deploy runner and the deployed
 // activity workers. Traces, metrics and logs go over OTLP to the endpoint the standard variables name
 // (OTEL_EXPORTER_OTLP_ENDPOINT and the per-signal ones, OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES,
 // OTEL_SDK_DISABLED); with none set nothing is installed and the API's no-op is all that runs. Every span, log
-// record and metric attribute passes the masking rules first (R-13-05). A collector that is down never stops the work.
+// record and metric attribute passes the masking rules first (R-10-08). A collector that is down never stops the work.
 
 const NAME = 'transacthub-studio';
 let installed: { flush(): Promise<void>; shutdown(): Promise<void> } | undefined;

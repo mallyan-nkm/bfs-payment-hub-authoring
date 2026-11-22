@@ -39,7 +39,7 @@ export interface DeployRequest {
   studioRoot: string; // where the engine harnesses live
   keep?: boolean;
   /**
-   * The runtime's load harness (runtime/load, R-13-09): many files through the same deployment at once, on Temporal.
+   * The runtime's load harness (runtime/load, R-09-30): many files through the same deployment at once, on Temporal.
    * Each file goes through the front door's intake on the workers, then the harness runs them all side by side.
    */
   load?: { inbounds: { label: string; payload: string }[]; concurrency: number; worker?: { maxConcurrentActivities?: number; maxConcurrentWorkflowTasks?: number } };
@@ -94,7 +94,7 @@ function scopeOf(name: string) {
   return parts[0] === 'p' || parts[0] === 'b' ? parts[0] : parts.slice(0, 2).join('.');
 }
 
-/** One deployment's run, as a span (R-13-02): every child process continues this trace (TRACEPARENT, traceparent). */
+/** One deployment's run, as a span (R-09-24): every child process continues this trace (TRACEPARENT, traceparent). */
 export async function deploy(req: DeployRequest): Promise<DeployResult> {
   return inSpan('th.payment', attrs({ 'th.workflow': req.workflow, 'th.tenant': req.environment.tenant, 'th.engine': req.engine }), () => deployRun(req));
 }
@@ -275,7 +275,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
         const st = await (await fetch(`${pr.url}/stats`)).json();
         workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
       }
-      return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-50) }, elapsedMs: Date.now() - t0, log, load: measured };
+      return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-200000) }, elapsedMs: Date.now() - t0, log, load: measured };
     }
     const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
     if (!obsLine) {
