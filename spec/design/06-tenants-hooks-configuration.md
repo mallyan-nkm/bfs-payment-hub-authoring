@@ -50,6 +50,7 @@ The studio is one multi-tenant application. Every bank is a tenant that shares p
 | R-06-22 | A secret MUST be named by reference, never by value: `secretRef: env:NAME`, `file:/absolute/path` (a mounted secret file) or `vault:mount/path#field` (a HashiCorp Vault KV version 2 field). The host MUST resolve it through its one secret interface (`ISecretResolver` in `runtime/src/TransactHub.Security`, `resolveSecret` in `studio/src/secrets`) at the moment it is used. A value MUST NOT be written to the branch, the store, a package, a log line or an exception message; a reference that cannot be resolved fails the step and names the reference only. | `SecretsTests` and `VaultTests` (`runtime/tests/TransactHub.Security.Tests`, Vault in a container); `CoreBankingPostingTests.The_gateway_s_credential_travels_by_reference_only`; `studio/test/signing.test.ts` ("secrets are read by reference only") |
 | R-06-23 | No binding, configuration set, artefact or export package MAY carry a literal secret. A package that carries one is not promotable and is not signed. | Lint L37 (`tools/validate.py`, studio check, the exporter); CI job `security` |
 | R-06-24 | The runtime's operators MUST be identified by the bank's identity provider (OIDC: the authorisation code flow with PKCE for the console, a validated bearer token for its API), never by the studio's issuer and never by a name in the request. Their roles, Operator and Supervisor, MUST be per tenant and come from the bank's claims or groups through a configured mapping; the runtime keeps no identity store. An operator sees and acts on the payments of their tenants only. A dev sign-in MAY exist for synthetic users only, and MUST be refused when the host runs in production. | `OperatorAuthTests`; `OperatorApiTests` |
+| R-06-25 | The runtime's service engineers MUST be identified as operators are (R-06-24), by the bank's identity provider through the role map, with the roles ServiceEngineer and ServiceApprover. The service console MUST refuse a caller with neither role, and a ServiceApprover MUST be another person than the engineer who asked for the action they approve. | `ServiceApiTests` |
 
 ## 6.5 Roles
 
@@ -67,6 +68,8 @@ The roles above are the studio's, for authoring. The runtime's operators are not
 | --- | --- |
 | Operator | See the tenant's payments in the operations console; take the actions an operations view offers with role Operator; ask for one that needs a second approver |
 | Supervisor | All an operator may, and approve or reject an action another person asked for (maker-checker, R-05-50); rebuild the read model |
+| ServiceEngineer | Use the service console (R-06-25, R-09-39 to R-09-44): health, content, backups, logs, the error dictionary, the assistant; ask for a troubleshooting action |
+| ServiceApprover | All a service engineer may, and approve or reject a risky action another person asked for |
 
 ## 6.6 Examples
 

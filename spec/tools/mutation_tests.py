@@ -24,6 +24,7 @@ EB = "../content-configurations/banks/example-bank"
 WF = "factory/p/workflows/p.wf.corporate.v1.yaml"
 SAL = "factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml"
 OPV = "factory/uae.wps/views/uae.wps.view.operations.v1.yaml"
+ERRS = "factory/p/errors/p.errors.platform.v1.yaml"
 
 # (id, expected line prefix, file, old text, new text, what it breaks)
 CASES = [
@@ -129,18 +130,31 @@ CASES = [
      "a view shows a value unmasked without naming the old screen that did"),
     ("M46", "ERROR L38", OPV,
      "source: ext.uae.wps.salaryMonth,", "source: ext.uae.wps.salaryMonths,", "a view reads an extension field nobody registers"),
-    # R-08-16: only an activity with a script-behind or a builtin may say the native host implements it too (L39)
-    ("M47", "ERROR L39", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
+    # R-05-51, R-05-52: every error an activity, rule, port or engine can raise has a dictionary entry (L39)
+    ("M47", "ERROR L39", ERRS,
+     "  - code: TransientError\n", "  - code: TransientFailure\n", "the activities' TransientError has no entry"),
+    ("M48", "ERROR L39", "factory/p/rules/p.rule.amount-positive.v1.yaml",
+     "reasonCode: AM01", "reasonCode: AM99", "a rule gives a reason code no dictionary has"),
+    ("M49", "ERROR L39", ERRS,
+     "  - code: flowable.DeadLetterJob\n", "  - code: flowable.DeadLetter\n", "an engine binding's error has no entry"),
+    ("M50", "ERROR L39", "factory/uae.wps/errors/uae.wps.errors.wps.v1.yaml",
+     "  - code: FF01\n", "  - code: AM10\n", "a dictionary has two entries for one code, and the party's FF01 has none"),
+    ("M51", "ERROR L39", ERRS,
+     "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - port\n",
+     "  - code: AC04\n    title: Closed account number\n    category: business\n    retryable: false\n    isoReasonCode: AC04\n    raisedBy:\n      - rule\n",
+     "a party's reason code is in the dictionary only as a rule's"),
+    # R-08-16: only an activity with a script-behind or a builtin may say the native host implements it too (L40)
+    ("M52", "ERROR L40", "factory/uae.wps/activities/uae.wps.exchange.return-credits.v1.yaml",
      "  subflow: uae.wps.sub.return-credits.v1\n", "  subflow: uae.wps.sub.return-credits.v1\n  native: true\n",
      "a composite says the native host implements it"),
-    # R-11-36: a file a seed published keeps the text its ledger records (L40)
-    ("M48", "ERROR L40", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
+    # R-11-36: a file a seed published keeps the text its ledger records (L41)
+    ("M53", "ERROR L41", "../content-configurations/artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml",
      "title: ACK or NAK to status", "title: ACK or NAK to a status", "a published release is edited on the branch"),
-    # R-11-35: a factory artefact changed at a release the branch already holds (L40)
-    ("M49", "ERROR L40", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
+    # R-11-35: a factory artefact changed at a release the branch already holds (L41)
+    ("M54", "ERROR L41", "factory/uae.wps/rules/uae.wps.rule.currency-aed.v1.yaml",
      "title: ", "title: Changed ", "a factory artefact is changed without a new release"),
-    # R-11-36: a seeded file no ledger records (L40)
-    ("M50", "ERROR L40", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
+    # R-11-36: a seeded file no ledger records (L41)
+    ("M55", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
      "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
      "a seeded file is in no ledger"),
 ]
@@ -152,7 +166,7 @@ def run_case(case):
         tmp = pathlib.Path(top) / "spec"
         for d in COPY:
             shutil.copytree(ROOT / d, tmp / d, ignore=shutil.ignore_patterns("__pycache__"))
-        # the content branch's copy beside spec/: the bank packs (L35) and what the seeds published (L40)
+        # the content branch's copy beside spec/: the bank packs (L35) and what the seeds published (L41)
         if CONTENT.is_dir():
             shutil.copytree(CONTENT, pathlib.Path(top) / "content-configurations")
         rel_path = pathlib.Path(rel)

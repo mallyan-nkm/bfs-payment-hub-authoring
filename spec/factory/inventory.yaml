@@ -7,6 +7,7 @@ packs:
     packType: shared
     counts:
       activity: 21
+      error-dictionary: 1
       port: 10
       rule: 7
       ruleset: 2
@@ -15,7 +16,7 @@ packs:
       test: 2
       operations-view: 1
       workflow: 6
-    total: 62
+    total: 63
     artefacts:
       - name: p.decide.await-posting-window.v1
         kind: activity
@@ -59,6 +60,8 @@ packs:
         kind: activity
       - name: p.validate.limits.v1
         kind: activity
+      - name: p.errors.platform.v1
+        kind: error-dictionary
       - name: p.port.channel.v1
         kind: port
       - name: p.port.core-banking.v1
@@ -145,11 +148,12 @@ packs:
     packType: shared
     counts:
       activity: 3
+      error-dictionary: 1
       port: 2
       rule: 5
       ruleset: 1
       simulator: 2
-    total: 13
+    total: 14
     artefacts:
       - name: uae.p.enrich.business-date.v1
         kind: activity
@@ -157,6 +161,8 @@ packs:
         kind: activity
       - name: uae.p.validate.iban.v1
         kind: activity
+      - name: uae.p.errors.cluster.v1
+        kind: error-dictionary
       - name: uae.p.port.calendar.v1
         kind: port
       - name: uae.p.port.participant-directory.v1
@@ -181,6 +187,7 @@ packs:
     packType: shared
     counts:
       activity: 29
+      error-dictionary: 1
       extension: 1
       port: 2
       rule: 11
@@ -191,7 +198,7 @@ packs:
       test: 18
       operations-view: 1
       workflow: 11
-    total: 81
+    total: 82
     artefacts:
       - name: uae.wps.decide.returns.v2
         kind: activity
@@ -251,6 +258,8 @@ packs:
         kind: activity
       - name: uae.wps.validate.salary-record.v1
         kind: activity
+      - name: uae.wps.errors.wps.v1
+        kind: error-dictionary
       - name: uae.wps.ext.salary.v1
         kind: extension
       - name: uae.wps.port.employer-channel.v1

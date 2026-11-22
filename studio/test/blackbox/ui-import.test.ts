@@ -38,7 +38,7 @@ describe('import in the web app', () => {
     await page.getByTestId('import-summary').waitFor({ timeout: 60000 });
     expect(await page.getByText('may be imported').count()).toBe(1);
     const coverage = (await page.getByTestId('import-coverage').textContent()) ?? '';
-    expect(coverage).toMatch(/Source files95/);
+    expect(coverage).toMatch(/Source files96/);
     expect(coverage).toMatch(/Neither0/);
     expect(await page.getByTestId('import-tests').locator('tbody tr').count()).toBe(18);
     expect(await page.getByTestId('import-tests').getByText('fail').count()).toBe(0);

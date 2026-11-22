@@ -73,7 +73,7 @@ public static class OperatorAuth
 /// <summary>
 /// An operator from the runtime's claims: the role map's roles (<see cref="RuntimeAuth.RoleClaim"/>) in each tenant it grants
 /// (<see cref="RuntimeAuth.TenantClaim"/>, <c>*</c> for every tenant). The library grants roles and tenants together, not a
-/// role per tenant (Issue I-101).
+/// role per tenant (Issue I-65).
 /// </summary>
 public sealed class RuntimeAuthOperators : IOperatorIdentityResolver
 {

@@ -30,7 +30,7 @@ import { USERS_PATH, documentPath } from './layout.js';
 // `banks/<bank>/pack.yaml`, whose place R-11-28 fixes: the earlier lock is kept first at `packs/<release>.yaml`.
 //
 // Each seed records what it published, path and SHA-256, in `change-sets/ledger/<id>.yaml` (R-11-36). `studio check` and
-// tools/validate.py (L40) hold every recorded file to its hash, so a published release never changes once seeded.
+// tools/validate.py (L41) hold every recorded file to its hash, so a published release never changes once seeded.
 
 const STUDIO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 

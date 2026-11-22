@@ -19,7 +19,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_OF = {"activity": "activity", "rule": "rule", "ruleset": "rule", "table": "rule", "workflow": "workflow",
              "simulator": "simulator", "scheme": "scheme", "hook": "hook", "configuration-set": "configuration-set",
              "pack": "pack", "engine-binding": "engine-binding", "test": "test-case", "extension": "extension",
-             "port": "port", "supersession": "supersession", "operations-view": "operations-view"}
+             "port": "port", "supersession": "supersession", "operations-view": "operations-view",
+             "error-dictionary": "error-dictionary"}
 errors, warnings = [], []
 
 
@@ -594,12 +595,12 @@ for path, d in docs:
         err("L27", path, "maker and checker are the same person")
 
 # ------------------------------------------------------- native code-behinds
-# L39 an activity that says the runtime's native host implements it as well (R-08-16) keeps a script-behind or a builtin for
+# L40 an activity that says the runtime's native host implements it as well (R-08-16) keeps a script-behind or a builtin for
 # every other run: `native: true` goes with binding script or builtin only.
 for path, d in docs:
     impl = d.get("implementation") or {}
     if d.get("kind") == "activity" and impl.get("native") and impl.get("binding") not in ("script", "builtin"):
-        err("L39", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
+        err("L40", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
             % (d["name"], impl.get("binding")))
 
 # ------------------------------------------------------- factory packs
@@ -638,7 +639,7 @@ for path, d in docs:
 # publishes and are checked by the studio.
 BANKS = ROOT.parent / "content-configurations" / "banks"
 RUNTIME_KINDS = ("port-bindings", "configuration-values")
-# packs/ keeps a bank pack's earlier lock files, as published (R-11-35); L40 holds them to their hashes.
+# packs/ keeps a bank pack's earlier lock files, as published (R-11-35); L41 holds them to their hashes.
 STUDIO_FOLDERS = ("artefacts", "configuration-sets", "scripts", "packs")
 factory_names = set(by_name)
 for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
@@ -946,7 +947,7 @@ for path, d in docs:
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
                 err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
 # ------------------------------------------------- published releases never change
-# L40 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
+# L41 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
 # (content-configurations/change-sets/ledger/<id>.yaml), and still has that text: a published release is never edited. A path
 # is published once, except a bank pack's lock file, which a later ledger replaces by naming the hash it replaces and where
 # the earlier lock is kept. Every seeded file is in a ledger. And a factory artefact at a release the branch already holds
@@ -971,14 +972,14 @@ if (CC / "change-sets" / "ledger").is_dir():
             pth, h = row.get("path"), row.get("sha256")
             again = pth in recorded and not (BANK_LOCK.match(pth) and pth in replaced and replaced[pth].get("sha256") == recorded[pth][0])
             if again:
-                err("L40", at, "publishes %s again; ledger %s published it, and a published file is never replaced" % (pth, recorded[pth][1]))
+                err("L41", at, "publishes %s again; ledger %s published it, and a published file is never replaced" % (pth, recorded[pth][1]))
             recorded[pth] = (h, lf.name)
     for pth, (h, lf) in sorted(recorded.items()):
         f = CC / pth
         if not f.is_file():
-            err("L40", "content-configurations/" + pth, "ledger %s published it, and it is gone" % lf)
+            err("L41", "content-configurations/" + pth, "ledger %s published it, and it is gone" % lf)
         elif sha256(f.read_text()) != h:
-            err("L40", "content-configurations/" + pth, "has changed since ledger %s published it; a published release is never edited: release a new one" % lf)
+            err("L41", "content-configurations/" + pth, "has changed since ledger %s published it; a published release is never edited: release a new one" % lf)
     for f in sorted(CC.rglob("*")):
         if not f.is_file():
             continue
@@ -988,7 +989,7 @@ if (CC / "change-sets" / "ledger").is_dir():
             continue
         rel = f.relative_to(CC).as_posix()
         if SEED_MARK in first and rel not in recorded:
-            err("L40", "content-configurations/" + rel, "is a seeded file that no change set's ledger records")
+            err("L41", "content-configurations/" + rel, "is a seeded file that no change set's ledger records")
     # the factory at a release the branch holds is what was seeded
     for path, d in docs:
         if not path.startswith("factory/") or not d.get("release"):
@@ -999,8 +1000,99 @@ if (CC / "change-sets" / "ledger").is_dir():
         where = "artefacts/%s/%s/%s.yaml" % (scope, {"scheme": "scheme", "pack": "pack"}.get(d.get("kind"), d.get("name")), d["release"])
         seeded = CC / where
         if seeded.is_file() and seeded.read_text() != SEED_HEADER % path + (ROOT / path).read_text():
-            err("L40", path, "%s@%s is not what the branch published at that release (content-configurations/%s): a published release "
+            err("L41", path, "%s@%s is not what the branch published at that release (content-configurations/%s): a published release "
                 "is never edited; give the change a new release" % (d.get("name") or d.get("scope"), d["release"], where))
+
+# L39 the error dictionary (R-05-51, R-05-52): every error an activity declares, every reason code a rule, rule set or
+# table gives, every reason code a port's party answers (as its simulators answer for it), every code a port boundary,
+# the interpreter and each engine binding raise, has an entry, raised by that kind of thing, in a dictionary of the
+# artefact's own scope or a scope it may depend on (a scheme: its cluster platform and p; a cluster platform: p; b: any).
+# Codes are unique in a dictionary; an entry for an ISO reason code a rule or a port raises names it as its isoReasonCode.
+# The runtime's own codes (store, signing, auth, consoles) are checked against the same dictionaries by
+# runtime/tests/TransactHub.Service.Tests (ErrorDictionaryTests).
+PORT_RAISES = ["TransientError", "Timeout", "PortNotBound", "SecretUnavailable"]
+ENGINE_RAISES = {
+    "interpreter": ["Failure", "Timeout", "RetriesExhausted"],
+    "temporal": ["temporal.ServerUnreachable", "temporal.WorkflowTaskFailed"],
+    "dtfx": ["dtfx.OrchestrationFailed"],
+    "flowable": ["flowable.Unreachable", "flowable.DeadLetterJob", "th:nonRetryable"],
+    "elsa": ["elsa.WorkflowFaulted"],
+}
+dictionaries = {}  # scope -> {code: entry}
+for path, d in docs:
+    if d.get("kind") != "error-dictionary":
+        continue
+    sc = scope_of(d["name"])
+    seen = dictionaries.setdefault(sc, {})
+    for e in d.get("entries") or []:
+        if e["code"] in seen:
+            err("L39", path, "%s has two entries for code %s" % (d["name"], e["code"]))
+        seen[e["code"]] = e
+        if re.fullmatch(r"[A-Z0-9]{4}", e["code"]) and ({"rule", "port"} & set(e.get("raisedBy") or [])) and e.get("isoReasonCode") != e["code"]:
+            err("L39", path, "%s is an ISO reason code a rule or a port gives, but its entry names isoReasonCode %r" % (e["code"], e.get("isoReasonCode")))
+
+
+def dictionary_scopes(sc):
+    if sc == "b":
+        return list(dictionaries)
+    if sc == "p":
+        return ["p"]
+    if sc.endswith(".p"):
+        return [sc, "p"]
+    return [sc, sc.split(".")[0] + ".p", "p"]
+
+
+def covered(sc, code, raiser):
+    for s in dictionary_scopes(sc):
+        e = dictionaries.get(s, {}).get(code)
+        if e is not None:
+            return raiser in (e.get("raisedBy") or []), s
+    return None, None
+
+
+def need(path, sc, code, raiser, what):
+    ok, at = covered(sc, code, raiser)
+    if ok is None:
+        err("L39", path, "%s raises %s, which no error dictionary of %s has" % (what, code, " or ".join(dictionary_scopes(sc)) or "any scope"))
+    elif not ok:
+        err("L39", path, "%s raises %s, but the entry in %s's dictionary is not raised by %s" % (what, code, at, raiser))
+
+
+def reason_codes(o, acc):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == "reasonCode" and isinstance(v, str):
+                acc.add(v)
+            else:
+                reason_codes(v, acc)
+    elif isinstance(o, list):
+        for x in o:
+            reason_codes(x, acc)
+
+
+if dictionaries:
+    for path, d in docs:
+        kind, name = d.get("kind"), d.get("name")
+        if not name or kind in ("test", "error-dictionary", "pack"):
+            continue
+        sc = scope_of(name)
+        if kind == "activity":
+            for e in d.get("errors") or []:
+                need(path, sc, e["name"], "activity", "activity %s" % name)
+        if kind in ("rule", "ruleset", "table", "activity", "simulator"):
+            acc = set()
+            reason_codes(d, acc)
+            for c in sorted(acc):
+                need(path, sc, c, "port" if kind == "simulator" else "rule", "%s %s" % (kind, name))
+        if kind == "port":
+            for c in PORT_RAISES:
+                need(path, sc, c, "port", "port %s" % name)
+    targets = sorted({d["target"] for _, d in docs if d.get("kind") == "engine-binding"})
+    for t in ["interpreter"] + targets:
+        for c in ENGINE_RAISES.get(t, []):
+            need("engine-binding %s" % t, "p", c, "interpreter" if t == "interpreter" else "engine:" + t, "the %s" % ("interpreter" if t == "interpreter" else t + " binding"))
+else:
+    err("L39", "factory/p/errors", "no error dictionary: the platform's errors have no entries")
 
 # ---------------------------------------------------------------- report
 kinds = {}

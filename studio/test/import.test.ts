@@ -28,9 +28,9 @@ describe('import: the training bundle', () => {
     const r = await analyse(env, readBundle(wpsTrainingBundle(env)), OPTS);
     expect(errors(r)).toEqual([]);
     expect(r.ok).toBe(true);
-    // Plan P2 added the PSI and RRI maps, the RTC map's script, two samples and two tests (WPS-IN-008, WPS-RTC-001); the operations view one more.
-    expect(r.summary).toMatchObject({ documents: 63, activities: 29, rules: 11, workflows: 11, schemes: 1, configurationSets: 1, tests: 18, scripts: 3, samples: 9, new: 82, testsPassed: 18, testsFailed: 0 });
-    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 94, excluded: 1, missing: [] });
+    // Plan P2 added the PSI and RRI maps, the RTC map's script, two samples and two tests (WPS-IN-008, WPS-RTC-001); the operations view and the error dictionary one more each.
+    expect(r.summary).toMatchObject({ documents: 64, activities: 29, rules: 11, workflows: 11, schemes: 1, configurationSets: 1, tests: 18, scripts: 3, samples: 9, new: 83, testsPassed: 18, testsFailed: 0 });
+    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 95, excluded: 1, missing: [] });
     // Nothing was saved by a preview.
     expect(env.store.drafts('owner')).toEqual([]);
   });

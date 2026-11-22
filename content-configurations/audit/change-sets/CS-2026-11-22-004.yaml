@@ -1,23 +1,23 @@
 kind: audit
 changeSet: CS-2026-11-22-004
 events:
-  - at: 2026-11-22T08:33:58.869Z
+  - at: 2026-11-22T08:23:40.852Z
     outcome: done
     tenant: owner
     actor: service.operations
     action: seed-content
     key: CS-2026-11-22-004
-    detail: 59 file(s) from spec/examples/bank, spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.p, spec/factory/uae.wps, studio/fixtures/samples, studio/scripts
+    detail: 7 file(s) from spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.p, spec/factory/uae.wps
     changeSet: CS-2026-11-22-004
     prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    hash: sha256:f0dd01a5064944380f00e2753330de7d3ef4e1b09dbefbbca264aeddc33dcf8d
-  - at: 2026-11-22T08:33:58.874Z
+    hash: sha256:e317286ed237013cc87d1c3641437c5df4d5ad999823a7fc2f3865d907979f0c
+  - at: 2026-11-22T08:23:40.857Z
     outcome: done
     tenant: owner
     actor: service.operations
     action: publish-change-set
     key: CS-2026-11-22-004
-    detail: 54 members, listed in change-sets/CS-2026-11-22-004.yaml
+    detail: inventory, p.errors.platform.v1@1.0.0, pack:p@1.0.0, pack:uae.p@1.0.0, pack:uae.wps@1.0.0, uae.p.errors.cluster.v1@1.0.0, uae.wps.errors.wps.v1@1.0.0
     changeSet: CS-2026-11-22-004
-    prevHash: sha256:f0dd01a5064944380f00e2753330de7d3ef4e1b09dbefbbca264aeddc33dcf8d
-    hash: sha256:6eccc879bbc2cd4fc2542bb9bbf5419c19de18517a78faac37fc85d3a10ef49a
+    prevHash: sha256:e317286ed237013cc87d1c3641437c5df4d5ad999823a7fc2f3865d907979f0c
+    hash: sha256:a548a7a17c245d1aad743476bc459be9b0218e66c7c0733b14aec1b3cfbf47ba

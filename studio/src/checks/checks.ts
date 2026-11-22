@@ -64,8 +64,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
-  L39: 'An activity the native host implements as well keeps a script-behind or a builtin',
-  L40: 'A published release never changes once seeded',
+  L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
+  L41: 'A published release never changes once seeded',
 };
 
 // ---------------------------------------------------------------- walking
@@ -854,13 +854,13 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
 }
 
 /**
- * L40 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
+ * L41 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
  * it; a path is published once, except a bank pack's lock file, which a later ledger replaces; every seeded file is in a ledger.
  * `files` are the content branch's files, path to text, relative to its root. The same check as tools/validate.py.
  */
 export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
   const out: Issue[] = [];
-  const err = (file: string, message: string) => out.push({ code: 'L40', severity: 'error', key: file, message, file });
+  const err = (file: string, message: string) => out.push({ code: 'L41', severity: 'error', key: file, message, file });
   const sha = (t: string) => createHash('sha256').update(t, 'utf8').digest('hex');
   const recorded = new Map<string, { sha256: string; ledger: string }>();
   const ledgers = [...files.keys()].filter((p) => /^change-sets\/ledger\/[^/]+\.yaml$/.test(p)).sort();

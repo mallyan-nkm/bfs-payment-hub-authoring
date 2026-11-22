@@ -67,7 +67,7 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     expect(plan.clash.map((f) => f.path)).toEqual([]);
     expect(plan.replace).toEqual([]);
     expect(releaseLedgerIssues(env.store.content!.files)).toEqual([]);
-    expect(checkAll(env).filter((i) => i.code === 'L40')).toEqual([]);
+    expect(checkAll(env).filter((i) => i.code === 'L41')).toEqual([]);
   });
 
   it('a factory change at a release already published stops the seed and names the file; nothing is written', async () => {
@@ -79,7 +79,7 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     await expect(seedContent(env)).rejects.toThrow(/uae\.wps\.map\.ack-in\.v1\/1\.1\.0\.yaml.*never rewritten/);
     expect(fake().head(full, BRANCH)).toBe(before);
     // And the check names it: the published release changed since its ledger recorded it.
-    expect(checkAll(env).filter((i) => i.code === 'L40').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml']);
+    expect(checkAll(env).filter((i) => i.code === 'L41').map((i) => i.file)).toEqual(['artefacts/uae.wps/uae.wps.map.ack-in.v1/1.1.0.yaml']);
   });
 
   it('a later seed adds its new files, keeps a replaced bank lock file first, and records both in its ledger', async () => {
