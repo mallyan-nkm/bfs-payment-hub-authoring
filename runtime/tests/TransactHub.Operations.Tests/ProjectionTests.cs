@@ -143,6 +143,25 @@ public sealed class ProjectionTests(Databases dbs)
         Assert.True(await o.FieldValues.AnyAsync(v => v.SubjectId == id && v.Field == "uae.wps.view.operations.v1:subject:totalAmount" && v.Number == 1500m));
     }
 
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_initiator_the_posting_s_charges_and_the_duration_reach_the_console_and_the_initiator_masked(StoreProvider p)
+    {
+        // Issue I-100: GrpHdr/InitgPty by id only, masked; camt.054 ChrgsInf and the total debited; the duration from payment.end (I-97).
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, hold: false, console: true);
+        await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        await using var o = OpsDbContext.Open(ops);
+        var f = JsonNode.Parse((await o.Subjects.SingleAsync(x => x.Id == id)).FieldsJson)!;
+        Assert.NotNull((string?)f["initiatedBy"]);
+        Assert.NotEqual("U-000000123456", (string?)f["initiatedBy"]);
+        Assert.Equal("1510.50", (string?)f["postingTotal"]);
+        Assert.Equal("10.00", (string?)f["chargeAmount"]);
+        Assert.Equal("0.50", (string?)f["vatAmount"]);
+        Assert.Equal("settled", (string?)f["endOutcome"]);
+        Assert.StartsWith("P", (string?)f["duration"]);
+        Assert.DoesNotContain("U-000000123456", await Snapshot(ops));
+    }
+
     internal static OperatorIdentity Operator(string sub, string tenant, params string[] roles) =>
         new(sub, sub, new Dictionary<string, IReadOnlySet<string>> { [tenant] = new HashSet<string>(roles.Length == 0 ? [OperatorRoles.Operator] : roles) });
 }

@@ -75,7 +75,8 @@ describe('a distribution', () => {
     const wrongMajor = clone(legs[0]);
     wrongMajor.implements.of = wrongMajor.implements.of.map((o: string) => o.replace(/\.v1$/, '.v2'));
     expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [wrongMajor] }]).problems[0]).toMatch(/fills scheme-.*@2 of p\.wf\..*\.v2, but the platform offers scheme-.*@1/);
-    const extraWrite = clone(legs.find((l) => l.name === 'uae.wps.wf.salary-file-out.v1'));
+    // The leg's latest release, the one a build takes (1.1.0 since the labour ministry lookup, Issue I-88).
+    const extraWrite = clone(env.store.latest('uae.wps.wf.salary-file-out.v1')!.doc);
     extraWrite.entry.reads = [...extraWrite.entry.reads, 'facts.posting'];
     expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [extraWrite] }]).problems[0]).toMatch(/does not fit the slot contract scheme-leg@1 of p\.wf\.corporate\.v1: read facts\.posting/);
     // In the build: the scheme's leg in the store no longer fits, and the build is refused.

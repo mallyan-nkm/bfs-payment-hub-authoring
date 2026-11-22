@@ -66,7 +66,7 @@ public static class WpsRun
     public const string Tenant = "example-bank";
     public const string FileId = "0000001234567261117083000";
 
-    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack")
+    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack", bool console = false)
     {
         await using var db = StoreDbContext.Open(o);
         var store = new PaymentStore(db);
@@ -74,6 +74,8 @@ public static class WpsRun
         {
             MessageId = fileId, PaymentInformationId = fileId, Debtor = new Party { Name = "Example Trading LLC", IsOrganisation = true },
             DebtorAccount = new Account { Iban = "AE070331234567890123999" }, DebtorAgent = new Agent { MemberId = "302620122" },
+            // The channel's upload (Issue I-100): who initiated the file, by a synthetic id only.
+            InitiatingParty = console ? new Party { OtherIds = [new GenericId("U-000000123456", "CHANNEL-USER")] } : null,
             SupplementaryData = new Dictionary<string, JsonObject> { ["uae.wps"] = new() { ["employerId"] = "0000001234567", ["salaryMonth"] = "102026", ["employerReference"] = "REF-0001" } },
             Transactions =
             [
@@ -122,6 +124,20 @@ public static class WpsRun
         await Step($"{root}/leg3", "submit.send", "uae.wps.exchange.send-salary-file.v1", "accepted");
         await Step($"{root}/leg3", "submit.read-ack", "uae.wps.map.ack-in.v1", ack, new JsonObject { ["status"] = new JsonObject { ["code"] = ack == "ack" ? "ACCP" : "RJCT" } });
         await store.KeepMessage(tenant, "uae.wps", Direction.Inward, "uae.wps.sif", $"{fileId}.SIF", "SCR,synthetic\n"u8.ToArray(), accepted.BulkId);
+        if (console)
+        {
+            // The posting as camt.054 reports it, and the payment's end (Issues I-97, I-100). Synthetic accounts, masked.
+            await Step(root, "post", "p.post.accounting.v1", "posted", new JsonObject
+            {
+                ["facts.posting"] = new JsonObject
+                {
+                    ["outcome"] = "posted", ["totalAmount"] = "1510.50", ["currency"] = "AED",
+                    ["charges"] = new JsonObject { ["amount"] = "10.00", ["currency"] = "AED", ["type"] = "BANK", ["tax"] = new JsonObject { ["rate"] = "5.00", ["amount"] = "0.50" }, ["totalChargesAndTaxAmount"] = "10.50" },
+                    ["entries"] = new JsonArray(new JsonObject { ["creditDebitIndicator"] = "DBIT", ["amount"] = "1500.00", ["currency"] = "AED", ["account"] = "*******************3999" }),
+                },
+            });
+            await log.Append(accepted.BulkId, "bulk", new NewFact("payment.end", "settled", new JsonObject { ["outcome"] = "settled" }, Actor: "front-door"));
+        }
         return accepted.BulkId;
     }
 
