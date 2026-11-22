@@ -9,16 +9,19 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `src/TransactHub.Store.Migrations.SqlServer`, `…PostgreSql` | The migrations of each provider, generated from the one model. |
 | `src/TransactHub.Interpreter` | The studio's interpreter (`studio/engines/shared`), compiled into the runtime: one interpreter for every engine. |
 | `src/TransactHub.Engine.Temporal` | The Temporal binding: the generic interpreter workflow, the front-door workflow, and the host activities (attempts, claim check, handlers). See `studio/engines/temporal/README.md`. |
+| `src/TransactHub.Engine.Flowable` | The Flowable binding (plan D3): `FlowableRest`, the client of the Flowable REST server (deploy, start, acquire and lock, complete, fail, BPMN errors, jobs, timers, messages), and `FlowableBinding`, the external worker that runs the exported BPMN there, with the payloads in the claim check. See `studio/engines/flowable/README.md`. |
 | `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest, stored once), `POST /activations`, `GET /activations/active`, `POST /import-branch` (the branch the studio exports to). PUT, PATCH and DELETE are refused. |
 | `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
+| `tools/TransactHub.FlowableHarness` | Runs a deployment's plan on the Flowable REST server at `TH_FLOWABLE_URL` and prints the observation. |
 | `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |
 | `tests/TransactHub.Store.Tests` | Every store test on SQL Server 2022 and PostgreSQL 16 (Testcontainers), and the database-independence check. |
+| `tests/TransactHub.Engine.Flowable.Tests` | The BPMN reader, and the worker client and the binding against the Flowable REST server 7.1.0 (Testcontainers). |
 
 ## Commands
 
 ```
 cd runtime
-dotnet test                       # needs Docker: starts SQL Server and PostgreSQL containers
+dotnet test                       # needs Docker: starts SQL Server, PostgreSQL and Flowable REST containers
 dotnet tool restore
 dotnet ef migrations add <Name> -p src/TransactHub.Store.Migrations.SqlServer -s src/TransactHub.Store.Migrations.SqlServer -o Migrations
 dotnet ef migrations add <Name> -p src/TransactHub.Store.Migrations.PostgreSql -s src/TransactHub.Store.Migrations.PostgreSql -o Migrations

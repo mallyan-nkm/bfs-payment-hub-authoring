@@ -5,12 +5,15 @@ import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, STUDIO, type Server } from './server.js';
 
-// End to end, black box, on DTFx and Elsa with the store (plan N4): the factory WPS salary file, exported
-// for the bank with each engine's binding and deployed with TH_STORE_PROVIDER set, so the deploy runner
-// runs the runtime's build of the engine harness (runtime/tools/TransactHub.{Dtfx,Elsa}Harness), whose
-// claim check is journalled to the database. The payment must settle as it does without a store, be
-// accepted into the ISO 20022 tables, and every payload must rebuild from its facts. Each engine on
-// PostgreSQL and on SQL Server; with Temporal (e2e-wps-temporal) that is the four-engine matrix less Flowable.
+// End to end, black box, on DTFx, Elsa and Flowable with the store (plan N4): the factory WPS salary file,
+// exported for the bank with each engine's binding and deployed with TH_STORE_PROVIDER set, so the deploy
+// runner runs the runtime's build of the engine harness (runtime/tools/TransactHub.{Dtfx,Elsa}Harness), whose
+// claim check is journalled to the database. Flowable runs as its own server (plan D3): the Flowable REST
+// server, here a container (or TH_FLOWABLE_URL), gets the package's BPMN, and the runtime's binding
+// (runtime/tools/TransactHub.FlowableHarness) works its jobs over REST with the payloads in the store. The
+// payment must settle as it does without a store, be accepted into the ISO 20022 tables, and every payload
+// must rebuild from its facts. Each engine on PostgreSQL and on SQL Server; with Temporal (e2e-wps-temporal)
+// that is the four-engine matrix.
 
 const TENANT = 'example-bank';
 const SAMPLE = 'samples/wps-sif-valid.sif';
@@ -24,7 +27,11 @@ const BENCH = [
 ];
 const SETTLED = ['validate:pass', 'duplicate:unique', 'hook:done', 'sanctions:clear', 'fraud:clear', 'join:all', 'limits:pass', 'reserve:reserved', 'route:decided', 'hook:continue', 'leg:settled', 'post:posted', 'verify:verified', 'finally:notify', 'finally:publish', 'hook:done', 'end:settled'];
 const TOOLS = path.resolve(STUDIO, '..', 'runtime', 'tools');
-const ENGINES = ['dtfx', 'elsa'] as const;
+const ENGINES = ['dtfx', 'elsa', 'flowable'] as const;
+// The Flowable REST server, pinned to the Flowable of the kit harness (studio/engines/flowable/harness/pom.xml).
+const FLOWABLE_IMAGE = 'flowable/flowable-rest:7.1.0@sha256:b7ae287502cd5c243b577a0ca2894172e1c18cd75aea4fd67dc7d58f1b40db44';
+const FLOWABLE_USER = 'th-binding';
+const FLOWABLE_PASSWORD = 'th-test-only';
 const PASSWORD = 'Th-Test-Only-1234';
 
 let server: Server;
@@ -35,7 +42,7 @@ const started: string[] = [];
 const servers: Record<string, { name: string; port: string }> = {};
 
 beforeAll(async () => {
-  for (const h of ['TransactHub.DtfxHarness', 'TransactHub.ElsaHarness']) {
+  for (const h of ['TransactHub.DtfxHarness', 'TransactHub.ElsaHarness', 'TransactHub.FlowableHarness']) {
     const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.join(TOOLS, h), encoding: 'utf8', env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' } });
     if (b.status !== 0) throw new Error(`dotnet build failed:\n${b.stdout}\n${b.stderr}`);
   }
@@ -72,6 +79,35 @@ async function database(kind: 'PostgreSql' | 'SqlServer', db: string) {
   return { TH_STORE_PROVIDER: kind, TH_STORE_CONNECTION: connection };
 }
 
+/**
+ * The Flowable REST server, started once: TH_FLOWABLE_URL when set, else a container. Its async executor is
+ * off, because the binding runs the jobs on its own clock.
+ */
+let flowable: Record<string, string> | undefined;
+async function flowableServer() {
+  if (flowable) return flowable;
+  if (process.env.TH_FLOWABLE_URL) return (flowable = { TH_FLOWABLE_URL: process.env.TH_FLOWABLE_URL });
+  const name = `th-e2e-store-flowable-${process.pid}`;
+  const run = docker('run', '-d', '--name', name, '-e', 'FLOWABLE_ASYNC_EXECUTOR_ACTIVATE=false', '-e', 'FLOWABLE_ASYNC_HISTORY_EXECUTOR_ACTIVATE=false',
+    '-e', 'FLOWABLE_REST_APP_CREATE_DEMO_DEFINITIONS=false', '-e', `FLOWABLE_REST_APP_ADMIN_USER_ID=${FLOWABLE_USER}`, '-e', `FLOWABLE_REST_APP_ADMIN_PASSWORD=${FLOWABLE_PASSWORD}`,
+    '-p', '127.0.0.1::8080', FLOWABLE_IMAGE);
+  if (run.status !== 0) throw new Error(run.stderr);
+  started.push(name);
+  const port = docker('port', name, '8080').stdout.split('\n')[0].split(':').pop()!.trim();
+  const url = `http://127.0.0.1:${port}/flowable-rest`;
+  const auth = `Basic ${Buffer.from(`${FLOWABLE_USER}:${FLOWABLE_PASSWORD}`).toString('base64')}`;
+  for (let i = 0; ; i++) {
+    try {
+      if ((await fetch(`${url}/service/management/engine`, { headers: { authorization: auth } })).ok) break;
+    } catch {
+      // not up yet
+    }
+    if (i > 180) throw new Error(`The Flowable REST server did not start: ${docker('logs', '--tail', '30', name).stdout}`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return (flowable = { TH_FLOWABLE_URL: url, TH_FLOWABLE_USER: FLOWABLE_USER, TH_FLOWABLE_PASSWORD: FLOWABLE_PASSWORD });
+}
+
 async function deploy(engine: string, label: string, env: Record<string, string>) {
   const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
@@ -89,15 +125,17 @@ async function deploy(engine: string, label: string, env: Record<string, string>
   return { out, trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [], outcome: /^outcome (\w+)/m.exec(out)?.[1] };
 }
 
-describe('the WPS salary file on DTFx and Elsa, kept in the store', () => {
+describe('the WPS salary file on DTFx, Elsa and Flowable, kept in the store', () => {
   for (const engine of ENGINES) {
     for (const kind of ['PostgreSql', 'SqlServer'] as const) {
       it(`${engine} on ${kind}: settles, accepted as ISO 20022, every payload rebuilt from its facts`, async () => {
-        const env = await database(kind, `th_${engine}`);
+        const env = { ...(await database(kind, `th_${engine}`)), ...(engine === 'flowable' ? await flowableServer() : {}) };
         const d = await deploy(engine, `${engine}-${kind}`, env);
         expect(d.outcome, d.out.slice(-2500)).toBe('settled');
         expect(d.trace).toEqual(SETTLED);
         const line = /^store: .*$/m.exec(d.out)?.[0] ?? '';
+        // On Flowable the run was the REST server's: the package's processes deployed and worked over REST.
+        if (engine === 'flowable') expect(d.out).toMatch(/^\[engine\] Flowable 7\.1\.0 at the REST server, tenant th-\w+$/m);
         expect(line, d.out.slice(-2500)).toMatch(new RegExp(`^store: ${kind} holds 1 bulk\\(s\\), 1 payment\\(s\\), \\d+ part\\(ies\\); [1-9]\\d* payload\\(s\\) rebuilt from their facts, chains unbroken, all match the run$`));
       }, 900000);
     }

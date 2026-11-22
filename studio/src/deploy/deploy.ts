@@ -24,9 +24,12 @@ export interface DeployEnvironment {
   configurationSet?: any;
 }
 
+/** The engines the deploy runner drives. */
+export type Engine = 'dtfx' | 'elsa' | 'temporal' | 'flowable';
+
 export interface DeployRequest {
   packagePath: string; // a .zip from the studio's export, or the folder it unpacks to
-  engine?: 'dtfx' | 'elsa' | 'temporal';
+  engine?: Engine;
   workflow: string;
   environment: DeployEnvironment;
   inbound?: { message?: string; payload: string };
@@ -87,10 +90,12 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
   const dir = unpack(req.packagePath);
   const manifest = parseYaml(fs.readFileSync(path.join(dir, 'manifest.yaml'), 'utf8'));
   const binding = parseYaml(fs.readFileSync(path.join(dir, 'binding.yaml'), 'utf8'));
-  // The package's binding says which engine runs it; the deploy runner drives DTFx, Elsa and Temporal
-  // (Temporal through the runtime's harness, runtime/tools/TransactHub.TemporalHarness).
-  const engine = binding.target as 'dtfx' | 'elsa' | 'temporal';
-  if (engine !== 'dtfx' && engine !== 'elsa' && engine !== 'temporal') throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx, elsa and temporal`);
+  // The package's binding says which engine runs it; the deploy runner drives DTFx, Elsa, Temporal and
+  // Flowable (Temporal and Flowable through the runtime's harnesses, runtime/tools/TransactHub.*Harness).
+  const engine = binding.target as Engine;
+  if (!['dtfx', 'elsa', 'temporal', 'flowable'].includes(engine)) throw new Error(`This package is for ${binding.target}; the deploy runner drives dtfx, elsa, temporal and flowable`);
+  // Flowable runs as its own server (plan D3); the runtime's harness is its external worker over REST.
+  if (engine === 'flowable' && !process.env.TH_FLOWABLE_URL) throw new Error('Flowable runs on the Flowable REST server: set TH_FLOWABLE_URL (for example http://127.0.0.1:8080/flowable-rest), and TH_FLOWABLE_USER and TH_FLOWABLE_PASSWORD if they are not the image defaults');
   if (req.engine && req.engine !== engine) throw new Error(`This package is for ${engine}, not ${req.engine}`);
   const log: string[] = [];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-run-'));
@@ -189,11 +194,12 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
 
     // 4. The engine.
     // With a store (TH_STORE_PROVIDER), DTFx and Elsa run as the runtime builds them: the same harness code,
-    // its claim check journalled to the database (plan N4). Temporal always runs as the runtime builds it.
+    // its claim check journalled to the database (plan N4). Temporal and Flowable always run as the runtime
+    // builds them; Flowable deploys the package's BPMN to its REST server and works its jobs over REST.
     const runtimeTool = (name: string) => path.join(req.studioRoot, '..', 'runtime', 'tools', `TransactHub.${name}Harness`, 'bin', 'Release', 'net10.0', `TransactHub.${name}Harness.dll`);
     const onStore = !!process.env.TH_STORE_PROVIDER;
-    const harnessDll = engine === 'temporal'
-      ? runtimeTool('Temporal')
+    const harnessDll = engine === 'temporal' || engine === 'flowable'
+      ? runtimeTool(engine === 'temporal' ? 'Temporal' : 'Flowable')
       : onStore
         ? runtimeTool(engine === 'elsa' ? 'Elsa' : 'Dtfx')
         : engine === 'elsa'
@@ -210,6 +216,8 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),
       queues: binding.queues,
+      // The BPMN the studio exported for the Flowable REST server, deployed as it is (R-09-15).
+      ...(engine === 'flowable' ? { bpmn: bpmnOf(dir) } : {}),
     };
     const inFile = path.join(tmp, 'input.json');
     fs.writeFileSync(inFile, JSON.stringify(input));
@@ -252,8 +260,19 @@ export async function deploy(req: DeployRequest): Promise<DeployResult> {
       p.child.once('exit', () => done());
       p.child.kill();
     })));
-    if (!req.keep) fs.rmSync(tmp, { recursive: true, force: true });
+    if (!req.keep) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      // The folder a zip was unpacked to is the runner's own; a folder the caller gave is not.
+      if (dir !== req.packagePath) fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
+}
+
+/** The package's BPMN documents (bpmn/*.bpmn20.xml), by file name. */
+function bpmnOf(dir: string): Record<string, string> {
+  const d = path.join(dir, 'bpmn');
+  if (!fs.existsSync(d)) throw new Error('The package has no bpmn/ folder: export it for flowable');
+  return Object.fromEntries(fs.readdirSync(d).filter((f) => f.endsWith('.bpmn20.xml')).sort().map((f) => [f, fs.readFileSync(path.join(d, f), 'utf8')]));
 }
 
 function setPath(obj: any, p: string, v: any) {

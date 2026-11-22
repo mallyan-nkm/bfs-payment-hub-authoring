@@ -1,0 +1,35 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using TransactHub.Engine.Flowable;
+using TransactHub.Engines;
+
+// The Flowable harness: `dotnet TransactHub.FlowableHarness.dll <plan.json>`. It takes the plan the
+// studio's deploy runner writes for every engine, with the package's BPMN beside it, runs it on the
+// Flowable REST server at TH_FLOWABLE_URL (TH_FLOWABLE_USER, TH_FLOWABLE_PASSWORD) with this process
+// as the external worker, and prints OBSERVATION <json>, as the DTFx, Elsa and Temporal harnesses do.
+// With TH_STORE_PROVIDER and TH_STORE_CONNECTION the payloads are kept in the store.
+
+if (args.Length == 0)
+{
+    Console.WriteLine("usage: TransactHub.FlowableHarness <plan.json>");
+    return 2;
+}
+int code;
+try
+{
+    var input = (JsonObject)J.Parse(await File.ReadAllTextAsync(args[0]))!;
+    using var rest = FlowableRest.FromEnvironment() ?? throw new InvalidOperationException("Flowable runs on its REST server: set TH_FLOWABLE_URL (for example http://127.0.0.1:8080/flowable-rest)");
+    var obs = await new FlowableBinding(input, rest).Run();
+    // What the binding did and noticed, for the deploy runner's log.
+    foreach (var l in J.Strings(J.P(J.P(obs, "engine"), "log"))) Console.Error.WriteLine(l);
+    foreach (var n in J.Strings(J.P(obs, "notes"))) Console.Error.WriteLine($"note: {n}");
+    Console.Out.WriteLine("OBSERVATION " + J.Str(obs));
+    code = 0;
+}
+catch (Exception e)
+{
+    Console.Out.WriteLine("ERROR " + JsonSerializer.Serialize(e.ToString()));
+    code = 1;
+}
+await Console.Out.FlushAsync();
+return code;

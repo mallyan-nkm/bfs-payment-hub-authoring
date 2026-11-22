@@ -246,16 +246,18 @@ The results, pass by pass and project by project, with each failure classified (
 ### Progress on P3 (DTFx, Elsa, Flowable)
 
 - **Kit.** The kit runs in CI on all four engines (`.github/workflows/engines.yml`, job `kit`).
-- **Store, on three engines.** Temporal, DTFx and Elsa run on the store, each on PostgreSQL and SQL Server. CI job `store` is that matrix of 3 engines × 2 databases. With `TH_STORE_PROVIDER` set, the deploy runner runs the runtime's build of the DTFx and Elsa harnesses (`runtime/tools/TransactHub.{Dtfx,Elsa}Harness`). That build is the same engine code, with `StoreJournal` installed on the claim check:
+- **Store, on all four engines.** Temporal, DTFx, Elsa and Flowable run on the store, each on PostgreSQL and SQL Server. CI job `store` is that matrix of 4 engines × 2 databases. With `TH_STORE_PROVIDER` set, the deploy runner runs the runtime's build of the DTFx and Elsa harnesses (`runtime/tools/TransactHub.{Dtfx,Elsa}Harness`). That build is the same engine code, with `StoreJournal` installed on the claim check:
   - every create, staged write, commit, fork and copy is a fact on the payload's chain, written before memory changes;
   - a root's payments are accepted into the ISO 20022 tables;
-  - the observation's `engine.store` shows each payload rebuilt from its facts and compared with what the engine held (`StoreReport`, the same for Temporal).
-- **Not yet: Flowable on the store.** The kit harness is embedded Flowable on H2, with its context in Java. Under D3 the runtime binding is the Flowable REST server, with .NET external workers that fetch and complete jobs over REST. Those workers would use `DurableClaimCheck` as Temporal does, so journalling the Java kit harness would be throwaway work. Remaining work:
-  - `TransactHub.Engine.Flowable`, the external-worker client;
-  - the BPMN from `src/export/bpmn.ts` deployed through `/repository/deployments`;
-  - Flowable in the deploy runner and in the `store` matrix.
+  - the observation's `engine.store` shows each payload rebuilt from its facts and compared with what the engine held (`StoreReport`, the same for Temporal and Flowable).
+- **Flowable on the store (D3).** Built on 22 November 2026. The Flowable REST server (`flowable/flowable-rest:7.1.0`, the Flowable of the kit harness) runs the BPMN the studio exports; `runtime/src/TransactHub.Engine.Flowable` is its external worker over REST, and keeps the payloads in `DurableClaimCheck`, as the Temporal binding does:
+  - `FlowableRest` is the client: deploy through `/repository/deployments` (one zip), start through `/runtime/process-instances`, acquire and lock, complete, fail and BPMN errors through `/external-job-api`, run jobs and move timers through `/management`, deliver messages to executions;
+  - `FlowableBinding` is the binding: every activity attempt goes to the worker of its task queue, and the binding's own tasks (topic `th.binding`) are where it writes the trace, names a slot's leg, counts a batch, checks a hook's contract and learns of each instance;
+  - the export for `flowable` generates BPMN for this REST binding (`binding: 'rest'` in `src/export/bpmn.ts`), and the bound hooks with it; the kit's embedded harness keeps the embedded form and still passes 46 of 46;
+  - the server's async executor is off and the binding keeps the clock, firing each timer when the virtual clock reaches it (Issue I-53);
+  - the deploy runner runs a Flowable package with `runtime/tools/TransactHub.FlowableHarness` against the server at `TH_FLOWABLE_URL`, its payloads in the store when `TH_STORE_PROVIDER` is set; `e2e-wps-engines-store.test.ts` starts the server as a container and asserts the trace and `engine.store` on both databases.
 
-  Until then, P3's exit ("all four engines × two databases") is not met.
+  Found on the way: the generator's parallel join counted one token per exit of a branch, so the corporate workflow never joined on Flowable. Fixed (Issue I-56). P3's store matrix is met; its exit still waits on the WPS parity suite below.
 - **Not yet: the WPS parity suite on DTFx and Elsa.** It runs on the interpreter and on Temporal.
 
 ## 7. Issues found while planning (beyond the review's 21)
