@@ -354,7 +354,7 @@ app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbC
 // (TH_FILE_SIGNING_KEY_REF, a P-256 private key in PEM by reference; without one, a key made for the host's lifetime). Insert-only.
 app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
 {
-    if (!ApiAuth.MayReadTenant(user, f.Tenant)) return Problem(403, $"{ApiAuth.Actor(user)} may not keep files of {f.Tenant}");
+    if (!ApiAuth.Has(user, ApiAuth.Intake, f.Tenant)) return Problem(403, $"{ApiAuth.Actor(user)} may not keep files of {f.Tenant}");
     if (f.Direction is not ("in" or "out")) return Problem(400, "A file's direction is in or out");
     byte[] content;
     try { content = Convert.FromBase64String(f.ContentBase64); }
@@ -364,7 +364,7 @@ app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbC
 }).RequireAuthorization(ApiAuth.Intake);
 
 app.MapGet("/payments/files", async (string tenant, string paymentId, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
-    !ApiAuth.MayReadTenant(user, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the files of {tenant}")
+    !ApiAuth.Has(user, ApiAuth.Reader, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the files of {tenant}")
     : Results.Ok((await new FileStore(db, fileKey, clock).Of(tenant, paymentId, ct)).Select(r => new
     {
         r.Id, r.FileName, r.Direction, r.Kind, r.Size, sha256 = r.ContentHash, r.Leg, r.Activity, r.At, r.SigningKeyId, r.Signature,
