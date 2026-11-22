@@ -9,6 +9,7 @@ import { missingStandardScenarios } from '../sim/runtime.js';
 import { runTest, runAllTests, sampleNames, type TestRunReport } from '../testing/runner.js';
 import { runKit, loadKit } from '../conformance/kit.js';
 import { exportPackage, signedZip, type Target } from '../export/exporter.js';
+import { ZipRefused } from '../export/zip.js';
 import { SignatureRejected } from '../export/signing.js';
 import * as gitExport from '../export/git.js';
 import { ContentError } from '../content/content-store.js';
@@ -84,7 +85,12 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
     if (r.method !== req.method) continue;
     const m = r.pattern.exec(req.path);
     if (!m) continue;
-    const params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+    let params: Record<string, string>;
+    try {
+      params = Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+    } catch {
+      return { status: 400, body: { error: 'A path parameter is not valid percent-encoding' } };
+    }
     // Who is asking (R-11-32): nobody signed in is 401; an identity that is not a user of the studio,
     // or a user no longer in governance/users.yaml, is 403.
     if (!req.user) return req.identity ? { status: 403, body: { error: `${req.identity} is signed in but is not a user of the studio`, code: 'R-11-32' } } : { status: 401, body: { error: 'Sign in first', code: 'R-11-32' } };
@@ -117,7 +123,9 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
       if (e instanceof HttpError) return { status: e.status, body: { error: e.message, ...(e.body ?? {}) } };
       if (e instanceof gov.Forbidden) return { status: 403, body: { error: e.message, code: e.code } };
       if (e instanceof StoreError) return { status: 409, body: { error: e.message, code: e.code } };
-      return { status: 500, body: { error: String(e?.message ?? e) } };
+      // An error answer gives a message and a status, never internals (secure-coding.md): the detail goes to the log.
+      console.error(`Internal error on ${req.method} ${req.path}:`, e?.stack ?? e);
+      return { status: 500, body: { error: 'Internal error: the studio could not do this. The server log has the detail.' } };
     }
   }
   return { status: 404, body: { error: `No route ${req.method} ${req.path}` } };
@@ -174,7 +182,7 @@ function summary(e: any) {
 route('GET', '/api/meta', (env, req) => {
   const tenant = tenantOf(req);
   const counts: Record<string, number> = {};
-  for (const e of env.store.all()) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
+  for (const e of visibleEntries(env, tenant)) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
   return {
     // A bank sees its own tenant and the owner's; the owner sees every tenant's name.
     tenants: tenant === OWNER_TENANT ? env.store.tenants() : [OWNER_TENANT, tenant],
@@ -222,8 +230,9 @@ route('GET', '/api/artefacts/:name', (env, req, { name }) => {
   const kind = (e.doc?.kind ?? e.kind) as any;
   const doc = e.doc;
   const checker = Checker.fromEnv(env);
-  const usedBy = env.store.all().filter((x) => x.status === 'published' && refsOf(x.doc).has(name)).map(summary);
-  const tests = env.store.byKind('test').filter((t) => t.doc.target === name).map((t) => ({ id: t.name, title: t.doc.title, level: t.doc.level }));
+  // Only what this tenant may see: another bank's artefacts and tests are not named (R-06-01).
+  const usedBy = visibleEntries(env, tenant).filter((x) => x.status === 'published' && refsOf(x.doc).has(name)).map(summary);
+  const tests = visibleEntries(env, tenant).filter((t) => t.kind === 'test' && t.doc.target === name).map((t) => ({ id: t.name, title: t.doc.title, level: t.doc.level }));
   const releases = env.store.releasesOf(name, { includeDrafts: true }).map((r) => ({ release: r.release, status: r.status, hash: r.hash, maker: r.maker, checker: r.checker, publishedAt: r.publishedAt }));
   const out: any = {
     entry: summary(e), doc, yaml: toYaml(doc), hash: e.hash, path: e.path, generated: e.generated,
@@ -284,17 +293,18 @@ route('GET', '/api/schemes/:scope', (env, _req, { scope }) => {
 
 route('GET', '/api/data', (env, req) => {
   const q = (req.query.q ?? '').toLowerCase();
+  const visible = new Set(visibleEntries(env, tenantOf(req)));
   const paths = new Map<string, { path: string; readers: string[]; writers: string[]; extension?: any }>();
   const touch = (p: string) => {
     if (!paths.has(p)) paths.set(p, { path: p, readers: [], writers: [] });
     return paths.get(p)!;
   };
-  const acts = env.store.byKind('activity');
+  const acts = env.store.byKind('activity').filter((a) => visible.has(a));
   for (const a of acts) {
     for (const r of a.doc.reads ?? []) touch(r).readers.push(a.name);
     for (const w of a.doc.writes ?? []) touch(w).writers.push(a.name);
   }
-  for (const ext of env.store.byKind('extension')) for (const f of ext.doc.fields ?? []) {
+  for (const ext of env.store.byKind('extension').filter((x) => visible.has(x))) for (const f of ext.doc.fields ?? []) {
     const p = `${f.level === 'item' ? 'items[].' : ''}${ext.doc.root}.${f.path}`;
     touch(p).extension = { ...f, extension: ext.name };
   }
@@ -318,7 +328,7 @@ route('GET', '/api/data', (env, req) => {
   const filtered = all.filter((p) => !q || p.path.toLowerCase().includes(q) || (p as any).extension?.description?.toLowerCase().includes(q));
   filtered.sort((a, b) => a.path.localeCompare(b.path));
   const codes = new Map<string, string[]>();
-  for (const r of env.store.byKind('rule')) for (const t of r.doc.then ?? []) if (t.yield?.finding?.reasonCode) {
+  for (const r of env.store.byKind('rule').filter((x) => visible.has(x))) for (const t of r.doc.then ?? []) if (t.yield?.finding?.reasonCode) {
     const c = t.yield.finding.reasonCode;
     if (!codes.has(c)) codes.set(c, []);
     codes.get(c)!.push(r.name);
@@ -335,7 +345,13 @@ route('POST', '/api/check', (env, req) => {
   return { issues: checkDocument(env, doc), interface: interfaceFor(env, doc) };
 });
 
-route('GET', '/api/checks', (env) => ({ catalogue: CHECK_CATALOGUE, issues: checkAll(env) }));
+// Another bank's issues name its artefacts: a bank sees the shared ones and its own (R-06-01).
+route('GET', '/api/checks', (env, req) => {
+  const tenant = tenantOf(req);
+  const mine = new Set(visibleEntries(env, tenant).map((e) => e.key));
+  const issues = checkAll(env);
+  return { catalogue: CHECK_CATALOGUE, issues: tenant === OWNER_TENANT ? issues : issues.filter((i: any) => !i.key || mine.has(i.key) || mine.has(String(i.key).replace(/#draft$/, ''))) };
+});
 
 function interfaceFor(env: StudioEnv, doc: any) {
   const prev = doc?.name ? env.store.latest(doc.name)?.doc : undefined;
@@ -413,7 +429,7 @@ route('POST', '/api/configuration-releases', async (env, req) =>
 route('GET', '/api/change-set', (env, req) => {
   const tenant = tenantOf(req);
   if (!req.query.key) throw new HttpError(400, 'Name the draft: ?key=...');
-  if (!env.store.entries.get(req.query.key)) throw new HttpError(404, `No draft ${req.query.key}`);
+  if (env.store.entries.get(req.query.key)?.tenant !== tenant) throw new HttpError(404, `No draft ${req.query.key}`);
   const keys = gov.changeSetFor(env, tenant, req.query.key);
   return { key: req.query.key, members: keys.map((k) => summary(env.store.entries.get(k)!)) };
 });
@@ -475,9 +491,10 @@ route('GET', '/api/tests', (env, req) => {
   }).sort((a, b) => a.id.localeCompare(b.id));
 });
 
-route('GET', '/api/tests/:id', (env, _req, { id }) => {
+route('GET', '/api/tests/:id', (env, req, { id }) => {
   const t = env.store.test(id);
-  if (!t) throw new HttpError(404, `No test ${id}`);
+  // Another bank's test is not this tenant's to read (R-06-01).
+  if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenantOf(req))) throw new HttpError(404, `No test ${id}`);
   return { test: t.doc, yaml: toYaml(t.doc) };
 });
 
@@ -485,8 +502,16 @@ route('POST', '/api/tests/:id/run', async (env, req, { id }) => {
   const t = env.store.test(id);
   if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenantOf(req))) throw new HttpError(404, `No test ${id}`);
   mayRun(env, req, 'bench', id);
-  const test = { ...t.doc, ...(req.body?.override ?? {}) };
-  const r = await runTest(env, test, req.body?.config ?? {});
+  const tenant = tenantOf(req);
+  const override = req.body?.override && typeof req.body.override === 'object' ? req.body.override : {};
+  // An override names no other tenant, and no target this tenant may not see (R-06-01, R-11-30).
+  if (override.tenant !== undefined && override.tenant !== (tenant === OWNER_TENANT ? override.tenant : tenant)) throw new TenantRefusal(String(override.tenant), `${req.user} works for tenant ${tenant}, not ${override.tenant} (R-06-01)`);
+  if (override.target !== undefined) {
+    const e = env.store.latest(String(override.target), tenant) ?? env.store.latest(String(override.target));
+    if (!e || (e.tenant !== OWNER_TENANT && e.tenant !== tenant)) throw new HttpError(404, `No ${override.target}`);
+  }
+  const test = { ...t.doc, ...override, ...(tenant !== OWNER_TENANT ? { tenant } : {}) };
+  const r = await runTest(env, test, runConfigOf(req.body?.config));
   lastRun = [...lastRun.filter((x) => x.id !== id), r];
   return r;
 });
@@ -498,6 +523,16 @@ route('POST', '/api/tests/run-all', async (env, req) => {
   lastRun = r;
   return r.map((x) => ({ id: x.id, target: x.target, level: x.level, passed: x.passed, outcome: x.outcome, elapsed: x.elapsed, error: x.error?.split('\n')[0], failed: x.checks.filter((c) => !c.passed) }));
 });
+
+/**
+ * What a request may set of a run's configuration: the bench, the clock, stubs, values and the like. Never the store, the
+ * scripts or the tenant, which are the server's and the signed-in user's (R-06-01).
+ */
+const RUN_CONFIG_KEYS = ['evaluationDate', 'startTime', 'bench', 'supersessions', 'signals', 'stubs', 'values', 'documents', 'inbound', 'limit', 'bindings', 'availableFrom', 'debug'];
+function runConfigOf(c: any): Record<string, any> {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return {};
+  return Object.fromEntries(Object.entries(c).filter(([k]) => RUN_CONFIG_KEYS.includes(k)));
+}
 
 /** Run an ad hoc bench: any target, any bench, any context (F-16). */
 route('POST', '/api/bench/run', async (env, req) => benchRun(env, req, false));
@@ -523,7 +558,7 @@ async function benchRun(env: StudioEnv, req: Req, debug: boolean) {
   return runTest(env, test, { ...(b.supersessions ? { supersessions: b.supersessions } : {}), ...(debug ? { debug: true } : {}) });
 }
 
-route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => !req.query.port || s.doc.port === req.query.port).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
+route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => (s.tenant === OWNER_TENANT || s.tenant === tenantOf(req)) && (!req.query.port || s.doc.port === req.query.port)).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
 
 route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: actorOf(req), activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
 route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: actorOf(req), name: req.body?.name, content: req.body?.content }));
@@ -538,7 +573,10 @@ route('GET', '/api/kit', (env) => {
   return { release: k.manifest.release, scenarios: k.manifest.scenarios };
 });
 
-route('POST', '/api/kit/run', async (env, req) => runKit(env, req.body?.only ?? []));
+route('POST', '/api/kit/run', async (env, req) => {
+  mayRun(env, req, 'bench', 'kit');
+  return runKit(env, Array.isArray(req.body?.only) ? req.body.only : []);
+});
 
 // ------------------------------------------------- tenants and configuration
 
@@ -624,7 +662,9 @@ route('GET', '/api/export/download', (env, req) => {
 // The connection comes from the environment; what can change is how the studio publishes (R-09-19).
 route('GET', '/api/git', (env) => gitExport.gitStatus(env));
 route('PUT', '/api/git', (env, req) => ({ settings: gitExport.changeSettings(env, actorOf(req), req.body ?? {}) }));
-route('POST', '/api/git/reload', async (env) => {
+route('POST', '/api/git/reload', async (env, req) => {
+  // Reading the whole branch again is the publishing settings' owner's to ask for (R-11-30).
+  if (gitExport.mayChangeSettings(env, actorOf(req))) throw new HttpError(403, gitExport.mayChangeSettings(env, actorOf(req))!);
   await env.store.reload();
   return gitExport.gitStatus(env);
 });
@@ -816,8 +856,8 @@ route('POST', '/api/conformance/waivers', (env, req) => {
 
 // ------------------------------------------------------------------ simulators (C10)
 
-route('GET', '/api/simulators/:name/stub', (env, _req, { name }) => {
-  const sim = env.store.doc(name);
+route('GET', '/api/simulators/:name/stub', (env, req, { name }) => {
+  const sim = env.store.doc(name, undefined, tenantOf(req));
   if (!sim || sim.kind !== 'simulator') throw new HttpError(404, `No simulator ${name}`);
   return { __binary: true, data: Buffer.from(stubSource(sim), 'utf8'), contentType: 'text/javascript', filename: `${name}.stub.cjs` };
 });
@@ -868,7 +908,13 @@ route('POST', '/api/ai/agent', async (env, req) => {
 // import never publishes. The training bundle and the extraction prompt are served for download.
 const bundleOf = (body: any) => {
   if (!body?.bundle) throw new HttpError(400, 'Send bundle: the extraction bundle zip, in base64');
-  return readBundle(Buffer.from(String(body.bundle), 'base64'));
+  try {
+    return readBundle(Buffer.from(String(body.bundle), 'base64'));
+  } catch (e) {
+    // A damaged archive, or one past the limits (a zip bomb), is the caller's to fix (R-09-59).
+    if (e instanceof ZipRefused) throw new HttpError(422, `The bundle is refused: ${e.message}`);
+    throw e;
+  }
 };
 // Import (R-11-30): a platform user imports the shared part of a bundle, a bank configurator the bank
 // part, into its own tenant. Neither names the other tenant; the other part is reported, not saved.

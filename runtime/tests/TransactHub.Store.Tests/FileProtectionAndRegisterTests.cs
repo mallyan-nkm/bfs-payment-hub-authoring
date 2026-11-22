@@ -232,7 +232,7 @@ public sealed class FileProtectionAndRegisterTests
     }
 }
 
-// Issue I-97 part 2 (R-09-58): every file a host receives or sends is kept in the store, with its signed hash, on both databases.
+// Issue I-97 part 2 (R-09-62): every file a host receives or sends is kept in the store, with its signed hash, on both databases.
 [Collection(DatabaseCollection.Name)]
 public sealed class StoredFileTests(Databases dbs)
 {

@@ -67,17 +67,35 @@ export function zip(entries: { name: string; content: Buffer }[]): Buffer {
   return Buffer.concat([...locals, cd, end]);
 }
 
+/** What `unzip` reads at most (R-09-59): entries, bytes per entry and bytes in all, whatever the archive's headers claim. */
+export const UNZIP_LIMITS = { entries: 10_000, entryBytes: 64 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 };
+
+/** An archive `unzip` refuses: damaged, or larger than its limits (a zip bomb). */
+export class ZipRefused extends Error {}
+
 /**
  * Read a ZIP: the stored entries `zip` writes, and the deflated ones another writer may use (the runtime's canonical package,
  * `GET /releases/package`). Entries are found through the central directory, so sizes a writer left out of a local header
  * are still known.
  */
-export function unzip(buf: Buffer): { name: string; content: Buffer }[] {
+export function unzip(buf: Buffer, limits = UNZIP_LIMITS): { name: string; content: Buffer }[] {
+  try {
+    return unzipWithin(buf, limits);
+  } catch (e: any) {
+    if (e instanceof ZipRefused) throw e;
+    // A header that points outside the archive, or deflated data that does not inflate: not a zip this reads.
+    throw new ZipRefused(e?.code === 'ERR_BUFFER_TOO_LARGE' || /larger than|maxOutputLength/i.test(String(e?.message)) ? `An entry expands past ${limits.entryBytes} bytes` : 'The archive is damaged or not a zip');
+  }
+}
+
+function unzipWithin(buf: Buffer, limits: typeof UNZIP_LIMITS): { name: string; content: Buffer }[] {
   const out: { name: string; content: Buffer }[] = [];
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
   if (eocd < 0) return out;
   const count = buf.readUInt16LE(eocd + 10);
+  if (count > limits.entries) throw new ZipRefused(`The archive holds ${count} entries; at most ${limits.entries} are read`);
+  let total = 0;
   let c = buf.readUInt32LE(eocd + 16);
   for (let n = 0; n < count && buf.readUInt32LE(c) === 0x02014b50; n++) {
     const method = buf.readUInt16LE(c + 10);
@@ -91,9 +109,15 @@ export function unzip(buf: Buffer): { name: string; content: Buffer }[] {
     const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
     const data = buf.subarray(start, start + compressed);
     if (name.endsWith('/')) continue;
-    if (method === 0) out.push({ name, content: data });
-    else if (method === 8) out.push({ name, content: inflateRawSync(data) });
-    else throw new Error(`${name}: compression method ${method} is not read`);
+    const room = Math.min(limits.entryBytes, limits.totalBytes - total);
+    let content: Buffer;
+    if (method === 0) content = data;
+    // Inflated within the room left, whatever size the header claims: a zip bomb stops here.
+    else if (method === 8) content = inflateRawSync(data, { maxOutputLength: Math.max(1, room) });
+    else throw new ZipRefused(`${name}: compression method ${method} is not read`);
+    if (content.length > room) throw new ZipRefused(`${name} expands past what the studio reads`);
+    total += content.length;
+    out.push({ name, content });
   }
   return out;
 }

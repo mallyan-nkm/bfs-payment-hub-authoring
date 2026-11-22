@@ -20,7 +20,8 @@ public static partial class Masking
     [GeneratedRegex(@"\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b")]
     private static partial Regex Iban();
 
-    [GeneratedRegex(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")]
+    // Bounded parts, as RFC 5321 bounds them, so a long text is masked in linear time (review 2026-11, ReDoS).
+    [GeneratedRegex(@"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}")]
     private static partial Regex Email();
 
     // A run of digits that stands alone, spaces allowed: an account, card, employee or identity number, a phone. Dates keep their dashes.

@@ -25,5 +25,6 @@ public static class ApiAuth
     public static readonly string[] Roles = [Importer, Activator, Reader, ValuesReader, Intake];
 
     public static string Actor(ClaimsPrincipal u) => RuntimeAuth.Actor(u);
-    public static bool MayReadTenant(ClaimsPrincipal u, string tenant) => RuntimeAuth.MayActFor(u, tenant);
+    /// <summary>Whether the caller holds the role in this tenant (or every tenant), from one grant of the role map (R-06-28).</summary>
+    public static bool Has(ClaimsPrincipal u, string role, string tenant) => RuntimeAuth.HasRoleFor(u, role, tenant);
 }

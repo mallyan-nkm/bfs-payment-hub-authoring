@@ -5,7 +5,8 @@
 export const MASKED = '[masked]';
 
 const IBAN = /\b[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}\b/g;
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Bounded parts, as RFC 5321 bounds them: the work per position is fixed, so a long run of text is masked in linear time (R-11-43).
+const EMAIL = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}/g;
 // A run of digits that stands alone, spaces allowed: an account, card, employee or identity number, a phone.
 const LONG_DIGITS = /(?<![0-9A-Za-z])\+?[0-9][0-9 ]{6,}[0-9](?![0-9A-Za-z])/g;
 

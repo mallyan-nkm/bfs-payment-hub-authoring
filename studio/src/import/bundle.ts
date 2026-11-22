@@ -99,7 +99,8 @@ export function readBundleDir(dir: string): Bundle {
 
 /** Personal data a synthetic bundle must not hold (spec guard-rail: no personal data anywhere). */
 const PERSONAL: [RegExp, string][] = [
-  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/, 'an e-mail address'],
+  // Bounded parts: linear on a long text, never quadratic (review 2026-11, ReDoS).
+  [/[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}/, 'an e-mail address'],
   [/\b784[- ]?\d{4}[- ]?\d{7}[- ]?\d\b/, 'an Emirates ID number'],
   [/(\+|00)971[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}\b/, 'a UAE telephone number'],
   [/\b(?:4\d{3}|5[1-5]\d{2})[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b/, 'a card number'],

@@ -103,6 +103,61 @@ func TestQueryConverterWritesTSQL(t *testing.T) {
 	}
 }
 
+// A list filter is a caller's text (the visibility API's query): every value it carries must reach T-SQL as one string
+// literal, whatever quotes, backslashes or look-alike characters it holds (review 2026-11, SQL injection in the converter).
+func TestQueryConverterKeepsEveryValueInsideOneLiteral(t *testing.T) {
+	c := &queryConverter{}
+	kw := query.NewSAColumn("Keyword01", "Keyword01", enumspb.INDEXED_VALUE_TYPE_KEYWORD)
+	kl := query.NewSAColumn("BuildIds", sadefs.BuildIds, enumspb.INDEXED_VALUE_TYPE_KEYWORD_LIST)
+	txt := query.NewSAColumn("Text01", "Text01", enumspb.INDEXED_VALUE_TYPE_TEXT)
+	hostile := []string{
+		`x'; DROP TABLE executions_visibility; --`,
+		`x\'; DROP TABLE executions_visibility; --`,
+		`x\\'' OR 1=1 --`,
+		`''''`,
+		`\`,
+		"xʼ; DROP TABLE executions_visibility; --",
+		"x\x00'; SELECT 1 --",
+		`%_[!'`,
+	}
+	// One literal: an opening quote, then only doubled quotes until the closing one, which ends the text after prefix.
+	literal := func(got, prefix, suffix string) bool {
+		if !strings.HasPrefix(got, prefix+"'") || !strings.HasSuffix(got, "'"+suffix) || len(got) < len(prefix)+len(suffix)+2 {
+			return false
+		}
+		body := got[len(prefix)+1 : len(got)-len(suffix)-1]
+		return !strings.Contains(strings.ReplaceAll(body, "''", ""), "'")
+	}
+	for _, v := range hostile {
+		e, err := c.ConvertComparisonExpr("=", kw, query.NewUnsafeSQLString(v))
+		if err != nil || !literal(sqlparser.String(e), "Keyword01 = ", "") {
+			t.Errorf("comparison of %q: %v %s", v, err, sqlparser.String(e))
+		}
+		e, err = c.ConvertKeywordComparisonExpr(sqlparser.StartsWithStr, kw, query.NewUnsafeSQLString(v))
+		if err != nil || !literal(sqlparser.String(e), "Keyword01 like ", " escape '!'") {
+			t.Errorf("starts-with %q: %v %s", v, err, sqlparser.String(e))
+		}
+		e, err = c.ConvertKeywordListComparisonExpr("=", kl, query.NewUnsafeSQLString(v))
+		if err != nil {
+			t.Fatalf("keyword list %q: %v", v, err)
+		}
+		got := sqlparser.String(e)
+		inner := got[strings.Index(got, "CAST(")+len("CAST(") : strings.LastIndex(got, " AS NVARCHAR(MAX))")]
+		if !literal(inner, "", "") {
+			t.Errorf("keyword list %q: %s", v, got)
+		}
+		if e, err = c.ConvertTextComparisonExpr("=", txt, query.NewUnsafeSQLString(v)); err == nil {
+			got := sqlparser.String(e)
+			in := got[strings.Index(got, "w.value IN (")+len("w.value IN (") : len(got)-2]
+			for _, lit := range strings.Split(in, ", ") {
+				if !literal(lit, "", "") {
+					t.Errorf("text %q: %s", v, got)
+				}
+			}
+		}
+	}
+}
+
 func TestRewriteLegacyLimit(t *testing.T) {
 	if got := rewriteLegacyLimit("SELECT a FROM t ORDER BY a\n\t\tLIMIT ?"); got != "SELECT a FROM t ORDER BY a\n\t\tOFFSET 0 ROWS FETCH NEXT ? ROWS ONLY" {
 		t.Errorf("got %q", got)

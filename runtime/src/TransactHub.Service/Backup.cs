@@ -120,14 +120,8 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         var files = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         try
         {
-            using var a = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
-            foreach (var e in a.Entries.Where(e => !e.FullName.EndsWith('/')))
-            {
-                using var s = e.Open();
-                using var m = new MemoryStream();
-                s.CopyTo(m);
-                files[e.FullName] = m.ToArray();
-            }
+            // Read within the limits whatever the headers claim: a zip bomb is refused (R-09-59).
+            foreach (var (name, bytes) in SafeZip.Read(zip)) files[name] = bytes;
         }
         catch (InvalidDataException) { throw new ServiceRefused(422, ErrorCodes.BackupInvalid, "The backup is not a zip"); }
         if (!files.TryGetValue(File, out var body)) throw new ServiceRefused(422, ErrorCodes.BackupInvalid, $"The backup has no {File}");
@@ -230,8 +224,6 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
     {
         using var a = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
         using var s = a.GetEntry(name)!.Open();
-        using var m = new MemoryStream();
-        s.CopyTo(m);
-        return m.ToArray();
+        return SafeZip.ReadAtMost(s, SafeZip.MaxEntryBytes, name);
     }
 }

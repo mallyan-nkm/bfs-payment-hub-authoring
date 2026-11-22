@@ -25,6 +25,10 @@ var connection = builder.Configuration["Store:Connection"] ?? throw new InvalidO
 var options = new StoreOptions(provider, connection);
 // Environments where a package that carries simulators may be activated (R-07-12: never a promotable one).
 var testEnvironments = (builder.Configuration["Releases:TestEnvironments"] ?? "test,dev,kit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
+// The folders POST /import-branch may read (R-09-58): a checkout of the content branch is under one of them. A path a caller
+// names anywhere else on the host is refused, so the API is no way to read the host's files. Without it, no branch is imported.
+var importRoots = (builder.Configuration["Releases:ImportRoots"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(r => Path.TrimEndingDirectorySeparator(Path.GetFullPath(r))).ToArray();
 // The host's secrets: env: reads the host's environment (through its configuration), file: a mounted file, vault: a Vault.
 var secrets = SecretResolver.FromEnvironment(k => builder.Configuration[k]);
 var trustSetting = builder.Configuration["Signing:TrustedSigners"] ?? builder.Configuration["TH_TRUSTED_SIGNERS"]
@@ -44,6 +48,8 @@ if (GitHubPackageSource.FromConfiguration(builder.Configuration, secrets) is { }
 builder.Services.AddTransactHubTelemetry("transacthub-api");
 builder.Services.AddHealthChecks().AddCheck<StoreReady>("store", tags: [WebTelemetry.Ready]);
 var app = builder.Build();
+// Security headers on every answer (R-09-60); the front door's volume is not rate limited here.
+app.UseRuntimeSecurityHeaders(app.Configuration, limitWrites: false);
 app.MapTransactHubHealth();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -129,7 +135,7 @@ app.MapGet("/releases/package", async (string scope, string release, StoreDbCont
 // A bank's configuration values in force at a moment (plan P6): what the workers look up at each attempt, so a value the studio
 // publishes with a later validFrom reaches the payments of that date with no deployment. A caller sees only its tenants' values.
 app.MapGet("/values", async (string tenant, DateTimeOffset? at, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock) =>
-    ApiAuth.MayReadTenant(user, tenant)
+    ApiAuth.Has(user, ApiAuth.ValuesReader, tenant)
         ? Results.Ok(await BankValues.InForce(db, tenant, at ?? clock.GetUtcNow()))
         : Problem(403, $"{ApiAuth.Actor(user)} may not read the values of {tenant}")).RequireAuthorization(ApiAuth.ValuesReader);
 
@@ -147,7 +153,12 @@ app.MapGet("/activations/active", async (string environment, string scope, DateT
 // A package that does not verify is a problem and is not stored; an activation needs the activator's role as well.
 app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock) =>
 {
-    if (!Directory.Exists(b.Path)) return Problem(404, $"No directory {b.Path}");
+    // Only a folder under a configured import root, named without a link that leads out of it (R-09-58).
+    if (ImportPath(b.Path) is not { } inside) return Problem(403, importRoots.Length == 0
+        ? "No branch is imported: Releases:ImportRoots names no folder this API may read"
+        : "The branch must be a folder under one of the configured import roots (Releases:ImportRoots)");
+    b = b with { Path = inside };
+    if (!Directory.Exists(b.Path)) return Problem(404, "No such directory under the import roots");
     var actor = ApiAuth.Actor(user);
     var stored = new List<object>();
     var problems = new List<string>();
@@ -200,6 +211,19 @@ app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, Store
     var values = await BankValues.Import(db, clock, Path.Combine(b.Path, "banks"), actor);
     return Results.Ok(new { stored, activated, values, problems });
 }).RequireAuthorization(ApiAuth.Importer);
+
+string? ImportPath(string? given)
+{
+    if (string.IsNullOrWhiteSpace(given) || importRoots.Length == 0) return null;
+    string full;
+    try { full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(given)); } catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
+    var root = importRoots.FirstOrDefault(r => full == r || full.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.Ordinal));
+    if (root is null) return null;
+    // A symbolic link on the way would lead outside the root: refuse it.
+    for (var d = new DirectoryInfo(full); d is not null && d.FullName.Length > root.Length; d = d.Parent)
+        if (d.Exists && d.LinkTarget is not null) return null;
+    return full;
+}
 
 // The signed versions the package source offers (R-09-30): each tag, the release it names and whether it is stored here.
 app.MapGet("/sources/versions", async (IServiceProvider sp, StoreDbContext db, CancellationToken ct) =>
@@ -292,28 +316,41 @@ app.MapGet("/distributions/active", async (string bank, string environment, Stor
 app.MapGet("/distributions/package", async (string id, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
     Results.File((await Distributions(db, clock).Stored(id, ct)).CanonicalZip(), "application/zip", "distribution.zip"))).RequireAuthorization(ApiAuth.Reader);
 
-app.MapPost("/distributions/activate", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+// A distribution belongs to one bank: the caller needs the activator's role in that bank (R-06-28, R-09-27).
+IResult? NotForBank(ClaimsPrincipal user, string role, string? bank, string what) =>
+    bank is { Length: > 0 } && !ApiAuth.Has(user, role, bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not {what} for {bank}: it needs the {role} role in that bank") : null;
+static string? BankOfDistribution(string? dist)
+{
+    try { return dist is { Length: > 0 } ? DistributionRegistry.Split(dist).bank : null; }
+    catch (DistributionRefused) { return null; }
+}
+
+app.MapPost("/distributions/activate", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "activate a distribution") ?? await Refusable(async () =>
     Results.Json(await Distributions(db, clock).Activate(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "activate", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/drain", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+app.MapPost("/distributions/drain", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "drain a distribution") ?? await Refusable(async () =>
     Results.Ok(await Distributions(db, clock).Drain(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "drain", ct)))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "remove a distribution") ?? await Refusable(async () =>
     Results.Ok(await Distributions(db, clock).Remove(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "remove", ct)))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, a.Bank, "roll back a distribution") ?? await Refusable(async () =>
     Results.Json(await Distributions(db, clock).Rollback(a.Bank ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "rollback", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
 
 // The front door: a payment is pinned at acceptance to the distribution active for its bank and environment (R-09-53),
 // and its end is a fact (R-09-54, Issue I-97). A caller may pin only for its own tenants.
 app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
-    !ApiAuth.MayReadTenant(user, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
-    : await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
+    !ApiAuth.Has(user, ApiAuth.Intake, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
+    // A payment id pinned already by another bank is not this caller's to read or pin.
+    : NotForBank(user, ApiAuth.Intake, BankOfDistribution(await new DistributionRegistry(db, clock).PinOf(p.PaymentId, ct)), "accept this payment")
+    ?? await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
 
-app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+// A payment's end is recorded only by the front door of the bank it is pinned to.
+app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    NotForBank(user, ApiAuth.Intake, BankOfDistribution(await new DistributionRegistry(db, clock).PinOf(p.PaymentId, ct)), "end this payment") ?? await Refusable(async () =>
     Results.Ok(new { paymentId = p.PaymentId, outcome = p.Outcome, recorded = await Distributions(db, clock).End(p.PaymentId, p.Outcome, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
 
-// The files of a payment (Issue I-97, R-09-58): the front door keeps each file it receives for a payment here, signed by this host's key
+// The files of a payment (Issue I-97, R-09-62): the front door keeps each file it receives for a payment here, signed by this host's key
 // (TH_FILE_SIGNING_KEY_REF, a P-256 private key in PEM by reference; without one, a key made for the host's lifetime). Insert-only.
 app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
 {
@@ -345,7 +382,7 @@ app.MapGet("/payments/pin", async (string paymentId, StoreDbContext db, TimeProv
 
 // The port binding in force for a bank at a moment (a configuration release's binding with its validFrom, scenario 2).
 app.MapGet("/bindings", async (string tenant, string port, DateTimeOffset? at, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
-    !ApiAuth.MayReadTenant(user, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the bindings of {tenant}")
+    !ApiAuth.Has(user, ApiAuth.ValuesReader, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the bindings of {tenant}")
     : await Distributions(db, clock).BindingAt(tenant, port, at ?? clock.GetUtcNow(), ct) is { } b ? Results.Ok(b) : Problem(404, $"No binding of {port} for {tenant}")).RequireAuthorization(ApiAuth.ValuesReader);
 
 foreach (var path in new[] { "/distributions", "/distributions/{**rest}", "/configuration-releases", "/configuration-releases/{**rest}" })

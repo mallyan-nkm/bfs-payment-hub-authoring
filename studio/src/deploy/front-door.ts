@@ -32,7 +32,7 @@ export async function end(rt: RuntimeClient, paymentId: string, outcome: string)
 }
 
 /**
- * Keeps a file the front door received for a payment in the runtime's store (Issue I-97, R-09-58): its name, size, direction and
+ * Keeps a file the front door received for a payment in the runtime's store (Issue I-97, R-09-62): its name, size, direction and
  * kind, signed by the runtime. The file's name is the inbound message's (a `# file: <name>` first line, the samples' metadata), else
  * the message type's.
  */

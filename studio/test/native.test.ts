@@ -18,6 +18,7 @@ const ACT = {
 const VIEW = { payment: { instructedAmount: { value: 10, currency: 'AED' } } };
 const NOW = '2026-11-17T06:00:00.000Z';
 const received: any[] = [];
+const authorization: (string | undefined)[] = [];
 let reply: any = {};
 let host: http.Server;
 let url = '';
@@ -28,6 +29,7 @@ beforeAll(async () => {
     let raw = '';
     for await (const c of req) raw += c;
     received.push({ method: req.method, path: req.url, body: JSON.parse(raw) });
+    authorization.push(req.headers.authorization);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(reply));
   });
@@ -65,6 +67,22 @@ describe('native code-behind (R-08-14)', () => {
     const r = await runNative(ACT, VIEW, { template: 'default' }, NOW, 'example-bank', 'item');
     expect(r).toEqual({ outcome: 'mapped', reasonCode: undefined, writes: { 'facts.file': { name: 'synthetic.SIF' } } });
     expect(received).toEqual([{ method: 'POST', path: '/native', body: { activity: ACT.name, release: '1.0.0', view: VIEW, params: { template: 'default' }, now: NOW, tenant: 'example-bank', level: 'item' } }]);
+  });
+
+  it('sends the worker\'s token for the native host, read by reference from TH_NATIVE_TOKEN (R-08-17)', async () => {
+    process.env.TH_NATIVE_HOST = url;
+    reply = { kind: 'result', outcome: 'mapped', writes: {} };
+    authorization.length = 0;
+    process.env.TH_TEST_NATIVE_TOKEN = 'synthetic-native-token';
+    process.env.TH_NATIVE_TOKEN = 'env:TH_TEST_NATIVE_TOKEN';
+    try {
+      await runNative(ACT, VIEW, {}, NOW, 'example-bank');
+    } finally {
+      delete process.env.TH_NATIVE_TOKEN;
+      delete process.env.TH_TEST_NATIVE_TOKEN;
+    }
+    await runNative(ACT, VIEW, {}, NOW, 'example-bank');
+    expect(authorization).toEqual(['Bearer synthetic-native-token', undefined]);
   });
 
   it('refuses an outcome the activity does not declare', async () => {
