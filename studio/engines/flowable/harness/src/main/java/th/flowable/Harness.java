@@ -41,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -84,6 +85,10 @@ public final class Harness {
     final Map<String, String> keyOf = new HashMap<>(); // procDefId -> key
     final Set<String> topics = new TreeSet<>();
     final Set<String> undoElements = new HashSet<>();
+    /** the composite step (block sub-process) an element is in, innermost, by element id (R-05-43). */
+    final Map<String, String> blockOf = new HashMap<>();
+    /** the value a timer from a duration parameter took (R-05-45), by timer job id; and by instance and timer element. */
+    final Map<String, String> timerValue = new HashMap<>(), lastTimerValue = new HashMap<>();
 
     final Map<String, Inst> insts = new LinkedHashMap<>();
     final List<Inst> roots = new ArrayList<>();
@@ -92,6 +97,7 @@ public final class Harness {
 
     // The front door.
     final List<JsonNode> mailbox = new ArrayList<>();
+    final Map<JsonNode, Long> receivedAt = new IdentityHashMap<>();
     int unmatched = 0, duplicates = 0, earlyKept = 0;
     final List<String> notes = new ArrayList<>();
 
@@ -119,6 +125,8 @@ public final class Harness {
         final Map<String, String> lastChild = new HashMap<>();
         final Map<String, Integer> notifyAt = new HashMap<>();
         final Set<String> stateKeys = new TreeSet<>();
+        final Set<String> awaited = new HashSet<>(); // the message of every await this instance has waited for (R-05-43)
+        final Map<String, Long> blockStarted = new HashMap<>(); // block element id -> virtual time it last began
         final List<String> ruleTraceSteps = new ArrayList<>();
         int stateSnapshots = 0;
         boolean ended;
@@ -200,18 +208,19 @@ public final class Harness {
             Map<String, Map<String, Map<String, String>>> byEl = new HashMap<>();
             Map<String, Map<String, String>> pa = annotations(proc.getExtensionElements());
             workflowOf.put(pd.getId(), pa.getOrDefault("workflow", Map.of()));
-            collect(proc, byEl);
+            collect(proc, byEl, null);
             anns.put(pd.getId(), byEl);
         }
     }
 
-    void collect(FlowElementsContainer c, Map<String, Map<String, Map<String, String>>> byEl) {
+    void collect(FlowElementsContainer c, Map<String, Map<String, Map<String, String>>> byEl, String block) {
         for (FlowElement el : c.getFlowElements()) {
             Map<String, Map<String, String>> a = annotations(el.getExtensionElements());
             if (!a.isEmpty()) byEl.put(el.getId(), a);
+            if (block != null) blockOf.put(el.getId(), block);
             if (el instanceof ExternalWorkerServiceTask t) topics.add(t.getTopic());
             if (a.containsKey("point") && "undo".equals(a.get("point").get("kind"))) undoElements.add(el.getId());
-            if (el instanceof FlowElementsContainer inner) collect(inner, byEl);
+            if (el instanceof FlowElementsContainer inner) collect(inner, byEl, a.containsKey("block") ? el.getId() : block);
         }
     }
 
@@ -325,7 +334,7 @@ public final class Harness {
             long tAt = Long.MAX_VALUE, tEng = Long.MAX_VALUE;
             for (Job j : ms.createTimerJobQuery().list()) {
                 long eng = j.getCreateTime().getTime();
-                long vdue = clock.virtualOf(eng) + (j.getDuedate().getTime() - eng);
+                long vdue = timerDue(j, eng);
                 if (vdue < tAt || (vdue == tAt && eng < tEng)) { tAt = vdue; tEng = eng; timer = j; }
             }
             boolean useTimer = timer != null && (next == null || tAt < next.at || (tAt == next.at && tEng <= next.eng));
@@ -346,6 +355,34 @@ public final class Harness {
             if (DEBUG) for (var j : ms.createExternalWorkerJobQuery().list()) System.err.println("[extjob] " + j.getElementId() + " lockexp=" + j.getLockExpirationTime() + " owner=" + j.getLockOwner() + " cfg=" + j.getJobHandlerConfiguration() + " topics=" + topics);
             if (DEBUG) System.err.println("[ext] " + ms.createExternalWorkerJobQuery().list().size() + " timers " + ms.createTimerJobQuery().list().size() + " notes " + notes);
         }
+    }
+
+    /**
+     * When a timer is due on the virtual clock. A timer from a duration parameter (R-05-45) takes the tenant's
+     * value in force on the business date it was created, else the default; the engine wrote it with the default.
+     */
+    long timerDue(Job j, long eng) {
+        long vCreated = clock.virtualOf(eng);
+        Map<String, String> t = annOf(j.getProcessDefinitionId(), j.getElementId()).get("timer");
+        if (t == null || t.get("parameter") == null) return vCreated + (j.getDuedate().getTime() - eng);
+        String value = timerValue.computeIfAbsent(j.getId(), k -> paramValue(t.get("parameter"), t.get("default"), Support.isoDate(vCreated)));
+        lastTimerValue.put(j.getProcessInstanceId() + "|" + j.getElementId(), value);
+        if (!"business".equals(t.get("calendar"))) return vCreated + Support.durationMs(value);
+        List<Integer> weekend = new ArrayList<>();
+        for (JsonNode d : plan.at("/calendar/weekend")) weekend.add(d.asInt());
+        return Support.addBusiness(vCreated, value, weekend, Support.strings(plan.at("/calendar/holidays")));
+    }
+
+    /** A parameter's value in force on a date (the tenant's configuration set), else its default (R-01-17). */
+    String paramValue(String parameter, String dflt, String date) {
+        JsonNode best = null;
+        for (JsonNode v : plan.path("values")) {
+            if (!parameter.equals(v.path("parameter").asText())) continue;
+            String from = v.path("validFrom").asText("0000-01-01"), to = v.path("validTo").asText("9999-12-31");
+            if (from.compareTo(date) > 0 || to.compareTo(date) < 0) continue;
+            if (best == null || best.path("validFrom").asText("").compareTo(from) <= 0) best = v;
+        }
+        return best == null ? dflt : best.path("value").asText();
     }
 
     void execute(String jobId) {
@@ -549,9 +586,29 @@ public final class Harness {
         return m.path("id").asText();
     }
 
-    EventSubscription waiting(Inst i, String type) {
-        List<EventSubscription> subs = rt.createEventSubscriptionQuery().processInstanceId(i.pid).eventType("message").eventName(type).list();
-        return subs.isEmpty() ? null : subs.get(0);
+    /** A catch of this instance waiting for this message: of its type and, where the await names one, its family (R-05-44). */
+    EventSubscription waiting(Inst i, JsonNode m) {
+        String type = m.path("type").asText();
+        for (EventSubscription s : rt.createEventSubscriptionQuery().processInstanceId(i.pid).eventType("message").eventName(type).list()) {
+            Map<String, String> a = annOf(s.getProcessDefinitionId(), s.getActivityId()).get("await");
+            String family = a == null ? null : a.get("family");
+            String got = m.path("family").asText(null);
+            if (family == null || got == null || family.equals(got)) return s;
+        }
+        return null;
+    }
+
+    /**
+     * R-05-43: once an earlier await of this instance has waited for this message, a held message received
+     * before the composite step that holds the waiting await began answered the earlier exchange.
+     */
+    boolean stale(Inst i, JsonNode m, EventSubscription w) {
+        if (!i.awaited.contains(m.path("type").asText())) return false;
+        String block = blockOf.get(w.getActivityId());
+        Long began = block == null ? null : i.blockStarted.get(block);
+        long since = began != null ? began : clock.virtual;
+        Long at = receivedAt.get(m);
+        return at != null && at < since;
     }
 
     void frontDoor(JsonNode m) {
@@ -567,7 +624,7 @@ public final class Harness {
         List<Inst> candidates = new ArrayList<>();
         for (Inst i : insts.values()) if (correlates(i, m)) candidates.add(i);
         Inst alive = null;
-        for (Inst i : candidates) if (!i.ended && waiting(i, type) != null) { alive = i; break; }
+        for (Inst i : candidates) if (!i.ended && waiting(i, m) != null) { alive = i; break; }
         if (alive == null) for (int k = candidates.size() - 1; k >= 0; k--) if (!candidates.get(k).ended) { alive = candidates.get(k); break; }
         Inst target = alive != null ? alive : candidates.isEmpty() ? null : candidates.get(candidates.size() - 1);
         if (target == null) { unmatched++; return; }
@@ -575,10 +632,11 @@ public final class Harness {
         boolean seen = candidates.stream().anyMatch(c -> c.consumed.contains(id)) || mailbox.stream().anyMatch(x -> dedupeId(x).equals(id));
         if (seen) { duplicates++; return; }
         if (target.ended) { unmatched++; return; }
-        EventSubscription w = waiting(target, type);
+        EventSubscription w = waiting(target, m);
         if (w != null) { deliver(target, m, w); return; }
         if (target.expired.contains(type)) { unmatched++; return; }
         // Early: the binding holds the message until a catch is waiting (R-09-16).
+        receivedAt.put(m, clock.virtual);
         mailbox.add(m);
         earlyKept++;
     }
@@ -600,9 +658,10 @@ public final class Harness {
             JsonNode m = it.next();
             for (Inst i : insts.values()) {
                 if (i.ended || !correlates(i, m)) continue;
-                EventSubscription w = waiting(i, m.path("type").asText());
+                EventSubscription w = waiting(i, m);
                 if (w == null) continue;
                 it.remove();
+                if (stale(i, m, w)) { unmatched++; notes.add("a held " + m.path("type").asText() + " received before its step began is unmatched (R-05-43)"); p = true; break; }
                 deliver(i, m, w);
                 p = true;
                 break;
@@ -728,6 +787,7 @@ public final class Harness {
         Inst inst = insts.get(ev.getProcessInstanceId());
         if (inst == null) return;
         ExecutionEntity ex = CommandContextUtil.getExecutionEntityManager().findById(ev.getExecutionId());
+        if (a.containsKey("block")) inst.blockStarted.put(ev.getActivityId(), clock.virtual);
         if (a.containsKey("forEach")) {
             Map<String, String> fe = a.get("forEach");
             JsonNode items = Support.getPath(inst.ctx, fe.get("in"));
@@ -775,9 +835,18 @@ public final class Harness {
                 }
                 record(inst, p, step + ":" + ex.getVariable(p.get("var")));
             }
-            case "text" -> record(inst, p, p.get("text"));
-            case "awaitReceived" -> record(inst, p, labelOf(ex, p, p.get("step")) + ":received");
+            case "text" -> {
+                // A wait from a duration parameter records the value its timer took (R-05-45).
+                String timer = p.get("timer");
+                String v = timer == null ? null : lastTimerValue.get(inst.pid + "|" + timer);
+                record(inst, p, v == null ? p.get("text") : p.get("prefix") + ":" + v);
+            }
+            case "awaitReceived" -> {
+                inst.awaited.add(p.get("message"));
+                record(inst, p, labelOf(ex, p, p.get("step")) + ":received");
+            }
             case "awaitTimeout" -> {
+                inst.awaited.add(p.get("message"));
                 inst.expired.add(p.get("message"));
                 record(inst, p, labelOf(ex, p, p.get("step")) + ":timeout");
             }

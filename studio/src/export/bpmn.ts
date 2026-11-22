@@ -161,6 +161,21 @@ function ext(...parts: (string | undefined)[]) {
   return p.length ? `<extensionElements>${p.join('')}</extensionElements>` : '';
 }
 
+/**
+ * A duration as a step names it (R-05-45): a literal, or a parameter of the composite named in full by the
+ * expansion, `{ parameter: '<activity>#<name>', default }`. The timer is written with the default, and a
+ * parameter is marked `th:timer parameter default`: the binding takes the tenant's value in force on the
+ * business date the timer starts, else the default, and places the timer on its clock by that value.
+ */
+export function timerDuration(v: any, step: string): { literal: string; parameter?: string; default?: string } {
+  if (typeof v === 'string') return { literal: v };
+  if (v && typeof v === 'object' && typeof v.parameter === 'string' && typeof v.default === 'string') {
+    if (!v.parameter.includes('#')) throw new Error(`Step ${step}: the duration parameter ${v.parameter} is not named in full; generate from the expanded form`);
+    return { literal: v.default, parameter: v.parameter, default: v.default };
+  }
+  throw new Error(`Step ${step}: a duration must be an ISO 8601 duration or a parameter with a default, not ${JSON.stringify(v)}`);
+}
+
 const listener = (expr: string, event = 'start') => `<flowable:executionListener event="${event}" expression="${esc(expr)}"/>`;
 
 /** One container (the process, or a sub-process): its elements and flows. */
@@ -342,8 +357,11 @@ class B {
     if ('await' in st) return this.await(st);
     if ('wait' in st) {
       const id = st.id ? this.g.stepId(st.id) : this.g.id('wait');
-      this.els.push(`<intermediateCatchEvent id="${id}" name="wait:${esc(st.wait)}"><timerEventDefinition><timeDuration>${esc(st.wait)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
-      const p = this.point({ kind: 'text', text: `${st.id ?? 'wait'}:${st.wait}`, record: this.o.record });
+      const d = timerDuration(st.wait, st.id ?? 'wait');
+      const meta = d.parameter ? ext(ann('timer', { parameter: d.parameter, default: d.default })) : '';
+      this.els.push(`<intermediateCatchEvent id="${id}" name="wait:${esc(d.literal)}">${meta}<timerEventDefinition><timeDuration>${esc(d.literal)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      // With a parameter the binding writes the value the timer took (`timer`), after `prefix:`.
+      const p = this.point({ kind: 'text', text: `${st.id ?? 'wait'}:${d.literal}`, record: this.o.record, ...(d.parameter ? { timer: id, prefix: st.id ?? 'wait' } : {}) });
       this.flow(id, p);
       return { entry: id, exits: [p] };
     }
@@ -676,7 +694,7 @@ class B {
     const msg = `${gw}_message`;
     const tmr = `${gw}_timeout`;
     this.els.push(`<eventBasedGateway id="${gw}" name="await ${esc(stepId)}"/>`);
-    this.els.push(`<intermediateCatchEvent id="${msg}" name="${esc(stepId)}:received">${ext(ann('await', { step: stepId, message: aw.message, correlateBy: aw.correlateBy }))}<messageEventDefinition messageRef="${this.g.message(aw.message)}"/></intermediateCatchEvent>`);
+    this.els.push(`<intermediateCatchEvent id="${msg}" name="${esc(stepId)}:received">${ext(ann('await', { step: stepId, message: aw.message, correlateBy: aw.correlateBy, family: aw.family }))}<messageEventDefinition messageRef="${this.g.message(aw.message)}"/></intermediateCatchEvent>`);
     this.flow(gw, msg);
     const got = this.point({ kind: 'awaitReceived', step: stepId, message: aw.message, record: this.o.record, item: this.o.item ? 'true' : undefined });
     this.flow(msg, got);
@@ -684,10 +702,14 @@ class B {
     if (aw.timeout) {
       // The business calendar is the binding's: registered in the embedded engine, or, on a REST
       // server that has no such calendar, applied by the binding when it fires the timer.
+      // A timeout from a parameter (R-05-45) is marked for the binding, which takes the tenant's value.
       const business = aw.calendar === 'business';
+      const d = timerDuration(aw.timeout, stepId);
       const cal = business && !this.g.rest ? ' flowable:businessCalendarName="business"' : '';
-      const meta = business && this.g.rest ? ext(ann('timer', { calendar: 'business', duration: aw.timeout })) : '';
-      this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout">${meta}<timerEventDefinition${cal}><timeDuration>${esc(aw.timeout)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+      const meta = (business && this.g.rest) || d.parameter
+        ? ext(ann('timer', { ...(business ? { calendar: 'business' } : {}), duration: d.parameter ? undefined : d.literal, parameter: d.parameter, default: d.default }))
+        : '';
+      this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:timeout">${meta}<timerEventDefinition${cal}><timeDuration>${esc(d.literal)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
       this.flow(gw, tmr);
       const out = this.point({ kind: 'awaitTimeout', step: stepId, message: aw.message, record: this.o.record, item: this.o.item ? 'true' : undefined });
       this.flow(tmr, out);
@@ -836,6 +858,8 @@ class B {
     // A composite step is an embedded sub-process; a return is an error end caught on its boundary.
     const id = this.g.id('block').replace(/^th_block_/, 'block_');
     const inner = this.child({ record: 'detail' });
+    // A REST binding learns when the block began (R-05-43) at a point of its own (embedded: as it starts).
+    const began = inner.restPoint({ kind: 'blockStart', step: st.id });
     const f = inner.steps(st.block.do ?? []);
     const act = this.g.resolveAct(st.block.of);
     const primary = act?.outcomes?.find((o: any) => o.primary)?.name ?? 'done';
@@ -843,10 +867,12 @@ class B {
     const s = `${id}_start`;
     const e = `${id}_end`;
     inner.els.unshift(`<startEvent id="${s}"/>`, `<endEvent id="${e}"/>`);
-    if (f) {
-      inner.flow(s, f.entry);
-      f.exits.forEach((x) => inner.flow(x, e));
-    } else inner.flow(s, e);
+    const first = began ?? f?.entry;
+    if (began && f) inner.flow(began, f.entry);
+    if (first) inner.flow(s, first);
+    if (f) f.exits.forEach((x) => inner.flow(x, e));
+    else if (began) inner.flow(began, e);
+    else inner.flow(s, e);
     this.els.push(`<subProcess id="${id}" name="${esc(st.id)}"><documentation>Composite ${esc(st.block.of)}, subflow ${esc(st.block.by)}</documentation>${ext(ann('block', { step: st.id, of: st.block.of, by: st.block.by }))}`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
     const join = this.g.id('returned');
     this.gateway(join);
@@ -1075,7 +1101,10 @@ export function portabilityReport(flows: any[], target: string): PortabilityItem
         // R-05-47: the other engines read the bank's value at the await; the generated timer holds the default (docs/ISSUES.md I-57).
         if (target === 'flowable' && (st.await.timeoutParameter || st.await.calendarParameter)) add('await', `The wait is the bank's ${[st.await.timeoutParameter, st.await.calendarParameter].filter(Boolean).join(' and ')}; the BPMN timer holds its default, ${st.await.timeout}.`, 'warning', sid, 'Run the payment on Temporal, DTFx or Elsa, or set the timer at deployment.');
         if (target === 'flowable' && inParallel) add('await', 'Two awaits for one message type in parallel branches cannot be told apart by the binding.', 'warning', sid, 'Await in sequence, or await distinct message types.');
+        if (target === 'flowable' && st.await.family) add('await', `The binding delivers only a ${st.await.message} of family ${st.await.family} to this catch (R-05-44), and drops a held one older than the composite step (R-05-43).`, 'info', sid);
+        if (target === 'flowable' && st.await.timeout && typeof st.await.timeout === 'object') add('await', 'The timeout is a parameter: the timer is written with its default, and the binding places it by the tenant\'s value (R-05-45).', 'warning', sid);
       }
+      if (st.wait && typeof st.wait === 'object' && target === 'flowable') add('wait', 'The wait is a parameter: the timer is written with its default, and the binding places it by the tenant\'s value (R-05-45).', 'warning', sid ?? 'wait');
       if (st.forEach && (target === 'temporal' || target === 'dtfx' || target === 'elsa')) add('forEach', 'Large batches are chunked with continue-as-new; the chunk size comes from the binding (R-09-13).');
       if (st.forEach && target === 'flowable' && (st.forEach.concurrency ?? 1) > 1) add('forEach', `Step ${sid ?? 'forEach'}: concurrency ${st.forEach.concurrency} becomes a parallel multi-instance; Flowable starts every item at once and has no concurrency bound.`, 'warning', sid, 'Set concurrency 1 for a sequential multi-instance, or chunk the batch in the binding.');
       if (st.call && st.policy?.attemptTimeout && (target === 'dtfx' || target === 'elsa')) add('policy', `Step ${sid}: an attempt timeout abandons the late result; it does not cancel the task (R-09-11).`, 'warning');

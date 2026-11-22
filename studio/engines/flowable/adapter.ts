@@ -172,5 +172,7 @@ export function makePlan(env: StudioEnv, b: BuiltScenario, dir: string) {
     signalMessages: SIGNAL_MESSAGES,
     supersessions: (cfg.supersessions ?? []).map((s) => ({ artefact: s.artefact, replaces: s.replaces, with: s.with, id: s.id, ...(s.effectiveAt ? { effectiveAtMs: durationMs(s.effectiveAt) } : {}) })),
     calendar: DEFAULT_CALENDAR,
+    // Parameter values by date, the tenant's (R-01-17): the binding resolves a duration parameter from them (R-05-45).
+    values: [...(run.configSet?.values ?? []), ...(cfg.values ?? [])].map((x: any) => ({ parameter: x.parameter, value: x.value, validFrom: x.validFrom, ...(x.validTo ? { validTo: x.validTo } : {}) })),
   };
 }
