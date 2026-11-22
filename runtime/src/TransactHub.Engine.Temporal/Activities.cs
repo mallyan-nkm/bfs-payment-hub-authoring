@@ -74,6 +74,8 @@ public sealed class Host
         var kind = J.S(res, "kind");
         JsonObject outp;
         if (kind == "hang") outp = new JsonObject { ["kind"] = "hang" };
+        // A hold opened its item: the workflow awaits the operator's decision (Issue I-98).
+        else if (kind == "held") outp = new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry") };
         else if (kind == "error")
             outp = new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message") };
         else

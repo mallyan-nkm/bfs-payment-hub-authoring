@@ -399,6 +399,45 @@ scenarios:
         - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: PT1H, onTimeout: { end: pending } } }
         - end: done
 
+  - id: CK-HOLD-01
+    bench: [ { port: ck.kit.port.operations.v1, simulator: ck.kit.sim.operations.v1, scenario: approve-after-two-days } ]
+    values:
+      - { parameter: "ck.kit.hold.approve.v1#expiry", value: P5D, validFrom: "2026-01-01" }
+    checks: { notBefore: { step: b, at: P2D } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: h, call: ck.kit.hold.approve.v1, handle: { declined: { end: declined }, expired: { end: expired } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-HOLD-02
+    bench: [ { port: ck.kit.port.operations.v1, simulator: ck.kit.sim.operations.v1, scenario: no-decision } ]
+    checks: { virtualElapsed: P1D }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: h, call: ck.kit.hold.approve.v1, handle: { declined: { end: declined }, expired: { end: expired } } }
+        - end: done
+
+  - id: CK-PARK-01
+    stubs: { "step:a": { failTimes: 1 } }
+    signals: [ { after: PT1H, signal: retry } ]
+    checks: { attempts: { a: 2 }, notBefore: { step: b, at: PT1H } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, policy: { retry: { maxAttempts: 1 }, park: P1D }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
+  - id: CK-PARK-02
+    stubs: { "step:a": { failTimes: 1 } }
+    checks: { virtualElapsed: PT4H }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, policy: { retry: { maxAttempts: 1 }, park: PT4H }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
   - id: CK-HOOK-01
     stubs: { "step:check": { outcomes: [rejected] }, "step:hold": { outcomes: [approved] } }
     bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-01.v1#gate", hook: b.hook.ck-halt.v1, release: 1.0.0, validFrom: "2026-01-01" } ]

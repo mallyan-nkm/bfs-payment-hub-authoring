@@ -532,6 +532,14 @@ public final class Harness {
         if (ms.createExternalWorkerJobQuery().jobId(job.getId()).singleResult() == null) return; // a timer boundary ended the attempt; the late result is ignored
         String kind = res.get("kind").asText();
         clock.tick();
+        if ("held".equals(kind)) {
+            // A hold opened its item: the instance awaits the operator's decision until the hold's expiry (Issue I-98, R-05-56).
+            Map<String, Object> held = new HashMap<>();
+            held.put("outcome_" + Support.safe(step), "held");
+            held.put("th_expiry_" + Support.safe(step), res.path("expiry").asText("P1D"));
+            ms.createExternalWorkerCompletionBuilder(job.getId(), WORKER).variables(held).complete();
+            return;
+        }
         if ("error".equals(kind)) {
             boolean retryable = res.path("retryable").asBoolean(false);
             String name = res.path("name").asText("Error");
@@ -662,7 +670,12 @@ public final class Harness {
         received.set(m.path("type").asText(), ref);
         msgs.set("lastReceived", ref.deepCopy());
         clock.tick();
-        rt.messageEventReceived(m.path("type").asText(), w.getExecutionId());
+        // The operator's decision carries its status to the hold's gateway (R-05-56).
+        if ("p.ops.decision".equals(m.path("type").asText())) {
+            Map<String, Object> d = new HashMap<>();
+            d.put("th_decision", m.path("status").asText(""));
+            rt.messageEventReceived(m.path("type").asText(), w.getExecutionId(), d);
+        } else rt.messageEventReceived(m.path("type").asText(), w.getExecutionId());
     }
 
     boolean deliverHeld() {
@@ -708,9 +721,20 @@ public final class Harness {
         return null;
     }
 
+    /** An operator's control of a parked step (R-05-55): delivered only where a parked step waits for it. */
+    void operator(Inst root, String control) {
+        String name = "th.operator." + control;
+        List<EventSubscription> subs = rt.createEventSubscriptionQuery().processInstanceId(root.pid).eventType("message").eventName(name).list();
+        if (subs.isEmpty()) { notes.add("no parked step waits for " + control); return; }
+        root.trace().add("operator:" + control);
+        clock.tick();
+        rt.messageEventReceived(name, subs.get(0).getExecutionId());
+    }
+
     void signal(String signal) {
         Inst root = roots.isEmpty() ? null : roots.get(0);
         if (root == null || root.ended) return;
+        if ("retry".equals(signal) || "redrive".equals(signal)) { operator(root, signal); return; }
         String aw = awaitingStep(root);
         if ("pause".equals(signal)) {
             if (aw != null) { root.trace().add(aw + ":waiting"); root.trace().add("signal:pause"); } else root.pending.add("signal:pause");
@@ -871,6 +895,7 @@ public final class Harness {
                 record(inst, p, labelOf(ex, p, p.get("step")) + ":timeout", ex);
             }
             case "undo" -> inst.trace().add("undo:" + p.get("step"));
+            case "stuck" -> record(inst, p, labelOf(ex, p, p.get("step")) + ":stuck", ex);
             case "hookStart" -> {
                 inst.notifyAt.put(p.get("hookPoint"), inst.trace().size());
                 inst.trace().add("hook:pending");

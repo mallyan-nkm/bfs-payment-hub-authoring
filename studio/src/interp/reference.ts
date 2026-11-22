@@ -28,6 +28,8 @@ export interface ActivityResult {
   decisions?: Record<string, any>;
   ruleTrace?: SessionResult;
   reply?: Message;
+  /** The runtime opened a hold and answered at once (Issue I-98): the decision is awaited, not the attempt. */
+  held?: { hold?: string; expiry?: string };
 }
 
 export class TransientFailure extends Error {
@@ -154,12 +156,7 @@ export async function reference(act: any, view: any, io: ActivityIO): Promise<Ac
     case 'hold': {
       const port = ports[0];
       if (port) await io.call(port, { expectsSyncReply: false });
-      const expiry = io.param('expiry');
-      const ms = expiry ? durationToMs(expiry) : null;
-      const decision = await io.waitFor('p.ops.decision', ms);
-      if (!decision) return { outcome: names(act).includes('expired') ? 'expired' : negativeOutcomeOrSecond(act), writes: genericWrites(act, 'expired') };
-      const outcome = outcomeForStatus(act, decision.status) ?? prim;
-      return { outcome, writes: genericWrites(act, outcome, decision), reply: decision };
+      return holdDecision(act, io);
     }
   }
 
@@ -178,6 +175,20 @@ export async function reference(act: any, view: any, io: ActivityIO): Promise<Ac
   const outcome = outcomeForStatus(act, m.status);
   if (outcome === null) return io.hang();
   return { outcome, reasonCode: outcome !== prim ? m.reasonCode : undefined, writes: genericWrites(act, outcome, m), reply: m };
+}
+
+/**
+ * A hold's decision (R-05-50, R-05-56): the operator's decision, `p.ops.decision`, awaited until the hold's expiry. On an engine
+ * the attempt answers `held` and the engine itself awaits the decision (Issue I-98); here the instance awaits it on its clock.
+ */
+export async function holdDecision(act: any, io: ActivityIO): Promise<ActivityResult> {
+  const prim = primaryOutcome(act);
+  const expiry = io.param('expiry');
+  const ms = expiry ? durationToMs(expiry) : null;
+  const decision = await io.waitFor('p.ops.decision', ms);
+  if (!decision) return { outcome: names(act).includes('expired') ? 'expired' : negativeOutcomeOrSecond(act), writes: genericWrites(act, 'expired') };
+  const outcome = outcomeForStatus(act, decision.status) ?? prim;
+  return { outcome, writes: genericWrites(act, outcome, decision), reply: decision };
 }
 
 function negativeOutcomeOrSecond(act: any): string {

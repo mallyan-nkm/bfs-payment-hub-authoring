@@ -44,6 +44,10 @@ scenarios:
   - { id: CK-SIGNAL-01, construct: signal, title: Pause stops new steps and resume carries on, expect: [a:ok, "signal:pause", "signal:resume", b:ok, "end:done"] }
   - { id: CK-SIGNAL-02, construct: signal, title: "Cancel compensates in reverse, then runs finally", expect: [w1:ok, "signal:cancel", "undo:w1", "finally:n", "end:cancelled"] }
   - { id: CK-SIGNAL-03, construct: signal, title: Re-screen runs the screen step again on a waiting payment, expect: [screen:clear, "await:waiting", "signal:re-screen", screen:hit, "end:held"] }
+  - { id: CK-HOLD-01, construct: hold, title: "A hold is an engine await on the operator's decision: it waits two days for it and carries on with the decision", expect: [a:ok, h:approved, b:ok, "end:done"] }
+  - { id: CK-HOLD-02, construct: hold, title: A hold that no one decides ends expired at its expiry, expect: [a:ok, h:expired, "end:expired"], virtualElapsed: P1D }
+  - { id: CK-PARK-01, construct: park, title: "A step that failed parks; an operator's retry gives it one more attempt and the workflow carries on", expect: [a:stuck, "operator:retry", a:ok, b:ok, "end:done"], attempts: { a: 2 } }
+  - { id: CK-PARK-02, construct: park, title: A parked step that no operator retries fails at the end of its park time, expect: [a:stuck, "end:failed"], virtualElapsed: PT4H }
   - { id: CK-HOOK-01, construct: hook, title: A halt hook that returns hold runs the hold block the hook point names, expect: [a:ok, "hook:hold", hold:approved, b:ok, "end:done"] }
   - { id: CK-HOOK-02, construct: hook, title: A transform hook that writes outside its contract fails and the hook point's failure mode applies, expect: [a:ok, "hook:failed", b:ok, "end:done"] }
   - { id: CK-HOOK-03, construct: hook, title: A notify hook that fails does not change the flow, expect: [a:ok, "hook:failed", "end:done"] }

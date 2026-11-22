@@ -39,6 +39,10 @@ export interface Ctx {
 export const TH_NS = 'urn:transacthub:flowable:1';
 export const SIGNAL_MESSAGES: Record<string, string> = { pause: 'th.signal.pause', resume: 'th.signal.resume', cancel: 'th.signal.cancel', 're-screen': 'th.signal.re-screen' };
 export const COMPENSATED_MESSAGE = 'th.compensated';
+/** The operator's controls of a parked step (R-05-55), as messages the binding sends to the instance. */
+export const OPERATOR_MESSAGES: Record<string, string> = { retry: 'th.operator.retry', redrive: 'th.operator.redrive' };
+/** The operator's decision a hold awaits (R-05-56); the binding sets `th_decision` to its status when it delivers it. */
+export const DECISION_MESSAGE = 'p.ops.decision';
 /** The topic of the binding's own tasks when the binding is a REST worker (Ctx.binding 'rest'). */
 export const BINDING_TOPIC = 'th.binding';
 const RESERVED = new Set(['start', 'main', 'deadline', 'end']);
@@ -473,7 +477,9 @@ class B {
     this.els.push(`<subProcess id="${sid}" name="${esc(stepId)}">${ext(ann('call', { step: stepId, activity: st.call, release }))}`, ...inner.body().map((x) => '  ' + x), '</subProcess>');
     const after = this.g.id('called');
     this.gateway(after);
-    this.flow(sid, after);
+    if (act.type === 'hold') this.heldDecision(sid, stepId, act, ov, after);
+    else this.flow(sid, after);
+    if (st.policy?.park && this.o.record !== 'finally') this.parked(sid, stepId, st.policy.park);
     if (pol.totalTimeout.value) {
       const b = `${sid}_total`;
       this.els.push(`<boundaryEvent id="${b}" attachedToRef="${sid}" cancelActivity="true"><timerEventDefinition><timeDuration>${pol.totalTimeout.value}</timeDuration></timerEventDefinition></boundaryEvent>`);
@@ -509,6 +515,67 @@ class B {
       f.exits[idx] = m;
     }
     return { entry: sid, exits: f.exits };
+  }
+
+  /**
+   * A hold the runtime opened answers `held` (Issue I-98): the instance then awaits the operator's decision, `p.ops.decision`,
+   * until the hold's expiry (the binding sets `th_expiry_<step>` from the answer), and the decision's status is the outcome; no
+   * decision by then is `expired` (R-05-56).
+   */
+  heldDecision(sid: string, stepId: string, act: any, ov: string, after: string) {
+    const names: string[] = (act.outcomes ?? []).map((o: any) => o.name);
+    const primary = (act.outcomes ?? []).find((o: any) => o.primary)?.name ?? names[0];
+    const hg = `${sid}_held`;
+    this.gateway(hg, 'held', `${hg}_no`);
+    this.flow(sid, hg);
+    this.flow(hg, after, undefined, 'answered', `${hg}_no`);
+    const eg = `${sid}_decision`;
+    this.els.push(`<eventBasedGateway id="${eg}" name="await the decision of ${esc(stepId)}"/>`);
+    this.flow(hg, eg, `\${${v(ov)} == 'held'}`, 'held');
+    const got = `${sid}_decided`;
+    this.els.push(`<intermediateCatchEvent id="${got}" name="${esc(stepId)}:decided">${ext(ann('await', { step: stepId, message: DECISION_MESSAGE, hold: 'true' }))}<messageEventDefinition messageRef="${this.g.message(DECISION_MESSAGE)}"/></intermediateCatchEvent>`);
+    this.flow(eg, got);
+    const dg = `${sid}_decidedAs`;
+    this.gateway(dg, 'th_decision', `${dg}_other`);
+    this.flow(got, dg);
+    const toPrimary = this.setter(ov, primary);
+    this.flow(dg, toPrimary, undefined, primary, `${dg}_other`);
+    this.flow(toPrimary, after);
+    for (const n of names.filter((x) => x !== primary && x !== 'expired')) {
+      const set = this.setter(ov, n);
+      this.flow(dg, set, `\${${v('th_decision')} == '${n}'}`, n);
+      this.flow(set, after);
+    }
+    const tmr = `${sid}_expiry`;
+    this.els.push(`<intermediateCatchEvent id="${tmr}" name="${esc(stepId)}:expiry"><timerEventDefinition><timeDuration>\${${v(`th_expiry_${safe(stepId)}`)}}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+    this.flow(eg, tmr);
+    const exp = this.setter(ov, names.includes('expired') ? 'expired' : names.find((x) => x !== primary) ?? primary);
+    this.flow(tmr, exp);
+    this.flow(exp, after);
+  }
+
+  /**
+   * A step that failed parks (R-05-55): the failure is caught on the call's boundary, the binding records `<step>:stuck`, and the
+   * instance awaits an operator's retry or re-drive (each runs the call again) or the end of its park time (the step fails).
+   */
+  parked(sid: string, stepId: string, duration: string) {
+    const pb = `${sid}_parked`;
+    this.els.push(`<boundaryEvent id="${pb}" attachedToRef="${sid}" cancelActivity="true"><errorEventDefinition errorRef="${this.g.error('th:failed', 'err_th_failed')}"/></boundaryEvent>`);
+    const stuck = this.point({ kind: 'stuck', step: stepId, record: this.o.record, item: this.o.item ? 'true' : undefined });
+    this.flow(pb, stuck);
+    const eg = `${sid}_park`;
+    this.els.push(`<eventBasedGateway id="${eg}" name="${esc(stepId)} parked"/>`);
+    this.flow(stuck, eg);
+    for (const [control, message] of Object.entries(OPERATOR_MESSAGES)) {
+      const c = `${sid}_operator_${control}`;
+      this.els.push(`<intermediateCatchEvent id="${c}" name="operator:${control}">${ext(ann('operator', { step: stepId, control }))}<messageEventDefinition messageRef="${this.g.message(message)}"/></intermediateCatchEvent>`);
+      this.flow(eg, c);
+      this.flow(c, sid);
+    }
+    const end = `${sid}_parkEnd`;
+    this.els.push(`<intermediateCatchEvent id="${end}" name="park ends"><timerEventDefinition><timeDuration>${esc(duration)}</timeDuration></timerEventDefinition></intermediateCatchEvent>`);
+    this.flow(eg, end);
+    this.fail(end);
   }
 
   /**

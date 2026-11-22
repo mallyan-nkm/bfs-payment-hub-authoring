@@ -34,6 +34,14 @@ public sealed class StepFailure : Exception
     public StepFailure(string step, string message, string errorName = "Failure") : base(message) { Step = step; ErrorName = errorName; }
 }
 
+/// <summary>A step's failure with the attempts it made: the step parks on it, or throws the failure (R-05-55).</summary>
+public sealed class StepFailureAfter : Exception
+{
+    public readonly StepFailure Failure;
+    public readonly int Attempts;
+    public StepFailureAfter(StepFailure f, int attempts) : base(f.Message) { Failure = f; Attempts = attempts; }
+}
+
 /// <summary>An attempt that failed: an error from the activity, or the attempt timer won the race.</summary>
 public sealed class AttemptFailed : Exception
 {
@@ -236,6 +244,17 @@ public sealed partial class Interp
 {
     public const string ClaimCheck = "claim-check@1.0.0";
     static readonly string[] Signals = { "pause", "resume", "cancel", "re-screen" };
+    /// <summary>The operator's controls of a parked step (R-05-55): one more attempt, or the step again with its full retry policy.</summary>
+    public static readonly string[] OperatorControls = { "retry", "redrive" };
+    /// <summary>The message a hold awaits: the operator's decision (R-05-56, Issue I-98).</summary>
+    public const string DecisionMessage = "p.ops.decision";
+
+    /// <summary>
+    /// The operator waits open in this process, by instance and step, with when each ends on the engine's clock: a hold awaiting its
+    /// decision, a step parked for a retry. A harness on virtual time reads it so that, while a live operator may still answer, it
+    /// does not jump past the wait's end.
+    /// </summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> OperatorWaits = new();
     static readonly string[] StateParts = { "header", "facts", "status", "messages" };
 
     readonly IEngine eng;
@@ -260,6 +279,8 @@ public sealed partial class Interp
     readonly HashSet<string> awaitedTypes = new(); // the message of every await this instance has started (R-05-43)
     bool paused;
     readonly List<TaskCompletionSource<bool>> resumeWaiters = new();
+    (string step, TaskCompletionSource<string?> tcs)? parked;
+    readonly HashSet<string> controlsSeen = new();
     Scope bodyScope = new();
     readonly List<(JsonObject step, Frame frame)> screenSteps = new();
     Dictionary<string, string> legs = new();
@@ -413,8 +434,14 @@ public sealed partial class Interp
     // =================================================================== signals and messages
 
     /// <summary>A signal arrives as an external event; it is seen at the next step boundary (R-05-12).</summary>
-    public void OnSignal(string signal)
+    public void OnSignal(string signal) => OnSignal(new JsonObject { ["signal"] = signal });
+
+    /// <summary>A signal with what it carries: a fixed signal (R-05-12), or an operator's control of a parked step (R-05-55).</summary>
+    public void OnSignal(JsonObject data)
     {
+        var signal = J.S(data, "signal") ?? "";
+        if (OperatorControls.Contains(signal)) { OnOperator(data); return; }
+        if (J.S(data, "id") is string sid && !controlsSeen.Add(sid)) return; // a row the host delivered twice
         if (!Signals.Contains(signal) || Ended) return;
         if (signal == "pause")
         {
@@ -436,6 +463,113 @@ public sealed partial class Interp
         }
         else if (signal == "cancel") bodyScope.Cancel(new CancelReason("signal-cancel"));
         else if (signal == "re-screen") background.Add(Rescreen());
+    }
+
+    /// <summary>
+    /// An operator's control (R-05-55): <c>retry</c> or <c>redrive</c> for the step parked on a failure. A control carries the id of
+    /// the outbox row it came from, if any; one seen before changes nothing (the engine host may deliver a row twice). A control for
+    /// an instance with no parked step goes to the leg in its slot, if one runs, and is otherwise ignored.
+    /// </summary>
+    public void OnOperator(JsonObject c)
+    {
+        var control = J.S(c, "control") ?? J.S(c, "signal");
+        if (control is null || !OperatorControls.Contains(control) || Ended) return;
+        if (J.S(c, "id") is string cid && !controlsSeen.Add(cid)) return;
+        if (parked is not { } p)
+        {
+            if (activeLeg is not null) { try { eng.SendEvent(activeLeg, "signal", c); } catch (NotSupportedException) { } }
+            return;
+        }
+        if (J.S(c, "step") is string want && want.Length > 0 && want != p.step) return;
+        parked = null;
+        Trace.Add($"operator:{control}");
+        p.tcs.TrySetResult(control);
+    }
+
+    /// <summary>A parked step waits for an operator's control, or for its park time to pass (null).</summary>
+    async Task<string?> Park(string step, string duration, Frame frame)
+    {
+        var key = $"{eng.InstanceId}|{step}";
+        var tcs = new TaskCompletionSource<string?>();
+        parked = (step, tcs);
+        var at = Duration.Add(eng.Now, duration);
+        OperatorWaits[key] = at;
+        var cts = new CancellationTokenSource();
+        var timer = eng.Timer(at, cts.Token);
+        try
+        {
+            var w = await Task.WhenAny(tcs.Task, timer, frame.Scope.CancelledTask);
+            if (w == tcs.Task) { cts.Cancel(); return tcs.Task.Result; }
+            if (w == timer) { parked = null; return null; }
+            cts.Cancel();
+            parked = null;
+            throw new Cancelled(frame.Scope.Reason!);
+        }
+        finally { OperatorWaits.TryRemove(key, out _); }
+    }
+
+    /// <summary>
+    /// A hold's decision, awaited by the engine (R-05-56, Issue I-98): the attempt that opened the hold answered <c>held</c>, and the
+    /// instance awaits <c>p.ops.decision</c> until the hold's expiry on its business clock. A decision that names another hold is not
+    /// this one's. The outcome is the decision; no decision by the expiry is <c>expired</c>.
+    /// </summary>
+    async Task<JsonObject> AwaitDecision(JsonObject act, Frame frame, string id, JsonObject held)
+    {
+        var hold = J.S(held, "hold");
+        var expiry = J.S(held, "expiry");
+        var key = $"{eng.InstanceId}|{id}";
+        JsonObject? msg = null;
+        bool fits(JsonObject m) => hold is null || J.S(m, "hold") is not string h || h == hold;
+        var early = mailbox.FirstOrDefault(m => J.S(m, "type") == DecisionMessage && fits(m));
+        if (early is not null) { mailbox.Remove(early); Consumed.Add(MessageKey(early)); msg = early; }
+        else
+        {
+            var at = expiry is not null ? Duration.Add(eng.Now, expiry) : long.MaxValue;
+            OperatorWaits[key] = at;
+            try
+            {
+                while (msg is null)
+                {
+                    frame.Scope.ThrowIfCancelled();
+                    var tcs = new TaskCompletionSource<JsonObject>();
+                    awaiting = (DecisionMessage, null, id, tcs);
+                    var cts = new CancellationTokenSource();
+                    var waits = new List<Task> { tcs.Task, frame.Scope.CancelledTask };
+                    Task? timer = null;
+                    if (at != long.MaxValue) { timer = eng.Timer(at, cts.Token); waits.Add(timer); }
+                    var w = await Task.WhenAny(waits);
+                    if (w == tcs.Task)
+                    {
+                        cts.Cancel();
+                        var m = tcs.Task.Result;
+                        if (fits(m)) msg = m; else Unmatched++;
+                    }
+                    else if (w == timer) { awaiting = null; break; }
+                    else { cts.Cancel(); awaiting = null; throw new Cancelled(frame.Scope.Reason!); }
+                }
+            }
+            finally { OperatorWaits.TryRemove(key, out _); }
+        }
+        var names = J.A(act, "outcomes").Select(o => J.S(o, "name")!).ToList();
+        var prim = PrimaryOutcome(act);
+        string? negative = names.FirstOrDefault(n => n != prim && n is not ("pending" or "unknown" or "expired"));
+        string outcome;
+        if (msg is null) outcome = names.Contains("expired") ? "expired" : negative ?? prim;
+        else
+        {
+            var status = J.S(msg, "status");
+            outcome = status is not null && names.Contains(status) ? status : status is "rejected" or "declined" ? negative ?? prim : prim;
+        }
+        var writes = new JsonObject();
+        foreach (var p in J.Strings(J.P(act, "writes")).Where(p => p.StartsWith("facts", StringComparison.Ordinal)))
+        {
+            var f = new JsonObject { ["outcome"] = outcome, ["result"] = outcome };
+            if (J.S(msg, "status") is string st) f["status"] = st;
+            if (hold is not null) f["hold"] = hold;
+            if (J.S(msg, "by") is string by) f["by"] = by;
+            writes[p] = f;
+        }
+        return new JsonObject { ["kind"] = "result", ["outcome"] = outcome, ["stateWrites"] = writes };
     }
 
     async Task Rescreen()
@@ -744,7 +878,43 @@ public sealed partial class Interp
         (frame.Sink?.Steps ?? Steps).Add(rec);
         if (!silent) ReleaseTraceOf(frame).Add($"{ShortName(J.S(act, "name")!)}@{resolved.release}");
         var level = J.S(st, "level") ?? J.S(act, "level");
-        var (result, attempts) = await AttemptLoop(act, st, policy, frame, id, level, resolved.release);
+        JsonObject result;
+        var attempts = 0;
+        var once = false;
+        var parkedBefore = false;
+        while (true)
+        {
+            try
+            {
+                var (r, n) = await AttemptLoop(act, st, policy, frame, id, level, resolved.release, once);
+                result = r;
+                attempts += n;
+                break;
+            }
+            catch (StepFailureAfter sf)
+            {
+                attempts += sf.Attempts;
+                // A step that failed parks, when its policy says so, for an operator's retry or re-drive (R-05-55).
+                var park = J.S(J.P(st, "policy"), "park");
+                if (park is null || silent)
+                {
+                    if (parkedBefore) { var c0 = frame.Sink?.Attempts ?? Attempts; c0[id] = c0.GetValueOrDefault(id) + attempts; }
+                    throw sf.Failure;
+                }
+                Record(frame, $"{Label(frame, id)}:stuck");
+                var control = await Park(Label(frame, id), park, frame);
+                if (control is null)
+                {
+                    var c1 = frame.Sink?.Attempts ?? Attempts;
+                    c1[id] = c1.GetValueOrDefault(id) + attempts;
+                    throw sf.Failure;
+                }
+                parkedBefore = true;
+                once = control == "retry";
+            }
+        }
+        // A hold the runtime opened answers at once; the engine awaits the operator's decision (R-05-56).
+        if (J.S(result, "kind") == "held") result = await AwaitDecision(act, frame, id, result);
         rec["attempts"] = attempts;
         var counts = frame.Sink?.Attempts ?? Attempts;
         counts[id] = counts.GetValueOrDefault(id) + attempts;
@@ -777,11 +947,11 @@ public sealed partial class Interp
     /// durable timer raced against the task, cancelled when the task wins. When the timer wins the
     /// task is not cancelled: its late result is abandoned (R-09-11).
     /// </summary>
-    async Task<(JsonObject result, int attempts)> AttemptLoop(JsonObject act, JsonObject st, Policy pol, Frame frame, string id, string? level, string release)
+    async Task<(JsonObject result, int attempts)> AttemptLoop(JsonObject act, JsonObject st, Policy pol, Frame frame, string id, string? level, string release, bool once = false)
     {
         var startAt = eng.Now;
         var total = pol.TotalTimeout.v is string tt ? Duration.Add(startAt, tt) : long.MaxValue;
-        var max = Math.Max(1, pol.MaxAttempts.v);
+        var max = once ? 1 : Math.Max(1, pol.MaxAttempts.v);
         var callNo = callCounts.GetValueOrDefault(id) + 1;
         callCounts[id] = callNo;
         var attempt = 0;
@@ -820,6 +990,7 @@ public sealed partial class Interp
                 {
                     cts.Cancel(); // the task won: cancel the timer
                     var res = task.Result;
+                    if (J.S(res, "kind") == "held") return res;
                     if (J.S(res, "kind") == "error" && J.Truthy(J.P(res, "late")))
                         throw new AttemptFailed("Timeout", pol.IsRetryable("Timeout", errors), $"attempt {attempt} of {id} timed out; a late result is ignored");
                     if (J.S(res, "kind") == "error")
@@ -838,11 +1009,11 @@ public sealed partial class Interp
         }
         catch (AttemptFailed e)
         {
-            if (!e.Retryable) throw new StepFailure(id, $"{J.S(act, "name")} failed: {e.Message}", e.Name);
+            if (!e.Retryable) throw new StepFailureAfter(new StepFailure(id, $"{J.S(act, "name")} failed: {e.Message}", e.Name), attempt);
             // Retries are spent or the total timeout is reached: the unknown outcome, where declared.
             if (J.A(act, "outcomes").Any(o => J.S(o, "name") == "unknown"))
                 return (new JsonObject { ["kind"] = "result", ["outcome"] = "unknown" }, attempt);
-            throw new StepFailure(id, $"{J.S(act, "name")} failed after retries: {e.Message}", "RetriesExhausted");
+            throw new StepFailureAfter(new StepFailure(id, $"{J.S(act, "name")} failed after retries: {e.Message}", "RetriesExhausted"), attempt);
         }
     }
 

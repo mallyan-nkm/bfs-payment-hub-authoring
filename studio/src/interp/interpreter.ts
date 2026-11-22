@@ -10,7 +10,7 @@ import { SimulatorInstance, type Message, type SimResponse } from '../sim/runtim
 import { Cancelled, Scope, VirtualClock } from './clock.js';
 import { buildFacts } from './facts.js';
 import { effectivePolicy, isRetryable, policyValues, retryInterval, type EffectivePolicy } from './policy.js';
-import { ActivityFailure, TransientFailure, outcomeForStatus, primaryOutcome, reference, type ActivityIO, type ActivityResult } from './reference.js';
+import { ActivityFailure, TransientFailure, holdDecision, outcomeForStatus, primaryOutcome, reference, type ActivityIO, type ActivityResult } from './reference.js';
 import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from './sandbox.js';
 import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../core/expand.js';
 import { runPythonScript } from './pysandbox.js';
@@ -21,6 +21,11 @@ import { attrs, inSpan, meters, SpanKind, SpanStatusCode, traceHeaders, tracer }
 // those run in activities (R-05-25, R-09-06).
 
 export const SIGNALS = ['pause', 'resume', 'cancel', 're-screen'] as const;
+/**
+ * The operator's controls of a parked step (R-05-55): `retry` gives it one more attempt, `redrive` runs it again with its full
+ * retry policy. They are not signals a workflow declares (R-05-12): any parked step takes them.
+ */
+export const OPERATOR_CONTROLS = ['retry', 'redrive'] as const;
 
 export interface BenchEntry { port: string; simulator: string; scenario: string }
 
@@ -49,7 +54,7 @@ export interface RunConfig {
   startTime?: string; // HH:MM:SS, UTC
   bench?: BenchEntry[];
   supersessions?: Supersession[];
-  signals?: { after: string; signal: string }[];
+  signals?: { after: string; signal: string; step?: string }[];
   stubs?: Record<string, StubSpec>;
   values?: { parameter: string; value: any; validFrom: string; validTo?: string }[];
   documents?: Record<string, any>; // extra documents by name@release or name (kit content, drafts under test)
@@ -173,6 +178,8 @@ export class Instance {
   waiters: { type: string; resolve: (m: Message) => void }[] = [];
   paused = false;
   resumeWaiters: (() => void)[] = [];
+  /** The step parked on a failure, waiting for an operator's control or its park time (R-05-55). */
+  parked?: { step: string; resolve: (control: string | null) => void };
   bodyScope!: Scope;
   screenSteps: { step: any; frame: Frame }[] = [];
   legs: Record<string, string> = {};
@@ -510,6 +517,7 @@ export class Run {
 
   /** The fixed signals (R-05-12). */
   signal(inst: Instance, signal: string) {
+    if (OPERATOR_CONTROLS.includes(signal as any)) return this.operator(inst, signal);
     if (!SIGNALS.includes(signal as any)) throw new Error(`Unknown signal ${signal}`);
     if (inst.ended) return;
     inst.event('signal', undefined, { signal });
@@ -531,6 +539,16 @@ export class Run {
     } else if (signal === 're-screen') {
       void this.rescreen(inst);
     }
+  }
+
+  /** An operator's control of a parked step (R-05-55). A control for an instance with no parked step changes nothing. */
+  operator(inst: Instance, control: string) {
+    if (inst.ended || !inst.parked) return;
+    const p = inst.parked;
+    inst.parked = undefined;
+    inst.event('operator', p.step, { control });
+    inst.trace.push(`operator:${control}`);
+    p.resolve(control);
   }
 
   /** Re-screen runs the screen steps again on a waiting payment (CK-SIGNAL-03). */
@@ -807,7 +825,27 @@ async function runActivityStep(st: any, frame: Frame, opts: { silent?: boolean }
   inst.event('step-start', label(frame, id), { activity: act.name, release: resolved.release, policy: rec.policy });
   if (!opts.silent) (frame.sink ?? inst).releaseTrace.push(`${shortName(act.name)}@${resolved.release}`);
   const level = st.level ?? act.level;
-  const { result, attempts } = await attemptLoop(act, st, policy, frame, id, level);
+  let result: ActivityResult;
+  let attempts = 0;
+  let once = false;
+  let parkedBefore = false;
+  for (;;) {
+    try {
+      const r = await attemptLoop(act, st, policy, frame, id, level, once);
+      result = r.result;
+      attempts = parkedBefore ? countAttempts(inst, frame, id) : r.attempts;
+      break;
+    } catch (e) {
+      // A step that failed parks, when its policy says so, for an operator's retry or re-drive (R-05-55).
+      if (!(e instanceof StepFailure) || !st.policy?.park || opts.silent) throw e;
+      parkedBefore = true;
+      record(frame, `${label(frame, id)}:stuck`);
+      inst.event('stuck', label(frame, id), { error: e.errorName, park: st.policy.park });
+      const control = await park(frame, id, st.policy.park);
+      if (!control) throw e;
+      once = control === 'retry';
+    }
+  }
   rec.attempts = attempts;
   inst.attempts[id] = (inst.attempts[id] ?? 0) + attempts;
   const outcome = result.outcome;
@@ -856,12 +894,25 @@ function syncItem(frame: Frame) {
 
 class Hang extends Error {}
 
-async function attemptLoop(act: any, st: any, policy: EffectivePolicy, frame: Frame, id: string, level?: string): Promise<{ result: ActivityResult; attempts: number }> {
+/** A parked step waits for an operator's control, or for its park time to pass (null). */
+function park(frame: Frame, id: string, duration: string): Promise<string | null> {
+  const inst = frame.inst;
+  const clock = inst.run.clock;
+  return new Promise<string | null>((resolve, reject) => {
+    let settled = false;
+    const done = (v: string | null) => { if (settled) return; settled = true; off(); inst.parked = undefined; resolve(v); };
+    const off = clock.at(addDuration(clock.now, duration), () => done(null), `park ${id}`);
+    inst.parked = { step: label(frame, id), resolve: done };
+    frame.scope.onCancel((r) => { if (settled) return; settled = true; off(); inst.parked = undefined; reject(new Cancelled(r)); });
+  });
+}
+
+async function attemptLoop(act: any, st: any, policy: EffectivePolicy, frame: Frame, id: string, level?: string, once = false): Promise<{ result: ActivityResult; attempts: number }> {
   const inst = frame.inst;
   const clock = inst.run.clock;
   const startAt = clock.now;
   const total = policy.totalTimeout.value ? addDuration(startAt, policy.totalTimeout.value) : Infinity;
-  const max = Math.max(1, policy.maxAttempts.value);
+  const max = once ? 1 : Math.max(1, policy.maxAttempts.value);
   const callNo = (inst.callCounts.get(id) ?? 0) + 1;
   inst.callCounts.set(id, callNo);
   let lastError: any;
@@ -958,7 +1009,10 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   if (act.implementation?.binding === 'native' || nativeHere(act) || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
-    return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
+    const r = await run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
+    // The runtime opened the hold and answered at once (Issue I-98): the decision comes later, as the operator's message.
+    if (r.held) return holdDecision(act, io);
+    return r;
   }
   try {
     return await reference(act, view, io);
@@ -1002,6 +1056,7 @@ export async function runNative(act: any, view: any, params: Record<string, any>
     meters().portCall.record((performance.now() - t0) / 1000, portAttrs);
   }
   if (res.kind === 'error') throw new ActivityFailure(res.name ?? 'NativeFailure', res.message ?? 'native failure', !!res.retryable);
+  if (res.kind === 'held' && act.type === 'hold') return { outcome: '', writes: {}, held: { hold: res.hold, expiry: res.expiry } };
   if (!(act.outcomes ?? []).some((o: any) => o.name === res.outcome)) throw new ContractViolation('R-03-02', `${act.name} returned ${res.outcome}, which is not one of its outcomes`);
   const writes: Record<string, any> = {};
   for (const [k, v] of Object.entries(res.writes ?? {})) {
