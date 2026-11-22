@@ -1,9 +1,11 @@
-import { createHash, createHmac, createPublicKey, generateKeyPairSync, randomBytes, timingSafeEqual, verify as verifySignature, createSign, type KeyObject } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, createPublicKey, generateKeyPairSync, hkdfSync, randomBytes, timingSafeEqual, verify as verifySignature, createSign, type KeyObject } from 'node:crypto';
 
 // Sign-in for the studio (R-11-32, R-11-33, Issue I-65). OpenID Connect, authorization code with PKCE,
-// against the identity provider the environment names. The session is an id in a signed, http-only,
-// same-site cookie; what it stands for is held in memory only, so a restart signs everyone out and
-// nothing is written to disk (R-11-24). Every state-changing call carries the session's CSRF token.
+// against the identity provider the environment names. The session is a sealed (AES-256-GCM), http-only,
+// same-site cookie that carries its own short-lived claims, so every instance with the same session key
+// reads it and nothing is held in one process or written to disk (R-11-24, R-11-45, Issue I-72). Every
+// state-changing call from a browser carries the session's CSRF token. The command line signs in by the
+// device authorization flow against the same provider and gets a sealed token of its own (R-11-46, I-71).
 //
 // For local work and tests, TH_AUTH_DEV=1 starts a built-in development provider at /auth/dev: a small
 // OpenID provider in this process whose sign-in page lists the studio's users. It refuses to start
@@ -29,6 +31,12 @@ export interface AuthConfig {
   sessionHours: number;
   /** A session unused this long ends (R-11-42): TH_SESSION_IDLE_MINUTES, 60 by default. */
   idleMinutes: number;
+  /** The client the command line signs in as (device authorization, R-11-46): TH_OIDC_CLI_CLIENT_ID, else the studio's. */
+  cliClientId: string;
+  /** How long a command line's token lasts: TH_CLI_SESSION_HOURS, 8 by default. */
+  cliHours: number;
+  /** Whether the session key came from TH_SESSION_KEY_REF, so other instances and a restart read the same sessions. */
+  sharedKey: boolean;
   key: Buffer;
 }
 
@@ -56,6 +64,9 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env, port?: n
   // In production the identity provider, its keys and the studio itself are reached over TLS only (R-11-43).
   if (!dev && env.NODE_ENV === 'production' && !/^https:\/\//.test(env.TH_OIDC_ISSUER!)) throw new AuthConfigError('In production TH_OIDC_ISSUER is an https:// URL');
   const keyRef = env.TH_SESSION_KEY_REF;
+  // In production every instance seals sessions with the same key, by reference (R-11-45): without one, a
+  // second instance would not read the first one's sessions and a restart would sign everyone out.
+  if (!dev && env.NODE_ENV === 'production' && !keyRef) throw new AuthConfigError('In production set TH_SESSION_KEY_REF=env:<NAME>: every studio instance seals sessions with that key (R-11-45)');
   const keyText = resolveSecretRef(keyRef, env);
   if (keyText !== undefined && keyText.length < 32) throw new AuthConfigError('The session key needs at least 32 characters');
   return {
@@ -71,6 +82,9 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env, port?: n
     secureCookies: env.TH_COOKIE_SECURE === '1' || base.startsWith('https://'),
     sessionHours: Number(env.TH_SESSION_HOURS ?? 8),
     idleMinutes: Number(env.TH_SESSION_IDLE_MINUTES ?? 60),
+    cliClientId: dev ? 'studio-dev' : env.TH_OIDC_CLI_CLIENT_ID ?? env.TH_OIDC_CLIENT_ID!,
+    cliHours: Number(env.TH_CLI_SESSION_HOURS ?? 8),
+    sharedKey: !!keyText,
     // Without a key reference the key lives for the process: a restart signs everyone out.
     key: keyText ? Buffer.from(keyText, 'utf8') : randomBytes(32),
   };
@@ -118,45 +132,103 @@ function cookie(name: string, value: string, cfg: AuthConfig, maxAgeSeconds: num
 
 // ------------------------------------------------------------------ sessions
 
-export interface Session { id: string; subject: string; user?: string; csrf: string; expires: number; idToken?: string; groups?: string[]; lastSeen?: number }
+/**
+ * A session (R-11-32, R-11-45). It lives in its sealed cookie, not in the server: every instance that
+ * holds the same session key reads it, and a restart signs nobody out (Issue I-72,
+ * docs/adr/0002-stateless-sessions.md). `renew` is set when the cookie should be sent again, so the idle
+ * time slides.
+ */
+export interface Session { id: string; subject: string; user?: string; csrf: string; expires: number; groups?: string[]; lastSeen?: number; renew?: boolean; via?: 'browser' | 'cli' }
 
-/** The most sign-ins in progress held at once: past it the oldest is dropped, so /auth/login cannot fill memory (R-11-41). */
-export const MAX_PENDING_SIGN_INS = 10_000;
+/** A sign-in in progress is held in its browser's sealed cookie, not in the server (R-11-41, R-11-45); kept for callers that size it. */
+export const MAX_PENDING_SIGN_INS = 0;
 
-/** Sessions and sign-ins in progress, in memory only. */
+/** How often a used session's cookie is sent again, so its idle time slides without a header on every answer. */
+const RENEW_AFTER_MS = 60_000;
+
+/** The prefix of a command line's token (R-11-46): the studio's own, sealed with its session key. */
+export const CLI_TOKEN_PREFIX = 'thcli.';
+
+/**
+ * Seal and open a value with AES-256-GCM under a key derived from the session key for one purpose, so
+ * a session cookie, a sign-in cookie and a command line token are never taken for one another.
+ */
+export class Sealer {
+  private keys = new Map<string, Buffer>();
+  constructor(private key: Buffer) {}
+
+  private keyFor(purpose: string) {
+    let k = this.keys.get(purpose);
+    if (!k) {
+      k = Buffer.from(hkdfSync('sha256', this.key, Buffer.from('transacthub-studio'), Buffer.from(`th:${purpose}:v1`), 32));
+      this.keys.set(purpose, k);
+    }
+    return k;
+  }
+
+  seal(purpose: string, value: unknown): string {
+    const iv = randomBytes(12);
+    const c = createCipheriv('aes-256-gcm', this.keyFor(purpose), iv);
+    const body = Buffer.concat([c.update(JSON.stringify(value), 'utf8'), c.final()]);
+    return `v1.${b64u(Buffer.concat([iv, body, c.getAuthTag()]))}`;
+  }
+
+  open<T = any>(purpose: string, sealed: string | undefined): T | undefined {
+    if (!sealed || !sealed.startsWith('v1.')) return undefined;
+    try {
+      const raw = Buffer.from(sealed.slice(3), 'base64url');
+      if (raw.length < 29) return undefined;
+      const d = createDecipheriv('aes-256-gcm', this.keyFor(purpose), raw.subarray(0, 12));
+      d.setAuthTag(raw.subarray(raw.length - 16));
+      return JSON.parse(Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString('utf8')) as T;
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+interface SessionClaims { sid: string; sub: string; user?: string; csrf: string; exp: number; seen: number; groups?: string[] }
+interface LoginClaims { state: string; verifier: string; nonce: string; returnTo: string; exp: number }
+interface CliClaims { sid: string; sub: string; user?: string; exp: number; groups?: string[] }
+
+/**
+ * Sessions and sign-ins in progress, held in sealed cookies (Issue I-72). The server keeps only the ids
+ * of the sessions signed out on this instance until they would have expired, so a signed-out cookie is
+ * refused here at once; another instance refuses it at its idle time (docs/adr/0002-stateless-sessions.md).
+ */
 export class Sessions {
-  private sessions = new Map<string, Session>();
-  private pending = new Map<string, { verifier: string; nonce: string; expires: number; returnTo: string }>();
+  private sealer: Sealer;
+  private signedOut = new Map<string, number>();
 
-  constructor(private cfg: AuthConfig) {}
+  constructor(private cfg: AuthConfig) {
+    this.sealer = new Sealer(cfg.key);
+  }
 
-  create(subject: string, user: string | undefined, idToken?: string, groups?: string[]): Session {
+  create(subject: string, user: string | undefined, groups?: string[]): Session {
     this.sweep();
-    const s: Session = { id: b64u(randomBytes(24)), subject, user, csrf: b64u(randomBytes(24)), expires: Date.now() + this.cfg.sessionHours * 3600_000, idToken, groups, lastSeen: Date.now() };
-    this.sessions.set(s.id, s);
-    return s;
+    const now = Date.now();
+    return { id: b64u(randomBytes(18)), subject, user, csrf: b64u(randomBytes(24)), expires: now + this.cfg.sessionHours * 3600_000, groups, lastSeen: now, via: 'browser' };
   }
 
   fromCookieHeader(header: string | undefined): Session | undefined {
-    const id = unsign(this.cfg.key, parseCookies(header)[SESSION_COOKIE]);
-    const s = id ? this.sessions.get(id) : undefined;
-    if (!s) return undefined;
+    const c = this.sealer.open<SessionClaims>('session', parseCookies(header)[SESSION_COOKIE]);
+    if (!c || typeof c.sid !== 'string' || typeof c.sub !== 'string' || typeof c.exp !== 'number' || typeof c.seen !== 'number') return undefined;
     const now = Date.now();
     const idle = (this.cfg.idleMinutes ?? 60) * 60_000;
-    if (s.expires < now || (idle > 0 && now - (s.lastSeen ?? now) > idle)) {
-      this.sessions.delete(s.id);
-      return undefined;
-    }
-    s.lastSeen = now;
-    return s;
+    if (c.exp < now || (idle > 0 && now - c.seen > idle) || this.signedOut.has(c.sid)) return undefined;
+    return { id: c.sid, subject: c.sub, user: c.user, csrf: c.csrf, expires: c.exp, groups: c.groups, lastSeen: c.seen, renew: now - c.seen > RENEW_AFTER_MS, via: 'browser' };
   }
 
-  destroy(id: string) {
-    this.sessions.delete(id);
+  /** Sign-out: the cookie is cleared, and this instance refuses the session from now on. */
+  destroy(id: string, expires = Date.now() + this.cfg.sessionHours * 3600_000) {
+    this.sweep();
+    this.signedOut.set(id, expires);
   }
 
   sessionCookie(s: Session) {
-    return cookie(SESSION_COOKIE, sign(this.cfg.key, s.id), this.cfg, Math.floor((s.expires - Date.now()) / 1000));
+    const now = Date.now();
+    const claims: SessionClaims = { sid: s.id, sub: s.subject, ...(s.user ? { user: s.user } : {}), csrf: s.csrf, exp: s.expires, seen: now, ...(s.groups ? { groups: s.groups } : {}) };
+    return cookie(SESSION_COOKIE, this.sealer.seal('session', claims), this.cfg, Math.max(0, Math.floor((s.expires - now) / 1000)));
   }
 
   clearCookie() {
@@ -164,46 +236,73 @@ export class Sessions {
   }
 
   begin(returnTo: string) {
-    this.sweep();
     const state = b64u(randomBytes(24));
     const verifier = b64u(randomBytes(32));
     const nonce = b64u(randomBytes(16));
-    for (const k of this.pending.keys()) {
-      if (this.pending.size < MAX_PENDING_SIGN_INS) break;
-      this.pending.delete(k);
-    }
-    this.pending.set(state, { verifier, nonce, expires: Date.now() + 10 * 60_000, returnTo });
-    return { state, verifier, nonce, challenge: b64u(createHash('sha256').update(verifier).digest()), cookie: cookie(LOGIN_COOKIE, sign(this.cfg.key, state), this.cfg, 600) };
+    const claims: LoginClaims = { state, verifier, nonce, returnTo, exp: Date.now() + 10 * 60_000 };
+    return { state, verifier, nonce, challenge: b64u(createHash('sha256').update(verifier).digest()), cookie: cookie(LOGIN_COOKIE, this.sealer.seal('login', claims), this.cfg, 600) };
   }
 
-  /** The sign-in the callback finishes: its state must match the browser's cookie and be in memory. */
+  /** The sign-in the callback finishes: its state must match the one sealed in the browser's cookie, unexpired. */
   finish(state: string | undefined, cookieHeader: string | undefined) {
-    const mine = unsign(this.cfg.key, parseCookies(cookieHeader)[LOGIN_COOKIE]);
-    if (!state || !mine || mine !== state) return undefined;
-    const p = this.pending.get(state);
-    this.pending.delete(state);
-    return p && p.expires >= Date.now() ? p : undefined;
+    const p = this.sealer.open<LoginClaims>('login', parseCookies(cookieHeader)[LOGIN_COOKIE]);
+    if (!state || !p || typeof p.state !== 'string' || !same(p.state, state)) return undefined;
+    return p.exp >= Date.now() ? { verifier: p.verifier, nonce: p.nonce, expires: p.exp, returnTo: p.returnTo } : undefined;
   }
 
   clearLoginCookie() {
     return cookie(LOGIN_COOKIE, '', this.cfg, 0);
   }
 
-  /** For tests: how many sign-ins are in progress. */
+  /** For tests: what this instance holds in memory about sign-ins in progress. Nothing. */
   get pendingCount() {
-    return this.pending.size;
+    return 0;
+  }
+
+  /** A command line's token (R-11-46), after a device authorization sign-in: sealed, with its own expiry. */
+  cliToken(subject: string, user: string | undefined, groups?: string[]): { token: string; expires: number; id: string } {
+    const id = b64u(randomBytes(18));
+    const exp = Date.now() + this.cfg.cliHours * 3600_000;
+    const claims: CliClaims = { sid: id, sub: subject, ...(user ? { user } : {}), exp, ...(groups ? { groups } : {}) };
+    return { token: CLI_TOKEN_PREFIX + this.sealer.seal('cli', claims), expires: exp, id };
+  }
+
+  /** The session a command line's `Authorization: Bearer thcli.…` stands for, or undefined. */
+  fromCliToken(authorization: string | undefined): Session | undefined {
+    const m = /^Bearer\s+(\S+)$/i.exec(authorization ?? '');
+    if (!m || !m[1].startsWith(CLI_TOKEN_PREFIX)) return undefined;
+    const c = this.sealer.open<CliClaims>('cli', m[1].slice(CLI_TOKEN_PREFIX.length));
+    if (!c || typeof c.sid !== 'string' || typeof c.sub !== 'string' || typeof c.exp !== 'number') return undefined;
+    if (c.exp < Date.now() || this.signedOut.has(c.sid)) return undefined;
+    // A command line sends no cookie, so a CSRF token has nothing to protect: it gets none.
+    return { id: c.sid, subject: c.sub, user: c.user, csrf: '', expires: c.exp, groups: c.groups, via: 'cli' };
   }
 
   private sweep() {
     const now = Date.now();
-    for (const [k, s] of this.sessions) if (s.expires < now) this.sessions.delete(k);
-    for (const [k, p] of this.pending) if (p.expires < now) this.pending.delete(k);
+    for (const [k, exp] of this.signedOut) if (exp < now) this.signedOut.delete(k);
   }
+}
+
+function same(a: string, b: string) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 // --------------------------------------------------------------------- OIDC client
 
-interface Discovery { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string; end_session_endpoint?: string }
+interface Discovery { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string; end_session_endpoint?: string; device_authorization_endpoint?: string }
+
+/** The answer to a device authorization request (RFC 8628, 3.2). */
+export interface DeviceAuthorization { device_code: string; user_code: string; verification_uri: string; verification_uri_complete?: string; expires_in: number; interval?: number }
+
+/** A device sign-in the user has not finished yet, or has refused: the provider's own error code. */
+export class DevicePending extends Error {
+  constructor(public code: string) {
+    super(code);
+  }
+}
 
 export class OidcClient {
   private discovery?: Discovery;
@@ -249,7 +348,32 @@ export class OidcClient {
     return { claims, idToken: tok.id_token };
   }
 
-  async verifyIdToken(jwt: string): Promise<Record<string, any>> {
+  /** Start a device authorization sign-in for the command line (RFC 8628, R-11-46). */
+  async deviceAuthorization(): Promise<DeviceAuthorization> {
+    const d = await this.discover();
+    if (!d.device_authorization_endpoint) throw new Error('The identity provider offers no device authorization endpoint');
+    const body = new URLSearchParams({ client_id: this.cfg.cliClientId, scope: this.cfg.scopes });
+    const r = await this.fetchFn(d.device_authorization_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+    if (!r.ok) throw new Error(`The identity provider refused the device authorization (${r.status})`);
+    return (await r.json()) as DeviceAuthorization;
+  }
+
+  /** Poll for the device sign-in's tokens; verify the ID token, issued for the command line's client. */
+  async redeemDevice(deviceCode: string): Promise<{ claims: Record<string, any> }> {
+    const d = await this.discover();
+    const body = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: deviceCode, client_id: this.cfg.cliClientId });
+    const r = await this.fetchFn(d.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+    const tok = (await r.json().catch(() => ({}))) as { id_token?: string; error?: string };
+    if (!r.ok) {
+      const code = String(tok.error ?? '');
+      if (['authorization_pending', 'slow_down', 'access_denied', 'expired_token'].includes(code)) throw new DevicePending(code);
+      throw new Error(`The identity provider refused the device code (${r.status})`);
+    }
+    if (!tok.id_token) throw new Error('The identity provider sent no ID token');
+    return { claims: await this.verifyIdToken(tok.id_token, this.cfg.cliClientId) };
+  }
+
+  async verifyIdToken(jwt: string, audience: string = this.cfg.clientId): Promise<Record<string, any>> {
     const parts = jwt.split('.');
     if (parts.length !== 3) throw new Error('The ID token is not a JWT');
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
@@ -268,7 +392,7 @@ export class OidcClient {
     const now = Math.floor(Date.now() / 1000);
     if (String(claims.iss).replace(/\/$/, '') !== this.cfg.issuer) throw new Error('The ID token is from another issuer');
     const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-    if (!aud.includes(this.cfg.clientId)) throw new Error('The ID token is for another client');
+    if (!aud.includes(audience)) throw new Error('The ID token is for another client');
     if (typeof claims.exp !== 'number' || claims.exp + 60 < now) throw new Error('The ID token has expired');
     if (typeof claims.iat === 'number' && claims.iat - 300 > now) throw new Error('The ID token is issued in the future');
     if (typeof claims.nbf === 'number' && claims.nbf - 60 > now) throw new Error('The ID token is not valid yet');
@@ -292,7 +416,9 @@ export class OidcClient {
     const d = await this.discover().catch(() => undefined);
     if (!d?.end_session_endpoint) return undefined;
     const u = new URL(d.end_session_endpoint);
+    // A sealed session carries no ID token (it would not fit a cookie): the client id names the studio instead.
     if (idToken) u.searchParams.set('id_token_hint', idToken);
+    else u.searchParams.set('client_id', this.cfg.clientId);
     u.searchParams.set('post_logout_redirect_uri', after);
     return u.toString();
   }
@@ -309,6 +435,8 @@ export class DevProvider {
   private keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
   private kid = b64u(randomBytes(8));
   private codes = new Map<string, { sub: string; groups?: string[]; clientId: string; redirectUri: string; challenge: string; nonce: string; expires: number }>();
+  /** Device sign-ins of the command line (RFC 8628), by device code. */
+  private devices = new Map<string, { userCode: string; clientId: string; expires: number; sub?: string; groups?: string[] }>();
 
   constructor(private issuer: string, private userIds: () => string[]) {}
 
@@ -317,7 +445,7 @@ export class DevProvider {
     const p = url.pathname.replace(/^\/auth\/dev/, '');
     const json = (status: number, b: any) => ({ status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(b) });
     if (method === 'GET' && p === '/.well-known/openid-configuration') {
-      return json(200, { issuer: this.issuer, authorization_endpoint: `${this.issuer}/authorize`, token_endpoint: `${this.issuer}/token`, jwks_uri: `${this.issuer}/jwks`, response_types_supported: ['code'], code_challenge_methods_supported: ['S256'], id_token_signing_alg_values_supported: ['RS256'], subject_types_supported: ['public'] });
+      return json(200, { issuer: this.issuer, authorization_endpoint: `${this.issuer}/authorize`, token_endpoint: `${this.issuer}/token`, jwks_uri: `${this.issuer}/jwks`, device_authorization_endpoint: `${this.issuer}/device_authorization`, response_types_supported: ['code'], code_challenge_methods_supported: ['S256'], id_token_signing_alg_values_supported: ['RS256'], subject_types_supported: ['public'] });
     }
     if (method === 'GET' && p === '/jwks') return json(200, { keys: [{ ...this.keys.publicKey.export({ format: 'jwk' }), kid: this.kid, use: 'sig', alg: 'RS256' }] });
     if (p === '/authorize') {
@@ -343,6 +471,37 @@ export class DevProvider {
       back.searchParams.set('state', q.get('state')!);
       return { status: 303, headers: { location: back.toString() }, body: '' };
     }
+    if (method === 'POST' && p === '/device_authorization') {
+      if (!form?.get('client_id')) return json(400, { error: 'invalid_request', error_description: 'Send client_id' });
+      const deviceCode = b64u(randomBytes(24));
+      const letters = 'BCDFGHJKLMNPQRSTVWXZ';
+      const userCode = [...randomBytes(8)].map((b, i) => (i === 4 ? '-' : '') + letters[b % letters.length]).join('');
+      this.devices.set(deviceCode, { userCode, clientId: form.get('client_id')!, expires: Date.now() + 600_000 });
+      return json(200, { device_code: deviceCode, user_code: userCode, verification_uri: `${this.issuer}/device`, verification_uri_complete: `${this.issuer}/device?user_code=${userCode}`, expires_in: 600, interval: 1 });
+    }
+    if (p === '/device') {
+      if (method === 'GET') return { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, body: this.devicePage(url.searchParams.get('user_code') ?? '') };
+      const userCode = (form?.get('user_code') ?? '').toUpperCase().trim();
+      const sub = form?.get('user') ?? '';
+      const d = [...this.devices.values()].find((x) => x.userCode === userCode && x.expires >= Date.now() && !x.sub);
+      if (!d || !/^[a-z][a-z0-9.-]*$/.test(sub)) return json(400, { error: 'invalid_request', error_description: 'Enter the code the command line shows, and choose a user' });
+      d.sub = sub;
+      d.groups = form?.get('groups') ? form.get('groups')!.split(',').map((g) => g.trim()).filter(Boolean) : undefined;
+      return { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, body: '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Signed in</title></head><body><p>Signed in. Go back to the command line.</p></body></html>' };
+    }
+    if (method === 'POST' && p === '/token' && form?.get('grant_type') === 'urn:ietf:params:oauth:grant-type:device_code') {
+      const deviceCode = form.get('device_code') ?? '';
+      const d = this.devices.get(deviceCode);
+      if (!d || d.clientId !== form.get('client_id')) return json(400, { error: 'invalid_grant' });
+      if (d.expires < Date.now()) {
+        this.devices.delete(deviceCode);
+        return json(400, { error: 'expired_token' });
+      }
+      if (!d.sub) return json(400, { error: 'authorization_pending' });
+      this.devices.delete(deviceCode);
+      const now = Math.floor(Date.now() / 1000);
+      return json(200, { token_type: 'Bearer', expires_in: 300, access_token: b64u(randomBytes(24)), id_token: this.jwt({ iss: this.issuer, aud: d.clientId, sub: d.sub, iat: now, exp: now + 300, preferred_username: d.sub, ...(d.groups ? { groups: d.groups } : {}) }) });
+    }
     if (method === 'POST' && p === '/token') {
       const code = form?.get('code') ?? '';
       const c = this.codes.get(code);
@@ -365,6 +524,16 @@ export class DevProvider {
     const body = b64u(Buffer.from(JSON.stringify(claims)));
     const s = createSign('RSA-SHA256').update(`${head}.${body}`).sign(this.keys.privateKey);
     return `${head}.${body}.${b64u(s)}`;
+  }
+
+  private devicePage(userCode: string) {
+    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    const buttons = this.userIds().map((u) => `<button type="submit" name="user" value="${esc(u)}">${esc(u)}</button>`).join('\n');
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Development sign-in: command line</title></head>
+<body><h1>Sign the command line in</h1><p>TH_AUTH_DEV=1: a built-in provider for local work and tests. Never used in production.</p>
+<form method="post" action="${esc(this.issuer)}/device"><label>Code <input name="user_code" value="${esc(userCode)}"></label>
+${buttons}
+</form></body></html>`;
   }
 
   private page(q: URLSearchParams) {

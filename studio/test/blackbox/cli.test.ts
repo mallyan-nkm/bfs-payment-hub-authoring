@@ -1,9 +1,9 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { STUDIO } from './server.js';
+import { STUDIO, startServer } from './server.js';
 import { unzip } from '../../src/export/zip.js';
 
 // Black box: the studio's command line, by output and exit code.
@@ -90,4 +90,56 @@ describe('studio command line', () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain('nope.wf.x.v1 does not resolve');
   });
+
+  it('signs in by device authorization, and the studio decides its calls as the signed-in user (R-11-46)', async () => {
+    const server = await startServer();
+    const env = { ...process.env, TH_STUDIO_TOKEN_FILE: path.join(work, 'token.json') };
+    try {
+      // No sign-in yet: the command says so and exits 1.
+      // The fake GitHub answers in this process, so every command runs without blocking it.
+      const run = (a: string[], e: NodeJS.ProcessEnv = env) => new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+        const c = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', ...a], { cwd: STUDIO, env: e });
+        let stdout = '';
+        let stderr = '';
+        c.stdout.on('data', (d) => (stdout += d));
+        c.stderr.on('data', (d) => (stderr += d));
+        c.on('exit', (status) => resolve({ status, stdout, stderr }));
+      });
+      const before = await run(['whoami', '--server', server.url]);
+      expect(before.status).toBe(1);
+      expect(before.stderr).toContain('Not signed in');
+      const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/cli.ts', 'login', '--server', server.url], { cwd: STUDIO, env });
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (d) => (out += d));
+      child.stderr.on('data', (d) => (err += d));
+      for (let i = 0; i < 300 && !/enter the code/.test(err); i++) await new Promise((r) => setTimeout(r, 100));
+      const m = /open (\S+) and enter the code (\S+)/.exec(err)!;
+      expect(m, err).toBeTruthy();
+      // The operator opens the provider's page and signs in as a bank approver.
+      expect((await fetch(m[1], { method: 'POST', body: new URLSearchParams({ user_code: m[2], user: 'example.checker' }) })).status).toBe(200);
+      const code = await new Promise<number | null>((r) => child.on('exit', r));
+      expect(code, err).toBe(0);
+      expect(out).toContain('signed in to');
+      expect(out).toContain('example.checker (example-bank): bank approver');
+      expect((await run(['whoami', '--server', server.url])).stdout).toContain('example.checker (example-bank)');
+      // The acting user is the token's: --actor is refused with a studio named.
+      const zip = path.join(work, 'bundle.zip');
+      expect((await run(['import-sample', zip])).status).toBe(0);
+      const actor = await run(['import', zip, '--server', server.url, '--actor', 'shared.designer', '--apply']);
+      expect(actor.status).toBe(2);
+      expect(actor.stderr).toContain('--actor and --bank-actor are refused');
+      // The permission table decides: a bank approver runs no import, from the command line as from the web app.
+      const shared = await run(['import', zip, '--server', server.url, '--apply']);
+      expect(shared.status).toBe(1);
+      expect(shared.stderr).toMatch(/^403 /m);
+      // Without a studio, applying to a connected branch is refused: nothing proves who typed it.
+      const direct = await run(['import', zip, '--apply'], { ...env, TH_GITHUB_API: server.fake.url, TH_CONTENT_REPO: server.repo, TH_CONTENT_BRANCH: 'main', TH_GITHUB_TOKEN: 'synthetic-test-token' });
+      expect(direct.stderr + direct.stdout).toContain('needs a signed-in user');
+      expect((await run(['logout', '--server', server.url])).status).toBe(0);
+      expect(fs.existsSync(env.TH_STUDIO_TOKEN_FILE)).toBe(false);
+    } finally {
+      server.stop();
+    }
+  }, 300000);
 });

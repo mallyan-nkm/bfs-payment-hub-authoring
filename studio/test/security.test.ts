@@ -78,10 +78,11 @@ describe('the studio server bounds what one caller can ask (R-11-41)', () => {
     for (let i = 0; i < 5; i++) codes.push((await fetch(`${url}/auth/login`, { redirect: 'manual' })).status);
     expect(codes).toEqual([302, 302, 302, 429, 429]);
   });
-  it('holds a bounded number of sign-ins in progress, so /auth/login cannot fill memory', () => {
+  it('holds no sign-in in progress in memory, so /auth/login cannot fill it (R-11-45)', () => {
     const s = new Sessions(authConfigFromEnv({ TH_AUTH_DEV: '1', NODE_ENV: 'test' } as any, 1));
-    for (let i = 0; i < MAX_PENDING_SIGN_INS + 50; i++) s.begin('');
+    for (let i = 0; i < 1000; i++) s.begin('');
     expect(s.pendingCount).toBe(MAX_PENDING_SIGN_INS);
+    expect(MAX_PENDING_SIGN_INS).toBe(0);
   });
   it('counts per key in a fixed minute, and names the heavy calls', () => {
     let t = 0;
@@ -128,7 +129,9 @@ describe('sign-in hardening (R-11-42)', () => {
   });
   it('wants an https identity provider in production', () => {
     expect(() => authConfigFromEnv({ TH_OIDC_ISSUER: 'http://id.example.invalid', TH_OIDC_CLIENT_ID: 'studio', NODE_ENV: 'production' } as any)).toThrow(/https/);
-    expect(authConfigFromEnv({ TH_OIDC_ISSUER: 'https://id.example.invalid', TH_OIDC_CLIENT_ID: 'studio', NODE_ENV: 'production' } as any).issuer).toBe('https://id.example.invalid');
+    // In production the session key is shared by reference, so every instance reads the same sessions (R-11-45).
+    expect(() => authConfigFromEnv({ TH_OIDC_ISSUER: 'https://id.example.invalid', TH_OIDC_CLIENT_ID: 'studio', NODE_ENV: 'production' } as any)).toThrow(/TH_SESSION_KEY_REF/);
+    expect(authConfigFromEnv({ TH_OIDC_ISSUER: 'https://id.example.invalid', TH_OIDC_CLIENT_ID: 'studio', NODE_ENV: 'production', TH_SESSION_KEY_REF: 'env:K', K: 'k'.repeat(32) } as any).issuer).toBe('https://id.example.invalid');
   });
 });
 

@@ -35,7 +35,7 @@ It starts the fake GitHub API (`test/support/fake-github.ts`) seeded from this r
 
 ### Sign-in and roles
 
-The studio has its own sign-in, separate from the runtime's (R-11-32 to R-11-34). It is OpenID Connect, the authorization code flow with PKCE, against the identity provider the platform vendor operates for the studio alone. Bank Configurators and Bank Approvers sign in with accounts in that provider. The studio trusts that one issuer; federation with a bank's own provider, if it comes, is brokered there. It accepts no bearer token and shares no session with the runtime.
+The studio has its own sign-in, separate from the runtime's (R-11-32 to R-11-34). It is OpenID Connect, the authorization code flow with PKCE, against the identity provider the platform vendor operates for the studio alone. Bank Configurators and Bank Approvers sign in with accounts in that provider. The studio trusts that one issuer; federation with a bank's own provider, if it comes, is brokered there. It accepts no bearer token but its own command line's, and shares no session with the runtime.
 
 | Variable | What |
 | --- | --- |
@@ -44,13 +44,16 @@ The studio has its own sign-in, separate from the runtime's (R-11-32 to R-11-34)
 | `TH_PUBLIC_URL`, `TH_OIDC_REDIRECT_URI` | The studio's address (default `http://localhost:<PORT>`) and the callback (default `<TH_PUBLIC_URL>/auth/callback`) |
 | `TH_OIDC_USER_CLAIM` | The ID token claim matched to a user's `subject` in `governance/users.yaml`, else its `id` (default `sub`) |
 | `TH_OIDC_GROUPS_CLAIM`, `TH_OIDC_GROUP_PREFIX` | Optional: the provider's groups narrow a user's roles to those it asserts as `<prefix><role>` (default prefix `studio:`); they never add one |
-| `TH_SESSION_KEY_REF`, `TH_SESSION_HOURS`, `TH_COOKIE_SECURE` | The cookie signing key by reference (default: a random key per process), the session length (default 8 hours), and `Secure` cookies (on by default for an `https` address) |
+| `TH_SESSION_KEY_REF`, `TH_SESSION_HOURS`, `TH_COOKIE_SECURE` | The key that seals sessions, by reference: the same on every instance, and required in production (default elsewhere: a random key per process); the session length (default 8 hours); and `Secure` cookies (on by default for an `https` address) (R-11-45) |
+| `TH_OIDC_CLI_CLIENT_ID`, `TH_CLI_SESSION_HOURS` | The client the command line signs in as by device authorization (default the studio's own), and how long its token lasts (default 8 hours) (R-11-46) |
 | `TH_SESSION_IDLE_MINUTES` | A session unused this long ends (default 60) (R-11-42) |
 | `TH_MAX_BODY_MB`, `TH_RATE_AUTH_PER_MINUTE`, `TH_RATE_EXPENSIVE_PER_MINUTE` | The largest request body (default 32 MB), sign-ins per client address and heavy calls (tests, kit, import, export, assistant) per user a minute (default 120 each) (R-11-41) |
 | `TH_NATIVE_TOKEN` | A reference (`env:`, `file:`, `vault:`...) to the worker's token for the runtime's native host, sent as a bearer token (R-08-17) |
 | `TH_AUTH_DEV=1` | The built-in development provider at `/auth/dev`, for local work and tests. Refused when `NODE_ENV=production` |
 
-The session is an id in a signed, http-only, same-site cookie; what it stands for is in memory only, so a restart signs everyone out and nothing is written to disk. Every API call takes its user, and with it its tenant, from the session: a body or query that names another user or tenant is refused. A state-changing call carries the CSRF token that `GET /auth/me` returns, in `x-csrf-token`. No session is 401; an identity that is no user of the studio is 403; a refusal by the permission table is 403 and audited.
+The session is a sealed (AES-256-GCM), http-only, same-site cookie that carries its own short-lived claims, and a sign-in in progress is a sealed cookie too; the server holds neither, so several instances behind a load balancer read each other's sessions, a restart signs nobody out, and nothing is written to disk (R-11-45, `docs/adr/0002-stateless-sessions.md`). Sign-out clears the cookie and is refused on the instance that took it at once; another instance refuses a copy of the cookie at its idle time (Issue I-139).
+
+The command line signs in with `npm run studio -- login --server <url>`: the device authorization flow against the same provider, through the studio, which maps the identity to a user as it does a browser's (R-11-46). Its token is kept in `TH_STUDIO_TOKEN`, or in a file readable by its owner only (`TH_STUDIO_TOKEN_FILE`, default `~/.config/transacthub/studio-cli.json`). With `--server` (or `TH_STUDIO_URL`), `import`, `whoami` and `deploy`'s permission check call the studio as that user, and the permission table decides; `--actor` is refused there. Applying an import to a connected branch without a studio is refused. `seed-content` stays the platform pipeline's step, run where the GitHub token is held. Every API call takes its user, and with it its tenant, from the session: a body or query that names another user or tenant is refused. A state-changing call carries the CSRF token that `GET /auth/me` returns, in `x-csrf-token`. No session is 401; an identity that is no user of the studio is 403; a refusal by the permission table is 403 and audited.
 
 The roles and the one permission table are in `src/governance/permissions.ts` (R-11-29, R-11-30):
 
