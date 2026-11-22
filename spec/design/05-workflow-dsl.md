@@ -100,6 +100,7 @@ What stays in the designer's hands: the business outcomes of the block, and how 
 | R-05-40 | A step that calls a composite MUST have an id. | Lint L30 |
 | R-05-41 | The pins of a workflow MUST include each composite it calls, that composite's subflow, and everything the subflow reaches. | Lint L23 |
 | R-05-42 | A start message's dispatch entry MUST say what payment it starts: kind, direction and, where the platform workflow depends on it, segment. They MUST select, through workflow-select, one platform workflow whose slot the named leg fills. The front door sets them on the header from the dispatch table; an intake map does not route. | Lint L33; front door (C09) |
+| R-05-43 | A composite activity MAY let a bank set its reply wait. `policy.replyTimeoutParameter` and `policy.replyCalendarParameter` MUST name a `duration` and a `code` parameter the composite declares, whose defaults are the policy's `replyTimeout` and `replyCalendar`. The expanded await carries them as `timeoutParameter` and `calendarParameter` (`activity#parameter`), and the interpreter and the engines MUST wait for the value in force for the tenant on the day the await starts, the timeout being its default. A step that sets `replyTimeout` itself overrides the parameter. | Lint L30; `studio/test/ack-wait.test.ts` |
 
 ## 5.5 Messages that are not payments
 
@@ -191,7 +192,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L11 | Unused blocks: a block that nothing reaches says what runs it | Yes, as a warning |
 | L12 | Validation sets yield findings only | Yes |
 | L13 | Hook stays inside its hook point contract | Yes |
-| L14 | Configuration values inside bounds; bindings resolve | Yes |
+| L14 | Configuration values inside bounds (numbers and durations by min and max; codes and strings by allowed and pattern; each item of a list); bindings resolve | Yes |
 | L15 | Test bench matches ports and scenarios | Yes |
 | L16 | Awaited messages are deliver messages | Yes |
 | L17 | Parameters declared | Yes |
@@ -207,7 +208,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L27 | Supersession: forward within one major line; every workflow release in scope uses the artefact; evidence stays in scope; maker and checker differ | Yes |
 | L28 | Script determinism | To build (C07, C08) |
 | L29 | Step ids unique after inlining | To build (C04) |
-| L30 | A composite and its subflow agree: binding, outcomes, policy; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
+| L30 | A composite and its subflow agree: binding, outcomes, policy; a reply wait a bank may set names a parameter the composite declares; a subflow has no `end`, `slot`, `hook` or `use`; a step that calls a composite has an id | Yes |
 | L31 | `await` and `return` appear only in a subflow; `block` appears only in the expanded form | Yes |
 | L32 | An `await` with no timeout has a reply time to take | Yes |
 | L33 | A start message routes: its kind, direction and segment select one platform workflow, and its leg fills that workflow's slot | Yes |

@@ -81,6 +81,16 @@ CASES = [
      "  - scope: uae.wps\n", "  - scope: uae.retired\n", "a folder under factory/ is not a pack the inventory lists"),
     ("M28", "ERROR L34", "factory/uae.p/ports/uae.p.port.calendar.v1.yaml",
      "name: uae.p.port.calendar.v1", "name: uae.retired.port.calendar.v1", "content of another scope is left in a pack's folder"),
+    # R-06-21: a code, a string or a list item outside its pattern, and a duration outside its bounds (L14)
+    ("M41", "ERROR L14", "examples/bank/configuration-set.yaml",
+     "values:\n", "values:\n  - parameter: p.post.accounting.v1#transactionCode\n    value: not a code\n    validFrom: '2026-01-01'\n",
+     "a transaction code a bank sets does not match its pattern"),
+    ("M42", "ERROR L14", "examples/bank/configuration-set.yaml",
+     "values:\n", "values:\n  - parameter: uae.wps.exchange.submit-salary-file.v1#ackWait\n    value: P30D\n    validFrom: '2026-01-01'\n",
+     "a bank waits longer for the acknowledgement than the parameter's bound"),
+    # R-05-43: a reply wait a bank may set names a parameter the composite declares (L30)
+    ("M43", "ERROR L30", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
+     "replyTimeoutParameter: ackWait", "replyTimeoutParameter: noSuchWait", "a composite's reply wait names a parameter it does not declare"),
 ]
 
 

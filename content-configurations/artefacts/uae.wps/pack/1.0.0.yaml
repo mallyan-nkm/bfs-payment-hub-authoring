@@ -65,7 +65,7 @@ artefacts:
   - name: uae.wps.exchange.submit-salary-file.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:859b57579898c3f2ab4ccb32eaea076395db765dd4a3d227fa9d511ba3f2278d
+    hash: sha256:4d69a042ef6ce3e9f09dc960e7abf8538cbc9496f163e407e532f8146f337d58
     path: activities/uae.wps.exchange.submit-salary-file.v1.yaml
   - name: uae.wps.map.ack-in.v1
     kind: activity
@@ -125,7 +125,7 @@ artefacts:
   - name: uae.wps.post.return.v1
     kind: activity
     release: 1.0.0
-    hash: sha256:c55521e4836e0512bdeadefdb4bca43799f030ee298de51dc506871ccc23ee2b
+    hash: sha256:e063634de394e5bac26b7387c4250ec754a67561d25c505cf5caac41b8c6ce89
     path: activities/uae.wps.post.return.v1.yaml
   - name: uae.wps.validate.payment-file.v1
     kind: activity

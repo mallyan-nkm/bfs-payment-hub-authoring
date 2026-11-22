@@ -91,7 +91,7 @@ def walk(steps):
             yield from walk(holder[key])
 
 
-def rename(steps, prefix, policy):
+def rename(steps, prefix, policy, owner=None):
     """Prefix the ids inside a subflow and resolve its reply waits against the calling step."""
     inner = {st["id"] for st in walk(steps) if "id" in st}
     for st in walk(steps):
@@ -107,8 +107,13 @@ def rename(steps, prefix, policy):
             st["await"] = {**st["await"], "timeout": policy["replyTimeout"]}
             if "replyCalendar" in policy and "calendar" not in st["await"]:
                 st["await"]["calendar"] = policy["replyCalendar"]
+            # R-05-43: a wait the bank may set names the composite's parameter; the policy's value is its default
+            if owner and "replyTimeoutParameter" in policy:
+                st["await"]["timeoutParameter"] = "%s#%s" % (owner, policy["replyTimeoutParameter"])
+            if owner and "replyCalendarParameter" in policy and "calendar" in st["await"]:
+                st["await"]["calendarParameter"] = "%s#%s" % (owner, policy["replyCalendarParameter"])
             # keep the key order of a hand-written await: message, correlateBy, timeout, calendar, onTimeout
-            order = ["message", "correlateBy", "timeout", "calendar", "onTimeout"]
+            order = ["message", "correlateBy", "timeout", "timeoutParameter", "calendar", "calendarParameter", "onTimeout"]
             st["await"] = {k: st["await"][k] for k in order if k in st["await"]}
     return steps
 
@@ -127,7 +132,11 @@ def expand(steps, stack=()):
             if "id" not in st:
                 sys.exit("a step that calls the composite %s needs an id" % act["name"])
             policy = {**(act.get("policy") or {}), **(st.get("policy") or {})}
-            body = rename(expand(copy.deepcopy(sub["do"]), stack + (act["name"],)), st["id"], policy)
+            # a step that fixes the wait itself overrides the bank's parameter
+            for fixed, param in (("replyTimeout", "replyTimeoutParameter"), ("replyCalendar", "replyCalendarParameter")):
+                if fixed in (st.get("policy") or {}):
+                    policy.pop(param, None)
+            body = rename(expand(copy.deepcopy(sub["do"]), stack + (act["name"],)), st["id"], policy, act["name"])
             block = {"id": st["id"], "block": {"of": act["name"], "by": sub["name"], "do": body}}
             if st.get("handle"):
                 block["handle"] = st["handle"]

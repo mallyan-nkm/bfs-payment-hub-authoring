@@ -44,7 +44,24 @@ export function walkSteps(steps: any[] | undefined, out: any[] = []): any[] {
   return out;
 }
 
-function rename(steps: any[], prefix: string, policy: any): any[] {
+/** The await's wait as the composite gives it: its replyTimeout and calendar, and the parameters a bank may set them by (R-05-43). */
+function replyWait(aw: any, policy: any, owner?: string): any {
+  const out: any = { ...aw, timeout: policy.replyTimeout };
+  if (policy.replyCalendar && !('calendar' in out)) out.calendar = policy.replyCalendar;
+  if (owner && policy.replyTimeoutParameter) out.timeoutParameter = `${owner}#${policy.replyTimeoutParameter}`;
+  if (owner && policy.replyCalendarParameter && 'calendar' in out) out.calendarParameter = `${owner}#${policy.replyCalendarParameter}`;
+  return Object.fromEntries(['message', 'correlateBy', 'timeout', 'timeoutParameter', 'calendar', 'calendarParameter', 'onTimeout'].filter((k) => k in out).map((k) => [k, out[k]]));
+}
+
+/** The composite's policy under the calling step's: a step that fixes the wait itself overrides the bank's parameter. */
+function stepPolicyOver(act: any, stepPolicy?: any): any {
+  const policy = { ...(act?.policy ?? {}), ...(stepPolicy ?? {}) };
+  if (stepPolicy && 'replyTimeout' in stepPolicy) delete policy.replyTimeoutParameter;
+  if (stepPolicy && 'replyCalendar' in stepPolicy) delete policy.replyCalendarParameter;
+  return policy;
+}
+
+function rename(steps: any[], prefix: string, policy: any, owner?: string): any[] {
   const inner = new Set(walkSteps(steps).filter((s) => s.id).map((s) => s.id));
   for (const st of walkSteps(steps)) {
     if (st.id) st.id = `${prefix}.${st.id}`;
@@ -52,9 +69,7 @@ function rename(steps: any[], prefix: string, policy: any): any[] {
     for (const ref of refs) if (ref?.outcomeOf && inner.has(ref.outcomeOf)) ref.outcomeOf = `${prefix}.${ref.outcomeOf}`;
     if (st.await && !('timeout' in st.await)) {
       if (!policy.replyTimeout) throw new ExpansionError(prefix, `${prefix}: an await has no timeout and the calling step has no replyTimeout (L32)`);
-      const aw: any = { ...st.await, timeout: policy.replyTimeout };
-      if (policy.replyCalendar && !('calendar' in aw)) aw.calendar = policy.replyCalendar;
-      st.await = Object.fromEntries(['message', 'correlateBy', 'timeout', 'calendar', 'onTimeout'].filter((k) => k in aw).map((k) => [k, aw[k]]));
+      st.await = replyWait(st.await, policy, owner);
     }
   }
   return steps;
@@ -71,8 +86,8 @@ function expandSteps(steps: any[], resolve: DocResolver, stack: string[]): any[]
       if (!sub) throw new ExpansionError(st.id, `The subflow ${act.implementation.subflow} of ${act.name} does not resolve`);
       if (stack.includes(act.name)) throw new ExpansionError(st.id, `The composite ${act.name} calls itself through its subflow`);
       if (!st.id) throw new ExpansionError(undefined, `A step that calls the composite ${act.name} needs an id (L30)`);
-      const policy = { ...(act.policy ?? {}), ...(st.policy ?? {}) };
-      const body = rename(expandSteps(clone(sub.do), resolve, [...stack, act.name]), st.id, policy);
+      const policy = stepPolicyOver(act, st.policy);
+      const body = rename(expandSteps(clone(sub.do), resolve, [...stack, act.name]), st.id, policy, act.name);
       const block: any = { id: st.id, block: { of: act.name, by: sub.name, do: body } };
       if (st.handle && Object.keys(st.handle).length) block.handle = st.handle;
       out.push(block);
@@ -101,12 +116,10 @@ export function expandWorkflow(doc: any, resolve: DocResolver): any {
 
 /** Run a subflow alone, as a composite's own test does: its steps keep their own ids. */
 export function expandSubflow(sub: any, resolve: DocResolver, act: any, stepPolicy?: any): any {
-  const policy = { ...(act?.policy ?? {}), ...(stepPolicy ?? {}) };
+  const policy = stepPolicyOver(act, stepPolicy);
   const body = expandSteps(clone(sub.do), resolve, [act?.name ?? sub.name]);
   for (const st of walkSteps(body)) {
-    if (st.await && !('timeout' in st.await) && policy.replyTimeout) {
-      st.await = { ...st.await, timeout: policy.replyTimeout, ...(policy.replyCalendar && !st.await.calendar ? { calendar: policy.replyCalendar } : {}) };
-    }
+    if (st.await && !('timeout' in st.await) && policy.replyTimeout) st.await = replyWait(st.await, policy, act?.name);
   }
   return { ...sub, do: body, form: 'expanded', expandedFrom: { release: sub.release, hash: contentHash(sub) } };
 }

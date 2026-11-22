@@ -379,7 +379,15 @@ export class Checker {
         for (const o of [...ret].filter((x) => !outs.has(x)).sort()) err('L30', `Its subflow returns ${o}, which the activity does not declare`);
         for (const o of [...outs].filter((x) => !ret.has(x)).sort()) err('L30', `Declares outcome ${o}, which its subflow never returns`);
       }
-      for (const k of Object.keys(d.policy ?? {}).filter((k) => !['replyTimeout', 'replyCalendar'].includes(k)).sort()) err('L30', `A composite carries no ${k}; attempts and retries belong to the steps of its subflow`);
+      for (const k of Object.keys(d.policy ?? {}).filter((k) => !['replyTimeout', 'replyCalendar', 'replyTimeoutParameter', 'replyCalendarParameter'].includes(k)).sort()) err('L30', `A composite carries no ${k}; attempts and retries belong to the steps of its subflow`);
+      // R-05-43: a reply wait a bank may set is a parameter the composite declares, of the right type, with the policy as its default.
+      for (const [key, type, dflt] of [['replyTimeoutParameter', 'duration', 'replyTimeout'], ['replyCalendarParameter', 'code', 'replyCalendar']] as const) {
+        const name = d.policy?.[key];
+        if (name === undefined) continue;
+        const decl = d.parameters?.[name];
+        if (!decl || decl.type !== type) err('L30', `${key} names ${name}, which is not a ${type} parameter of this activity`);
+        else if (d.policy?.[dflt] === undefined || decl.default !== d.policy[dflt]) err('L30', `${key} ${name} defaults to ${JSON.stringify(decl.default)}, not the policy's ${dflt} ${JSON.stringify(d.policy?.[dflt])}`);
+      }
     }
     if (d.kind !== 'workflow' && d.kind !== 'hook') return;
     const isSub = d.wfKind === 'subflow';
@@ -602,7 +610,7 @@ export class Checker {
         continue;
       }
       const b = p.bounds ?? {};
-      if ((b.max !== undefined && v.value > b.max) || (b.min !== undefined && v.value < b.min)) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
+      if (!withinBounds(p, v.value)) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
     }
     for (const b of d.bindings ?? []) {
       const [wf, hp] = String(b.hookPoint).split('#');
@@ -716,6 +724,27 @@ export interface InterfaceDiff {
 }
 
 /** The interface of an artefact (R-01-09) and the semver its change implies (R-01-08, L26). */
+/**
+ * Whether a value lies inside its parameter's bounds (R-04-08, R-06-21): min and max for numbers and durations, allowed and
+ * pattern for codes and strings, and each item of a list (each field of an item that is an object). The same rule as
+ * tools/validate.py's within_bounds.
+ */
+export function withinBounds(decl: any, value: any): boolean {
+  const b = decl?.bounds ?? {};
+  if (decl?.type === 'list') return Array.isArray(value) && value.every((x) => withinBounds({ type: 'item', bounds: b }, x));
+  if (value && typeof value === 'object' && !Array.isArray(value)) return Object.values(value).every((x) => withinBounds({ type: 'item', bounds: b }, x));
+  if (decl?.type === 'duration') {
+    if (typeof value !== 'string' || !/^P(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$/.test(value) || value === 'P' || value === 'PT') return false;
+    const v = durationMs(value);
+    if ((b.min !== undefined && v < durationMs(b.min)) || (b.max !== undefined && v > durationMs(b.max))) return false;
+  } else if (typeof value === 'number') {
+    if ((b.max !== undefined && value > b.max) || (b.min !== undefined && value < b.min)) return false;
+  }
+  if (b.allowed && !b.allowed.includes(value)) return false;
+  if (b.pattern && typeof value === 'string' && !new RegExp(b.pattern).test(value)) return false;
+  return true;
+}
+
 export function interfaceDiff(prev: any, next: any): InterfaceDiff {
   const changes: InterfaceDiff['changes'] = [];
   const set = (x: any) => new Set<string>((x ?? []).map((v: any) => (typeof v === 'string' ? v : v.name ?? JSON.stringify(v))));

@@ -30,6 +30,36 @@ parameters:
     type: code
     default: wps-return
     description: Accounting template for a return. The bank sets the accounts the returned amount moves between.
+  transactionCode:
+    type: code
+    default: PAY
+    bounds:
+      pattern: ^[A-Z0-9]{2,10}$
+    description: Core-banking transaction code of a payment's legs.
+  reversalTransactionCode:
+    type: code
+    default: REV
+    bounds:
+      pattern: ^[A-Z0-9]{2,10}$
+    description: Core-banking transaction code of a reversal's legs.
+  narration:
+    type: string
+    default: Payment
+    bounds:
+      pattern: ^[A-Za-z0-9 .,:/()-]{1,35}$
+    description: Narration of a payment's legs; the payment's reference follows it.
+  settlementAccount:
+    type: string
+    default: GL-SETTLEMENT
+    bounds:
+      pattern: ^[A-Za-z0-9-]{1,34}$
+    description: The account a scheme's payments settle through (the nostro).
+  suspenseAccount:
+    type: string
+    default: GL-SUSPENSE
+    bounds:
+      pattern: ^[A-Za-z0-9-]{1,34}$
+    description: The account refused credits wait in.
 policy:
   attemptTimeout: PT10S
   totalTimeout: PT1M

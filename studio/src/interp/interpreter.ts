@@ -1202,8 +1202,14 @@ async function execLoop(st: any, frame: Frame) {
 async function execAwait(st: any, frame: Frame) {
   const inst = frame.inst;
   const run = inst.run;
-  const aw = st.await;
   const id = st.id ?? 'await';
+  // A wait the bank may set (R-05-43): the composite's parameter, as in force on the day the await starts; the timeout is its default.
+  const dated = (ref: string | undefined, fallback: any) => {
+    if (!ref) return fallback;
+    const [owner, param] = ref.split('#');
+    return run.lookupParam(owner, param, { default: fallback }, run.clock.today()) ?? fallback;
+  };
+  const aw = { ...st.await, timeout: dated(st.await.timeoutParameter, st.await.timeout), calendar: dated(st.await.calendarParameter, st.await.calendar) };
   inst.event('await-start', id, { message: aw.message, timeout: aw.timeout, calendar: aw.calendar });
   const early = run.takeEarly(inst, aw.message);
   let msg: Message | null = null;

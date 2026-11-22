@@ -1,0 +1,15 @@
+# The bank's file decryption, as a port binding (R-12-12): the salary files it receives are GnuPG-encrypted.
+# Read by runtime/src/TransactHub.Ports/PortBindings.cs. The values are the bank's own, from the source:
+#   compose Encryption__Integrations__DIB__* -> profile, key; the provider GnuPG -> the adapter.
+# The passphrase and the key files are never here: a deployment supplies them by reference (README.md).
+kind: port-bindings
+tenant: dib
+bindings:
+  - port: p.port.decryption.v1
+    adapter: gnupg
+    validFrom: 2026-11-21T00:00:00Z
+    settings:
+      profile: WPS_SalaryUpload
+      key: DibWpsInbound
+      keyFolderRef: env:TH_DIB_GPG_KEYS_PATH
+      secretRef: env:TH_DIB_GPG_PASSPHRASE

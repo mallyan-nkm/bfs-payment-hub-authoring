@@ -7,14 +7,14 @@ packs:
     packType: shared
     counts:
       activity: 19
-      port: 8
+      port: 10
       rule: 7
       ruleset: 2
       table: 3
-      simulator: 8
+      simulator: 10
       test: 2
       workflow: 5
-    total: 54
+    total: 58
     artefacts:
       - name: p.decide.inward-disposition.v1
         kind: activity
@@ -58,7 +58,11 @@ packs:
         kind: port
       - name: p.port.core-banking.v1
         kind: port
+      - name: p.port.decryption.v1
+        kind: port
       - name: p.port.facts-out.v1
+        kind: port
+      - name: p.port.file-transfer.v1
         kind: port
       - name: p.port.fraud.v1
         kind: port
@@ -98,7 +102,11 @@ packs:
         kind: simulator
       - name: p.sim.core-banking.v1
         kind: simulator
+      - name: p.sim.decryption.v1
+        kind: simulator
       - name: p.sim.facts-out.v1
+        kind: simulator
+      - name: p.sim.file-transfer.v1
         kind: simulator
       - name: p.sim.fraud.v1
         kind: simulator

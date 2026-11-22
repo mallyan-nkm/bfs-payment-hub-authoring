@@ -1,0 +1,53 @@
+kind: change-set
+id: CS-2026-11-22-001
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T03:22:33.637Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/factory/inventory.yaml
+  - spec/factory/p
+  - spec/factory/uae.wps
+members:
+  - kind: inventory
+    name: inventory
+    release: ""
+    key: inventory
+  - kind: port
+    name: p.port.decryption.v1
+    release: 1.0.0
+    key: p.port.decryption.v1@1.0.0
+  - kind: port
+    name: p.port.file-transfer.v1
+    release: 1.0.0
+    key: p.port.file-transfer.v1@1.0.0
+  - kind: activity
+    name: p.post.accounting.v1
+    release: 1.0.0
+    key: p.post.accounting.v1@1.0.0
+  - kind: simulator
+    name: p.sim.decryption.v1
+    release: 1.0.0
+    key: p.sim.decryption.v1@1.0.0
+  - kind: simulator
+    name: p.sim.file-transfer.v1
+    release: 1.0.0
+    key: p.sim.file-transfer.v1@1.0.0
+  - kind: pack
+    name: pack:p
+    release: 1.0.0
+    key: pack:p@1.0.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.0.0
+    key: pack:uae.wps@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.submit-salary-file.v1
+    release: 1.0.0
+    key: uae.wps.exchange.submit-salary-file.v1@1.0.0
+  - kind: activity
+    name: uae.wps.post.return.v1
+    release: 1.0.0
+    key: uae.wps.post.return.v1@1.0.0

@@ -689,11 +689,21 @@
               "$ref": "urn:th:schema:common#/$defs/duration",
               "description": "May be left out only in a subflow: the await then waits for the replyTimeout of the step that called the composite."
             },
+            "timeoutParameter": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+#[a-z][A-Za-z0-9]*$",
+              "description": "Expanded form only: the parameter (activity#name) whose value in force is the wait; timeout is its default (R-05-43)."
+            },
             "calendar": {
               "enum": [
                 "elapsed",
                 "business"
               ]
+            },
+            "calendarParameter": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+#[a-z][A-Za-z0-9]*$",
+              "description": "Expanded form only: the parameter whose value in force, elapsed or business, is the wait's calendar; calendar is its default."
             },
             "onTimeout": {
               "$ref": "#/$defs/outcomeAction"

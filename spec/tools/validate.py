@@ -7,6 +7,7 @@ This script is the reference for build spec C04 (static checks). It is not the p
 """
 import json
 import pathlib
+import re
 import sys
 
 import yaml
@@ -286,8 +287,18 @@ for path, d in docs:
                 err("L30", path, "its subflow returns %r, which the activity does not declare" % o)
             for o in sorted(outs - returns(sub)):
                 err("L30", path, "declares outcome %r, which its subflow never returns" % o)
-        for k in sorted(set(d.get("policy") or {}) - {"replyTimeout", "replyCalendar"}):
+        for k in sorted(set(d.get("policy") or {}) - {"replyTimeout", "replyCalendar", "replyTimeoutParameter", "replyCalendarParameter"}):
             err("L30", path, "a composite carries no %s; attempts and retries belong to the steps of its subflow" % k)
+        # L30 (R-05-43) a reply wait a bank may set is a parameter the composite declares, of the right type, with the policy as its default
+        pol = d.get("policy") or {}
+        for key, typ, dflt in (("replyTimeoutParameter", "duration", "replyTimeout"), ("replyCalendarParameter", "code", "replyCalendar")):
+            if key not in pol:
+                continue
+            decl = (d.get("parameters") or {}).get(pol[key])
+            if not decl or decl.get("type") != typ:
+                err("L30", path, "%s names %r, which is not a %s parameter of this activity" % (key, pol[key], typ))
+            elif dflt not in pol or decl.get("default") != pol[dflt]:
+                err("L30", path, "%s %r defaults to %r, not the policy's %s %r" % (key, pol[key], decl.get("default"), dflt, pol.get(dflt)))
     if d.get("kind") != "workflow":
         continue
     sub = d["wfKind"] == "subflow"
@@ -420,6 +431,42 @@ for path, d in docs:
             err("L18", path, "%s is not under a registered extension root" % w)
 
 # --------------------------------------------------- configuration sets
+DUR = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
+
+
+def seconds(d):
+    m = DUR.match(d) if isinstance(d, str) else None
+    if not m or d in ("P", "PT"):
+        return None
+    days, h, mi, se = (int(x or 0) for x in m.groups())
+    return ((days * 24 + h) * 60 + mi) * 60 + se
+
+
+def within_bounds(decl, value):
+    """R-04-08, R-06-21: min and max for numbers and durations; allowed and pattern for codes and strings; each item of a list."""
+    b = decl.get("bounds") or {}
+    if decl.get("type") == "list":
+        if not isinstance(value, list):
+            return False
+        return all(within_bounds({"type": "item", "bounds": b}, x) for x in value)
+    if isinstance(value, dict):
+        return all(within_bounds({"type": "item", "bounds": b}, x) for x in value.values())
+    if decl.get("type") == "duration":
+        v = seconds(value)
+        if v is None:
+            return False
+        if "min" in b and v < seconds(b["min"]) or "max" in b and v > seconds(b["max"]):
+            return False
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "max" in b and value > b["max"] or "min" in b and value < b["min"]:
+            return False
+    if "allowed" in b and value not in b["allowed"]:
+        return False
+    if "pattern" in b and isinstance(value, str) and not re.search(b["pattern"], value):
+        return False
+    return True
+
+
 for path, d in docs:
     if d.get("kind") != "configuration-set":
         continue
@@ -430,7 +477,7 @@ for path, d in docs:
             err("L14", path, "%s is not a declared parameter" % v["parameter"])
             continue
         b = p.get("bounds") or {}
-        if "max" in b and v["value"] > b["max"] or "min" in b and v["value"] < b["min"]:
+        if not within_bounds(p, v["value"]):
             err("L14", path, "%s = %r is outside its bounds %r" % (v["parameter"], v["value"], b))
     for b in d["bindings"]:
         wf, hp = b["hookPoint"].split("#")

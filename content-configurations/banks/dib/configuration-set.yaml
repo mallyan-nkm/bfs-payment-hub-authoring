@@ -2,7 +2,7 @@
 # sets a parameter the factory declares, inside its bounds, from its validFrom. README.md gives the source of each.
 kind: configuration-set
 tenant: dib
-release: 1.0.0
+release: 1.1.0
 title: Bank configuration for WPS
 accepts:
   - { scope: p, release: 1.0.0 }
@@ -16,6 +16,44 @@ values:
   # The bank's 9-digit WPS routing code (the source's wps.ParamConfiguration, confirmed by the business on 2026-10-06).
   - parameter: uae.wps.rule.agent-is-this-bank.v1#ownRoutingCodes
     value: ["802420101"]
+    validFrom: "2026-11-21"
+  # The accounting template (R-12-12). The posting transaction codes: salary, the bank's charge, the Central Bank's
+  # charge, VAT and the NAK reversal (the source's DibWpsTransactionCodes; compose WpsPosting__TransactionCodes__*).
+  - parameter: p.post.accounting.v1#transactionCode
+    value: SALARY
+    validFrom: "2026-11-21"
+  - parameter: p.post.accounting.v1#chargeTransactionCode
+    value: BNKCHR
+    validFrom: "2026-11-21"
+  - parameter: p.post.accounting.v1#schemeChargeTransactionCode
+    value: CBCCHR
+    validFrom: "2026-11-21"
+  - parameter: p.post.accounting.v1#vatTransactionCode
+    value: VATAMT
+    validFrom: "2026-11-21"
+  - parameter: p.post.accounting.v1#reversalTransactionCode
+    value: NAKR
+    validFrom: "2026-11-21"
+  # The bank charge's narration (compose Narration_BankChargePosting).
+  - parameter: p.post.accounting.v1#chargeNarration
+    value: DIB Charge
+    validFrom: "2026-11-21"
+  # The kinds of general-ledger account (Migrations/Platform/Sql/20261012143324_SeedGlAccountTypes.sql).
+  - parameter: p.post.accounting.v1#glAccountTypes
+    value: [NOSTRO, SUSPENSE, PLA, EXPENSE]
+    validFrom: "2026-11-21"
+  # VAT on a charge: the source seeds no VAT or charge slab; CBX VAT falls back to VAT_Percentage, else 5
+  # (WpsPlatformActivities.Charges.cs). The slabs stay the factory's default, none, as in the source.
+  - parameter: p.post.accounting.v1#vatPercent
+    value: 5
+    validFrom: "2026-11-21"
+  # The wait for the Central Bank's acknowledgement of a SIF: 259200 s, 72 elapsed hours (CbAckSlaThresholdSeconds,
+  # Migrations/Wps/20261013105246_SeedWpsParamConfiguration.cs).
+  - parameter: uae.wps.exchange.submit-salary-file.v1#ackWait
+    value: PT72H
+    validFrom: "2026-11-21"
+  - parameter: uae.wps.exchange.submit-salary-file.v1#ackWaitCalendar
+    value: elapsed
     validFrom: "2026-11-21"
 # The employer AML check and the labour ministry notification are carried as hooks, not bound: no live
 # salary-file workflow of the source calls them. Binding one is a line here with its validFrom (README.md).
