@@ -1275,8 +1275,11 @@ for path, d in docs:
         for at, v in long_numbers({k: x for k, x in d.items() if k not in ("release", "dsl")}):
             err("L42", path, "%s = %r has more than 15 significant digits; write the amount as a decimal string" % (at, v))
 # L43 (R-11-38) a leg fills the slot contract <slot>@<major> of a platform workflow: the workflow it names is a platform
-# workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions.
-# A distribution is built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts).
+# workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions,
+# and writes (its exit) nothing beyond the slot's writes and its scheme's own extensions (Issue I-112). A distribution is
+# built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts). One write is known to be beyond its
+# slot and waits for the owner's decision (Issue I-141): it is reported, as a warning, until the content is released again.
+SLOT_WRITE_OPEN = {("uae.wps.wf.agent-payment-in.v2", "p.wf.inward.v1", "facts.returns"): "I-141"}
 def beyond(paths, allowed, own):
     out = []
     for x in paths or []:
@@ -1302,6 +1305,10 @@ for path, d in docs:
             continue
         for x in beyond((d.get("entry") or {}).get("reads"), contract.get("reads") or [], scope_of(d["name"])):
             err("L43", path, "reads %s, which the slot contract %s@%s of %s does not give it" % (x, imp.get("slot"), of.rsplit(".v", 1)[-1], of))
+        for x in beyond((d.get("exit") or {}).get("writes"), contract.get("writes") or [], scope_of(d["name"])):
+            issue = SLOT_WRITE_OPEN.get((d["name"], of, x))
+            (warn if issue else err)("L43", path, "writes %s, which the slot contract %s@%s of %s does not let it write%s" % (
+                x, imp.get("slot"), of.rsplit(".v", 1)[-1], of, " (open: Issue %s)" % issue if issue else ""))
 
 # L47 (R-12-19) a platform workflow that blocks or posts money owns its order's money: a leg that fills one of its slots calls no
 # reserve or post activity, directly, through a segment or through a composite's subflow. The platform's lifecycle is the order's,

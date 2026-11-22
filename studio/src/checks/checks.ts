@@ -69,7 +69,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
   L41: 'A published release never changes once seeded',
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
-  L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
+  L43: 'A leg fills the slot contract of a platform workflow, reads only what it gives and writes only what it lets it write',
   L44: 'Every parameter declares its type and a default within its own bounds',
   L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
   L47: 'A leg of a platform workflow that blocks or posts money calls no reserve or post activity itself',
@@ -347,6 +347,11 @@ export class Checker {
           const own = `ext.${d.name.split('.').slice(0, 2).join('.')}`;
           for (const x of (d.entry?.reads ?? []).filter((p: string) => !p.startsWith(own) && !(contract.reads ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`))))
             err('L43', `reads ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not give it`);
+          // And writes only what it lets it write (Issue I-112); the one write still open is a warning until its release (I-141).
+          for (const x of (d.exit?.writes ?? []).filter((p: string) => !p.startsWith(own) && !(contract.writes ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`)))) {
+            const open = SLOT_WRITE_OPEN[`${d.name} ${of} ${x}`];
+            (open ? warn : err)('L43', `writes ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not let it write${open ? ` (open: Issue ${open})` : ''}`);
+          }
         }
         // L47 (R-12-19, Issue I-133): a platform workflow that blocks or posts owns its order's money; its legs call neither.
         if (host?.wfKind === 'platform' && this.moneySteps(host).length)
@@ -1103,6 +1108,12 @@ export function portBindingProblems(d: any, isPort: (name: string) => boolean): 
   if (!Array.isArray(d?.bindings) || !d.bindings.length) out.push('The port bindings bind no port');
   return out;
 }
+
+/**
+ * The writes beyond a slot contract that wait for the owner's decision, by `<leg> <platform workflow> <path>`: reported as a
+ * warning, and let into a distribution, until the content is released again (Issue I-141). tools/validate.py holds the same.
+ */
+export const SLOT_WRITE_OPEN: Record<string, string> = { 'uae.wps.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141' };
 
 export function checkDocument(env: StudioEnv, doc: any, tenant?: string, alongside: any[] = []): Issue[] {
   const issues: Issue[] = env.schemas.validate(doc).map((s) => ({ code: 'L00', severity: 'error' as const, key: doc?.name ?? doc?.id ?? '', message: s.message + (s.hint ? ` ${s.hint}` : ''), step: s.path }));

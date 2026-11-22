@@ -31,7 +31,7 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | Test cases in the packs | 50 |
 | Conformance scenarios | 56 |
 | Checks in `tools/validate.py` | 39 (L00 to L48) |
-| Mutation cases that prove them | 67 |
+| Mutation cases that prove them | 68 |
 | Build components, stories, story points | 25, 125, 502 |
 <!-- /COUNTS -->
 

@@ -3,7 +3,7 @@ import { canonicalJson, clone } from '../core/canonical.js';
 import { parseYaml, toYaml } from '../core/yaml.js';
 import { expandWorkflow } from '../core/expand.js';
 import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
-import { portBindingProblems, withinBounds } from '../checks/checks.js';
+import { portBindingProblems, SLOT_WRITE_OPEN, withinBounds } from '../checks/checks.js';
 import { packEntries } from '../governance/packs.js';
 import { exportPackage, signPackage, type Target } from './exporter.js';
 import { bindingOf } from './bindings.js';
@@ -89,8 +89,8 @@ const within = (paths: string[] | undefined, allowed: string[], own: string) =>
 /**
  * The slot-contract check (R-11-38, lint L43): every leg of a licensed scheme fills a slot of a platform workflow of the
  * distribution, with that slot's contract: the workflow it names is in the distribution at the major it names, has the slot,
- * and the leg's outcomes and reads (beyond its scheme's own extensions) are within the slot's. Writes are not compared yet (Issue I-112). Returns what each
- * scheme fills, or the mismatches.
+ * and the leg's outcomes, reads and writes (beyond its scheme's own extensions) are within the slot's (Issue I-112; a write the
+ * owner has still to decide is let through and listed, I-141). Returns what each scheme fills, or the mismatches.
  */
 export function checkSlotContracts(platform: any[], schemes: { scope: string; docs: any[] }[]): { fills: any[]; problems: string[] } {
   const contracts = slotContracts(platform);
@@ -109,6 +109,7 @@ export function checkSlotContracts(platform: any[], schemes: { scope: string; do
         const bad = [
           ...(leg.exit?.outcomes ?? []).filter((o: string) => !(c.contract?.outcomes ?? []).includes(o)).map((o: string) => `outcome ${o}`),
           ...within(leg.entry?.reads, c.contract?.reads ?? [], s.scope).map((p) => `read ${p}`),
+          ...within(leg.exit?.writes, c.contract?.writes ?? [], s.scope).filter((p) => !SLOT_WRITE_OPEN[`${leg.name} ${of} ${p}`]).map((p) => `write ${p}`),
         ];
         if (bad.length) problems.push(`${leg.name} of ${s.scope} does not fit the slot contract ${c.id} of ${of}: ${bad.join(', ')}`);
         else fills.push({ scheme: s.scope, leg: leg.name, release: leg.release, contract: c.id, workflow: of, sha256: c.sha256 });

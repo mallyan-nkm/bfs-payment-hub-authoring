@@ -1265,6 +1265,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Decide whether `facts.returns` belongs to the inward slot's contract. If it does, release `p.wf.inward` with it (a contract change is an interface change: a new major, and the slot contract becomes `scheme-leg@2`); if not, release the leg without it. Then extend L43 and `checkSlotContracts` to writes.
 
+**Built (22 November 2026): the check.** L43 and `checkSlotContracts` compare a leg's exit writes with its slot's writes too: a write beyond the slot's writes and the scheme's own extensions refuses the leg in `tools/validate.py` (mutation M68), in the studio's checks and in a distribution's build (`studio/test/distribution.test.ts`). The content decision this recommendation asks for is not made here, so the one write it names, `facts.returns` of `uae.wps.wf.agent-payment-in.v2` in `scheme-leg@1` of `p.wf.inward.v1`, is reported as a warning and let into a distribution until the owner decides: I-141.
+
 ## I-113. Who switches distributions on, and which engine a bank runs
 
 **Issue.** Building distributions and configuration releases on approval is a setting (`distributions: true` in `governance/settings.yaml`, off by default), so that a publish that does not want them is unchanged; a test environment's distributions carry simulators (`testDistributions: true`). The distributions built on approval are for the settings' engine target, one engine for every bank: no document records which engine a bank runs, so scenario 9 (a bank moves engine) builds the other engine's distribution on its own (`POST /api/distributions` with `engine`).
@@ -1478,6 +1480,12 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 **Issue.** L48 checks a bank's port bindings against the port contracts, but a port contract (`spec/schemas/port.schema.json`) lists only its party and operations. Which adapters the runtime offers for a port (`simulator`, `gateway-rest`, `sftp`, `file-bulk`), and which settings each needs (`baseUrl`, `postingPath`, a host and folders), are known only to the runtime's adapters (`runtime/src/TransactHub.Ports`). A binding to an adapter the distribution does not carry, or without a setting its adapter needs, is found only when the runtime first calls the port.
 
 **Recommendation.** Have each distribution's `ports/` part declare, per port, the adapters it carries and each adapter's settings (name, required or not, and whether it is a `secretRef`), generated from the runtime's adapters, and extend L48 and the configuration release's check to hold a binding to them. Until then the studio's editor shows the adapter as free text.
+
+## I-141. Whether an inward leg's returns belong to the platform's slot
+
+**Issue.** The slot-contract check now covers writes (I-112, L43). One leg writes beyond its slot: `uae.wps.wf.agent-payment-in.v2` hands back `facts.returns`, which `scheme-leg@1` of `p.wf.inward.v1` does not list. Its v2 line was made to add that exit write (`tools/build_factory.py`, the note above RELEASES), and the slot has a `returned` outcome, which suggests the platform should see what was returned. But nothing in `p.wf.inward.v1` reads `facts.returns` today: not its steps after the leg, not `p.notify.channel.v1` or `p.notify.publish-fact.v1`, not its `on-close` hook. The operations view reads the returns from the step's facts, not from the context. Either answer is a new major line: of the platform workflow (`p.wf.inward.v2`, `scheme-leg@2`), or of the leg (`uae.wps.wf.agent-payment-in.v3`), with the WPS tests, the scheme manifest and the operations view released again to name it. Until then the check reports the write as a warning (`SLOT_WRITE_OPEN` in `tools/validate.py` and `studio/src/checks/checks.ts`) and lets it into a distribution.
+
+**Recommendation.** Since the platform reads nothing of it, release the leg without `facts.returns` in its exit (`uae.wps.wf.agent-payment-in.v3`, the returns kept in its step facts for the operations view), together with the next WPS release so the tests and the view move once; then remove the entry from `SLOT_WRITE_OPEN`. If the owner wants the platform to act on returns (a returns notice to the channel, a report), release `p.wf.inward.v2` with `facts.returns` in its `scheme-leg@2` instead.
 
 ## Not done, and why
 
