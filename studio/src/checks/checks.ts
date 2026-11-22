@@ -152,7 +152,7 @@ export class Checker {
   extensionRoots: string[] = [];
   denyNames: string[] = [];
 
-  constructor(docs: any[], denyNames: string[] = [], private scriptsDir?: string) {
+  constructor(docs: any[], denyNames: string[] = [], private scriptOf?: (name: string) => { source: string; language: string } | undefined) {
     this.docs = docs;
     for (const d of docs) {
       if (d.name && d.kind !== 'pack') {
@@ -173,7 +173,8 @@ export class Checker {
     let deny: string[] = [];
     const f = path.join(env.specRoot, 'tools', 'deny-names.txt');
     if (fs.existsSync(f)) deny = fs.readFileSync(f, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    return new Checker(merged, deny, path.join(env.studioRoot, 'scripts'));
+    // Script-behinds are files on the branch, the factory's among them (R-11-25).
+    return new Checker(merged, deny, (name) => env.scripts.find(name));
   }
 
   hookPoints(d: any, depth = 0): Record<string, any> {
@@ -565,9 +566,9 @@ export class Checker {
       warn('L20', `${d.name} writes and names no compensation (R-03-12 SHOULD)`);
     }
     // L28: the script-behind uses only the injected interface.
-    if (this.scriptsDir && d.implementation?.binding === 'script') {
-      const f = path.join(this.scriptsDir, `${d.name}.ts`);
-      if (fs.existsSync(f)) for (const m of lintScript(fs.readFileSync(f, 'utf8'))) err('L28', m);
+    if (this.scriptOf && d.implementation?.binding === 'script') {
+      const sc = this.scriptOf(d.name);
+      if (sc && sc.language === 'typescript') for (const m of lintScript(sc.source)) err('L28', m);
     }
     // L11: unused blocks.
     const reached = this.reached();

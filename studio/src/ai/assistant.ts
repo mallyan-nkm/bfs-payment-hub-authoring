@@ -81,8 +81,8 @@ export function buildPrompt(env: StudioEnv, req: DraftRequest): { system: string
     }
   }
   if (req.kind === 'script') {
-    const f = path.join(env.studioRoot, 'scripts', 'p.validate.duplicate.v1.ts');
-    if (fs.existsSync(f)) scriptExample = fs.readFileSync(f, 'utf8');
+    // The factory's example script, as the seed published it to the branch (R-11-25).
+    scriptExample = env.scripts.find('p.validate.duplicate.v1')?.source ?? '';
   }
   const system = [
     'You draft artefacts for the TransactHub Designer Studio, a design-time tool for payment workflows over an ISO 20022 canonical context.',

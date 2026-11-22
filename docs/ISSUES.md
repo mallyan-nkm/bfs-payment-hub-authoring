@@ -564,6 +564,43 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 
 **Recommendation.** Let the repository delete a branch when its pull request merges, and allow the studio to delete a change set branch it published (one more endpoint). Read the audit on demand rather than at start once it is large.
 
+**Accepted.** The owner accepted the six Recommendations on 2026-11-22. The spec says so in R-11-22, R-11-23, R-11-24 and R-11-25 (amended) and R-11-26 and R-11-27 (new).
+
+**What is built.**
+
+1. `governance/users.yaml` (through maker-checker) and `governance/settings.yaml` are the only files the studio replaces; each replacement must find the file as the studio read it.
+2. A new draft joins the open change set of the first draft, by id, that it refers to or that refers to it. Approval publishes the closure under the id of the approved draft's branch, with the audit of every other branch it empties. A branch that keeps drafts after a publish keeps them, and they publish later under a new id. Each change set record names each member's maker.
+3. A waiver is its own change set: one commit, a record with `waivers:`, and its audit.
+4. The seed publishes the factory's script-behinds (`studio/scripts/` to `scripts/`) and its test samples (`studio/fixtures/samples/` to `samples/`). The studio reads them from the branch; a sample the seed published is factory content and a designer may not take its name. The import's training bundle is built from the branch too.
+5. A factory change after the seed needs a new release: the seed stops and names the file. `seed-content --write-local` regenerates this repository's copy.
+6. The studio deletes a change set branch once the content branch holds everything on it: in commit mode right after the publish, in pull-request mode when it next reads the branches. The client deletes only a `studio/CS-<date>-<n>` branch and refuses any other name before a request is made; the commands that only read delete nothing. The audit files are read when the audit is opened, except the events the state depends on (a retirement, a configuration set: an event file's name now carries its action) and the newest event, whose hash the next one chains to.
+
+Also: a commit sends each file's text inline in its tree request, so a seed of several hundred files is a few requests, not one per file; and the client lists `studio/` branches without a trailing slash in the path, which some proxies refuse. `studio/test/content.real-github.test.ts` runs the whole flow on a real repository with `TH_REAL_GITHUB=1`.
+
+## I-61. A branch is deleted without a check on GitHub's side
+
+**Issue.** GitHub's delete-ref endpoint takes no expected SHA. The studio reads the change set branch's head and deletes the branch only if it is where the studio saw it, but a push between that read and the delete is lost with the branch. The spec says the studio never loses a commit it did not make.
+
+**Recommendation.** Accept the window: a change set branch is the studio's own, and nobody else is meant to push to it. A bank that wants a guarantee protects `studio/*` from pushes by people (a ruleset that allows only the studio's identity), so that only the studio writes there.
+
+## I-62. How a pull request is merged
+
+**Issue.** In pull-request mode the studio finds a merged change set when the content branch has taken its branch in (a merge commit), or when nothing on the branch differs from the content branch (a squash or a rebase merge). A squash or rebase merge also rewrites the commit that carries the change set, so the content branch's history no longer shows the studio's own commit (R-09-20), and a reviewer who edits the files on merge publishes what no checker approved.
+
+**Recommendation.** Ask each bank to allow only merge commits on its content branch, and to require that the pull request's head is not changed after approval. The studio then reads every published change set as the commit its checker approved.
+
+## I-63. What the studio still reads from its own folder
+
+**Issue.** With the factory's scripts and samples on the branch, the studio still reads from `studio/` at run time: the code-set registries (`studio/registries/`), the conformance kit's library and scenarios (`studio/conformance/`), and the Python harness. R-11-21 lets the kit be read from `spec/`; it does not say whether the registries are content, and a registry release is looked up by date like any other value.
+
+**Recommendation.** Treat the conformance kit and the harness as the engines' test fixture and the studio's code, as now. Decide whether the code-set registries are content: if they are, publish them with the seed (`registries/` on the branch) and read them from there; if not, say in Part 11 that they ship with the studio's code.
+
+## I-64. Large commits and GitHub's limits
+
+**Issue.** GitHub limits how many objects a client creates a minute and an hour (its secondary rate limits) and how large one request may be. A commit with one blob request per file, as the seed was, trips the first limit on a real repository. With the text inline in the tree request, the seed is a few requests, but GitHub does not publish the largest request it takes, and the studio does not page a tree it reads (`truncated`).
+
+**Recommendation.** Keep the text inline and the tree in parts of at most 200 files and about 1 MB, as built. Test the seed and a large import on a real repository before a bank's first use, and raise an Issue with the numbers if a part is refused. A repository whose content folder outgrows one tree read (100,000 files) splits its content by bank.
+
 ## I-45. Id length on SQL Server is in bytes, not characters
 
 **Issue.** Temporal's key columns for ids (workflow, run, task queue, signal, timer) are VARCHAR(255). On MySQL and PostgreSQL that is 255 characters. On SQL Server the plugin needs a UTF-8 collation to keep the keys under the 900-byte limit, so VARCHAR(255) is 255 bytes: an id with non-ASCII characters is shorter. The spec does not say which characters a workflow id may hold.

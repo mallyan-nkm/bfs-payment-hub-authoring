@@ -498,7 +498,7 @@ API, command line, the web app in a browser, and both end-to-end tests. Add `TH_
 
 Stop the studio started with `npm run studio:dev` and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete.
 
-The factory content and the example bank are seeded from `spec/` into `content-configurations/`, and the studio never changes a published file.
+The factory content and the example bank are seeded from `spec/` into `content-configurations/`, the factory's script-behinds and test samples from `studio/scripts/` and `studio/fixtures/samples/`, and the studio never changes a published file. A change set's branch, `studio/<id>`, is deleted once its change set is on the content branch.
 
 ### F2. Troubleshooting
 

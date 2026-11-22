@@ -378,7 +378,8 @@ function bumpPatch(r: string) {
   return `${a}.${b}.${c + 1}`;
 }
 
-route('GET', '/api/audit', (env, req) => env.store.audit.filter((a) => tenantOf(req) === OWNER_TENANT || a.tenant === tenantOf(req)).slice().reverse());
+// The audit is read when it is opened, not at start (R-11-27).
+route('GET', '/api/audit', async (env, req) => (await env.store.readAudit()).filter((a) => tenantOf(req) === OWNER_TENANT || a.tenant === tenantOf(req)).slice().reverse());
 
 // ---------------------------------------------------------------- testing
 
@@ -632,7 +633,7 @@ route('GET', '/api/packs/:scope/release-gate', async (env, _req, { scope }) => g
 
 route('GET', '/api/users', (env, req) => gov.users(env).filter((u) => tenantOf(req) === OWNER_TENANT || u.tenant === tenantOf(req)));
 route('GET', '/api/permit', (env, req) => ({ allowed: !gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope), reason: gov.permit(env, req.query.actor, tenantOf(req), req.query.action as any, req.query.scope) }));
-route('GET', '/api/audit/verify', (env) => env.store.verifyAudit());
+route('GET', '/api/audit/verify', async (env) => env.store.verifyAudit());
 
 // --------------------------------------------------- releases, retirement, propagation (C19, C05-S4)
 

@@ -164,7 +164,9 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
   }
   // One commit on the content branch, or in pull-request mode one on the change set's branch and a
   // pull request (R-11-22, R-09-20, R-09-22). The change set keeps the id of its branch.
-  const id = env.store.changeSetIdFor(set.map((x) => x.e));
+  // The change set takes the id of the approved draft's branch, across branches if its closure must (Issue I-44).
+  const asked = requested.map((k) => env.store.entries.get(k)?.changeSet).find(Boolean);
+  const id = env.store.changeSetIdFor(set.map((x) => x.e), asked);
   const branches = [...new Set(set.map((x) => x.e.changeSet).filter(Boolean) as string[])].sort((a, b) => (a === id ? -1 : b === id ? 1 : a.localeCompare(b)));
   const pullRequest = env.store.settings.mode === 'pull-request';
   return env.store.transaction(() => {
@@ -172,7 +174,7 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
     const changeSet = {
       id, tenant, checker, publishedAt: published[0]?.e.publishedAt ?? new Date().toISOString(),
       makers: [...new Set(published.map((p) => p.maker))].sort(),
-      members: published.map(({ e }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key })).sort((a, b) => a.key.localeCompare(b.key)),
+      members: published.map(({ e, maker }) => ({ kind: e.kind, name: e.name, release: e.release, key: e.key, maker })).sort((a, b) => a.key.localeCompare(b.key)),
     };
     const { files, skipped } = filesFor(env, changeSet, env.store.settings);
     const write = env.store.commitChangeSet(changeSet, branches, files, commitMessage(changeSet, skipped), { pullRequest });
@@ -443,7 +445,7 @@ export async function conformanceReport(env: StudioEnv, target = 'studio') {
 export function addWaiver(env: StudioEnv, actor: string, w: Waiver) {
   enforce(env, actor, OWNER_TENANT, 'approve', `waiver:${w.scenario}`);
   if (!w.reason) throw new StoreError('C23-S3', 'A waiver names its reason');
-  // A waiver is published with its change set: the record holds it (R-11-23).
+  // A waiver is its own change set: one commit with a record that holds it, and its audit (R-11-23).
   const waiver = { ...w, approver: actor };
   const id = env.store.changeSetIdFor([]);
   const changeSet = { id, tenant: OWNER_TENANT, checker: actor, publishedAt: new Date().toISOString(), makers: [actor], members: [], waivers: [waiver] };

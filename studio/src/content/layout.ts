@@ -42,8 +42,23 @@ export const samplePath = (name: string) => `samples/${safe(name)}`;
 export const changeSetPath = (id: string) => `change-sets/${safe(id)}.yaml`;
 /** The audit of a change set: every event of it, from the first draft to the publish (R-11-23). */
 export const changeSetAuditPath = (id: string) => `audit/change-sets/${safe(id)}.yaml`;
-/** An event that is not part of a change set: one file each (R-11-23). */
-export const eventAuditPath = (at: string, hash: string) => `audit/events/${at.slice(0, 10)}/${at.slice(11).replace(/[:.]/g, '').replace('Z', '')}-${hash.replace(/^sha256:/, '').slice(0, 12)}.yaml`;
+/** An event that is not part of a change set: one file each, its name giving its time and action (R-11-23, R-11-27). */
+export const eventAuditPath = (at: string, hash: string, action: string) =>
+  `audit/events/${at.slice(0, 10)}/${at.slice(11).replace(/[:.]/g, '').replace('Z', '')}-${safeAction(action)}-${hash.replace(/^sha256:/, '').slice(0, 12)}.yaml`;
+
+const safeAction = (a: string) => String(a).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'event';
+
+/** An event file's time (sortable) and action, from its name; the action is absent in a name without one. */
+export function eventFileName(p: string): { stamp: string; action?: string } | undefined {
+  const m = /^audit\/events\/(\d{4}-\d{2}-\d{2})\/(\d+)-(?:([a-z0-9-]+)-)?([0-9a-f]{12})\.yaml$/.exec(p);
+  return m ? { stamp: `${m[1]}/${m[2]}`, action: m[3] } : undefined;
+}
+
+/**
+ * The events the studio's state depends on: a retirement, and who set a configuration set. Their files
+ * are read at start; every other audit file is read when the audit is opened (R-11-27).
+ */
+export const STATE_ACTIONS = ['retire', 'set-configuration'];
 /** The studio's users and their roles: one file, changed only through maker-checker (R-11-23, Issue I-44). */
 export const USERS_PATH = 'governance/users.yaml';
 /** The studio's settings: publish mode, engine target, environment (R-09-19). */
