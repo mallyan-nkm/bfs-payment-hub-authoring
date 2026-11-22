@@ -14,12 +14,13 @@
 // It reads the content branch (TH_CONTENT_REPO) or the in-memory fake seeded from content-configurations/.
 
 import * as fs from 'node:fs';
+import * as net from 'node:net';
 import * as path from 'node:path';
 import { openReadEnv } from '../../../studio/src/env.js';
 import { runTest } from '../../../studio/src/testing/runner.js';
 import { exportPackage, exportZip, packageHash } from '../../../studio/src/export/exporter.js';
 import { deploy, type Engine } from '../../../studio/src/deploy/deploy.js';
-import { unzip, zip } from '../../../studio/src/export/zip.js';
+import { unzip } from '../../../studio/src/export/zip.js';
 import { parseYaml, toYaml } from '../../../studio/src/core/yaml.js';
 
 interface Job {
@@ -94,6 +95,25 @@ function withSimulators(env: any, zipFile: string, dest: string): { dir: string;
   return { dir: dest, added };
 }
 
+/**
+ * A run of free ports for the package's workers. The deploy runner picks 7400 to 7800 at random when it is given none;
+ * on a machine where other deployments run at once, a worker may then answer for another run. These are checked free.
+ */
+async function freePorts(n: number): Promise<number> {
+  const free = (p: number) => new Promise<boolean>((resolve) => {
+    const s = net.createServer();
+    s.once('error', () => resolve(false));
+    s.listen(p, '127.0.0.1', () => s.close(() => resolve(true)));
+  });
+  for (let tries = 0; tries < 50; tries++) {
+    const base = 20000 + Math.floor(Math.random() * 20000);
+    let ok = true;
+    for (let i = 0; i < n && ok; i++) ok = await free(base + i);
+    if (ok) return base;
+  }
+  throw new Error('No run of free ports for the workers');
+}
+
 async function main() {
   const t0 = Date.now();
   const { env, where, stop } = await openReadEnv(job.banks?.length ? { banks: job.banks } : {});
@@ -147,7 +167,7 @@ async function main() {
         const d = await deploy({
           packagePath: pkgPath, workflow: job.workflow, studioRoot: env.studioRoot,
           environment: { evaluationDate: job.evaluationDate, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined, bench: job.bench },
-          inbound: job.inbound, context: job.context,
+          inbound: job.inbound, context: job.context, basePort: await freePorts(8),
         });
         Object.assign(res, {
           ok: true, outcome: d.outcome, failed: d.failed, trace: normalise(d.trace), detail: normalise(d.detail), attempts: d.attempts,
@@ -173,7 +193,6 @@ async function main() {
   }
 }
 
-void zip;
 main().then(() => process.exit(0), (e) => {
   console.error(e?.stack ?? e);
   process.exit(1);

@@ -160,38 +160,51 @@ public sealed class Runner(Home home, Infra infra)
                 infra.Build(plan.Engines, db != "none");
                 foreach (var e in plan.Engines)
                 {
-                    var env = new JsonObject();
-                    StoreOptions? so = null;
-                    if (db != "none")
+                    async Task<(JsonObject Run, StoreOptions? Store)> Once(string suffix)
                     {
-                        say($"{e} on {db}: database");
-                        var name = $"tb_{id.Replace("-", "_")}_{e}".ToLowerInvariant();
-                        var conn = await infra.Database(db, name, plan.Connections, ct);
-                        env["TH_STORE_PROVIDER"] = db;
-                        env["TH_STORE_CONNECTION"] = conn;
-                        so = new StoreOptions(Enum.Parse<StoreProvider>(db), conn);
+                        var env = new JsonObject();
+                        StoreOptions? so = null;
+                        if (db != "none")
+                        {
+                            say($"{e} on {db}: database");
+                            var name = $"tb_{id.Replace("-", "_")}_{e}{suffix}".ToLowerInvariant();
+                            var conn = await infra.Database(db, name, plan.Connections, ct);
+                            env["TH_STORE_PROVIDER"] = db;
+                            env["TH_STORE_CONNECTION"] = conn;
+                            so = new StoreOptions(Enum.Parse<StoreProvider>(db), conn);
+                        }
+                        if (e == "flowable") foreach (var kv in await infra.Flowable(plan.Flowable, ct)) env[kv.Key] = kv.Value;
+                        if (e == "temporal")
+                        {
+                            foreach (var kv in infra.Temporal(plan.Temporal)) env[kv.Key] = kv.Value;
+                            // On the time-skipping test server a claim check run as a local activity that writes to the store
+                            // lets virtual time pass, and the first attempt times out (Issue I-93). The harness's own switch
+                            // runs claim checks as regular activities, which hold the clock.
+                            if (db != "none" && plan.Temporal == "test-server" && Environment.GetEnvironmentVariable("TH_LOCAL_CLAIMCHECK") is null) env["TH_LOCAL_CLAIMCHECK"] = "0";
+                        }
+                        var wdir = Path.Combine(work, $"{db}-{e}{suffix}");
+                        try
+                        {
+                            var output = await Driver(Job(new JsonArray(new JsonObject { ["engine"] = e, ["env"] = env }), false, wdir), wdir, db, say, plan.EngineTimeout, ct);
+                            return ((output["engines"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault()?.DeepClone() as JsonObject
+                                ?? new JsonObject { ["engine"] = e, ["ok"] = false, ["error"] = J.S(output, "error") ?? "The driver reported no run" }, so);
+                        }
+                        catch (TimeoutException)
+                        {
+                            say($"{e}: did not finish in {plan.EngineTimeout.TotalMinutes} minutes ({db})");
+                            return (new JsonObject { ["engine"] = e, ["ok"] = false, ["error"] = $"did not finish in {plan.EngineTimeout.TotalMinutes} minutes (environment.engineTimeoutMinutes); stopped", ["elapsedMs"] = (long)plan.EngineTimeout.TotalMilliseconds }, so);
+                        }
                     }
-                    if (e == "flowable") foreach (var kv in await infra.Flowable(plan.Flowable, ct)) env[kv.Key] = kv.Value;
-                    if (e == "temporal")
+                    var (run, so) = await Once("");
+                    // Issue I-93: on the time-skipping test server, on a loaded machine, an attempt's timer can fire before the
+                    // worker answers. Such a run is run once more, on a fresh database, and the result says so; the interpreter
+                    // timing out the same way is not retried, nor is anything else.
+                    if (e == "temporal" && plan.Temporal == "test-server" && FirstAttemptTimedOut(run) && !FirstAttemptTimedOut(result["reference"] as JsonObject))
                     {
-                        foreach (var kv in infra.Temporal(plan.Temporal)) env[kv.Key] = kv.Value;
-                        // On the time-skipping test server a claim check run as a local activity that writes to the store
-                        // lets virtual time pass, and the first attempt times out (Issue I-93). The harness's own switch
-                        // runs claim checks as regular activities, which hold the clock.
-                        if (db != "none" && plan.Temporal == "test-server" && Environment.GetEnvironmentVariable("TH_LOCAL_CLAIMCHECK") is null) env["TH_LOCAL_CLAIMCHECK"] = "0";
-                    }
-                    var wdir = Path.Combine(work, $"{db}-{e}");
-                    JsonObject run;
-                    try
-                    {
-                        var output = await Driver(Job(new JsonArray(new JsonObject { ["engine"] = e, ["env"] = env }), false, wdir), wdir, db, say, plan.EngineTimeout, ct);
-                        run = (output["engines"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault()?.DeepClone() as JsonObject
-                            ?? new JsonObject { ["engine"] = e, ["ok"] = false, ["error"] = J.S(output, "error") ?? "The driver reported no run" };
-                    }
-                    catch (TimeoutException)
-                    {
-                        say($"{e}: did not finish in {plan.EngineTimeout.TotalMinutes} minutes ({db})");
-                        run = new JsonObject { ["engine"] = e, ["ok"] = false, ["error"] = $"did not finish in {plan.EngineTimeout.TotalMinutes} minutes (environment.engineTimeoutMinutes); stopped", ["elapsedMs"] = (long)plan.EngineTimeout.TotalMilliseconds };
+                        var first = J.S(run, "failed");
+                        say($"temporal: the first attempt timed out on the test server; running once more (Issue I-93) ({db})");
+                        (run, so) = await Once("_r2");
+                        run["retried"] = $"The first run failed with \"{first}\" on the time-skipping test server and was run once more (Issue I-93)";
                     }
                     run["database"] = db;
                     run["timings"] = new JsonObject { ["totalMs"] = run["elapsedMs"]?.DeepClone(), ["harnessMs"] = run["harnessMs"]?.DeepClone() };
@@ -219,6 +232,8 @@ public sealed class Runner(Home home, Infra infra)
         if (Environment.GetEnvironmentVariable("TH_TESTBENCH_KEEP_WORK") != "1") { try { Directory.Delete(work, true); } catch (IOException) { } }
         return result;
     }
+
+    static bool FirstAttemptTimedOut(JsonObject? run) => J.S(run, "failed") is { } f && f.Contains("timed out; a late result is ignored", StringComparison.Ordinal);
 
     /// <summary>Every check of a run: errors, each engine against the reference, the store, and what the request expects.</summary>
     public static void Judge(JsonObject result)

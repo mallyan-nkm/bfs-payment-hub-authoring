@@ -189,7 +189,7 @@ function Result({ job }: { job: any }) {
               {columns.map((c) => (
                 <tr key={c.label} data-testid={`row-${c.label.split(' ')[0]}`}>
                   <td>{c.label}</td>
-                  <td>{c.run.error ? <span className="bad">error: {String(c.run.error).split('\n')[0]}</span> : c.run.outcome}</td>
+                  <td>{c.run.error ? <span className="bad">error: {String(c.run.error).split('\n')[0]}</span> : c.run.outcome}{c.run.retried && <span className="muted" title={c.run.retried}> (run twice, I-93)</span>}</td>
                   <td>{c.run.comparison ? (c.run.comparison.same ? <span className="ok">yes</span> : <span className="bad">no</span>) : ''}</td>
                   <td>{ms(c.run.timings?.totalMs ?? c.run.elapsedMs)}</td>
                   <td>{store(c.run)}</td>

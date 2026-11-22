@@ -59,6 +59,8 @@ public static class Report
                 sb.AppendLine();
             }
         }
+        foreach (var run in (r["runs"] as JsonArray ?? []).OfType<JsonObject>())
+            if (J.S(run, "retried") is { } why) sb.AppendLine($"Note: {J.S(run, "engine")} on {J.S(run, "database")}: {why}.\n");
         var failures = J.Strings(r["failures"]).ToList();
         sb.AppendLine(failures.Count == 0 ? "No failure." : "## Failures");
         foreach (var f in failures) sb.AppendLine($"- {f}");
