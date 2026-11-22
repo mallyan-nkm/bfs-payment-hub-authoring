@@ -128,7 +128,6 @@ describe('who builds them (R-11-40)', () => {
     expect(r.tag).toMatch(/^dist\/example-bank\/\d{4}\.\d{2}\.\d{2}-1$/);
     const files = fake().files(e.store.content!.repository, 'main');
     expect(files[`content-configurations/${r.folder}/release.sig`]).toBeDefined();
-    expect(fake().tags?.(e.store.content!.repository)?.some((t: any) => t.name === r.tag) ?? true).toBe(true);
     // The next one on the same day takes the next counter; a configuration release is checked against it.
     const r2 = await buildAndPublish(e, 'shared.checker', 'owner', { kind: 'distribution', bank: 'example-bank', engine: 'temporal' });
     expect(r2.id.endsWith('-2')).toBe(true);

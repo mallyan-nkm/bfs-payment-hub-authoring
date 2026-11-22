@@ -64,6 +64,8 @@ public sealed class Harness : IDisposable
     {
         this.input = input;
         built = (JsonObject)J.P(input, "built")!;
+        // A bank's distribution runs as its own copy (R-09-54): its orchestration's name carries it, and its payments are pinned to it.
+        if (J.S(input, "distribution") is { } dist) { DtfxEngine.OrchestrationName = $"transacthub.interpreter@{dist}"; ClaimCheckStore.Distribution = dist; }
         spec = (JsonObject)J.P(built, "spec")!;
         config = (JsonObject)J.P(built, "config")!;
     }
@@ -432,6 +434,7 @@ public sealed class Harness : IDisposable
             ["startMs"] = start,
             ["engine"] = new JsonObject
             {
+                ["distribution"] = ClaimCheckStore.Distribution is { } dd ? new JsonObject { ["id"] = dd, ["orchestration"] = DtfxEngine.OrchestrationName } : null,
                 ["orchestrationInstances"] = Service.Instances.Count,
                 ["executions"] = Service.Instances.Sum(r => Service.StoredHistories(r).Count()),
                 ["historyEvents"] = Service.Instances.Sum(r => Service.StoredHistories(r).Sum(hh => JArray.Parse(hh).Count)),

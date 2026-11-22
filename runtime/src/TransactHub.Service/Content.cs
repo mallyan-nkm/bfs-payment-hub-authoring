@@ -54,7 +54,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         }).ToArray());
     }
 
-    DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct));
+    DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct), settings.TestEnvironments);
 
     static bool IsBundle(string id) => id.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || id.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal);
 

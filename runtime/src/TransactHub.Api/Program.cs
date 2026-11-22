@@ -250,7 +250,7 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
 }).RequireAuthorization(ApiAuth.Importer);
 
 // A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-47 to R-09-56).
-DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct));
+DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct), testEnvironments);
 
 async Task<IResult> Refusable(Func<Task<IResult>> f)
 {

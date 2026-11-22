@@ -218,7 +218,9 @@ public sealed class FlowableBinding
         log.Add(opts.Production
             ? $"production mode: the server's async executor runs the jobs and fires the timers in real time; the binding is its external worker (lock {System.Xml.XmlConvert.ToString(opts.LockFor)}, retry after {System.Xml.XmlConvert.ToString(opts.RetryWait)})"
             : "virtual mode: the server's async executor is off; the binding runs the jobs and fires the timers on its clock");
-        var deploymentId = await rest.Deploy($"transacthub-{runId}", files, tenant);
+        // One deployment per distribution (R-09-54): its name carries the distribution, and instances start from its own definitions.
+        var distribution = J.S(input, "distribution");
+        var deploymentId = await rest.Deploy(distribution is null ? $"transacthub-{runId}" : $"transacthub-{distribution}-{runId}", files, tenant);
         log.Add($"deployed {files.Count} process(es) as deployment {deploymentId}");
         foreach (var d in await rest.ProcessDefinitions(deploymentId))
             if (byKey.TryGetValue(J.S(d, "key")!, out var proc)) byDef[J.S(d, "id")!] = proc;
@@ -276,6 +278,7 @@ public sealed class FlowableBinding
                     ["server"] = J.S(server, "version"),
                     ["mode"] = opts.Production ? "production" : "virtual",
                     ["deployment"] = deploymentId,
+                    ["distribution"] = distribution is null ? null : new JsonObject { ["id"] = distribution, ["deploymentName"] = $"transacthub-{distribution}-{runId}" },
                     ["processes"] = byDef.Count,
                     ["processInstances"] = insts.Count,
                     ["jobsWorked"] = jobsWorked,
@@ -321,7 +324,7 @@ public sealed class FlowableBinding
             Bindings = dep.BindingsAt(Duration.Today(now)), // hook bindings are taken when the instance starts (R-06-13)
         };
         var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
-        await claim.Create(i.Ref, payload, new AcceptInfo(J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant", J.S(header, "scheme") ?? workflow.Split('.')[0], direction, docKey));
+        await claim.Create(i.Ref, payload, new AcceptInfo(J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant", J.S(header, "scheme") ?? workflow.Split('.')[0], direction, J.S(input, "distribution") ?? docKey));
         insts[pid] = i;
         roots.Add(i);
         i.ReleaseTrace.Add($"{ShortName(workflow)}@{release}");

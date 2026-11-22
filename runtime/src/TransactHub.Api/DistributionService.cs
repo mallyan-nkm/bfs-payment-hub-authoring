@@ -14,7 +14,7 @@ namespace TransactHub.Api;
 /// parameter contract of every distribution of its bank not removed, and its values, port bindings and calendars become
 /// effective-dated versions.
 /// </summary>
-public sealed class DistributionService(StoreDbContext db, TimeProvider clock, Func<CancellationToken, Task<TrustedSigners>> trust)
+public sealed class DistributionService(StoreDbContext db, TimeProvider clock, Func<CancellationToken, Task<TrustedSigners>> trust, IReadOnlySet<string>? testEnvironments = null)
 {
     DistributionRegistry Registry => new(db, clock);
     public const string BindingKind = "binding";
@@ -75,6 +75,9 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     {
         var b = await Stored(dist, ct);
         var v = await VerifyBundle(b, ct);
+        // A distribution that carries simulators is for a test environment only (R-07-12).
+        if (b.Manifest["promotable"] is JsonValue pv && pv.TryGetValue<bool>(out var promotable) && !promotable && !(testEnvironments ?? new HashSet<string> { "test", "dev", "kit" }).Contains(environment))
+            throw new BundleRefused(409, $"{dist} carries simulators: it may be activated only in {string.Join(", ", testEnvironments ?? new HashSet<string> { "test", "dev", "kit" })}");
         await VerifiedFact(b, v, $"activation:{environment}", actor, ct);
         var (active, draining) = await Guard(() => Registry.Activate(dist, environment, actor, why, ct));
         return new JsonObject { ["active"] = active, ["draining"] = draining, ["environment"] = environment };

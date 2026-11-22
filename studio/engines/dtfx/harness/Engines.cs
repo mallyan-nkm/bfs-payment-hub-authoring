@@ -8,7 +8,8 @@ namespace DtfxHarness;
 /// <summary>The interpreter's engine operations on a DTFx orchestration context.</summary>
 public sealed class DtfxEngine : IEngine
 {
-    public const string OrchestrationName = "transacthub.interpreter";
+    /// <summary>The orchestration's name; a distribution's carries it (R-09-54), so two distributions never share one.</summary>
+    public static string OrchestrationName = "transacthub.interpreter";
     readonly OrchestrationContext ctx;
     public DtfxEngine(OrchestrationContext ctx) { this.ctx = ctx; }
 

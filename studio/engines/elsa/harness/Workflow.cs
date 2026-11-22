@@ -60,7 +60,12 @@ public sealed class ElsaHost
         serializer = sp.GetRequiredService<IWorkflowStateSerializer>();
     }
 
-    static Workflow Definition() => new() { Root = new InterpreterActivity() };
+    /// <summary>The distribution this host runs (R-09-54): the definition carries it, one definition per distribution.</summary>
+    public static string? Distribution;
+
+    static Workflow Definition() => Distribution is null
+        ? new() { Root = new InterpreterActivity() }
+        : new() { Identity = new Elsa.Workflows.Models.WorkflowIdentity($"transacthub.interpreter@{Distribution}", 1, $"transacthub.interpreter@{Distribution}"), Root = new InterpreterActivity() };
 
     public sealed record Result(string State, JsonObject Journal, string Status);
 
