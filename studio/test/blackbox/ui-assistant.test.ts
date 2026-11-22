@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
-import { startServer, STUDIO, type Server } from './server.js';
+import { signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: the assistant beside every surface (I-29). "What is happening" explains
 // the field in focus and the document, with no model. "Ask" drives the agent; the model is replayed
@@ -50,6 +50,7 @@ beforeAll(async () => {
   page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
   page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+  await signInPage(page, server.url, 'shared.designer');
 }, 180000);
 afterAll(async () => {
   await browser?.close();
@@ -112,12 +113,11 @@ describe('the assistant beside every surface', () => {
     await dock().getByRole('tab', { name: 'What is happening' }).click();
     await expect.poll(async () => (await dock().getByTestId('explanation').textContent()) ?? '').toMatch(/fills the scheme-leg slot.*file-checks/);
 
-    await go('tenant');
-    await page.getByLabel('Tenant', { exact: true }).selectOption('example-bank');
-    await page.waitForTimeout(500);
+    // A bank's configuration is its own: its configurator signs in to see it (R-06-01).
+    await signInPage(page, server.url, 'example.maker');
     await go('tenant');
     await expect.poll(async () => (await dock().getByTestId('explanation').textContent()) ?? '', { timeout: 15000 }).toMatch(/configuration.*passes every check/);
-    await page.getByLabel('Tenant', { exact: true }).selectOption('owner');
+    await signInPage(page, server.url, 'shared.designer');
 
     await go('tests');
     await page.getByRole('button', { name: 'Ad hoc bench' }).click();

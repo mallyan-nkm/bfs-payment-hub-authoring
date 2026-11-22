@@ -3,11 +3,20 @@ users:
   - id: shared.designer
     tenant: owner
     roles:
-      - shared designer
+      - workflow designer
+      - workflow developer
+  - id: workflow.designer
+    tenant: owner
+    roles:
+      - workflow designer
+  - id: workflow.developer
+    tenant: owner
+    roles:
+      - workflow developer
   - id: shared.checker
     tenant: owner
     roles:
-      - shared checker
+      - platform approver
   - id: shared.auditor
     tenant: owner
     roles:
@@ -16,14 +25,22 @@ users:
     tenant: owner
     roles:
       - service operations
+  - id: users.admin
+    tenant: owner
+    roles:
+      - administrator
+  - id: users.approver
+    tenant: owner
+    roles:
+      - administrator
   - id: example.maker
     tenant: example-bank
     roles:
-      - bank designer
+      - bank configurator
   - id: example.checker
     tenant: example-bank
     roles:
-      - bank checker
+      - bank approver
   - id: example.auditor
     tenant: example-bank
     roles:
@@ -31,8 +48,8 @@ users:
   - id: second.maker
     tenant: second-bank
     roles:
-      - bank designer
+      - bank configurator
   - id: second.checker
     tenant: second-bank
     roles:
-      - bank checker
+      - bank approver

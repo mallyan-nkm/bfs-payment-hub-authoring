@@ -69,7 +69,8 @@ describe('the studio writes nothing to disk (R-11-24)', () => {
 
     // An import: documents, scripts, samples and tests, saved as drafts on their change set branches.
     const bundle = bundleZip(wpsTrainingBundle(freshEnv())).toString('base64');
-    const imp = ok(await api.post('/api/import/apply', { tenant: 'owner', bundle, bankTenant: 'example-bank', actor: 'shared.designer', bankActor: 'example.maker' }), 'import');
+    // A platform user imports the shared part; the bank part is the bank configurator's (R-11-30).
+    const imp = ok(await api.post('/api/import/apply', { tenant: 'owner', bundle, actor: 'shared.designer' }), 'import');
     expect(imp.applied).toBe(true);
     const owner = imp.changeSets.find((set: string[]) => !set[0].startsWith('example-bank/'));
     ok(await api.post('/api/publish', { tenant: 'owner', key: owner[0], checker: 'shared.checker' }), 'publish an imported change set');
@@ -77,7 +78,12 @@ describe('the studio writes nothing to disk (R-11-24)', () => {
     // A configuration edit and a waiver.
     const text = server.fake.files(server.repo, 'main')['content-configurations/banks/example-bank/configuration-set.yaml'];
     const cs = parseYaml(text.slice(text.indexOf('\n') + 1));
-    ok(await api.post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml({ ...cs, release: '9.0.0' }) }), 'configuration');
+    // Saved by the bank configurator as a draft; the bank approver makes it the version (R-11-31).
+    const conf = ok(await api.post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml({ ...cs, release: '9.0.0' }) }), 'configuration');
+    ok(await api.post('/api/publish', { tenant: 'example-bank', key: conf.draft.key, checker: 'example.checker' }), 'configuration approved');
+    // The bank part of the import, left as a draft of the bank.
+    const bankImp = ok(await api.post('/api/import/apply', { bundle, actor: 'example.maker' }), 'bank import');
+    expect(bankImp.applied, JSON.stringify(bankImp.report?.issues ?? []).slice(0, 400)).toBe(true);
     ok(await api.post('/api/conformance/waivers', { actor: 'shared.checker', target: 'studio', scenario: 'CK-SEQ-01', reason: 'No disk write test' }), 'waiver');
     const drafts = [...ok(await api.get('/api/drafts?tenant=owner'), 'drafts'), ...ok(await api.get('/api/drafts?tenant=example-bank'), 'bank drafts')].map((x: any) => x.key).sort();
     expect(drafts.length).toBeGreaterThan(0);

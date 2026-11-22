@@ -81,7 +81,7 @@ npm run web:build
 TH_CONTENT_REPO=<owner>/<repo> TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=<token> npm start
 ```
 
-`web:build` ran here. `npm start` against a real branch was not run here: it needs a token. Choose the tenant and the user you act as in the header.
+`web:build` ran here. `npm start` against a real branch was not run here: it needs a token. Sign in: `npm run studio:dev` uses the built-in development sign-in (`TH_AUTH_DEV=1`); a shared installation names its identity provider with `TH_OIDC_ISSUER` and `TH_OIDC_CLIENT_ID` (`studio/README.md`, "Sign-in and roles").
 
 ### Export, deploy and import
 

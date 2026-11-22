@@ -9,70 +9,103 @@ import { runKit } from '../conformance/kit.js';
 import { exportPackage, packageHash } from '../export/exporter.js';
 import { SignatureRejected, signingKey } from '../export/signing.js';
 import { buildPack } from './packs.js';
+import { ROLES, ROLE_TENANT, effectiveRoles, granted, kindOf, scopeClass, type Action, type Kind } from './permissions.js';
 import type { StudioEnv } from '../env.js';
 
 // Governance (Part 6, Part 11; C17, C18, C19, C05-S4, C23-S3).
 
-// ------------------------------------------------------------------ roles (C17-S2)
+// ------------------------------------------------------------------ roles (C17-S2, R-11-29)
 
-export type Role = 'shared designer' | 'shared checker' | 'bank designer' | 'bank checker' | 'auditor' | 'service operations';
+export type { Role } from './permissions.js';
 
-export interface User { id: string; tenant: string; roles: Role[] }
+/** A user of the studio. `subject` is the identity provider's claim that signs in as this user, when it is not the id. */
+export interface User { id: string; tenant: string; roles: string[]; subject?: string }
 
 /** The studio's users. Names are role-shaped placeholders: no real person is named. */
 export const DEFAULT_USERS: User[] = [
-  { id: 'shared.designer', tenant: OWNER_TENANT, roles: ['shared designer'] },
-  { id: 'shared.checker', tenant: OWNER_TENANT, roles: ['shared checker'] },
+  { id: 'shared.designer', tenant: OWNER_TENANT, roles: ['workflow designer', 'workflow developer'] },
+  { id: 'workflow.designer', tenant: OWNER_TENANT, roles: ['workflow designer'] },
+  { id: 'workflow.developer', tenant: OWNER_TENANT, roles: ['workflow developer'] },
+  { id: 'shared.checker', tenant: OWNER_TENANT, roles: ['platform approver'] },
   { id: 'shared.auditor', tenant: OWNER_TENANT, roles: ['auditor'] },
   { id: 'service.operations', tenant: OWNER_TENANT, roles: ['service operations'] },
-  { id: 'example.maker', tenant: 'example-bank', roles: ['bank designer'] },
-  { id: 'example.checker', tenant: 'example-bank', roles: ['bank checker'] },
+  { id: 'users.admin', tenant: OWNER_TENANT, roles: ['administrator'] },
+  { id: 'users.approver', tenant: OWNER_TENANT, roles: ['administrator'] },
+  { id: 'example.maker', tenant: 'example-bank', roles: ['bank configurator'] },
+  { id: 'example.checker', tenant: 'example-bank', roles: ['bank approver'] },
   { id: 'example.auditor', tenant: 'example-bank', roles: ['auditor'] },
-  { id: 'second.maker', tenant: 'second-bank', roles: ['bank designer'] },
-  { id: 'second.checker', tenant: 'second-bank', roles: ['bank checker'] },
+  { id: 'second.maker', tenant: 'second-bank', roles: ['bank configurator'] },
+  { id: 'second.checker', tenant: 'second-bank', roles: ['bank approver'] },
 ];
 
-export type Action = 'author' | 'approve' | 'configure' | 'accept-release' | 'retire' | 'supersede' | 'export' | 'read';
+export type { Action, Kind } from './permissions.js';
 
 export function users(env: StudioEnv): User[] {
   return env.store.extra.users ?? DEFAULT_USERS;
 }
 
-/** Is this actor allowed this action in this tenant on this scope? Returns the reason when not. */
-export function permit(env: StudioEnv, actor: string, tenant: string, action: Action, scope?: string): string | undefined {
-  const u = users(env).find((x) => x.id === actor);
-  if (!u) return `${actor} is not a user of the studio`;
-  if (u.tenant !== tenant) return `${actor} belongs to tenant ${u.tenant}, not ${tenant} (R-06-01)`;
-  const has = (r: Role) => u.roles.includes(r);
-  const shared = scope ? isShared(scope) : tenant === OWNER_TENANT;
-  switch (action) {
-    case 'read':
-      return undefined;
-    case 'author':
-      if (tenant !== OWNER_TENANT && shared && scope !== undefined) return `A bank designer may author only in scope b; ${scope} is shared content (R-06-03)`;
-      return (tenant === OWNER_TENANT ? has('shared designer') : has('bank designer')) ? undefined : `${actor} is not a ${tenant === OWNER_TENANT ? 'shared' : 'bank'} designer`;
-    case 'approve':
-    case 'accept-release':
-      return (tenant === OWNER_TENANT ? has('shared checker') : has('bank checker')) ? undefined : `${actor} is not a ${tenant === OWNER_TENANT ? 'shared' : 'bank'} checker`;
-    case 'configure':
-      return tenant !== OWNER_TENANT && has('bank designer') ? undefined : 'Only a bank designer sets a bank configuration';
-    case 'retire':
-      return has('shared checker') || has('service operations') ? undefined : `${actor} may not retire a release`;
-    case 'supersede':
-      return has('shared designer') || has('shared checker') ? undefined : `${actor} may not author a supersession`;
-    case 'export':
-      return has('auditor') ? 'An auditor changes nothing and exports nothing' : undefined;
-  }
-  // An action the studio does not know is never permitted.
-  return `${action} is not an action of the studio`;
+/**
+ * The roles the identity provider asserts for the signed-in user, when the studio maps groups
+ * (R-11-34): the call runs inside `withAssertedRoles`, and the user holds only the roles of
+ * governance/users.yaml that are also asserted. Outside a call, nothing is narrowed.
+ */
+const asserted = new AsyncLocalStorage<{ user: string; roles: string[] }>();
+export function withAssertedRoles<T>(user: string, roles: string[] | undefined, fn: () => T): T {
+  return roles ? asserted.run({ user, roles }, fn) : fn();
 }
 
-export function enforce(env: StudioEnv, actor: string, tenant: string, action: Action, key: string, scope?: string) {
-  const why = permit(env, actor, tenant, action, scope);
-  if (why) {
-    env.store.record({ tenant, actor, action, key, outcome: 'refused', detail: why });
-    throw new StoreError('R-06', why);
+export function userById(env: StudioEnv, id: string | undefined): User | undefined {
+  const u = id ? users(env).find((x) => x.id === id) : undefined;
+  const a = asserted.getStore();
+  if (!u || !a || a.user !== u.id) return u;
+  return { ...u, roles: effectiveRoles(u.roles).filter((r) => a.roles.includes(r)) };
+}
+
+/** What a permission is asked about: the kind and, for an artefact, its scope. */
+export interface Target { kind: Kind; scope?: string }
+
+/**
+ * Is this actor allowed this action in this tenant on this kind in this scope? Returns the reason
+ * when not. The answer comes from the one permission table (permissions.ts, R-11-30): the user must
+ * be a user of the studio, act in its own tenant, and hold a role whose row grants the action on the
+ * kind in the scope class. A bank works only in scope b; the owner only in shared scopes.
+ */
+export function permit(env: StudioEnv, actor: string, tenant: string, action: Action, target: Target): string | undefined {
+  const u = userById(env, actor);
+  if (!u) return `${actor || 'nobody'} is not a user of the studio`;
+  if (u.tenant !== tenant) return `${actor} belongs to tenant ${u.tenant}, not ${tenant} (R-06-01)`;
+  if (action === 'read') return undefined;
+  const roles = effectiveRoles(u.roles).filter((r) => ROLE_TENANT[r] === 'either' || (ROLE_TENANT[r] === 'bank') === (tenant !== OWNER_TENANT));
+  const cls = scopeClass(target.scope ?? (tenant === OWNER_TENANT ? 'p' : 'b'), target.kind);
+  if (cls !== 'studio') {
+    if (tenant !== OWNER_TENANT && cls === 'shared') return `${actor} works for bank ${tenant}, only in scope b; ${target.scope} is shared content (R-06-03)`;
+    if (tenant === OWNER_TENANT && cls === 'bank') return 'The owner tenant does not author bank content (R-06-03)';
   }
+  if (granted(roles, cls, target.kind, action).length) return undefined;
+  const held = roles.length ? roles.join(', ') : 'no role';
+  return `${actor} (${held}) may not ${action} a ${target.kind}${cls === 'studio' ? '' : ` in ${cls === 'bank' ? 'scope b' : `scope ${target.scope ?? 'shared'}`}`} (R-11-30)`;
+}
+
+/** An authorisation refusal: the API answers 403. */
+export class Forbidden extends StoreError {
+  constructor(message: string) {
+    super('R-06', message);
+  }
+}
+
+export function enforce(env: StudioEnv, actor: string, tenant: string, action: Action, key: string, target: Target) {
+  const why = permit(env, actor, tenant, action, target);
+  if (why) {
+    env.store.record({ tenant, actor, action, key, outcome: 'refused', detail: `${target.kind}: ${why}` });
+    throw new Forbidden(why);
+  }
+}
+
+/** The kind and scope of a document, as the permission table asks for them. */
+export function targetOf(doc: any): Target {
+  const kind = kindOf(doc);
+  if (!kind) throw new StoreError('L00', `${doc?.kind ?? 'A document without a kind'} is not a kind the studio authors`);
+  return { kind, scope: doc.kind === 'configuration-set' ? 'b' : doc.name ? parseName(doc.name)?.scope : doc.scope };
 }
 
 // --------------------------------------------------------- release flow (C19-S2)
@@ -85,7 +118,7 @@ export function draftSet(env: StudioEnv, tenant: string): any[] {
 export function submitForReview(env: StudioEnv, tenant: string, actor: string, key: string) {
   const e = env.store.entries.get(key);
   if (!e || e.status !== 'draft' || e.tenant !== tenant) throw new StoreError('not-found', `No draft ${key}`);
-  enforce(env, actor, tenant, 'author', key, e.scope);
+  enforce(env, actor, tenant, 'author', key, targetOf(e.doc));
   const errors = checkDocument(env, e.doc, tenant, draftSet(env, tenant)).filter((i) => i.severity === 'error');
   if (errors.length) throw new StoreError('checks', `The draft has ${errors.length} error(s): ${errors.map((x) => x.code).join(', ')}`);
   env.store.setState(key, 'in-review');
@@ -138,7 +171,7 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
     const e = env.store.entries.get(key)!;
     if (e.tenant !== tenant || (e.status !== 'in-review' && e.status !== 'draft')) throw new StoreError('not-found', `No draft in review ${key}`);
     if (e.awaitingMerge) throw new StoreError('R-09-22', `${key} is approved; its pull request from ${e.awaitingMerge} is waiting to merge`);
-    enforce(env, checker, tenant, 'approve', key, e.scope);
+    enforce(env, checker, tenant, 'approve', key, targetOf(e.doc));
     const maker = env.store.audit.filter((a) => a.key === key && a.action === 'save-draft').pop()?.actor ?? e.maker ?? '';
     if (!maker || maker === checker) {
       env.store.record({ tenant, actor: checker, action: 'publish', key, outcome: 'refused', detail: 'Maker and checker must differ (R-06-04)' });
@@ -236,14 +269,14 @@ export function inFlight(env: StudioEnv, name: string, release: string): { count
 
 /** Service operations supplies the in-flight counts per release; the studio does not read payments. */
 export function importInFlight(env: StudioEnv, actor: string, counts: Record<string, number>, asOf: string) {
-  enforce(env, actor, OWNER_TENANT, 'retire', 'in-flight');
+  enforce(env, actor, OWNER_TENANT, 'retire', 'in-flight', { kind: 'in-flight' });
   env.store.extra.inFlight = { counts, asOf };
   // One file each, never rewritten; the latest applies (R-11-23).
   env.store.addStateFile(inFlightPath(new Date().toISOString()), { kind: 'in-flight', inFlight: { counts, asOf } }, `In-flight counts as of ${asOf}\n\nSupplied by ${actor}.`, { tenant: OWNER_TENANT, actor, action: 'import-in-flight', key: 'in-flight', detail: `as of ${asOf}` });
 }
 
 export function retire(env: StudioEnv, actor: string, name: string, release: string) {
-  enforce(env, actor, OWNER_TENANT, 'retire', `${name}@${release}`);
+  enforce(env, actor, OWNER_TENANT, 'retire', `${name}@${release}`, { kind: 'release' });
   const pins = pinnedBy(env, name, release);
   const flying = inFlight(env, name, release);
   const why = pins.length ? `${name}@${release} is pinned by ${pins.map((p) => `${p.workflow}@${p.release}`).join(', ')} (R-01-23)` : flying.count ? `${flying.count} instance(s) are pinned to it as of ${flying.asOf} (R-01-23)` : undefined;
@@ -292,7 +325,7 @@ export async function propagate(env: StudioEnv, name: string, newRelease: string
 // -------------------------------------------------- supersession (C19-S4, C19-S5)
 
 export function draftSupersession(env: StudioEnv, body: { artefact: string; replaces: string; with: string; reason: string; maker: string }) {
-  enforce(env, body.maker, OWNER_TENANT, 'supersede', body.artefact);
+  enforce(env, body.maker, OWNER_TENANT, 'author', body.artefact, { kind: 'supersession', scope: parseName(body.artefact)?.scope });
   const pins = pinnedBy(env, body.artefact, body.replaces);
   const doc = {
     kind: 'supersession', id: `SUP-${new Date().getUTCFullYear()}-${String((env.store.byKind('supersession').length + (env.store.extra.supersessions?.length ?? 0) + 1)).padStart(3, '0')}`,
@@ -322,7 +355,7 @@ export async function testSupersession(env: StudioEnv, doc: any) {
 
 /** The hand-over: the document, its evidence and both approvals. The studio never applies it (R-01-21). */
 export function handOverSupersession(env: StudioEnv, doc: any, checker: string) {
-  enforce(env, checker, OWNER_TENANT, 'approve', doc.id);
+  enforce(env, checker, OWNER_TENANT, 'approve', doc.id, { kind: 'supersession', scope: parseName(doc.artefact)?.scope });
   if (!doc.approval?.maker || doc.approval.maker === checker) throw new StoreError('L27', 'Maker and checker must differ');
   if (!(doc.evidence?.testRuns ?? []).length || doc.evidence.testRuns.some((r: any) => r.result !== 'green')) throw new StoreError('R-01-20', 'A supersession needs a green rerun of every pinned workflow release in its scope');
   const { details, ...clean } = doc;
@@ -374,15 +407,21 @@ export function checkConfiguration(env: StudioEnv, tenant: string, doc: any): { 
   return issues;
 }
 
+/**
+ * A bank's dials and hook bindings: a configuration set, saved by a bank configurator as a draft on
+ * its change set's branch. It needs no approval to save. It becomes the version the runtime is given
+ * only when a bank approver who is not its maker approves the change set (R-11-31, R-06-04).
+ */
 export function saveConfiguration(env: StudioEnv, tenant: string, actor: string, yaml: string) {
-  enforce(env, actor, tenant, 'configure', `config:${tenant}`, 'b');
+  enforce(env, actor, tenant, 'author', `config:${tenant}`, { kind: 'configuration-set', scope: 'b' });
+  if (typeof yaml !== 'string' || !yaml.trim()) throw new StoreError('L00', 'Send yaml: the configuration set');
   const doc = parseYaml(yaml);
+  if (!doc || typeof doc !== 'object' || doc.kind !== 'configuration-set') throw new StoreError('L00', 'The YAML is not a configuration set');
   const issues = checkConfiguration(env, tenant, doc).filter((i) => i.severity === 'error');
   if (issues.length) throw new StoreError('L14', issues.map((i) => i.message).join('; '));
   const prev = env.store.configurationSet(tenant);
   if (prev && compareReleases(doc.release, prev.release) <= 0) throw new StoreError('R-06-15', `A changed configuration set needs a later release than ${prev.release}`);
-  // A new file at its release on the content branch, with its event (R-11-23).
-  return env.store.publishDirect(doc, tenant, actor, { action: 'set-configuration', key: `${tenant}/config:${tenant}@${doc.release}`, diff: prev ? { before: prev.release, after: doc.release } : { created: true } });
+  return env.store.saveDraft(tenant, actor, doc);
 }
 
 // ---------------------------------------------------- compatibility run (C18-S3)
@@ -436,6 +475,7 @@ export function tenantExport(env: StudioEnv, tenant: string) {
 }
 
 import { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 function require_sha(s: string) {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
@@ -455,7 +495,7 @@ export async function conformanceReport(env: StudioEnv, target = 'studio') {
 }
 
 export function addWaiver(env: StudioEnv, actor: string, w: Waiver) {
-  enforce(env, actor, OWNER_TENANT, 'approve', `waiver:${w.scenario}`);
+  enforce(env, actor, OWNER_TENANT, 'approve', `waiver:${w.scenario}`, { kind: 'waiver' });
   if (!w.reason) throw new StoreError('C23-S3', 'A waiver names its reason');
   // A waiver is its own change set: one commit with a record that holds it, and its audit (R-11-23).
   const waiver = { ...w, approver: actor };
@@ -472,13 +512,8 @@ export function addWaiver(env: StudioEnv, actor: string, w: Waiver) {
 
 // ------------------------------------------------- users and roles, through maker-checker (R-11-23)
 
-const ROLES: Role[] = ['shared designer', 'shared checker', 'bank designer', 'bank checker', 'auditor', 'service operations'];
-
 function mayAdminister(env: StudioEnv, actor: string): string | undefined {
-  const u = users(env).find((x) => x.id === actor);
-  if (!u) return `${actor} is not a user of the studio`;
-  if (u.tenant !== OWNER_TENANT) return 'Only the owner changes the studio\'s users';
-  return u.roles.includes('shared checker') || u.roles.includes('service operations') ? undefined : `${actor} may not change the studio's users: a shared checker or service operations does`;
+  return permit(env, actor, OWNER_TENANT, 'author', { kind: 'users' });
 }
 
 /** Propose a new list of users and roles: a change set whose branch holds the new `governance/users.yaml`. */
@@ -486,14 +521,23 @@ export function proposeUsers(env: StudioEnv, maker: string, list: User[]) {
   const why = mayAdminister(env, maker);
   if (why) {
     env.store.record({ tenant: OWNER_TENANT, actor: maker, action: 'propose-users', key: 'users', outcome: 'refused', detail: why });
-    throw new StoreError('R-06', why);
+    throw new Forbidden(why);
   }
   if (!Array.isArray(list) || !list.length) throw new StoreError('R-11-23', 'Send the whole list of users');
   for (const u of list) {
-    if (!u || typeof u.id !== 'string' || !/^[a-z][a-z0-9.-]*$/.test(u.id) || typeof u.tenant !== 'string' || !Array.isArray(u.roles) || u.roles.some((r) => !ROLES.includes(r))) {
-      throw new StoreError('R-11-23', `Not a user: ${JSON.stringify(u)}. A user has an id (lower case, a role-shaped placeholder), a tenant and roles from ${ROLES.join(', ')}`);
+    if (!u || typeof u.id !== 'string' || !/^[a-z][a-z0-9.-]*$/.test(u.id) || typeof u.tenant !== 'string' || !Array.isArray(u.roles) || u.roles.some((r) => !(ROLES as readonly string[]).includes(r)) || (u.subject !== undefined && (typeof u.subject !== 'string' || !u.subject)) || u.roles.some((r) => ROLE_TENANT[r as keyof typeof ROLE_TENANT] === 'bank' && u.tenant === OWNER_TENANT) || u.roles.some((r) => ROLE_TENANT[r as keyof typeof ROLE_TENANT] === 'owner' && u.tenant !== OWNER_TENANT)) {
+      throw new StoreError('R-11-23', `Not a user: ${JSON.stringify(u)}. A user has an id (lower case, a role-shaped placeholder), a tenant, optionally the subject it signs in with, and roles from ${ROLES.join(', ')}; a bank role only in a bank tenant, a platform role only in the owner tenant`);
     }
   }
+  // Each account signs in as one identity and works for exactly one tenant (R-11-34): no id or subject twice.
+  const seen = new Map<string, string>();
+  for (const u of list) {
+    for (const key of [u.id, u.subject ?? u.id]) {
+      if (seen.has(key) && seen.get(key) !== u.id) throw new StoreError('R-11-23', `${key} names two accounts (${seen.get(key)} and ${u.id}); an identity is one account in one tenant`);
+      seen.set(key, u.id);
+    }
+  }
+  if (new Set(list.map((u) => u.id)).size !== list.length) throw new StoreError('R-11-23', 'A user id appears twice');
   const id = env.store.proposeStateFile(USERS_PATH, { kind: 'studio-users', users: list }, maker, 'propose-users', 'users');
   return { changeSet: id };
 }
@@ -502,7 +546,7 @@ export function proposeUsers(env: StudioEnv, maker: string, list: User[]) {
 export function approveUsers(env: StudioEnv, checker: string, id: string) {
   const proposal = (env.store.extra.userProposals ?? []).find((p: any) => p.id === id);
   if (!proposal) throw new StoreError('not-found', `No proposed change to the users with change set ${id}`);
-  enforce(env, checker, OWNER_TENANT, 'approve', `users:${id}`);
+  enforce(env, checker, OWNER_TENANT, 'approve', `users:${id}`, { kind: 'users' });
   if (proposal.maker === checker) {
     env.store.record({ tenant: OWNER_TENANT, actor: checker, action: 'approve-users', key: 'users', outcome: 'refused', detail: 'Maker and checker must differ (R-06-04)', changeSet: id });
     throw new StoreError('R-06-04', 'Maker and checker must differ');

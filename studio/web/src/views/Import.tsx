@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { downloadUrl, get, post, refusal, type User } from '../api';
+import { downloadUrl, post, refusal } from '../api';
 import { Badge, ErrorBox, PassFail, Section, useStudio } from '../ui';
 
 // Import (I-33): an extraction bundle that an AI agent wrote from a scheme's source code
@@ -20,23 +20,14 @@ export function Import() {
   const { tenant, actor, meta, go } = useStudio();
   const [bundle, setBundle] = useState<string>();
   const [label, setLabel] = useState<string>();
-  const [bankTenant, setBankTenant] = useState('');
-  const [bankActor, setBankActor] = useState('');
-  const [bankUsers, setBankUsers] = useState<User[]>([]);
   const [report, setReport] = useState<any>();
   const [result, setResult] = useState<any>();
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
   const [show, setShow] = useState<'errors' | 'warnings' | 'all'>('errors');
-  const banks = (meta?.tenants ?? []).filter((t) => t !== meta?.owner);
-
-  useEffect(() => {
-    if (!bankTenant) { setBankUsers([]); setBankActor(''); return; }
-    get<User[]>('/api/users', bankTenant).then((u) => {
-      setBankUsers(u);
-      setBankActor(u.find((x) => x.roles.includes('bank-designer') || x.roles.includes('designer'))?.id ?? u[0]?.id ?? '');
-    }, () => setBankUsers([]));
-  }, [bankTenant]);
+  // The part of a bundle the signed-in user imports (R-11-30): the shared part for the owner's users,
+  // the bank part, into its own tenant, for a bank configurator.
+  const bankPart = tenant !== (meta?.owner ?? 'owner');
 
   const choose = async (f?: File) => {
     if (!f) return;
@@ -49,13 +40,12 @@ export function Import() {
     const r = await fetch(downloadUrl('/api/import/sample'));
     setBundle(toBase64(await r.arrayBuffer()));
     setLabel('The training bundle: WPS, extracted as uae.wpsx');
-    if (banks.includes('example-bank')) setBankTenant('example-bank');
   };
   const preview = async () => {
     if (!bundle) return;
     setBusy('preview'); setError(undefined); setResult(undefined);
     try {
-      setReport(await post('/api/import/preview', { bundle, bankTenant: bankTenant || undefined }, tenant));
+      setReport(await post('/api/import/preview', { bundle }, tenant));
     } catch (e: any) {
       setError(refusal(e));
     } finally {
@@ -66,7 +56,7 @@ export function Import() {
     if (!bundle) return;
     setBusy('apply'); setError(undefined);
     try {
-      const r = await post('/api/import/apply', { bundle, actor, bankTenant: bankTenant || undefined, bankActor: bankActor || undefined }, tenant);
+      const r = await post('/api/import/apply', { bundle }, tenant);
       setResult(r);
       setReport(r.report);
     } catch (e: any) {
@@ -85,7 +75,7 @@ export function Import() {
     <div className="view">
       <div className="view-head">
         <h2>Import</h2>
-        <p className="muted">Bring a scheme in from its source code. An AI agent reads the source with the extraction prompt and writes a bundle: the studio's documents, scripts, samples, tests, a bank's configuration, an inventory of every file and unit of the source, and its findings. Preview the bundle here, then import it as drafts. Nothing is published until a checker approves it.</p>
+        <p className="muted">Bring a scheme in from its source code. An AI agent reads the source with the extraction prompt and writes a bundle: the studio's documents, scripts, samples, tests, a bank's configuration, an inventory of every file and unit of the source, and its findings. Preview the bundle here, then import it as drafts. Nothing is a version until an approver who is not the maker approves it.</p>
       </div>
       <div className="cols">
         <div className="col">
@@ -95,21 +85,7 @@ export function Import() {
               <button onClick={training}>Use the training bundle</button>
             </div>
             {label && <p className="small">Chosen: <b>{label}</b></p>}
-            <label className="field">
-              <span>Bank tenant for bank content (scope b, configuration)</span>
-              <select value={bankTenant} onChange={(e) => setBankTenant(e.target.value)} aria-label="Bank tenant">
-                <option value="">None</option>
-                {banks.map((b) => <option key={b}>{b}</option>)}
-              </select>
-            </label>
-            {bankTenant && (
-              <label className="field">
-                <span>Saved for the bank as</span>
-                <select value={bankActor} onChange={(e) => setBankActor(e.target.value)} aria-label="Bank actor">
-                  {bankUsers.map((u) => <option key={u.id} value={u.id}>{u.id} ({u.roles.join(', ')})</option>)}
-                </select>
-              </label>
-            )}
+            <p className="muted small">{bankPart ? `You import the bank part of the bundle (scope b, configuration sets) into ${tenant}. The shared part is imported by the platform.` : 'You import the shared part of the bundle. A bank part (scope b, configuration sets) is left for that bank: its configurator imports it once the shared part is a version.'}</p>
             <div className="row-actions">
               <button className="primary" disabled={!bundle || !!busy} onClick={preview}>{busy === 'preview' ? 'Checking…' : 'Preview'}</button>
               <button disabled={!report || !!busy || (!report.ok)} onClick={apply} title={report && !report.ok ? 'Fix the errors first' : undefined}>{busy === 'apply' ? 'Importing…' : `Import as drafts, as ${actor}`}</button>
@@ -130,7 +106,7 @@ export function Import() {
 
       {result?.applied && (
         <div className="alert pass" role="status">
-          Imported {result.saved.length} as drafts{result.skipped.length ? `; ${result.skipped.length} unchanged and reused` : ''}. Nothing is published: {result.changeSets.length} change set{result.changeSets.length === 1 ? '' : 's'} wait for a checker. <button className="link" onClick={() => go('/governance')}>Open Governance</button>
+          Imported {result.saved.length} as drafts{result.skipped.length ? `; ${result.skipped.length} unchanged, reused or left for their own author` : ''}. Nothing is published: {result.changeSets.length} change set{result.changeSets.length === 1 ? '' : 's'} wait for an approver. <button className="link" onClick={() => go('/governance')}>Open Governance</button>
         </div>
       )}
       {result && !result.applied && <div className="alert fail" role="status">Not imported: the bundle has errors.</div>}

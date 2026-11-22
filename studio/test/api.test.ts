@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { dispatch, type Req } from '../src/server/api.js';
+import type { Req } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { templates } from '../src/server/templates.js';
 import { toYaml } from '../src/core/yaml.js';
 import type { StudioEnv } from '../src/env.js';
@@ -89,7 +90,7 @@ describe('governance', () => {
     const r = await post('/api/retire', { actor: 'shared.checker', name: 'uae.p.validate.iban.v1', release: '1.0.0' });
     expect(r.status).toBe(409);
     expect(r.body.error).toContain('pinned by');
-    expect((await post('/api/retire', { actor: 'example.maker', name: 'uae.p.validate.iban.v1', release: '1.0.0' })).status).toBe(409);
+    expect((await post('/api/retire', { actor: 'example.maker', name: 'uae.p.validate.iban.v1', release: '1.0.0' })).status).toBe(403);
   });
 
   it('refuses to retire a release with instances in flight', async () => {
@@ -117,14 +118,14 @@ describe('governance', () => {
     expect(doc.kind).toBe('supersession');
     const ev = await post('/api/supersessions/evidence', { doc });
     expect(ev.status).toBeLessThan(500);
-    expect((await post('/api/supersessions/hand-over', { doc, checker: doc.maker ?? 'shared.designer' })).status).toBe(409);
-    expect((await post('/api/supersessions/draft', { artefact: 'x', replaces: '1', with: '2', reason: 'r', maker: 'example.maker' })).status).toBe(409);
+    expect((await post('/api/supersessions/hand-over', { doc, checker: doc.maker ?? 'shared.designer' })).status).toBe(403);
+    expect((await post('/api/supersessions/draft', { artefact: 'x', replaces: '1', with: '2', reason: 'r', maker: 'example.maker' })).status).toBe(403);
   });
 
   it('saves a bank configuration only with a later release, and only by a bank designer', async () => {
     const cs = (await get('/api/tenants/example-bank/configuration')).body.configurationSet;
     expect((await post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml(cs) })).status).toBe(409);
-    expect((await post('/api/tenants/example-bank/configuration', { actor: 'example.checker', yaml: toYaml({ ...cs, release: '9.0.0' }) })).status).toBe(409);
+    expect((await post('/api/tenants/example-bank/configuration', { actor: 'example.checker', yaml: toYaml({ ...cs, release: '9.0.0' }) })).status).toBe(403);
     const saved = await post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml({ ...cs, release: '1.1.0' }) });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect((await post('/api/tenants/example-bank/configuration/validate', { doc: cs })).body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
@@ -134,7 +135,7 @@ describe('governance', () => {
 
   it('adds a waiver only with a reason and only from a checker', async () => {
     expect((await post('/api/conformance/waivers', { actor: 'shared.checker', scenario: 'CK-SEQ-01' })).status).toBe(409);
-    expect((await post('/api/conformance/waivers', { actor: 'shared.designer', scenario: 'CK-SEQ-01', reason: 'r' })).status).toBe(409);
+    expect((await post('/api/conformance/waivers', { actor: 'shared.designer', scenario: 'CK-SEQ-01', reason: 'r' })).status).toBe(403);
     expect((await post('/api/conformance/waivers', { actor: 'shared.checker', scenario: 'CK-SEQ-01', reason: 'White-box test', target: 'temporal' })).status).toBe(200);
     const report = (await get('/api/conformance/report?target=temporal')).body;
     expect(report.rows.find((r: any) => r.scenario === 'CK-SEQ-01')).toBeDefined();
@@ -204,7 +205,7 @@ describe('scripts-behind and samples', () => {
   it('saves a script for an activity draft, and refuses one for no draft, a wrong role or a forbidden call', async () => {
     expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: SRC })).status).toBe(409); // no draft yet
     expect((await post('/api/drafts', { tenant: 'owner', actor: 'shared.designer', doc: ACT })).status).toBe(200);
-    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.auditor', activity: ACT.name, source: SRC })).status).toBe(409);
+    expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.auditor', activity: ACT.name, source: SRC })).status).toBe(403);
     const bad = await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: 'export async function run() { return Date.now() ? "done" : "done"; }' });
     expect(bad.status).toBe(409);
     expect((await post('/api/scripts', { tenant: 'owner', actor: 'shared.designer', activity: ACT.name, source: 'export const x = 1;' })).body.error).toContain('run');
@@ -232,7 +233,7 @@ describe('scripts-behind and samples', () => {
     expect((await get('/api/samples')).body).toContain('samples/blackbox-file.csv');
     expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'Bad Name.csv', content: 'x' })).status).toBe(409);
     expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.designer', name: 'wps-sif-valid.sif', content: 'x' })).status).toBe(409);
-    expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.auditor', name: 'x.csv', content: 'x' })).status).toBe(409);
+    expect((await post('/api/samples', { tenant: 'owner', actor: 'shared.auditor', name: 'x.csv', content: 'x' })).status).toBe(403);
   });
 });
 
@@ -262,7 +263,7 @@ describe('change sets', () => {
   });
 
   it('refuses the maker as checker and an empty request, and publishes nothing', async () => {
-    expect((await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.designer' })).status).toBe(409);
+    expect((await post('/api/publish', { tenant: 'owner', key: keys[0], checker: 'shared.designer' })).status).toBe(403);
     expect((await post('/api/publish', { tenant: 'owner', keys: [], checker: 'shared.checker' })).status).toBe(409);
     expect((await get('/api/drafts?tenant=owner')).body.filter((d: any) => keys.includes(d.key)).length).toBe(2);
   });

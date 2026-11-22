@@ -5,7 +5,7 @@ import { ContentStore, forgetCache } from '../src/content/content-store.js';
 import { ENDPOINTS } from '../src/content/github.js';
 import { seedContent, seedFiles } from '../src/content/seed.js';
 import { CONTENT_DIR, SPEC_ROOT, STUDIO_ROOT, envFor, openEnv } from '../src/env.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { freshEnv, restart } from './helpers.js';
 import { BRANCH, TEST_TOKEN, connection, fake, forkRepo } from './support/content.js';
 
@@ -134,7 +134,7 @@ describe('a branch per change set (R-11-22)', () => {
 
   it('in pull-request mode, approval opens a pull request from the change set branch and leaves the content branch alone', async () => {
     const env = freshEnv();
-    expect((await call(env, 'PUT', '/api/git', { actor: 'shared.designer', mode: 'pull-request' })).status).toBe(409);
+    expect((await call(env, 'PUT', '/api/git', { actor: 'shared.designer', mode: 'pull-request' })).status).toBe(403);
     const s = await call(env, 'PUT', '/api/git', { actor: 'shared.checker', mode: 'pull-request' });
     expect(s.status, JSON.stringify(s.body)).toBe(200);
     expect(files(env)[`${ROOT}/governance/settings.yaml`]).toMatch(/mode: pull-request/);
@@ -177,7 +177,7 @@ describe('append-only state files (R-11-23, R-09-21)', () => {
   it('keeps the audit as one file per change set and one per other event, and its chain verifies after a restart', async () => {
     const env = freshEnv();
     const refusedDraft = await call(env, 'POST', '/api/drafts', { tenant: 'owner', actor: 'example.maker', doc: ACT('d') });
-    expect(refusedDraft.status).toBe(409);
+    expect(refusedDraft.status).toBe(403);
     const key = await draft(env, ACT('d'));
     const id = env.store.entries.get(key)!.changeSet!;
     await publish(env, key);
@@ -209,17 +209,20 @@ describe('append-only state files (R-11-23, R-09-21)', () => {
 
   it('changes the users only through maker-checker: one file, replaced in one reviewed commit', async () => {
     const env = freshEnv();
-    const list = [...(await call(env, 'GET', '/api/users')).body, { id: 'third.maker', tenant: 'third-bank', roles: ['bank designer'] }];
-    expect((await call(env, 'POST', '/api/users/proposals', { actor: 'shared.designer', users: list })).status).toBe(409);
-    const p = await call(env, 'POST', '/api/users/proposals', { actor: 'service.operations', users: list });
+    const list = [...(await call(env, 'GET', '/api/users')).body, { id: 'third.maker', tenant: 'third-bank', roles: ['bank configurator'] }];
+    // Only an administrator proposes; the roles of earlier releases are not accepted in a new list.
+    expect((await call(env, 'POST', '/api/users/proposals', { actor: 'shared.designer', users: list })).status).toBe(403);
+    expect((await call(env, 'POST', '/api/users/proposals', { actor: 'users.admin', users: [...list.slice(0, -1), { id: 'third.maker', tenant: 'third-bank', roles: ['bank designer'] }] })).status).toBe(409);
+    const p = await call(env, 'POST', '/api/users/proposals', { actor: 'users.admin', users: list });
     expect(p.status, JSON.stringify(p.body)).toBe(200);
     const id = p.body.changeSet;
     expect(files(env, `studio/${id}`)[`${ROOT}/governance/users.yaml`]).toMatch(/third\.maker/);
     expect((await call(env, 'GET', '/api/users/proposals')).body.map((x: any) => x.id)).toEqual([id]);
     expect(files(env)[`${ROOT}/governance/users.yaml`]).not.toMatch(/third\.maker/);
-    expect((await call(env, 'POST', `/api/users/proposals/${id}/approve`, { checker: 'service.operations' })).status).toBe(409);
+    expect((await call(env, 'POST', `/api/users/proposals/${id}/approve`, { checker: 'users.admin' })).status).toBe(409);
+    expect((await call(env, 'POST', `/api/users/proposals/${id}/approve`, { checker: 'shared.checker' })).status).toBe(403);
     const before = log(env).length;
-    const a = await call(env, 'POST', `/api/users/proposals/${id}/approve`, { checker: 'shared.checker' });
+    const a = await call(env, 'POST', `/api/users/proposals/${id}/approve`, { checker: 'users.approver' });
     expect(a.status, JSON.stringify(a.body)).toBe(200);
     expect(log(env).length).toBe(before + 1);
     expect(files(env)[`${ROOT}/governance/users.yaml`]).toMatch(/third\.maker/);
@@ -239,6 +242,10 @@ describe('append-only state files (R-11-23, R-09-21)', () => {
     const { toYaml } = await import('../src/core/yaml.js');
     const c = await call(env, 'POST', '/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml(cs) });
     expect(c.status, JSON.stringify(c.body)).toBe(200);
+    // Saved as a draft by its maker; a bank approver makes it the version (R-11-31).
+    expect(Object.keys(files(env))).not.toContain(`${ROOT}/banks/example-bank/configuration-sets/1.1.0.yaml`);
+    const pub = await call(env, 'POST', '/api/publish', { key: c.body.draft.key, checker: 'example.checker' });
+    expect(pub.status, JSON.stringify(pub.body)).toBe(200);
     const names = Object.keys(files(env));
     expect(names).toContain(`${ROOT}/banks/example-bank/configuration-sets/1.1.0.yaml`);
     expect(names.some((p) => p.startsWith(`${ROOT}/governance/in-flight/`))).toBe(true);
