@@ -5,6 +5,10 @@
     <ProjectReference Include="..\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="TransactHub.Activities.Wps.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

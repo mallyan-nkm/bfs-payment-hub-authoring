@@ -15,6 +15,7 @@
     <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TransactHub.Activities.Wps.Tests/TransactHub.Activities.Wps.Tests.csproj" />
     <Project Path="tests/TransactHub.Engine.Flowable.Tests/TransactHub.Engine.Flowable.Tests.csproj" />
     <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
   </Folder>

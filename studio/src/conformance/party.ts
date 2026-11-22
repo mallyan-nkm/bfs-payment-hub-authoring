@@ -82,11 +82,16 @@ export class PartyService {
     };
   }
 
-  /** Messages the inward simulators send first, as deliveries due at their engine times. */
+  /**
+   * Messages the inward simulators send first, as deliveries due at their engine times. They are due a second after the run
+   * starts: the engine's front door hands a message to an instance that exists, and the leg that awaits a message the scheme sends
+   * with the one that started the run (the PSI with its payment file) is a child of the platform workflow, started at that instant
+   * (plan P2, Issue I-84). The studio's interpreter keeps such a message for the leg itself (R-05-30).
+   */
   start(now: number, conversation = 'conv-1'): Delivery[] {
     this.run.clock.now = now;
     for (const [, sim] of this.run.sims) if (sim.sim.direction === 'inward') sim.start(conversation);
-    return this.takeDeliveries();
+    return this.takeDeliveries().map((d) => ({ ...d, at: Math.max(d.at, now + 1000) }));
   }
 
   takeDeliveries(): Delivery[] {

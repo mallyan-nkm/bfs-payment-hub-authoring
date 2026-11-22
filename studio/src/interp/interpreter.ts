@@ -913,7 +913,8 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   const io = makeIO(act, frame, scope, id, view, level, callNo);
   const stub = run.cfg.stubs?.[`step:${id}`] ?? run.cfg.stubs?.[act.name];
   if (stub) return runStub(stub, act, frame, scope, callNo, attempt);
-  const script = run.cfg.scripts.find(act.name);
+  // R-08-16: a run that gives this activity to the runtime calls the native host, not the script.
+  const script = nativeHere(act) ? undefined : run.cfg.scripts.find(act.name, act.release);
   if (script) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
@@ -942,7 +943,7 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   // A native code-behind runs in the runtime's native host (R-08-14), with the same view and parameters a script gets.
   // So does a builtin activity whose port the bench gives to the runtime (R-08-15): the runtime's code answers it
   // through the bank's port binding in force at the engine's time, not a simulator.
-  if (act.implementation?.binding === 'native' || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
+  if (act.implementation?.binding === 'native' || nativeHere(act) || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
     return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
@@ -953,6 +954,17 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     if (e instanceof Hang) return scope.never();
     throw e;
   }
+}
+
+/**
+ * Whether this attempt goes to the runtime's native host though the activity has a script-behind or a builtin (R-08-16): the
+ * activity says the runtime implements it (`implementation.native: true`), and the run gives it to the runtime
+ * (`TH_NATIVE_ACTIVITIES` names it, or is `*`). Without a native host such an attempt fails, as R-08-14 says.
+ */
+export function nativeHere(act: any): boolean {
+  if (act.implementation?.native !== true) return false;
+  const list = (process.env.TH_NATIVE_ACTIVITIES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return list.includes('*') || list.includes(act.name) || list.includes(`${act.name}@${act.release}`);
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
@@ -1025,9 +1037,11 @@ function viewFor(frame: Frame, act: any): any {
     const resolve = (ref: any) => {
       if (!ref?.id) return ref;
       const m = run.messages.find((x) => x.id === ref.id);
-      return m ? { ...ref, payload: m.payload, malformed: m.malformed } : ref;
+      // The scheme's status, reason and family go with it, so a native code-behind reads a reply as the reference does (R-08-16).
+      return m ? { ...ref, payload: m.payload, malformed: m.malformed, ...(m.status ? { status: m.status } : {}), ...(m.reasonCode ? { reasonCode: m.reasonCode } : {}), ...((m as any).family ? { family: (m as any).family } : {}) } : ref;
     };
     if (view.messages?.inbound) view.messages.inbound = resolve(view.messages.inbound);
+    if (view.messages?.lastReceived) view.messages.lastReceived = resolve(view.messages.lastReceived);
     if (view.messages?.received) for (const k of Object.keys(view.messages.received)) view.messages.received[k] = resolve(view.messages.received[k]);
   }
   return view;

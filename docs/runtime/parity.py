@@ -36,16 +36,18 @@ RULES = [
     (r'BalanceEnquiry|CorePosting|ReverseCorePosting|PostingStatus|ReconcilePosting|PostingIndeterminate|RecordPostingStatus|ConstructSalaryAmountPosting|RetrieveBranchCode|CoreBanking|WpsCoreBankingPosting|ReverseWpsPosting|ReversalPosting', 'p via core-banking port; b binding', 'p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking', 'studio factory activities run on Temporal; bank adapter binding: P5'),
     (r'Decrypt', 'p', 'p decrypt (file intake)', 'P2'),
     (r'Corporate|MolEstablishment|Precheck|UploadRequest|SaveUiUploaded|LocateAndReadSalaryFile|InitializeSifUpload|ExtractAndParseSifUpload|AuditQueue|QueueSif', 'p (intake) + uae.wps (MOL)', 'front door intake; uae.wps MOL corporate match (SifUploadRules.MatchCorporate)', 'MatchCorporate ported, golden; intake: P2'),
-    (r'Pif|Psi', 'uae.wps', 'uae.wps.map.pif-in, inward leg', 'studio factory map exists; source parity: P2'),
-    (r'Prc', 'uae.wps', 'uae.wps inward PRC flow', 'P2'),
-    (r'Dif', 'uae.wps', 'uae.wps inward DIF flow', 'P2'),
-    (r'Rfa', 'uae.wps', 'uae.wps RFA flow', 'P2'),
-    (r'Rri', 'uae.wps; b port for block/release', 'uae.wps RRI flow', 'P2'),
-    (r'DeBulk|DeOutcome|DeUpload|RepostFailedDe|LostDe|DetermineDe|SubmitDe|TransferDe', 'uae.wps; b port for upload', 'uae.wps DE bulk flow', 'P2'),
-    (r'CbCallWindow|PostingWindow|CbPosting|Restricted|Rb[A-Z]', 'p scheduler; b values', 'schedule-gated await (posting windows)', 'P2'),
+    (r'Pif|Psi', 'uae.wps', 'uae.wps.map.pif-in.v1 / psi-in.v1 (native: InwardPifParser, InwardPsiParser); the agent leg', 'ported, source unit tests; leg on all engines; PSI map not wired (I-84)'),
+    (r'Prc', 'uae.wps', 'uae.wps.map.prc-out.v2 (native: PrcFileBuilder, PrcFileNamePolicy); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
+    (r'Dif', 'uae.wps', 'uae.wps.map.dif-out.v2 (native: DifLines, DifFileBuilder); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
+    (r'RfaReversal', 'uae.wps via core-banking port', 'uae.wps.post.return.v1 (suspense to settlement, the returns decision amount)', 'on the runtime (e2e-wps-inward-native)'),
+    (r'Rfa', 'uae.wps', 'uae.wps.map.rfa-out.v1 (native: RfaLines, RfaFileBuilder, RfaFileNamePolicy); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
+    (r'Rri', 'uae.wps; core-banking block', 'uae.wps.map.rri-in.v1 (native: InwardRriParser); the block and the flow: I-82', 'parser ported, source unit tests; flow not built (I-82)'),
+    (r'DeBulk|DeOutcome|DeUpload|RepostFailedDe|LostDe|DetermineDe|SubmitDe|TransferDe', 'p core-banking adapter (bulk); b binding', 'a bulk mode of the core-banking binding, not a WPS step (I-82)', 'not ported (I-82)'),
+    (r'CbCallWindow|PostingWindow|Restricted|Rb[A-Z]|CbPostingAwait|AwaitCbPosting', 'p; b values', 'p.decide.await-posting-window.v1 (schedule-gated await; native: PostingWindow)', 'gate ported; await in the inward legs on all engines'),
+    (r'CbPosting', 'p via core-banking port; b binding', 'p.post.accounting.v1 through the binding, in the posting window', 'on the runtime (CoreBankingPostingTests, e2e-wps-core-banking)'),
     (r'ExchangeRate', 'p', 'p exchange-rate refresh (not WPS)', 'P2'),
     (r'Hook', 'p hook points', 'workflow hook points with bank bindings', 'hooks run on Temporal (kit CK-HOOK-01..04)'),
-    (r'Rtc', 'uae.wps', 'uae.wps RTC flow (ADIB posting as a hook)', 'P2'),
+    (r'Rtc', 'uae.wps', 'uae.wps.wf.return-in.v1 with uae.wps.map.rtc-in.v2 (payment-level creditor account; the source parses no RTC lines)', 'on the runtime: map native, posting through the binding (WPS-RTC-001, NativeInwardTests)'),
     (r'Mohre|Notify', 'p.notify + uae.wps', 'p.notify.channel; MOHRE notify as a bank hook', 'studio factory notify runs on Temporal; MOHRE: P5'),
     (r'Aml|Screen', 'p', 'p.screen.sanctions / p.screen.fraud', 'studio factory activities run on Temporal'),
     (r'Route', 'p', 'front door workflow-select', 'studio front door runs on Temporal'),
@@ -62,7 +64,9 @@ lines = ['# WPS parity matrix', '',
  '## Rule classes', '', '| Source | Runtime | Proof |', '| --- | --- | --- |']
 for c in ['CbxFileNameRules', 'CbxRecordRules', 'CbxScrRules', 'CbxRuleSettings', 'SifUploadRules (file name, date, corporate match)', 'CbxSifWriter', 'WpsAckNakFile (ACK/NAK name, parse, build)', 'WpsEmployeeBankClassifier', 'WpsRoutingCode', 'AccountMasking']:
     lines.append(f'| `{c}` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |')
-lines += ['', 'Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, the DE, DIF, RFA, PRC and RRI rule classes, `WpsEmployeeBankClassifier`, `AccTxnDecisionRules`, `RbPostingClassifier`.', '',
+for c in ['InwardFileText', 'InwardPifParser', 'InwardPsiParser', 'PrcFileBuilder, PrcFileNamePolicy, PrcNakFileReader', 'DifLines, DifFileBuilder, DifAmountRule, DifNakLineResolver', 'RfaLines, RfaFileBuilder, RfaFileNamePolicy, RfaAmountRule', 'InwardRriParser']:
+    lines.append(f'| `{c}` | `TransactHub.Activities.Wps.Inward` | the source\'s unit tests (446 cases, `runtime/tests/TransactHub.Activities.Wps.Tests/Source`) |')
+lines += ['', 'Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, the DE rule classes (I-82), `AccTxnDecisionRules`, `RbPostingClassifier`.', '',
  '## Platform activities', '', '| Activity | Source file | Target layer | Target | Status |', '| --- | --- | --- | --- | --- |']
 for n in sorted(plat):
     layer, target, status = classify(n)

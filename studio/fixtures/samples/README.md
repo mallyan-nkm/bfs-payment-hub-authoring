@@ -15,7 +15,9 @@ metadata, not part of the message, and the intake maps read it as the `SourceFil
 | `wps-sif-valid-scr-last.sif` | WPS SIF, SCR last, two records | WPS-MAP-002 |
 | `wps-sif-bad-control-total.sif` | WPS SIF, control total wrong | WPS-OUT-004 |
 | `wps-sif-bad-iban.sif` | WPS SIF, IBAN check digits wrong | WPS-OUT-005 |
-| `wps-pif-valid.pif` | WPS PIF | WPS-IN-001 |
+| `wps-pif-valid.pif` | WPS PIF, the factory's first layout (PDR) | WPS-IN-001 to 007 |
+| `wps-pif-ssm.pif` | WPS PIF, the source's layout (EDR, EVP, PCR) | WPS-IN-008, the native inward end to end |
+| `wps-rtc-valid.rtc` | WPS RTC, the factory's provisional layout (RTH, RTD) | WPS-RTC-001 |
 | `wps-sif-bad-month.sif` | WPS SIF, salary month 13 | Kept as an invalid sample; the leg test that used it was replaced |
 | `wps-sif-two-lines.sif` | WPS SIF, two lines of 1000 and 500, total 1500 | The WPS end-to-end test: the bank's limit on each line and on the file total |
 

@@ -108,12 +108,12 @@ async function flowableServer() {
   return (flowable = { TH_FLOWABLE_URL: url, TH_FLOWABLE_USER: FLOWABLE_USER, TH_FLOWABLE_PASSWORD: FLOWABLE_PASSWORD });
 }
 
-async function deploy(engine: string, label: string, env: Record<string, string>) {
-  const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
+async function deploy(engine: string, label: string, env: Record<string, string>, flow = { platform: PLATFORM, message: MESSAGE, sample: SAMPLE, bench: BENCH }) {
+  const z = await api.get(`/api/export/download?workflows=${flow.platform}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
   const file = path.join(work, `${label}.zip`);
   fs.writeFileSync(file, z.data);
-  const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', SAMPLE), '--tenant', TENANT, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
+  const args = ['src/cli.ts', 'deploy', file, '--workflow', flow.platform, '--message', flow.message, '--inbound', path.join(STUDIO, 'fixtures', flow.sample), '--tenant', TENANT, ...flow.bench.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   const out = await new Promise<string>((resolve) => {
     let text = '';
     const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...env } });
@@ -140,4 +140,29 @@ describe('the WPS salary file on DTFx, Elsa and Flowable, kept in the store', ()
       }, 900000);
     }
   }
+});
+
+// Plan P2: the WPS payment file with the bank as the agent, in the source's layout, on Flowable as on DTFx, Elsa (e2e-wps-parity)
+// and Temporal (e2e-wps-temporal): a refused credit returned, WPS refusing the returns file, the file handed to operations.
+const INWARD = {
+  platform: 'p.wf.inward.v1', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
+  bench: [
+    { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-refused' },
+    { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'reject-first-then-accept' },
+    ...['sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
+    { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'reject' },
+  ],
+};
+describe('the WPS payment file on Flowable, kept in the store (plan P2)', () => {
+  it('flowable on PostgreSql: the same trace as the studio interpreter', async () => {
+    const expected = await api.post('/api/bench/run', { target: INWARD.platform, tenant: TENANT, inbound: INWARD.sample, message: INWARD.message, bench: INWARD.bench });
+    expect(expected.status, JSON.stringify(expected.data).slice(0, 400)).toBe(200);
+    const env = { ...(await database('PostgreSql', 'th_flowable_inward')), ...(await flowableServer()) };
+    const d = await deploy('flowable', 'flowable-inward', env, INWARD);
+    expect(d.trace, d.out.slice(-2500)).toEqual(expected.data.trace);
+    expect(d.outcome).toBe(expected.data.outcome);
+    expect(d.out).toContain('front door: uae.wps.wf.agent-payment-in.v2 fills scheme-leg');
+    // The leg ran past the supplementary file to the disbursement file: the PSI reached it (R-05-30).
+    expect(d.out).toContain('"uae.wps.map.dif-out.v2@2.0.0":1');
+  }, 900000);
 });

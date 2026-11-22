@@ -9,7 +9,7 @@ using TransactHub.Ports;
 // interpreter and every deployed worker call it with the attempt's view, parameters and time:
 //   POST /native        { activity, release, view, params, now } -> { kind: result, outcome, reasonCode, writes } | { kind: error, ... }
 //   GET  /health        -> the activities it serves
-//   GET  /files         -> the files native activities produced (a rendered SIF): hash, name, size
+//   GET  /files         -> the files native activities produced (a rendered SIF, PRC, DIF or RFA): hash, name, size
 //   GET  /files/{sha}   -> one of them, as kept
 //   GET  /postings      -> what the core-banking simulator adapter was asked to post, per tenant and binding
 // TH_NATIVE_URLS (default http://127.0.0.1:7300) sets where it listens. TH_BANKS_DIR names the banks' configuration
@@ -25,8 +25,9 @@ var files = new ConcurrentDictionary<string, (string name, byte[] content)>();
 var served = new ConcurrentDictionary<string, int>();
 var banksDir = Environment.GetEnvironmentVariable("TH_BANKS_DIR");
 var coreBanking = new CoreBankingResolver(banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings());
-INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif((sha, name, content) => files[sha] = (name, content)),
-    .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking)];
+Action<string, string, byte[]> keep = (sha, name, content) => files[sha] = (name, content);
+INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif(keep),
+    .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep)];
 var byName = activities.ToDictionary(x => x.Name);
 
 app.MapGet("/health", () => Results.Ok(new { activities = byName.Keys.Order(), served }));
