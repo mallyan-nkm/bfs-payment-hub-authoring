@@ -48,7 +48,7 @@ describe('import in the web app', () => {
 
   it('imports as drafts, publishing nothing', async () => {
     await page.getByRole('button', { name: /^Import as drafts, as / }).click();
-    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: 4 change sets wait for a checker/); // the PSI and RRI maps, referred to by nothing, are change sets of their own
+    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: 5 change sets wait for a checker/); // the PSI and RRI maps and the error dictionary, referred to by nothing, are change sets of their own
     const drafts = await client(server.url).get('/api/drafts?tenant=owner');
     expect(drafts.data.some((d: any) => d.name === 'uae.wpsx.wf.salary-file-out.v1')).toBe(true);
     const cat = await client(server.url).get('/api/catalogue?q=uae.wpsx.wf.salary-file-out');
