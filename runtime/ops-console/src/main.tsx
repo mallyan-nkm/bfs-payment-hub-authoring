@@ -8,6 +8,8 @@ import { Detail } from './ops/Detail';
 import { show } from './ops/format';
 import { serviceClient } from './service/api';
 import { ServiceSection } from './service/Service';
+import { benchClient } from './testbench/api';
+import { TestBenchSection } from './testbench/TestBench';
 import './styles.css';
 
 function LagBadge({ api }: { api: Client }) {
@@ -46,8 +48,8 @@ function Approvals({ api, go }: { api: Client; go(h: string): void }) {
   );
 }
 
-/** Which of the runtime's APIs answer here: the operations console's, the service console's, or both behind one gateway. */
-interface Hosts { ops: boolean; service: boolean }
+/** Which of the runtime's APIs answer here: the operations console's, the service console's, the test bench's, or several behind one gateway. */
+interface Hosts { ops: boolean; service: boolean; testbench: boolean }
 
 function ServiceGate({ auth, path }: { auth: SignIn; path: string[] }) {
   const api = serviceClient(auth);
@@ -56,6 +58,16 @@ function ServiceGate({ auth, path }: { auth: SignIn; path: string[] }) {
   if (me === undefined) return <p className="muted">Loading…</p>;
   if (!me?.service) return <p className="muted">You have no service role (ServiceEngineer or ServiceApprover) in the bank's role map.</p>;
   return <ServiceSection api={api} path={path} approver={me.roles.includes('ServiceApprover')} />;
+}
+
+/** The test bench needs the Tester role (or a role the installation lets in); the API says which the caller has. */
+function TestBenchGate({ auth, path, go }: { auth: SignIn; path: string[]; go(h: string): void }) {
+  const api = benchClient(auth);
+  const [me, setMe] = useState<{ roles: string[] } | string | undefined>(undefined);
+  useEffect(() => { api.me().then(setMe).catch((e) => setMe(String(e.message ?? e))); }, []);
+  if (me === undefined) return <p className="muted">Loading…</p>;
+  if (typeof me === 'string') return <p className="error" data-testid="testbench-refused">{me}</p>;
+  return <TestBenchSection api={api} path={path} go={go} />;
 }
 
 function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
@@ -72,7 +84,8 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
   );
   if (hosts.service) sections.push({ id: 'service', title: 'Service', render: (path) => <ServiceGate auth={auth} path={path} /> });
-  return <Shell auth={auth} sections={sections} title={hosts.ops ? 'TransactHub Operations' : 'TransactHub Service'} status={signedIn && hosts.ops ? <LagBadge api={api} /> : null} />;
+  if (hosts.testbench) sections.push({ id: 'testbench', title: 'Test bench', render: (path, ctx) => <TestBenchGate auth={auth} path={path} go={ctx.go} /> });
+  return <Shell auth={auth} sections={sections} title={hosts.ops ? 'TransactHub Operations' : hosts.service ? 'TransactHub Service' : 'TransactHub Test bench'} status={signedIn && hosts.ops ? <LagBadge api={api} /> : null} />;
 }
 
 async function answers(url: string): Promise<boolean> {
@@ -80,8 +93,9 @@ async function answers(url: string): Promise<boolean> {
 }
 
 (async () => {
-  const hosts: Hosts = { ops: await answers('/ops/api/auth/config'), service: await answers('/service/api/auth/config') };
-  const auth = await loadSignIn(hosts.ops || !hosts.service ? '/ops/api/auth/config' : '/service/api/auth/config');
+  const hosts: Hosts = { ops: await answers('/ops/api/auth/config'), service: await answers('/service/api/auth/config'), testbench: await answers('/testbench/api/auth/config') };
+  // One sign-in for every section: each API gives the same client (transacthub-runtime-ui) and issuer; the first that answers says how.
+  const auth = await loadSignIn(hosts.ops ? '/ops/api/auth/config' : hosts.service ? '/service/api/auth/config' : hosts.testbench ? '/testbench/api/auth/config' : '/ops/api/auth/config');
   // Re-render on sign-in and sign-out (the shell asks the sign-in who is current).
   const root = createRoot(document.getElementById('root')!);
   const render = () => root.render(<StrictMode><App key={auth.current()?.subject ?? 'none'} auth={auth} hosts={hosts} /></StrictMode>);

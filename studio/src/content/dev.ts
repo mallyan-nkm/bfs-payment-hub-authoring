@@ -13,6 +13,8 @@ process.env.TH_GITHUB_API = local.url;
 process.env.TH_CONTENT_REPO = `${LOCAL_REPO.owner}/${LOCAL_REPO.repo}`;
 process.env.TH_CONTENT_BRANCH = LOCAL_REPO.branch;
 process.env.TH_GITHUB_TOKEN = local.token;
+// Local development signs in with the built-in development provider unless an identity provider is named (R-11-32).
+if (!process.env.TH_OIDC_ISSUER && process.env.TH_AUTH_DEV === undefined) process.env.TH_AUTH_DEV = '1';
 console.log(`Fake GitHub on ${local.url}: ${process.env.TH_CONTENT_REPO} ${LOCAL_REPO.branch}, seeded from content-configurations/, in memory only.`);
 // Releases are signed (R-09-23). Without a key of its own, the dev studio makes one for this run: the private key stays in
 // this process's memory; only the public key is written, as the trusted signers a local deploy checks against.

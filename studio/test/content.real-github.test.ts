@@ -3,7 +3,7 @@ import { ContentStore, connectionFromEnv, type ContentConnection } from '../src/
 import { TOKEN_ENV } from '../src/content/github.js';
 import { seedContent } from '../src/content/seed.js';
 import { envFor } from '../src/env.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 
 // The smoke test against real GitHub (R-09-19 to R-09-22, R-11-21 to R-11-27). Skipped unless
 // TH_REAL_GITHUB=1. It needs TH_CONTENT_REPO=<owner/repo> and a scratch content branch of its own,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { freshEnv, restart } from './helpers.js';
 import { BRANCH, fake } from './support/content.js';
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { freshEnv } from './helpers.js';
 
 // The workflow debugger (F-17; docs/ISSUES.md I-32): a debug run keeps the data after every event,

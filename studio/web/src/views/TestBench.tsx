@@ -187,7 +187,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
     get(`/api/tests/${encodeURIComponent(id)}`).then((r) => {
       const g = r.test?.given ?? {};
       if (r.test?.evaluationDate) setDate(r.test.evaluationDate);
-      if (r.test?.tenant) setRunTenant(r.test.tenant);
+      if (r.test?.tenant && r.test.tenant === tenant) setRunTenant(r.test.tenant);
       if (g.inbound) { setInput('inbound'); setInbound(g.inbound); } else { setInput('context'); setContext(JSON.stringify(g.context ?? {}, null, 2)); }
       setSignals((g.signals ?? []).map((s: any) => ({ signal: s.signal, at: s.at })));
       setExpect(r.test?.expect ? JSON.stringify(r.test.expect, null, 2) : '');
@@ -279,7 +279,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
         <label className="field">
           <span>Tenant for the run</span>
           <select value={runTenant} onChange={(e) => setRunTenant(e.target.value)} aria-label="Run tenant">
-            {(meta?.tenants ?? [tenant]).map((t) => <option key={t}>{t}</option>)}
+            {(meta?.tenants ?? [tenant]).filter((t) => t === tenant).map((t) => <option key={t}>{t}</option>)}
           </select>
         </label>
       </div>

@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-004
+title: 'The payment record has seen the file before'
+request:
+  profile: wps-all-engines
+  data: { sample: wps-sif-duplicate-file }
+expect:
+  outcome: rejected

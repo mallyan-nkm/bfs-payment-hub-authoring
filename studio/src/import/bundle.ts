@@ -156,6 +156,22 @@ export interface ImportOptions {
   bankTenant?: string;
   /** Run the bundle's tests against its own documents (default true). */
   runTests?: boolean;
+  /**
+   * Only one part of the bundle, for a signed-in user who may author only that part (R-11-30): the
+   * shared part for a platform user, the bank part (scope b and configuration sets) for a bank
+   * configurator. The other part is reported, not saved. Default: both.
+   */
+  part?: 'shared' | 'bank';
+}
+
+/** Bank content of a bundle: scope b, or a configuration set. */
+function isBankDoc(doc: any): boolean {
+  return doc?.kind === 'configuration-set' || (doc?.name ? parseName(doc.name)?.scope : doc?.scope) === 'b';
+}
+
+/** Is the document in the part being imported? */
+export function inPart(doc: any, part: ImportOptions['part']): boolean {
+  return !part || (part === 'bank') === isBankDoc(doc);
 }
 
 function tenantFor(doc: any, opts: ImportOptions): string {
@@ -187,7 +203,8 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   const cluster = scope?.split('.')[0];
   const allowedScopes = new Set(['p', `${cluster}.p`, scope, 'b']);
   if (b.docs.some((d) => (d.doc?.name ? parseName(d.doc.name)?.scope : d.doc?.scope) === 'b') || b.configuration.length) {
-    if (!opts.bankTenant) err('I14', 'bundle', 'The bundle has bank content (scope b or a configuration set): name the bank tenant to import it into');
+    if (opts.part === 'shared') warn('I15', 'bundle', 'The bundle has bank content (scope b or a configuration set). It is left for the bank: a bank configurator of that bank imports the bank part');
+    else if (!opts.bankTenant) err('I14', 'bundle', 'The bundle has bank content (scope b or a configuration set): name the bank tenant to import it into');
   }
 
   // A shadow of the catalogue, in memory only, with the bundle in it as if it were published: what
@@ -208,6 +225,7 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   const items: Item[] = [];
   const seen = new Set<string>();
   for (const { file, doc } of [...b.docs, ...b.configuration, ...b.tests]) {
+    if (opts.part === 'shared' && isBankDoc(doc)) continue;
     const name = nameOf(doc) ?? '(no name)';
     const key = doc && typeof doc === 'object' ? keyOf(doc) : file;
     const tenant = tenantFor(doc, opts);
@@ -405,14 +423,21 @@ export async function apply(env: StudioEnv, b: Bundle, opts: ApplyOptions) {
   const skipped: string[] = [];
   const draftKeys = new Map<string, string[]>(); // tenant -> the store keys of the drafts saved
   const actorFor = (tenant: string) => (tenant === opts.bankTenant ? opts.bankActor ?? opts.actor : opts.actor);
-  const scopeFor = (doc: any) => (doc.kind === 'configuration-set' ? 'b' : doc.name ? parseName(doc.name)?.scope : doc.scope);
   // Every permission first: an import is saved whole, or not at all.
   for (const { doc } of [...b.docs, ...b.tests, ...b.configuration]) {
+    if (!inPart(doc, opts.part)) continue;
     const tenant = tenantFor(doc, opts);
-    gov.enforce(env, actorFor(tenant), tenant, 'author', keyOf(doc), scopeFor(doc));
+    gov.enforce(env, actorFor(tenant), tenant, 'author', keyOf(doc), gov.targetOf(doc));
   }
-  for (const s of b.samples) gov.enforce(env, opts.actor, opts.tenant, 'author', `sample:${s.name}`);
+  const scriptsInPart = b.scripts.filter((s) => inPart(docsByNameOf(b, s.activity) ?? { name: s.activity }, opts.part));
+  const samplesInPart = opts.part === 'bank' ? [] : b.samples;
+  for (const s of scriptsInPart) {
+    const tenant = tenantFor(docsByNameOf(b, s.activity), opts) || opts.tenant;
+    gov.enforce(env, actorFor(tenant), tenant, 'author', `script:${s.activity}`, { kind: 'script', scope: parseName(s.activity)?.scope });
+  }
+  for (const s of samplesInPart) gov.enforce(env, opts.actor, opts.tenant, 'author', `sample:${s.name}`, { kind: 'sample', scope: opts.tenant === 'owner' ? 'p' : 'b' });
   const save = (doc: any, item?: Item) => {
+    if (!inPart(doc, opts.part)) { skipped.push(`${keyOf(doc)} (the ${opts.part === 'shared' ? 'bank' : 'shared'} part: imported by its own author)`); return; }
     if (item?.status === 'unchanged') { skipped.push(`${item.key} (the same as ${item.existing})`); return; }
     const tenant = tenantFor(doc, opts);
     const actor = actorFor(tenant);
@@ -423,18 +448,18 @@ export async function apply(env: StudioEnv, b: Bundle, opts: ApplyOptions) {
   };
   const itemFor = (doc: any) => report.items.find((i) => i.key === keyOf(doc));
   for (const { doc } of b.docs) save(doc, itemFor(doc));
-  for (const s of b.scripts) {
+  for (const s of scriptsInPart) {
     const tenant = tenantFor(docsByNameOf(b, s.activity), opts) || opts.tenant;
     saveScript(env, { tenant, actor: actorFor(tenant), activity: s.activity, language: s.language, source: s.source });
     saved.push(`script ${s.activity}`);
   }
-  for (const s of b.samples) {
+  for (const s of samplesInPart) {
     saveSample(env, { tenant: opts.tenant, actor: opts.actor, name: s.name, content: s.content });
     saved.push(`samples/${s.name}`);
   }
   for (const { doc } of b.tests) save(doc, itemFor(doc));
   for (const { doc } of b.configuration) save(doc, itemFor(doc));
-  env.store.record({ tenant: opts.tenant, actor: opts.actor, action: 'import', key: `extraction:${m.scope}`, detail: `${saved.length} saved as drafts, ${skipped.length} unchanged; ${note}` });
+  env.store.record({ tenant: opts.part === 'bank' ? opts.bankTenant ?? opts.tenant : opts.tenant, actor: opts.part === 'bank' ? opts.bankActor ?? opts.actor : opts.actor, action: 'import', key: `extraction:${m.scope}`, detail: `${saved.length} saved as drafts, ${skipped.length} unchanged; ${note}` });
   // The change sets a checker approves: each closure of drafts that refer to one another.
   const changeSets: string[][] = [];
   const done = new Set<string>();

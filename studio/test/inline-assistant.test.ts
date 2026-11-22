@@ -5,7 +5,7 @@ import { toYaml } from '../src/core/yaml.js';
 import { agentTurn, replayModel, WRITE_TOOLS, type AgentRequest } from '../src/ai/agent.js';
 import { explainBench, explainDoc } from '../src/explain/explain.js';
 import { FIELD_HELP, NO_HELP, fieldHelp } from '../src/explain/fields.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { freshEnv } from './helpers.js';
 
 // The inline assistant and the "What is happening" panel (docs/ISSUES.md I-29).

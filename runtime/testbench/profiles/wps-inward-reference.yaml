@@ -1,0 +1,13 @@
+# A test bench profile (runtime/testbench/README.md): it fixes the engines, the database, the tenant, the bench and
+# the environment, so a user sends only data: testbench run --profile <name> --file <data>.
+kind: testbench-profile
+name: wps-inward-reference
+title: WPS inward on the studio interpreter only, in seconds
+workflow: uae.wps.wf.agent-payment-in.v1
+message: uae.wps.pif
+tenant: example-bank
+engines: []
+reference: true
+databases: [none]
+bench: wps-inward-happy
+clock: { date: '2026-11-17' }

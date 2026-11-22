@@ -1,0 +1,9 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+kind: testbench-case
+id: TB-WPS-OUT-010
+title: 'Builder, duplicate-person-id: the pack has no rule against it, so the file settles'
+request:
+  profile: wps-all-engines
+  data: { build: { template: wps-sif, lines: 2, seed: 45, inject: [duplicate-person-id] } }
+expect:
+  outcome: settled

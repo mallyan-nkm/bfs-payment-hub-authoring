@@ -67,7 +67,7 @@ beforeAll(async () => {
   if (!fs.existsSync(path.join(tts, 'classpath.txt'))) spawnSync(path.join(tts, 'setup.sh'), { encoding: 'utf8' });
   server = await startServer();
   api = client(server.url);
-  const c = await fetch(`${server.url}/api/git`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ actor: 'shared.checker', target: 'temporal', environment: 'test' }) });
+  const c = await api.put('/api/git', { actor: 'shared.checker', target: 'temporal', environment: 'test' });
   expect(c.status).toBe(200);
   shipped = (await api.get(`/api/tenants/${TENANT}/configuration`)).data.configurationSet;
 
@@ -107,6 +107,9 @@ async function publishLimit(version: string, value: number, validFrom?: string) 
   }
   const saved = await api.post(`/api/tenants/${TENANT}/configuration`, { actor: MAKER, yaml: toYaml(c) });
   expect(saved.status, JSON.stringify(saved.data)).toBe(200);
+  // The bank approver makes it the version the runtime is given (R-11-31).
+  const approved = await api.post('/api/publish', { tenant: TENANT, key: saved.data.draft.key, checker: 'example.checker' });
+  expect(approved.status, JSON.stringify(approved.data).slice(0, 400)).toBe(200);
   shipped = c;
   const onBranch = server.fake.files(server.repo, 'main')[`content-configurations/banks/${TENANT}/configuration-sets/${version}.yaml`];
   expect(onBranch, 'the configuration set is on the branch').toContain(`value: ${value}`);

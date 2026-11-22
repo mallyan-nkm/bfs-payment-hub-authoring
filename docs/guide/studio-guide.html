@@ -287,21 +287,24 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p class="lede">Read this once. Come back to it when a step mentions a word you do not know; the <a href="#glossary">glossary</a> has the short versions.</p>
 
   <h3 id="tenants">Tenants, users and maker-checker</h3>
-  <p>One studio serves several banks. Each bank is a <b>tenant</b>. The <b>owner</b> tenant holds shared content: the platform and the schemes. A bank reads shared content and never changes it; it sets its own configuration values and writes hooks. The header has two selectors, <span class="ui">Tenant</span> and <span class="ui">Acting as</span>. Everything you do is done as that user in that tenant, and roles are enforced.</p>
+  <p>One studio serves several banks. Each bank is a <b>tenant</b>. The <b>owner</b> tenant holds shared content: the platform and the schemes. A bank reads shared content and never changes it; it sets its own configuration values and writes hooks. You <b>sign in</b> to the studio, with the studio's own identity provider (for local work and training, the built-in development sign-in lists the users). Everything you do is done as that user, in that user's tenant, and the server checks every change against one permission table. To act as another user, <span class="ui">Sign out</span> and sign in as them. The studio's sign-in is separate from the runtime's: a runtime token is never accepted.</p>
   <div class="table"><table>
     <thead><tr><th>User</th><th>Tenant</th><th>Role</th><th>May</th></tr></thead>
     <tbody>
-      <tr><td><code>shared.designer</code></td><td>owner</td><td>shared designer</td><td>Author shared content</td></tr>
-      <tr><td><code>shared.checker</code></td><td>owner</td><td>shared checker</td><td>Approve and publish shared content; retire releases</td></tr>
+      <tr><td><code>shared.designer</code></td><td>owner</td><td>workflow designer, workflow developer</td><td>Compose workflows and schemes, and build the blocks they use</td></tr>
+      <tr><td><code>workflow.designer</code></td><td>owner</td><td>workflow designer</td><td>Compose workflows, subflows and schemes from existing blocks, with no code; lands on the workflow designer</td></tr>
+      <tr><td><code>workflow.developer</code></td><td>owner</td><td>workflow developer</td><td>Build activities, scripts, native bindings, ports, rules, tables, simulators, extensions; lands on the artefact editors</td></tr>
+      <tr><td><code>shared.checker</code></td><td>owner</td><td>platform approver</td><td>Approve shared change sets as versions; retire releases; waive</td></tr>
       <tr><td><code>shared.auditor</code></td><td>owner</td><td>auditor</td><td>Read only</td></tr>
       <tr><td><code>service.operations</code></td><td>owner</td><td>service operations</td><td>Retire releases, import in-flight counts</td></tr>
-      <tr><td><code>example.maker</code></td><td>example-bank</td><td>bank designer</td><td>Author the bank's content and configuration</td></tr>
-      <tr><td><code>example.checker</code></td><td>example-bank</td><td>bank checker</td><td>Approve the bank's content</td></tr>
+      <tr><td><code>users.admin</code>, <code>users.approver</code></td><td>owner</td><td>administrator</td><td>Change the users and roles: one proposes, the other approves</td></tr>
+      <tr><td><code>example.maker</code></td><td>example-bank</td><td>bank configurator</td><td>The bank's hooks, rules, dials, simulators, bindings and test bench, in scope <code>b</code> only; lands on the bank workspace</td></tr>
+      <tr><td><code>example.checker</code></td><td>example-bank</td><td>bank approver</td><td>Approve the bank's change sets as versions</td></tr>
       <tr><td><code>example.auditor</code></td><td>example-bank</td><td>auditor</td><td>Read only</td></tr>
-      <tr><td><code>second.maker</code>, <code>second.checker</code></td><td>second-bank</td><td>bank designer, checker</td><td>Only their own bank</td></tr>
+      <tr><td><code>second.maker</code>, <code>second.checker</code></td><td>second-bank</td><td>bank configurator, bank approver</td><td>Only their own bank</td></tr>
     </tbody>
   </table></div>
-  <p><b>Maker-checker.</b> Whoever makes a change never approves it. Every publish needs a different user with the checker role, and every save, approval and refusal goes into a hash-chained audit log.</p>
+  <p><b>Maker-checker.</b> A maker's saves need no approval. A change set becomes a version, the thing that is exported, only when an approver for its area approves it, and the approver is never one of its makers. Every save, approval and refusal goes into a hash-chained audit log.</p>
 
   <h3 id="names">Names, scopes and releases</h3>
   <p>Every artefact name is <code>&lt;scope&gt;.&lt;type&gt;.&lt;name&gt;.v&lt;major&gt;</code>, for example <code>uae.p.validate.iban.v1</code>.</p>
@@ -397,7 +400,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <li><b>Editing.</b> The <span class="ui">Workflow YAML</span> on the left and the <span class="ui">Canvas</span> on the right edit the same document. On the canvas: <span class="ui">+ Add a step</span>, move up and down, cut, delete, branches, loops, a deadline lane and a finally lane. <span class="ui">Outline</span> lists the steps; <span class="ui">Expanded form</span> shows what engines run.</li>
     <li><b>Checks.</b> Every static check runs as you type, reported at the authored step.</li>
     <li><b>Interface and release.</b> What changed in the interface, and the release that implies.</li>
-    <li><b>Save and publish.</b> <span class="ui">Save draft as</span> you, <span class="ui">Submit for review</span>, choose a <span class="ui">Checker</span>, then <span class="ui">Publish as</span> that checker. If other drafts must go with it, the panel lists them first.</li>
+    <li><b>Save and release.</b> <span class="ui">Save draft</span> (no approval needed), then <span class="ui">Request release</span>. An approver for the area who is not a maker signs in and clicks <span class="ui">Approve as version</span>. If other drafts must go with it, the panel lists them first.</li>
   </ul>
 
   <h3 id="f-editors">Artefact editors</h3>
@@ -443,9 +446,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h3 id="f-import">Import</h3>
   <p>Brings a scheme in from its source code. An AI coding agent, given the source and the <b>extraction prompt</b> (<span class="ui">Download the extraction prompt</span> on the page, or <code>docs/import/EXTRACTION-PROMPT.md</code>), writes an <b>extraction bundle</b>: the studio's own documents, scripts-behind, synthetic samples, tests, a bank's configuration, an inventory of every file and every unit of the source with where each went, and findings (differences between code and spec, questions, error scenarios). The agent checks its bundle with <code>npm run studio -- import &lt;bundle&gt;</code> until it reports no errors.</p>
   <ul>
-    <li><span class="ui">Choose a bundle zip</span>, or <span class="ui">Use the training bundle</span> (the factory WPS scheme extracted as <code>uae.wpsx</code>). Choose the <span class="ui">Bank tenant</span> if the bundle has bank content.</li>
+    <li><span class="ui">Choose a bundle zip</span>, or <span class="ui">Use the training bundle</span> (the factory WPS scheme extracted as <code>uae.wpsx</code>). A platform user imports the shared part; a bank part (scope <code>b</code>, configuration sets) is left for that bank, whose configurator imports it once the shared part is a version.</li>
     <li><span class="ui">Preview</span> shows what the bundle holds; the coverage of the source (every file inventoried or excluded with a reason; a file in neither is an error); what was retired, sent to infrastructure, or left unmapped for the expert; the findings; every check (schemas, the static checks, no personal data, no bank name in shared content, scripts inside the injected interface, every document explained by the source, a changed published block given a new release); and the bundle's tests, run against the bundle itself before anything is saved.</li>
-    <li><span class="ui">Import as drafts</span> saves everything as drafts (an unchanged block is reused, not saved again), with provenance naming the source and its revision. Nothing is published: a checker approves each change set in <span class="ui">Governance</span>. An actor who may not author is refused before anything is saved.</li>
+    <li><span class="ui">Import as drafts</span> saves everything as drafts (an unchanged block is reused, not saved again), with provenance naming the source and its revision. Nothing is published: an approver approves each change set as a version in <span class="ui">Governance</span>. A user who may not author a document of the bundle is refused before anything is saved.</li>
   </ul>
 
   <h3 id="f-bench">Test bench</h3>
@@ -472,7 +475,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>The 50 scenarios every engine must reproduce, one per construct of the language: sequence, handlers, switch, parallel, loops, retry, timeouts, awaits, composites, hooks, signals, pins, supersession and more. <span class="ui">Run all 50</span>, filter by <span class="ui">Construct</span>, or run one and read its expected and actual traces.</p>
 
   <h3 id="f-tenant">Tenant</h3>
-  <p>A bank's own settings. Choose a bank tenant and a bank designer in the header.</p>
+  <p>A bank's own settings, for its Bank Configurator and Bank Approver. A Bank Configurator lands on the <span class="ui">Bank workspace</span>: its hooks, rules, dials, simulators, hook bindings, and the test bench for every workflow the bank can configure, run with the bank's configuration. A saved configuration set is a draft until the Bank Approver approves it as a version.</p>
   <ul>
     <li><span class="ui">Configuration set</span>, <span class="ui">Parameters</span> and <span class="ui">Hook points</span>: what the bank has set and bound now.</li>
     <li><span class="ui">Edit the configuration set</span>: the YAML, <span class="ui">Bump the release</span>, <span class="ui">Reset</span>, and <span class="ui">Save the configuration set</span>. Values outside their bounds are refused, and a changed set needs a later release.</li>
@@ -489,8 +492,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="table"><table>
     <thead><tr><th>Tab</th><th>What it does</th></tr></thead>
     <tbody>
-      <tr><td>Review and approve</td><td>The tenant's drafts with their errors, state, and what each would publish with. Submit, approve as a checker, delete</td></tr>
-      <tr><td>Users and roles</td><td>Who may do what, and the permission check for any user, action and tenant</td></tr>
+      <tr><td>Review and approve</td><td>The tenant's drafts with their errors, state, and what each would publish with. A maker requests the release; an approver approves the change set as a version; a maker deletes</td></tr>
+      <tr><td>Users and roles</td><td>The users, the permission table, and the permission check for any user, action, kind and scope</td></tr>
       <tr><td>Pins, retirement, propagation</td><td>Who pins a release, in-flight counts, retiring a release, and which workflows a patch should propagate to</td></tr>
       <tr><td>Supersessions</td><td>Draft a supersession of a release in flight, test it, and hand it over to operations</td></tr>
       <tr><td>Packs</td><td>Build and download a pack; its release gate</td></tr>
@@ -521,7 +524,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 <!-- ============================================================ 5 -->
 <section class="part" id="train">
   <h2>5. Training path</h2>
-  <p class="lede">Twelve exercises in the web app. Unless an exercise says otherwise, act as tenant <b>owner</b> and user <b>shared.designer</b>.</p>
+  <p class="lede">Twelve exercises in the web app. Unless an exercise says otherwise, sign in as <b>shared.designer</b>.</p>
 
   <h3>1. Find your way around (10 minutes)</h3>
   <ol class="steps">
@@ -553,7 +556,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 
   <h3>4. A whole payment, end to end (15 minutes)</h3>
   <ol class="steps">
-    <li><span class="ui">Target</span> <code>p.wf.corporate.v1</code>, <span class="ui">Tenant for the run</span> <code>example-bank</code>.</li>
+    <li>Sign in as <code>example.maker</code> (a bank runs with its own configuration only). <span class="ui">Target</span> <code>p.wf.corporate.v1</code>, <span class="ui">Tenant for the run</span> <code>example-bank</code>.</li>
     <li>Bind with scenario <code>accept</code>: <code>p.port.core-banking.v1</code>, <code>p.port.sanctions.v1</code>, <code>p.port.fraud.v1</code> (each to the <code>p.sim</code> of the same name), <code>uae.wps.port.wps.v1</code> to <code>uae.wps.sim.wps-outward.v1</code>, and <code>uae.p.port.calendar.v1</code> to <code>uae.p.sim.calendar.v1</code>.</li>
     <li><span class="ui">Inbound sample</span> <code>samples/wps-sif-valid.sif</code>, <span class="ui">Start message</span> <code>uae.wps.sif</code>. <span class="ui">Run the bench</span>.</li>
   </ol>
@@ -567,9 +570,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <ol class="steps">
     <li>In <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, and paste the rule below.</li>
     <li>Read the <span class="ui">Gates</span>. Change the second example's amount to <code>5</code> and watch it go red; change it back.</li>
-    <li><span class="ui">Save draft as shared.designer</span>, then <span class="ui">Submit for review</span>.</li>
-    <li>Choose <span class="ui">Checker</span> <code>shared.auditor</code> and publish: refused, an auditor is not a checker.</li>
-    <li>Choose <code>shared.checker</code> and <span class="ui">Publish as shared.checker</span>.</li>
+    <li><span class="ui">Save draft</span>, then <span class="ui">Request release</span>. There is no approve button for you: a maker holds no approver right.</li>
+    <li>Sign in as <code>shared.auditor</code>: it may read the draft but not approve it.</li>
+    <li>Sign in as <code>shared.checker</code>, open <span class="ui">Governance</span> and click <span class="ui">Approve as version</span>.</li>
     <li>Edit the title, keep release <code>1.0.0</code>, save and publish again: refused, a published release never changes. Make it <code>1.0.1</code> and it publishes.</li>
     <li>In <span class="ui">Governance</span>, <span class="ui">Audit log</span>, find every step and click <span class="ui">Verify the chain</span>.</li>
   </ol>
@@ -612,18 +615,18 @@ provenance:
   status: provisional
   clauses:
     - Training exercise</pre></div></details>
-  <div class="see"><code>Change set CS-…-001 published</code>, maker <code>shared.designer</code>, checker <code>shared.checker</code>.</div>
+  <div class="see"><code>Change set CS-…-001 approved as a version</code>, maker <code>shared.designer</code>, checker <code>shared.checker</code>.</div>
 
   <h3>7. Tenancy and roles (10 minutes)</h3>
   <ol class="steps">
-    <li>Switch to tenant <code>example-bank</code>, user <code>example.maker</code>. Shared content is read only.</li>
-    <li>Try to save a rule named <code>uae.wps.rule.my-copy.v1</code>: refused, a bank may author only in scope <code>b</code>.</li>
-    <li>Switch to <code>example.auditor</code>: the header shows <i>read and review only</i>. The <span class="ui">Acting as</span> list offers only the tenant's own users.</li>
+    <li>Sign in as <code>example.maker</code>: you land on the bank workspace. Shared content is read only.</li>
+    <li>Try to save a rule named <code>uae.wps.rule.my-copy.v1</code>: refused (403), a bank may author only in scope <code>b</code>. A workflow, a scheme or a port is refused even in scope <code>b</code>.</li>
+    <li>Sign in as <code>example.auditor</code>: it reads, and every change is refused. Nobody of <code>example-bank</code> sees or changes <code>second-bank</code>.</li>
   </ol>
 
   <h3>8. Change a bank's configuration (25 minutes)</h3>
   <ol class="steps">
-    <li>As <code>example-bank</code> / <code>example.maker</code>, open <span class="ui">Tenant</span>. Read the enabled rails, the hook bindings and the limits.</li>
+    <li>Signed in as <code>example.maker</code>, open <span class="ui">Tenant</span>. Read the enabled rails, the hook bindings and the limits. After each save in this exercise, sign in as <code>example.checker</code> and <span class="ui">Approve as version</span> the configuration in <span class="ui">Governance</span>.</li>
     <li><span class="ui">Bump the release</span> to <code>1.1.0</code>, set <code>p.table.rail-choice.v1#enabledRails</code> to <code>[]</code>, <span class="ui">Save the configuration set</span>. Repeat exercise 4: rejected at the route.</li>
     <li>Bump to <code>1.2.0</code>, put <code>uae.wps</code> back and delete the <code>p.wf.corporate.v1#before-release</code> binding. Repeat exercise 4: settled, without <code>hook:continue</code>.</li>
     <li>Try <code>b.rule.internal-limit.v1#internalLimit</code> at <code>2000000</code>: refused, the rule's bound is 1000000.</li>
@@ -668,7 +671,7 @@ provenance:
   <h2>6. Build a full workflow</h2>
   <p class="lede">You will build a new scheme from nothing: its manifest and dispatch table, a port and simulator, maps with a script, a rule, an exchange with its subflow, and a leg that fills the corporate payment workflow's slot. Then you approve it, enable it for a bank, pay a file end to end, and deploy it.</p>
   <div class="note"><code>uae.demo</code> is a synthetic scheme made up for training. It stands for no real scheme, and its file format is invented: one <code>H</code> record (file reference, debtor routing code, currency, count, total) and one <code>D</code> record per credit (IBAN, amount).</div>
-  <p>Act as tenant <b>owner</b>, user <b>shared.designer</b>, until step 8. Each piece is written in the YAML pane of its editor: in the editor, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, replace the text with the document given, click <span class="ui">Done</span>, and read the form and the gates. Publishing always means: choose <span class="ui">Checker</span> <code>shared.checker</code>, then <span class="ui">Publish as shared.checker</span>.</p>
+  <p>Sign in as <b>shared.designer</b> until step 8. Each piece is written in the YAML pane of its editor: in the editor, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, replace the text with the document given, click <span class="ui">Done</span>, and read the form and the gates. Publishing always means: <span class="ui">Request release</span>, then sign in as <code>shared.checker</code>, open <span class="ui">Governance</span>, click <span class="ui">Approve as version</span> on the draft, and sign in as <code>shared.designer</code> again.</p>
 
   <h3>The pieces and how they connect</h3>
   <pre class="mermaid">flowchart TB
@@ -702,7 +705,7 @@ D,AE070331234567890123456,1000.00</pre></div></details>
 
   <h3>Step 2. A port and its simulator, one change set</h3>
   <ol class="steps">
-    <li><span class="ui">Artefact editors</span>, tab <span class="ui">Port</span>: write the port below, <span class="ui">Save draft as shared.designer</span>.</li>
+    <li><span class="ui">Artefact editors</span>, tab <span class="ui">Port</span>: write the port below, <span class="ui">Save draft</span>.</li>
     <li>Tab <span class="ui">Simulator</span>: write the simulator below, save it as a draft. It carries the eight standard scenarios.</li>
     <li>Still on the simulator, publish. The panel lists the port as going with it: each refers to the other, so they publish together.</li>
   </ol>
@@ -889,7 +892,7 @@ provenance:
 
   <h3>Step 4. The intake map and its script-behind</h3>
   <ol class="steps">
-    <li>Tab <span class="ui">Map</span>: write the intake map, <span class="ui">Save draft as shared.designer</span>.</li>
+    <li>Tab <span class="ui">Map</span>: write the intake map, <span class="ui">Save draft</span>.</li>
     <li>The <span class="ui">Script-behind</span> section appears because the map is bound to a script. Replace the starter with the script below and <span class="ui">Save the script as shared.designer</span>.</li>
     <li>Publish the map.</li>
   </ol>
@@ -1255,11 +1258,11 @@ provenance:
 
   <h3>Step 8. As the bank, enable the new rail</h3>
   <ol class="steps">
-    <li>Switch to tenant <code>example-bank</code>, user <code>example.maker</code>, and open <span class="ui">Tenant</span>.</li>
+    <li>Sign in as <code>example.maker</code>, and open <span class="ui">Tenant</span>.</li>
     <li><span class="ui">Bump the release</span>. In the YAML, add <code>{ scope: uae.demo, release: 1.0.0 }</code> to <code>accepts</code>, and add <code>uae.demo</code> to the value of <code>p.table.rail-choice.v1#enabledRails</code>.</li>
-    <li><span class="ui">Save the configuration set</span>.</li>
+    <li><span class="ui">Save the configuration set</span>. Sign in as <code>example.checker</code> and <span class="ui">Approve as version</span> it in <span class="ui">Governance</span>; sign in as <code>example.maker</code> again.</li>
   </ol>
-  <div class="see"><code>Saved … config:example-bank@1.1.0 as example.maker.</code> Before this step, a payment in the new scheme is rejected at <code>route:no-match</code>: the bank had not enabled the rail.</div>
+  <div class="see"><code>Saved … config:example-bank@1.1.0 as example.maker, as a draft</code>, then <code>approved as a version by example.checker</code>. Before this step, a payment in the new scheme is rejected at <code>route:no-match</code>: the bank had not enabled the rail.</div>
 
   <h3>Step 9. Pay a file end to end</h3>
   <ol class="steps">
@@ -1271,7 +1274,7 @@ provenance:
 
   <h3>Step 10. Export for the bank</h3>
   <ol class="steps">
-    <li>Switch back to <code>owner</code> / <code>shared.designer</code>. <span class="ui">Export</span>: tick <code>p.wf.corporate.v1</code>, target <code>dtfx</code>, tenant <code>example-bank</code>, tick <span class="ui">With simulators</span>.</li>
+    <li>Still as <code>example.maker</code> (the bank exports its own package): <span class="ui">Export</span>, tick <code>p.wf.corporate.v1</code>, target <code>dtfx</code>, tenant <code>example-bank</code>, tick <span class="ui">With simulators</span>.</li>
     <li><span class="ui">Preview</span>, then <span class="ui">Download the zip</span>.</li>
   </ol>
   <div class="see">A worker <code>th-uae-demo</code> serving only <code>uae.demo</code> tasks, beside <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code> and <code>th-uae-wps</code>. The change sets you approved, listed by id.</div>

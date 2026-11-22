@@ -11,7 +11,7 @@ import { unzip } from '../src/export/zip.js';
 import { resolveSecret, resolveSecretSync, SecretUnavailable, SecretValue } from '../src/secrets/secrets.js';
 import { literalSecretsIn, literalSecretsInText } from '../src/secrets/scan.js';
 import { checkAll } from '../src/checks/checks.js';
-import { dispatch } from '../src/server/api.js';
+import { dispatchAs as dispatch } from './support/as-user.js';
 import { parseYaml } from '../src/core/yaml.js';
 import { toYaml } from '../src/core/yaml.js';
 import { freshEnv } from './helpers.js';

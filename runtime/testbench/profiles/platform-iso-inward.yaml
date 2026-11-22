@@ -1,0 +1,13 @@
+# A test bench profile (runtime/testbench/README.md): it fixes the engines, the database, the tenant, the bench and
+# the environment, so a user sends only data: testbench run --profile <name> --file <data>.
+kind: testbench-profile
+name: platform-iso-inward
+title: An ISO 20022 pacs.008 as the inward workflow's context, on the four engines, the store on PostgreSQL
+workflow: p.wf.inward.v1
+tenant: example-bank
+engines: [temporal, dtfx, elsa, flowable]
+reference: true
+databases: [PostgreSql]
+bench: platform-happy
+clock: { date: '2026-11-17' }
+environment: { temporal: test-server, flowable: container }

@@ -63,6 +63,10 @@ npm run test:e2e     # Playwright: a WPS file on the runtime's DTFx build, its h
 
 PUT, PATCH and DELETE are refused: a payment changes only through declared actions.
 
+## The test bench
+
+The same web app has a Test bench section (`src/testbench`, `#/testbench`) for testers, served by the test bench service (`runtime/tools/TransactHub.TestBench`, routes under `/testbench/api`; `testbench serve`). It needs the `Tester` role in the bank's role map. All three sections sign in once, as one public client, `transacthub-runtime-ui`: see `runtime/testbench/README.md`.
+
 ## The service console
 
 The same web app has a Service section for service engineers (R-06-25, R-09-39 to R-09-44; design: `spec/design/09-export-bindings.md`, section 9.12), served by its own API host, `runtime/src/TransactHub.Service.Api` (routes under `/service/api`, the built app at `/`). The app finds which APIs answer (`/ops/api`, `/service/api`, or both behind one gateway) and shows their sections. Its pages: Health, Content, Logs, Errors and runbooks, Actions, Backup and the Assistant. Every action asks for a reason and is a fact; a risky one waits for a ServiceApprover; every error shown links to its runbook (`#/service/errors/<code>`).

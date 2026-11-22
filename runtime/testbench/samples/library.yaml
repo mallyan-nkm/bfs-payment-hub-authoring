@@ -1,0 +1,177 @@
+# The test bench's sample library: ready synthetic data, tagged. Every file here was made by the builder
+# (testbench data build) and passes the synthetic-data check; none is real. A sample names the bench it is meant
+# for and the outcome the interpreter gives on it (the expect the suite and the UI use); a run may still choose
+# another bench. A sample with a build recipe is made when it is used, for the tenant of the run.
+# uae.wps is provisional (spec/CLAUDE.md): an outcome here is what the factory's provisional pack does, not a scheme rule.
+kind: testbench-library
+samples:
+  - id: wps-sif-happy
+    title: Salary file of one record, every party accepts, WPS acknowledges
+    file: wps/sif-happy.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: happy path
+    bench: wps-happy
+    expect: settled
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-all-engines-both-databases, wps-reference, wps-quick-dtfx]
+  - id: wps-sif-nak
+    title: The same salary file, refused by WPS (NAK)
+    file: wps/sif-happy.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: NAK
+    bench: wps-nak
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-sanctions-hit
+    title: The same salary file, sanctions screening hits
+    file: wps/sif-happy.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: sanctions hit
+    bench: sanctions-hit
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-duplicate-file
+    title: The same salary file again, the payment record has seen it
+    file: wps/sif-happy.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: duplicate file
+    bench: wps-duplicate
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-three-lines
+    title: Salary file of three records
+    file: wps/sif-three-lines.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: several records
+    bench: wps-happy
+    expect: settled
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-invalid-iban
+    title: Salary file whose first record's IBAN has wrong check digits
+    file: wps/sif-invalid-iban.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: invalid record
+    bench: wps-happy
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-bad-control-total
+    title: Salary file whose control total is not the sum of its records
+    file: wps/sif-bad-control-total.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: invalid control record
+    bench: wps-happy
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-bad-pay-period
+    title: Salary file whose first record's pay period ends before it starts
+    file: wps/sif-bad-pay-period.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: invalid record
+    bench: wps-happy
+    expect: rejected
+    profiles: [wps-all-engines, wps-all-engines-sqlserver, wps-reference]
+  - id: wps-sif-duplicate-person
+    title: Salary file whose second record repeats the first record's person id
+    file: wps/sif-duplicate-person.sif
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: duplicate ids
+    bench: wps-happy
+    expect: settled
+    profiles: [wps-all-engines, wps-reference]
+  - id: wps-sif-large-10000
+    title: Salary file of 10,000 records, built when used
+    build: { template: wps-sif, lines: 10000, seed: 10000, amounts: { min: 900, max: 25000 } }
+    kind: wps-sif
+    scheme: uae.wps
+    direction: outward
+    scenario: large file
+    bench: wps-happy
+    expect: settled
+    profiles: [wps-reference, wps-quick-dtfx]
+  - id: wps-pif-happy
+    title: Payment file (PIF) of two credits to this bank, every credit posts
+    file: wps/pif-happy.pif
+    kind: wps-pif
+    scheme: uae.wps
+    direction: inward
+    scenario: happy path
+    bench: wps-inward-happy
+    expect: settled
+    profiles: [wps-inward-all-engines, wps-inward-all-engines-sqlserver, wps-inward-reference]
+  - id: wps-pif-partial-returns
+    title: Payment file, one credit refused and returned, WPS accepts the returns file
+    file: wps/pif-happy.pif
+    kind: wps-pif
+    scheme: uae.wps
+    direction: inward
+    scenario: partial returns
+    bench: wps-inward-returns
+    expect: settled
+    profiles: [wps-inward-all-engines, wps-inward-all-engines-sqlserver, wps-inward-reference]
+  - id: wps-pif-all-returned
+    title: Payment file, every credit refused, the whole file returned
+    file: wps/pif-happy.pif
+    kind: wps-pif
+    scheme: uae.wps
+    direction: inward
+    scenario: all returned
+    bench: wps-inward-all-returned
+    expect: returned
+    profiles: [wps-inward-all-engines, wps-inward-reference]
+  - id: wps-pif-wrong-agent
+    title: Payment file addressed to another bank, built when used
+    build: { template: wps-pif, lines: 2, seed: 31, valueDate: '2026-11-18', inject: [wrong-agent] }
+    kind: wps-pif
+    scheme: uae.wps
+    direction: inward
+    scenario: wrong agent
+    bench: wps-inward-happy
+    expect: pending
+    profiles: [wps-inward-all-engines, wps-inward-reference]
+  - id: iso-pain001-salary
+    title: ISO 20022 pain.001 of two credit transfers, as the corporate workflow's context
+    file: iso/pain001-salary.xml
+    kind: pain.001
+    scheme: p
+    direction: outward
+    scenario: platform context
+    bench: platform-happy
+    expect: rejected
+    profiles: [platform-iso-outward]
+  - id: iso-pacs008-credit
+    title: ISO 20022 pacs.008 of one credit transfer, as the inward workflow's context
+    file: iso/pacs008-credit.xml
+    kind: pacs.008
+    scheme: p
+    direction: inward
+    scenario: platform context
+    bench: platform-happy
+    expect: failed
+    profiles: [platform-iso-inward]
+  - id: json-canonical-payment
+    title: A canonical JSON payment, as the corporate workflow's context
+    file: json/canonical-payment.json
+    kind: json
+    scheme: p
+    direction: outward
+    scenario: platform context
+    bench: platform-happy
+    expect: rejected
+    profiles: [platform-iso-outward]

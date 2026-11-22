@@ -61,7 +61,7 @@ export function GitBranch() {
 
       <h4>How the studio publishes</h4>
       <div className="stack">
-        <AsUser value={as} onChange={setAs} prefer={(u) => u.roles.includes('shared checker')} label="Act as" />
+        <AsUser value={as} onChange={setAs} prefer={(u) => u.roles.includes('platform approver') || u.roles.includes('service operations')} label="Changing as" />
         <label className="field"><span>Mode</span>
           <select value={form.mode} onChange={(e) => set('mode', e.target.value)} aria-label="Mode"><option value="commit">A commit per change set</option><option value="pull-request">A pull request per change set</option></select>
         </label>
