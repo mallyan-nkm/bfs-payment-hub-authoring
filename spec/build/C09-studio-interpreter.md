@@ -35,7 +35,7 @@ A story MAY start before its decision closes if it isolates the choice behind an
 
 ## Success for the component
 
-The interpreter produces the expected trace for all 50 scenarios of the conformance kit.
+The interpreter produces the expected trace for all 51 scenarios of the conformance kit.
 
 ## Stories
 
@@ -272,11 +272,12 @@ Size: 3 SP. Phase 2. Branch: `story/c09-s11-trace-deltas-and-claim-check`.
 **Definition of Done**
 
 - State holds header, facts and references only; each step's delta and the release that ran are recorded.
+- Amounts are exact decimals in rules, tables and scripts' money helpers, and are carried as the text received (R-02-17, R-04-23).
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- CK-CLAIM-01, CK-DELTA-01 and CK-TRACE-01 pass.
+- CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 and CK-MONEY-01 pass.
 
 ### C09-S12 Blocks, returns and the two traces
 

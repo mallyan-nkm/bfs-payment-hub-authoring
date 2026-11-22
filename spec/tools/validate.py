@@ -1100,6 +1100,93 @@ if dictionaries:
 else:
     err("L39", "factory/p/errors", "no error dictionary: the platform's errors have no entries")
 
+# ------------------------------------------------------------- exact money
+# L42 money is exact (R-02-17, R-04-23): no expression compares a difference with a fraction between 0 and 1 (a
+# floating-point tolerance, which exact decimals never need), and a number given in examples, parameter defaults
+# and bounds, configuration values and test cases has at most 15 significant digits (a longer amount is a string,
+# since a binary double cannot hold it).
+from decimal import Decimal as _Dec
+
+COMPARE = re.compile(r"(<=|>=|<|>)")
+FRACTION = re.compile(r"^\(?\s*0?\.\d*[1-9]\d*\s*\)?$")
+SPLIT = re.compile(r"\band\b|\bor\b|&&|\|\||,|=>")
+
+
+def significant(v):
+    """Significant digits of a number as JSON and YAML readers take it: a float by its shortest repr."""
+    t = format(_Dec(repr(v)) if isinstance(v, float) else _Dec(v), "f").lstrip("-")
+    if "." in t:
+        t = t.rstrip("0").rstrip(".")
+    return len(t.replace(".", "").lstrip("0"))
+
+
+def long_numbers(v, at=""):
+    if isinstance(v, bool):
+        return
+    if isinstance(v, (int, float)):
+        if significant(v) > 15:
+            yield at or "(value)", v
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield from long_numbers(x, "%s.%s" % (at, k) if at else str(k))
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            yield from long_numbers(x, "%s[%d]" % (at, i))
+
+
+def expressions(d):
+    """The expression strings of a rule or a table."""
+    out = []
+    for c in d.get("when") or []:
+        for k in ("having",):
+            if isinstance(c.get(k), str):
+                out.append(c[k])
+        for v in (c.get("let") or {}).values():
+            if isinstance(v, str):
+                out.append(v)
+        for k in ("match", "exists", "not", "all"):
+            if isinstance(c.get(k), dict) and isinstance(c[k].get("where"), str):
+                out.append(c[k]["where"])
+        q = c.get("query") or {}
+        if isinstance(q.get("match"), dict) and isinstance(q["match"].get("where"), str):
+            out.append(q["match"]["where"])
+    for i in d.get("inputs") or []:
+        if isinstance(i, dict) and isinstance(i.get("expression"), str):
+            out.append(i["expression"])
+    return out
+
+
+def tolerance(expr):
+    for part in SPLIT.split(expr):
+        sides = COMPARE.split(part)
+        for i in range(1, len(sides) - 1, 2):
+            left, right = sides[i - 1].strip(), sides[i + 1].strip()
+            for lit, other in ((right, left), (left, right)):
+                if FRACTION.match(lit) and re.search(r"[\w)\]]\s+-\s|[\w)\]]-[\w(]", other):
+                    return "%s %s %s" % (left, sides[i], right)
+    return None
+
+
+for path, d in docs:
+    kind = d.get("kind")
+    if kind in ("rule", "table"):
+        for e in expressions(d):
+            t = tolerance(e)
+            if t:
+                err("L42", path, "%s compares a difference with a tolerance (%s); amounts are exact decimals, compare them directly"
+                    % (d.get("name"), t))
+        for n, ex in enumerate(d.get("examples") or []):
+            for at, v in long_numbers(ex.get("given") or {}):
+                err("L42", path, "example %s gives %s = %r, more than 15 significant digits; write the amount as a decimal string"
+                    % (ex.get("name", n), at, v))
+    if kind in ("rule", "table", "activity"):
+        for pn, decl in (d.get("parameters") or {}).items():
+            if isinstance(decl, dict):
+                for at, v in long_numbers({k: decl.get(k) for k in ("default", "bounds") if k in decl}):
+                    err("L42", path, "parameter %s: %s = %r has more than 15 significant digits; write it as a decimal string" % (pn, at, v))
+    if kind in ("configuration-set", "test"):
+        for at, v in long_numbers({k: x for k, x in d.items() if k not in ("release", "dsl")}):
+            err("L42", path, "%s = %r has more than 15 significant digits; write the amount as a decimal string" % (at, v))
 # L43 (R-11-38) a leg fills the slot contract <slot>@<major> of a platform workflow: the workflow it names is a platform
 # workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions.
 # A distribution is built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts).

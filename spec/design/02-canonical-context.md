@@ -41,6 +41,10 @@ After intake, every block reads and writes one context expressed in ISO 20022 el
 
 Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch.currency`, `batch.categoryPurpose`, `batch.debtorAgent`, `batch.creditorAgent`.
 
+### Amounts
+
+An amount (`instructedAmount.value`, `controlSum`, an extension field of an ISO amount or decimal type, a parameter of type `amount` or `decimal`) is an exact decimal (Issue I-96). In canonical JSON it is either a decimal string, such as `"90071992547409.93"` (`^-?[0-9]+(\.[0-9]+)?$`), or a JSON number. Every reader takes a JSON number by its text, the shortest form that gives back the same binary value, so `0.1` is one tenth, never the binary value just above it. A number of at most 15 significant digits reads the same either way, so every document written before this rule keeps its meaning. A writer MUST write an amount of more than 15 significant digits as a decimal string, because a binary double cannot hold it: the studio's rule service, its script helpers and the interpreter do so, and an engine passes the text on untouched (R-09-47). Arithmetic on amounts is exact; it rounds only where a rule says so (`round2`, Part 4).
+
 ## 2.3 Requirements
 
 | Id | Requirement | Check |
@@ -61,6 +65,7 @@ Batch control elements: `batch.numberOfTransactions`, `batch.controlSum`, `batch
 | R-02-14 | `status` MUST use ISO payment status codes and ISO status reason codes; a scheme code MAY be carried beside the ISO code. | Rule finding schema (L00) |
 | R-02-15 | A block that works on a batch or on an item MUST declare `level`. | Schema `activity` (L00) |
 | R-02-16 | `header.tenant` MUST NOT be read by shared content to change behaviour. Tenant differences come from values and hooks. | Lint L09; review |
+| R-02-17 | An amount MUST be an exact decimal: carried in canonical JSON as a decimal string or as a JSON number read by its text, never by its binary value. An amount of more than 15 significant digits MUST be a decimal string. | Lint L42; conformance CK-MONEY-01; `studio/test/money.test.ts` |
 
 ## 2.4 The ISO data capability in the studio
 

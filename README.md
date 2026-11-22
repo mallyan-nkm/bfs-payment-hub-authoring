@@ -32,12 +32,12 @@ Then open http://localhost:4317. Choose the tenant (`owner` for shared content, 
 | Expansion of composite steps | Identical to `tools/expand.py` on the three reference workflows |
 | Rule and table examples | 60 of 60 |
 | Factory and bank test cases on the studio interpreter | 22 of 22 (`npm run studio -- test`) |
-| Conformance kit, studio interpreter | 50 of 50 |
-| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 50 of 50 |
-| Conformance kit, Flowable 7.1.0 with generated BPMN | 50 of 50 (I-49 done) |
-| Conformance kit, Elsa 3 | 50 of 50 |
+| Conformance kit, studio interpreter | 51 of 51 |
+| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 51 of 51 |
+| Conformance kit, Flowable 7.1.0 with generated BPMN | 51 of 51 (I-49 done) |
+| Conformance kit, Elsa 3 | 51 of 51 |
 | Flowable on its REST server, production mode (async executor on, real time) | The WPS salary file settles on the store on PostgreSQL and SQL Server; a real timeout, a crashed worker and a dead letter (`e2e-wps-flowable-production.test.ts`, Issues I-53 to I-55) |
-| Conformance kit, Temporal (time-skipping test server) | 50 of 50 |
+| Conformance kit, Temporal (time-skipping test server) | 51 of 51 |
 | Engine bindings regenerated from the packs | 3 of 3 identical to `spec/examples/bindings` |
 | Generated samples, each proved valid or failing with its labelled code | 7 of 7 |
 | Static checks over the spec | 0 errors; warnings from the checks built here (L19, L21, L22, L25) |
@@ -69,7 +69,7 @@ The spec's process is one story per branch and pull request, each reviewed. This
 | C18 Hooks and configuration sets | Done: hooks at hook points, configuration editing with bounds and overlap checks, compatibility run, tenant export |
 | C19 Packs, release, retirement, supersession | Done: pack build, review and approval with green tests, release gate, retirement against pins and an in-flight import, supersession draft, evidence and hand-over |
 | C20 Exporter and Temporal binding | Packages and binding done (expanded forms, pins, `name@release`, a separate worker per task queue, a deploy runner on DTFx). The Temporal run of the kit (C20-S2 to S4) is not built |
-| C21 DTFx | Done: 50 of 50 on DTFx |
+| C21 DTFx | Done: 51 of 51 on DTFx |
 | C22 Flowable | Done: generated BPMN runs on Flowable; patterns and engine gaps recorded in Part 9, section 9.7; L24 uses the portability report |
 | C23 Conformance kit and runner | Done: kit content in `ck`, the adapter interface, a reference adapter, the release-gate report with waivers |
 | C24 to C26 Factory content | Partly: samples for every test, six scripts-behind, WPS-IN-001 fixed (C25-S4). Confirming against the rulebooks and the planned message groups wait on D10 and business decisions; see `docs/ISSUES.md` |

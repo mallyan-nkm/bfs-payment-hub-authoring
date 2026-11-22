@@ -366,6 +366,11 @@ function checkExtras(sc: any, exp: any, obs: KitObservation, res: KitResult) {
     const rec = root.steps.find((s) => s.step === c.notBefore.step);
     add(`${c.notBefore.step} starts after resume`, durationMs(c.notBefore.at), rec?.startedAt, (rec?.startedAt ?? -1) >= durationMs(c.notBefore.at));
   }
+  // R-02-17: each amount the engine carried or wrote has exactly the decimal text expected.
+  if (c.amounts) for (const [p, want] of Object.entries<string>(c.amounts)) {
+    const got = getPath(root.ctx, p);
+    add(`amount ${p}`, want, got, got !== undefined && got !== null && String(got) === want);
+  }
   if (c.unchanged) add(`${c.unchanged} unchanged`, undefined, getPath(root.ctx, c.unchanged), getPath(root.ctx, c.unchanged) === undefined);
 }
 

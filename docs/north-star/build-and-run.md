@@ -57,7 +57,7 @@ npm run test:blackbox                     # API, command line, web app in Chromi
 | `npm test` | 223 pass, 1 skipped |
 | `npm run typecheck` | No errors |
 | `studio -- test` | 19 of 19 |
-| `studio -- kit` | 50 of 50 |
+| `studio -- kit` | 51 of 51 |
 | `studio -- check` | 0 errors, 13 warnings |
 | `studio -- seed-content` | 163 of 163 seeded files current |
 | `npm run test:blackbox` | Not run here |
@@ -112,10 +112,10 @@ npx tsx engines/flowable/run-kit.ts
 
 | Ran here | Result |
 | --- | --- |
-| DTFx | 50 of 50, about 4 minutes |
-| Elsa | 50 of 50, about 5 minutes |
-| Temporal | 50 of 50, about 8 minutes (the adapter runs CK-FOREACH-02 on a real dev server, as its README says) |
-| Flowable | 50 of 50, about 26 minutes on a shared machine (7 on its own, as its README says) |
+| DTFx | 51 of 51, about 4 minutes |
+| Elsa | 51 of 51, about 5 minutes |
+| Temporal | 51 of 51, about 8 minutes (the adapter runs CK-FOREACH-02 on a real dev server, as its README says) |
+| Flowable | 51 of 51, about 26 minutes on a shared machine (7 on its own, as its README says) |
 
 ## The runtime
 

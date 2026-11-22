@@ -5,6 +5,8 @@ import { compareReleases, parseName, parseRelease } from '../core/names.js';
 import { coveredByAny } from '../core/paths.js';
 import { analyseTable, runTable } from '../rules/service.js';
 import { lintScript } from '../interp/sandbox.js';
+import { parse, type Node } from '../rules/expr.js';
+import { NUMBER_DIGITS, significantDigits } from '../core/decimal.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { addDuration, durationMs } from '../core/duration.js';
 import { callsComposite, checkExpanded, expandWorkflow } from '../core/expand.js';
@@ -66,6 +68,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
   L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
   L41: 'A published release never changes once seeded',
+  L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
   L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
   L44: 'Every parameter declares its type and a default within its own bounds',
 };
@@ -244,6 +247,7 @@ export class Checker {
         if (m?.fact === 'Param' && !declared.has(m.as)) err('L17', `Uses parameter ${m.as} but does not declare it`);
       }
     }
+    if (['rule', 'table', 'activity', 'configuration-set', 'test'].includes(kind)) for (const m of moneyIssues(d)) err('L42', m);
     if (kind === 'ruleset') this.checkRuleSet(d, err);
     if (kind === 'table') this.checkTable(d, err, warn);
     if (kind === 'activity') this.checkActivity(d, err, warn);
@@ -737,6 +741,72 @@ export class Checker {
 }
 
 /** What an exported workflow or hook must pin: its closure of blocks, rules and segments. Legs and ports are pinned on their own. */
+// ------------------------------------------------------------- exact money
+
+/** The expressions of a rule or a table. */
+function ruleExpressions(d: any): string[] {
+  const out: string[] = [];
+  for (const c of d.when ?? []) {
+    if (typeof c.having === 'string') out.push(c.having);
+    for (const v of Object.values(c.let ?? {})) if (typeof v === 'string') out.push(v);
+    for (const k of ['match', 'exists', 'not', 'all']) if (typeof c[k]?.where === 'string') out.push(c[k].where);
+    if (typeof c.query?.match?.where === 'string') out.push(c.query.match.where);
+  }
+  for (const i of d.inputs ?? []) if (typeof i?.expression === 'string') out.push(i.expression);
+  return out;
+}
+
+/** A comparison of a difference with a fraction between 0 and 1: a floating-point tolerance. */
+function tolerance(n: Node): boolean {
+  const hasMinus = (x: Node): boolean => (x.t === 'bin' && (x.op === '-' || hasMinus(x.l) || hasMinus(x.r))) || (x.t === 'call' && x.args.some(hasMinus)) || (x.t === 'un' && hasMinus(x.e));
+  const fraction = (x: Node) => x.t === 'num' && x.v > 0 && x.v < 1;
+  const walk = (x: Node): boolean => {
+    switch (x.t) {
+      case 'bin':
+        if (['<', '<=', '>', '>='].includes(x.op) && ((fraction(x.r) && hasMinus(x.l)) || (fraction(x.l) && hasMinus(x.r)))) return true;
+        return walk(x.l) || walk(x.r);
+      case 'un': return walk(x.e);
+      case 'call': return x.args.some(walk);
+      case 'lambda': return walk(x.body);
+      case 'list': return x.items.some(walk);
+      default: return false;
+    }
+  };
+  return walk(n);
+}
+
+function* longNumbers(v: any, at = ''): Generator<[string, number]> {
+  if (typeof v === 'number') { if (significantDigits(v) > NUMBER_DIGITS) yield [at || '(value)', v]; }
+  else if (Array.isArray(v)) for (let i = 0; i < v.length; i++) yield* longNumbers(v[i], `${at}[${i}]`);
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) yield* longNumbers(x, at ? `${at}.${k}` : k);
+}
+
+/** L42 (R-02-17, R-04-23): no floating-point tolerance in a rule; no number a double cannot hold where an amount may be. */
+export function moneyIssues(d: any): string[] {
+  const out: string[] = [];
+  if (d.kind === 'rule' || d.kind === 'table') {
+    for (const e of ruleExpressions(d)) {
+      let n: Node | undefined;
+      try { n = parse(e); } catch { continue; }
+      if (tolerance(n)) out.push(`${e} compares a difference with a tolerance; amounts are exact decimals, compare them directly`);
+    }
+    (d.examples ?? []).forEach((ex: any, i: number) => {
+      for (const [at, v] of longNumbers(ex?.given ?? {})) out.push(`Example ${ex?.name ?? i} gives ${at} = ${v}, more than ${NUMBER_DIGITS} significant digits; write the amount as a decimal string`);
+    });
+  }
+  if (['rule', 'table', 'activity'].includes(d.kind)) {
+    for (const [pn, decl] of Object.entries<any>(d.parameters ?? {})) {
+      if (!decl || typeof decl !== 'object') continue;
+      for (const [at, v] of longNumbers({ default: decl.default, bounds: decl.bounds })) out.push(`Parameter ${pn}: ${at} = ${v} has more than ${NUMBER_DIGITS} significant digits; write it as a decimal string`);
+    }
+  }
+  if (d.kind === 'configuration-set' || d.kind === 'test') {
+    const { release: _r, dsl: _d, ...rest } = d;
+    for (const [at, v] of longNumbers(rest)) out.push(`${at} = ${v} has more than ${NUMBER_DIGITS} significant digits; write the amount as a decimal string`);
+  }
+  return out;
+}
+
 export function pinnable(c: Checker, d: any): string[] {
   const out = new Set<string>();
   const visit = (doc: any) => {

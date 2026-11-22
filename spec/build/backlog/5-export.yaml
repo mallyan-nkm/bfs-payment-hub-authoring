@@ -147,7 +147,7 @@ components:
   - id: C23
     title: Conformance kit and runner
     phase: 2
-    purpose: Hold the 50 scenarios as content, run them on any target through an adapter, and report the result so a release can be gated on it.
+    purpose: Hold the 51 scenarios as content, run them on any target through an adapter, and report the result so a release can be gated on it.
     design: [Annex C, Part 9]
     schemas: [test-case, workflow]
     dependsOn: [C01, C02]
@@ -158,7 +158,7 @@ components:
         sp: 5
         story: As a platform engineer, I want each scenario of the kit backed by a small workflow, simulators and an expected trace in the reserved cluster ck, so that the kit is content like any other.
         dod:
-          - All 50 scenarios of conformance/kit.yaml have their artefacts under scope ck and validate.
+          - All 51 scenarios of conformance/kit.yaml have their artefacts under scope ck and validate.
           - The ck scope is refused in any shared or bank pack.
         dos: The kit pack validates, and every scenario id in conformance/kit.yaml has a workflow and an expected trace.
       - id: C23-S2
@@ -170,7 +170,7 @@ components:
           - An adapter interface starts an instance, delivers a message, sends a signal, advances time and reads the trace.
           - The comparison is on the business trace, the detail of composite steps, attempts and messages, never on engine history.
           - A reference adapter replays the expected traces, so the runner is tested before any target exists.
-        dos: The runner reports 50 of 50 on the reference adapter, and a trace with one changed outcome is reported at the step that differs.
+        dos: The runner reports 51 of 51 on the reference adapter, and a trace with one changed outcome is reported at the step that differs.
       - id: C23-S3
         title: Report for the release gate
         sp: 1

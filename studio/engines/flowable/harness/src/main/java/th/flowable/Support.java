@@ -1,6 +1,8 @@
 package th.flowable;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -32,8 +34,13 @@ import java.util.regex.Pattern;
 
 /** Small pieces the harness needs: JSON paths, the virtual clock, the business calendar, the party client. */
 final class Support {
-    static final ObjectMapper M = new ObjectMapper();
-    static final JsonNodeFactory F = JsonNodeFactory.instance;
+    // Amounts are exact (R-02-17, R-09-47): a JSON number with a fraction is read as a BigDecimal with its own
+    // scale, never as a double, and written back as the same plain text.
+    static final JsonNodeFactory F = JsonNodeFactory.withExactBigDecimals(true);
+    static final ObjectMapper M = new ObjectMapper()
+        .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+        .enable(JsonGenerator.Feature.WRITE_BIGDECIMAL_AS_PLAIN)
+        .setNodeFactory(F);
 
     private Support() {}
 

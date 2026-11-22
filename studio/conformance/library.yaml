@@ -729,3 +729,138 @@ do:
     handle:
       refused: { return: rejected }
   - return: accepted
+---
+kind: activity
+name: ck.kit.validate.money.v1
+release: 1.0.0
+title: Kit money checks on exact decimals (R-04-23)
+type: validate
+level: batch
+reads: [header, batch, items, payment]
+writes: [facts.validation]
+outcomes:
+  - { name: pass, primary: true }
+  - { name: reject }
+effect: pure
+ruleSets: [ck.kit.ruleset.money.v1]
+implementation: { binding: builtin, service: rule-service }
+---
+kind: activity
+name: ck.kit.decide.money.v1
+release: 1.0.0
+title: Kit decision that writes amounts it computed (R-02-17)
+type: decide
+level: batch
+reads: [header, batch, items, payment]
+writes: [facts.money]
+outcomes:
+  - { name: decided, primary: true }
+  - { name: no-match }
+effect: pure
+ruleSets: [ck.kit.table.money.v1]
+implementation: { binding: builtin, service: rule-service }
+---
+kind: rule
+name: ck.kit.rule.control-total.v1
+release: 1.0.0
+title: The control total equals the exact sum of the lines
+ruleKind: cross-field
+level: batch
+repeatability: non-repeatable
+when:
+  - match: { fact: Batch, as: b }
+  - query: { as: items, match: { fact: Item, where: item.batchId == b.id }, collect: true }
+  - let: { total: "sum(items, i => i.payment.instructedAmount.value)" }
+  - having: total != b.controlSum
+then:
+  - yield:
+      finding: { severity: reject, path: batch.controlSum, reasonCode: AM10, message: "Control total {b.controlSum} does not equal the sum of lines {total}" }
+examples:
+  - name: passes
+    given:
+      Batch: { id: F-1, controlSum: 7894.87 }
+      Item:
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.1 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.2 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.05 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.2 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 2697.81 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 1395.44 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 3801.07 } } }
+    expect: { findings: [] }
+  - name: fails
+    given:
+      Batch: { id: F-1, controlSum: 7894.86 }
+      Item:
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.1 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.2 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.05 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 0.2 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 2697.81 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 1395.44 } } }
+        - { batchId: F-1, payment: { instructedAmount: { value: 3801.07 } } }
+    expect: { findings: [{ reasonCode: AM10 }] }
+---
+kind: rule
+name: ck.kit.rule.large-amount.v1
+release: 1.0.0
+title: An amount beyond the exact range of a double is computed exactly
+ruleKind: cross-field
+level: batch
+repeatability: non-repeatable
+when:
+  - match: { fact: Payment, as: p }
+  - let: { minor: p.instructedAmount.value * 100 }
+  - having: minor != 9007199254740993
+then:
+  - yield:
+      finding: { severity: reject, path: payment.instructedAmount.value, reasonCode: AM10, message: "Amount {p.instructedAmount.value} is {minor} in minor units" }
+examples:
+  - name: passes
+    given: { Payment: { instructedAmount: { value: "90071992547409.93" } } }
+    expect: { findings: [] }
+  - name: fails
+    given: { Payment: { instructedAmount: { value: "90071992547409.92" } } }
+    expect: { findings: [{ reasonCode: AM10 }] }
+---
+kind: rule
+name: ck.kit.rule.round-half-away.v1
+release: 1.0.0
+title: round2 rounds the exact decimal half away from zero
+ruleKind: cross-field
+level: batch
+repeatability: non-repeatable
+when:
+  - query: { as: items, match: { fact: Item }, collect: true }
+  - let: { small: "sumWhere(items, i => i.payment.instructedAmount.value < 0.1, i => i.payment.instructedAmount.value)" }
+  - having: round2(small * 2.5) != 0.13 or round2(0 - small * 2.5) != -0.13 or round2(small * 53.5) != 2.68
+then:
+  - yield:
+      finding: { severity: reject, path: "items[].payment.instructedAmount.value", reasonCode: AM10, message: "round2 of {small} is not half away from zero" }
+examples:
+  - name: passes
+    given: { Item: [ { payment: { instructedAmount: { value: 0.05 } } }, { payment: { instructedAmount: { value: 10 } } } ] }
+    expect: { findings: [] }
+  - name: fails
+    given: { Item: [ { payment: { instructedAmount: { value: 0.06 } } } ] }
+    expect: { findings: [{ reasonCode: AM10 }] }
+---
+kind: ruleset
+name: ck.kit.ruleset.money.v1
+release: 1.0.0
+title: Kit money checks
+mode: validation
+stages: [cross-field]
+rules: [ck.kit.rule.control-total.v1, ck.kit.rule.large-amount.v1, ck.kit.rule.round-half-away.v1]
+---
+kind: table
+name: ck.kit.table.money.v1
+release: 1.0.0
+title: Kit amounts computed for the context
+hitPolicy: first
+inputs:
+  - { name: total, expression: "sum(items, i => i.payment.instructedAmount.value)" }
+  - { name: debit, expression: payment.instructedAmount.value + 0.01 }
+outputs: [total, debit]
+rows:
+  - { when: {}, then: { total: total, debit: debit }, reason: Every file }

@@ -13,6 +13,11 @@ A Python script defines `def run(api)` and uses `api.ctx`, `api.ports`, `api.rul
 `api.clock`, `api.ids` and `api.log`. Either returns an outcome name, or an object with `outcome`
 and `reasonCode`.
 
+Money is exact (R-02-17, R-04-23): do sums and comparisons of amounts with `rules.money`
+(`api.rules.money` in Python), whose `add`, `sub`, `mul`, `div`, `sum`, `round2`, `cmp`, `eq` and
+`str` compute on exact decimals as the rule language does, never with `+` on JavaScript numbers or
+Python floats.
+
 A script sees only its declared reads, may change only its declared writes, and reaches outside
 only through its declared ports (Part 8, R-03-06, R-03-07). It may not use the network, the file
 system, the system clock, randomness or the environment. TypeScript runs in a `node:vm` context;

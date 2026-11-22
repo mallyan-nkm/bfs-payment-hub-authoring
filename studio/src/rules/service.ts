@@ -1,4 +1,4 @@
-import { compile, evaluate, evalExpr, interpolate, truthy, type Env } from './expr.js';
+import { compareValues, compile, evaluate, evalExpr, interpolate, plain, truthy, type Env } from './expr.js';
 
 // The rule service (Part 4; C06). One session per rule-set call; nothing survives the call.
 // NRules semantics: `when` matches facts and binds them; `then` yields findings, decisions or facts.
@@ -138,7 +138,7 @@ function paramFacts(rule: any, opts: SessionOptions, owner: string, overrides: R
 function bindingSummary(env: Binding): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(env)) {
-    if (typeof v !== 'function') out[k] = v;
+    if (typeof v !== 'function') out[k] = plain(v);
   }
   return out;
 }
@@ -175,12 +175,12 @@ function fireRule(rule: any, facts: Facts, opts: SessionOptions, paramOverrides:
       }
       if (y.decision) {
         const v = typeof y.decision.value === 'string' && y.decision.value.startsWith('=') ? evalExpr(y.decision.value.slice(1), env) : y.decision.value;
-        out.decisions.push({ rule: rule.name, name: y.decision.name, value: v, reason: y.decision.reason });
+        out.decisions.push({ rule: rule.name, name: y.decision.name, value: plain(v), reason: y.decision.reason });
       }
       if (y.fact) {
         const { type, ...rest } = y.fact;
         const value: any = {};
-        for (const [k, v] of Object.entries(rest)) value[k] = typeof v === 'string' && v.startsWith('=') ? evalExpr(v.slice(1), env) : v;
+        for (const [k, v] of Object.entries(rest)) value[k] = typeof v === 'string' && v.startsWith('=') ? plain(evalExpr(v.slice(1), env)) : v;
         out.newFacts.push({ type, value });
       }
     }
@@ -285,10 +285,11 @@ export function rowMatches(when: Record<string, any>, inputs: Record<string, any
     if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
       if ('in' in cond && !(cond.in as any[]).some((x) => JSON.stringify(x) === JSON.stringify(v))) return false;
       if ('not' in cond && JSON.stringify(cond.not) === JSON.stringify(v)) return false;
-      if ('lt' in cond && !(Number(v) < Number(cond.lt))) return false;
-      if ('lte' in cond && !(Number(v) <= Number(cond.lte))) return false;
-      if ('gt' in cond && !(Number(v) > Number(cond.gt))) return false;
-      if ('gte' in cond && !(Number(v) >= Number(cond.gte))) return false;
+      // Exact decimal comparison (R-04-23): a value that is not a number matches no bound.
+      if ('lt' in cond && !((compareValues(v, cond.lt) ?? 0) < 0)) return false;
+      if ('lte' in cond && !((compareValues(v, cond.lte) ?? 1) <= 0)) return false;
+      if ('gt' in cond && !((compareValues(v, cond.gt) ?? 0) > 0)) return false;
+      if ('gte' in cond && !((compareValues(v, cond.gte) ?? -1) >= 0)) return false;
       continue;
     }
     if (Array.isArray(cond)) {
@@ -306,7 +307,7 @@ export function runTable(table: any, facts: Facts, opts: SessionOptions, overrid
   const inputs: Record<string, any> = {};
   for (const i of table.inputs ?? []) {
     try {
-      inputs[i.name] = evaluate(compile(i.expression), env);
+      inputs[i.name] = plain(evaluate(compile(i.expression), env));
     } catch {
       inputs[i.name] = undefined;
     }

@@ -155,7 +155,7 @@ components:
     design: [Part 5, Part 6, Annex C]
     schemas: [workflow, hook, configuration-set, test-case]
     dependsOn: [C04, C06, C07, C10, C23]
-    dos: The interpreter produces the expected trace for all 50 scenarios of the conformance kit.
+    dos: The interpreter produces the expected trace for all 51 scenarios of the conformance kit.
     stories:
       - id: C09-S1
         title: Core flow
@@ -256,7 +256,8 @@ components:
         needs: [C09-S1]
         dod:
           - State holds header, facts and references only; each step's delta and the release that ran are recorded.
-        dos: CK-CLAIM-01, CK-DELTA-01 and CK-TRACE-01 pass.
+          - Amounts are exact decimals in rules, tables and scripts' money helpers, and are carried as the text received (R-02-17, R-04-23).
+        dos: CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 and CK-MONEY-01 pass.
       - id: C09-S12
         title: Blocks, returns and the two traces
         sp: 5
