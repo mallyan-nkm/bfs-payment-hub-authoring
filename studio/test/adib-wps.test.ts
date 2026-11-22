@@ -62,7 +62,7 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
     const cs = e.store.configurationSet(TENANT);
     expect(gov.checkConfiguration(e, TENANT, cs).filter((i) => i.severity === 'error')).toEqual([]);
     for (const v of cs.values) expect(e.store.doc(v.parameter.split('#')[0])?.parameters?.[v.parameter.split('#')[1]], v.parameter).toBeDefined();
-    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.3.0' }, { scope: 'uae.p', release: '1.3.0' }, { scope: 'uae.wps', release: '1.3.0' }]);
+    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.4.0' }, { scope: 'uae.p', release: '1.4.0' }, { scope: 'uae.wps', release: '1.4.0' }]);
     expect(Object.fromEntries(cs.values.map((v: any) => [v.parameter, v.value]))).toEqual({
       'p.table.rail-choice.v1#enabledRails': ['uae.wps'],
       'p.post.accounting.v1#vatPercent': 5,

@@ -188,6 +188,10 @@ CASES = [
     ("M65", "ERROR L46", "factory/uae.wps/workflows/uae.wps.sub.confirm-receipt.v1.yaml",
      "  - id: encrypt\n    call: p.protect.encrypt-file.v1\n    handle:\n      refused: { return: rejected }\n", "",
      "the receipt confirmation is sent unencrypted"),
+    # L47 (R-12-19, Issue I-133): the refund order's posting is the platform's; the WPS leg that fills its slot posts nothing
+    ("M66", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-request-in.v1.yaml",
+     "  - id: render-answer\n", "  - id: debit-employee\n    call: p.post.accounting.v1\n    handle:\n      rejected: { end: pending }\n      unknown: { end: pending }\n  - id: render-answer\n",
+     "the WPS leg posts the refund the platform workflow owns"),
 ]
 
 

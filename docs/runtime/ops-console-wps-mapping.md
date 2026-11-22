@@ -174,7 +174,7 @@ Screens inventoried: Banking Ops `features/reports/wps` (SIF Summary report, SIF
 | Per file type: RFA | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:rfaStatus | `step:return-credits.read-ack.outcome` | |
 | Per file type: RTC | mapped | uae.wps:uae.wps.wf.return-in.v1:employerCredit | `step:credit-employer.outcome` | |
 | Refund flows: RFR, RSU | mapped | uae.wps:uae.wps.wf.refund-out.v1:rfrStatus, settlement | `step:request.read-ack.outcome`, `step:request.read-settlement.outcome` | |
-| Refund flows: RRI, RRR, DCR | not mapped | | | No factory flow (`uae.wps.rrr` and `uae.wps.dcr` are planned messages; RRI is in no flow, plan P2) |
+| Refund flows: RRI, RRR, DCR | `p.view.operations.v1` 1.2.0 (group order: `originalPaymentId`, `fx`, `fxRate`, `fxAmount`, `refundCharge`, `refundChargeVat`, `approval`) and `uae.wps.view.operations.v1` 1.3.0 (legs `uae.wps.wf.refund-request-in.v1`: `dcrStatus`, `rrrStatus`; `uae.wps.wf.refund-request-refuse.v1`: `rrrStatus`) | | | A refund order on `p.wf.refund.v1` (R-12-19 to R-12-22, I-133). The source's maker and checker screens, its manual block and its balance enquiry runs have no field: the approval hold stands for them (I-134) |
 | Returned | mapped | uae.wps:uae.wps.wf.agent-payment-in.v2:returnsCount | `step:returns.writes.facts.returns.count` | |
 | Returned amount | mapped, empty | uae.wps:uae.wps.wf.agent-payment-in.v2:returnsAmount | `step:returns.writes.facts.returns.amount` | The returns table yields no amount yet (plan P2, RFA) |
 | Sanction completed, failed, confirmed | mapped | p:subject:sanctions, p:subject:lastOutcome | `step:sanctions.outcome`, `subject.lastOutcome` | Per payment; the counts are the list filtered |

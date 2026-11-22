@@ -1,6 +1,6 @@
 kind: scheme
 scope: uae.wps
-release: 1.1.0
+release: 1.2.0
 title: UAE Wages Protection System
 wire: file
 messages:
@@ -27,7 +27,7 @@ messages:
     confirmed: true
     disposition:
       # The front door reads the acknowledged file's family from the ACK or NAK file's name (Issue I-41).
-      deliver: { correlateBy: file id, families: [sif, rfr, prc, dif, rfa] }
+      deliver: { correlateBy: file id, families: [sif, rfr, prc, dif, rfa, dcr, rrr] }
   - id: uae.wps.pif
     title: Payment information file, one per agent
     direction: in
@@ -57,12 +57,15 @@ messages:
     confirmed: true
     disposition:
       sentBy: uae.wps.exchange.send-disbursement-file.v1
+  # Release 1.2.0 (R-12-21): the agent's refund cycle, the source's RRI flow. WPS asks the agent bank to refund lines of an earlier
+  # payment file (RRI, camt.056); the bank returns the funds of the lines it posted (DCR, pacs.004) and answers each line (RRR,
+  # camt.029). The request is a new refund order on p.wf.refund.v1; the earlier payment file is named by its id.
   - id: uae.wps.dcr
-    title: Disbursement cancellation request from the agent
+    title: Disbursement cancellation request from the agent, the funds of a refund returned (pacs.004)
     direction: out
     confirmed: false
     disposition:
-      planned: Agent-side correction of a disbursement report
+      sentBy: uae.wps.exchange.send-disbursement-cancellation.v1
   - id: uae.wps.rfr
     title: Refund request from the employer's bank
     direction: out
@@ -79,18 +82,23 @@ messages:
         direction: outward
         leg: uae.wps.wf.refund-out.v1
         intakeMap: uae.wps.map.refund-order-in.v1
-  - id: uae.wps.rfr-in
-    title: Refund request made available to the agent
+  - id: uae.wps.rri
+    title: Refund request instruction to the agent, a request to refund lines of an earlier payment file (camt.056)
     direction: in
     confirmed: false
     disposition:
-      planned: Agent-side refund leg
+      start:
+        kind: refund
+        direction: inward
+        leg: uae.wps.wf.refund-request-in.v1
+        refuseLeg: uae.wps.wf.refund-request-refuse.v1
+        intakeMap: uae.wps.map.rri-in.v1
   - id: uae.wps.rrr
-    title: Refund response from the agent
+    title: Refund request response from the agent, each line accepted or rejected (camt.029)
     direction: out
     confirmed: false
     disposition:
-      planned: Agent-side refund leg
+      sentBy: uae.wps.exchange.send-refund-response.v1
   - id: uae.wps.rsu
     title: Refund settlement file to the employer's bank
     direction: in
@@ -120,6 +128,8 @@ legs:
   - uae.wps.wf.refund-out.v1
   - uae.wps.wf.return-in.v1
   - uae.wps.wf.inward-refuse.v1
+  - uae.wps.wf.refund-request-in.v1
+  - uae.wps.wf.refund-request-refuse.v1
 ports:
   - uae.wps.port.wps.v1
   - uae.wps.port.employer-channel.v1
@@ -129,4 +139,4 @@ provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: File types come from a 2018 guide. Three messages are planned, so this pack is not yet publishable.
+  note: File types come from a 2018 guide. Release 1.2.0 builds the agent's refund cycle (RRI, DCR, RRR) from the TransactHub source; the refund request instruction's message id replaces the planned uae.wps.rfr-in. No message is planned now; every scheme fact is still unconfirmed.

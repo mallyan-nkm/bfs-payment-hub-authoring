@@ -72,6 +72,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
   L44: 'Every parameter declares its type and a default within its own bounds',
   L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
+  L47: 'A leg of a platform workflow that blocks or posts money calls no reserve or post activity itself',
 };
 
 // ---------------------------------------------------------------- walking
@@ -345,6 +346,9 @@ export class Checker {
           for (const x of (d.entry?.reads ?? []).filter((p: string) => !p.startsWith(own) && !(contract.reads ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`))))
             err('L43', `reads ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not give it`);
         }
+        // L47 (R-12-19, Issue I-133): a platform workflow that blocks or posts owns its order's money; its legs call neither.
+        if (host?.wfKind === 'platform' && this.moneySteps(host).length)
+          for (const [sid, name] of this.moneySteps(d)) err('L47', `Step ${sid} calls ${name}, but ${of}, whose slot it fills, owns the order's blocks and postings`, sid);
       }
     }
     // L44 (R-11-39): every parameter declares its type and a default within its own bounds.
@@ -392,6 +396,21 @@ export class Checker {
       const deadline = addDuration(0, d.deadline.after);
       if (budget > deadline) warn('L21', `The attempt budgets on the longest path sum to ${Math.round(budget / 1000)}s, more than the deadline ${d.deadline.after}`);
     }
+  }
+
+  /** The steps of a workflow that call a reserve or a post activity, through its segments and its composites' subflows (L47). */
+  moneySteps(wf: any, seen: string[] = []): [string, string][] {
+    if (!wf || seen.includes(wf.name)) return [];
+    const out: [string, string][] = [];
+    for (const st of allSteps(wf)) {
+      if (st.use) out.push(...this.moneySteps(this.byName.get(st.use), [...seen, wf.name]));
+      const a = st.call ? this.byName.get(st.call) : undefined;
+      if (!a || a.kind !== 'activity') continue;
+      if (['reserve', 'post'].includes(a.type)) out.push([st.id ?? '?', a.name]);
+      else if (a.implementation?.binding === 'subflow')
+        for (const [i, n] of this.moneySteps(this.byName.get(a.implementation.subflow), [...seen, wf.name])) out.push([`${st.id ?? '?'}.${i}`, n]);
+    }
+    return out;
   }
 
   /** True when calling this activity can park the workflow: a hold, or a composite whose subflow waits. */

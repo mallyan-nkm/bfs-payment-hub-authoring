@@ -86,9 +86,11 @@ export function wpsTrainingBundle(env: StudioEnv, to = 'uae.wpsx'): BundleFile[]
   // Scripts-behind, translated from the source's code.
   // The factory's scripts and samples are read from the branch, where the seed published them (R-11-25).
   // A script re-released with its activity (`<name>@<release>`) is the one its latest release runs; the bundle names it plainly.
-  for (const f of env.scripts.list().filter((x) => x.startsWith(`${FROM}.`) && !x.includes('@')).sort()) {
+  // A script first published with a later release (`uae.wps.map.rri-in.v1@1.1.0`, I-133) has no plain file: it is named plainly too.
+  const plain = [...new Set(env.scripts.list().filter((x) => x.startsWith(`${FROM}.`)).map((x) => x.replace(/@[\d.]+(\.(ts|js|py))$/, '$1')))];
+  for (const f of plain.sort()) {
     const stem = f.replace(/\.(ts|js|py)$/, '');
-    const rel = `studio/scripts/${f}`;
+    const rel = `studio/scripts/${env.scripts.list().includes(f) ? f : env.scripts.list().filter((x) => x.replace(/@[\d.]+(\.(ts|js|py))$/, '$1') === f).sort().pop()}`;
     sourceFiles.push(rel);
     const name = rename(f, to);
     files.push({ name: `scripts/${name}`, content: rename(env.scripts.find(stem, env.store.get(stem)?.release)!.source, to) });

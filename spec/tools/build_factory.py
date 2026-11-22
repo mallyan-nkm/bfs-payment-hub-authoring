@@ -98,12 +98,17 @@ RELEASES = {
     # I-115: each line's bank name from the participant directory and its account type from the channel's upload (R-12-18). Its
     # 1.1.0 read the EVP allowances and the channel's upload: initiator, debtor name and account, channel; amounts as decimal strings (I-109).
     "uae.wps.map.sif-in.v1": ("1.2.0", "each line's bank name from the participant directory, its account type from the channel's upload (Issue I-115)"),
+    # The refund order (R-12-19 to R-12-22, Issue I-133): a refund is an order of the platform's p.wf.refund.v1, WPS its leg. Each a
+    # minor of an artefact the content branch holds: a row, a field or a script added, no read, write, outcome or port changed.
+    "p.table.workflow-select.v1": ("1.1.0", "a refund order runs p.wf.refund.v1"),
+    "uae.wps.ext.salary.v1": ("1.2.0", "the refund request instruction's fields: the establishment, the reason and the payroll file of each line"),
+    "uae.wps.map.rri-in.v1": ("1.1.0", "a script-behind for the source's RRI layout; the earlier payment by id (header.originalPaymentId)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
-SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1"}
+SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
-PACK_RELEASES = {"p": "1.3.0", "uae.p": "1.3.0", "uae.wps": "1.3.0", "b": "1.3.0"}
-FACTORY_RELEASE = "1.3.0"
+PACK_RELEASES = {"p": "1.4.0", "uae.p": "1.4.0", "uae.wps": "1.4.0", "b": "1.4.0"}
+FACTORY_RELEASE = "1.4.0"
 
 
 def emit(doc, base=FACTORY):
@@ -236,6 +241,23 @@ act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"],
     ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
     ports=["p.port.core-banking.v1"], policy=STD, service="accounting")
+# FX and charges on an order (R-12-20, Issue I-133): platform activities, never a scheme's. The rates and the charge slabs are the
+# bank's values (dials), effective-dated in its configuration releases; the factory's defaults are empty, so an order in a currency
+# other than its account's has no rate and an order bears no charge until the bank sets its own. Exact decimals (R-02-17): the
+# scripts compute with rules.money, the rule language's arithmetic, and round half away from zero only where a value says so.
+RATE_LIST = {"rates": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
+                       "description": "The bank's exchange rates, each {from, to, rate}: one unit of from is rate units of to. None, and only a line in its account's own currency converts."}}
+act("p.enrich.fx-rate.v1", "Convert each line at the bank's exchange rate", ["payment.instructedAmount", "payment.debtorAccount", "items[]"],
+    ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True)
+CHARGE_DIALS = {
+    "chargeSlabs": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
+                    "description": "Charge slabs, each {upTo, fixed, percent} in the line's converted currency: the first slab whose upTo is not below the line's amount gives a fixed charge plus a percentage of the amount. None, no charge."},
+    "minCharge": {"type": "decimal", "default": 0, "bounds": {"min": 0, "max": 1000000}, "description": "The least charge on a line a slab prices; 0, no floor."},
+    "maxCharge": {"type": "decimal", "default": 0, "bounds": {"min": 0, "max": 1000000}, "description": "The most charge on a line a slab prices; 0, no ceiling."},
+    "vatPercent": {"type": "decimal", "default": 0, "bounds": {"min": 0, "max": 100}, "description": "VAT on a charge, in per cent, each line's rounded to two decimals."},
+}
+act("p.enrich.charges.v1", "Price the bank's charge and its VAT on each line", ["payment.instructedAmount", "items[]", "facts.fx"],
+    ["facts.charges", "items[]"], ["priced", "none"], "pure", level="batch", params=CHARGE_DIALS, script=True)
 # Posting windows (plan P2): the hours core banking takes postings, the bank's values. The decision reads the engine's time; the
 # composite waits and asks again while the window is closed, so a payment waits for the window instead of retrying into it
 # (the source's AwaitCbPostingWindow). The defaults are always open.
@@ -359,6 +381,14 @@ wmap("uae.wps.map.rri-in.v1", "Refund request instruction to canonical request",
      params={"fileNameAgentCode": {"type": "code", "default": "000", "bounds": {"pattern": "^[A-Za-z0-9]{3}$"},
                                    "description": "Characters 4 to 6 of an RRI file name that is for this bank."}})
 wmap("uae.wps.map.rfr-out.v1", "Refund request", "out", "WPS RFR", ["header", "batch", "items[]"], ["messages"])
+# The agent's answer to a refund request instruction (R-12-21, Issue I-133), after the source's RRI flow: the funds returned for the
+# lines the bank posted (DCR, the disbursement cancellation request, pacs.004 PmtRtr) and the answer per line (RRR, the refund
+# request response, camt.029 RsltnOfInvstgtn: ACCEPTED, or REJECTED with its reason). The layouts are the source's; the rulebook
+# has not confirmed them.
+wmap("uae.wps.map.dcr-out.v1", "Disbursement cancellation request", "out", "WPS DCR: one line per refund line posted (pacs.004)",
+     ["header", "batch", "items[]", "facts.fx", "facts.posting"], ["messages"], params=AGENT_ID)
+wmap("uae.wps.map.rrr-out.v1", "Refund request response", "out", "WPS RRR: one RSR per refund line and its control record (camt.029)",
+     ["header", "batch", "items[]", "facts.record", "facts.reservation", "facts.approval"], ["messages"], params=AGENT_ID)
 wmap("uae.wps.map.rsu-in.v1", "Refund settlement to status", "in", "WPS RSU", ["messages"], ["status", "facts.settlement"],
      outcomes=("settled", "declined"))
 wmap("uae.wps.map.refund-order-in.v1", "Employer refund order to canonical request", "in", "Employer refund order",
@@ -379,7 +409,9 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
                       ("send-refund-request", "Submit a refund request to WPS", "send"),
                       ("send-receipt-confirmation", "Send the receipt confirmation", "report"),
                       ("send-disbursement-file", "Send the disbursement file", "report"),
-                      ("send-returns-file", "Send the returns file to WPS", "send")]:
+                      ("send-returns-file", "Send the returns file to WPS", "send"),
+                      ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
+                      ("send-refund-response", "Send the refund request response to WPS", "send")]:
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
         ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
 
@@ -427,6 +459,14 @@ act("uae.wps.exchange.return-credits.v1", "Return the credits that failed and ge
                                   "description": "Whether the wait counts calendar days (elapsed, the source's) or business days."},
             "uploadHold": {"type": "duration", "default": "PT0S", "bounds": {"min": "PT0S", "max": "PT10M"},
                            "description": "How long to hold the returns file before it is uploaded."}})
+
+# The two exchanges of the agent's refund leg (R-12-21): each a composite, encrypted, sent and acknowledged underneath (L46).
+act("uae.wps.exchange.return-refund.v1", "Return the refunded funds to WPS and get the acknowledgement", ["header", "messages"],
+    ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.return-refund.v1", p=WP)
+act("uae.wps.exchange.answer-refund.v1", "Answer the refund request and get the acknowledgement", ["header", "messages"],
+    ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.answer-refund.v1", p=WP)
 
 # the agent's returns: which credits go back, and the posting once WPS has accepted the returns file
 act("uae.wps.decide.returns.v2", "Find the employee credits to return", ["items[]"], ["facts.returns"],
@@ -667,11 +707,14 @@ table("p.table.workflow-select.v1", "Which platform workflow runs a payment", "u
       [{"when": {"kind": "request"}, "then": {"workflow": "p.wf.request.v1"}, "reason": "Requests and exceptions move no money through the lifecycle"},
        {"when": {"kind": "payment", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward payment"},
        {"when": {"kind": "return", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward return"},
+       # 1.1.0 (R-12-19): a refund of an earlier payment is an order of its own, on the refund lifecycle
+       {"when": {"kind": "refund"}, "then": {"workflow": "p.wf.refund.v1"}, "reason": "A refund of an earlier payment is a new order on the refund lifecycle"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "corporate"}, "then": {"workflow": "p.wf.corporate.v1"}, "reason": "File and high-value rails"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "commercial"}, "then": {"workflow": "p.wf.commercial.v1"}, "reason": "Instant rails"}],
       [{"name": "inward payment", "given": {"Header": {"kind": "payment", "direction": "inward", "segment": "commercial"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.inward.v1"}]}},
        {"name": "outward corporate", "given": {"Header": {"kind": "payment", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.corporate.v1"}]}},
-       {"name": "request", "given": {"Header": {"kind": "request", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.request.v1"}]}}])
+       {"name": "request", "given": {"Header": {"kind": "request", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.request.v1"}]}},
+       {"name": "refund", "given": {"Header": {"kind": "refund", "direction": "inward"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.refund.v1"}]}}])
 table("p.table.inward-disposition.v1", "What to do with an inward payment after checks and screening", "first",
       [("validation", "facts.validation.worst"), ("duplicate", "facts.duplicate.found"), ("sanctions", "facts.screening.sanctions.result"), ("fraud", "facts.screening.fraud.result")],
       ["disposition"],
@@ -903,6 +946,24 @@ sim("uae.wps.sim.wps-inward.v1", "WPS simulator, sends to the bank", "inward", "
         {"send": "uae.wps.ack", "family": "rfa", "status": "accepted", "after": "PT10M"}),
      sc("payment-file-returns-no-reply", *payment_file(), {"expect": "uae.wps.rfa"}, {"noReply": True}),
      sc("return-file", {"send": "uae.wps.rtc"})], self_check=["uae.wps.ruleset.payment-file.v1"], p=WP)
+# WPS asks the bank, as the employees' bank, to refund lines of an earlier payment file (R-12-21, the source's RRI flow): the
+# refund request instruction (RRI), then the acknowledgements of the bank's disbursement cancellation request (DCR) and of its
+# refund request response (RRR). A simulator of its own, because the refund request is no payment file (its self-check would not fit).
+def refund_request(dcr="accepted"):
+    steps = [{"send": "uae.wps.rri"}, {"expect": "uae.wps.dcr"},
+             {"send": "uae.wps.ack", "family": "dcr", "status": dcr, "after": "PT10M", **({"reasonCode": "FF01"} if dcr != "accepted" else {})}]
+    if dcr == "accepted":
+        steps += [{"expect": "uae.wps.rrr"}, {"send": "uae.wps.ack", "family": "rrr", "status": "accepted", "after": "PT10M"}]
+    return steps
+
+
+sim("uae.wps.sim.wps-refunds.v1", "WPS simulator, a refund request to the bank as the agent", "inward", "uae.wps.port.wps.v1",
+    "central bank wages protection system",
+    [sc("refund-request", *refund_request()),
+     sc("refund-request-refused", {"send": "uae.wps.rri"}, {"expect": "uae.wps.rrr"},
+        {"send": "uae.wps.ack", "family": "rrr", "status": "accepted", "after": "PT10M"}),
+     sc("refund-request-return-refused", *refund_request("rejected")),
+     sc("refund-request-no-reply", {"send": "uae.wps.rri"}, {"expect": "uae.wps.dcr"}, {"noReply": True})], p=WP)
 # The ministry answers an employer's status: active (accept), suspended, or not on its register (Issue I-88).
 sim("uae.wps.sim.labour-ministry.v1", "Labour ministry simulator", "outward", "uae.wps.port.labour-ministry.v1", "labour ministry establishment register",
     outward_set("uae.wps.employer-status.request", "uae.wps.employer-status.reply", "NARR")
@@ -948,7 +1009,13 @@ ext("uae.wps.ext.salary.v1", "WPS salary fields", "ext.uae.wps",
          ("leaveEncashment", "Leave encashment in the variable pay"))],
      # 1.1.0 (Issues I-88, I-100): SplmtryData semantics, no ISO element
      ("uploadChannel", "Max35Text", "batch", "The employer channel the file was uploaded through, as the channel declared it (for example IB or CBX)", {"source": "channel upload"}),
-     ("employerStatus", "Max35Text", "batch", "The employer's status at the labour ministry as its register answered: active, suspended or unknown", {"source": "labour ministry"})], p=WP)
+     ("employerStatus", "Max35Text", "batch", "The employer's status at the labour ministry as its register answered: active, suspended or unknown", {"source": "labour ministry"}),
+     # 1.2.0 (R-12-21): the refund request instruction's fields with no ISO element. camt.056 carries the reason as a code of its
+     # own set (CxlRsnInf/Rsn); the scheme's codes are kept as the scheme gives them until the rulebook maps them (Issue I-134).
+     ("establishmentReference", "Max35Text", "batch", "The employer's establishment reference a refund request instruction names", {"source": "RRI file name"}),
+     ("fileName", "Max140Text", "batch", "The name of the scheme's file the order came in", {"source": "RRI file name"}),
+     ("refundReason", "Max35Text", "item", "The scheme's reason code for refunding a line", {"source": "DRR"}),
+     ("payrollWpsFileReference", "Max35Text", "item", "The WPS reference of the payment file whose credit a line refunds", {"source": "DRR"})], p=WP)
 ext("b.ext.bank.v1", "Example bank fields", "ext.b",
     [("costCentre", "Max35Text", "payment", "Bank cost centre for the debtor account")], base=EXAMPLES)
 
@@ -1167,6 +1234,86 @@ test("WPS-RTC-001", "A return file credits the employer's account", "uae.wps.wf.
      {"outcome": "settled", "trace": ["posting-window:open", "credit-employer:posted", "end:settled"], "detail": ["posting-window.window:open"]},
      bench_=bench((WPS, "uae.wps.sim.wps-inward.v1", "return-file"), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"),
                   ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept")), tenant="example-bank")
+# R-12-20: FX and charges are platform activities on the bank's values. The example bank's are synthetic (Issue I-58 for a real
+# bank's): AED to USD at 0.2723, and the source's worked example of its charge configuration (a fixed 5.00 plus 0.10 per cent,
+# floor 5, ceiling 250, VAT 5 per cent): a line of 100.00 bears 5.10 and 0.26 VAT, 5.36 in all.
+def whole(x):
+    return int(x) if float(x).is_integer() else round(x, 2)
+
+
+def refund_lines(*lines, currency=None):
+    items = [{"payment": {"instructedAmount": {"value": v, "currency": "AED"},
+                          "debtorAccount": {"iban": IBAN_OK, **({"currency": currency} if currency else {})}}} for v in lines]
+    return {"context": {"header": {"paymentId": "R-1", "kind": "refund", "direction": "inward", "scheme": "uae.wps", "originalPaymentId": "P-0"},
+                        # a whole total as an integer, so the YAML and every reader's canonical JSON agree (600, not 600.0)
+                        "batch": {"id": "R-1", "numberOfTransactions": len(lines), "controlSum": whole(sum(lines)), "currency": "AED"},
+                        "items": items}}
+
+
+test("P-FX-001", "A line in its account's own currency converts at one", "p.enrich.fx-rate.v1", "activity", refund_lines(100.25, 499.75),
+     {"outcome": "converted", "writes": {"facts.fx.rate": 1, "facts.fx.amount": 600, "facts.fx.currency": "AED"}})
+test("P-FX-002", "A line in another currency converts at the bank's rate, exactly, half away from zero", "p.enrich.fx-rate.v1", "activity",
+     refund_lines(100, 0.05, currency="USD"),
+     # 27.23 and 0.01 (0.013615, half away from zero): the sum of the rounded lines, 27.24
+     {"outcome": "converted", "writes": {"facts.fx.rate": 0.2723, "facts.fx.amount": 27.24, "facts.fx.currency": "USD"}}, tenant="example-bank")
+test("P-FX-003", "A line in another currency with no rate the bank has set has no rate", "p.enrich.fx-rate.v1", "activity",
+     refund_lines(100, currency="USD"), {"outcome": "no-rate", "writes": {"facts.fx.missing": "AED/USD"}})
+test("P-CHG-001", "A line is priced on the bank's slab: fixed plus a percentage, then VAT", "p.enrich.charges.v1", "activity", refund_lines(100, 499.75),
+     # 5.10 and 0.26 VAT on 100.00; 5.49975, so 5.50 and 0.28 (0.275) on 499.75: the sums of the rounded lines
+     {"outcome": "priced", "writes": {"facts.charges.amount": 10.6, "facts.charges.tax.amount": 0.54, "facts.charges.totalChargesAndTaxAmount": 11.14}},
+     tenant="example-bank")
+test("P-CHG-002", "With no slab the bank has set, a line bears no charge", "p.enrich.charges.v1", "activity", refund_lines(100),
+     {"outcome": "none", "writes": {"facts.charges.amount": 0, "facts.charges.totalChargesAndTaxAmount": 0}})
+# R-12-19, R-12-21: a refund request instruction from WPS is a new refund order on p.wf.refund.v1; WPS is its leg. The order names
+# the earlier payment file by its id; the platform converts, prices, blocks, holds for approval and posts; the leg returns the funds
+# (DCR) and answers (RRR). A refusal is answered by the refuse leg, with nothing posted.
+RRI = {"inbound": "samples/wps-rri-valid.rri"}
+REFUND = "p.wf.refund.v1"
+REFUNDS_SIM = "uae.wps.sim.wps-refunds.v1"
+
+
+def refund_bench(wps="refund-request", core="accept", record="accept", ops="approve"):
+    return bench((WPS, REFUNDS_SIM, wps), ("p.port.core-banking.v1", "p.sim.core-banking.v1", core),
+                 ("p.port.payment-record.v1", "p.sim.payment-record.v1", record), ("p.port.operations-queue.v1", "p.sim.operations.v1", ops), ENC,
+                 ("p.port.channel.v1", "p.sim.channel.v1", "accept"), ("p.port.facts-out.v1", "p.sim.facts-out.v1", "accept"))
+
+
+REFUND_HEAD = ["original:found", "fx:converted", "charges:priced", "reserve:reserved", "approval:approved"]
+REFUND_FINALLY = ["finally:notify", "finally:publish"]
+test("WPS-RRI-001", "A refund request instruction maps to a refund order that names the earlier payment file", "uae.wps.map.rri-in.v1", "activity", RRI,
+     {"outcome": "mapped", "writes": {"header.originalPaymentId": "000000000000000000000001", "header.fileId": "609000042725",
+                                      "batch.controlSum": 600, "batch.numberOfTransactions": 2, "items.0.payment.instructedAmount.value": 100,
+                                      "items.1.ext.uae.wps.refundReason": "003", "ext.uae.wps.establishmentReference": "0000000001234"}},
+     tenant="example-bank")
+test("WPS-RRI-002", "A refund order: converted, priced, blocked, approved and posted by the platform; WPS returns the funds and answers",
+     REFUND, "end-to-end", RRI,
+     {"outcome": "settled", "trace": REFUND_HEAD + ["post:posted", "verify:verified", "leg:settled"] + REFUND_FINALLY + ["end:settled"],
+      "messages": [{"port": WPS, "message": "uae.wps.dcr", "count": 1}, {"port": WPS, "message": "uae.wps.rrr", "count": 1}]},
+     bench_=refund_bench(), tenant="example-bank", scope="uae.wps")
+test("WPS-RRI-003", "The approver declines the refund: the block is released, nothing is posted, and WPS is answered by the refuse leg",
+     REFUND, "end-to-end", RRI,
+     {"outcome": "rejected", "trace": ["original:found", "fx:converted", "charges:priced", "reserve:reserved", "approval:declined", "refuse-declined:refused",
+                                       "undo:reserve"] + REFUND_FINALLY + ["end:rejected"],
+      "messages": [{"port": WPS, "message": "uae.wps.dcr", "count": 0}, {"port": WPS, "message": "uae.wps.rrr", "count": 1}]},
+     bench_=refund_bench("refund-request-refused", ops="decline"), tenant="example-bank", scope="uae.wps")
+test("WPS-RRI-004", "An account without the funds to block refuses the refund before any approval", REFUND, "end-to-end", RRI,
+     {"outcome": "rejected", "trace": ["original:found", "fx:converted", "charges:priced", "reserve:insufficient", "refuse-insufficient:refused"] + REFUND_FINALLY + ["end:rejected"],
+      "messages": [{"port": WPS, "message": "uae.wps.dcr", "count": 0}, {"port": WPS, "message": "uae.wps.rrr", "count": 1}]},
+     bench_=refund_bench("refund-request-refused", core="reject"), tenant="example-bank", scope="uae.wps")
+test("WPS-RRI-005", "A refund of a payment the record does not hold is refused", REFUND, "end-to-end", RRI,
+     {"outcome": "rejected", "trace": ["original:not-found", "refuse-unknown:refused"] + REFUND_FINALLY + ["end:rejected"],
+      "messages": [{"port": WPS, "message": "uae.wps.rrr", "count": 1}]},
+     bench_=refund_bench("refund-request-refused", record="reject"), tenant="example-bank", scope="uae.wps")
+test("WPS-RRI-006", "WPS refuses the returned funds: posted, so the order goes to review, and no answer is sent", REFUND, "end-to-end", RRI,
+     {"outcome": "review", "trace": REFUND_HEAD + ["post:posted", "verify:verified", "leg:rejected"] + REFUND_FINALLY + ["end:review"],
+      "messages": [{"port": WPS, "message": "uae.wps.dcr", "count": 1}, {"port": WPS, "message": "uae.wps.rrr", "count": 0}]},
+     bench_=refund_bench("refund-request-return-refused"), tenant="example-bank", scope="uae.wps")
+test("WPS-RRI-007", "The agent's refund leg alone: the funds returned and the request answered, each encrypted and acknowledged",
+     "uae.wps.wf.refund-request-in.v1", "end-to-end", RRI,
+     {"outcome": "settled", "trace": ["render-return:mapped", "return-funds:accepted", "render-answer:mapped", "answer:accepted", "end:settled"],
+      "detail": ["return-funds.encrypt:encrypted", "return-funds.send:accepted", "return-funds.await-ack:received", "return-funds.read-ack:ack",
+                 "answer.encrypt:encrypted", "answer.send:accepted", "answer.await-ack:received", "answer.read-ack:ack"]},
+     bench_=refund_bench(), tenant="example-bank")
 # Issue I-87: the encryption block alone, one test per outcome (R-03-16).
 test("P-ENC-001", "A file the encryption service encrypts is encrypted", "p.protect.encrypt-file.v1", "activity", PAY_CTX,
      {"outcome": "encrypted"}, bench_=bench(("p.port.encryption.v1", "p.sim.encryption.v1", "accept")))

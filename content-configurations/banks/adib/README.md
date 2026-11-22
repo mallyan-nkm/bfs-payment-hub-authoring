@@ -102,6 +102,7 @@ Each row is a value or step of the bank in the source with no factory parameter,
 | Tenant entities | `adib-conventional`, `adib-islamic` | `infra/docker/mssql/init.sql`, `TenantEntities` | Nothing yet: the platform has no entity within a tenant |
 | Smart Integration WPS profiles | `WPS-SIF-Upload`, `WPS-SIF-Reference`, endpoint `localhost` | `services/ecosystem/SmartIntegration/PaymentHub.SmartIntegration.API/templates/` | A channel adapter; these are templates, not the bank's deployment |
 | Worker sizing | platform 3 replicas, bank 4, 2 CPU and 2 GB each | `docker-compose.customer-adib.yml` | Deployment, not configuration |
+| Refund order rates and charges | None for the bank (the source's RRI flow is DIB's) | | Left unset on purpose until the bank gives its values (I-58, I-133): `p.enrich.fx-rate.v1#rates`, `p.enrich.charges.v1#chargeSlabs`, `#minCharge`, `#maxCharge`, `#vatPercent`, and its RRI agent code `uae.wps.map.rri-in.v1#fileNameAgentCode`. Unset, an order converts at one and bears no charge |
 
 ## Not carried: other rails
 

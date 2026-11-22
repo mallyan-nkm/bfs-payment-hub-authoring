@@ -797,7 +797,7 @@ OPS_PROPS = {
     "line": {"id", "lineNo", "endToEndId", "amount", "currency", "creditorAccount.iban", "creditorAccount.other", "creditorAccount.type",
              "creditorAgent.bicfi", "creditorAgent.memberId", "creditorAgent.clearingSystem", "creditorAgent.name"},
     "hold": {"id", "kind", "status", "reason", "decision", "openedAt", "decidedAt", "decidedBy"},
-    "header": {"scheme", "direction", "kind", "segment", "fileId", "endToEndId"},
+    "header": {"scheme", "direction", "kind", "segment", "fileId", "endToEndId", "originalPaymentId"},
 }
 OPS_PERSONAL = {"bulk.debtorName", "bulk.initiatingParty.id", "bulk.debtorAccount.iban", "bulk.debtorAccount.other", "payment.creditorAccount.iban",
                 "payment.creditorAccount.other", "payment.debtorAccount.iban", "payment.debtorAccount.other",
@@ -1249,6 +1249,39 @@ for path, d in docs:
             continue
         for x in beyond((d.get("entry") or {}).get("reads"), contract.get("reads") or [], scope_of(d["name"])):
             err("L43", path, "reads %s, which the slot contract %s@%s of %s does not give it" % (x, imp.get("slot"), of.rsplit(".v", 1)[-1], of))
+
+# L47 (R-12-19) a platform workflow that blocks or posts money owns its order's money: a leg that fills one of its slots calls no
+# reserve or post activity, directly, through a segment or through a composite's subflow. The platform's lifecycle is the order's,
+# so a second scheme fills the same slot without changing it, and no scheme pack holds the order's posting (Issue I-133).
+MONEY_TYPES = ("reserve", "post")
+
+
+def money_steps(wf, seen=()):
+    out = []
+    if not wf or wf.get("name") in seen:
+        return out
+    for st in all_steps(wf):
+        if st.get("use"):
+            out += money_steps(by_name.get(st["use"]), seen + (wf.get("name"),))
+        a = by_name.get(st.get("call")) if st.get("call") else None
+        if not a or a.get("kind") != "activity":
+            continue
+        if a.get("type") in MONEY_TYPES:
+            out.append((st.get("id", "?"), a["name"]))
+        elif composite(a):
+            out += [(st.get("id", "?") + "." + i, n) for i, n in money_steps(by_name.get(a["implementation"]["subflow"]), seen + (wf.get("name"),))]
+    return out
+
+
+for path, d in docs:
+    if d.get("kind") != "workflow" or d.get("wfKind") != "leg":
+        continue
+    for of in (d.get("implements") or {}).get("of") or []:
+        host = by_name.get(of)
+        if not host or host.get("wfKind") != "platform" or not money_steps(host):
+            continue
+        for sid, name in money_steps(d):
+            err("L47", path, "step %s calls %s, but %s, whose slot it fills, owns the order's blocks and postings" % (sid, name, of))
 
 # L44 (R-11-39) the parameter contract: every parameter declares its type and a default, and the default lies within its
 # own bounds; a distribution carries every dial with its type and bounds, and a configuration release is checked against it.

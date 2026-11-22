@@ -1,0 +1,37 @@
+kind: workflow
+wfKind: subflow
+name: uae.wps.sub.answer-refund.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Send the refund request response and read the acknowledgement
+description: What the answer-refund block does underneath. The RRR is encrypted for WPS, sent, and its acknowledgement awaited for the calling step's reply time and read. A file the encryption service refuses is never sent (R-12-17).
+implements:
+  activity: uae.wps.exchange.answer-refund.v1
+exit:
+  outcomes: [accepted, rejected, pending]
+do:
+  - id: encrypt
+    call: p.protect.encrypt-file.v1
+    handle:
+      refused: { return: rejected }
+  - id: send
+    call: uae.wps.exchange.send-refund-response.v1
+    handle:
+      rejected: { return: rejected }
+      unknown: { return: pending }
+  - id: await-ack
+    await:
+      message: uae.wps.ack
+      correlateBy: header.fileId
+      family: rrr
+      onTimeout: { return: pending }
+  - id: read-ack
+    call: uae.wps.map.ack-in.v1
+    handle:
+      nak: { return: rejected }
+  - return: accepted
+provenance:
+  origin: factory
+  status: provisional
+  clauses: [TransactHub source 666f1ee, WS_DIB_WPS_Inward_RRI v1.1]
+  note: The source's RRR and its ACK or NAK (Activities 13 and 14). The source never polls for the RRR's acknowledgement (Activity 14); the wait is a placeholder (Issue I-134).

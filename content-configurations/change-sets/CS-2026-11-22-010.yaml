@@ -1,0 +1,305 @@
+kind: change-set
+id: CS-2026-11-22-010
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T21:33:25.473Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/examples/bank
+  - spec/factory/inventory.yaml
+  - spec/factory/p
+  - spec/factory/uae.p
+  - spec/factory/uae.wps
+  - studio/fixtures/samples
+  - studio/scripts
+members:
+  - kind: configuration-set
+    name: config:example-bank
+    release: 1.4.0
+    key: example-bank/config:example-bank@1.4.0
+  - kind: test
+    name: P-CHG-001
+    release: ""
+    key: example-bank/P-CHG-001
+  - kind: test
+    name: P-FX-002
+    release: ""
+    key: example-bank/P-FX-002
+  - kind: pack
+    name: pack:b:example-bank
+    release: 1.4.0
+    key: example-bank/pack:b:example-bank@1.4.0
+  - kind: test
+    name: WPS-IN-001
+    release: ""
+    key: example-bank/WPS-IN-001
+  - kind: test
+    name: WPS-IN-002
+    release: ""
+    key: example-bank/WPS-IN-002
+  - kind: test
+    name: WPS-IN-003
+    release: ""
+    key: example-bank/WPS-IN-003
+  - kind: test
+    name: WPS-IN-004
+    release: ""
+    key: example-bank/WPS-IN-004
+  - kind: test
+    name: WPS-IN-005
+    release: ""
+    key: example-bank/WPS-IN-005
+  - kind: test
+    name: WPS-IN-006
+    release: ""
+    key: example-bank/WPS-IN-006
+  - kind: test
+    name: WPS-IN-007
+    release: ""
+    key: example-bank/WPS-IN-007
+  - kind: test
+    name: WPS-IN-008
+    release: ""
+    key: example-bank/WPS-IN-008
+  - kind: test
+    name: WPS-IN-009
+    release: ""
+    key: example-bank/WPS-IN-009
+  - kind: test
+    name: WPS-MAP-005
+    release: ""
+    key: example-bank/WPS-MAP-005
+  - kind: test
+    name: WPS-RRI-001
+    release: ""
+    key: example-bank/WPS-RRI-001
+  - kind: test
+    name: WPS-RRI-002
+    release: ""
+    key: example-bank/WPS-RRI-002
+  - kind: test
+    name: WPS-RRI-003
+    release: ""
+    key: example-bank/WPS-RRI-003
+  - kind: test
+    name: WPS-RRI-004
+    release: ""
+    key: example-bank/WPS-RRI-004
+  - kind: test
+    name: WPS-RRI-005
+    release: ""
+    key: example-bank/WPS-RRI-005
+  - kind: test
+    name: WPS-RRI-006
+    release: ""
+    key: example-bank/WPS-RRI-006
+  - kind: test
+    name: WPS-RRI-007
+    release: ""
+    key: example-bank/WPS-RRI-007
+  - kind: test
+    name: WPS-RTC-001
+    release: ""
+    key: example-bank/WPS-RTC-001
+  - kind: inventory
+    name: inventory
+    release: 1.4.0
+    key: inventory@1.4.0
+  - kind: test
+    name: P-CHG-002
+    release: ""
+    key: P-CHG-002
+  - kind: test
+    name: P-DEC-001
+    release: ""
+    key: P-DEC-001
+  - kind: test
+    name: P-DEC-002
+    release: ""
+    key: P-DEC-002
+  - kind: test
+    name: P-ENC-001
+    release: ""
+    key: P-ENC-001
+  - kind: test
+    name: P-ENC-002
+    release: ""
+    key: P-ENC-002
+  - kind: test
+    name: P-FX-001
+    release: ""
+    key: P-FX-001
+  - kind: test
+    name: P-FX-003
+    release: ""
+    key: P-FX-003
+  - kind: test
+    name: P-RES-001
+    release: ""
+    key: P-RES-001
+  - kind: test
+    name: P-RES-002
+    release: ""
+    key: P-RES-002
+  - kind: activity
+    name: p.enrich.charges.v1
+    release: 1.0.0
+    key: p.enrich.charges.v1@1.0.0
+  - kind: activity
+    name: p.enrich.fx-rate.v1
+    release: 1.0.0
+    key: p.enrich.fx-rate.v1@1.0.0
+  - kind: table
+    name: p.table.workflow-select.v1
+    release: 1.1.0
+    key: p.table.workflow-select.v1@1.1.0
+  - kind: operations-view
+    name: p.view.operations.v1
+    release: 1.2.0
+    key: p.view.operations.v1@1.2.0
+  - kind: workflow
+    name: p.wf.refund.v1
+    release: 1.0.0
+    key: p.wf.refund.v1@1.0.0
+  - kind: pack
+    name: pack:p
+    release: 1.4.0
+    key: pack:p@1.4.0
+  - kind: pack
+    name: pack:uae.p
+    release: 1.4.0
+    key: pack:uae.p@1.4.0
+  - kind: pack
+    name: pack:uae.wps
+    release: 1.4.0
+    key: pack:uae.wps@1.4.0
+  - kind: scheme
+    name: scheme:uae.wps
+    release: 1.2.0
+    key: scheme:uae.wps@1.2.0
+  - kind: activity
+    name: uae.wps.exchange.answer-refund.v1
+    release: 1.0.0
+    key: uae.wps.exchange.answer-refund.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.return-refund.v1
+    release: 1.0.0
+    key: uae.wps.exchange.return-refund.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-disbursement-cancellation.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-disbursement-cancellation.v1@1.0.0
+  - kind: activity
+    name: uae.wps.exchange.send-refund-response.v1
+    release: 1.0.0
+    key: uae.wps.exchange.send-refund-response.v1@1.0.0
+  - kind: extension
+    name: uae.wps.ext.salary.v1
+    release: 1.2.0
+    key: uae.wps.ext.salary.v1@1.2.0
+  - kind: activity
+    name: uae.wps.map.dcr-out.v1
+    release: 1.0.0
+    key: uae.wps.map.dcr-out.v1@1.0.0
+  - kind: activity
+    name: uae.wps.map.rri-in.v1
+    release: 1.1.0
+    key: uae.wps.map.rri-in.v1@1.1.0
+  - kind: activity
+    name: uae.wps.map.rrr-out.v1
+    release: 1.0.0
+    key: uae.wps.map.rrr-out.v1@1.0.0
+  - kind: simulator
+    name: uae.wps.sim.wps-refunds.v1
+    release: 1.0.0
+    key: uae.wps.sim.wps-refunds.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.answer-refund.v1
+    release: 1.0.0
+    key: uae.wps.sub.answer-refund.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.sub.return-refund.v1
+    release: 1.0.0
+    key: uae.wps.sub.return-refund.v1@1.0.0
+  - kind: operations-view
+    name: uae.wps.view.operations.v1
+    release: 1.3.0
+    key: uae.wps.view.operations.v1@1.3.0
+  - kind: workflow
+    name: uae.wps.wf.refund-request-in.v1
+    release: 1.0.0
+    key: uae.wps.wf.refund-request-in.v1@1.0.0
+  - kind: workflow
+    name: uae.wps.wf.refund-request-refuse.v1
+    release: 1.0.0
+    key: uae.wps.wf.refund-request-refuse.v1@1.0.0
+  - kind: test
+    name: WPS-ENR-001
+    release: ""
+    key: WPS-ENR-001
+  - kind: test
+    name: WPS-ENR-002
+    release: ""
+    key: WPS-ENR-002
+  - kind: test
+    name: WPS-EXC-001
+    release: ""
+    key: WPS-EXC-001
+  - kind: test
+    name: WPS-EXC-002
+    release: ""
+    key: WPS-EXC-002
+  - kind: test
+    name: WPS-EXC-003
+    release: ""
+    key: WPS-EXC-003
+  - kind: test
+    name: WPS-MAP-001
+    release: ""
+    key: WPS-MAP-001
+  - kind: test
+    name: WPS-MAP-002
+    release: ""
+    key: WPS-MAP-002
+  - kind: test
+    name: WPS-MAP-003
+    release: ""
+    key: WPS-MAP-003
+  - kind: test
+    name: WPS-MAP-004
+    release: ""
+    key: WPS-MAP-004
+  - kind: test
+    name: WPS-OUT-001
+    release: ""
+    key: WPS-OUT-001
+  - kind: test
+    name: WPS-OUT-002
+    release: ""
+    key: WPS-OUT-002
+  - kind: test
+    name: WPS-OUT-003
+    release: ""
+    key: WPS-OUT-003
+  - kind: test
+    name: WPS-OUT-004
+    release: ""
+    key: WPS-OUT-004
+  - kind: test
+    name: WPS-OUT-005
+    release: ""
+    key: WPS-OUT-005
+  - kind: test
+    name: WPS-OUT-006
+    release: ""
+    key: WPS-OUT-006
+  - kind: test
+    name: WPS-OUT-007
+    release: ""
+    key: WPS-OUT-007
+  - kind: test
+    name: WPS-OUT-008
+    release: ""
+    key: WPS-OUT-008

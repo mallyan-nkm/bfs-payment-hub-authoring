@@ -67,7 +67,7 @@ describe('the returns exchange: the wait and the upload hold are the bank\'s val
 describe('the acknowledgement of the returns file (I-41, item 1)', () => {
   it('names the family of the file each WPS acknowledgement answers, and each await takes only its own', () => {
     const scheme = env().store.scheme('uae.wps');
-    expect(scheme.messages.find((m: any) => m.id === 'uae.wps.ack').disposition.deliver.families).toEqual(['sif', 'rfr', 'prc', 'dif', 'rfa']);
+    expect(scheme.messages.find((m: any) => m.id === 'uae.wps.ack').disposition.deliver.families).toEqual(['sif', 'rfr', 'prc', 'dif', 'rfa', 'dcr', 'rrr']);
     const families = Object.fromEntries(['submit-salary-file', 'request-refund', 'confirm-receipt', 'report-disbursement', 'return-credits'].map((n) => {
       const sub = env().store.doc(`uae.wps.sub.${n}.v1`);
       return [n, sub.do.find((s: any) => s.await?.message === 'uae.wps.ack')?.await.family];
