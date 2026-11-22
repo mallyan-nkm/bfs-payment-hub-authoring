@@ -30,6 +30,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         new("activate", "Activate a release from a date", "release", true, "built", "Records an activation of an installed release; the release active until then starts draining."),
         new("rollback", "Roll back to the previous release", "scope", true, "built", "Activates again, now, the release that was active before the current one."),
         new("remove", "Remove a release", "release", true, "built", "Records the release as removed; refused while it is active or a payment pinned to it is open."),
+        new("drain", "Drain a distribution", "release", true, "built", "Stops a distribution taking new payments; its open payments run to their end on it."),
         new("reverify-package", "Re-verify a package", "release", false, "built", "Verifies a stored package again against the signers trusted now, and records the verification on the release's chain."),
         new("rotate-trusted-key", "Rotate a trusted key", "key", true, "built", "Adds the studio's new public key to the trusted signers and retires the old one from a moment; writes the new list where TH_TRUSTED_SIGNERS names a writable file."),
         new("rebuild-read-model", "Rebuild the read model", "read-model", true, "built", "Throws the operations read model away and replays every fact from the outbox. Changes nothing in the store."),

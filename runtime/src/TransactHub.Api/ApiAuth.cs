@@ -20,7 +20,9 @@ public static class ApiAuth
     public const string Activator = "release-activator";
     public const string Reader = "release-reader";
     public const string ValuesReader = "values-reader";
-    public static readonly string[] Roles = [Importer, Activator, Reader, ValuesReader];
+    /// <summary>The front door: pins a payment to the active distribution at acceptance, and records its end (R-09-52, R-09-53).</summary>
+    public const string Intake = "payment-intake";
+    public static readonly string[] Roles = [Importer, Activator, Reader, ValuesReader, Intake];
 
     public static string Actor(ClaimsPrincipal u) => RuntimeAuth.Actor(u);
     public static bool MayReadTenant(ClaimsPrincipal u, string tenant) => RuntimeAuth.MayActFor(u, tenant);

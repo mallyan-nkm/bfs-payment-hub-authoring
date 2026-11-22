@@ -151,7 +151,9 @@ app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, Store
     if (Directory.Exists(releases))
     {
         // releases/<scope>/<name>/<release>/<target>/
-        foreach (var dir in Directory.EnumerateDirectories(releases, "*", SearchOption.AllDirectories).Where(d => File.Exists(Path.Combine(d, "manifest.yaml"))).Order(StringComparer.Ordinal))
+        // A bank's distributions and configuration releases are installed by their own kind (POST /sources/install), not here.
+        foreach (var dir in Directory.EnumerateDirectories(releases, "*", SearchOption.AllDirectories).Where(d => File.Exists(Path.Combine(d, "manifest.yaml")))
+                     .Where(d => !Path.GetRelativePath(releases, d).Replace('\\', '/').StartsWith("distributions/") && !Path.GetRelativePath(releases, d).Replace('\\', '/').StartsWith("configuration/")).Order(StringComparer.Ordinal))
         {
             try
             {
@@ -220,17 +222,109 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
     {
         v = (await src.List(ct)).FirstOrDefault(x => x.Tag == s.Tag);
         if (v is null) return Problem(404, $"The package source has no version {s.Tag}");
-        if (v.Kind != ReleaseSignature.WorkflowPackage) return Problem(501, $"{s.Tag} is a {v.Kind}; installing one is not built yet (docs/runtime/PACKAGING-AND-DEPLOYMENT.md)");
         files = await src.Download(v, ct);
     }
     catch (Exception e) when (e is HttpRequestException or SecretUnavailable) { return Problem(502, $"The package source could not be read: {e.Message}"); }
     catch (PackageRejected e) { return Problem(422, e.Message); }
+    // A bank's distribution or configuration release (R-09-48, R-09-50): verified and stored as an upload of its kind is.
+    if (v.Kind != ReleaseSignature.WorkflowPackage)
+    {
+        try
+        {
+            var bundle = Bundle.FromFiles(files, v.Kind);
+            if (bundle.ReleaseId != v.ReleaseId) return Problem(422, $"{s.Tag} names {v.ReleaseId}, but its bundle is {bundle.ReleaseId}");
+            var svc = Distributions(db, clock);
+            var res = v.Kind == ReleaseSignature.Distribution
+                ? await svc.InstallDistribution(bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct)
+                : await svc.InstallConfiguration(bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct);
+            return Results.Json(res, statusCode: res["stored"]!.GetValue<bool>() ? 201 : 200);
+        }
+        catch (PackageRejected e) { return Problem(422, $"{s.Tag}: {e.Message}"); }
+        catch (BundleRefused e) { return Problem(e.Status, e.Message); }
+    }
     Package p;
     try { p = Package.FromFiles(files); }
     catch (PackageRejected e) { return Problem(422, $"{s.Tag}: {e.Message}"); }
     if (p.ReleaseId != v.ReleaseId) return Problem(422, $"{s.Tag} names {v.ReleaseId}, but its package is {p.ReleaseId}");
     return (await StorePackage(db, clock, p, ApiAuth.Actor(user), $"package-source:{s.Tag}")).Result;
 }).RequireAuthorization(ApiAuth.Importer);
+
+// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-47 to R-09-56).
+DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct));
+
+async Task<IResult> Refusable(Func<Task<IResult>> f)
+{
+    try { return await f(); }
+    catch (PackageRejected e) { return Problem(422, e.Message); }
+    catch (BundleRefused e) { return Problem(e.Status, e.Message); }
+}
+
+async Task<byte[]> Body(HttpRequest req)
+{
+    using var ms = new MemoryStream();
+    await req.Body.CopyToAsync(ms);
+    return ms.ToArray();
+}
+
+app.MapPost("/distributions", async (HttpRequest req, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+{
+    var r = await Distributions(db, clock).InstallDistribution(Bundle.FromZip(await Body(req), ReleaseSignature.Distribution), ApiAuth.Actor(user), "upload", ct);
+    return Results.Json(r, statusCode: r["stored"]!.GetValue<bool>() ? 201 : 200);
+})).RequireAuthorization(ApiAuth.Importer);
+
+app.MapPost("/configuration-releases", async (HttpRequest req, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+{
+    var r = await Distributions(db, clock).InstallConfiguration(Bundle.FromZip(await Body(req), ReleaseSignature.ConfigurationRelease), ApiAuth.Actor(user), "upload", ct);
+    return Results.Json(r, statusCode: r["stored"]!.GetValue<bool>() ? 201 : 200);
+})).RequireAuthorization(ApiAuth.Importer);
+
+app.MapGet("/distributions", async (string? bank, string environment, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    Results.Ok(await Distributions(db, clock).List(bank, environment, ct))).RequireAuthorization(ApiAuth.Reader);
+
+app.MapGet("/distributions/active", async (string bank, string environment, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    await new DistributionRegistry(db, clock).Active(bank, environment, ct) is { } d ? Results.Ok(new { bank, environment, distribution = d }) : Problem(404, $"No distribution of {bank} is active in {environment}")).RequireAuthorization(ApiAuth.Reader);
+
+// The distribution as stored, byte for byte, with its signature: what an engine host verifies and loads.
+app.MapGet("/distributions/package", async (string id, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.File((await Distributions(db, clock).Stored(id, ct)).CanonicalZip(), "application/zip", "distribution.zip"))).RequireAuthorization(ApiAuth.Reader);
+
+app.MapPost("/distributions/activate", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.Json(await Distributions(db, clock).Activate(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "activate", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
+
+app.MapPost("/distributions/drain", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.Ok(await Distributions(db, clock).Drain(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "drain", ct)))).RequireAuthorization(ApiAuth.Activator);
+
+app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.Ok(await Distributions(db, clock).Remove(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "remove", ct)))).RequireAuthorization(ApiAuth.Activator);
+
+app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.Json(await Distributions(db, clock).Rollback(a.Bank ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "rollback", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
+
+// The front door: a payment is pinned at acceptance to the distribution active for its bank and environment (R-09-52),
+// and its end is a fact (R-09-53, Issue I-97). A caller may pin only for its own tenants.
+app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    !ApiAuth.MayReadTenant(user, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
+    : await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
+
+app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
+    Results.Ok(new { paymentId = p.PaymentId, outcome = p.Outcome, recorded = await Distributions(db, clock).End(p.PaymentId, p.Outcome, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);
+
+app.MapGet("/payments/pin", async (string paymentId, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+{
+    var reg = new DistributionRegistry(db, clock);
+    var facts = await new FactLog(db, clock).Of(paymentId, ct);
+    return await reg.PinOf(paymentId, ct) is { } d
+        ? Results.Ok(new { paymentId, distribution = d, ended = facts.FirstOrDefault(f => f.Kind == DistributionRegistry.EndKind)?.Code, facts = facts.Select(f => new { f.Kind, f.Code, f.ReleaseId, at = f.At }) })
+        : Problem(404, $"{paymentId} is not pinned");
+}).RequireAuthorization(ApiAuth.Reader);
+
+// The port binding in force for a bank at a moment (a configuration release's binding with its validFrom, scenario 2).
+app.MapGet("/bindings", async (string tenant, string port, DateTimeOffset? at, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    !ApiAuth.MayReadTenant(user, tenant) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the bindings of {tenant}")
+    : await Distributions(db, clock).BindingAt(tenant, port, at ?? clock.GetUtcNow(), ct) is { } b ? Results.Ok(b) : Problem(404, $"No binding of {port} for {tenant}")).RequireAuthorization(ApiAuth.ValuesReader);
+
+foreach (var path in new[] { "/distributions", "/distributions/{**rest}", "/configuration-releases", "/configuration-releases/{**rest}" })
+    app.MapMethods(path, new[] { "PUT", "PATCH", "DELETE" }, () => Problem(405, "Distributions and configuration releases are insert-only: store a new one, or record a new state")).AllowAnonymous();
 
 // Insert-only: nothing is changed or removed in place, whoever asks.
 foreach (var path in new[] { "/releases", "/releases/{**rest}", "/activations", "/activations/{**rest}" })
@@ -244,6 +338,12 @@ public sealed record ActivationRequest(string Environment, string Scope, string 
 public sealed record BranchImport(string Path, string? Actor = null);
 /// <summary>A version of the package source to install, by its tag.</summary>
 public sealed record SourceInstall(string Tag);
+/// <summary>An action on a distribution in an environment: its id (activate, drain, remove) or its bank (rollback), and why.</summary>
+public sealed record DistributionAction(string Environment, string? Id = null, string? Bank = null, string? Why = null);
+/// <summary>A payment accepted by the front door: pinned to the active distribution of its bank in its environment.</summary>
+public sealed record PaymentPin(string PaymentId, string Bank, string Environment);
+/// <summary>A payment's end: the outcome its root instance ended with.</summary>
+public sealed record PaymentEnd(string PaymentId, string Outcome);
 
 /// <summary>What storing or activating came to: a status and a body, or a status and the reason it was refused.</summary>
 sealed record Outcome(int Status, object? Body, string? Error)

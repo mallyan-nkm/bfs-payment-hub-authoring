@@ -16,12 +16,15 @@ public sealed record ContentSettings(string TrustSetting, ISecretResolver Secret
 /// repository, read only, through <see cref="IPackageSource"/>: every version of every kind is listed; a workflow package is
 /// downloaded, verified against the trusted signers and stored exactly as the release API stores an upload; activation
 /// from a date moves the previous release to draining; rollback activates the previous release again; removal is refused
-/// while the release is active or a payment pinned to it is open. A distribution or a configuration release is listed and
-/// refused at install with the reason (Issue I-102). Every action is a fact (<see cref="ServiceAudit"/>).
+/// while the release is active or a payment pinned to it is open. A bank's distribution and configuration release
+/// (R-09-47 to R-09-56) are verified, installed, activated, drained, removed and rolled back through
+/// <see cref="DistributionService"/>, and a distribution's open payments are those pinned to it with no end fact.
+/// Every action is a fact (<see cref="ServiceAudit"/>).
 /// </summary>
 public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackageSource? source, ContentSettings settings, ServiceAudit audit, ErrorDictionary dictionary, TimeProvider clock)
 {
-    /// <summary>ISO 20022 statuses a payment does not leave. The store holds no end of a payment yet (Issue I-97).</summary>
+    /// <summary>ISO 20022 statuses a payment does not leave: how a workflow package's open payments are counted, from the read model.
+    /// A distribution's are counted exactly, from its pins and the payments' end facts.</summary>
     public static readonly string[] Terminal = ["ACSC", "ACCC", "RJCT", "CANC"];
 
     IPackageSource Source => source ?? throw new ServiceRefused(404, ErrorCodes.SourceUnreachable, "No package source is configured (PackageSource:GitHub:Repository)");
@@ -42,14 +45,42 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         var states = await States(ct);
         return new JsonArray(versions.Select(v =>
         {
-            var installable = v.Kind == ReleaseSignature.WorkflowPackage;
             return (JsonNode)new JsonObject
             {
                 ["tag"] = v.Tag, ["kind"] = v.Kind, ["workflow"] = v.Workflow, ["release"] = v.Release, ["target"] = v.Target, ["commit"] = v.Commit,
-                ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered", ["installable"] = installable,
-                ["notInstallable"] = installable ? null : $"Installing a {v.Kind} is not built yet: install the workflow packages it is built from (Issue I-102)",
+                ["bank"] = v.Kind == ReleaseSignature.WorkflowPackage ? null : v.Workflow,
+                ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered", ["installable"] = true,
             };
         }).ToArray());
+    }
+
+    DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct));
+
+    static bool IsBundle(string id) => id.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || id.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal);
+
+    static ServiceRefused Refused(BundleRefused e) => new(e.Status, e.Status == 409 && e.Message.Contains("removed") || e.Message.Contains("open payment") || e.Message.Contains("longest declared wait") || e.Message.Contains("is active in") ? ErrorCodes.RemovalRefused
+        : e.Status == 409 && e.Message.Contains("already stored") ? ErrorCodes.ReleaseConflict
+        : e.Message.Contains("not a dial") || e.Message.Contains("is below") || e.Message.Contains("is above") || e.Message.Contains("not one of") || e.Message.Contains("secret") ? ErrorCodes.PackageRejected
+        : e.Status == 404 ? ErrorCodes.UnknownVersion
+        : e.Message.Contains("signed by key") && e.Message.Contains("does not trust") ? ErrorCodes.UntrustedKey
+        : e.Message.Contains("not signed") ? ErrorCodes.NotSigned
+        : e.Message.Contains("does not match") || e.Message.Contains("not in the signed statement") || e.Message.Contains("was changed") ? ErrorCodes.Tampered
+        : e.Status == 422 ? ErrorCodes.PackageRejected : ErrorCodes.ActionNotOffered, e.Message);
+
+    /// <summary>Downloads a distribution or a configuration release and verifies it as an install would, storing nothing.</summary>
+    public async Task<(Bundle bundle, Verification verification, PublishedVersion version)> CheckBundle(string tag, CancellationToken ct = default)
+    {
+        var v = await Version(tag, ct);
+        Dictionary<string, byte[]> files;
+        try { files = await Source.Download(v, ct); }
+        catch (Exception e) when (e is HttpRequestException or SecretUnavailable) { throw new ServiceRefused(502, ErrorCodes.SourceUnreachable, $"The package source could not be read: {e.Message}"); }
+        catch (PackageRejected e) { throw new ServiceRefused(422, ErrorCodes.PackageRejected, e.Message); }
+        Bundle b;
+        try { b = Bundle.FromFiles(files, v.Kind); }
+        catch (PackageRejected e) { throw new ServiceRefused(422, e.Message.Contains("does not match") || e.Message.Contains("but not in the bundle") ? ErrorCodes.Tampered : ErrorCodes.PackageRejected, $"{tag}: {e.Message}"); }
+        if (b.ReleaseId != v.ReleaseId) throw new ServiceRefused(422, ErrorCodes.WrongRelease, $"{tag} names {v.ReleaseId}, but its bundle is {b.ReleaseId}");
+        try { return (b, b.Verify(await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct)), v); }
+        catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.Of(e), $"{b.ReleaseId} is refused: {e.Message}"); }
     }
 
     /// <summary>Downloads a version and checks it as an install would, storing nothing.</summary>
@@ -57,7 +88,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     {
         var v = await Version(tag, ct);
         if (v.Kind != ReleaseSignature.WorkflowPackage)
-            throw new ServiceRefused(501, ErrorCodes.KindNotInstallable, $"{tag} is a {v.Kind}; installing one is not built yet (Issue I-102, docs/runtime/PACKAGING-AND-DEPLOYMENT.md)");
+            throw new ServiceRefused(400, ErrorCodes.PackageRejected, $"{tag} is a {v.Kind}, not a workflow package");
         Dictionary<string, byte[]> files;
         try { files = await Source.Download(v, ct); }
         catch (Exception e) when (e is HttpRequestException or SecretUnavailable) { throw new ServiceRefused(502, ErrorCodes.SourceUnreachable, $"The package source could not be read: {e.Message}"); }
@@ -80,6 +111,12 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     {
         try
         {
+            if ((await Version(tag, ct)).Kind != ReleaseSignature.WorkflowPackage)
+            {
+                var (b, bv, _) = await CheckBundle(tag, ct);
+                await audit.Record("verify", who, why, new JsonObject { ["tag"] = tag, ["release"] = b.ReleaseId, ["result"] = "verified", ["keyId"] = bv.KeyId, ["files"] = bv.Files }, ct: ct);
+                return new JsonObject { ["tag"] = tag, ["releaseId"] = b.ReleaseId, ["kind"] = b.Kind, ["verified"] = true, ["keyId"] = bv.KeyId, ["signedAt"] = bv.SignedAt.ToString("O"), ["changeSet"] = bv.ChangeSet, ["files"] = bv.Files, ["promotable"] = true };
+            }
             var (p, v, _) = await Check(tag, ct);
             await audit.Record("verify", who, why, new JsonObject { ["tag"] = tag, ["release"] = p.ReleaseId, ["result"] = "verified", ["keyId"] = v.KeyId, ["files"] = v.Files }, ct: ct);
             return new JsonObject { ["tag"] = tag, ["releaseId"] = p.ReleaseId, ["verified"] = true, ["keyId"] = v.KeyId, ["signedAt"] = v.SignedAt.ToString("O"), ["changeSet"] = v.ChangeSet, ["files"] = v.Files, ["promotable"] = p.Promotable };
@@ -94,6 +131,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     /// <summary>Installs a version: verified, then stored once, as the release API stores an upload (R-09-24).</summary>
     public async Task<JsonObject> Install(string tag, ServiceIdentity who, string why, CancellationToken ct = default)
     {
+        if ((await Version(tag, ct)).Kind != ReleaseSignature.WorkflowPackage) return await InstallBundle(tag, who, why, ct);
         Package p; Verification v;
         try { (p, v, _) = await Check(tag, ct); }
         catch (ServiceRefused e)
@@ -117,10 +155,73 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         return new JsonObject { ["releaseId"] = p.ReleaseId, ["stored"] = r.Stored, ["signedBy"] = v.KeyId, ["state"] = "installed", ["promotable"] = p.Promotable };
     }
 
+    async Task<JsonObject> InstallBundle(string tag, ServiceIdentity who, string why, CancellationToken ct)
+    {
+        Bundle b; Verification v;
+        try { (b, v, _) = await CheckBundle(tag, ct); }
+        catch (ServiceRefused e)
+        {
+            await audit.Record("install", who, why, new JsonObject { ["tag"] = tag, ["result"] = "refused", ["error"] = e.Code, ["message"] = e.Message }, ct: ct);
+            throw;
+        }
+        await using var db = StoreDbContext.Open(store);
+        JsonObject r;
+        try { r = b.Kind == ReleaseSignature.Distribution ? await Distributions(db).InstallDistribution(b, who.Actor, $"package-source:{tag}", ct) : await Distributions(db).InstallConfiguration(b, who.Actor, $"package-source:{tag}", ct); }
+        catch (BundleRefused e)
+        {
+            var refused = Refused(e);
+            await audit.Record("install", who, why, new JsonObject { ["tag"] = tag, ["result"] = "refused", ["error"] = refused.Code, ["message"] = e.Message }, ct: ct);
+            throw refused;
+        }
+        var stored = r["stored"]!.GetValue<bool>();
+        if (stored && b.Kind == ReleaseSignature.Distribution)
+            foreach (var (path, bytes) in b.Files.Where(f => f.Key.StartsWith("errors/") && f.Key.EndsWith(".yaml")))
+                dictionary.Add(Encoding.UTF8.GetString(bytes), b.ReleaseId);
+        await audit.Record("install", who, why, new JsonObject { ["tag"] = tag, ["kind"] = b.Kind, ["result"] = stored ? "installed" : "already installed", ["keyId"] = v.KeyId }, release: b.ReleaseId, ct: ct);
+        return r;
+    }
+
+    /// <summary>
+    /// The difference between a distribution or a configuration release and what its bank has active (a distribution) or
+    /// installed last (a configuration release): artefacts and their releases, schemes, parameters, values.
+    /// </summary>
+    async Task<JsonObject> DiffBundle(string tag, string env, CancellationToken ct)
+    {
+        var (b, _, _) = await CheckBundle(tag, ct);
+        await using var db = StoreDbContext.Open(store);
+        Bundle? against = null;
+        if (b.Kind == ReleaseSignature.Distribution)
+        {
+            if (await new DistributionRegistry(db, clock).Active(b.Bank, env, ct) is { } active) against = await Distributions(db).Stored(active, ct);
+        }
+        else
+        {
+            var rows = await db.Releases.AsNoTracking().Where(r => r.Scope == DistributionRegistry.ConfigScope(b.Bank)).OrderByDescending(r => r.StoredAt).ToListAsync(ct);
+            if (rows.FirstOrDefault(r => r.Release != b.Release) is { } last) against = Bundle.FromZip(last.Package, ReleaseSignature.ConfigurationRelease);
+        }
+        static Dictionary<string, string> Artefacts(Bundle? x) => (x?.Manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
+            .GroupBy(a => $"{(string?)a["kind"]}:{(string?)a["name"]}").ToDictionary(g => g.Key, g => string.Join(", ", g.Select(a => $"{(string?)a["release"]} {(string?)a["sha256"]}")));
+        static Dictionary<string, string> Packs(Bundle? x) => (x?.Manifest["billOfMaterials"]?["packs"] as JsonArray ?? []).OfType<JsonObject>()
+            .ToDictionary(a => (string)a["scope"]!, a => $"{(string?)a["release"]}");
+        static Dictionary<string, string> Dials(Bundle? x) => ParameterContract.Of(x?.Manifest["parameterContract"]).ToDictionary(d => d.Key, d => CanonicalJson.Of(d.Value));
+        static Dictionary<string, string> Values(Bundle? x) => x?.Files.TryGetValue("configuration/configuration-set.yaml", out var t) == true
+            ? BankValues.ValuesOf(Encoding.UTF8.GetString(t)).GroupBy(v => v.parameter).ToDictionary(g => g.Key, g => string.Join(" | ", g.Select(v => CanonicalJson.Of(v.value))))
+            : [];
+        var activeId = against?.ReleaseId;
+        return new JsonObject
+        {
+            ["tag"] = tag, ["releaseId"] = b.ReleaseId, ["kind"] = b.Kind, ["environment"] = env, ["active"] = activeId,
+            ["packs"] = Compare(Packs(against), Packs(b)), ["artefacts"] = Compare(Artefacts(against), Artefacts(b)),
+            ["parameters"] = b.Kind == ReleaseSignature.Distribution ? Compare(Dials(against), Dials(b)) : Compare(Values(against), Values(b)),
+            ["flows"] = new JsonArray(),
+        };
+    }
+
     /// <summary>The difference between a version and what is active for its scope: artefacts, versions, parameters.</summary>
     public async Task<JsonObject> Diff(string tag, string? environment = null, CancellationToken ct = default)
     {
         var env = environment ?? settings.Environment;
+        if ((await Version(tag, ct)).Kind != ReleaseSignature.WorkflowPackage) return await DiffBundle(tag, env, ct);
         var (p, _, _) = await Check(tag, ct);
         await using var db = StoreDbContext.Open(store);
         var activeRelease = await new ReleaseRegistry(db, clock).ActiveAt(env, p.Scope, clock.GetUtcNow(), ct);
@@ -166,6 +267,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     public async Task<JsonObject> Activate(string releaseId, string? environment, DateTimeOffset? from, ServiceIdentity who, string why, CancellationToken ct = default)
     {
         var env = environment ?? settings.Environment;
+        if (releaseId.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) return await Bundled("activate", releaseId, env, who, why, (svc, c) => svc.Activate(releaseId, env, who.Actor, why, c), ct);
         var (scope, release) = Split(releaseId);
         await using var db = StoreDbContext.Open(store);
         var reg = new ReleaseRegistry(db, clock);
@@ -188,10 +290,36 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         return new JsonObject { ["releaseId"] = releaseId, ["environment"] = env, ["effectiveFrom"] = at.ToString("O"), ["draining"] = previous is null || previous == release ? null : $"{scope}@{previous}" };
     }
 
+    /// <summary>A distribution action, carried out by the distribution service and recorded as the console's fact.</summary>
+    async Task<JsonObject> Bundled(string action, string target, string env, ServiceIdentity who, string why, Func<DistributionService, CancellationToken, Task<JsonObject>> f, CancellationToken ct)
+    {
+        await using var db = StoreDbContext.Open(store);
+        JsonObject r;
+        try { r = await f(Distributions(db), ct); }
+        catch (BundleRefused e) { throw Refused(e); }
+        await audit.Record(action, who, why, new JsonObject { ["environment"] = env, ["result"] = r.DeepClone() }, release: target, ct: ct);
+        if (r["draining"] is JsonValue d && (string?)d is { } draining) await audit.Record("draining", who, why, new JsonObject { ["environment"] = env, ["replacedBy"] = (string?)r["active"] }, release: draining, ct: ct);
+        return r;
+    }
+
+    /// <summary>Draining a distribution by hand: it takes no new payment; its open payments run to their end.</summary>
+    public Task<JsonObject> Drain(string dist, string? environment, ServiceIdentity who, string why, CancellationToken ct = default)
+    {
+        var env = environment ?? settings.Environment;
+        if (!dist.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, $"{dist} is not a distribution: a workflow package drains when another release of it is activated");
+        return Bundled("drain", dist, env, who, why, (svc, c) => svc.Drain(dist, env, who.Actor, why, c), ct);
+    }
+
     /// <summary>Rollback: the release that was active before the current one, activated again now.</summary>
     public async Task<JsonObject> Rollback(string scope, string? environment, ServiceIdentity who, string why, CancellationToken ct = default)
     {
         var env = environment ?? settings.Environment;
+        // A bank's distributions: dist/<bank>.
+        if (scope.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal))
+        {
+            var bank = scope[DistributionRegistry.DistPrefix.Length..].Split('@')[0];
+            return await Bundled("rollback", DistributionRegistry.Scope(bank), env, who, why, (svc, c) => svc.Rollback(bank, env, who.Actor, why, c), ct);
+        }
         var now = clock.GetUtcNow();
         await using var db = StoreDbContext.Open(store);
         var current = await new ReleaseRegistry(db, clock).ActiveAt(env, scope, now, ct) ?? throw new ServiceRefused(409, ErrorCodes.ActionNotOffered, $"Nothing of {scope} is active in {env}");
@@ -204,8 +332,13 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     }
 
     /// <summary>Removal: refused while the release is active or any payment pinned to it is open. The package stays as a record.</summary>
-    public async Task<JsonObject> Remove(string releaseId, ServiceIdentity who, string why, CancellationToken ct = default)
+    public async Task<JsonObject> Remove(string releaseId, ServiceIdentity who, string why, CancellationToken ct = default, string? environment = null)
     {
+        if (releaseId.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal))
+        {
+            var env = environment ?? settings.Environment;
+            return await Bundled("removed", releaseId, env, who, why, (svc, c) => svc.Remove(releaseId, env, who.Actor, why, c), ct);
+        }
         var (scope, release) = Split(releaseId);
         await using var db = StoreDbContext.Open(store);
         if (await new ReleaseRegistry(db, clock).Get(scope, release, ct) is null) throw new ServiceRefused(404, ErrorCodes.UnknownVersion, $"{releaseId} is not installed");
@@ -253,6 +386,8 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             }
             counts[id] = counts.GetValueOrDefault(id) + 1;
         }
+        // A distribution's open payments, exactly: pinned at acceptance, with no end fact (R-09-53).
+        foreach (var (d, n) in await new DistributionRegistry(db, clock).OpenPayments(ct)) counts[d] = n;
         return counts;
     }
 
@@ -267,8 +402,11 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         var removed = await db.Facts.AsNoTracking().Where(f => f.Kind == ServiceAudit.Kind && f.Code == "removed").Select(f => f.SubjectId).ToListAsync(ct);
         var open = await OpenPayments(ct);
         var states = new Dictionary<string, string>(StringComparer.Ordinal);
+        var dreg = new DistributionRegistry(db, clock);
         foreach (var r in releases)
         {
+            if (r.Scope.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) { states[r.Id] = await dreg.Refresh(r.Id, env, "service-console", ct) ?? "installed"; continue; }
+            if (r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal)) { states[r.Id] = "installed"; continue; }
             var mine = acts.Where(a => a.Scope == r.Scope).ToList();
             var active = mine.Where(a => a.EffectiveFrom <= now).OrderByDescending(a => a.EffectiveFrom).ThenByDescending(a => a.Id).FirstOrDefault()?.Release;
             var was = mine.Any(a => a.Release == r.Release && a.EffectiveFrom <= now);
@@ -296,10 +434,13 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             var m = JsonNode.Parse(r.ManifestJson);
             return (JsonNode)new JsonObject
             {
-                ["releaseId"] = r.Id, ["scope"] = r.Scope, ["release"] = r.Release, ["kind"] = ReleaseSignature.WorkflowPackage, ["target"] = (string?)m?["target"], ["tenant"] = (string?)m?["tenant"],
-                ["promotable"] = m?["promotable"]?.GetValue<bool>() == true && m?["containsSimulators"]?.GetValue<bool>() != true,
+                ["releaseId"] = r.Id, ["scope"] = r.Scope, ["release"] = r.Release,
+                ["kind"] = r.Scope.StartsWith(DistributionRegistry.DistPrefix) ? ReleaseSignature.Distribution : r.Scope.StartsWith(DistributionRegistry.ConfigPrefix) ? ReleaseSignature.ConfigurationRelease : ReleaseSignature.WorkflowPackage,
+                ["target"] = (string?)m?["target"] ?? (string?)m?["engine"], ["tenant"] = (string?)m?["tenant"] ?? (string?)m?["bank"],
+                ["promotable"] = IsBundle(r.Id) || m?["promotable"]?.GetValue<bool>() == true && m?["containsSimulators"]?.GetValue<bool>() != true,
                 ["contentHash"] = r.ContentHash, ["storedBy"] = r.StoredBy, ["storedAt"] = r.StoredAt.ToString("O"), ["state"] = states.GetValueOrDefault(r.Id, "installed"),
                 ["openPayments"] = open.GetValueOrDefault(r.Id),
+                ["longestWait"] = (string?)m?["longestWait"],
                 ["activations"] = new JsonArray(acts.Where(a => a.Scope == r.Scope && a.Release == r.Release).Select(a => (JsonNode)new JsonObject { ["environment"] = a.Environment, ["effectiveFrom"] = a.EffectiveFrom.ToString("O"), ["by"] = a.Actor }).ToArray()),
                 ["facts"] = new JsonArray(facts.Where(f => f.SubjectId == r.Id).Select(f => (JsonNode)ServiceAudit.Show(f)).ToArray()),
             };
@@ -312,6 +453,17 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         var (scope, release) = Split(releaseId);
         await using var db = StoreDbContext.Open(store);
         var row = await new ReleaseRegistry(db, clock).Get(scope, release, ct) ?? throw new ServiceRefused(404, ErrorCodes.UnknownVersion, $"{releaseId} is not installed");
+        if (IsBundle(releaseId))
+        {
+            var b = Bundle.FromZip(row.Package, releaseId.StartsWith(DistributionRegistry.DistPrefix) ? ReleaseSignature.Distribution : ReleaseSignature.ConfigurationRelease);
+            try
+            {
+                var bv = b.Verify(await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct));
+                await new FactLog(db, clock).Append(releaseId, b.Kind == ReleaseSignature.Distribution ? "distribution" : "configuration", new NewFact("release.verified", "service-console:reverify", new JsonObject { ["keyId"] = bv.KeyId, ["statementSha256"] = bv.StatementSha256, ["files"] = bv.Files }, releaseId, who.Actor), ct);
+                return new JsonObject { ["releaseId"] = releaseId, ["verified"] = true, ["keyId"] = bv.KeyId };
+            }
+            catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.Of(e), $"{releaseId} no longer verifies: {e.Message}"); }
+        }
         var p = Package.FromZip(row.Package);
         try
         {

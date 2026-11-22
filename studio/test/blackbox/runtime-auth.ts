@@ -28,7 +28,7 @@ export function runtimeApiEnv(): Record<string, string> {
     Auth__Oidc__Issuer: ISSUER,
     Auth__Oidc__Audience: AUDIENCE,
     Auth__Oidc__SigningKeys: JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'bb-1', use: 'sig', alg: 'RS256' }] }),
-    Auth__RoleMap: JSON.stringify({ kind: 'runtime-role-map', grants: [{ claim: 'roles', value: 'TransactHub.Pipeline', roles: ['release-importer', 'release-activator', 'release-reader', 'values-reader'], tenants: ['*'] }] }),
+    Auth__RoleMap: JSON.stringify({ kind: 'runtime-role-map', grants: [{ claim: 'roles', value: 'TransactHub.Pipeline', roles: ['release-importer', 'release-activator', 'release-reader', 'values-reader', 'payment-intake'], tenants: ['*'] }] }),
   };
 }
 

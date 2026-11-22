@@ -28,31 +28,58 @@ public static class BankValues
             var files = Directory.EnumerateFiles(bank, "configuration-set.yaml").Concat(
                 Directory.Exists(Path.Combine(bank, "configuration-sets")) ? Directory.EnumerateFiles(Path.Combine(bank, "configuration-sets"), "*.yaml") : []);
             // Older releases first, so a later release's value is the newer version.
-            foreach (var (release, root) in files.Select(Read).Where(x => x.root is not null).OrderBy(x => x.release, Comparer<string>.Create(CompareReleases)))
-            {
-                var tenant = S(root!, "tenant");
-                if (tenant is null || !root!.Children.TryGetValue(new YamlScalarNode("values"), out var vs) || vs is not YamlSequenceNode seq) continue;
-                foreach (var v in seq.Children.OfType<YamlMappingNode>())
-                {
-                    var name = S(v, "parameter");
-                    var from = S(v, "validFrom");
-                    if (name is null || from is null || !v.Children.TryGetValue(new YamlScalarNode("value"), out var value)) continue;
-                    var effectiveFrom = Day(from);
-                    DateTimeOffset? effectiveTo = S(v, "validTo") is { } to ? Day(to).AddDays(1) : null;
-                    var body = new JsonObject { ["value"] = Json(value), ["configurationSet"] = release };
-                    var canon = CanonicalJson.Of(body);
-                    var start = StoreTime.Of(effectiveFrom);
-                    DateTimeOffset? end = effectiveTo is { } e ? StoreTime.Of(e) : null;
-                    var same = await db.VersionedValues.AsNoTracking().Where(x => x.Kind == Kind && x.Tenant == tenant && x.Name == name && x.EffectiveFrom == start && x.EffectiveTo == end)
-                        .OrderByDescending(x => x.VersionNo).Select(x => x.BodyJson).FirstOrDefaultAsync(ct);
-                    if (same == canon) continue;
-                    await store.Publish(Kind, tenant, name, body, effectiveFrom, effectiveTo, actor, ct);
-                    added++;
-                }
-            }
+            foreach (var (release, root) in files.Select(f => Read(File.ReadAllText(f))).Where(x => x.root is not null).OrderBy(x => x.release, Comparer<string>.Create(CompareReleases)))
+                added += await ImportSet(db, store, release, root!, actor, ct);
         }
         return added;
     }
+
+    /// <summary>A configuration set's text (a configuration release's set, R-09-50): each value an effective-dated version.</summary>
+    public static async Task<int> ImportText(StoreDbContext db, TimeProvider clock, string yaml, string actor, CancellationToken ct = default)
+    {
+        var (release, root) = Read(yaml);
+        return root is null ? 0 : await ImportSet(db, new VersionedValues(db, clock), release, root, actor, ct);
+    }
+
+    static async Task<int> ImportSet(StoreDbContext db, VersionedValues store, string release, YamlMappingNode root, string actor, CancellationToken ct)
+    {
+        var added = 0;
+        var tenant = S(root, "tenant");
+        if (tenant is null || !root.Children.TryGetValue(new YamlScalarNode("values"), out var vs) || vs is not YamlSequenceNode seq) return 0;
+        foreach (var v in seq.Children.OfType<YamlMappingNode>())
+        {
+            var name = S(v, "parameter");
+            var from = S(v, "validFrom");
+            if (name is null || from is null || !v.Children.TryGetValue(new YamlScalarNode("value"), out var value)) continue;
+            var effectiveFrom = Day(from);
+            DateTimeOffset? effectiveTo = S(v, "validTo") is { } to ? Day(to).AddDays(1) : null;
+            var body = new JsonObject { ["value"] = Json(value), ["configurationSet"] = release };
+            var canon = CanonicalJson.Of(body);
+            var start = StoreTime.Of(effectiveFrom);
+            DateTimeOffset? end = effectiveTo is { } e ? StoreTime.Of(e) : null;
+            var same = await db.VersionedValues.AsNoTracking().Where(x => x.Kind == Kind && x.Tenant == tenant && x.Name == name && x.EffectiveFrom == start && x.EffectiveTo == end)
+                .OrderByDescending(x => x.VersionNo).Select(x => x.BodyJson).FirstOrDefaultAsync(ct);
+            if (same == canon) continue;
+            await store.Publish(Kind, tenant, name, body, effectiveFrom, effectiveTo, actor, ct);
+            added++;
+        }
+        return added;
+    }
+
+    /// <summary>The values a configuration set's text holds, for the parameter contract check: parameter and value.</summary>
+    public static List<(string parameter, JsonNode? value)> ValuesOf(string yaml)
+    {
+        var (_, root) = Read(yaml);
+        if (root is null || !root.Children.TryGetValue(new YamlScalarNode("values"), out var vs) || vs is not YamlSequenceNode seq) return [];
+        return seq.Children.OfType<YamlMappingNode>().Where(v => S(v, "parameter") is not null && v.Children.ContainsKey(new YamlScalarNode("value")))
+            .Select(v => (S(v, "parameter")!, Json(v.Children[new YamlScalarNode("value")]))).ToList();
+    }
+
+    /// <summary>The day a value starts, as a configuration set writes it.</summary>
+    public static DateTimeOffset DayOf(string d) => Day(d);
+
+    /// <summary>A YAML node as JSON, as a configuration set's values are read.</summary>
+    public static JsonNode? JsonOf(YamlNode n) => Json(n);
 
     /// <summary>
     /// Every value in force for a tenant at a moment, knowing every version stored so far. A configuration set is the bank's whole
@@ -80,10 +107,10 @@ public static class BankValues
         return result;
     }
 
-    static (string release, YamlMappingNode? root) Read(string file)
+    static (string release, YamlMappingNode? root) Read(string text)
     {
         var ys = new YamlStream();
-        ys.Load(new StringReader(File.ReadAllText(file)));
+        ys.Load(new StringReader(text));
         var root = ys.Documents.FirstOrDefault()?.RootNode as YamlMappingNode;
         return root is not null && S(root, "kind") == "configuration-set" ? (S(root, "release") ?? "0.0.0", root) : ("0.0.0", null);
     }
