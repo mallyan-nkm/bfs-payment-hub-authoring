@@ -955,6 +955,46 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **Recommendation.** Before a payment depends on the binding in production, keep that state on the payment's fact chain in the store (the trace and detail as facts, held messages in the inbox, the hook bindings with the instance), and let a binding that starts read the server's running instances of its tenant and rebuild its view from the store. Add a test that kills the binding mid-payment and starts another.
 
+## I-93. Engine runs on a busy machine: Temporal's test server, and workers on shared ports
+
+**Issue.** On Temporal's time-skipping test server, with the store on (`TH_STORE_PROVIDER`), the WPS salary file can fail at its first step: `p.validate.canonical.v1 failed: attempt 1 of validate timed out; a late result is ignored`, at about five seconds of virtual time. It shows on a loaded machine: here `studio/test/blackbox/e2e-wps-temporal.test.ts -t "database on PostgreSql"` fails the same way (load average 16 to 20), without the test bench. With claim checks as local activities (the default, `TH_LOCAL_CLAIMCHECK`, `runtime/src/TransactHub.Engine.Temporal/TemporalEngine.cs`) it failed on every run here: a local activity does not hold the test server's clock while it writes facts to the database. With `TH_LOCAL_CLAIMCHECK=0` it settles on most runs, and still fails on some (2 of the first 9 outward cases of one suite run; in another, a step of the WPS leg failed the same way, `leg:failed`): an attempt that waits on a busy worker races its attempt timer.
+
+**Recommendation.** (1) Decide that a deployment with a store runs its claim checks as regular activities on the test server (or always), in the Temporal binding. (2) Make the attempt timer of a deployment's steps not race the test server's clock: lock time skipping while an activity is outstanding, or warm each worker before the first workflow starts. Each with a test that runs the salary file with the store under an artificial delay on the worker and on each fact write.
+
+**Issue 2.** The deploy runner gives a package's workers ports from 7400 to 7800 at random when it is given none, and takes a worker as up when anything on its port answers `/health`. With several deployments on one machine (CI runners, parallel test sessions), an engine can reach another run's worker: here Elsa on SQL Server failed with `p.validate.canonical.v1@1.0.0 is not registered on queue th-bank`, from a worker of another run.
+
+**Recommendation 2.** Let the deploy runner choose ports the system gives it (listen on port 0, then pass each worker its port), and check that `/health` answers with the deployment's own id. **Done since:** the deploy runner now starts its workers on port 0 and reads each worker's port from its first line; the test bench's own port check is gone.
+
+**What is built.** The test bench sets `TH_LOCAL_CLAIMCHECK=0` for Temporal when the store is on and Temporal is the test server, and runs a Temporal run on the test server whose outcome is not the interpreter's once more, on a fresh database, saying so in the result and the report (`runtime/tools/TransactHub.TestBench/Runner.cs`). A real difference shows on both runs and still fails the run. It retries nothing else. On a real Temporal server (`environment.temporal: host:port`) it does neither. The harness and the e2e test are unchanged.
+
+## I-94. The WPS inward flow cannot run on the engines through the deploy runner
+
+**Issue.** A payment file (PIF) waits for its supplement (PSI), which the WPS inward simulator sends after it. The studio interpreter plays those later deliveries, and settles the factory's inward scenarios (WPS-IN-002 to 007). The deploy runner (`studio/src/deploy/deploy.ts`) never asks a worker for an inward simulator's deliveries (the worker's `POST /start`), so on every engine the leg ends `supplement:missing`, `end:pending`. The test bench's inward profiles show this on Temporal, DTFx, Elsa and Flowable alike; no engine test ran the inward flow before.
+
+**Recommendation.** In the deploy runner, after the front door, ask each worker with inward simulators for their deliveries and hand them to the engine's front door as the kit runner does, with an end-to-end test of WPS-IN-002 on each engine. Then remove `knownIssue: I-94` from `runtime/testbench/suite/TB-WPS-IN-*.yaml`; the suite fails while the mark stays on a case that now agrees.
+
+**What is built.** The inward profiles, samples, benches and cases. The cases pass on the interpreter and are marked as known to differ on the engines.
+
+## I-95. ISO 20022 messages and canonical payments have no front door
+
+**Issue 1.** No scheme in the factory takes pain.001 or pacs.008 as a start message: the only intake maps are the WPS files'. The owner asked for a test bench that takes ISO 20022 messages and canonical JSON payments. The test bench maps such a message to the canonical context (ids, amounts, accounts and agents; never a party's name or address) and runs the platform workflow from that context, on the interpreter and every engine. That is a parity test, not a test of an intake: no map of the factory checked the mapping.
+
+**Issue 2.** Run from a context, the inward workflow (`p.wf.inward.v1`) with no leg in its slot ends `failed` on the interpreter and `leg:pending`, `end:review` on DTFx (and the other engines). The two treat an empty slot differently.
+
+**Recommendation.** (1) Decide whether the platform takes pain.001 (a corporate channel) and pacs.008 (a scheme) through the front door; if so, add their intake maps and dispatch entries in `p.*`, with tests, and the test bench sends them through the front door like the WPS files. (2) Decide what a platform workflow does with an empty slot, write it as a requirement with a check, and make the interpreter and the engines agree.
+
+**What is built.** The mapping in `runtime/tools/TransactHub.TestBench/Inputs.cs`, the `platform-iso-*` profiles, and three cases; TB-ISO-002 is marked as known to differ (I-95).
+
+## I-96. What synthetic test data can and cannot drive
+
+**Issue 1.** The factory's rules add money as binary floating point: `uae.wps.rule.control-total-matches.v1` sums `fixedPay + variablePay` and compares the sum with the control total exactly, so a correct file whose amounts sum to 7894.87 is refused with AM10 (the sum is 7894.870000000001). The factory's samples use round amounts and never show it. A bank's real salary file would.
+
+**Issue 2.** The simulators decide by their scenario, not by the data: a payee named as a sanctions hit is screened clear unless the bench gives the sanctions port the `reject` scenario. Personal data never enters workflow state (`spec/CLAUDE.md`), so no screening activity sees a name. The pack has no rule against a person id repeated within a salary file.
+
+**Recommendation.** (1) Compare money in rules as decimals, or round each sum to the currency's minor unit before comparing, as a requirement with a check and a mutation case. (2) Keep scenarios as the way a bench drives the parties, and say in the simulator spec that a sanctioned-name sample needs its scenario. (3) Ask the business whether a repeated person id in one file is refused, once `uae.wps` is confirmed.
+
+**What is built.** The builder makes amounts in quarters of a dirham, whose sums are exact in binary, so its files are valid unless an error is injected on purpose; the `sanctioned-name` injection names the `sanctions-hit` bench to go with it. The README lists both.
+
 ## Not done, and why
 
 | Story | Why |

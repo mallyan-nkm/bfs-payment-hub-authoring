@@ -1,0 +1,14 @@
+# A test bench profile (runtime/testbench/README.md): it fixes the engines, the database, the tenant, the bench and
+# the environment, so a user sends only data: testbench run --profile <name> --file <data>.
+kind: testbench-profile
+name: wps-all-engines
+title: WPS outward salary file on Temporal, DTFx, Elsa and Flowable, the store on PostgreSQL, against the interpreter
+workflow: p.wf.corporate.v1
+message: uae.wps.sif
+tenant: example-bank
+engines: [temporal, dtfx, elsa, flowable]
+reference: true
+databases: [PostgreSql]
+bench: wps-happy
+clock: { date: '2026-11-17' }
+environment: { temporal: test-server, flowable: container }
