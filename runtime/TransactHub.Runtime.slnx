@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TransactHub.Activities.Platform/TransactHub.Activities.Platform.csproj" />
     <Project Path="src/TransactHub.Activities.Wps/TransactHub.Activities.Wps.csproj" />
     <Project Path="src/TransactHub.Api/TransactHub.Api.csproj" />
     <Project Path="src/TransactHub.Engine.Temporal/TransactHub.Engine.Temporal.csproj" />

@@ -38,14 +38,23 @@ public sealed class SimulatedCoreBanking(PortBinding b) : ICoreBanking
     public const string Name = "simulator";
     public string Adapter => Name;
     public readonly List<PostingBatch> Posted = new();
+    public IReadOnlyList<PostingBatch> Snapshot() { lock (Posted) return Posted.ToList(); }
 
     public Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default) =>
-        Task.FromResult(new BalanceAnswer(account, decimal.Parse(b.Setting("openingBalance", "1000000"), System.Globalization.CultureInfo.InvariantCulture), b.Setting("currency", "AED"), "NORM"));
+        Task.FromResult(new BalanceAnswer(account, decimal.Parse(b.Setting("openingBalance", "1000000"), System.Globalization.CultureInfo.InvariantCulture), b.Setting("currency", "AED"), b.Setting("accountStatus", "NORM")));
 
+    /// <summary>Posts every batch, except one with a leg on the binding's <c>rejectAccount</c> (a test scenario): that one is declined with code 1.</summary>
     public Task<PostingAnswer> Post(PostingBatch batch, CancellationToken ct = default)
     {
-        lock (Posted) Posted.Add(batch);
-        return Task.FromResult(new PostingAnswer(batch.Reference, true, "0", $"SIM-{Posted.Count:D6}"));
+        var reject = b.Setting("rejectAccount", "");
+        if (reject.Length > 0 && batch.Legs.Any(l => l.Account == reject)) return Task.FromResult(new PostingAnswer(batch.Reference, false, "1", null));
+        lock (Posted)
+        {
+            // The same reference is the same posting: core banking answers it again, it does not post twice.
+            var i = Posted.FindIndex(p => p.Reference == batch.Reference);
+            if (i < 0) { Posted.Add(batch); i = Posted.Count - 1; }
+            return Task.FromResult(new PostingAnswer(batch.Reference, true, "0", $"SIM-{i + 1:D6}"));
+        }
     }
 }
 
@@ -69,6 +78,9 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http) : ICo
         m.Headers.Add("X-Txn-Type", "RQST");
         m.Headers.Add("X-Txn-Flag", b.Required("txnFlag"));
         m.Headers.Add("X-Ref", reference);
+        // The gateway's credential, by reference only: `secretRef: env:NAME` names the variable a deployment sets.
+        if (b.Setting("secretRef", "") is var r && r.StartsWith("env:", StringComparison.Ordinal) && Environment.GetEnvironmentVariable(r[4..]) is { Length: > 0 } token)
+            m.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         return m;
     }
 

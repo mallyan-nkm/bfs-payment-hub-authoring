@@ -36,6 +36,9 @@ export interface StubSpec {
   emit?: { type: string; after?: string; status?: string }; // a message the party sends back
 }
 
+/** The bench's word for a port the runtime answers through the bank's port binding, in place of a simulator. */
+export const RUNTIME_PORT = 'runtime';
+
 export interface RunConfig {
   store: Store;
   scripts: ScriptRegistry;
@@ -260,7 +263,12 @@ export class Run {
     this.clock = new VirtualClock(start);
     this.docs = cfg.documents ?? {};
     this.configSet = cfg.tenant ? cfg.store.configurationSet(cfg.tenant) : undefined;
-    for (const b of cfg.bench ?? []) this.bindSim(b, cfg.inbound);
+    for (const b of cfg.bench ?? []) if (b.simulator !== RUNTIME_PORT) this.bindSim(b, cfg.inbound);
+  }
+
+  /** A port the bench gives to the runtime: its builtin activities run in the runtime's native host, on the bank's port binding (R-08-15). */
+  onRuntime(port: string): boolean {
+    return (this.cfg.bench ?? []).some((b) => b.port === port && b.simulator === RUNTIME_PORT);
   }
 
   newId(prefix: string) {
@@ -909,10 +917,12 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     return { outcome: res.outcome, reasonCode: res.reasonCode, writes, ruleTrace: (io as any).lastRuleTrace, decisions: (io as any).lastDecisions };
   }
   // A native code-behind runs in the runtime's native host (R-08-14), with the same view and parameters a script gets.
-  if (act.implementation?.binding === 'native') {
+  // So does a builtin activity whose port the bench gives to the runtime (R-08-15): the runtime's code answers it
+  // through the bank's port binding in force at the engine's time, not a simulator.
+  if (act.implementation?.binding === 'native' || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
-    return run.clock.external(() => runNative(act, view, params, run.clock.iso()));
+    return run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level));
   }
   try {
     return await reference(act, view, io);
@@ -923,14 +933,14 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
 }
 
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
-async function runNative(act: any, view: any, params: Record<string, any>, now: string): Promise<ActivityResult> {
+async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
   try {
     const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now }),
+      body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}) }),
     });
     res = await r.json();
   } catch (e: any) {

@@ -179,7 +179,7 @@ content-configurations/      what the studio publishes and what a bank configure
   - **The switch.** The example bank moves from the simulator to the gateway on 2026-12-01 by a binding alone, and the tests show it.
   - **The four bank sets.** Under D5 as first decided they were not in this repository. Each bank keeps its set in its own copy, and `example-bank` holds every knob with synthetic values.
   - **DIB's set (D5 as amended, 2026-11-21).** DIB's real configuration is in `content-configurations/banks/dib/`: its pack (hooks for the employer AML check and the labour ministry notification, carried but not bound), its configuration set (rails and routing code), its core-banking binding and its CBX values. Its `README.md` gives the source of each value and lists what is not yet carried. The studio loads it with `--bank dib` (Issue I-43); the runtime reads its bindings (`BankFolderConfigurationTests`).
-  - **Not yet.** WPS posting and balance activities do not call `ICoreBanking` yet. That comes with P2's inward flows, which post.
+  - **Posting through the port (P2).** WPS posting and balance on the runtime call `ICoreBanking` through the tenant's binding in force at the engine's time (`CoreBankingResolver`, `PortBindings.InForce`). See "Progress on P2" in section 6.
 - **ADIB RTC** becomes a `uae.wps` RTC flow, with the ADIB posting as a hook.
 - **ENBD and FAB** are thin stubs with no tests today. They become configuration sets only.
 - **Real bank values** (routing code, GL accounts, host ids) are not committed, except DIB's: the owner decided on 2026-11-21 that DIB's live in `content-configurations/banks/dib/` (D5 as amended). Another bank's set still lives in its private copy of `content-configurations/banks/<bank>/`. Secrets are never committed, DIB's included: the folder names them by reference.
@@ -242,6 +242,33 @@ The results, pass by pass and project by project, with each failure classified (
 | P5 | Banks | DIB, ADIB, ENBD and FAB are each a configuration set. No bank name is in shared code, and a check enforces it. Switching the example bank's core banking needs only a binding. |
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
 | P6 | Studio | Aani is removed. The WPS leg and the new inward flows are authored and published. The studio deploys a release to the runtime and hot-updates a rule value with no deployment, shown end to end. |
+
+### Progress on P2 (WPS complete)
+
+- **Posting and balance through the core-banking port.** `runtime/src/TransactHub.Activities.Platform` answers every factory activity of `p.port.core-banking.v1` in the native host (`TransactHub.Native`, `TH_BANKS_DIR` names the banks' folders):
+  - `p.reserve.funds.v1`: a balance enquiry on the debtor account; enough available in a postable status (`postableStatuses`, a setting of the binding) reserves it in the hub;
+  - `p.post.accounting.v1`: an item or an inward payment credits the creditor from the settlement account; an outward payment debits the debtor to it, with the template's charge slab and VAT. The legs' codes, narration and accounts are the activity's parameters;
+  - `p.post.reverse.v1`, `p.post.verify.v1`, `p.reserve.release.v1`;
+  - `uae.wps.post.return.v1` (`TransactHub.Activities.Wps`): an accepted returns file moves the returned amount from suspense to settlement.
+  - The adapter is the binding's: the simulator, or `gateway-rest` with its wire settings. A call that may have reached core banking is `unknown`, never retried blind (the source's `AccTxnReplyClassifier`). A tenant with no binding in force is refused (`PortNotBound`).
+  - A test bench gives the port to the runtime with `simulator: runtime` (R-08-15; `studio deploy --bench p.port.core-banking.v1=runtime`).
+  - Tests: `CoreBankingPostingTests` (the simulator before the example bank's switch, the gateway after it and for the bank folder's binding, through a recording handler), `studio/test/runtime-port.test.ts`.
+- **Posting windows.** The source's call-hours gate (`CbCallWindowGate`) is `PostingWindow`. A binding with `postingWindowStart` and `postingWindowEnd` (HH:mm, business-local) takes no posting outside them: the attempt fails with a retryable error and the engine tries again later. An invalid window fails closed. Not yet: a schedule-gated await in the factory's legs, so a payment waits for the window instead of retrying into it.
+- **The inward flows, flow by flow.**
+
+| Flow | On the runtime | Not yet |
+| --- | --- | --- |
+| PIF (payment file, bank as agent) | Each credit posts through the binding (`p.post.accounting.v1` at item level). | The PIF parser and its checks run as the studio's scripts (`uae.wps.map.pif-in.v1`), not native code. |
+| PSI (supplementary file) | Nothing to post. | The pairing with the PIF is the leg's exchange in the studio. The source's `InwardPsiParser` is not ported. |
+| PRC (receipt confirmation) | Nothing to post. | Generation, upload and the ACK/NAK extraction (`InwardPrc*`) are not ported; the factory renders the PRC as a script. |
+| DIF (disbursement file) | Nothing to post. | Generation, upload and ACK/NAK (`InwardDif*`) are not ported. |
+| RFA (returns file) | The accepted-returns posting (`uae.wps.post.return.v1`). | The returns decision (`uae.wps.table.returns.v1`) yields `returns` and `count` but no `amount`, so on the runtime the posting is refused until it does. The RFA reposting and the file itself are not ported. |
+| RRI (refund request instruction) | Nothing. | No factory flow. The parser (`InwardRriParser`), the reject reasons (000, 002) and the unblock flow are not ported. |
+| DE (bulk file, transfer, submit, outcome, repost, lost file) | Nothing. | No factory flow; none of `Inward/De*` is ported. |
+| RTC (return to the employer's bank) | The leg's posting is `p.post.accounting.v1`, which the runtime answers (inward: settlement to the creditor). | The RTC map (`uae.wps.map.rtc-in.v1`) writes the items but no payment-level creditor account, so the runtime refuses the posting until the leg credits per item or the map names the account. The map is a script, not native code. |
+| Posting windows | The gate, on every posting activity. | The schedule-gated await, above. |
+
+  P2's exit ("every WPS line of the parity matrix is green") is not met.
 
 ### Progress on P3 (DTFx, Elsa, Flowable)
 

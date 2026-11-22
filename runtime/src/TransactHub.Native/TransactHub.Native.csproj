@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
+    <ProjectReference Include="..\TransactHub.Ports\TransactHub.Ports.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

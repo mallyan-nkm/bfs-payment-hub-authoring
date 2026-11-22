@@ -8,7 +8,7 @@ import { runAllTests, runTest } from './testing/runner.js';
 // TH_GITHUB_TOKEN, TH_GITHUB_API); otherwise an in-memory fake GitHub seeded from this repository's
 // content-configurations/. Either way nothing is written to disk, and the command says which it read.
 
-const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]';
+const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario | port=runtime ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
@@ -146,8 +146,11 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     need(args[0] && !args[0].startsWith('--'), 'deploy needs a package (a .zip or a directory)');
     need(opt('workflow'), 'deploy needs --workflow <name>');
     const bench = args.flatMap((a, i) => (args[i - 1] === '--bench' ? [a] : [])).map((b) => {
+      // port=runtime: the runtime's native host answers the port, through the bank's port binding (R-08-15).
+      const r = /^([^=]+)=runtime$/.exec(b);
+      if (r) return { port: r[1], simulator: 'runtime', scenario: '' };
       const m = /^([^=]+)=([^:]+):(.+)$/.exec(b);
-      need(m, `--bench ${b}: write it as port=simulator:scenario`);
+      need(m, `--bench ${b}: write it as port=simulator:scenario or port=runtime`);
       return { port: m![1], simulator: m![2], scenario: m![3] };
     });
     const tenant = opt('tenant');

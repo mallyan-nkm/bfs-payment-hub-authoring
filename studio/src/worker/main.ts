@@ -42,7 +42,7 @@ const party = new PartyService({
   scripts: new ScriptRegistry([path.join(dir, 'scripts')]),
   evaluationDate: environment.evaluationDate ?? new Date().toISOString().slice(0, 10),
   tenant: environment.tenant,
-  bench: (environment.bench ?? []).filter((b: any) => store.doc(b.simulator)),
+  bench: (environment.bench ?? []).filter((b: any) => b.simulator === 'runtime' || store.doc(b.simulator)),
   values: environment.values,
 } as any);
 
