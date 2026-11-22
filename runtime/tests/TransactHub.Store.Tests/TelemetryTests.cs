@@ -190,7 +190,7 @@ public sealed class TelemetryTests(Databases dbs)
         Assert.Contains("th.attempt uae.wps.act.validate-salary-file.v1", names);
         Assert.Equal(2, names.Count(n => n == "th.attempt uae.wps.act.record-checks.v1"));
         Assert.Contains(names, n => n.StartsWith("th.store.write ") && n.Contains("bulk"));
-        Assert.True(names.Count(n => n == "th.store.write fact") >= 6, string.Join(", ", names));
+        Assert.True(names.Count(n => n == "th.store.write fact" || n == "th.store.write fact+outbox") >= 6, string.Join(", ", names));
         var attempt = mine.First(s => s.DisplayName == "th.attempt uae.wps.act.validate-salary-file.v1");
         Assert.Equal("temporal", attempt.GetTagItem("th.engine"));
         Assert.Equal("P-1", attempt.GetTagItem("th.payment.id"));
