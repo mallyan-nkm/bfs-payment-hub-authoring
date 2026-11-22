@@ -10,14 +10,17 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `src/TransactHub.Interpreter` | The studio's interpreter (`studio/engines/shared`), compiled into the runtime: one interpreter for every engine. |
 | `src/TransactHub.Engine.Temporal` | The Temporal binding: the generic interpreter workflow, the front-door workflow, and the host activities (attempts, claim check, handlers). See `studio/engines/temporal/README.md`. |
 | `src/TransactHub.Engine.Flowable` | The Flowable binding (plan D3): `FlowableRest`, the client of the Flowable REST server (deploy, start, acquire and lock, complete, fail, BPMN errors, jobs, timers, messages), and `FlowableBinding`, the external worker that runs the exported BPMN there, with the payloads in the claim check. See `studio/engines/flowable/README.md`. |
-| `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest, stored once), `POST /activations`, `GET /activations/active`, `POST /import-branch` (the branch the studio exports to). PUT, PATCH and DELETE are refused. |
-| `src/TransactHub.Telemetry` | OpenTelemetry for every runtime host: traces, metrics and logs over OTLP by the standard `OTEL_*` variables, masking of personal data before export, `/health/live` and `/health/ready` (R-09-23 to R-09-28). See `docs/north-star/guidelines/observability.md`. |
-| `observability/` | The local monitoring stack for development: collector, Jaeger, Loki, Prometheus, Grafana and the dashboards Payments, Engines, Ports, Store (R-09-29). |
-| `load/` | The load harness (R-09-30): synthetic WPS salary files on Temporal, its persistence on SQL Server or PostgreSQL, the store on either. See `docs/runtime/LOAD-TEST.md`. |
+| `src/TransactHub.Api` | The release API: `POST /releases` (a studio package, checked against its manifest and its signature, stored once), `POST /activations` (the stored package verified again), `GET /activations/active`, `POST /import-branch` (the branch the studio exports to), `GET /releases` (with each verification), `GET /values`. PUT, PATCH and DELETE are refused. Every call needs a bearer JWT from the bank's identity provider. |
+| `src/TransactHub.Security` | The one secret interface (`ISecretResolver`: `env:`, `file:`, `vault:`), and the package signature: `ReleaseSignature` (ECDSA P-256 over `release.json`), `TrustedSigners` (key ids, retired and revoked keys). |
+| `src/TransactHub.Auth` | Who may call a runtime host: bearer JWTs from the bank's one OIDC issuer, the bank's role map from its claims and groups to the host's roles. No identity store. Any host calls `AddRuntimeAuth` with its own roles. |
+| `src/TransactHub.Telemetry` | OpenTelemetry for every runtime host: traces, metrics and logs over OTLP by the standard `OTEL_*` variables, masking of personal data before export, `/health/live` and `/health/ready` (R-09-31 to R-09-36). See `docs/north-star/guidelines/observability.md`. |
+| `observability/` | The local monitoring stack for development: collector, Jaeger, Loki, Prometheus, Grafana and the dashboards Payments, Engines, Ports, Store (R-09-37). |
+| `load/` | The load harness (R-09-38): synthetic WPS salary files on Temporal, its persistence on SQL Server or PostgreSQL, the store on either. See `docs/runtime/LOAD-TEST.md`. |
 | `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
 | `tools/TransactHub.FlowableHarness` | Runs a deployment's plan on the Flowable REST server at `TH_FLOWABLE_URL` and prints the observation. |
 | `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |
 | `tests/TransactHub.Store.Tests` | Every store test on SQL Server 2022 and PostgreSQL 16 (Testcontainers), and the database-independence check. |
+| `tests/TransactHub.Security.Tests` | Secrets by reference (and Vault 1.18 in a container), and the signature: tampered, extra and missing files, no signature, a wrong key, a revoked key, rotation, an `openssl` check. |
 | `tests/TransactHub.Engine.Flowable.Tests` | The BPMN reader, and the worker client and the binding against the Flowable REST server 7.1.0 (Testcontainers). |
 
 ## Commands
@@ -31,6 +34,20 @@ dotnet ef migrations add <Name> -p src/TransactHub.Store.Migrations.PostgreSql -
 ```
 
 A model change needs a migration for both providers; a test fails if either is missing.
+
+## Running the release API
+
+```
+TH_TRUSTED_SIGNERS=file:/etc/transacthub/trusted-signers.json \
+Auth__Oidc__Issuer=https://idp.bank.example/realms/runtime Auth__Oidc__Audience=transacthub-runtime \
+Auth__RoleMap=file:/etc/transacthub/role-map.json \
+Store__Provider=PostgreSql Store__Connection=... dotnet run --project src/TransactHub.Api
+```
+
+- `TH_TRUSTED_SIGNERS`: the studio's package-signing public keys the bank trusts, with retired and revoked keys (`docs/north-star/guidelines/encryption-and-secrets.md`). Read again at each verification.
+- `Auth:*`: the bank's identity provider and role map (`docs/north-star/guidelines/access-control.md`). The runtime keeps no users, passwords or tokens, and trusts no issuer but the bank's.
+- `PackageSource:GitHub:Repository` (owner/repo), `:Api`, `:Root`, `:TokenRef` (a read-only token, by reference): the studio's content repository as the source of signed releases. `GET /sources/versions` lists the release tags; `POST /sources/install { "tag": "release/<workflow>/<release>/<target>" }` downloads, verifies and stores one (spec R-09-30).
+- Secrets anywhere in its configuration or a bank's bindings are references: `env:NAME`, `file:/path`, `vault:mount/path#field` (`TH_VAULT_ADDR`, `TH_VAULT_TOKEN`).
 
 ## Database independence
 

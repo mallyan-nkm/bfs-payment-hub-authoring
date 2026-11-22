@@ -6,7 +6,7 @@ using OpenTelemetry.Logs;
 namespace TransactHub.Telemetry;
 
 /// <summary>
-/// What keeps personal data out of telemetry (R-09-27). Two rules, applied to every span attribute, span status,
+/// What keeps personal data out of telemetry (R-09-35). Two rules, applied to every span attribute, span status,
 /// log attribute, log message and exception before any exporter sees them:
 /// a key that names personal data (a name, an account, an IBAN, an email, a phone, an identity number) has its
 /// value replaced; and every string value has IBANs, emails and runs of eight or more digits masked, keeping

@@ -1,0 +1,46 @@
+# The source holds no WPS routing code for the bank, so none is set: a payment file addressed to a routing code
+# (the factory sample's) is not this bank's and fails the payment file checks. The file is invented.
+kind: test
+id: BANK-RTE-001
+title: With no routing code of its own, a salary payment file is not this bank's
+target: uae.wps.validate.payment-file.v1
+level: activity
+evaluationDate: "2026-11-24"
+tenant: enbd
+given:
+  context:
+    header:
+      paymentId: P-1
+      endToEndId: E2E-1
+      fileId: F-1
+      kind: payment
+      direction: inward
+      scheme: uae.wps
+    batch:
+      id: F-1
+      numberOfTransactions: 2
+      controlSum: 3500
+      currency: AED
+      creditorAgent:
+        clearingMemberId: "302620122"
+    items:
+      - payment:
+          instructedAmount:
+            value: 1500
+            currency: AED
+          creditorAccount:
+            iban: AE570330000000000000002
+          creditorAgent:
+            clearingMemberId: "302620122"
+      - payment:
+          instructedAmount:
+            value: 2000
+            currency: AED
+          creditorAccount:
+            iban: AE110260000000000000003
+          creditorAgent:
+            clearingMemberId: "302620122"
+expect:
+  outcome: reject
+  findings:
+    - reasonCode: RC01

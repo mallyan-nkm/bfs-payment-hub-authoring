@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The Temporal server of a load run (R-09-30, docs/runtime/LOAD-TEST.md), on SQL Server (our plugin) or on PostgreSQL
+# The Temporal server of a load run (R-09-38, docs/runtime/LOAD-TEST.md), on SQL Server (our plugin) or on PostgreSQL
 # (Temporal's own postgres12 plugin), from the same binary: runtime/temporal-mssql's server, Temporal v1.32.2.
 #
 #   runtime/load/temporal.sh up sqlserver     create the databases and schemas, start the server in the background

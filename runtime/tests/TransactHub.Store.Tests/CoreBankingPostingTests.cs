@@ -53,7 +53,10 @@ public sealed class CoreBankingPostingTests
       "batch": { "controlSum": {{total}} } }
     """)!;
 
-    static CoreBankingResolver Resolver(Recorder? rec = null) => new(CoreBankingResolver.ReadBanks(Banks()), _ => new HttpClient(rec ?? new Recorder()));
+    // The bank folder's gateway credential, by reference (env:TH_DIB_CORE_BANKING_TOKEN): a synthetic value made for the run.
+    static readonly string GatewayToken = "synthetic-" + Guid.NewGuid().ToString("N");
+    static readonly TransactHub.Security.SecretResolver Secrets = TransactHub.Security.SecretResolver.FromEnvironment(k => k == "TH_DIB_CORE_BANKING_TOKEN" ? GatewayToken : null);
+    static CoreBankingResolver Resolver(Recorder? rec = null) => new(CoreBankingResolver.ReadBanks(Banks()), _ => new HttpClient(rec ?? new Recorder()), Secrets);
     static NativeAttempt At(string activity, JsonObject view, JsonObject p, DateTimeOffset now, string? tenant = "example-bank", string? level = null) =>
         new(activity, "1.0.0", view, p, now, tenant, level);
 
@@ -248,12 +251,15 @@ public sealed class CoreBankingPostingTests
         var before = Environment.GetEnvironmentVariable(name);
         try
         {
+            // Not set: the call fails before it is sent, and says which reference, never a value (R-06-22).
             Environment.SetEnvironmentVariable(name, null);
+            var missing = Assert.Throws<TransactHub.Security.SecretUnavailable>(() => CoreBankingAdapters.Create(b, new HttpClient(rec)).Balance("001", "0010000000001").GetAwaiter().GetResult());
+            Assert.Contains("env:TH_DIB_CORE_BANKING_TOKEN", missing.Message);
+            Assert.Empty(rec.Requests);
+            var token = "synthetic-" + Guid.NewGuid().ToString("N");
+            Environment.SetEnvironmentVariable(name, token);
             CoreBankingAdapters.Create(b, new HttpClient(rec)).Balance("001", "0010000000001").GetAwaiter().GetResult();
-            Assert.Null(rec.Requests[0].req.Headers.Authorization);
-            Environment.SetEnvironmentVariable(name, "synthetic-test-token");
-            CoreBankingAdapters.Create(b, new HttpClient(rec)).Balance("001", "0010000000001").GetAwaiter().GetResult();
-            Assert.Equal("Bearer synthetic-test-token", rec.Requests[1].req.Headers.Authorization!.ToString());
+            Assert.Equal($"Bearer {token}", rec.Requests[0].req.Headers.Authorization!.ToString());
         }
         finally
         {

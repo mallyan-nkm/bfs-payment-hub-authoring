@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- OpenTelemetry for every runtime host (R-09-23 to R-09-29, I-66). Versions are pinned exactly. The
+  <!-- OpenTelemetry for every runtime host (R-09-31 to R-09-37, I-66). Versions are pinned exactly. The
        exporter is OTLP, configured only by the standard OTEL_* variables; no backend is named here. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

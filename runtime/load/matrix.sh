@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The load matrix of docs/runtime/LOAD-TEST.md (R-09-30): each case on Temporal's persistence on SQL Server (our plugin)
+# The load matrix of docs/runtime/LOAD-TEST.md (R-09-38): each case on Temporal's persistence on SQL Server (our plugin)
 # and on PostgreSQL, with the runtime's store on SQL Server and on PostgreSQL. Results are JSON files in $OUT, which
 # is not committed; LOAD-TEST.md records the numbers.
 #

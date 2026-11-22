@@ -1,7 +1,7 @@
 {
   "uid": "th-payments",
   "title": "TransactHub: Payments",
-  "description": "Payments (a file is one) by outcome, scheme, tenant and engine; how long they take; holds (R-09-26).",
+  "description": "Payments (a file is one) by outcome, scheme, tenant and engine; how long they take; holds (R-09-34).",
   "tags": [
     "transacthub"
   ],

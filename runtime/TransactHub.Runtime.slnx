@@ -3,6 +3,7 @@
     <Project Path="src/TransactHub.Activities.Platform/TransactHub.Activities.Platform.csproj" />
     <Project Path="src/TransactHub.Activities.Wps/TransactHub.Activities.Wps.csproj" />
     <Project Path="src/TransactHub.Api/TransactHub.Api.csproj" />
+    <Project Path="src/TransactHub.Auth/TransactHub.Auth.csproj" />
     <Project Path="src/TransactHub.Engine.Flowable/TransactHub.Engine.Flowable.csproj" />
     <Project Path="src/TransactHub.Engine.Temporal/TransactHub.Engine.Temporal.csproj" />
     <Project Path="src/TransactHub.Engines.Durable/TransactHub.Engines.Durable.csproj" />
@@ -10,6 +11,7 @@
     <Project Path="src/TransactHub.Model/TransactHub.Model.csproj" />
     <Project Path="src/TransactHub.Native/TransactHub.Native.csproj" />
     <Project Path="src/TransactHub.Ports/TransactHub.Ports.csproj" />
+    <Project Path="src/TransactHub.Security/TransactHub.Security.csproj" />
     <Project Path="src/TransactHub.Store.Migrations.PostgreSql/TransactHub.Store.Migrations.PostgreSql.csproj" />
     <Project Path="src/TransactHub.Store.Migrations.SqlServer/TransactHub.Store.Migrations.SqlServer.csproj" />
     <Project Path="src/TransactHub.Store/TransactHub.Store.csproj" />
@@ -17,6 +19,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TransactHub.Engine.Flowable.Tests/TransactHub.Engine.Flowable.Tests.csproj" />
+    <Project Path="tests/TransactHub.Security.Tests/TransactHub.Security.Tests.csproj" />
     <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

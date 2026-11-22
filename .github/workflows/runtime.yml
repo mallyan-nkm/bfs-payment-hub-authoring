@@ -23,6 +23,7 @@ jobs:
         run: |
           docker pull mcr.microsoft.com/mssql/server:2022-latest
           docker pull postgres:16-alpine
+          docker pull hashicorp/vault:1.18.3
       - name: Build
         working-directory: runtime
         run: dotnet build TransactHub.Runtime.slnx -v q

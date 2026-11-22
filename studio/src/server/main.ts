@@ -5,6 +5,7 @@ import { openEnv } from '../env.js';
 import { connectionFromEnv, NOT_CONNECTED } from '../content/content-store.js';
 import { dispatch } from './api.js';
 import { attrs, contextFrom, inSpan, initTelemetry, meters, shutdownTelemetry, SpanKind } from '../telemetry/telemetry.js';
+import { keyIdOf, primeSigningKey, signingKey } from '../export/signing.js';
 
 // The studio server: the API under /api and the built web app from web/dist. Its only store is the
 // content branch the environment names (R-11-21): without TH_CONTENT_REPO it does not start.
@@ -23,6 +24,14 @@ try {
 // Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-10-07); a request is a span, its route a dimension.
 initTelemetry('transacthub-studio');
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void shutdownTelemetry().finally(() => process.exit(0)); });
+// Every released package is signed (R-09-23). The studio starts without a key, but publishes no workflow release until it has one.
+let signing: string;
+try {
+  await primeSigningKey();
+  signing = `releases are signed with key ${keyIdOf(signingKey())}`;
+} catch (e: any) {
+  signing = `${e?.message ?? e}. Until then no workflow release is published or downloaded.`;
+}
 const port = Number(process.env.PORT ?? 4317);
 const webRoot = path.join(env.studioRoot, 'web', 'dist');
 
@@ -96,4 +105,5 @@ server.listen(port, () => {
   console.log(`TransactHub Designer Studio on http://localhost:${port}`);
   const c = env.store.content!;
   console.log(`Content: ${c.repository} ${c.conn.branch} (${c.conn.root}/) at ${c.head.slice(0, 12)}, read into memory. ${env.store.all().length} documents, ${c.drafts.size} change set branch(es) in progress.`);
+  console.log(`Signing: ${signing}`);
 });

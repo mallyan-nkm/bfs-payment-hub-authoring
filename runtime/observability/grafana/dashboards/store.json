@@ -1,7 +1,7 @@
 {
   "uid": "th-store",
   "title": "TransactHub: Store",
-  "description": "Writes to the runtime's store (payments, facts, messages, releases, values) on SQL Server or PostgreSQL (R-09-25).",
+  "description": "Writes to the runtime's store (payments, facts, messages, releases, values) on SQL Server or PostgreSQL (R-09-33).",
   "tags": [
     "transacthub"
   ],

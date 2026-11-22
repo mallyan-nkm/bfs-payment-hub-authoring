@@ -1,6 +1,6 @@
 # The runtime's load test
 
-Status: first run, 22 November 2026. The owner decided that a load test runs before any bank goes live ([I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)). This page says how the harness works, what it measured here and under what conditions, what it found, the targets proposed for the owner, and what to run at bank scale. Requirement R-09-30.
+Status: first run, 22 November 2026. The owner decided that a load test runs before any bank goes live ([I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)). This page says how the harness works, what it measured here and under what conditions, what it found, the targets proposed for the owner, and what to run at bank scale. Requirement R-09-38.
 
 The studio offers functional tests only (`spec/CLAUDE.md`). This harness is the runtime's, in `runtime/load/`, and is not part of the studio.
 
@@ -28,6 +28,8 @@ TEMPORAL_SQLSERVER=127.0.0.1:9233 TEMPORAL_SQLSERVER_PID=<pid> TEMPORAL_POSTGRES
 ```
 
 The results are JSON files under `runtime/load/.run/results/` (not committed). With the local monitoring stack up (`runtime/observability/`) and `OTEL_EXPORTER_OTLP_ENDPOINT` set, the same run shows on the dashboards.
+
+Since 22 November 2026 every package is signed and the deploy runner verifies it: the harness signs the package it exports (after it sets the acknowledgement below), so it needs `TH_SIGNING_KEY` and `TH_TRUSTED_SIGNERS` as any deployment does. The runs on this page were made before signing reached this branch.
 
 ### Two settings of the harness, and why
 

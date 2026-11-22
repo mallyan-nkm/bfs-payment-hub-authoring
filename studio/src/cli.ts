@@ -9,12 +9,12 @@ import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry.js';
 // TH_GITHUB_TOKEN, TH_GITHUB_API); otherwise an in-memory fake GitHub seeded from this repository's
 // content-configurations/. Either way nothing is written to disk, and the command says which it read.
 
-const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario | port=runtime ...]';
+const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | signing-key <dir> | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario | port=runtime ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
 
-const COMMANDS = ['test', 'kit', 'check', 'seed-content', 'bank-pack', 'export', 'export-zip', 'import', 'import-sample', 'deploy'];
+const COMMANDS = ['test', 'kit', 'check', 'seed-content', 'bank-pack', 'export', 'export-zip', 'import', 'import-sample', 'deploy', 'signing-key'];
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -36,6 +36,23 @@ async function main() {
     const { writeLocalSeed } = await import('./content/seed-local.js');
     const r = await writeLocalSeed(opt(args, 'actor'));
     console.log(r.status === 'unchanged' ? `content-configurations/ is current: ${r.unchanged} seeded files, nothing to write` : `content-configurations/: ${r.written.length} file(s) written by change set ${r.changeSet}${r.replaced.length ? `; ${r.replaced.length} regenerated from a changed source` : ''}`);
+    return;
+  }
+  if (cmd === 'signing-key') {
+    // A P-256 signing key for a first installation or a local run (R-09-23): the private key, readable by its owner only,
+    // and the trusted-signers document that lists its public key. Point TH_SIGNING_KEY at the one (file:<dir>/signing-key.pem)
+    // and TH_TRUSTED_SIGNERS at the other. Never commit the key.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    if (!args[0]) throw new UsageError('signing-key needs the folder to write the key to');
+    const { generateSigningKey, trustedSignersJson } = await import('./export/signing.js');
+    const k = generateSigningKey();
+    fs.mkdirSync(args[0], { recursive: true });
+    const keyFile = path.resolve(args[0], 'signing-key.pem');
+    if (fs.existsSync(keyFile)) throw new UsageError(`${keyFile} exists: a key is never overwritten`);
+    fs.writeFileSync(keyFile, k.privateKeyPem, { mode: 0o600 });
+    fs.writeFileSync(path.resolve(args[0], 'trusted-signers.json'), trustedSignersJson([k]));
+    console.log(`key ${k.keyId}\nTH_SIGNING_KEY=file:${keyFile}\nTH_TRUSTED_SIGNERS=file:${path.resolve(args[0], 'trusted-signers.json')}`);
     return;
   }
   const { env, where, stop } = await openReadEnv(banks.length ? { banks } : {});
@@ -214,10 +231,13 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
   if (cmd === 'export-zip') {
     // studio export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]
     need(args[0] && args[1] && args[2], 'export-zip needs a workflow, a target and the zip to write');
-    const { exportPackage, exportZip } = await import('./export/exporter.js');
-    const pkg = exportPackage(env, { workflows: [args[0]], target: args[1] as any, withSimulators: args.includes('--with-simulators'), tenant: args.includes('--tenant') ? args[args.indexOf('--tenant') + 1] : undefined });
+    const { exportPackage, signPackage, exportZip } = await import('./export/exporter.js');
+    const { primeSigningKey } = await import('./export/signing.js');
+    await primeSigningKey();
+    // Signed with the studio's key (R-09-23), as every release is: a deployment takes no unsigned package.
+    const pkg = signPackage(exportPackage(env, { workflows: [args[0]], target: args[1] as any, withSimulators: args.includes('--with-simulators'), tenant: args.includes('--tenant') ? args[args.indexOf('--tenant') + 1] : undefined }));
     (await import('node:fs')).writeFileSync(args[2], exportZip(pkg));
-    console.log(`${args[2]}: ${Object.keys(pkg.files).length} files, workers ${pkg.manifest.workers.map((w: any) => w.queue).join(', ')}`);
+    console.log(`${args[2]}: ${Object.keys(pkg.files).length} files, workers ${pkg.manifest.workers.map((w: any) => w.queue).join(', ')}, signed by key ${JSON.parse(pkg.files['release.json']).keyId}`);
     return;
   }
   console.error(`Unknown command ${cmd}`);

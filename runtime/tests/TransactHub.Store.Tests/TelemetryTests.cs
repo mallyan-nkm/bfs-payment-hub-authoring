@@ -21,7 +21,7 @@ using Xunit;
 
 namespace TransactHub.Store.Tests;
 
-// Monitoring of the runtime (R-09-23 to R-09-28, I-66): a WPS salary file's attempts through the Temporal host, over
+// Monitoring of the runtime (R-09-31 to R-09-36, I-66): a WPS salary file's attempts through the Temporal host, over
 // HTTP to a worker, with its payload in the store, emit one trace (intake, attempts, store writes), the payments,
 // activity, queue and store metrics, and logs carrying the trace id; and nothing an exporter receives holds a value
 // from the file's party records. The exporters are OpenTelemetry's in-memory ones, behind the masking processors.
@@ -279,7 +279,7 @@ public sealed class TelemetryTests(Databases dbs)
     {
         var root = Repo();
         var obs = Path.Combine(root, "runtime", "observability");
-        // Every image by tag and digest (R-09-29).
+        // Every image by tag and digest (R-09-37).
         var images = File.ReadAllLines(Path.Combine(obs, "docker-compose.yml")).Select(l => l.Trim()).Where(l => l.StartsWith("image:")).ToList();
         Assert.Equal(5, images.Count);
         Assert.All(images, i => Assert.Matches(@"^image: [a-z0-9./-]+:[0-9A-Za-z.]+@sha256:[0-9a-f]{64}$", i));
@@ -314,46 +314,50 @@ public sealed class TelemetryTests(Databases dbs)
         Assert.True(unknown.Count == 0, "dashboards read metrics no host emits:\n" + string.Join('\n', unknown));
     }
 
-    sealed class Api(StoreOptions o) : WebApplicationFactory<Program>
+    static byte[] SignedPackage(TestSigners s) => TestSigners.Zip(TestSigners.Sign(new Dictionary<string, string>
     {
-        protected override void ConfigureWebHost(IWebHostBuilder b)
-        {
-            b.UseSetting("Store:Provider", o.Provider.ToString());
-            b.UseSetting("Store:Connection", o.ConnectionString);
-        }
-    }
+        ["workflows/p.wf.corporate.v1@1.0.0.yaml"] = "kind: workflow\n",
+        ["manifest.yaml"] = $"kind: export\ntarget: temporal\npromotable: true\nflows:\n  - name: p.wf.corporate.v1\n    kind: workflow\n    wfKind: platform\n    release: 1.0.0\nfiles:\n  - path: workflows/p.wf.corporate.v1@1.0.0.yaml\n    hash: sha256:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("kind: workflow\n"u8.ToArray()))}\n",
+    }, s.Key, "p.wf.corporate.v1/temporal@1.0.0"));
 
     [Fact]
-    public async Task The_release_API_answers_live_and_ready_and_counts_activations()
+    public async Task The_release_API_answers_live_and_ready_without_a_token_while_every_other_endpoint_is_401_and_counts_activations()
     {
         var activations = new ConcurrentBag<(long n, string env)>();
+        var stored = new ConcurrentBag<long>();
         using var listener = new MeterListener();
         listener.InstrumentPublished = (i, l) => { if (i.Meter.Name == RuntimeTelemetry.SourceName) l.EnableMeasurementEvents(i); };
         listener.SetMeasurementEventCallback<long>((i, v, tags, _) =>
         {
+            if (i.Name == "th.release.stored") stored.Add(v);
             if (i.Name != "th.release.activations") return;
             foreach (var t in tags) if (t.Key == "th.environment") activations.Add((v, (string)t.Value!));
         });
         listener.Start();
 
-        var o = dbs.Fresh(StoreProvider.PostgreSql);
-        await using var api = new Api(o);
-        var http = api.CreateClient();
-        Assert.Equal(HttpStatusCode.OK, (await http.GetAsync("/health/live")).StatusCode);
-        var ready = await http.GetAsync("/health/ready");
+        using var signers = new TestSigners();
+        await using var api = new ApiHost(dbs.Fresh(StoreProvider.PostgreSql), signers);
+        // No token: the health endpoints answer (an orchestrator's probe carries none), everything else is 401 (R-09-36).
+        var anonymous = api.Client(null);
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/health/live")).StatusCode);
+        var ready = await anonymous.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
         Assert.Contains("\"store\":\"healthy\"", await ready.Content.ReadAsStringAsync());
-        // An activation of a stored release is counted, by environment.
-        await using (var db = StoreDbContext.Open(o))
-            await new ReleaseRegistry(db).Store("p/p.wf.demo.v1/temporal", "1.0.0", [1, 2, 3], new JsonObject { ["promotable"] = true }, "pipeline");
-        var act = await http.PostAsync("/activations", new StringContent("""{"environment":"test","scope":"p/p.wf.demo.v1/temporal","release":"1.0.0","actor":"pipeline"}""", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/releases?scope=p.wf.corporate.v1/temporal&release=1.0.0")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync("/releases", new ByteArrayContent(SignedPackage(signers)))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/activations/active?environment=test&scope=x")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/values?tenant=example-bank")).StatusCode);
+
+        // A stored release and an activation are counted (R-09-34).
+        Assert.Equal(HttpStatusCode.Created, (await api.Client("importer").PostAsync("/releases", new ByteArrayContent(SignedPackage(signers)))).StatusCode);
+        var act = await api.Client("pipeline").PostAsync("/activations", new StringContent("""{"environment":"test","scope":"p.wf.corporate.v1/temporal","release":"1.0.0"}""", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.Created, act.StatusCode);
-        listener.RecordObservableInstruments();
+        Assert.Contains(1L, stored);
         Assert.Contains(activations, a => a.env == "test" && a.n == 1);
 
-        // Not ready when the store does not answer; live all the same.
-        await using var down = new Api(new StoreOptions(StoreProvider.PostgreSql, "Host=127.0.0.1;Port=1;Username=x;Password=x;Database=x;Timeout=2")).WithWebHostBuilder(b => b.UseSetting("Store:Migrate", "false"));
-        var dhttp = down.CreateClient();
+        // Not ready when the store does not answer; live all the same, and still with no token.
+        await using var down = new ApiHost(new StoreOptions(StoreProvider.PostgreSql, "Host=127.0.0.1;Port=1;Username=x;Password=x;Database=x;Timeout=2"), signers, b => b.UseSetting("Store:Migrate", "false"));
+        var dhttp = down.Client(null);
         Assert.Equal(HttpStatusCode.OK, (await dhttp.GetAsync("/health/live")).StatusCode);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, (await dhttp.GetAsync("/health/ready")).StatusCode);
     }

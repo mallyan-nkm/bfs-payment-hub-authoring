@@ -115,7 +115,7 @@ export class PartyService {
   async attempt(req: AttemptRequest): Promise<AttemptResponse> {
     const act = req.release ? this.run.resolveDoc(req.activity, req.release) : this.run.resolveDoc(req.activity);
     if (act?.type !== 'hold') return this.attemptOnce(req);
-    // A hold waits for its decision within its attempt (R-09-26: holds raised and holds open).
+    // A hold waits for its decision within its attempt (R-09-34: holds raised and holds open).
     const a = attrs({ 'th.activity': req.activity });
     meters().holds.add(1, a);
     meters().holdsOpen.add(1, a);

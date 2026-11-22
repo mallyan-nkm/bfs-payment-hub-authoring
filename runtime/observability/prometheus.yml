@@ -1,4 +1,4 @@
-# The local stack's Prometheus (R-09-29), on the host's network. What the hosts export over OTLP comes through the
+# The local stack's Prometheus (R-09-37), on the host's network. What the hosts export over OTLP comes through the
 # collector; each Temporal server's own metrics (frontend, history, matching and the persistence layer: persistence_requests,
 # persistence_latency and persistence_errors by operation, which is where our SQL Server plugin shows) are scraped
 # from its metrics port: 8000 plus the server's TEMPORAL_PORT_OFFSET. The load harness uses offsets 2000 (SQL Server)

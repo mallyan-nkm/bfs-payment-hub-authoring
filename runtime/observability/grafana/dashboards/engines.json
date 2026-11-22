@@ -1,7 +1,7 @@
 {
   "uid": "th-engines",
   "title": "TransactHub: Engines",
-  "description": "Activity attempts as each engine binding sees them, the queues, and Temporal's SDK and server metrics, the persistence layer among them (R-09-24).",
+  "description": "Activity attempts as each engine binding sees them, the queues, and Temporal's SDK and server metrics, the persistence layer among them (R-09-32).",
   "tags": [
     "transacthub"
   ],

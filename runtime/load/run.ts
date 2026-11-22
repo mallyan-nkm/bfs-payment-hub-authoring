@@ -1,4 +1,4 @@
-// The runtime's load harness (R-09-30, I-68; docs/runtime/LOAD-TEST.md). It is not a studio test: the studio offers
+// The runtime's load harness (R-09-38, I-68; docs/runtime/LOAD-TEST.md). It is not a studio test: the studio offers
 // functional tests only (spec/CLAUDE.md). It drives synthetic WPS salary files through the runtime on Temporal, as a
 // deployment runs them: the factory's corporate payment workflow with the WPS leg, exported for the example bank with
 // the Temporal binding, its four workers as separate processes, the front door's intake for each file, then every
@@ -7,7 +7,8 @@
 //   cd studio && npx tsx ../runtime/load/run.ts --files 40 --lines 5 --concurrency 8 [--ack PT5S] [--label name] [--out result.json]
 //
 // Environment: TH_TEMPORAL_ADDRESS (the server, runtime/load/temporal.sh), TH_STORE_PROVIDER and TH_STORE_CONNECTION
-// (the store; without them the payloads stay in memory), TH_LOAD_CONTAINERS (docker containers whose CPU and IO are
+// (the store; without them the payloads stay in memory), TH_SIGNING_KEY and TH_TRUSTED_SIGNERS (the package is signed
+// and the deploy runner verifies it, as for any deployment), TH_LOAD_CONTAINERS (docker containers whose CPU and IO are
 // measured, as name=container,name=container; TH_LOAD_DB_PASSWORD, their test-only sa or postgres password, to read their IO
 // counters), TH_LOAD_TEMPORAL_PID (the server's pid, for its CPU).
 //
@@ -22,7 +23,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openReadEnv } from '../../studio/src/env.js';
-import { exportPackage, exportZip } from '../../studio/src/export/exporter.js';
+import { exportPackage, signedZip } from '../../studio/src/export/exporter.js';
 import { unzip } from '../../studio/src/export/zip.js';
 import { deploy } from '../../studio/src/deploy/deploy.js';
 
@@ -148,20 +149,18 @@ const pct = (xs: number[], p: number) => {
 async function main() {
   if (!process.env.TH_TEMPORAL_ADDRESS) throw new Error('Set TH_TEMPORAL_ADDRESS to the Temporal server of the run (runtime/load/temporal.sh)');
   const { env, stop } = await openReadEnv();
-  const pkg = exportPackage(env, { workflows: [WORKFLOW], target: 'temporal', withSimulators: true, tenant: TENANT });
+  const exported = exportPackage(env, { workflows: [WORKFLOW], target: 'temporal', withSimulators: true, tenant: TENANT });
   await stop();
+  // The scheme's acknowledgement after --ack, in the deployed simulator only (the factory's says PT10M), before the
+  // package is signed: the deploy runner verifies every file against the signature (TH_SIGNING_KEY, TH_TRUSTED_SIGNERS).
+  const files = { ...exported.files };
+  for (const k of Object.keys(files)) if (k.endsWith('uae.wps.sim.wps-outward.v1@1.0.0.yaml')) files[k] = String(files[k]).replace(/after: PT10M/g, `after: ${ACK}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'th-load-'));
   packageDir = dir;
-  for (const e of unzip(exportZip(pkg))) {
+  for (const e of unzip(signedZip({ ...exported, files }))) {
     const f = path.join(dir, e.name);
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, e.content);
-  }
-  // The scheme's acknowledgement after --ack, in the deployed simulator only (the factory's says PT10M).
-  for (const f of fs.readdirSync(path.join(dir, 'workers'), { recursive: true }) as string[]) {
-    if (!f.endsWith('uae.wps.sim.wps-outward.v1@1.0.0.yaml')) continue;
-    const p = path.join(dir, 'workers', f);
-    fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/after: PT10M/g, `after: ${ACK}`));
   }
   const inbounds = Array.from({ length: FILES }, (_, i) => ({ label: `f${i + 1}`, payload: salaryFile(i + 1, LINES) }));
 

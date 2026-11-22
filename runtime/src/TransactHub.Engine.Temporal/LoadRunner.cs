@@ -10,7 +10,7 @@ using TransactHub.Store;
 namespace TransactHub.Engine.Temporal;
 
 /// <summary>
-/// Many payments of one deployment on Temporal, side by side (the runtime's load harness, R-09-30, I-68): the plan the
+/// Many payments of one deployment on Temporal, side by side (the runtime's load harness, R-09-38, I-68): the plan the
 /// deploy runner writes, with <c>runs</c> (one context per file, each already through the front door's intake) and
 /// <c>concurrency</c>. One set of Temporal workers and one claim check serve every run, as a runtime host does; each run
 /// has its own front door and root workflow. It prints per run what it took and how it ended, and never what the

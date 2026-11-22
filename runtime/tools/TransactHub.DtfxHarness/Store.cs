@@ -12,7 +12,7 @@ static class Store
     internal static void Install()
     {
         StoreJournal.InstallFromEnvironment();
-        // Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-09-23). The engine runs the attempts on its
+        // Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-09-31). The engine runs the attempts on its
         // own threads, so each attempt span joins the caller's trace (TRACEPARENT) through EngineTelemetry's parent.
         var telemetry = TelemetryHost.Start("transacthub-engine-dtfx");
         EngineTelemetry.Engine = "dtfx";

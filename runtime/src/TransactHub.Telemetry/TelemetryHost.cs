@@ -10,11 +10,11 @@ using OpenTelemetry.Trace;
 namespace TransactHub.Telemetry;
 
 /// <summary>
-/// OpenTelemetry for a runtime host (R-09-23, I-66). Traces, metrics and logs go to an OTLP endpoint named only
+/// OpenTelemetry for a runtime host (R-09-31, I-66). Traces, metrics and logs go to an OTLP endpoint named only
 /// by the standard variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_PROTOCOL, OTEL_SERVICE_NAME,
 /// OTEL_RESOURCE_ATTRIBUTES, OTEL_SDK_DISABLED and the per-signal ones); with none set, nothing is exported
 /// and nothing listens, so a host costs what it did before. Every signal passes the masking processors first
-/// (R-09-27). A collector that is down never stops the host: the exporters drop what they cannot send.
+/// (R-09-35). A collector that is down never stops the host: the exporters drop what they cannot send.
 /// </summary>
 public sealed class TelemetryHost : IDisposable
 {

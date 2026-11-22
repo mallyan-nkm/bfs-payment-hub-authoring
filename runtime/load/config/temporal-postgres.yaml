@@ -1,5 +1,5 @@
 # enable-template
-# The load harness's Temporal server on PostgreSQL (runtime/load, R-09-30): the same server binary, shards, connection
+# The load harness's Temporal server on PostgreSQL (runtime/load, R-09-38): the same server binary, shards, connection
 # pools, ports and dynamic config as temporal-mssql/config/development-sqlserver.yaml, with Temporal's own postgres12
 # plugin in place of ours, so the two persistence stores are compared on equal terms.
 #

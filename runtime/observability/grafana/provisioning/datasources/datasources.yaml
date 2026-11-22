@@ -1,4 +1,4 @@
-# The local stack's data sources (R-09-29). Grafana runs on the host's network: Prometheus on 19090, Jaeger and Loki on
+# The local stack's data sources (R-09-37). Grafana runs on the host's network: Prometheus on 19090, Jaeger and Loki on
 # the ports the compose file publishes. A log line links to its trace by trace id.
 apiVersion: 1
 datasources:

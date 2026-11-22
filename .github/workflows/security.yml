@@ -1,0 +1,84 @@
+# Security gates on every push and pull request (spec R-09-28, Issue I-67): a secret scan of the whole history, the
+# static check that no binding, configuration or package carries a literal secret (L37), and dependency audits of the
+# studio's runtime dependencies and the runtime's NuGet packages. A finding fails the build.
+name: security
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Pinned: the version and the SHA-256 of its release archive, from the release's checksums file.
+      GITLEAKS_VERSION: "8.21.2"
+      GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned, checksum verified)
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          rm gitleaks.tgz
+      - name: Secret scan of the whole history
+        run: ./gitleaks git --redact --no-banner --exit-code 1 .
+      - name: Secret scan of the working tree
+        run: ./gitleaks dir --redact --no-banner --exit-code 1 .
+
+  literal-secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: No literal secret in a binding, configuration or package (L37), with the spec's other checks
+        working-directory: spec
+        run: |
+          pip install pyyaml jsonschema
+          python3 tools/validate.py
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install
+        working-directory: studio
+        run: npm ci
+      - name: Audit the studio's runtime dependencies
+        working-directory: studio
+        run: npm audit --omit=dev --audit-level=high
+
+  dotnet-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Audit the runtime's NuGet packages, transitive ones included
+        working-directory: runtime
+        run: |
+          dotnet restore TransactHub.Runtime.slnx -v q
+          dotnet list TransactHub.Runtime.slnx package --vulnerable --include-transitive | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::A runtime package has a known vulnerability (see above)"
+            exit 1
+          fi

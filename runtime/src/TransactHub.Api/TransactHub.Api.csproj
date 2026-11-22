@@ -5,6 +5,8 @@
     <ProjectReference Include="..\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
     <ProjectReference Include="..\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
     <ProjectReference Include="..\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />
+    <ProjectReference Include="..\TransactHub.Security\TransactHub.Security.csproj" />
+    <ProjectReference Include="..\TransactHub.Auth\TransactHub.Auth.csproj" />
   </ItemGroup>
 
   <ItemGroup>

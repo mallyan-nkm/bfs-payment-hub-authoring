@@ -1,5 +1,5 @@
-# The local stack's collector (R-09-29). Traces go to Jaeger, logs to Loki, metrics to Prometheus (scraped on :8889).
-# The hosts mask personal data before they export (R-09-27); the redaction processor here is a second guard, for
+# The local stack's collector (R-09-37). Traces go to Jaeger, logs to Loki, metrics to Prometheus (scraped on :8889).
+# The hosts mask personal data before they export (R-09-35); the redaction processor here is a second guard, for
 # anything a library adds that the hosts do not see: an IBAN or a standalone run of eight or more digits is masked.
 receivers:
   otlp:

@@ -14,12 +14,15 @@ public sealed class CoreBankingResolver
     public const string Port = "p.port.core-banking.v1";
     readonly PortBindings bindings;
     readonly Func<PortBinding, HttpClient> http;
+    readonly TransactHub.Security.ISecretResolver? secrets;
     readonly ConcurrentDictionary<PortBinding, ICoreBanking> adapters = new(ReferenceEqualityComparer.Instance);
 
-    public CoreBankingResolver(PortBindings bindings, Func<PortBinding, HttpClient>? http = null)
+    /// <param name="secrets">Where a binding's <c>secretRef</c> is read (R-06-22); the host's environment, files and Vault by default.</param>
+    public CoreBankingResolver(PortBindings bindings, Func<PortBinding, HttpClient>? http = null, TransactHub.Security.ISecretResolver? secrets = null)
     {
         this.bindings = bindings;
         this.http = http ?? (_ => new HttpClient());
+        this.secrets = secrets;
     }
 
     /// <summary>Every bank folder under <paramref name="banksDir"/> (content-configurations/banks): each one's port bindings.</summary>
@@ -45,7 +48,7 @@ public sealed class CoreBankingResolver
     public (ICoreBanking CoreBanking, PortBinding Binding) For(string? tenant, DateTimeOffset at)
     {
         var b = BindingFor(tenant, at);
-        try { return (adapters.GetOrAdd(b, x => CoreBankingAdapters.Create(x, http(x))), b); }
+        try { return (adapters.GetOrAdd(b, x => CoreBankingAdapters.Create(x, http(x), secrets)), b); }
         catch (PortBindingException e) { throw new NativeFailure("PortNotBound", e.Message, false); }
     }
 }

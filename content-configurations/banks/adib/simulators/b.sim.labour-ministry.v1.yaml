@@ -1,0 +1,41 @@
+# A test double for b.port.labour-ministry.v1. A simulator is never part of a promotable pack: the bank pack this folder exports
+# leaves it out (buildPack), as the example bank's does.
+kind: simulator
+name: b.sim.labour-ministry.v1
+release: 1.0.0
+title: Labour ministry notification simulator
+direction: outward
+port: b.port.labour-ministry.v1
+standsFor: labour ministry WPS notification service
+state:
+  keyedBy: message id
+scenarios:
+  - name: accept
+    steps:
+      - expect: b.labour-ministry.notify
+      - send: b.labour-ministry.ack
+        status: accepted
+  - name: reject
+    steps:
+      - expect: b.labour-ministry.notify
+      - send: b.labour-ministry.ack
+        status: rejected
+        reasonCode: NARR
+  - name: no-reply
+    steps:
+      - expect: b.labour-ministry.notify
+      - noReply: true
+  - name: fail-twice-then-accept
+    steps:
+      - expect: b.labour-ministry.notify
+        failTimes: 2
+      - send: b.labour-ministry.ack
+        status: accepted
+implementation:
+  binding: script
+  language: python
+  script: scripts/b.sim.labour-ministry.v1.py
+provenance:
+  origin: authored
+  status: provisional
+  note: Synthetic. Stands in for the bank's service in tests only.

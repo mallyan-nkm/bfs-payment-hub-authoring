@@ -11,7 +11,7 @@ using OpenTelemetry.Trace;
 
 namespace TransactHub.Telemetry;
 
-/// <summary>OpenTelemetry and the health endpoints for a runtime host that serves HTTP (the release API) (R-09-23, R-09-28).</summary>
+/// <summary>OpenTelemetry and the health endpoints for a runtime host that serves HTTP (the release API) (R-09-31, R-09-36).</summary>
 public static class WebTelemetry
 {
     /// <summary>Tag of the checks that decide readiness; liveness runs none.</summary>
@@ -56,8 +56,8 @@ public static class WebTelemetry
     /// </summary>
     public static IEndpointRouteBuilder MapTransactHubHealth(this IEndpointRouteBuilder app)
     {
-        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false, ResponseWriter = Write });
-        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains(Ready), ResponseWriter = Write });
+        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false, ResponseWriter = Write }).AllowAnonymous();
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains(Ready), ResponseWriter = Write }).AllowAnonymous();
         return app;
     }
 

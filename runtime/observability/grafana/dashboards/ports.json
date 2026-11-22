@@ -1,7 +1,7 @@
 {
   "uid": "th-ports",
   "title": "TransactHub: Ports",
-  "description": "Calls on ports (simulators in a test deployment, the native host and the bank's connections), and the deployed workers that make them (R-09-25).",
+  "description": "Calls on ports (simulators in a test deployment, the native host and the bank's connections), and the deployed workers that make them (R-09-33).",
   "tags": [
     "transacthub"
   ],

@@ -10,12 +10,15 @@ import { runTable } from '../rules/service.js';
 import { routeOf } from '../interp/interpreter.js';
 import { blockedByWindows } from './blocked.js';
 import { attrs, childEnv, inSpan, SpanKind, traceHeaders } from '../telemetry/telemetry.js';
+import { claimsOf, trustedSigners, verifyFiles, type Verification } from '../export/signing.js';
+import { isSecretRef } from '../secrets/secrets.js';
 
 // Deploy an export package and run it (Part 9). The package's workers start as separate processes,
 // one per task queue, each serving only its own tasks. The engine harness runs the exported, expanded
 // workflow and sends every activity attempt to the worker of that task's queue. The front door runs
 // the scheme's intake map on its worker first. Nothing here reads the studio's store: the package is
-// the whole deployment.
+// the whole deployment. A package is loaded only once its signature verifies against the signers this
+// deployment trusts (TH_TRUSTED_SIGNERS, R-09-26): no worker starts and no engine sees it before.
 
 export interface DeployEnvironment {
   evaluationDate: string;
@@ -39,7 +42,7 @@ export interface DeployRequest {
   studioRoot: string; // where the engine harnesses live
   keep?: boolean;
   /**
-   * The runtime's load harness (runtime/load, R-09-30): many files through the same deployment at once, on Temporal.
+   * The runtime's load harness (runtime/load, R-09-38): many files through the same deployment at once, on Temporal.
    * Each file goes through the front door's intake on the workers, then the harness runs them all side by side.
    */
   load?: { inbounds: { label: string; payload: string }[]; concurrency: number; worker?: { maxConcurrentActivities?: number; maxConcurrentWorkflowTasks?: number } };
@@ -62,6 +65,8 @@ export interface DeployResult {
   log: string[];
   /** With req.load: what the harness measured, per run, and how long each intake took. */
   load?: any;
+  /** The package's signature, as verified before anything ran (R-09-26). */
+  verification: Verification;
 }
 
 function unpack(p: string): string {
@@ -94,13 +99,43 @@ function scopeOf(name: string) {
   return parts[0] === 'p' || parts[0] === 'b' ? parts[0] : parts.slice(0, 2).join('.');
 }
 
-/** One deployment's run, as a span (R-09-24): every child process continues this trace (TRACEPARENT, traceparent). */
+/** Every file of an unpacked package, by its path in the package (the branch's package.sha256 is not part of it). */
+function packageFiles(dir: string): Record<string, Buffer> {
+  const out: Record<string, Buffer> = {};
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else out[path.relative(dir, f).split(path.sep).join('/')] = fs.readFileSync(f);
+    }
+  };
+  walk(dir);
+  delete out['package.sha256'];
+  return out;
+}
+
+/** Verifies an unpacked package's signature against the deployment's trusted signers; throws when it does not verify. */
+export async function verifyPackageDir(dir: string): Promise<Verification> {
+  if (!fs.existsSync(path.join(dir, 'manifest.yaml'))) throw new Error('The package has no manifest.yaml');
+  const manifest = parseYaml(fs.readFileSync(path.join(dir, 'manifest.yaml'), 'utf8'));
+  const claims = claimsOf(manifest);
+  return verifyFiles(packageFiles(dir), { releaseId: claims.releaseId, tenant: claims.tenant }, await trustedSigners());
+}
+
+/** One deployment's run, as a span (R-09-32): every child process continues this trace (TRACEPARENT, traceparent). */
 export async function deploy(req: DeployRequest): Promise<DeployResult> {
   return inSpan('th.payment', attrs({ 'th.workflow': req.workflow, 'th.tenant': req.environment.tenant, 'th.engine': req.engine }), () => deployRun(req));
 }
 
 async function deployRun(req: DeployRequest): Promise<DeployResult> {
   const dir = unpack(req.packagePath);
+  let verification: Verification;
+  try {
+    verification = await verifyPackageDir(dir);
+  } catch (e: any) {
+    if (dir !== req.packagePath) fs.rmSync(dir, { recursive: true, force: true });
+    throw new Error(`The package is not deployed: ${e?.message ?? e}`);
+  }
   const manifest = parseYaml(fs.readFileSync(path.join(dir, 'manifest.yaml'), 'utf8'));
   const binding = parseYaml(fs.readFileSync(path.join(dir, 'binding.yaml'), 'utf8'));
   // The package's binding says which engine runs it; the deploy runner drives DTFx, Elsa, Temporal and
@@ -110,7 +145,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
   // Flowable runs as its own server (plan D3); the runtime's harness is its external worker over REST.
   if (engine === 'flowable' && !process.env.TH_FLOWABLE_URL) throw new Error('Flowable runs on the Flowable REST server: set TH_FLOWABLE_URL (for example http://127.0.0.1:8080/flowable-rest), and TH_FLOWABLE_USER and TH_FLOWABLE_PASSWORD if they are not the image defaults');
   if (req.engine && req.engine !== engine) throw new Error(`This package is for ${engine}, not ${req.engine}`);
-  const log: string[] = [];
+  const log: string[] = [`package verified: ${verification.files} file(s) signed by key ${verification.keyId}${verification.changeSet ? ` for change set ${verification.changeSet}` : ''}`];
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-run-'));
   // The tenant's configuration set travels in the package (R-09-02); an environment may override it.
   const environment: DeployEnvironment = { ...req.environment, tenant: req.environment.tenant ?? manifest.tenant };
@@ -129,7 +164,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       const wdir = path.join(dir, w.path);
       const p = port++;
       const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}) },
+        env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
@@ -275,7 +310,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
         const st = await (await fetch(`${pr.url}/stats`)).json();
         workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
       }
-      return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-200000) }, elapsedMs: Date.now() - t0, log, load: measured };
+      return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-200000) }, elapsedMs: Date.now() - t0, log, verification, load: measured };
     }
     const obsLine = lines.find((l) => l.startsWith('OBSERVATION '));
     if (!obsLine) {
@@ -297,7 +332,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       workflow: req.workflow, release: wf.release, expandedFrom: wf.expandedFrom,
       outcome: (root.trace ?? []).slice(-1)[0]?.replace(/^end:/, ''), failed: root.failed,
       trace: root.trace ?? [], detail: root.detail ?? [], attempts: root.attempts ?? {},
-      intake, workers, messages: obs.messages ?? [], engine: obs.engine, elapsedMs: Date.now() - t0, log,
+      intake, workers, messages: obs.messages ?? [], engine: obs.engine, elapsedMs: Date.now() - t0, log, verification,
     };
   } finally {
     // Stop the workers and wait for each to exit, so that none outlives the deploy.
@@ -312,6 +347,22 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       if (dir !== req.packagePath) fs.rmSync(dir, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * What a worker needs to call the runtime's values API (R-09-27): TH_RUNTIME_TOKEN, a reference to the token, and the
+ * variable it names when it is an env: reference. The worker resolves it itself; the deploy runner never reads it.
+ */
+function runtimeTokenEnv(): Record<string, string> {
+  const ref = process.env.TH_RUNTIME_TOKEN;
+  if (!ref || !isSecretRef(ref)) return {};
+  const out: Record<string, string> = { TH_RUNTIME_TOKEN: ref };
+  for (const k of ['TH_SECRET_FILE_ROOTS', 'TH_VAULT_ADDR', 'TH_VAULT_TOKEN', 'TH_VAULT_NAMESPACE']) if (process.env[k]) out[k] = process.env[k]!;
+  for (const r of [ref, process.env.TH_VAULT_TOKEN]) {
+    const name = r?.startsWith('env:') ? r.slice(4) : undefined;
+    if (name && process.env[name]) out[name] = process.env[name]!;
+  }
+  return out;
 }
 
 /** The package's BPMN documents (bpmn/*.bpmn20.xml), by file name. */

@@ -1,4 +1,4 @@
-# The local monitoring stack for development (R-09-29, I-66; docs/north-star/guidelines/observability.md). It is not an
+# The local monitoring stack for development (R-09-37, I-66; docs/north-star/guidelines/observability.md). It is not an
 # installation's: a bank runs its own collector and backends, and the hosts reach them by the standard OTEL_* variables.
 #
 #   docker compose -f runtime/observability/docker-compose.yml up -d
