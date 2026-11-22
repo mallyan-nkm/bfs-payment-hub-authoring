@@ -12,7 +12,7 @@ using TransactHub.Security;
 
 namespace TransactHub.Security.Tests;
 
-// The cloud secret stores (spec R-06-25, R-06-26): Azure Key Vault on its official SDK against an in-process fake of its
+// The cloud secret stores (spec R-06-26, R-06-27): Azure Key Vault on its official SDK against an in-process fake of its
 // REST protocol (FakeKeyVault: there is no official emulator), and AWS Secrets Manager and Parameter Store on theirs
 // against LocalStack in a container of this run's own. Every value, token and key here is made by the test.
 

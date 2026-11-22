@@ -16,7 +16,7 @@ public sealed class SecretValue(string value)
 }
 
 /// <summary>
-/// A reference to a secret, as a binding or the installation's settings write it (R-06-22, R-06-25): <c>env:NAME</c>,
+/// A reference to a secret, as a binding or the installation's settings write it (R-06-22, R-06-26): <c>env:NAME</c>,
 /// <c>file:/absolute/path</c>, <c>vault:mount/path#field</c>, <c>akv:vault-name/secret-name[#version]</c>,
 /// <c>aws-sm:region/secret-id[#json-field]</c> or <c>aws-ssm:region/parameter-name</c>. A reference is safe to log; its
 /// value is not.

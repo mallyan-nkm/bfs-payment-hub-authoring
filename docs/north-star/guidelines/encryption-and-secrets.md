@@ -18,7 +18,7 @@ How secrets are named and read, how released packages are signed, and how files 
 | `aws-sm:<region>/<secret-id>[#json-field]` | An AWS Secrets Manager secret string, by name or ARN, or one field of it when it is a JSON object (`aws-sm:eu-west-1/th/core-banking#password`) | Installations on AWS |
 | `aws-ssm:<region>/<parameter-name>` | An AWS Systems Manager Parameter Store SecureString, decrypted. A name with a '/' in it is a path from the root: `aws-ssm:eu-west-1/th/prod/token` reads `/th/prod/token`. A String parameter is refused | Installations on AWS |
 
-- The cloud stores are read through their official SDKs, pinned (R-06-25):
+- The cloud stores are read through their official SDKs, pinned (R-06-26):
 
 | Store | Runtime (.NET) | Studio (Node) | Signs in with |
 | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ How secrets are named and read, how released packages are signed, and how files 
 | AWS Secrets Manager, Parameter Store | AWSSDK.SecretsManager 4.0.100.23, AWSSDK.SimpleSystemsManagement 4.0.104.9 | @aws-sdk/client-secrets-manager 3.1162.0, @aws-sdk/client-ssm 3.1162.0 | The AWS default credential chain: environment, web identity (IRSA on EKS), the container (ECS) or instance role |
 
   Give the identity read access to the secrets it needs and nothing else: `Key Vault Secrets User` on the vault or the secret; `secretsmanager:GetSecretValue` on the secret's ARN; `ssm:GetParameter` on the parameter and `kms:Decrypt` on its key.
-- A value read over the network (`vault:`, `akv:`, `aws-sm:`, `aws-ssm:`) is kept in the process for `TH_SECRET_CACHE_SECONDS` (default 300; 0 keeps nothing) and never used past it, nor when its store fails, so a revoked secret stops working within that time (R-06-26). When the system a credential opens refuses it, `WithSecret` (runtime) or `SecretStores.withSecret` (studio) reads it again from its store, once. Adapters do not call it yet ([I-106](../../ISSUES.md#i-106-a-rotated-secret-reaches-a-running-host-only-after-the-cache-time-or-a-restart)). env: and file: are read at each use.
+- A value read over the network (`vault:`, `akv:`, `aws-sm:`, `aws-ssm:`) is kept in the process for `TH_SECRET_CACHE_SECONDS` (default 300; 0 keeps nothing) and never used past it, nor when its store fails, so a revoked secret stops working within that time (R-06-27). When the system a credential opens refuses it, `WithSecret` (runtime) or `SecretStores.withSecret` (studio) reads it again from its store, once. Adapters do not call it yet ([I-106](../../ISSUES.md#i-106-a-rotated-secret-reaches-a-running-host-only-after-the-cache-time-or-a-restart)). env: and file: are read at each use.
 - A binding writes `secretRef: <reference>` among its settings (for example `content-configurations/banks/dib/core-banking.yaml`).
 - Every host reads a secret through one interface, at the moment it needs it: `ISecretResolver` in `runtime/src/TransactHub.Security` for the runtime, `resolveSecret` in `studio/src/secrets` for the studio, its workers and its deploy runner.
 - A value is never written to the branch, the store, a package, a log line or an exception. A secret's value prints as `[secret]`. A reference that cannot be resolved fails the step and names the reference and the store's status or error code only (`Secret akv:th-vault/signing-key does not exist: Key Vault answered 404 SecretNotFound`), never the store's own text. A literal where a reference belongs is refused, and the message gives only its length.

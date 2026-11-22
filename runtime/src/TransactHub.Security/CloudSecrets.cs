@@ -15,7 +15,7 @@ using Azure.Security.KeyVault.Secrets;
 
 namespace TransactHub.Security;
 
-// The cloud secret stores (spec R-06-25), on their official SDKs. No message carries a value or a store's own text:
+// The cloud secret stores (spec R-06-26), on their official SDKs. No message carries a value or a store's own text:
 // each names the reference and the store's status or error code only.
 
 /// <summary>

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { inspect } from 'node:util';
 
-// The one way the studio, its workers and its deploy runner read a secret (R-06-22, R-06-25): a reference, resolved here.
+// The one way the studio, its workers and its deploy runner read a secret (R-06-22, R-06-26): a reference, resolved here.
 //   env:NAME                                 a variable the deployment sets
 //   file:/absolute/path                      a mounted secret file (a Kubernetes or Docker secret, a Vault agent's sink)
 //   vault:mount/path#field                   a field of a HashiCorp Vault KV version 2 secret (TH_VAULT_ADDR, its token by reference in TH_VAULT_TOKEN)

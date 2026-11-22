@@ -6,6 +6,8 @@ import { client, type Client, type Lag, type View } from './ops/api';
 import { Payments } from './ops/Payments';
 import { Detail } from './ops/Detail';
 import { show } from './ops/format';
+import { serviceClient } from './service/api';
+import { ServiceSection } from './service/Service';
 import './styles.css';
 
 function LagBadge({ api }: { api: Client }) {
@@ -44,25 +46,45 @@ function Approvals({ api, go }: { api: Client; go(h: string): void }) {
   );
 }
 
-function App({ auth }: { auth: SignIn }) {
+/** Which of the runtime's APIs answer here: the operations console's, the service console's, or both behind one gateway. */
+interface Hosts { ops: boolean; service: boolean }
+
+function ServiceGate({ auth, path }: { auth: SignIn; path: string[] }) {
+  const api = serviceClient(auth);
+  const [me, setMe] = useState<{ roles: string[]; service: boolean } | null | undefined>(undefined);
+  useEffect(() => { api.me().then(setMe).catch(() => setMe(null)); }, []);
+  if (me === undefined) return <p className="muted">Loading…</p>;
+  if (!me?.service) return <p className="muted">You have no service role (ServiceEngineer or ServiceApprover) in the bank's role map.</p>;
+  return <ServiceSection api={api} path={path} approver={me.roles.includes('ServiceApprover')} />;
+}
+
+function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
   const api = client(auth);
   const [views, setViews] = useState<View[] | null>(null);
   const signedIn = !!auth.current();
-  useEffect(() => { if (signedIn) api.views().then(setViews).catch(() => setViews([])); }, [signedIn]);
-  const sections: Section[] = [
+  useEffect(() => { if (signedIn && hosts.ops) api.views().then(setViews).catch(() => setViews([])); }, [signedIn]);
+  const sections: Section[] = [];
+  if (hosts.ops) sections.push(
     {
       id: 'payments', title: 'Payments',
       render: (path, ctx) => !views ? <p className="muted">Loading…</p> : path[0] ? <Detail api={api} views={views} id={path[0]} go={ctx.go} /> : <Payments api={api} views={views} go={ctx.go} />,
     },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
-  ];
-  return <Shell auth={auth} sections={sections} title="TransactHub Operations" status={signedIn ? <LagBadge api={api} /> : null} />;
+  );
+  if (hosts.service) sections.push({ id: 'service', title: 'Service', render: (path) => <ServiceGate auth={auth} path={path} /> });
+  return <Shell auth={auth} sections={sections} title={hosts.ops ? 'TransactHub Operations' : 'TransactHub Service'} status={signedIn && hosts.ops ? <LagBadge api={api} /> : null} />;
 }
 
-loadSignIn().then((auth) => {
+async function answers(url: string): Promise<boolean> {
+  try { return (await fetch(url)).ok; } catch { return false; }
+}
+
+(async () => {
+  const hosts: Hosts = { ops: await answers('/ops/api/auth/config'), service: await answers('/service/api/auth/config') };
+  const auth = await loadSignIn(hosts.ops || !hosts.service ? '/ops/api/auth/config' : '/service/api/auth/config');
   // Re-render on sign-in and sign-out (the shell asks the sign-in who is current).
   const root = createRoot(document.getElementById('root')!);
-  const render = () => root.render(<StrictMode><App key={auth.current()?.subject ?? 'none'} auth={auth} /></StrictMode>);
+  const render = () => root.render(<StrictMode><App key={auth.current()?.subject ?? 'none'} auth={auth} hosts={hosts} /></StrictMode>);
   render();
   window.addEventListener('th-auth-changed', render);
-});
+})();

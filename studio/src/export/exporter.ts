@@ -141,6 +141,12 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   for (const ext of env.store.byKind('extension')) {
     if ([...flows.keys(), ...blocks.keys()].some((n) => scopeOf(n) === ext.scope)) files[`extensions/${ext.name}@${ext.release}.yaml`] = toYaml(ext.doc);
   }
+  // The error dictionaries of every scope the package carries, and the platform's (R-05-52): the service console links
+  // every error it shows to its entry, from the package a payment is pinned to.
+  const scopes = new Set(['p', ...[...flows.keys(), ...blocks.keys()].map(scopeOf)]);
+  for (const dict of env.store.byKind('error-dictionary')) {
+    if (scopes.has(scopeOf(dict.name))) files[`errors/${dict.name}@${dict.release}.yaml`] = toYaml(dict.doc);
+  }
 
   // Intake maps the front door runs for the schemes in the package are tasks too.
   for (const f of Object.keys(files).filter((k) => k.startsWith('schemes/'))) {

@@ -7,7 +7,7 @@ import { azureCredentialKind, ssmName } from '../src/secrets/cloud.js';
 import { literalSecretsIn } from '../src/secrets/scan.js';
 import { AUTHORITY, fakeKeyVault } from './support/fake-key-vault.js';
 
-// The cloud secret stores (R-06-25, R-06-26): Azure Key Vault against an in-process fake of its REST protocol (there is
+// The cloud secret stores (R-06-26, R-06-27): Azure Key Vault against an in-process fake of its REST protocol (there is
 // no official emulator), AWS Secrets Manager and Parameter Store against LocalStack in a container of this run's own.
 // Every value, token and key here is made by the test.
 

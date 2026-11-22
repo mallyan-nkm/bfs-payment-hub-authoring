@@ -1,6 +1,6 @@
 import { bootstrapSecret, SecretUnavailable, SecretValue, type SecretStores } from './secrets.js';
 
-// The cloud secret stores (R-06-25), on their official SDKs, loaded only when a reference names them.
+// The cloud secret stores (R-06-26), on their official SDKs, loaded only when a reference names them.
 //   akv:<vault-name>/<secret-name>[#version]   Azure Key Vault, https://<vault-name>.<TH_AKV_DNS_SUFFIX, vault.azure.net>/
 //   aws-sm:<region>/<secret-id>[#json-field]   AWS Secrets Manager: the secret string, or one field of its JSON object
 //   aws-ssm:<region>/<parameter-name>          AWS Systems Manager Parameter Store: a SecureString, decrypted

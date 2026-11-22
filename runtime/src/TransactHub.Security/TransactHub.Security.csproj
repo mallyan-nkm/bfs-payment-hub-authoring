@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <!-- The cloud secret stores' official SDKs, pinned (R-06-25). -->
+  <!-- The cloud secret stores' official SDKs, pinned (R-06-26). -->
   <ItemGroup>
     <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.100.23" />
     <PackageReference Include="AWSSDK.SimpleSystemsManagement" Version="4.0.104.9" />
