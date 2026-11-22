@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using TransactHub.Auth;
 using TransactHub.Operations;
 using TransactHub.Operations.Api;
 using TransactHub.Store;
@@ -31,6 +32,8 @@ builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.Ge
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
+// Security headers and the console page's content security policy on every answer (R-09-60).
+app.UseRuntimeSecurityHeaders(app.Configuration);
 
 if (app.Configuration["Store:Migrate"] != "false")
 {

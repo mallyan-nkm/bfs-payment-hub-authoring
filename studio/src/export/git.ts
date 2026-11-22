@@ -22,7 +22,7 @@ export type GitMode = Settings['mode'];
 const TARGETS: Target[] = ['temporal', 'dtfx', 'flowable', 'elsa'];
 
 /** Who changes the studio's settings: a shared checker or service operations of the owner. */
-function mayChangeSettings(env: StudioEnv, actor: string): string | undefined {
+export function mayChangeSettings(env: StudioEnv, actor: string): string | undefined {
   return permit(env, actor, OWNER_TENANT, 'author', { kind: 'settings' });
 }
 

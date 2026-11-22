@@ -189,4 +189,23 @@ public sealed class OperatorApiTests(Databases dbs)
         Assert.True(all.Has("any-bank", OperatorRoles.Operator));
         Assert.Null(new RuntimeAuthOperators().Resolve(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity())));
     }
+
+    [Fact]
+    public void One_person_is_an_operator_in_one_bank_and_a_supervisor_in_another()
+    {
+        // The owner's decision of 22 November 2026 (R-06-28): each grant gives its role in its own tenants.
+        var map = TransactHub.Auth.RoleMap.Parse("""
+            { "kind": "runtime-role-map", "grants": [
+              { "claim": "groups", "value": "ops-bank-a", "roles": ["Operator"], "tenants": ["bank-a"] },
+              { "claim": "groups", "value": "sup-bank-b", "roles": ["Supervisor"], "tenants": ["bank-b"] } ] }
+            """, OperatorRoles.All);
+        var id = new System.Security.Claims.ClaimsIdentity([new("sub", "u-2"), new("groups", "ops-bank-a"), new("groups", "sup-bank-b")], "jwt");
+        map.Apply(id);
+        var who = new RuntimeAuthOperators().Resolve(new System.Security.Claims.ClaimsPrincipal(id))!;
+        Assert.True(who.Has("bank-a", OperatorRoles.Operator));
+        Assert.False(who.Has("bank-a", OperatorRoles.Supervisor));
+        Assert.True(who.Has("bank-b", OperatorRoles.Supervisor));
+        Assert.True(who.Has("bank-b", OperatorRoles.Operator));
+        Assert.Equal(["bank-a", "bank-b"], who.Tenants.Order());
+    }
 }

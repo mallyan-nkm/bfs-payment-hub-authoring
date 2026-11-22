@@ -35,7 +35,8 @@ public static class BenchRoles
     public const string RuntimeClient = "transacthub-runtime-ui";
 
     public static string Actor(ClaimsPrincipal u) => RuntimeAuth.Actor(u);
-    public static bool MayActFor(ClaimsPrincipal u, string tenant) => RuntimeAuth.MayActFor(u, tenant);
+    /// <summary>A role this host knows, granted in the tenant itself (or every tenant): not a role of one bank and the tenant of another (R-06-28).</summary>
+    public static bool MayActFor(ClaimsPrincipal u, string tenant) => Known.Any(r => RuntimeAuth.HasRoleFor(u, r, tenant));
 }
 
 public sealed class BenchAuth(JsonObject config) : IBenchAuth
@@ -93,7 +94,7 @@ public sealed class BenchAuth(JsonObject config) : IBenchAuth
             var claims = new List<Claim> { new("sub", sub), new("name", J.S(o, "name") ?? sub) };
             foreach (var pair in J.Strings(o!["roles"]))
                 if (pair.Split(':') is [var tenant, var role])
-                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role)]);
+                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role), new Claim(RuntimeAuth.TenantRoleClaim, RuntimeAuth.TenantRole(tenant, role))]);
             var p = new ClaimsPrincipal(new ClaimsIdentity(claims, BenchRoles.DevScheme, "sub", RuntimeAuth.RoleClaim));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(p, BenchRoles.DevScheme)));
         }

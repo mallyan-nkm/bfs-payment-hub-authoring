@@ -27,6 +27,8 @@ export interface AuthConfig {
   dev: boolean;
   secureCookies: boolean;
   sessionHours: number;
+  /** A session unused this long ends (R-11-42): TH_SESSION_IDLE_MINUTES, 60 by default. */
+  idleMinutes: number;
   key: Buffer;
 }
 
@@ -51,6 +53,8 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env, port?: n
     throw new AuthConfigError('The studio needs sign-in: set TH_OIDC_ISSUER and TH_OIDC_CLIENT_ID (and TH_OIDC_CLIENT_SECRET_REF=env:<NAME> if the provider wants a client secret), or TH_AUTH_DEV=1 for local development');
   }
   const base = env.TH_PUBLIC_URL ?? `http://localhost:${port ?? env.PORT ?? 4317}`;
+  // In production the identity provider, its keys and the studio itself are reached over TLS only (R-11-43).
+  if (!dev && env.NODE_ENV === 'production' && !/^https:\/\//.test(env.TH_OIDC_ISSUER!)) throw new AuthConfigError('In production TH_OIDC_ISSUER is an https:// URL');
   const keyRef = env.TH_SESSION_KEY_REF;
   const keyText = resolveSecretRef(keyRef, env);
   if (keyText !== undefined && keyText.length < 32) throw new AuthConfigError('The session key needs at least 32 characters');
@@ -66,6 +70,7 @@ export function authConfigFromEnv(env: NodeJS.ProcessEnv = process.env, port?: n
     dev,
     secureCookies: env.TH_COOKIE_SECURE === '1' || base.startsWith('https://'),
     sessionHours: Number(env.TH_SESSION_HOURS ?? 8),
+    idleMinutes: Number(env.TH_SESSION_IDLE_MINUTES ?? 60),
     // Without a key reference the key lives for the process: a restart signs everyone out.
     key: keyText ? Buffer.from(keyText, 'utf8') : randomBytes(32),
   };
@@ -80,7 +85,13 @@ export function parseCookies(header: string | undefined): Record<string, string>
   const out: Record<string, string> = {};
   for (const part of (header ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    // A cookie that does not decode is not ours: it is skipped, not an error.
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      /* skipped */
+    }
   }
   return out;
 }
@@ -107,7 +118,10 @@ function cookie(name: string, value: string, cfg: AuthConfig, maxAgeSeconds: num
 
 // ------------------------------------------------------------------ sessions
 
-export interface Session { id: string; subject: string; user?: string; csrf: string; expires: number; idToken?: string; groups?: string[] }
+export interface Session { id: string; subject: string; user?: string; csrf: string; expires: number; idToken?: string; groups?: string[]; lastSeen?: number }
+
+/** The most sign-ins in progress held at once: past it the oldest is dropped, so /auth/login cannot fill memory (R-11-41). */
+export const MAX_PENDING_SIGN_INS = 10_000;
 
 /** Sessions and sign-ins in progress, in memory only. */
 export class Sessions {
@@ -118,7 +132,7 @@ export class Sessions {
 
   create(subject: string, user: string | undefined, idToken?: string, groups?: string[]): Session {
     this.sweep();
-    const s: Session = { id: b64u(randomBytes(24)), subject, user, csrf: b64u(randomBytes(24)), expires: Date.now() + this.cfg.sessionHours * 3600_000, idToken, groups };
+    const s: Session = { id: b64u(randomBytes(24)), subject, user, csrf: b64u(randomBytes(24)), expires: Date.now() + this.cfg.sessionHours * 3600_000, idToken, groups, lastSeen: Date.now() };
     this.sessions.set(s.id, s);
     return s;
   }
@@ -127,10 +141,13 @@ export class Sessions {
     const id = unsign(this.cfg.key, parseCookies(header)[SESSION_COOKIE]);
     const s = id ? this.sessions.get(id) : undefined;
     if (!s) return undefined;
-    if (s.expires < Date.now()) {
+    const now = Date.now();
+    const idle = (this.cfg.idleMinutes ?? 60) * 60_000;
+    if (s.expires < now || (idle > 0 && now - (s.lastSeen ?? now) > idle)) {
       this.sessions.delete(s.id);
       return undefined;
     }
+    s.lastSeen = now;
     return s;
   }
 
@@ -151,6 +168,10 @@ export class Sessions {
     const state = b64u(randomBytes(24));
     const verifier = b64u(randomBytes(32));
     const nonce = b64u(randomBytes(16));
+    for (const k of this.pending.keys()) {
+      if (this.pending.size < MAX_PENDING_SIGN_INS) break;
+      this.pending.delete(k);
+    }
     this.pending.set(state, { verifier, nonce, expires: Date.now() + 10 * 60_000, returnTo });
     return { state, verifier, nonce, challenge: b64u(createHash('sha256').update(verifier).digest()), cookie: cookie(LOGIN_COOKIE, sign(this.cfg.key, state), this.cfg, 600) };
   }
@@ -166,6 +187,11 @@ export class Sessions {
 
   clearLoginCookie() {
     return cookie(LOGIN_COOKIE, '', this.cfg, 0);
+  }
+
+  /** For tests: how many sign-ins are in progress. */
+  get pendingCount() {
+    return this.pending.size;
   }
 
   private sweep() {
@@ -245,6 +271,7 @@ export class OidcClient {
     if (!aud.includes(this.cfg.clientId)) throw new Error('The ID token is for another client');
     if (typeof claims.exp !== 'number' || claims.exp + 60 < now) throw new Error('The ID token has expired');
     if (typeof claims.iat === 'number' && claims.iat - 300 > now) throw new Error('The ID token is issued in the future');
+    if (typeof claims.nbf === 'number' && claims.nbf - 60 > now) throw new Error('The ID token is not valid yet');
     return claims;
   }
 
@@ -297,13 +324,21 @@ export class DevProvider {
       const q = method === 'POST' && form ? form : url.searchParams;
       const need = ['client_id', 'redirect_uri', 'state', 'nonce', 'code_challenge'];
       if (need.some((k) => !q.get(k)) || q.get('code_challenge_method') !== 'S256' || q.get('response_type') !== 'code') return json(400, { error: 'invalid_request', error_description: `Send ${need.join(', ')}, response_type=code and code_challenge_method=S256` });
+      // The code goes back only to this studio's own callback: the provider is no open redirect.
+      let back: URL | undefined;
+      try {
+        back = new URL(q.get('redirect_uri')!);
+      } catch {
+        back = undefined;
+      }
+      if (!back || back.origin !== new URL(this.issuer).origin || back.pathname !== '/auth/callback') return json(400, { error: 'invalid_request', error_description: 'redirect_uri is not this studio\'s callback' });
       if (method === 'GET') return { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, body: this.page(q) };
       const sub = form?.get('user') ?? '';
       if (!/^[a-z][a-z0-9.-]*$/.test(sub)) return json(400, { error: 'invalid_request', error_description: 'Choose a user' });
       const code = b64u(randomBytes(24));
       const groups = form?.get('groups') ? form.get('groups')!.split(',').map((g) => g.trim()).filter(Boolean) : undefined;
       this.codes.set(code, { sub, groups, clientId: q.get('client_id')!, redirectUri: q.get('redirect_uri')!, challenge: q.get('code_challenge')!, nonce: q.get('nonce')!, expires: Date.now() + 60_000 });
-      const back = new URL(q.get('redirect_uri')!);
+      back = new URL(back.toString());
       back.searchParams.set('code', code);
       back.searchParams.set('state', q.get('state')!);
       return { status: 303, headers: { location: back.toString() }, body: '' };

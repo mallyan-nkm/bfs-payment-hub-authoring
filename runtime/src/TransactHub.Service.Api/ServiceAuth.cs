@@ -57,7 +57,7 @@ public static class ServiceAuth
             var claims = new List<Claim> { new("sub", sub), new("name", (string?)o!["name"] ?? sub) };
             foreach (var r in (o["roles"] as JsonArray ?? []))
                 if ((string?)r is { } pair && pair.Split(':') is [var tenant, var role])
-                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role)]);
+                    claims.AddRange([new Claim(RuntimeAuth.TenantClaim, tenant), new Claim(RuntimeAuth.RoleClaim, role), new Claim(RuntimeAuth.TenantRoleClaim, RuntimeAuth.TenantRole(tenant, role))]);
             var p = new ClaimsPrincipal(new ClaimsIdentity(claims, DevScheme, "sub", RuntimeAuth.RoleClaim));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(p, DevScheme)));
         }

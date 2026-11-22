@@ -43,4 +43,21 @@ describe('the Python script sandbox (C08)', () => {
       expect(a.ctx.facts.duplicate.found).toBe(c.expect.found);
     }
   });
+  // R-08-18: the builtins are no wall on their own; the audit hook stops a script that climbs to the interpreter's modules.
+  it('stops a script that climbs from an object to os, files or a process', async () => {
+    const climb = "[c for c in ().__class__.__base__.__subclasses__() if c.__name__ == '_wrap_close'][0].__init__.__globals__";
+    const tries = [
+      `def run(api):\n    g = ${climb}\n    g['system']('true')\n    return 'escaped'\n`,
+      `def run(api):\n    g = ${climb}\n    return 'escaped' if g['listdir']('/') else 'x'\n`,
+      `def run(api):\n    g = ${climb}\n    return 'escaped' if g['open']('/proc/self/environ', 0) >= 0 else 'x'\n`,
+      `def run(api):\n    io = [c for c in ().__class__.__base__.__subclasses__() if c.__name__ == 'FileIO'][0]\n    return 'escaped' if io('/etc/hostname').read() is not None else 'x'\n`,
+      `def run(api):\n    b = [c for c in ().__class__.__base__.__subclasses__() if c.__name__ == 'BuiltinImporter'][0]\n    return 'escaped' if b.load_module('posix').system('true') == 0 else 'x'\n`,
+    ];
+    for (const src of tries) {
+      const r = await runPythonScript(src, 'climb.py', {}, [], [], api() as any).catch((e) => ({ outcome: 'refused', e }));
+      expect(r.outcome, src).toBe('refused');
+    }
+    // The allowed modules still import.
+    expect((await runPythonScript(`import re\nimport json\ndef run(api):\n    return 'ok' if re.match('a', 'a') and json.dumps(1) else 'bad'\n`, 'ok.py', {}, [], [], api() as any)).outcome).toBe('ok');
+  });
 });

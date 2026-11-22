@@ -12,7 +12,11 @@ export const draftBranch = (id: string) => `${DRAFT_PREFIX}${id}`;
 
 export const scopeOfName = (name: string) => (name.split('.')[0] === 'p' || name.split('.')[0] === 'b' ? name.split('.')[0] : name.split('.').slice(0, 2).join('.'));
 
-const safe = (s: string) => String(s).replace(/[^A-Za-z0-9._@-]+/g, '-');
+/**
+ * One path segment from a name: only letters, digits and . _ @ -, and never `.` or `..` alone or a leading dot, so a name a
+ * user chose cannot climb out of its folder on the branch (R-11-44).
+ */
+export const safe = (s: string) => String(s).replace(/[^A-Za-z0-9._@-]+/g, '-').replace(/^\.+/, (d) => '-'.repeat(d.length)) || '-';
 
 /** Where a document the studio publishes lives: its path carries its release, so it never changes. */
 export function documentPath(doc: any, tenant: string): string {

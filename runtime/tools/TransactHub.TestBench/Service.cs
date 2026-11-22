@@ -61,6 +61,8 @@ public static class Service
         b.Logging.SetMinimumLevel(LogLevel.Warning);
         var auth = BenchAuth.Add(b).GetAwaiter().GetResult();
         var app = b.Build();
+        // Security headers and the console page's content security policy on every answer (R-09-60).
+        TransactHub.Auth.SecurityHeaders.UseRuntimeSecurityHeaders(app, app.Configuration);
         var infra = new Infra(home, null);
         var runner = runnerFactory?.Invoke() ?? new RealRunner(home, infra);
         var catalogue = new Catalogue(home);

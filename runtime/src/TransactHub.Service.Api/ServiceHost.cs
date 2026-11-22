@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using TransactHub.Api;
+using TransactHub.Auth;
 using TransactHub.Engine.Flowable;
 using TransactHub.Operations;
 using TransactHub.Security;
@@ -130,6 +131,8 @@ public sealed class ServiceHost
         s.AddScoped(_ => StoreDbContext.Open(store));
 
         var app = builder.Build();
+        // Security headers and the console page's content security policy on every answer (R-09-60).
+        app.UseRuntimeSecurityHeaders(app.Configuration);
         if (cfg["Store:Migrate"] != "false")
         {
             await using (var db = StoreDbContext.Open(store)) await db.Database.MigrateAsync();
