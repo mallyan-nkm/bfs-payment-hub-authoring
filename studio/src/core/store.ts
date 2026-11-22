@@ -72,6 +72,8 @@ export interface Settings {
   target: string;
   /** On approval, also build and publish the distributions and configuration releases the change set calls for (R-11-40). */
   distributions?: boolean;
+  /** Build those distributions for a test environment: with the simulators, never promotable (R-07-12). */
+  testDistributions?: boolean;
   /** When set, each publish also writes an activation for this environment. */
   environment?: string;
   changedBy?: string;

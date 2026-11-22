@@ -1096,6 +1096,51 @@ if dictionaries:
 else:
     err("L39", "factory/p/errors", "no error dictionary: the platform's errors have no entries")
 
+# L42 (R-11-38) a leg fills the slot contract <slot>@<major> of a platform workflow: the workflow it names is a platform
+# workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions.
+# A distribution is built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts).
+def beyond(paths, allowed, own):
+    out = []
+    for x in paths or []:
+        if any(x == a or x.startswith(a + ".") or x.startswith(a + "[") for a in allowed) or x.startswith("ext." + own):
+            continue
+        out.append(x)
+    return out
+
+
+for path, d in docs:
+    if d.get("kind") != "workflow" or d.get("wfKind") != "leg":
+        continue
+    imp = d.get("implements") or {}
+    for of in imp.get("of") or []:
+        host = by_name.get(of)
+        if host is None or host.get("kind") != "workflow":
+            continue
+        if host.get("wfKind") != "platform":
+            err("L42", path, "fills %s of %s, which is not a platform workflow" % (imp.get("slot"), of))
+            continue
+        contract = {s["name"]: s["contract"] for s in host.get("slots") or []}.get(imp.get("slot"))
+        if not contract:
+            continue
+        for x in beyond((d.get("entry") or {}).get("reads"), contract.get("reads") or [], scope_of(d["name"])):
+            err("L42", path, "reads %s, which the slot contract %s@%s of %s does not give it" % (x, imp.get("slot"), of.rsplit(".v", 1)[-1], of))
+
+# L43 (R-11-39) the parameter contract: every parameter declares its type and a default, and the default lies within its
+# own bounds; a distribution carries every dial with its type and bounds, and a configuration release is checked against it.
+for path, d in docs:
+    params = d.get("parameters")
+    if not isinstance(params, dict):
+        continue
+    for k, decl in params.items():
+        name = "%s#%s" % (d.get("name"), k)
+        if not isinstance(decl, dict) or not decl.get("type"):
+            err("L43", path, "%s declares no type" % name)
+            continue
+        if "default" not in decl:
+            err("L43", path, "%s declares no default" % name)
+        elif not within_bounds(decl, decl["default"]):
+            err("L43", path, "%s: its default %r is outside its own bounds %r" % (name, decl["default"], decl.get("bounds")))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

@@ -1070,6 +1070,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** The views name the sources (`message:uae.wps.sif.fileName`, `documents`), the read model projects every `message` row and the API serves its content to the payment's operators; `OperatorApiTests` shows a kept file listed and downloaded.
 
+**Done for (1) (22 November 2026).** A payment's end is a fact: when a payment's root instance ends, the host that runs it records `payment.end` with the outcome on the payment's chain, through the runtime's `POST /payments/end` (R-09-53). It is recorded on every engine (Temporal, DTFx, Elsa and Flowable) by the front door that runs the payment (`studio/src/deploy/front-door.ts`), which is the runtime's front door in this repository; `e2e-distributions.test.ts` ends every payment it runs and `DistributionApiTests` shows a second end changes nothing. A payment is open while it is pinned and has no end, and the open count per distribution is computed from these facts. (2), the files of a deployment, is still open.
+
 ## I-98. A hold answered by the runtime waits in one attempt
 
 **Issue.** A hold reaches the operator through its port, `p.port.operations-queue.v1`, given to the runtime (R-08-15): the native host opens the hold on the payment's chain and the attempt waits for the decision the console records (R-05-50). An attempt holds a connection while it waits, and is bounded (`TH_OPS_HOLD_WAIT_SECONDS`, default 240, under the worker's five minutes): a hold not decided by then ends `expired`, not after the hold's own `expiry` (P1D). The hold also finds its payment by the header's file id or end-to-end id, the newest of that tenant and scheme, because the header carries no id of the store's.
@@ -1117,6 +1119,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** Listing of every kind, verification, the difference against what is active (flows, files and parameters), install, activation from a date with the previous release recorded as draining, rollback, removal refused while active or while a pinned payment is open, and the open count per release (`ContentTests`, the `service-console` Playwright test).
 
+**Done (22 November 2026).** Items 1 to 3 of section 10 of the packaging document are built (R-09-47 to R-09-56, R-11-37 to R-11-40). The studio builds and signs a bank's distribution and configuration release and publishes each with its tag; the runtime stores both insert-only after verifying their signature and kind, activates a distribution per bank and environment with the old one draining in the same transaction, records the five states as insert-only facts, pins `distributionId` on each payment at acceptance, records each payment's end (I-97), refuses removal while a pinned payment is open or before the longest declared wait has passed, and rolls back. The service console lists, verifies, diffs, installs, activates, drains, removes and rolls back both kinds, and counts open payments per distribution exactly; the 501 refusal is gone. A workflow package's open payments are still counted from the read model's status, as before. What is not built is in I-114.
+
 ## I-103. What the runtime's errors and logs do not carry yet
 
 **Issue.** (1) The runtime's libraries raise exceptions with a message only: `SignatureRejected`, `PackageRejected`, `ActionRefused`, `ReleaseConflict` carry no error code, so the service console classifies them by their words (`ErrorCodes.Of`), which breaks if a message is reworded. (2) A step fact records a reason code and an error name when the worker gives them, but an engine's own failure (a Temporal workflow task failure, a Flowable dead-letter job, a DTFx or Elsa fault) is not a fact: the console sees it only through the engine's own console. (3) The service console's log viewer reads its own host's structured logs (masked, in memory) and the store's facts; the other hosts' logs go to the installation's log back end over OTLP, which the console does not query, and the facts carry no trace id (I-80).
@@ -1155,6 +1159,30 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** After I-77 and I-78 a line of a WPS salary file costs about 0.06 CPU seconds across the Temporal server, the harness, the workers and the database (`docs/runtime/LOAD-TEST.md`): two activity attempts, each with a claim-check commit as a local activity (another workflow task), a staged-write fact, a commit fact and a step fact. The proposed 50 lines a second sustained therefore needs about three dedicated cores for these processes alone; the shared 4-vCPU machine of the runs gave 25 to 29 lines a second with four to eight files at once. A single file is held by its one workflow: its workflow tasks run one after another, about 17 lines a second here.
 
 **Recommendation.** Measure on a reference installation before deciding (I-68). If the target is not met there: commit an item's staged writes with its attempt's result (one claim-check call per item, not per attempt), or check a chunk of lines in one activity attempt (one attempt per chunk, R-09-13), so a file's cost grows with its chunks; give Temporal more history shards than the four of the harness's server; and run more than one worker per queue.
+
+## I-111. The bank packs' lock files do not list the schemes a bank licenses
+
+**Issue.** A distribution carries the schemes its bank licenses (R-11-37), but no lock file on the content branch has `licensedSchemes` yet: the bank packs under `content-configurations/banks/` were written before the list, and the example bank's (`spec/examples/bank/pack.yaml`, from `tools/build_factory.py`) depends on `p` only although its configuration set sets WPS dials. A published lock file is replaced only by a later release with its ledger (R-11-35, R-11-36), so the list was not added in place.
+
+**Recommendation.** Add `licensedSchemes` to each bank's lock file in its next release (and to the example bank pack in `tools/build_factory.py`), and then make it required. Until then the studio reads a lock file without the list as the scheme scopes it depends on and those its configuration set sets dials of (`licensedSchemes` in `studio/src/export/distribution.ts`); every bank in the repository then licenses `uae.wps`.
+
+## I-112. A leg writes what its slot contract does not list
+
+**Issue.** The slot-contract check (R-11-38, L42) compares a leg's outcomes and reads with its slot's contract. It does not compare writes: `uae.wps.wf.agent-payment-in.v2` writes `facts.returns`, which the `scheme-leg` slot of `p.wf.inward.v1` does not list among its writes. Checking writes would refuse every distribution today.
+
+**Recommendation.** Decide whether `facts.returns` belongs to the inward slot's contract. If it does, release `p.wf.inward` with it (a contract change is an interface change: a new major, and the slot contract becomes `scheme-leg@2`); if not, release the leg without it. Then extend L42 and `checkSlotContracts` to writes.
+
+## I-113. Who switches distributions on, and which engine a bank runs
+
+**Issue.** Building distributions and configuration releases on approval is a setting (`distributions: true` in `governance/settings.yaml`, off by default), so that a publish that does not want them is unchanged; a test environment's distributions carry simulators (`testDistributions: true`). The distributions built on approval are for the settings' engine target, one engine for every bank: no document records which engine a bank runs, so scenario 9 (a bank moves engine) builds the other engine's distribution on its own (`POST /api/distributions` with `engine`).
+
+**Recommendation.** Owner to decide whether distributions are on by default once every bank's lock file lists its schemes (I-111), and to record each bank's engine (and environments) in its bank pack, so that an approval builds each bank's distribution for its own engine.
+
+## I-114. Side by side, as the harnesses run it
+
+**Issue.** Each distribution runs as its own copy: the front door keeps one verified copy per distribution, and the engine names what it registers after it (on Temporal the task queues and the worker build id, on DTFx the orchestration's name, on Elsa the workflow definition, on Flowable the deployment). But each payment's run is its own harness process: no long-running engine host serves several distributions at once, Temporal's worker-versioning rules (a build id set per task queue on a server) are not used, the time-skipping test server does not support them, and a removed distribution's workers stop because nothing starts them, not because a host unregisters them. The longest declared wait is the largest bound or default of a duration dial named a wait, a timeout or a hold; an `await` with a literal timeout is not counted. Scenario 6 (a new scheme) is shown only as far as one scheme allows: every distribution lists only its bank's schemes, and a leg naming a slot contract the platform does not offer refuses the approval.
+
+**Recommendation.** When the runtime's engine hosts become long-running (I-89, I-101), give each a registry of the distributions it serves, started at activation and stopped at removal, with Temporal worker versioning on the real server; count an await's literal timeout in the longest wait (or make every wait a dial, as the DSL asks); and add a second scheme pack to the factory's tests so that scenario 6 builds a distribution for a bank that licenses it and not for one that does not.
 
 ## Not done, and why
 

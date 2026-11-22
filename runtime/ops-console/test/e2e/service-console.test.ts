@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 // Every released package is signed (R-09-23): a key of this run's own, from the studio's test support.
 import '../../../../studio/test/support/signing-env';
 import { unzip } from '../../../../studio/src/export/zip';
+import { signFiles } from '../../../../studio/src/export/signing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // End to end (R-06-25, R-09-39, R-09-40, R-05-52, R-09-43): the service console's API host with the store on PostgreSQL in
@@ -82,7 +83,7 @@ function fakeGitHub(published: { tag: string; folder: string; files: Record<stri
     const u = new URL(req.url ?? '/', 'http://x');
     const rest = decodeURIComponent(u.pathname.replace(/^\/repos\/bank\/content\//, ''));
     let body: unknown;
-    const m = /^git\/matching-refs\/tags\/(release|dist)$/.exec(rest);
+    const m = /^git\/matching-refs\/tags\/(release|dist|config)$/.exec(rest);
     if (m) body = [...refs].filter(([k]) => k.startsWith(m[1])).sort().map(([k, v]) => ({ ref: `refs/tags/${k}`, object: { sha: v, type: 'tag' } }));
     else if (rest.startsWith('git/tags/') && tags.has(rest.slice(9))) { const t = tags.get(rest.slice(9))!; body = { message: t.message, object: { sha: t.commit, type: 'commit' } }; }
     else if (rest.startsWith('git/trees/') && commits.has(rest.slice(10))) body = { truncated: false, tree: Object.entries(commits.get(rest.slice(10))!).map(([p, v]) => ({ path: p, type: 'blob', sha: sha(v) })) };
@@ -90,6 +91,17 @@ function fakeGitHub(published: { tag: string; folder: string; files: Record<stri
     res.writeHead(body === undefined ? 404 : 200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body ?? { message: 'Not Found' }));
   });
+}
+
+/** A small distribution as the studio builds it: its files, a manifest with the bill of materials and the parameter contract, signed. */
+function distribution(id: string): Record<string, Buffer> {
+  const files: Record<string, string> = { 'binding.yaml': 'kind: engine-binding\ntarget: temporal\n', 'workflows/p.wf.corporate.v1@1.0.0.yaml': 'kind: workflow\nname: p.wf.corporate.v1\nrelease: 1.0.0\n' };
+  const sha = (t: string) => `sha256:${createHash('sha256').update(t).digest('hex')}`;
+  const billOfMaterials = { packs: [{ scope: 'p', release: '1.1.0' }], artefacts: Object.entries(files).map(([p, t]) => ({ name: p.split('/').pop()!.split('@')[0], kind: p.startsWith('binding') ? 'engine-binding' : 'workflow', release: '1.0.0', path: p, sha256: sha(t) })).sort((a, b) => a.path.localeCompare(b.path)) };
+  const parameterContract = { format: 'th-parameter-contract/1', parameters: [] };
+  files['manifest.yaml'] = JSON.stringify({ kind: 'distribution', id, bank: 'example-bank', engine: 'temporal', schemes: ['uae.wps'], longestWait: 'P30D', billOfMaterials, parameterContract });
+  const signed = signFiles(files, { kind: 'distribution', releaseId: `dist/example-bank@${id}`, workflow: '', release: id, target: 'temporal', tenant: 'example-bank', changeSet: 'CS-SYNTHETIC-1', extra: { billOfMaterials, parameterContract } });
+  return Object.fromEntries(Object.entries(signed).map(([k, v]) => [k, Buffer.from(v)]));
 }
 
 beforeAll(async () => {
@@ -108,6 +120,8 @@ beforeAll(async () => {
   const ghPort = await freePort();
   gh = fakeGitHub([
     { tag: `release/p.wf.corporate.v1/${r}/temporal`, folder: `content-configurations/releases/p/p.wf.corporate.v1/${r}/temporal`, files },
+    // A bank's distribution (R-09-47, R-09-48), signed with this run's key: offered, verified, installed (Issue I-102 done).
+    { tag: 'dist/example-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/example-bank/2026.11.22-1', files: distribution('2026.11.22-1') },
     // A tag that names another release than the package in its folder: refused.
     { tag: 'release/p.wf.corporate.v1/9.9.9/temporal', folder: 'content-configurations/releases/p/p.wf.corporate.v1/9.9.9/temporal', files },
   ]);
@@ -198,6 +212,21 @@ describe('the service console', () => {
     await page.reload();
     await until('the refusal in the log', async () => (await page.getByTestId('log-row').count()) > 0, 20000);
     expect(await page.getByTestId('log-row').first().getByTestId('error-link').textContent()).toBe('signing.WrongRelease');
+
+    // A bank's distribution: offered with its bank, installed through the verification of its kind, shown with its open payments.
+    const dist = page.locator('[data-testid=version-row][data-tag="dist/example-bank/2026.11.22-1"]');
+    await dist.waitFor();
+    expect(await dist.textContent()).toContain('example-bank');
+    await dist.getByRole('button', { name: 'Difference' }).click();
+    await page.getByTestId('diff').filter({ hasText: 'dist/example-bank@2026.11.22-1 against nothing active' }).waitFor();
+    await dist.getByRole('button', { name: 'Install' }).click();
+    await page.locator('textarea[name=reason]').fill('CR-0002: the first distribution of the example bank (synthetic)');
+    await page.getByRole('button', { name: 'Confirm install 2026.11.22-1' }).click();
+    const distRow = page.locator('[data-testid=release-row][data-release="dist/example-bank@2026.11.22-1"]');
+    await distRow.waitFor();
+    expect(await distRow.locator('.badge').textContent()).toBe('installed');
+    expect(await distRow.textContent()).toContain('distribution');
+    expect(await distRow.locator('.num').textContent()).toBe('0');
 
     // An action, confirmed by a person with a reason: re-verify the installed package against the keys trusted now.
     await page.goto(`${apiUrl}/#/service/content`);

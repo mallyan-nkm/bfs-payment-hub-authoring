@@ -231,6 +231,8 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L39 | The error dictionary covers every error: each error an activity declares, each reason code a rule, rule set or table gives and each a port's simulator answers, each code of a port boundary, the interpreter and every engine binding the examples bind, has an entry raised by that kind of thing, in the artefact's scope or one it may depend on; a dictionary has one entry per code; an ISO reason code a rule or a port gives names its `isoReasonCode` (R-05-51) | Yes |
 | L40 | An activity that the runtime's native host implements as well (`implementation.native: true`) has a script-behind or a builtin binding (R-08-16) | Yes |
 | L41 | A published release never changes: every file a seed published is in its change set's ledger with the SHA-256 of its text and still has it; a path is published once, but for a bank pack's lock file and the engine bindings, which a later ledger replaces; every seeded file is in a ledger; a factory artefact at a release the content branch holds is what was seeded (R-11-35, R-11-36) | Yes |
+| L42 | A leg fills the slot contract `<slot>@<major>` of a platform workflow: each workflow it names is a platform workflow with that slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions; a distribution whose scheme does not fit is refused at build (R-11-38) | Yes |
+| L43 | The parameter contract: every parameter declares its type and a default, and the default lies within its own bounds; a distribution carries every dial with its type and bounds (R-11-39) | Yes |
 
 ## 5.8 Examples
 

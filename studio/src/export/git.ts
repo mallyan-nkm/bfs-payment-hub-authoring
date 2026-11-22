@@ -57,7 +57,7 @@ export function changeSettings(env: StudioEnv, actor: string, input: Partial<Set
   const environment = input.environment === undefined ? env.store.settings.environment : input.environment || undefined;
   if (environment !== undefined && !/^[a-z][a-z0-9-]*$/.test(environment)) throw new StoreError('git', 'An environment is lower case letters, digits and hyphens');
   const distributions = input.distributions === undefined ? env.store.settings.distributions : input.distributions === true;
-  const settings: Settings = { mode, target, ...(environment ? { environment } : {}), ...(distributions ? { distributions: true } : {}), changedBy: actor, changedAt: new Date().toISOString() };
+  const settings: Settings = { mode, target, ...(environment ? { environment } : {}), ...(distributions ? { distributions: true } : {}), ...((input.testDistributions ?? env.store.settings.testDistributions) === true ? { testDistributions: true } : {}), changedBy: actor, changedAt: new Date().toISOString() };
   env.store.replaceStateFile(SETTINGS_PATH, { kind: 'studio-settings', settings }, `Settings: ${mode}, ${target}${environment ? `, ${environment}` : ''}\n\nChanged by ${actor}.`, { tenant: OWNER_TENANT, actor, action: 'change-settings', key: 'settings', detail: `${mode} (${target}${environment ? `, ${environment}` : ''})` });
   env.store.settings = settings;
   return settings;

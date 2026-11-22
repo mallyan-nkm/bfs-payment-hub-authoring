@@ -84,7 +84,12 @@ export async function planOnApproval(env: StudioEnv, tenant: string, checker: st
   }
   if (kinds.values) {
     enforce(env, checker, tenant, 'approve', `configuration-release:${tenant}`, { kind: 'configuration-release', scope: 'b' });
-    plan.configuration.push({ bank: tenant, against: (await branchDistributions(env, tenant)).map((d) => ({ releaseId: d.releaseId, parameterContract: d.parameterContract })) });
+    const against = (await branchDistributions(env, tenant)).map((d) => ({ releaseId: d.releaseId, parameterContract: d.parameterContract }));
+    // The values checked now, against the contracts the release will name, so a value no distribution declares, or one out of
+    // its bounds, refuses the approval before anything is published. A distribution this approval builds is checked in place.
+    const set = docs.find((d) => d.kind === 'configuration-set');
+    if (set && !plan.distributions.some((d) => d.bank === tenant)) buildConfigurationRelease(env, { bank: tenant, release: set.release, against, set });
+    plan.configuration.push({ bank: tenant, against });
   }
   return plan;
 }
@@ -107,7 +112,7 @@ function precheck(env: StudioEnv, bank: string, docs: any[]) {
 /** In the approval's transaction, with the members published: the bundles the plan names, as files and tags of the change set's commit. */
 export function buildPlanned(env: StudioEnv, plan: Plan, changeSet: any): { files: Record<string, string>; tags: { name: string; message: string }[]; built: BuiltBundle[] } {
   const built: BuiltBundle[] = [];
-  for (const d of plan.distributions) built.push(buildDistribution(env, { bank: d.bank, engine: env.store.settings.target as Target, id: d.id, changeSets: [changeSet.id] }));
+  for (const d of plan.distributions) built.push(buildDistribution(env, { bank: d.bank, engine: env.store.settings.target as Target, id: d.id, changeSets: [changeSet.id], withSimulators: env.store.settings.testDistributions === true }));
   for (const c of plan.configuration) {
     const set = env.store.configurationSet(c.bank);
     const against = [...c.against, ...built.filter((b) => b.bank === c.bank).map((b) => ({ releaseId: b.releaseId, parameterContract: b.manifest.parameterContract }))];

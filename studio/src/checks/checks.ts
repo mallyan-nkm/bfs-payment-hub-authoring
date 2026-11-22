@@ -66,6 +66,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
   L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
   L41: 'A published release never changes once seeded',
+  L42: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
+  L43: 'Every parameter declares its type and a default within its own bounds',
 };
 
 // ---------------------------------------------------------------- walking
@@ -314,6 +316,21 @@ export class Checker {
         const contract = (host?.slots ?? []).find((s: any) => s.name === d.implements.slot)?.contract;
         if (!contract) err('L08', `${of} has no slot ${d.implements.slot}`);
         else for (const o of (d.exit?.outcomes ?? []).filter((x: string) => !contract.outcomes.includes(x)).sort()) err('L08', `Leg outcome ${o} is not in the slot contract of ${of}`);
+        // L42 (R-11-38): the slot contract <slot>@<major> of a platform workflow, and the leg reads only what it gives.
+        if (host && host.kind === 'workflow' && host.wfKind !== 'platform') err('L42', `fills ${d.implements.slot} of ${of}, which is not a platform workflow`);
+        else if (contract) {
+          const own = `ext.${d.name.split('.').slice(0, 2).join('.')}`;
+          for (const x of (d.entry?.reads ?? []).filter((p: string) => !p.startsWith(own) && !(contract.reads ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`))))
+            err('L42', `reads ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not give it`);
+        }
+      }
+    }
+    // L43 (R-11-39): every parameter declares its type and a default within its own bounds.
+    if (d.parameters && typeof d.parameters === 'object' && !Array.isArray(d.parameters)) {
+      for (const [k, decl] of Object.entries<any>(d.parameters)) {
+        if (!decl?.type) err('L43', `${d.name}#${k} declares no type`);
+        else if (decl.default === undefined) err('L43', `${d.name}#${k} declares no default`);
+        else if (!withinBounds(decl, decl.default)) err('L43', `${d.name}#${k}: its default ${JSON.stringify(decl.default)} is outside its own bounds ${JSON.stringify(decl.bounds)}`);
       }
     }
     // L29: step ids unique after segments are inlined.

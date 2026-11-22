@@ -96,7 +96,7 @@ function ContentPage({ api }: { api: ServiceClient }) {
   return (
     <section>
       <h1>Content</h1>
-      <p className="note">Signed versions on GitHub, read only. A version is verified against the trusted signers before it is stored. Activating, rolling back and removing need a ServiceApprover.</p>
+      <p className="note">Signed versions on GitHub, read only, of every kind: workflow packages, a bank's distributions and its configuration releases. A version is verified against the trusted signers before it is stored. Activating, draining, rolling back and removing need a ServiceApprover. A distribution is removed only when no payment pinned to it is open and its longest declared wait has passed.</p>
       <Problem e={err} />
       <Done r={result} />
       {ask && <Confirm label={ask.label} detail={ask.detail} onCancel={() => setAsk(null)} onConfirm={async (reason) => {
@@ -104,10 +104,10 @@ function ContentPage({ api }: { api: ServiceClient }) {
       }} />}
       <h2>Offered on GitHub</h2>
       <table className="grid" aria-label="Versions">
-        <thead><tr><th>Tag</th><th>Kind</th><th>State</th><th></th></tr></thead>
+        <thead><tr><th>Tag</th><th>Kind</th><th>Bank</th><th>State</th><th></th></tr></thead>
         <tbody>{versions?.map((v) => (
           <tr key={v.tag} data-testid="version-row" data-tag={v.tag}>
-            <td className="mono">{v.tag}</td><td>{v.kind}</td><td><Badge s={v.state} /></td>
+            <td className="mono">{v.tag}</td><td>{v.kind}</td><td>{(v as any).bank ?? ''}</td><td><Badge s={v.state} /></td>
             <td>{v.installable ? (
               <div className="action-buttons">
                 <button onClick={() => go(`verify ${v.release}`, (r) => api.verify(v.tag, r))}>Verify</button>
@@ -122,19 +122,22 @@ function ContentPage({ api }: { api: ServiceClient }) {
         <div className="card" data-testid="diff">
           <h3>{diff.releaseId} against {diff.active ?? 'nothing active'}</h3>
           <p>{diffSummary(diff)}</p>
-          <ul>{[...diff.flows, ...diff.artefacts, ...diff.parameters].map((x: any) => <li key={x.key}><span className="mono">{x.key}</span> {x.change}: {x.active ?? '—'} → {x.offered ?? '—'}</li>)}</ul>
+          <ul>{[...(diff.packs ?? []), ...diff.flows, ...diff.artefacts, ...diff.parameters].map((x: any) => <li key={x.key}><span className="mono">{x.key}</span> {x.change}: {x.active ?? '—'} → {x.offered ?? '—'}</li>)}</ul>
         </div>
       )}
       <h2>Installed</h2>
       <table className="grid" aria-label="Releases">
-        <thead><tr><th>Release</th><th>State</th><th className="num">Open payments</th><th>Stored</th><th></th></tr></thead>
+        <thead><tr><th>Release</th><th>Kind</th><th>State</th><th className="num">Open payments</th><th>Stored</th><th></th></tr></thead>
         <tbody>{releases?.map((r) => (
           <tr key={r.releaseId} data-testid="release-row" data-release={r.releaseId}>
-            <td className="mono">{r.releaseId}</td><td><Badge s={r.state} /></td><td className="num">{r.openPayments}</td><td>{when(r.storedAt)} by {r.storedBy}</td>
+            <td className="mono">{r.releaseId}</td><td>{(r as any).kind}</td><td><Badge s={r.state} /></td><td className="num">{r.openPayments}</td><td>{when(r.storedAt)} by {r.storedBy}</td>
             <td><div className="action-buttons">
+              {(r as any).kind !== 'configuration' && <>
               {r.state !== 'active' && r.state !== 'removed' && <button onClick={() => go(`activate ${r.release}`, (reason) => api.act('activate', r.releaseId, reason))}>Activate</button>}
+              {r.state === 'active' && (r as any).kind === 'distribution' && <button onClick={() => go(`drain ${r.releaseId}`, (reason) => api.act('drain', r.releaseId, reason))}>Drain</button>}
               {r.state === 'active' && <button onClick={() => go(`roll back ${r.scope}`, (reason) => api.act('rollback', r.scope, reason))}>Roll back</button>}
               {r.state !== 'active' && r.state !== 'removed' && <button disabled={r.openPayments > 0} title={r.openPayments > 0 ? 'Refused while a payment pinned to it is open' : ''} onClick={() => go(`remove ${r.release}`, (reason) => api.act('remove', r.releaseId, reason))}>Remove</button>}
+              </>}
               <button onClick={() => go(`re-verify ${r.release}`, (reason) => api.act('reverify-package', r.releaseId, reason))}>Re-verify</button>
             </div></td>
           </tr>

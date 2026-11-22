@@ -14,6 +14,7 @@
     "packType": { "enum": ["shared", "bank", "test"] },
     "origin": { "enum": ["factory", "authored"] },
     "tenant": { "description": "Bank packs only. The tenant id lives here, never in an artefact name.", "type": "string" },
+    "licensedSchemes": { "description": "Bank packs only. The schemes the bank licenses: a distribution of the bank carries these and no other (R-11-37, Issue I-111).", "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "dependsOn": {
       "type": "array",
       "items": {
