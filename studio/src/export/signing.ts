@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify, type KeyObject } from 'node:crypto';
 import { canonicalJson } from '../core/canonical.js';
-import { isSecretRef, resolveSecret, resolveSecretSync, SecretUnavailable, type SecretValue } from '../secrets/secrets.js';
+import { isSecretRef, NETWORK_SCHEMES, parseRef, resolveSecret, resolveSecretSync, SecretUnavailable, type SecretValue } from '../secrets/secrets.js';
 
 // The signature of a released package (R-09-23 to R-09-26). Beside the package's files the studio writes two more:
 //   release.json  the statement: canonical JSON (RFC 8785) naming the release id, workflow, release, target, tenant,
@@ -9,7 +9,8 @@ import { isSecretRef, resolveSecret, resolveSecretSync, SecretUnavailable, type 
 // That is a detached blob signature, so a person checks one with standard tools:
 //   openssl dgst -sha256 -verify signer.pem -signature <(base64 -d release.sig) release.json
 //   cosign verify-blob --key signer.pem --signature release.sig release.json
-// The signing key is read only by reference (TH_SIGNING_KEY = env:…, file:… or vault:…). The keys a deployment trusts
+// The signing key is read only by reference (TH_SIGNING_KEY = env:…, file:…, vault:…, akv:…, aws-sm:… or aws-ssm:…),
+// and is held in the studio's process (I-74, decided 2026-11-22). The keys a deployment trusts
 // are TH_TRUSTED_SIGNERS: the trusted-signers JSON itself, or a reference to it. The runtime verifies the same way
 // (runtime/src/TransactHub.Security/Signing.cs).
 
@@ -81,19 +82,27 @@ function privateKey(pem: SecretValue): KeyObject {
 let primed: { ref: string; key: KeyObject } | undefined;
 
 /**
- * Reads a signing key held in Vault ahead of time, so signing can stay synchronous. env: and file: keys are read at each
- * signing instead, so a rotated key file takes effect with no restart.
+ * Reads a signing key held in a store over the network (Vault, Azure Key Vault, AWS Secrets Manager or Parameter Store)
+ * ahead of time, so signing can stay synchronous; the key then stays in the studio's process until the next priming or
+ * restart (I-74). env: and file: keys are read at each signing instead, so a rotated key file takes effect with no restart.
  */
 export async function primeSigningKey(env = process.env): Promise<void> {
   const ref = env[SIGNING_KEY_ENV];
-  if (ref && isSecretRef(ref) && ref.startsWith('vault:')) primed = { ref, key: privateKey(await resolveSecret(ref, env)) };
+  if (ref && isSecretRef(ref) && NETWORK_SCHEMES.has(parseRef(ref).scheme)) {
+    try {
+      primed = { ref, key: privateKey(await resolveSecret(ref, env)) };
+    } catch (e) {
+      if (e instanceof SecretUnavailable) throw new SignatureRejected(`The signing key could not be read: ${e.message}`);
+      throw e;
+    }
+  }
 }
 
 /** The studio's signing key, from TH_SIGNING_KEY. Without one, nothing is released (R-09-23). */
 export function signingKey(env = process.env): KeyObject {
   const ref = env[SIGNING_KEY_ENV];
-  if (!ref) throw new SignatureRejected(`Set ${SIGNING_KEY_ENV} to a reference to the studio's signing key (env:NAME, file:/path or vault:mount/path#field): every released package is signed (R-09-23)`);
-  if (!isSecretRef(ref)) throw new SignatureRejected(`${SIGNING_KEY_ENV} must be a reference to the key (env:NAME, file:/path or vault:…), never the key itself`);
+  if (!ref) throw new SignatureRejected(`Set ${SIGNING_KEY_ENV} to a reference to the studio's signing key (env:NAME, file:/path, vault:mount/path#field, akv:vault/secret, aws-sm:region/secret-id[#field] or aws-ssm:region/parameter): every released package is signed (R-09-23)`);
+  if (!isSecretRef(ref)) throw new SignatureRejected(`${SIGNING_KEY_ENV} must be a reference to the key (env:, file:, vault:, akv:, aws-sm: or aws-ssm:), never the key itself`);
   if (primed?.ref === ref) return primed.key;
   try {
     return privateKey(resolveSecretSync(ref, env));

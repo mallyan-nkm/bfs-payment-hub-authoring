@@ -1,6 +1,7 @@
 # The operations console: the read model's projection on SQL Server and PostgreSQL (rebuild equals incremental,
 # idempotent replay), the operations views against the WPS field mapping, operator actions and the API, the web app's
-# own tests, and the Playwright test (a WPS file run on the runtime's DTFx build, its hold approved in the browser).
+# own tests, the service console's API tests, and the Playwright tests (a WPS file run on the runtime's DTFx build, its hold
+# approved in the browser; a service engineer installing a signed version from a fake GitHub).
 name: ops-console
 on:
   push:
@@ -30,6 +31,9 @@ jobs:
       - name: Read model, views, actions and API (SQL Server and PostgreSQL)
         working-directory: runtime
         run: dotnet test tests/TransactHub.Operations.Tests -v q --logger "trx;LogFileName=ops.trx" --results-directory TestResults
+      - name: The service console's API, content, backups, actions, assistant and dictionary (PostgreSQL)
+        working-directory: runtime
+        run: dotnet test tests/TransactHub.Service.Tests -v q --logger "trx;LogFileName=service.trx" --results-directory TestResults
       - name: The web app
         working-directory: runtime/ops-console
         run: |

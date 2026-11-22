@@ -9,7 +9,7 @@ export const SCHEMA_OF: Record<string, string> = {
   activity: 'activity', rule: 'rule', ruleset: 'rule', table: 'rule', workflow: 'workflow',
   simulator: 'simulator', scheme: 'scheme', hook: 'hook', 'configuration-set': 'configuration-set',
   pack: 'pack', 'engine-binding': 'engine-binding', test: 'test-case', extension: 'extension',
-  port: 'port', supersession: 'supersession', 'operations-view': 'operations-view',
+  port: 'port', supersession: 'supersession', 'operations-view': 'operations-view', 'error-dictionary': 'error-dictionary',
 };
 
 export interface SchemaIssue {

@@ -18,7 +18,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_OF = {"activity": "activity", "rule": "rule", "ruleset": "rule", "table": "rule", "workflow": "workflow",
              "simulator": "simulator", "scheme": "scheme", "hook": "hook", "configuration-set": "configuration-set",
              "pack": "pack", "engine-binding": "engine-binding", "test": "test-case", "extension": "extension",
-             "port": "port", "supersession": "supersession", "operations-view": "operations-view"}
+             "port": "port", "supersession": "supersession", "operations-view": "operations-view",
+             "error-dictionary": "error-dictionary"}
 errors, warnings = [], []
 
 
@@ -689,10 +690,11 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
 # ------------------------------------------------- no literal secret
 # L37 no binding, configuration or package carries a literal secret (R-06-23). A key that names a secret (password,
 # passphrase, secret, token, apiKey, accessKey, privateKey, clientSecret, credential, or a camel-case name ending in one)
-# holds a reference (env:, file:, vault:, akv:) or nothing; a secretRef holds a reference; no text is a private key.
+# holds a reference (env:, file:, vault:, akv:, aws-sm:, aws-ssm:; R-06-22) or nothing; a secretRef holds a reference; no text is a private key.
 # It reads the spec's content and everything under content-configurations/. The studio check is the same rule.
 SECRET_KEY = re.compile(r"(^|[a-z0-9_])(password|passwd|passphrase|secret|token|apikey|api_key|accesskey|access_key|privatekey|private_key|clientsecret|client_secret|credentials?)$", re.I)
-SECRET_REF = re.compile(r"^(env|file|vault|akv):\S+$")
+SECRET_REF = re.compile(r"^(env|file|vault|akv|aws-sm|aws-ssm):\S+$")
+REF_FORMS = "env:NAME, file:/path, vault:mount/path#field, akv:vault/secret[#version], aws-sm:region/secret-id[#field] or aws-ssm:region/parameter"
 PRIVATE_KEY_PEM = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 
 
@@ -701,7 +703,7 @@ def literal_secrets(v, at="", key=None):
         if PRIVATE_KEY_PEM.search(v):
             yield at, "is a private key"
         elif key and key.lower().endswith("secretref") and not SECRET_REF.match(v):
-            yield at, "%s must be a reference (env:NAME, file:/path or vault:mount/path#field), not a value" % key
+            yield at, "%s must be a reference (%s), not a value" % (key, REF_FORMS)
         elif key and SECRET_KEY.search(key) and v and not SECRET_REF.match(v):
             yield at, "%s holds a value: name the secret by reference instead" % key
     elif isinstance(v, (int, float)) and not isinstance(v, bool) and key and SECRET_KEY.search(key):
@@ -934,6 +936,97 @@ for path, d in docs:
                     err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
                 err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
+
+# L39 the error dictionary (R-05-51, R-05-52): every error an activity declares, every reason code a rule, rule set or
+# table gives, every reason code a port's party answers (as its simulators answer for it), every code a port boundary,
+# the interpreter and each engine binding raise, has an entry, raised by that kind of thing, in a dictionary of the
+# artefact's own scope or a scope it may depend on (a scheme: its cluster platform and p; a cluster platform: p; b: any).
+# Codes are unique in a dictionary; an entry for an ISO reason code a rule or a port raises names it as its isoReasonCode.
+# The runtime's own codes (store, signing, auth, consoles) are checked against the same dictionaries by
+# runtime/tests/TransactHub.Service.Tests (ErrorDictionaryTests).
+PORT_RAISES = ["TransientError", "Timeout", "PortNotBound", "SecretUnavailable"]
+ENGINE_RAISES = {
+    "interpreter": ["Failure", "Timeout", "RetriesExhausted"],
+    "temporal": ["temporal.ServerUnreachable", "temporal.WorkflowTaskFailed"],
+    "dtfx": ["dtfx.OrchestrationFailed"],
+    "flowable": ["flowable.Unreachable", "flowable.DeadLetterJob", "th:nonRetryable"],
+    "elsa": ["elsa.WorkflowFaulted"],
+}
+dictionaries = {}  # scope -> {code: entry}
+for path, d in docs:
+    if d.get("kind") != "error-dictionary":
+        continue
+    sc = scope_of(d["name"])
+    seen = dictionaries.setdefault(sc, {})
+    for e in d.get("entries") or []:
+        if e["code"] in seen:
+            err("L39", path, "%s has two entries for code %s" % (d["name"], e["code"]))
+        seen[e["code"]] = e
+        if re.fullmatch(r"[A-Z0-9]{4}", e["code"]) and ({"rule", "port"} & set(e.get("raisedBy") or [])) and e.get("isoReasonCode") != e["code"]:
+            err("L39", path, "%s is an ISO reason code a rule or a port gives, but its entry names isoReasonCode %r" % (e["code"], e.get("isoReasonCode")))
+
+
+def dictionary_scopes(sc):
+    if sc == "b":
+        return list(dictionaries)
+    if sc == "p":
+        return ["p"]
+    if sc.endswith(".p"):
+        return [sc, "p"]
+    return [sc, sc.split(".")[0] + ".p", "p"]
+
+
+def covered(sc, code, raiser):
+    for s in dictionary_scopes(sc):
+        e = dictionaries.get(s, {}).get(code)
+        if e is not None:
+            return raiser in (e.get("raisedBy") or []), s
+    return None, None
+
+
+def need(path, sc, code, raiser, what):
+    ok, at = covered(sc, code, raiser)
+    if ok is None:
+        err("L39", path, "%s raises %s, which no error dictionary of %s has" % (what, code, " or ".join(dictionary_scopes(sc)) or "any scope"))
+    elif not ok:
+        err("L39", path, "%s raises %s, but the entry in %s's dictionary is not raised by %s" % (what, code, at, raiser))
+
+
+def reason_codes(o, acc):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == "reasonCode" and isinstance(v, str):
+                acc.add(v)
+            else:
+                reason_codes(v, acc)
+    elif isinstance(o, list):
+        for x in o:
+            reason_codes(x, acc)
+
+
+if dictionaries:
+    for path, d in docs:
+        kind, name = d.get("kind"), d.get("name")
+        if not name or kind in ("test", "error-dictionary", "pack"):
+            continue
+        sc = scope_of(name)
+        if kind == "activity":
+            for e in d.get("errors") or []:
+                need(path, sc, e["name"], "activity", "activity %s" % name)
+        if kind in ("rule", "ruleset", "table", "activity", "simulator"):
+            acc = set()
+            reason_codes(d, acc)
+            for c in sorted(acc):
+                need(path, sc, c, "port" if kind == "simulator" else "rule", "%s %s" % (kind, name))
+        if kind == "port":
+            for c in PORT_RAISES:
+                need(path, sc, c, "port", "port %s" % name)
+    targets = sorted({d["target"] for _, d in docs if d.get("kind") == "engine-binding"})
+    for t in ["interpreter"] + targets:
+        for c in ENGINE_RAISES.get(t, []):
+            need("engine-binding %s" % t, "p", c, "interpreter" if t == "interpreter" else "engine:" + t, "the %s" % ("interpreter" if t == "interpreter" else t + " binding"))
+else:
+    err("L39", "factory/p/errors", "no error dictionary: the platform's errors have no entries")
 
 # ---------------------------------------------------------------- report
 kinds = {}

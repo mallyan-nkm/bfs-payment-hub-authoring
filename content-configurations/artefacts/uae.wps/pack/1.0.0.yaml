@@ -147,6 +147,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:16d9e2dee62f0b0469bda932b853e6f95cfb7450fbe3cb22bb8e83be6a0ee56b
     path: activities/uae.wps.validate.salary-record.v1.yaml
+  - name: uae.wps.errors.wps.v1
+    kind: error-dictionary
+    release: 1.0.0
+    hash: sha256:3be9e5bb285391177378d9ae427077a9e3b47f1d7456cc69a4baae1283383763
+    path: errors/uae.wps.errors.wps.v1.yaml
   - name: uae.wps.ext.salary.v1
     kind: extension
     release: 1.0.0
