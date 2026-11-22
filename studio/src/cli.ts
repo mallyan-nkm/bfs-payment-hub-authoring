@@ -8,7 +8,7 @@ import { runAllTests, runTest } from './testing/runner.js';
 // TH_GITHUB_TOKEN, TH_GITHUB_API); otherwise an in-memory fake GitHub seeded from this repository's
 // content-configurations/. Either way nothing is written to disk, and the command says which it read.
 
-const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario | port=runtime ...]';
+const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--value parameter=value ...] [--bench port=simulator:scenario | port=runtime ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
@@ -154,11 +154,18 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
       return { port: m![1], simulator: m![2], scenario: m![3] };
     });
     const tenant = opt('tenant');
+    // --value parameter=value: a value in force from the run's date, on top of the configuration set (a test's short wait, say).
+    const date = opt('date') ?? '2026-11-17';
+    const values = args.flatMap((a, i) => (args[i - 1] === '--value' ? [a] : [])).map((v) => {
+      const m = /^([^=]+)=(.+)$/.exec(v);
+      need(m, `--value ${v}: write it as parameter=value`);
+      return { parameter: m![1], value: m![2], validFrom: date };
+    });
     const r = await deploy({
       packagePath: args[0],
       workflow: opt('workflow')!,
       studioRoot: env.studioRoot,
-      environment: { evaluationDate: opt('date') ?? '2026-11-17', tenant, bench, configurationSet: opt('config') ? (await import('./core/yaml.js')).parseYaml((await import('node:fs')).readFileSync(opt('config')!, 'utf8')) : undefined },
+      environment: { evaluationDate: date, tenant, bench, ...(values.length ? { values } : {}), configurationSet: opt('config') ? (await import('./core/yaml.js')).parseYaml((await import('node:fs')).readFileSync(opt('config')!, 'utf8')) : undefined },
       inbound: opt('inbound') ? { payload: (await import('node:fs')).readFileSync(opt('inbound')!, 'utf8'), ...(opt('message') ? { message: opt('message') } : {}) } : undefined,
     });
     for (const l of r.log) console.log(l);

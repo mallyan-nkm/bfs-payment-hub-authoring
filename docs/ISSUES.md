@@ -693,6 +693,8 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** The binding keeps the virtual clock and fires timers by the model's duration (I-55 for the business calendar). The e2e test and the runtime tests start the server with the executor off. Each run deploys in a tenant of its own and deletes its deployment afterwards (`TH_FLOWABLE_KEEP=1` keeps it).
 
+**Production mode (22 November 2026).** Decided: in production the server's async executor drives jobs and timers, in real time, and the binding is a pure external worker. `TH_FLOWABLE_MODE=production` (`FlowableOptions`) runs it so: the binding acquires, locks, completes and fails jobs and throws BPMN errors; Flowable runs its own jobs, fires its timers, retries a failed job and hands out a job whose lock expired (I-54); the binding places the timers it must compute (I-55) and reports every dead letter. Business time is the wall clock shifted to the plan's evaluation date. Two completions of one instance are let take effect one after the other, so parallel branches give the virtual run's trace. The virtual mode stays the default for the kit, the deploy runner's tests and the store matrix. Shown by `FlowableProductionTests` (runtime, a server with its executor on) and `studio/test/blackbox/e2e-wps-flowable-production.test.ts`: the WPS salary file settles on the store on PostgreSQL and SQL Server, with the bank's acknowledgement wait set to two minutes; a reply that never comes times out on a fifteen-second real timer and gives the trace of the virtual run; CI job `flowable-production`. The server need not be the binding's alone in production mode; it still needs a tenant per run in the tests. What is still open is I-89.
+
 ## I-54. A failed external job comes back only when the async executor resets its lock
 
 **Issue.** Flowable's external worker API fails a job with `POST /external-job-api/acquire/jobs/{id}/fail` and a number of retries left. The job's lock owner is cleared, but its lock expiry is set, and only the async executor's expired-lock reset hands the job out again. With the executor off (I-53), a failed job with retries left is never acquired again, and `unacquire` is refused once the worker no longer holds the lock. Shown by `FlowableRestTests` on Flowable 7.1.0.
@@ -701,6 +703,8 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** `FlowableBinding` retries a worker call up to the job's retries, with a short back-off, and then fails the job with none left. A BPMN error (an activity's retryable or fatal error) is unchanged: it goes to the model's error boundary, as on the embedded engine.
 
+**Production mode (22 November 2026).** With the executor on, the binding uses the server's retries: a worker that does not answer fails the job with one retry fewer and a retry timeout (`TH_FLOWABLE_RETRY_WAIT`), the server's expired-lock reset hands it out again, and the binding takes it as the same attempt (a technical failure is not an attempt). With no retries left the job is a dead letter; the binding reports it with its step (`engine.deadLetters`, a note) and marks the payment failed there. A job held by a worker that crashed comes back once its lock (`TH_FLOWABLE_LOCK`) expires. Shown on Flowable 7.1.0 with the server's reset interval at one second: in the runtime tests, and in the WPS salary file with a crash at `post` (it settles) and a `post` worker that never answers (a dead letter on SQL Server). The binding's own loop stays for the virtual mode only.
+
 ## I-55. The REST server has no business calendar
 
 **Issue.** An `await` with `calendar: business` is generated with `flowable:businessCalendarName="business"`. The kit's embedded engine registers that calendar. The Flowable REST server has only its standard calendars, so the timer would fail when it is created. Adding a calendar to the server means adding Java to it, which D3 does not foresee.
@@ -708,6 +712,8 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 **Recommendation.** Keep the calendar in the binding. Confirm that a bank's business calendar (weekends and holidays) belongs to the binding for every engine, as it already does for Temporal, DTFx and Elsa.
 
 **What is built.** For a REST binding the generator leaves the calendar name out and marks the timer `th:timer calendar="business"`. The binding fires that timer at the model's duration counted in business days (`Duration.Add`, the interpreter's calendar).
+
+**Production mode (22 November 2026).** Chosen: a due date the binding computes, not a business calendar bean. The binding sees each timer marked `th:timer` (the business calendar, or a duration or calendar from a parameter, R-05-45 and R-05-47) when the server creates it, computes its due date as the virtual mode does, and reschedules it (`POST /management/timer-jobs/{id}`, action `reschedule`). The calendar and the dated values stay in the binding, as on every other engine, and the stock image needs no Java. The window it leaves: a timer the binding has not yet seen runs on its written default, so a timer fires at the default only if the binding is down for the whole of it. A business calendar bean would close that window, at the cost of a server image of the installation's own and a second copy of the calendar. Shown by the runtime tests (one business day from a Friday placed on Monday; a parameter wait of three seconds in place of a day) and by the WPS run, whose acknowledgement wait of one business day is placed at the bank's two minutes.
 
 ## I-56. A parallel join waited for one token per exit of a branch
 
@@ -795,7 +801,12 @@ The grants, per database: `CREATE USER [svc] FOR LOGIN [svc]; ALTER ROLE db_data
 
 **What is built.** The `outbox` table in the store. Nothing reads it yet.
 
-## Not done, and why
+## I-89. The Flowable binding keeps a run's state in memory
+
+**Issue.** In production mode (I-53) Flowable keeps the flow, the jobs, their locks and retries, and the store keeps the payloads. The binding still keeps in memory what it learnt during the run: the business trace and detail, the attempts, held early messages, the messages each instance has waited for (R-05-43), the hook bindings taken at start and the timers it has placed. A job whose worker crashed comes back from Flowable when its lock expires, and the tests show that, but if the binding's process itself stops, a new one cannot pick up the payments the old one was running: it does not know them. The harness runs one plan and ends, as the other engines' harnesses do.
+
+**Recommendation.** Before a payment depends on the binding in production, keep that state on the payment's fact chain in the store (the trace and detail as facts, held messages in the inbox, the hook bindings with the instance), and let a binding that starts read the server's running instances of its tenant and rebuild its view from the store. Add a test that kills the binding mid-payment and starts another.
+
 
 | Story | Why |
 | --- | --- |
