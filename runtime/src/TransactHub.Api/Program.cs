@@ -226,7 +226,7 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
     }
     catch (Exception e) when (e is HttpRequestException or SecretUnavailable) { return Problem(502, $"The package source could not be read: {e.Message}"); }
     catch (PackageRejected e) { return Problem(422, e.Message); }
-    // A bank's distribution or configuration release (R-09-48, R-09-50): verified and stored as an upload of its kind is.
+    // A bank's distribution or configuration release (R-09-49, R-09-51): verified and stored as an upload of its kind is.
     if (v.Kind != ReleaseSignature.WorkflowPackage)
     {
         try
@@ -249,7 +249,7 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
     return (await StorePackage(db, clock, p, ApiAuth.Actor(user), $"package-source:{s.Tag}")).Result;
 }).RequireAuthorization(ApiAuth.Importer);
 
-// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-47 to R-09-56).
+// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-48 to R-09-57).
 DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct), testEnvironments);
 
 async Task<IResult> Refusable(Func<Task<IResult>> f)
@@ -300,8 +300,8 @@ app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipa
 app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
     Results.Json(await Distributions(db, clock).Rollback(a.Bank ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "rollback", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
 
-// The front door: a payment is pinned at acceptance to the distribution active for its bank and environment (R-09-52),
-// and its end is a fact (R-09-53, Issue I-97). A caller may pin only for its own tenants.
+// The front door: a payment is pinned at acceptance to the distribution active for its bank and environment (R-09-53),
+// and its end is a fact (R-09-54, Issue I-97). A caller may pin only for its own tenants.
 app.MapPost("/payments/pin", async (PaymentPin p, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
     !ApiAuth.MayReadTenant(user, p.Bank) ? Problem(403, $"{ApiAuth.Actor(user)} may not accept payments of {p.Bank}")
     : await Refusable(async () => Results.Ok(new { paymentId = p.PaymentId, distribution = await Distributions(db, clock).Pin(p.PaymentId, p.Bank, p.Environment, ApiAuth.Actor(user), ct) }))).RequireAuthorization(ApiAuth.Intake);

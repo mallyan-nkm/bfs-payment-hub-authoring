@@ -31,7 +31,7 @@ async function usedIds(env: StudioEnv, bank: string, day: string): Promise<Set<n
   return used;
 }
 
-/** The next distribution id of a bank: `YYYY.MM.DD-n` (R-09-47). */
+/** The next distribution id of a bank: `YYYY.MM.DD-n` (R-09-48). */
 export async function nextId(env: StudioEnv, bank: string, date = new Date().toISOString().slice(0, 10)): Promise<string> {
   const day = date.replace(/-/g, '.');
   const used = await usedIds(env, bank, day);

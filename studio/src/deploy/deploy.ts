@@ -47,7 +47,7 @@ export interface DeployRequest {
    * Each file goes through the front door's intake on the workers, then the harness runs them all side by side.
    */
   load?: { inbounds: { label: string; payload: string }[]; concurrency: number; worker?: { maxConcurrentActivities?: number; maxConcurrentWorkflowTasks?: number } };
-  /** The distribution the payment is pinned to (R-09-52): the engine runs it as that distribution's copy, and the store records it. */
+  /** The distribution the payment is pinned to (R-09-53): the engine runs it as that distribution's copy, and the store records it. */
   distribution?: string;
   /** The payment's id, as the front door accepted it. */
   paymentId?: string;
@@ -305,7 +305,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       chunkSize: binding.defaults?.forEachChunk ?? 500,
       // Items of a forEach that holds no state run side by side, as the binding says (R-09-45).
       itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
-      // A bank's distribution runs as its own copy (R-09-54): the engine names its queues, orchestrations or deployment after it.
+      // A bank's distribution runs as its own copy (R-09-55): the engine names its queues, orchestrations or deployment after it.
       ...(req.distribution ? { distribution: req.distribution } : {}),
       built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
       documents,

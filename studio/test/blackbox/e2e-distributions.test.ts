@@ -135,7 +135,7 @@ beforeAll(async () => {
   server = await startServer();
   api = client(server.url);
   await startRuntime();
-  // The engines accept each payment into the store, pinned to its distribution (R-09-52).
+  // The engines accept each payment into the store, pinned to its distribution (R-09-53).
   process.env.TH_STORE_PROVIDER = 'PostgreSql';
   process.env.TH_STORE_CONNECTION = store();
   configSet = parseYaml(fs.readFileSync(path.join(REPO, 'content-configurations', 'banks', BANK, 'configuration-set.yaml'), 'utf8'));

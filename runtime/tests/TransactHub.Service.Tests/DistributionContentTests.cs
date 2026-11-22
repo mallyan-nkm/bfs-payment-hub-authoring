@@ -10,7 +10,7 @@ using TransactHub.Store;
 namespace TransactHub.Service.Tests;
 
 /// <summary>
-/// The service console's distributions and configuration releases (R-09-40 as amended, R-09-47 to R-09-56, Issue I-102 done):
+/// The service console's distributions and configuration releases (R-09-40 as amended, R-09-48 to R-09-57, Issue I-102 done):
 /// both kinds listed from GitHub, verified, the difference against the active distribution shown, installed, activated with
 /// the old one draining, drained by hand, removal refused while a pinned payment is open, rollback; the open-payment count
 /// per distribution from the pins and end facts.

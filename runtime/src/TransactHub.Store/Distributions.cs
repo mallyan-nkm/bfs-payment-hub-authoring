@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace TransactHub.Store;
 
 /// <summary>
-/// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-47 to R-09-56).
+/// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-48 to R-09-57).
 /// Both are stored once in the release registry, never changed: a distribution as scope <c>dist/&lt;bank&gt;</c> with its id as
 /// the release (<c>2026.11.22-1</c>), a configuration release as scope <c>config/&lt;bank&gt;</c>. The same id with other content is
 /// refused. A distribution's state in an environment is an insert-only fact on its own chain

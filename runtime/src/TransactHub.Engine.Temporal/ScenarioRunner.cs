@@ -72,7 +72,7 @@ public sealed class ScenarioRunner
 
         // A deployment puts each activity on the task queue of its scope (R-09-05); a kit run, on one.
         var queues = J.P(input, "queues") as JsonObject;
-        // A bank's distribution runs as its own copy beside the others (R-09-54): its task queues carry the distribution, and
+        // A bank's distribution runs as its own copy beside the others (R-09-55): its task queues carry the distribution, and
         // its workers carry it as their build id, so two distributions never take each other's tasks.
         var distribution = J.S(input, "distribution");
         string Q(string q) => distribution is null ? q : $"{q}@{distribution}";

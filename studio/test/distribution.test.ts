@@ -13,7 +13,7 @@ import { fake } from './support/content.js';
 import { testSigning } from './support/signing-env.js';
 import * as fs from 'node:fs';
 
-// A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-47 to R-09-51, R-11-37 to
+// A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-48 to R-09-52, R-11-37 to
 // R-11-40): the bill of materials, the slot contract, the parameter contract, the signature and who may build one.
 
 const sha = (t: string) => `sha256:${createHash('sha256').update(t).digest('hex')}`;

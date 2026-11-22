@@ -17,7 +17,7 @@ public sealed record ContentSettings(string TrustSetting, ISecretResolver Secret
 /// downloaded, verified against the trusted signers and stored exactly as the release API stores an upload; activation
 /// from a date moves the previous release to draining; rollback activates the previous release again; removal is refused
 /// while the release is active or a payment pinned to it is open. A bank's distribution and configuration release
-/// (R-09-47 to R-09-56) are verified, installed, activated, drained, removed and rolled back through
+/// (R-09-48 to R-09-57) are verified, installed, activated, drained, removed and rolled back through
 /// <see cref="DistributionService"/>, and a distribution's open payments are those pinned to it with no end fact.
 /// Every action is a fact (<see cref="ServiceAudit"/>).
 /// </summary>
@@ -386,7 +386,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             }
             counts[id] = counts.GetValueOrDefault(id) + 1;
         }
-        // A distribution's open payments, exactly: pinned at acceptance, with no end fact (R-09-53).
+        // A distribution's open payments, exactly: pinned at acceptance, with no end fact (R-09-54).
         foreach (var (d, n) in await new DistributionRegistry(db, clock).OpenPayments(ct)) counts[d] = n;
         return counts;
     }

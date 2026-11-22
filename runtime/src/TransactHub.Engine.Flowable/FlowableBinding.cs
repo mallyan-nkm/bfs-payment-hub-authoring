@@ -218,7 +218,7 @@ public sealed class FlowableBinding
         log.Add(opts.Production
             ? $"production mode: the server's async executor runs the jobs and fires the timers in real time; the binding is its external worker (lock {System.Xml.XmlConvert.ToString(opts.LockFor)}, retry after {System.Xml.XmlConvert.ToString(opts.RetryWait)})"
             : "virtual mode: the server's async executor is off; the binding runs the jobs and fires the timers on its clock");
-        // One deployment per distribution (R-09-54): its name carries the distribution, and instances start from its own definitions.
+        // One deployment per distribution (R-09-55): its name carries the distribution, and instances start from its own definitions.
         var distribution = J.S(input, "distribution");
         var deploymentId = await rest.Deploy(distribution is null ? $"transacthub-{runId}" : $"transacthub-{distribution}-{runId}", files, tenant);
         log.Add($"deployed {files.Count} process(es) as deployment {deploymentId}");

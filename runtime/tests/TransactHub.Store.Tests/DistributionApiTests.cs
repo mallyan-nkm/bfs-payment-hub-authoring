@@ -10,7 +10,7 @@ using TransactHub.Security;
 
 namespace TransactHub.Store.Tests;
 
-// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-47 to R-09-56), on SQL
+// A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-48 to R-09-57), on SQL
 // Server and PostgreSQL: stored insert-only after their signature and kind verify; the same id with other content refused;
 // activation per bank and environment moves the one active to draining in the same step; a payment is pinned at acceptance
 // and its end is a fact; removal is refused while a pinned payment is open or before the longest declared wait has passed;

@@ -62,7 +62,7 @@ public sealed class ContentTests(Databases dbs)
             Assert.Equal($"#/service/errors/{code}", (string?)j["runbook"]);
         }
         var d = await Post(c, "/service/api/content/install", new { tag = "dist/example-bank/2026.11.22-1", reason = "try" });
-        // A distribution is installed by its own kind (R-09-48): this one is not signed, so it is refused.
+        // A distribution is installed by its own kind (R-09-49): this one is not signed, so it is refused.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, d.StatusCode);
         Assert.Equal("package.Rejected", (string?)(await J.Of(d))["code"]);
 

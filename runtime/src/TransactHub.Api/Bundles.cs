@@ -9,7 +9,7 @@ namespace TransactHub.Api;
 
 /// <summary>
 /// A bank's signed distribution or configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md sections 3 and 4, spec
-/// R-09-47 to R-09-50): a folder with <c>manifest.yaml</c>, the files it lists and the statement and signature of R-09-23 with
+/// R-09-48 to R-09-51): a folder with <c>manifest.yaml</c>, the files it lists and the statement and signature of R-09-23 with
 /// kind <c>distribution</c> or <c>configuration</c>. The statement names it <c>dist/&lt;bank&gt;@&lt;id&gt;</c> or
 /// <c>config/&lt;bank&gt;@&lt;release&gt;</c>, for tenant <c>&lt;bank&gt;</c>, and carries its bill of materials (and a distribution's
 /// parameter contract) as signed fields, which must be the manifest's. Every artefact of the bill of materials that the

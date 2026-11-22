@@ -5,8 +5,8 @@ import { unzip } from '../export/zip.js';
 import { trustedSigners, verifyFiles } from '../export/signing.js';
 import { deploy, type DeployEnvironment, type DeployResult, type Engine } from './deploy.js';
 
-// The runtime's front door for a bank's distributions (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 5, R-09-52 to
-// R-09-54). At acceptance it asks the runtime to pin the payment to the distribution active for its bank and environment
+// The runtime's front door for a bank's distributions (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 5, R-09-53 to
+// R-09-55). At acceptance it asks the runtime to pin the payment to the distribution active for its bank and environment
 // then; it runs the payment from that distribution's own copy (fetched from the runtime once, verified against the
 // trusted signers, kept side by side with every other distribution it has run), with the engine naming its queues,
 // orchestrations, definitions or deployment after the distribution; when the root instance ends it records the payment's

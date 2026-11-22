@@ -34,7 +34,7 @@ public static class BankValues
         return added;
     }
 
-    /// <summary>A configuration set's text (a configuration release's set, R-09-50): each value an effective-dated version.</summary>
+    /// <summary>A configuration set's text (a configuration release's set, R-09-51): each value an effective-dated version.</summary>
     public static async Task<int> ImportText(StoreDbContext db, TimeProvider clock, string yaml, string actor, CancellationToken ct = default)
     {
         var (release, root) = Read(yaml);

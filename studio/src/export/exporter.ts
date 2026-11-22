@@ -24,7 +24,7 @@ export interface ExportRequest {
   includeTests?: boolean;
   /** A test deployment: each worker carries the simulators of the ports its tasks reach. Never promotable (R-07-12). */
   withSimulators?: boolean;
-  /** A distribution (R-09-47): only the legs of the schemes the bank licenses, and no values (they come in a configuration release). */
+  /** A distribution (R-09-48): only the legs of the schemes the bank licenses, and no values (they come in a configuration release). */
   schemes?: string[];
   values?: false;
 }

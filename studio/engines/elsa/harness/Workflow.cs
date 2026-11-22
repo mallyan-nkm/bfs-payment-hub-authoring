@@ -60,7 +60,7 @@ public sealed class ElsaHost
         serializer = sp.GetRequiredService<IWorkflowStateSerializer>();
     }
 
-    /// <summary>The distribution this host runs (R-09-54): the definition carries it, one definition per distribution.</summary>
+    /// <summary>The distribution this host runs (R-09-55): the definition carries it, one definition per distribution.</summary>
     public static string? Distribution;
 
     static Workflow Definition() => Distribution is null

@@ -80,7 +80,7 @@ public sealed class Harness : IDisposable
     {
         this.input = input;
         built = (JsonObject)J.P(input, "built")!;
-        // A bank's distribution runs as its own copy (R-09-54): its workflow definition carries it, and its payments are pinned to it.
+        // A bank's distribution runs as its own copy (R-09-55): its workflow definition carries it, and its payments are pinned to it.
         if (J.S(input, "distribution") is { } dist) { ElsaHost.Distribution = dist; ClaimCheckStore.Distribution = dist; }
         spec = (JsonObject)J.P(built, "spec")!;
         config = (JsonObject)J.P(built, "config")!;

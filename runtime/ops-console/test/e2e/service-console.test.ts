@@ -120,7 +120,7 @@ beforeAll(async () => {
   const ghPort = await freePort();
   gh = fakeGitHub([
     { tag: `release/p.wf.corporate.v1/${r}/temporal`, folder: `content-configurations/releases/p/p.wf.corporate.v1/${r}/temporal`, files },
-    // A bank's distribution (R-09-47, R-09-48), signed with this run's key: offered, verified, installed (Issue I-102 done).
+    // A bank's distribution (R-09-48, R-09-49), signed with this run's key: offered, verified, installed (Issue I-102 done).
     { tag: 'dist/example-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/example-bank/2026.11.22-1', files: distribution('2026.11.22-1') },
     // A tag that names another release than the package in its folder: refused.
     { tag: 'release/p.wf.corporate.v1/9.9.9/temporal', folder: 'content-configurations/releases/p/p.wf.corporate.v1/9.9.9/temporal', files },

@@ -160,12 +160,12 @@ CASES = [
     ("M56", "ERROR L41", "../content-configurations/change-sets/ledger/CS-2026-11-21-001.yaml",
      "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/1.0.0.yaml,", "  - { path: artefacts/uae.wps/uae.wps.map.ack-in.v1/0.9.0.yaml,",
      "a seeded file is in no ledger"),
-    ("M57", "ERROR L42", SAL,
+    ("M59", "ERROR L43", SAL,
      '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation]', '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation, facts.posting]',
      "a leg reads what its slot contract does not give it"),
-    ("M58", "ERROR L43", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
+    ("M60", "ERROR L44", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "    default: P1D\n", "    default: P9D\n", "a dial's default is outside its own bounds"),
-    ("M59", "ERROR L41", "../content-configurations/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml",
+    ("M61", "ERROR L41", "../content-configurations/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml",
      "forEachConcurrency: 64", "forEachConcurrency: 32", "a published engine binding release is edited in place (Issue I-83)"),
 ]
 

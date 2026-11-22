@@ -10,7 +10,7 @@ import { bindingOf } from './bindings.js';
 import { signFiles, type ReleaseClaims } from './signing.js';
 import type { StudioEnv } from '../env.js';
 
-// A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-47 to R-09-51,
+// A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-48 to R-09-52,
 // R-11-37 to R-11-40). A distribution is the complete, signed copy of everything one bank runs on one engine: the platform
 // packs, the scheme packs the bank licenses, the bank's own pack and the engine binding, resolved at build time so that
 // the runtime never combines versions. Its manifest carries the bill of materials (every pack release and every artefact
@@ -87,7 +87,7 @@ const within = (paths: string[] | undefined, allowed: string[], own: string) =>
   (paths ?? []).filter((p) => !allowed.some((a) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`)) && !p.startsWith(`ext.${own}`));
 
 /**
- * The slot-contract check (R-11-38, lint L42): every leg of a licensed scheme fills a slot of a platform workflow of the
+ * The slot-contract check (R-11-38, lint L43): every leg of a licensed scheme fills a slot of a platform workflow of the
  * distribution, with that slot's contract: the workflow it names is in the distribution at the major it names, has the slot,
  * and the leg's outcomes and reads (beyond its scheme's own extensions) are within the slot's. Writes are not compared yet (Issue I-112). Returns what each
  * scheme fills, or the mismatches.
@@ -119,7 +119,7 @@ export function checkSlotContracts(platform: any[], schemes: { scope: string; do
 }
 
 /**
- * The parameter contract of a set of artefacts (R-11-39, lint L43): every dial, as `<artefact>#<parameter>`, with its type,
+ * The parameter contract of a set of artefacts (R-11-39, lint L44): every dial, as `<artefact>#<parameter>`, with its type,
  * default and bounds. A dial whose default lies outside its own bounds, or whose bounds cross, is a problem.
  */
 export function parameterContract(docs: any[]): { contract: { format: string; parameters: any[] }; problems: string[] } {
@@ -144,7 +144,7 @@ export function isoSeconds(d: string | undefined): number | undefined {
   return (Number(m[1] ?? 0) * SECONDS.D) + Number(m[2] ?? 0) * SECONDS.H + Number(m[3] ?? 0) * SECONDS.M + Number(m[4] ?? 0);
 }
 
-/** The longest wait a distribution declares (R-09-55): the largest bound or default of a duration dial that is a wait or a timeout. */
+/** The longest wait a distribution declares (R-09-56): the largest bound or default of a duration dial that is a wait or a timeout. */
 export function longestWait(contract: { parameters: any[] }): string {
   let best = 0;
   for (const p of contract.parameters) {
@@ -181,7 +181,7 @@ export interface BuiltBundle {
 }
 
 /**
- * Builds a bank's distribution for one engine from the published releases (R-09-47, R-11-37 to R-11-39): the platform, the
+ * Builds a bank's distribution for one engine from the published releases (R-09-48, R-11-37 to R-11-39): the platform, the
  * schemes the bank licenses, its bank pack and the engine binding. Refused when a scheme does not fit its platform's slot
  * contract, when the parameter contract has a problem, or when a licensed scheme is not in the studio.
  */
@@ -213,7 +213,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
   }
   files['binding.yaml'] = toYaml(binding.doc);
   artefacts.push({ scope: 'p', name: binding.name, kind: 'engine-binding', release: binding.release, hash: binding.hash, path: 'binding.yaml', sha256: sha(files['binding.yaml']) });
-  // The tests the release passed: the test documents of its packs (R-09-47); their results are the release gate's.
+  // The tests the release passed: the test documents of its packs (R-09-48); their results are the release gate's.
   for (const s of scopes) for (const t of packEntries(env, s, s === 'b' ? bank : undefined).filter((e) => e.kind === 'test')) files[`tests/${t.name}.yaml`] = toYaml(t.doc);
 
   // Every platform workflow in its expanded form, with the legs of the licensed schemes in its slots, and the engine's own
@@ -259,7 +259,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
 }
 
 /**
- * Builds a bank's configuration release (R-09-50, R-11-40): its configuration set (dials and rule values, each with its
+ * Builds a bank's configuration release (R-09-51, R-11-40): its configuration set (dials and rule values, each with its
  * validFrom), its port bindings (adapter and settings, credentials by secretRef only) and calendars, checked against the
  * parameter contract of each distribution named, which it records as `requiresContract`.
  */

@@ -30,7 +30,7 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | Composite activities, each with a subflow | 7 |
 | Test cases in the packs | 24 |
 | Conformance scenarios | 50 |
-| Checks in `tools/validate.py` | 34 (L00 to L43) |
+| Checks in `tools/validate.py` | 34 (L00 to L44) |
 | Mutation cases that prove them | 58 |
 | Build components, stories, story points | 25, 125, 502 |
 <!-- /COUNTS -->

@@ -8,7 +8,7 @@ namespace TransactHub.Api;
 
 /// <summary>
 /// Installing and running a bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md,
-/// spec R-09-47 to R-09-56), shared by the release API and the service console. Every bundle is verified against the
+/// spec R-09-48 to R-09-57), shared by the release API and the service console. Every bundle is verified against the
 /// signers trusted now before it is stored (signature, kind, release id, tenant, every file, the signed bill of materials and
 /// parameter contract), and a distribution again before it is activated. A configuration release is checked against the
 /// parameter contract of every distribution of its bank not removed, and its values, port bindings and calendars become
