@@ -334,14 +334,25 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     const inFile = path.join(tmp, 'input.json');
     fs.writeFileSync(inFile, JSON.stringify(input));
     const t0 = Date.now();
-    const r = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolve) => {
-      const child = spawn('dotnet', [harnessDll, ...(req.load ? ['--load'] : []), inFile], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...childEnv() } });
+    // Flowable with a store keeps its binding's state as facts under a run key (Issue I-89, R-09-65): a binding that stops is
+    // started again with the same key and goes on from them, as a host's supervisor restarts it (at most three times here).
+    const journalled = engine === 'flowable' && onStore && !req.load;
+    const runKey = process.env.TH_FLOWABLE_RUN ?? (journalled ? `deploy-${process.pid}-${Date.now().toString(36)}` : undefined);
+    const once = () => new Promise<{ stdout: string; stderr: string; code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+      const child = spawn('dotnet', [harnessDll, ...(req.load ? ['--load'] : []), inFile], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...childEnv(), ...(runKey ? { TH_FLOWABLE_RUN: runKey } : {}) } });
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', (d) => (stdout += d));
       child.stderr.on('data', (d) => (stderr += d));
-      child.on('close', (code) => resolve({ stdout, stderr, code }));
+      child.on('close', (code, signal) => resolve({ stdout, stderr, code, signal }));
     });
+    let r = await once();
+    for (let restart = 1; journalled && restart <= 3 && !r.stdout.includes('OBSERVATION ') && !r.stdout.includes('ERROR ') && (r.code === 75 || r.signal); restart++) {
+      log.push(`engine: the Flowable binding stopped (${r.signal ?? `exit ${r.code}`}); started again with run key ${runKey} (restart ${restart})`);
+      const before = r.stderr;
+      r = await once();
+      r.stderr = `${before}\n${r.stderr}`;
+    }
     const lines = r.stdout.split('\n');
     if (req.load) {
       const loadLine = lines.find((l) => l.startsWith('LOAD '));

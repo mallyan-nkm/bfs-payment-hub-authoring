@@ -7,7 +7,7 @@ using TransactHub.Store;
 namespace TransactHub.Engine.Flowable;
 
 /// <summary>
-/// The Flowable binding's state as facts in the store (Issue I-89, R-09-66): insert-only, hash-chained, on a subject of its own
+/// The Flowable binding's state as facts in the store (Issue I-89, R-09-65): insert-only, hash-chained, on a subject of its own
 /// (<c>flowable-run:&lt;run key&gt;</c>, kind <c>engine-run</c>). Before every command that moves the engine the binding records
 /// what it knows (each instance's trace and detail, its attempts and steps, held messages, the hook bindings taken at start, the
 /// timers it placed, what it has scheduled) and the command it is about to send. A binding that starts with the same run key

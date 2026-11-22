@@ -24,6 +24,8 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `observability/` | The local monitoring stack for development: collector, Jaeger, Loki, Prometheus, Grafana and the dashboards Payments, Engines, Ports, Store (R-09-37). |
 | `load/` | The load harness (R-09-38): synthetic WPS salary files on Temporal, its persistence on SQL Server or PostgreSQL, the store on either. See `docs/runtime/LOAD-TEST.md`. |
 | `tools/TransactHub.TemporalHarness` | Runs a plan (a conformance scenario or a deployment) on Temporal and prints the observation. |
+| `tools/TransactHub.EngineHost` | The long-running engine host (R-09-66 to R-09-68, Issues I-114, I-127): `supervise` serves a bank's distributions on one engine, a host per distribution from installation to removal, pins each payment at acceptance and runs it on its distribution's host; `serve` is one distribution's host. On Temporal (a real server, `TH_TEMPORAL_ADDRESS`) its workers run for as long as the host does, as a version of the bank's worker deployment whose build id is the distribution's id; on DTFx, Elsa and Flowable it runs each payment on the engine's runtime harness. |
+| `tests/TransactHub.EngineHost.Tests` | The switch-over on Temporal (worker versioning on the CLI image's development server), DTFx, Elsa and Flowable: a payment pinned to A runs on A after B is active, new payments go to B, A is removed only once drained and its host stops (PostgreSQL, Temporal and Flowable in containers). |
 | `tools/TransactHub.FlowableHarness` | Runs a deployment's plan on the Flowable REST server at `TH_FLOWABLE_URL` and prints the observation. |
 | `tools/TransactHub.TestBench` | The test bench: send data, it runs on the engines a profile names with the store on its database and compares each with the studio interpreter. CLI, service and web UI; profiles, benches, the sample library, the data builder and the shipped suite in `testbench/`. See [testbench/README.md](testbench/README.md). |
 | `tools/temporal-test-server` | Temporal's time-skipping test server from Maven Central: `setup.sh` once, then the harness starts it. |
@@ -31,7 +33,7 @@ The new runtime, built beside the TransactHub source (`TransactHub-src.zip`), wh
 | `tests/TransactHub.Security.Tests` | Secrets by reference (Vault 1.18 and LocalStack 4.14.0 in containers; Azure Key Vault against `FakeKeyVault`, an in-process fake of its REST protocol), and the signature: tampered, extra and missing files, no signature, a wrong key, a revoked key, rotation, an `openssl` check. |
 | `tests/TransactHub.TestBench.Tests` | The test bench's profiles, data builder, judge and service sign-in. |
 | `tests/TransactHub.Security.Tests` | Secrets by reference (and Vault 1.18 in a container), and the signature: tampered, extra and missing files, no signature, a wrong key, a revoked key, rotation, an `openssl` check. |
-| `tests/TransactHub.Engine.Flowable.Tests` | The BPMN reader, and the worker client and the binding against the Flowable REST server 7.1.0 (Testcontainers). |
+| `tests/TransactHub.Engine.Flowable.Tests` | The BPMN reader, and the worker client and the binding against the Flowable REST server 7.1.0 (Testcontainers); the binding killed in the middle of a payment and started again from its facts in the store, in production and virtual mode (`FlowableRestartTests`, R-09-65). |
 
 ## Commands
 

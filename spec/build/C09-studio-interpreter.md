@@ -126,7 +126,7 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s4-parallel-and-for-each`.
 
 **Definition of Success**
 
-- CK-PAR-01 and CK-FOREACH-01 to 03 pass.
+- CK-PAR-01 and CK-FOREACH-01 to 04 pass.
 
 ### C09-S5 Try, compensate, finally and deadline
 

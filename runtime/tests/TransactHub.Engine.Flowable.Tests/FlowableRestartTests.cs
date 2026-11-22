@@ -78,7 +78,7 @@ sealed class HttpWorker : IDisposable
 }
 
 /// <summary>
-/// Issue I-89, R-09-66: a Flowable binding host that is killed in the middle of a payment and started again with the same run key
+/// Issue I-89, R-09-65: a Flowable binding host that is killed in the middle of a payment and started again with the same run key
 /// goes on from its state in the store, and the payment ends with the same facts as a run that was never interrupted. On the REST
 /// server in production mode (its executor on, real time) and in virtual mode (the binding runs the jobs and keeps the clock).
 /// The binding runs as its own process (the runtime's Flowable harness); the worker and the store outlive it.

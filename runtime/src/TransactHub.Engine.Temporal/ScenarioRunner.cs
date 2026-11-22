@@ -50,32 +50,40 @@ public sealed class ScenarioRunner
     public static Task<WorkflowEnvironment> StartTestServer(Temporalio.Runtime.TemporalRuntime? runtime = null, IReadOnlyCollection<Temporalio.Client.Interceptors.IClientInterceptor>? interceptors = null) =>
         WorkflowEnvironment.StartTimeSkippingAsync(new() { TestServer = new() { ExistingPath = TestServerScript() }, Runtime = runtime, Interceptors = interceptors });
 
-    public async Task<JsonObject> Run(WorkflowEnvironment env)
+    public Task<JsonObject> Run(WorkflowEnvironment env) => Run(env, null);
+
+    /// <summary>
+    /// With <paramref name="hosted"/>, one payment on a long-running host's workers (Issue I-114): the distribution's documents,
+    /// party and claim check are the host's, its workers already poll, and the payment is started pinned to the host's version.
+    /// </summary>
+    public async Task<JsonObject> Run(WorkflowEnvironment env, DistributionWorkers? hosted)
     {
         var start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
-        var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
-        Deployment.Current = dep;
-        using IParty party = J.P(input, "workers") is JsonObject workers
+        var dep = hosted?.Dep ?? new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
+        if (hosted is null) Deployment.Current = dep;
+        using IParty? ownParty = hosted is not null ? null : J.P(input, "workers") is JsonObject workers
             ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)
             : new PartyClient(J.S(input, "studioRoot")!);
+        var party = hosted?.Party ?? ownParty!;
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
         // A deployment keeps every payload in the store (plan W2); a kit run keeps it in memory.
-        var storeOpts = StoreFromEnvironment();
-        var durable = storeOpts is null ? null : new DurableClaimCheck(storeOpts);
-        if (storeOpts is not null)
+        var storeOpts = hosted is not null ? hosted.Store : StoreFromEnvironment();
+        var durable = hosted is not null ? hosted.Claim : storeOpts is null ? null : new DurableClaimCheck(storeOpts);
+        if (storeOpts is not null && hosted is null)
         {
             await using var db = StoreDbContext.Open(storeOpts);
             await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
             StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
         }
-        var host = new Host(party, dep, durable);
+        var host = hosted?.Host ?? new Host(party, dep, durable);
 
         // A deployment puts each activity on the task queue of its scope (R-09-05); a kit run, on one.
         var queues = J.P(input, "queues") as JsonObject;
         // A bank's distribution runs as its own copy beside the others (R-09-55): its task queues carry the distribution, and
         // its workers carry it as their build id, so two distributions never take each other's tasks.
         var distribution = J.S(input, "distribution");
-        string Q(string q) => distribution is null ? q : $"{q}@{distribution}";
+        // A long-running host keeps distributions apart by its version's build id, on the same task queues (worker versioning).
+        string Q(string q) => distribution is null || hosted is not null ? q : $"{q}@{distribution}";
         string queueOf(string activity)
         {
             if (queues is null || activity == Interp.ClaimCheck) return Q(HostQueue);
@@ -83,7 +91,7 @@ public sealed class ScenarioRunner
             var scope = parts[0] is "p" or "b" ? parts[0] : $"{parts[0]}.{parts[1]}";
             return Q(J.S(queues, scope) ?? HostQueue);
         }
-        InterpreterWorkflow.QueueOf = queueOf;
+        if (hosted is null) InterpreterWorkflow.QueueOf = queueOf;
 
         var serverNow = (await env.GetCurrentTimeAsync()).ToUniversalTime();
         var offset = start - new DateTimeOffset(serverNow, TimeSpan.Zero).ToUnixTimeMilliseconds();
@@ -94,7 +102,7 @@ public sealed class ScenarioRunner
         if (queues is not null) foreach (var (_, q) in queues) taskQueues.Add(Q(q!.GetValue<string>()));
         var workersRunning = new List<(TemporalWorker w, Task t)>();
         using var stop = new CancellationTokenSource();
-        foreach (var q in taskQueues)
+        foreach (var q in hosted is null ? taskQueues : [])
         {
             // A batch runs many short attempts at once: poll and run them in parallel.
             var opts = new TemporalWorkerOptions(q)
@@ -163,7 +171,10 @@ public sealed class ScenarioRunner
             ["offset"] = offset, ["roots"] = J.Arr(roots.Select(r => r.id)), ["handlerOnly"] = handlerOnly,
             ["horizon"] = start + Duration.Ms("P60D"), ["starts"] = starts, ["signals"] = signals, ["deliveries"] = deliveries,
         };
-        var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), new WorkflowOptions(frontDoorId, Q(HostQueue)));
+        var fdOptions = new WorkflowOptions(frontDoorId, Q(HostQueue));
+        // Pinned to the host's version from its first task: the payment, its roots and their children run on this distribution only.
+        if (hosted is not null) fdOptions.VersioningOverride = new Temporalio.Common.VersioningOverride.Pinned(hosted.Version, Temporalio.Common.VersioningOverride.PinnedOverrideBehavior.Pinned);
+        var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), fdOptions);
 
         // The live path from the runtime (R-05-57): with a store, the root's payment is followed on the outbox, and each row is
         // signalled to the root's workflow at the business time now. While an operator wait is open and a live operator may still
@@ -218,6 +229,22 @@ public sealed class ScenarioRunner
         var executions = 0;
         var late = 0;
         var runIds = J.A(fdOut, "runs").Select(r => J.S(r, "id")!).ToList();
+        // On a long-running host: the version the server ran each workflow of the payment on, as Temporal records it.
+        var servedOn = new JsonArray();
+        if (hosted is not null)
+            foreach (var id in runIds.Prepend(frontDoorId))
+            {
+                var d = await env.Client.WorkflowService.DescribeWorkflowExecutionAsync(new Temporalio.Api.WorkflowService.V1.DescribeWorkflowExecutionRequest
+                {
+                    Namespace = env.Client.Options.Namespace, Execution = new Temporalio.Api.Common.V1.WorkflowExecution { WorkflowId = id },
+                });
+                var v = d.WorkflowExecutionInfo?.VersioningInfo;
+                servedOn.Add(new JsonObject
+                {
+                    ["workflow"] = id, ["behavior"] = v?.Behavior.ToString(),
+                    ["deployment"] = v?.DeploymentVersion?.DeploymentName, ["buildId"] = v?.DeploymentVersion?.BuildId,
+                });
+            }
         foreach (var id in runIds)
         {
             var h = env.Client.GetWorkflowHandle(id);
@@ -290,7 +317,12 @@ public sealed class ScenarioRunner
             ["startMs"] = start,
             ["engine"] = new JsonObject
             {
-                ["distribution"] = distribution is null ? null : new JsonObject { ["id"] = distribution, ["buildId"] = distribution, ["taskQueues"] = J.Arr(taskQueues.Order(StringComparer.Ordinal)) },
+                ["distribution"] = distribution is null ? null : new JsonObject
+                {
+                    ["id"] = distribution, ["buildId"] = distribution, ["taskQueues"] = J.Arr(taskQueues.Order(StringComparer.Ordinal)),
+                    ["workerDeployment"] = hosted?.DeploymentName, ["versioning"] = hosted is null ? null : "pinned", ["frontDoor"] = frontDoorId,
+                    ["servedOn"] = hosted is null ? null : servedOn,
+                },
                 ["orchestrationInstances"] = runIds.Count,
                 ["executions"] = executions,
                 ["historyEvents"] = historyEvents,
