@@ -9,7 +9,7 @@ description: >-
   A scheme's own view (for example uae.wps.view.operations.v1) adds the fields of its legs. Release 1.1.0 adds the posting's
   amount with charges, its charge and VAT and its legs, from the posting fact (camt.054 entries and ChrgsInf), and the payment's end and
   duration, from its payment.end fact (Issues I-97, I-100). Release 1.2.0 adds the refund order (p.wf.refund.v1): the earlier
-  payment it refers to, its FX and its charges, from the platform's own steps (R-12-22).
+  payment it refers to, its FX and its charges, from the platform's own steps; its approval shows in the hold fields (R-12-22).
 platform: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.refund.v1]
 subject:
   title: Payment
@@ -51,7 +51,6 @@ subject:
     - { id: refundCharge, label: Charge on the order, group: order, source: "step:charges.writes.facts.charges.amount", format: amount }
     - { id: refundChargeVat, label: VAT on the charge, group: order, source: "step:charges.writes.facts.charges.tax.amount", format: amount }
     - { id: refundChargeTotal, label: Charge and VAT, group: order, source: "step:charges.writes.facts.charges.totalChargesAndTaxAmount", format: amount }
-    - { id: approval, label: Approval, group: order, source: "step:approval.outcome", format: status, oldScreen: "Refund cycle dashboard, maker and checker verification" }
     - { id: holdStatus, label: Hold, group: hold, source: hold.status, format: status }
     - { id: holdKind, label: Hold kind, group: hold, source: hold.kind, format: code }
     - { id: holdReason, label: Held because, group: hold, source: hold.reason }
@@ -65,7 +64,6 @@ subject:
     - { field: posting, match: exact }
     - { field: rail, match: exact }
     - { field: fx, match: exact }
-    - { field: approval, match: exact }
   actions:
     - { action: approve, label: Approve, role: Operator, remarks: optional, when: { hold: approval } }
     - { action: decline, label: Decline, role: Operator, remarks: required, when: { hold: approval } }

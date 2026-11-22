@@ -143,7 +143,7 @@ describe('a refund order with WPS as its leg, on Temporal and DTFx, seen in the 
         const f = detail.payment.fields;
         // The platform view: the order, its earlier payment, its FX and its charges (p.view.operations.v1 1.2.0).
         expect(f).toMatchObject({ originalPaymentId: '000000000000000000000001', originalFound: 'found', fx: 'converted', fxCurrency: 'AED',
-          refundCharges: 'priced', approval: 'approved', reservation: 'reserved', posting: 'posted' });
+          refundCharges: 'priced', reservation: 'reserved', posting: 'posted' });
         expect(Number(f.fxAmount)).toBe(600);
         expect(Number(f.refundCharge)).toBe(10.6);
         expect(Number(f.refundChargeTotal)).toBe(11.14);

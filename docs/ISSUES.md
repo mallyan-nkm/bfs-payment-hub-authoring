@@ -1437,7 +1437,9 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Issue.** The charges and the converted amounts are facts of the order (`facts.charges`, `facts.fx`) that the operations console shows, but `p.post.accounting.v1` does not read them: its contract reads the payment, the route and the reservation, and on the runtime its native code-behind prices charges from its own `chargeSlabs`. A bank that sets both would price twice. FX and charges have script-behinds only, so on the runtime's native host they run in the studio's script sandbox through the deploy runner's workers, not as native code-behinds (R-08-16).
 
-**Recommendation.** Release `p.post.accounting.v2`, which reads `facts.fx` and `facts.charges` and posts the lines with their charge and VAT legs (camt.054), with no slabs of its own; move `p.wf.refund.v1` onto it. Add native code-behinds for `p.enrich.fx-rate.v1` and `p.enrich.charges.v1` on `decimal`, proved equal to the scripts by `native-dual.test.ts`.
+On the engines, a hold's decision comes back to the instance as a message, not as a worker's answer, so the approval step leaves no step fact with its final outcome: the operations console shows a refund order's approval only through the hold facts the runtime's own operations queue writes (`StoreHold`), and none when a simulator answers the hold, as in the end-to-end test. The step facts also kept only some of the header's ids; `originalPaymentId` is now one of them (`StepFacts.HeaderKeys`), so the console names the earlier payment.
+
+**Recommendation.** Release `p.post.accounting.v2`, which reads `facts.fx` and `facts.charges` and posts the lines with their charge and VAT legs (camt.054), with no slabs of its own; move `p.wf.refund.v1` onto it. Record a hold's decided outcome as a step fact of the hold's step when the instance takes the decision. Add native code-behinds for `p.enrich.fx-rate.v1` and `p.enrich.charges.v1` on `decimal`, proved equal to the scripts by `native-dual.test.ts`.
 
 ## Not done, and why
 

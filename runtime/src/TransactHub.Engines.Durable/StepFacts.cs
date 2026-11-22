@@ -20,7 +20,8 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
 {
     readonly ConcurrentDictionary<string, (string id, string kind)?> subjects = new();
     readonly FactWriter writer = new(options, clock);
-    static readonly string[] HeaderKeys = ["scheme", "direction", "kind", "segment", "fileId", "endToEndId", "leg", "slot"];
+    // originalPaymentId: the earlier payment a refund order names by id (R-02-20), an id, never personal data.
+    static readonly string[] HeaderKeys = ["scheme", "direction", "kind", "segment", "fileId", "endToEndId", "originalPaymentId", "leg", "slot"];
 
     /// <summary>Installs the recorder on every worker router of this process.</summary>
     public static StepFacts Install(StoreOptions options, TimeProvider? clock = null)

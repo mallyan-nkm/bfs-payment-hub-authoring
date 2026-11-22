@@ -11,11 +11,11 @@ files:
   - path: artefacts/p/p.table.workflow-select.v1/1.1.0.yaml
     sha256: 968c68c4e432b70d77fc66bf07f538c91dd38429c8eaf471c04ffed09393eb7e
   - path: artefacts/p/p.view.operations.v1/1.2.0.yaml
-    sha256: 8803c46b75722a90a354e7345d40c6efad27db7590f3d21571e7d66bedecbba3
+    sha256: d65fb54ec72ada5e3adde91e0a4eccdef8f8dbe40554dcaf0c0d1b03d933ac0b
   - path: artefacts/p/p.wf.refund.v1/1.0.0.yaml
     sha256: 4c331eb7a9b97566908e9620ecd036c045674a2fdc6b0ec3b1efb939714de72e
   - path: artefacts/p/pack/1.4.0.yaml
-    sha256: de64309e17019c70fb17d55852e67a87365102a2c53fce7888904a55b053ca76
+    sha256: d0ce5d25216b20676ad67fc3de15a7d1449c198be8721be646e3b65e84f43bd9
   - path: artefacts/p/tests/P-CHG-001@1.4.0.yaml
     sha256: c025d6ce42156acfb16a115d4df86d9cc94c20eadcb9c38166ab233525dd4fee
   - path: artefacts/p/tests/P-CHG-002@1.4.0.yaml
