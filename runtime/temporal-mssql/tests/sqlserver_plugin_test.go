@@ -20,7 +20,8 @@ import (
 func TestSQLServerPluginDatabaseSettings(t *testing.T) {
 	requireSQLServer(t)
 	cfg := NewSQLServerConfig()
-	admin := *cfg
+	// Creating databases is the admin's work (I-47).
+	admin := *asAdmin(cfg)
 	admin.DatabaseName = ""
 	db, err := sql.NewSQLAdminDB(sqlplugin.DbKindUnknown, &admin, resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
 	if err != nil {
@@ -34,7 +35,7 @@ func TestSQLServerPluginDatabaseSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.DropDatabase(plain) })
-	plainCfg := *cfg
+	plainCfg := *asAdmin(cfg)
 	plainCfg.DatabaseName = plain
 	pdb, err := sql.NewSQLAdminDB(sqlplugin.DbKindMain, &plainCfg, resolver.NewNoopResolver(), log.NewTestLogger(), metrics.NoopMetricsHandler)
 	if err != nil {

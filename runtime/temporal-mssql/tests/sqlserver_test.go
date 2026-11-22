@@ -182,9 +182,7 @@ func (p *SQLServerSuite) TestSQLServerTaskQueueUserDataSuite() {
 
 func (p *SQLServerSuite) TestSQLServerVisibilityPersistenceSuite() {
 	s := &ptests.VisibilityPersistenceSuite{
-		TestBase: persistencetests.NewTestBaseWithSQL(
-			GetSQLServerTestClusterOption(),
-		),
+		TestBase: newSQLServerTestBase(),
 	}
 	suite.Run(p.T(), s)
 }
@@ -193,36 +191,28 @@ func (p *SQLServerSuite) TestSQLServerVisibilityPersistenceSuite() {
 
 func (p *SQLServerSuite) TestSQLServerHistoryV2PersistenceSuite() {
 	s := new(persistencetests.HistoryV2PersistenceSuite)
-	s.TestBase = persistencetests.NewTestBaseWithSQL(
-		GetSQLServerTestClusterOption(),
-	)
+	s.TestBase = newSQLServerTestBase()
 	s.Setup(nil)
 	suite.Run(p.T(), s)
 }
 
 func (p *SQLServerSuite) TestSQLServerMetadataPersistenceSuiteV2() {
 	s := new(persistencetests.MetadataPersistenceSuiteV2)
-	s.TestBase = persistencetests.NewTestBaseWithSQL(
-		GetSQLServerTestClusterOption(),
-	)
+	s.TestBase = newSQLServerTestBase()
 	s.Setup(nil)
 	suite.Run(p.T(), s)
 }
 
 func (p *SQLServerSuite) TestSQLServerClusterMetadataPersistence() {
 	s := new(persistencetests.ClusterMetadataManagerSuite)
-	s.TestBase = persistencetests.NewTestBaseWithSQL(
-		GetSQLServerTestClusterOption(),
-	)
+	s.TestBase = newSQLServerTestBase()
 	s.Setup(nil)
 	suite.Run(p.T(), s)
 }
 
 func (p *SQLServerSuite) TestSQLServerQueuePersistence() {
 	s := new(persistencetests.QueuePersistenceSuite)
-	s.TestBase = persistencetests.NewTestBaseWithSQL(
-		GetSQLServerTestClusterOption(),
-	)
+	s.TestBase = newSQLServerTestBase()
 	s.Setup(nil)
 	suite.Run(p.T(), s)
 }
@@ -698,7 +688,7 @@ func (p *SQLServerSuite) TestSQLServerClosedConnectionError() {
 }
 
 func (p *SQLServerSuite) TestSQLServerTestClusterDropsDatabaseWithOpenConnection() {
-	cfg := NewSQLServerConfig()
+	cfg := asAdmin(NewSQLServerConfig())
 	SetupSQLServerDatabase(p.T(), cfg)
 
 	db, err := sql.NewSQLAdminDB(

@@ -253,6 +253,18 @@ jobs:
       - name: A workflow survives a server kill
         working-directory: runtime/temporal-mssql
         run: scripts/durability-check.sh
+      # As a bank would run it (docs/ISSUES.md I-47): the schemas are the admin's (sa, above); the server connects as a
+      # login with only read, write and execute on the two Temporal databases. The server this leaves running, on that
+      # login, is the one the WPS step below uses.
+      - name: As a least-privilege login, the grants, the proof that it holds nothing more, and the durability check
+        working-directory: runtime/temporal-mssql
+        run: |
+          kill "$(cat .dev/server.pid)" 2>/dev/null || true
+          sleep 3
+          scripts/least-privilege.sh login grant prove durability
+      - name: Temporal's persistence suites as the least-privilege login, the admin doing each database's set-up
+        working-directory: runtime/temporal-mssql
+        run: scripts/least-privilege.sh suites
       - name: Install the studio
         working-directory: studio
         run: npm ci
