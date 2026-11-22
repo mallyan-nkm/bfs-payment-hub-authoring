@@ -15,12 +15,14 @@ scenarios:
     steps:
       - expect: uae.wps.sif-submission
       - send: uae.wps.ack
+        family: sif
         status: accepted
         after: PT10M
   - name: reject
     steps:
       - expect: uae.wps.sif-submission
       - send: uae.wps.ack
+        family: sif
         status: rejected
         reasonCode: AM10
         after: PT10M
@@ -32,12 +34,14 @@ scenarios:
     steps:
       - expect: uae.wps.sif-submission
       - send: uae.wps.ack
+        family: sif
         status: accepted
         after: P2D
   - name: duplicate-reply
     steps:
       - expect: uae.wps.sif-submission
       - send: uae.wps.ack
+        family: sif
         status: accepted
         after: PT10M
         duplicate: true
@@ -46,12 +50,14 @@ scenarios:
       - expect: uae.wps.sif-submission
         failTimes: 2
       - send: uae.wps.ack
+        family: sif
         status: accepted
         after: PT10M
   - name: refund-settled
     steps:
       - expect: uae.wps.rfr
       - send: uae.wps.ack
+        family: rfr
         status: accepted
         after: PT10M
       - send: uae.wps.rsu
@@ -60,6 +66,7 @@ scenarios:
     steps:
       - expect: uae.wps.rfr
       - send: uae.wps.ack
+        family: rfr
         status: accepted
         after: PT10M
       - send: uae.wps.rsu
@@ -69,18 +76,21 @@ scenarios:
     steps:
       - expect: uae.wps.prc
       - send: uae.wps.ack
+        family: prc
         status: accepted
         after: PT10M
   - name: disbursement-accepted
     steps:
       - expect: uae.wps.dif
       - send: uae.wps.ack
+        family: dif
         status: accepted
         after: PT10M
   - name: malformed-reply
     steps:
       - expect: uae.wps.sif-submission
       - send: uae.wps.ack
+        family: sif
     malformed: true
 implementation:
   binding: script

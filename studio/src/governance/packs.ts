@@ -73,8 +73,8 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string): an
   // artefacts reach, with their own parents.
   const deps = new Set<string>(parents(scope));
   if (scope === 'b') {
+    // Its tests are in its lock file, so what they reach is a dependency too (Issue I-43, "Found, not fixed").
     for (const e of entries) {
-      if (e.kind === 'test') continue;
       for (const r of refsOf(e.doc)) {
         const s = scopeOfName(r);
         if (s !== 'b' && s !== 'ck') [s, ...parents(s)].forEach((x) => deps.add(x));

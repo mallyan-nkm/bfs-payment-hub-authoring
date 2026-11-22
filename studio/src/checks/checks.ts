@@ -58,6 +58,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L32: 'An await with no timeout has a reply time to take',
   L33: 'A start message routes: its kind, direction and segment select one platform workflow, and its leg fills its slot',
   L34: 'The factory holds only the packs its inventory lists',
+  L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
+  L36: 'An await names a family its message\'s dispatch entry declares',
 };
 
 // ---------------------------------------------------------------- walking
@@ -285,6 +287,7 @@ export class Checker {
         const sch = this.schemes.get(scopeOf(d.name));
         const hit = (sch?.messages ?? []).find((m: any) => m.id === st.await.message);
         if (!hit || !hit.disposition?.deliver) err('L16', `Awaited message ${st.await.message} is not a deliver message in the scheme catalogue`, label);
+        else if (st.await.family && !(hit.disposition.deliver.families ?? []).includes(st.await.family)) err('L36', `Await ${st.id ?? '?'} takes family ${st.await.family} of ${st.await.message}, which its dispatch entry does not declare`, label);
       }
     }
     if (d.kind === 'workflow' && d.wfKind === 'handler') {
@@ -397,6 +400,15 @@ export class Checker {
       if (st.await && !('timeout' in st.await) && isSub) {
         const act = this.byName.get(d.implements?.activity) ?? {};
         if (!act.policy?.replyTimeout) err('L32', `Await ${st.id ?? '?'} has no timeout and ${act.name} declares no replyTimeout`, stepLabel(st));
+      }
+      // L17 (R-05-45): a wait or an await timeout that names a parameter names a duration parameter of the subflow's composite.
+      for (const ref of [st.wait, st.await?.timeout]) {
+        if (!ref || typeof ref !== 'object') continue;
+        const act = this.byName.get(d.implements?.activity) ?? {};
+        const decl = isSub ? act.parameters?.[ref.parameter] : undefined;
+        if (!isSub) err('L17', `Step ${st.id ?? '?'} names parameter ${ref.parameter}; only a subflow may, from its composite`, stepLabel(st));
+        else if (!decl) err('L17', `Step ${st.id ?? '?'} names parameter ${ref.parameter}, which ${act.name} does not declare`, stepLabel(st));
+        else if (decl.type !== 'duration') err('L17', `Step ${st.id ?? '?'} names parameter ${ref.parameter}, which is not a duration`, stepLabel(st));
       }
     }
     if (!isSub) for (const a of actions(d)) if ('return' in a) err('L31', 'Return appears only in a subflow');
@@ -602,7 +614,9 @@ export class Checker {
         continue;
       }
       const b = p.bounds ?? {};
-      if ((b.max !== undefined && v.value > b.max) || (b.min !== undefined && v.value < b.min)) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
+      // A duration is compared by its length: P100D is longer than P30D although it sorts before it as text.
+      const len = (x: any) => (p.type === 'duration' && typeof x === 'string' ? durationMs(x) : x);
+      if ((b.max !== undefined && len(v.value) > len(b.max)) || (b.min !== undefined && len(v.value) < len(b.min))) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
     }
     for (const b of d.bindings ?? []) {
       const [wf, hp] = String(b.hookPoint).split('#');

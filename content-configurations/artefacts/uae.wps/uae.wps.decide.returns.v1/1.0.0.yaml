@@ -13,6 +13,7 @@ outcomes:
   - name: none
     primary: true
   - name: returns
+  - name: unverified
 effect: pure
 ruleSets:
   - uae.wps.table.returns.v1

@@ -477,6 +477,15 @@ The end-to-end tests no longer depend on it. WPS is a factory scheme, so its tes
 
 Items 1 and 3 still need the rulebook (D10). Items 2, 4 and 5 are ours to decide; I recommend we adopt them now.
 
+**Decision (2026-11-22).** The owner adopted the refined recommendation, all five items. Items 1 and 3 are still to confirm against the rulebook (D10).
+
+**What was built.**
+- **Partial return as the rule.** `uae.wps.table.returns.v1` returns the verified refused credits only, and names the scope: `partial`, or `whole-file` when every credit was refused. It is not a separate mode.
+- **Verify before deciding.** A credit whose posting outcome is `unknown` is asked about at once (`verify-credit`, `p.post.verify.v1`, inside the `forEach`). A credit the inquiry finds not posted (`mismatch`) is refused. While a credit is still unknown, `uae.wps.decide.returns.v1` ends `unverified`, the file goes to operations (`unverified-operations`, `p.hold.repair.v1`) and the leg ends `pending`. No credit is left behind. WPS-IN-006 (core banking scenario `unknown-first-then-not-posted`, new) shows it.
+- **One returns file per payment file.** Every credit is known before the returns file is sent, so none is found refused after it. A refusal that reaches the front door later is unmatched and goes to operations (R-05-31). Annex A, A.4.1 says so.
+- **The amount rule.** The table's `amount` is `sumWhere(items, refused, round2(fixedPay + variablePay))`: each line rounded to two decimals half away from zero, the total the sum of the rounded lines. `round2` and `sumWhere` are new functions of the expression library (Part 4, section 4.4). The table's examples prove both, one of them with lines whose rounded sum differs from the sum of the rounded lines.
+- **Every entry point.** The disbursement report is now a composite, `uae.wps.exchange.report-disbursement.v1` (subflow `uae.wps.sub.report-disbursement.v1`), that awaits the DIF's ACK or NAK. The returns are decided after either. After a NAK the refused credits still go back and the leg ends `pending` (WPS-IN-007, inward simulator scenario `payment-file-disbursement-refused-returns-accepted`, new). A DIF with no acknowledgement ends `pending` without returns, as the source has no entry point there.
+
 ## I-40. The agent leg's outcome after a return
 
 **Issue.** The slot `scheme-leg` of `p.wf.inward.v1` offers `settled`, `rejected`, `returned` and `pending`. When some credits of a payment file post and the refused ones are returned and recorded, the spec does not say whether the leg ends `settled` or `returned`, nor whether it ends `returned` when every credit was returned. On a NAK of the returns file the source raises an operator record and does nothing more: the returned amount stays where it is.
@@ -498,6 +507,15 @@ Items 1 and 3 still need the rulebook (D10). Items 2, 4 and 5 are ours to decide
 
 Write this into Annex A's leg table and Part 5's outcome list, and add a factory test for the whole-file case.
 
+**Decision (2026-11-22).** The owner adopted the refined recommendation.
+
+**What was built.** R-05-46 (Part 5) and Annex A, A.4.1 state the outcomes.
+- **Partial return**: `settled`, with `facts.returns` holding the count and amount returned (WPS-IN-002, WPS-IN-006).
+- **Whole-file return**: `returned`, after the switch on the decision `returnScope` (WPS-IN-005, core banking scenario `reject-two-then-accept`, new). This is what `returned` means for an inward file. The agent leg now reaches `returned`.
+- **NAK**: the repair hold, then `pending` (WPS-IN-003), as before.
+- **The reversal posting fails after an ACK**: `record-return` `rejected` or `unknown` goes to the repair hold (`return-posting-operations`, `return-posting-unknown-operations`), then `pending`.
+- The leg's exit writes now name `facts.returns`.
+
 ## I-41. Telling the returns file's acknowledgement from the receipt confirmation's
 
 **Issue.** The agent leg awaits `uae.wps.ack` twice: once for the receipt confirmation (PRC) and once for the returns file (RFA). Both awaits correlate by `header.fileId`, the payment file's id, as the dispatch table says (`deliver: { correlateBy: file id }`). The spec does not say which file id an acknowledgement of a returns file carries, its own or the payment file's, or how the front door tells it from a late acknowledgement of the PRC. The source tells them apart by the response's file family (RFA ACK or NAK) and by its time, later than the upload.
@@ -518,6 +536,16 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 3. **Wait length.** Make it a parameter of the returns exchange, with the source's 30 days as the default, bounded 1 to 30 days, on the business calendar. Do not hard-code the factory's one-day placeholder.
 4. **Upload hold.** Model the upload hold as a parameter of the send (0 to 10 minutes, default 0), not as code.
 
+**Decision (2026-11-22).** The owner adopted the refined recommendation, all four items. What an RFA acknowledgement carries is still to confirm (D10).
+
+**What was built.**
+- **Family, not time.** The dispatch entry of `uae.wps.ack` declares the families the front door reads from the acknowledged file's name: `sif`, `rfr`, `prc`, `dif`, `rfa` (`deliver.families`, schema `scheme`). Each subflow that awaits `uae.wps.ack` names its family (`await.family`, schema `workflow`): `submit-salary-file` `sif`, `request-refund` `rfr`, `confirm-receipt` `prc`, `report-disbursement` `dif`, `return-credits` `rfa`. The WPS simulators send each ACK and NAK with its family (`family` on a simulator step). An await takes only a message of its family, or one whose family could not be read (R-05-44). The family is carried on the message as `family`, not as `header.acknowledges`: the context's header is the payment's, and the message is the front door's to classify. Lint L36 holds an await's family to its dispatch entry (mutation M32). Conformance CK-AWAIT-07: a late reply of family `a` arrives while the second exchange waits for family `b`, and is not taken.
+- **The time rule, as a guarantee.** R-05-43 (Part 5). Conformance CK-AWAIT-06: a stale second reply to the first exchange arrives between two exchanges on the same message, and the second exchange does not take it; it is recorded as unmatched. The requirement is narrower than "only a message received after the await began", which would break R-05-30 (CK-AWAIT-04, and the PSI, which can arrive before the leg starts): Issue I-50.
+- **Wait length.** `uae.wps.exchange.return-credits.v1` declares `replyWait`, a `duration` parameter, default `P30D`, bounds `P1D` to `P30D`, on the business calendar (`policy.replyCalendar: business`); the subflow's await names it (`timeout: { parameter: replyWait }`). The one-day placeholder is gone. The example bank sets `P10D`, so WPS-IN-004 waits two weeks; `studio/test/wps-returns.test.ts` shows the default, six weeks of elapsed time. On the business calendar the default is longer than the source's 30 calendar days: Issue I-51.
+- **Upload hold.** `uploadHold`, a `duration` parameter of the same composite, default `PT0S`, bounds `PT0S` to `PT10M`; the subflow holds the upload with `wait: { parameter: uploadHold }` (detail `return-credits.upload-hold:PT0S`).
+- **Parameters in a subflow's timing** (R-05-45). A wait, or an await's timeout, may name a `duration` parameter of the subflow's composite. The expansion names it in full and carries its default (`tools/expand.py`, `studio/src/core/expand.ts`); the studio interpreter and the engines' shared interpreter (`studio/engines/shared/Interpreter.cs`) take the tenant's value in force on the business date the step starts, else the default. Lint L17 holds the name to the composite's parameters (mutation M33). Lint L14 now compares a duration with its bounds by length: `P100D` sorts before `P30D` as text (mutation M34).
+- **The kit** has 48 scenarios. It passes 48 of 48 on the studio interpreter, DTFx, Elsa and Temporal. The Flowable harness is not changed: Issue I-49.
+
 ## I-42. Who keeps the SQL Server plugin for Temporal, and how an upgrade is proved
 
 **Issue.** D2 is confirmed and the plugin is built (`runtime/temporal-mssql`, W5). It is pinned to Temporal v1.32.2. Temporal does not support it, and Temporal releases often: the persistence schema is at its 20th version, and a release can change a store method or add a table. The plan says to re-prove the plugin on each upgrade, but it does not name an owner, say how soon after a Temporal release the runtime must follow, or say what blocks an upgrade.
@@ -535,6 +563,16 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 **What the studio does.** It loads a bank pack from its own folder on request, never by default: `openEnv({ banks })`, `TH_BANKS`, or `--bank <name|dir>` on any command. (Since I-44 the folder is read from the content branch and named by its folder name; the example bank's pack is seeded there and always loaded.) `Store.loadBankPack` takes the tenant from `pack.yaml`, refuses a document that names another tenant, and leaves the runtime's formats out. The pack is then checked as the example bank is (schemas, bounds, hook contracts, bindings, pins), its tests run on the interpreter, and `npm run studio -- bank-pack <bank> --write` writes its lock file. `studio/test/bank-packs.test.ts` shows it on the first such bank.
 
 **Found, not fixed.** The example bank's lock file (`spec/examples/bank/pack.yaml`, written by `tools/build_factory.py`) depends on `p`, `uae.p` and `uae.wps`; the studio's `packManifest` derives `p` only, because it skips the references of tests. `compareManifest(env, 'b')` has reported that difference since before this change.
+
+**Decision (2026-11-22).** The owner adopted the recommendation: a bank pack MAY live in `content-configurations/banks/<bank>/` with a `pack.yaml`, loads only on request, and the spec's own validator checks such folders.
+
+**What was built.**
+- **R-11-26** (Part 11) states it: the folder, the tenant, the runtime's documents left out, the lock file, and loading only on request (the example bank's seeded pack is the one always read).
+- **Lint L35** in `tools/validate.py` reads every folder of `content-configurations/banks/` beside `spec/`: its `pack.yaml` is a valid bank pack that names its tenant; every studio artefact in the folder (outside the studio's own `artefacts/`, `configuration-sets/` and `scripts/`) is schema-valid, names no other tenant, is in scope `b` or is a test, and refers only to the factory or the folder; and the lock file lists every artefact by kind, release, hash and path, and nothing else. Mutations M29 (a document names another tenant), M30 (an artefact changes and its lock file is stale) and M31 (`pack.yaml` is not a bank pack) prove it; `tools/mutation_tests.py` now copies the bank folders beside `spec/`. `banks/dib/` and `banks/example-bank/` pass.
+- **The note above is fixed.** The studio's `packManifest` now counts the references of a bank pack's tests, which are in its lock file, and `tools/build_factory.py` derives the example bank's dependencies the same way instead of naming them. Both give `p` for the example bank, and `p`, `uae.p` and `uae.wps` for the bank in `banks/dib/` (its tests run WPS). `compareManifest(env, 'b')` is equal, and `studio/test/bank-packs.test.ts` now asserts it whole.
+- `Store.reload` no longer asks for the example bank's folder by name, so `seed-content --write-local` can regenerate the example bank's `pack.yaml`.
+- **The bank's hooks.** `banks/dib/` carries the employer AML check and the labour ministry notification complete (hook, activity, script-behind in `banks/dib/scripts/`, port, simulator, tests) and switched off: the shipped `bindings` is empty. `studio/test/dib-hooks.test.ts` binds them in a test-only configuration and runs a salary file end to end (cleared, refused, ministry refusing), and fails if either is bound in the shipped configuration. `banks/dib/README.md` says how to switch them on.
+
 
 ## I-44. The content branch as the studio's only store
 
@@ -595,6 +633,24 @@ Write this into Annex A's leg table and Part 5's outcome list, and add a factory
 **Recommendation.** Decide what proves an engine's persistence. Either accept the kit on a real server without the scenarios whose business waits are longer than a few minutes, since the time-skipping server covers their logic and the persistence suites cover the store; or give the harness a business-clock scale for real servers (one business hour to one real second, say), applied to every timer and to the front door, and add a kit check that the scale changes no trace.
 
 **What is built.** `runtime/temporal-mssql/scripts/kit-on-sqlserver.sh` runs the kit on several servers on SQL Server side by side. The CI job `temporal-sqlserver` runs it without the six long-wait scenarios, and says so. `runtime/temporal-mssql/README.md` gives the result of the full run, scenario by scenario.
+
+## I-49. The Flowable harness does not apply R-05-43 to R-05-45
+
+**Issue.** The studio interpreter and the engines' shared interpreter (DTFx, Elsa, Temporal) apply the time rule (R-05-43), the families (R-05-44) and durations from parameters (R-05-45). The Flowable harness (`studio/engines/flowable/`) translates the expanded form to BPMN and has its own front door in Java. It was not changed here: Flowable belongs to parallel work, and it was not run. Its front door has no family and no block start, and its BPMN timer reads a literal duration, so CK-AWAIT-06 and CK-AWAIT-07 are expected to fail there, and the WPS returns subflow would not translate (`{ parameter }` is not a duration).
+
+**Recommendation.** In the Flowable binding: carry `family` on the catch's annotation and compare it in `frontDoor` and `deliverHeld`; record the start time of each block's sub-process and drop a held message older than it once an earlier catch of the same message has fired; and resolve a `{ parameter, default }` duration from the deployment's values before the timer is written. Then run the kit and expect 48 of 48. Until then the release gate (R-C-05) is red on Flowable for these two scenarios, and `studio/test/blackbox/engines.test.ts` (opt in, `TH_ENGINES=1`) expects 48 of 48 there, so it fails until then.
+
+## I-50. "Only a message received after the await began" contradicts R-05-30
+
+**Issue.** I-41 asks Part 5 to say that an await takes only a message received after the await began. R-05-30 says a message delivered before its await starts is kept and consumed by that await (CK-AWAIT-04). Both cannot hold. The reply to a send can arrive between the send and the await, and the PSI can arrive before the agent leg starts. The source's rule is narrower: a response newer than the upload, that is after the exchange began.
+
+**Recommendation.** Keep R-05-30, and state the time rule as R-05-43 does: once an earlier await of the same instance has waited for the same message, an await takes only a message received after the composite step that holds it began; the first await of a message takes one kept since the instance began. This is what the interpreter and the engines do, and what CK-AWAIT-06 proves. If the owner wants the rule as worded, R-05-30 must change and CK-AWAIT-04 go.
+
+## I-51. Thirty days, or thirty business days
+
+**Issue.** The source waits 2,592,000 s, 30 calendar days, for the RFA acknowledgement. The decision asks for a wait of 30 days by default, bounded 1 to 30 days, on the business calendar. On the UAE business calendar 30 business days are about six weeks.
+
+**Recommendation.** Keep the parameter on the business calendar, as decided, and confirm the default with the rulebook (D10). If the scheme counts calendar days, 30 of them are about 22 business days: set the default to `P22D`, or let the parameter carry its own calendar.
 
 ## Not done, and why
 

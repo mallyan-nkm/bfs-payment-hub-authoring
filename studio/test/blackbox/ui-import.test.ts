@@ -38,9 +38,9 @@ describe('import in the web app', () => {
     await page.getByTestId('import-summary').waitFor({ timeout: 60000 });
     expect(await page.getByText('may be imported').count()).toBe(1);
     const coverage = (await page.getByTestId('import-coverage').textContent()) ?? '';
-    expect(coverage).toMatch(/Source files82/);
+    expect(coverage).toMatch(/Source files87/);
     expect(coverage).toMatch(/Neither0/);
-    expect(await page.getByTestId('import-tests').locator('tbody tr').count()).toBe(13);
+    expect(await page.getByTestId('import-tests').locator('tbody tr').count()).toBe(16);
     expect(await page.getByTestId('import-tests').getByText('fail').count()).toBe(0);
     // The planned messages the extraction retired are listed, each with its reason.
     expect(await page.getByText(/Planned in the source, not built/).count()).toBe(3);

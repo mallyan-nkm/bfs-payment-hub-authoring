@@ -20,6 +20,7 @@ do:
     await:
       message: uae.wps.ack
       correlateBy: header.fileId
+      family: sif
       onTimeout: { return: pending }
   - id: read-ack
     call: uae.wps.map.ack-in.v1

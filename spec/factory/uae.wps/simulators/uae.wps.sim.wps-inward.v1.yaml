@@ -17,9 +17,14 @@ scenarios:
       - send: uae.wps.psi
       - expect: uae.wps.prc
       - send: uae.wps.ack
+        family: prc
         status: accepted
         after: PT10M
       - expect: uae.wps.dif
+      - send: uae.wps.ack
+        family: dif
+        status: accepted
+        after: PT10M
   - name: payment-file-wrong-agent
     steps:
       - send: uae.wps.pif
@@ -30,11 +35,17 @@ scenarios:
       - send: uae.wps.psi
       - expect: uae.wps.prc
       - send: uae.wps.ack
+        family: prc
         status: accepted
         after: PT10M
       - expect: uae.wps.dif
+      - send: uae.wps.ack
+        family: dif
+        status: accepted
+        after: PT10M
       - expect: uae.wps.rfa
       - send: uae.wps.ack
+        family: rfa
         status: accepted
         after: PT10M
   - name: payment-file-returns-refused
@@ -43,13 +54,39 @@ scenarios:
       - send: uae.wps.psi
       - expect: uae.wps.prc
       - send: uae.wps.ack
+        family: prc
         status: accepted
         after: PT10M
       - expect: uae.wps.dif
+      - send: uae.wps.ack
+        family: dif
+        status: accepted
+        after: PT10M
       - expect: uae.wps.rfa
       - send: uae.wps.ack
+        family: rfa
         status: rejected
         reasonCode: FF01
+        after: PT10M
+  - name: payment-file-disbursement-refused-returns-accepted
+    steps:
+      - send: uae.wps.pif
+      - send: uae.wps.psi
+      - expect: uae.wps.prc
+      - send: uae.wps.ack
+        family: prc
+        status: accepted
+        after: PT10M
+      - expect: uae.wps.dif
+      - send: uae.wps.ack
+        family: dif
+        status: rejected
+        reasonCode: FF01
+        after: PT10M
+      - expect: uae.wps.rfa
+      - send: uae.wps.ack
+        family: rfa
+        status: accepted
         after: PT10M
   - name: payment-file-returns-no-reply
     steps:
@@ -57,9 +94,14 @@ scenarios:
       - send: uae.wps.psi
       - expect: uae.wps.prc
       - send: uae.wps.ack
+        family: prc
         status: accepted
         after: PT10M
       - expect: uae.wps.dif
+      - send: uae.wps.ack
+        family: dif
+        status: accepted
+        after: PT10M
       - expect: uae.wps.rfa
       - noReply: true
   - name: return-file

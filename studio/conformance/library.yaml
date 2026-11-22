@@ -426,6 +426,22 @@ scenarios:
     steps:
       - { expect: ck.kit.request, failTimes: 2 }
       - { send: ck.kit.reply, status: accepted }
+  # CK-AWAIT-06 (R-05-43): a second, stale reply to the first request arrives between the two exchanges.
+  - name: stale-reply-between
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted, after: PT1S }
+      - { send: ck.kit.reply, status: rejected, reasonCode: AC04, after: PT10S }
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, status: accepted, after: PT1S }
+  # CK-AWAIT-07 (R-05-44): a late reply of family a arrives while the second exchange waits for family b.
+  - name: late-a-during-b
+    steps:
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, family: a, status: accepted, after: PT1S }
+      - expect: ck.kit.request
+      - { send: ck.kit.reply, family: a, status: rejected, reasonCode: AC04, after: PT2S }
+      - { send: ck.kit.reply, family: b, status: accepted, after: PT5S }
   - name: no-reply-then-status-accepted
     steps:
       - expect: ck.kit.request
@@ -459,7 +475,7 @@ title: Conformance kit scheme
 wire: iso20022
 messages:
   - { id: ck.kit.request, title: Request the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.send.v1 } }
-  - { id: ck.kit.reply, title: Reply that belongs to a running payment, direction: in, confirmed: true, disposition: { deliver: { correlateBy: end-to-end id } } }
+  - { id: ck.kit.reply, title: Reply that belongs to a running payment, direction: in, confirmed: true, disposition: { deliver: { correlateBy: end-to-end id, families: [a, b] } } }
   - { id: ck.kit.status-request, title: Status request the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.inquire.v1 } }
   - { id: ck.kit.request-in, title: Request the platform answers without state, direction: in, confirmed: true, disposition: { handler: ck.kit.handler.answer.v1 } }
   - { id: ck.kit.answer, title: Answer the platform sends, direction: out, confirmed: true, disposition: { sentBy: ck.kit.exchange.answer.v1 } }
@@ -589,6 +605,124 @@ do:
     await:
       message: ck.kit.reply
       correlateBy: header.endToEndId
+      onTimeout: { return: pending }
+  - id: read
+    call: ck.kit.map.reply.v1
+    handle:
+      refused: { return: rejected }
+  - return: accepted
+---
+# CK-AWAIT-06 and CK-AWAIT-07 (R-05-43, R-05-44): a second exchange with the same party, on the same reply message.
+# Its send has its own idempotency key, so it is a new request, not a retry of the first.
+kind: activity
+name: ck.kit.exchange.send-b.v1
+release: 1.0.0
+title: Kit second send whose reply comes later
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: unknown }
+errors:
+  - { name: TransientError, retryable: true }
+  - { name: BusinessReject, retryable: false }
+effect: external
+idempotencyKey: concat(header.paymentId, ':send-b')
+ports: [ck.kit.port.party.v1]
+policy:
+  attemptTimeout: PT3S
+  totalTimeout: PT8S
+  retry: { maxAttempts: 3, firstInterval: PT1S, backoff: 2, nonRetryable: [BusinessReject] }
+implementation: { binding: script, language: typescript, script: scripts/ck.kit.exchange.send-b.v1.ts }
+---
+kind: activity
+name: ck.kit.exchange.request-a.v1
+release: 1.0.0
+title: Kit composite. Send a request and take only a reply of family a
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: pending }
+errors:
+  - { name: TransientError, retryable: true }
+effect: external
+idempotencyKey: concat(header.paymentId, ':request-a')
+ports: [ck.kit.port.party.v1]
+policy: { replyTimeout: PT1H }
+implementation: { binding: subflow, subflow: ck.kit.sub.request-a.v1 }
+---
+kind: workflow
+wfKind: subflow
+name: ck.kit.sub.request-a.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Kit subflow. Send, await the reply of family a, read it
+implements: { activity: ck.kit.exchange.request-a.v1 }
+exit: { outcomes: [accepted, rejected, pending] }
+do:
+  - id: send
+    call: ck.kit.exchange.send.v1
+    handle:
+      rejected: { return: rejected }
+      unknown: { return: pending }
+  - id: await
+    await:
+      message: ck.kit.reply
+      correlateBy: header.endToEndId
+      family: a
+      onTimeout: { return: pending }
+  - id: read
+    call: ck.kit.map.reply.v1
+    handle:
+      refused: { return: rejected }
+  - return: accepted
+---
+kind: activity
+name: ck.kit.exchange.request-b.v1
+release: 1.0.0
+title: Kit composite. Send a second request and take only a reply of family b
+type: exchange
+mode: send
+reads: [header, messages]
+writes: [status, messages]
+outcomes:
+  - { name: accepted, primary: true }
+  - { name: rejected }
+  - { name: pending }
+errors:
+  - { name: TransientError, retryable: true }
+effect: external
+idempotencyKey: concat(header.paymentId, ':request-b')
+ports: [ck.kit.port.party.v1]
+policy: { replyTimeout: PT1H }
+implementation: { binding: subflow, subflow: ck.kit.sub.request-b.v1 }
+---
+kind: workflow
+wfKind: subflow
+name: ck.kit.sub.request-b.v1
+release: 1.0.0
+dsl: 1.0.0
+title: Kit subflow. Send the second request, await the reply of family b, read it
+implements: { activity: ck.kit.exchange.request-b.v1 }
+exit: { outcomes: [accepted, rejected, pending] }
+do:
+  - id: send
+    call: ck.kit.exchange.send-b.v1
+    handle:
+      rejected: { return: rejected }
+      unknown: { return: pending }
+  - id: await
+    await:
+      message: ck.kit.reply
+      correlateBy: header.endToEndId
+      family: b
       onTimeout: { return: pending }
   - id: read
     call: ck.kit.map.reply.v1

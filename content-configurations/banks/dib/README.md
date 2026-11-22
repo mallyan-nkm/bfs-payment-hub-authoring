@@ -14,6 +14,7 @@ Shared content names no bank. The tenant id `dib` is in `spec/tools/deny-names.t
 | `uae.wps.salary-file-rules.yaml` | configuration-values | The bank's values for the CBX salary-file checks and `BankRoutingCode`. | The runtime (`WpsRuleValues`) |
 | `hooks/` | hook | The employer AML check and the labour ministry notification. | The studio |
 | `activities/`, `ports/`, `simulators/` | activity, port, simulator | What the hooks call, and the test doubles for their ports. | The studio |
+| `scripts/` | script-behind | The scripts of the two activities the hooks call. | The studio |
 | `rules/` | | Empty. The bank has no rule of its own: its values set factory rules' parameters (below). | |
 | `tests/` | test | Seven bank tests and one synthetic payment file (`tests/samples/`). | The studio |
 
@@ -48,21 +49,30 @@ Every value is effective from 2026-11-21, the day the bank's configuration start
 - **CBX values.** The source's CBX parameters keep their names, so the bank's existing values carry over. `BankRoutingCode` replaces the source's `DIBRoutingCode`.
 - **Port binding.** Core banking is a port. The source's `CoreBanking:*` settings are the binding's settings, and switching core banking is a new binding with a later `validFrom`.
 - **Hooks.** The source's two bank-only WPS steps with a business effect are hooks: the employer AML check (halt, after the file's checks, fails closed as the source did) and the labour ministry notification (notify, on close, fails open as the source did). Their services are bank ports, with simulators for tests.
-- **Not bound.** No live salary-file workflow of the source calls either step: `dsl/workflows/dib-wps-outward.v1.workflow.json` (3.7.2), `dib-wps-outward-cbx.v1.workflow.json` (1.1.8) and `dib-wps-ui-upload.v1.workflow.json` (3.6.0) call only platform `wps.*` activities. Only a unit test calls them. Binding them would add steps the bank does not run today, so `bindings` is empty. To bind one, add a line:
+- **Built, but switched off.** No live salary-file workflow of the source calls either step: `dsl/workflows/dib-wps-outward.v1.workflow.json` (3.7.2), `dib-wps-outward-cbx.v1.workflow.json` (1.1.8) and `dib-wps-ui-upload.v1.workflow.json` (3.6.0) call only platform `wps.*` activities. Only a unit test calls them. Binding them would add steps the bank does not run today, so the shipped `bindings` is empty. Each hook is complete: the hook, the activity it calls and its script-behind (`scripts/`), the bank port, a simulator for the port, and tests (BANK-AML-001, BANK-AML-002, BANK-NTF-001 run each hook alone). `studio/test/dib-hooks.test.ts` binds both in a configuration that exists only in the test and runs a synthetic salary file end to end: the AML service clears the employer and the ministry is told; the AML service refuses the employer and nothing is sent to WPS; the ministry refuses and the payment still settles. The same file fails if either hook is bound in the shipped `configuration-set.yaml`.
 
-  ```yaml
-  bindings:
-    - hookPoint: p.seg.check-and-screen.v1#after-validate
-      hook: b.hook.employer-aml-check.v1
-      release: 1.0.0
-      validFrom: "<from when>"
-    - hookPoint: p.wf.corporate.v1#on-close
-      hook: b.hook.labour-ministry-notify.v1
-      release: 1.0.0
-      validFrom: "<from when>"
-  ```
+  **To switch them on.** It is the bank's decision, made through maker-checker like any change to its configuration:
 
-  `studio/test/bank-packs.test.ts` checks that these bindings are accepted.
+  1. Confirm the bank's AML screening and labour ministry services are reachable from the runtime, and set where they are at deployment (below, "What a deployment must set").
+  2. Add the bindings to `configuration-set.yaml`, from the day they start:
+
+     ```yaml
+     bindings:
+       - hookPoint: p.seg.check-and-screen.v1#after-validate
+         hook: b.hook.employer-aml-check.v1
+         release: 1.0.0
+         validFrom: "<from when>"
+       - hookPoint: p.wf.corporate.v1#on-close
+         hook: b.hook.labour-ministry-notify.v1
+         release: 1.0.0
+         validFrom: "<from when>"
+     ```
+
+     One line switches on one hook; they are independent. A payment in flight keeps the bindings it started with (CK-PIN-02).
+  3. In the same change, change the first case of `studio/test/dib-hooks.test.ts` ("ships with neither hook bound") to expect the bindings, and say why in the change.
+  4. Run `cd studio && npm run studio -- --bank dib check`, `npm run studio -- --bank dib test` and `npx vitest run test/bank-packs.test.ts test/dib-hooks.test.ts`, then `npm run studio -- bank-pack dib --write` if an artefact changed.
+
+  To switch one off again, give its binding a `validTo`; never delete a binding a payment may have started with.
 - **Gone.** The source's queue pins (`wps-dib-platform`, `wps-dib-bank`), its default tenant and its bank routing rules (`WPS-DIB-OUTWARD-CHANNEL-IB-SIF-V1`, `WPS-DIB-OUTWARD-CBX-SIF-V1`) are not configuration. The factory's dispatch table chooses the workflow, and a tenant is always given.
 
 ## Secrets, by reference

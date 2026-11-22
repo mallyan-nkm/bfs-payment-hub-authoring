@@ -91,7 +91,17 @@ def walk(steps):
             yield from walk(holder[key])
 
 
-def rename(steps, prefix, policy):
+def qualify(holder, key, act):
+    """A duration that names a parameter of the composite: name it in full and carry its default (R-05-45)."""
+    v = holder.get(key)
+    if isinstance(v, dict) and "parameter" in v and "#" not in v["parameter"]:
+        decl = (act.get("parameters") or {}).get(v["parameter"])
+        if decl is None:
+            sys.exit("%s declares no parameter %s" % (act["name"], v["parameter"]))
+        holder[key] = {"parameter": "%s#%s" % (act["name"], v["parameter"]), "default": decl["default"]}
+
+
+def rename(steps, prefix, policy, act):
     """Prefix the ids inside a subflow and resolve its reply waits against the calling step."""
     inner = {st["id"] for st in walk(steps) if "id" in st}
     for st in walk(steps):
@@ -101,6 +111,10 @@ def rename(steps, prefix, policy):
             ref = (st.get(key) or {}).get("until" if key == "loop" else "by") or {}
             if ref.get("outcomeOf") in inner:
                 ref["outcomeOf"] = "%s.%s" % (prefix, ref["outcomeOf"])
+        if "wait" in st:
+            qualify(st, "wait", act)
+        if "await" in st and "timeout" in st["await"]:
+            qualify(st["await"], "timeout", act)
         if "await" in st and "timeout" not in st["await"]:
             if "replyTimeout" not in policy:
                 sys.exit("%s: an await has no timeout and the calling step has no replyTimeout" % prefix)
@@ -108,7 +122,7 @@ def rename(steps, prefix, policy):
             if "replyCalendar" in policy and "calendar" not in st["await"]:
                 st["await"]["calendar"] = policy["replyCalendar"]
             # keep the key order of a hand-written await: message, correlateBy, timeout, calendar, onTimeout
-            order = ["message", "correlateBy", "timeout", "calendar", "onTimeout"]
+            order = ["message", "correlateBy", "family", "timeout", "calendar", "onTimeout"]
             st["await"] = {k: st["await"][k] for k in order if k in st["await"]}
     return steps
 
@@ -127,7 +141,7 @@ def expand(steps, stack=()):
             if "id" not in st:
                 sys.exit("a step that calls the composite %s needs an id" % act["name"])
             policy = {**(act.get("policy") or {}), **(st.get("policy") or {})}
-            body = rename(expand(copy.deepcopy(sub["do"]), stack + (act["name"],)), st["id"], policy)
+            body = rename(expand(copy.deepcopy(sub["do"]), stack + (act["name"],)), st["id"], policy, act)
             block = {"id": st["id"], "block": {"of": act["name"], "by": sub["name"], "do": body}}
             if st.get("handle"):
                 block["handle"] = st["handle"]

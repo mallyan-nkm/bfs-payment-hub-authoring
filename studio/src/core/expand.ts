@@ -44,8 +44,25 @@ export function walkSteps(steps: any[] | undefined, out: any[] = []): any[] {
   return out;
 }
 
-function rename(steps: any[], prefix: string, policy: any): any[] {
+/** A duration that names a parameter of the composite: name it in full and carry its default (R-05-45). */
+function qualify(holder: any, key: string, act: any) {
+  const v = holder?.[key];
+  if (!v || typeof v !== 'object' || typeof v.parameter !== 'string' || v.parameter.includes('#')) return;
+  const decl = act?.parameters?.[v.parameter];
+  if (!decl) throw new ExpansionError(undefined, `${act?.name} declares no parameter ${v.parameter} (L17)`);
+  holder[key] = { parameter: `${act.name}#${v.parameter}`, default: decl.default };
+}
+
+function qualifyAll(steps: any[], act: any) {
+  for (const st of walkSteps(steps)) {
+    if ('wait' in st) qualify(st, 'wait', act);
+    if (st.await && 'timeout' in st.await) qualify(st.await, 'timeout', act);
+  }
+}
+
+function rename(steps: any[], prefix: string, policy: any, act?: any): any[] {
   const inner = new Set(walkSteps(steps).filter((s) => s.id).map((s) => s.id));
+  if (act) qualifyAll(steps, act);
   for (const st of walkSteps(steps)) {
     if (st.id) st.id = `${prefix}.${st.id}`;
     const refs = [st.loop?.until, st.switch?.by];
@@ -54,7 +71,7 @@ function rename(steps: any[], prefix: string, policy: any): any[] {
       if (!policy.replyTimeout) throw new ExpansionError(prefix, `${prefix}: an await has no timeout and the calling step has no replyTimeout (L32)`);
       const aw: any = { ...st.await, timeout: policy.replyTimeout };
       if (policy.replyCalendar && !('calendar' in aw)) aw.calendar = policy.replyCalendar;
-      st.await = Object.fromEntries(['message', 'correlateBy', 'timeout', 'calendar', 'onTimeout'].filter((k) => k in aw).map((k) => [k, aw[k]]));
+      st.await = Object.fromEntries(['message', 'correlateBy', 'family', 'timeout', 'calendar', 'onTimeout'].filter((k) => k in aw).map((k) => [k, aw[k]]));
     }
   }
   return steps;
@@ -72,7 +89,7 @@ function expandSteps(steps: any[], resolve: DocResolver, stack: string[]): any[]
       if (stack.includes(act.name)) throw new ExpansionError(st.id, `The composite ${act.name} calls itself through its subflow`);
       if (!st.id) throw new ExpansionError(undefined, `A step that calls the composite ${act.name} needs an id (L30)`);
       const policy = { ...(act.policy ?? {}), ...(st.policy ?? {}) };
-      const body = rename(expandSteps(clone(sub.do), resolve, [...stack, act.name]), st.id, policy);
+      const body = rename(expandSteps(clone(sub.do), resolve, [...stack, act.name]), st.id, policy, act);
       const block: any = { id: st.id, block: { of: act.name, by: sub.name, do: body } };
       if (st.handle && Object.keys(st.handle).length) block.handle = st.handle;
       out.push(block);
@@ -103,6 +120,7 @@ export function expandWorkflow(doc: any, resolve: DocResolver): any {
 export function expandSubflow(sub: any, resolve: DocResolver, act: any, stepPolicy?: any): any {
   const policy = { ...(act?.policy ?? {}), ...(stepPolicy ?? {}) };
   const body = expandSteps(clone(sub.do), resolve, [act?.name ?? sub.name]);
+  if (act) qualifyAll(body, act);
   for (const st of walkSteps(body)) {
     if (st.await && !('timeout' in st.await) && policy.replyTimeout) {
       st.await = { ...st.await, timeout: policy.replyTimeout, ...(policy.replyCalendar && !st.await.calendar ? { calendar: policy.replyCalendar } : {}) };

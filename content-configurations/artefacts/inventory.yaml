@@ -163,7 +163,7 @@ packs:
   - scope: uae.wps
     packType: shared
     counts:
-      activity: 26
+      activity: 27
       extension: 1
       port: 2
       rule: 11
@@ -171,15 +171,17 @@ packs:
       table: 1
       scheme: 1
       simulator: 3
-      test: 13
-      workflow: 10
-    total: 71
+      test: 16
+      workflow: 11
+    total: 76
     artefacts:
       - name: uae.wps.decide.returns.v1
         kind: activity
       - name: uae.wps.exchange.confirm-receipt.v1
         kind: activity
       - name: uae.wps.exchange.receive-supplement.v1
+        kind: activity
+      - name: uae.wps.exchange.report-disbursement.v1
         kind: activity
       - name: uae.wps.exchange.request-refund.v1
         kind: activity
@@ -283,6 +285,12 @@ packs:
         kind: test
       - name: WPS-IN-004
         kind: test
+      - name: WPS-IN-005
+        kind: test
+      - name: WPS-IN-006
+        kind: test
+      - name: WPS-IN-007
+        kind: test
       - name: WPS-MAP-001
         kind: test
       - name: WPS-MAP-002
@@ -300,6 +308,8 @@ packs:
       - name: uae.wps.sub.confirm-receipt.v1
         kind: workflow
       - name: uae.wps.sub.receive-supplement.v1
+        kind: workflow
+      - name: uae.wps.sub.report-disbursement.v1
         kind: workflow
       - name: uae.wps.sub.request-refund.v1
         kind: workflow

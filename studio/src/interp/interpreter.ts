@@ -116,9 +116,15 @@ export interface Frame {
   detail?: boolean; // inside a block: steps go to the detail, not the business trace
   item?: { index: number; item: any; parent: any };
   label?: (id: string) => string;
+  blockStartedAt?: number; // when the innermost composite step began (R-05-43)
 }
 
 let idSeq = 0;
+
+/** Can an await that names this family (or none) take this message? A message with no family fits any await (R-05-44). */
+export function familyFits(awaitFamily: string | undefined, m: { family?: string }): boolean {
+  return !awaitFamily || !m.family || m.family === awaitFamily;
+}
 
 export class Instance {
   readonly id: string;
@@ -147,7 +153,8 @@ export class Instance {
   mailbox: Message[] = [];
   consumed = new Set<string>();
   expiredAwaits = new Set<string>();
-  awaiting?: { type: string; key?: string; value?: any; resolve: (m: Message) => void; stepId: string };
+  awaitedKeys = new Set<string>(); // the message of every await this instance has started (R-05-43)
+  awaiting?: { type: string; family?: string; key?: string; value?: any; resolve: (m: Message) => void; stepId: string };
   waiters: { type: string; resolve: (m: Message) => void }[] = [];
   paused = false;
   resumeWaiters: (() => void)[] = [];
@@ -239,9 +246,19 @@ export class Run {
     }
   }
 
-  /** Take an early message of a type that belongs to this instance's payment. */
-  takeEarly(inst: Instance, type: string): Message | undefined {
-    const m = this.mailbox.find((x) => x.type === type && this.correlatesPublic(inst, x));
+  /**
+   * Take an early message of a type that belongs to this instance's payment (R-05-30): one of the await's family
+   * (R-05-44), received after the step that holds the await began (R-05-43). One received before is not this
+   * await's: it is recorded as unmatched and handed to operations (R-05-31).
+   */
+  takeEarly(inst: Instance, type: string, family?: string, since = Number.NEGATIVE_INFINITY): Message | undefined {
+    const fits = (x: Message) => x.type === type && familyFits(family, x) && this.correlatesPublic(inst, x);
+    for (const stale of this.mailbox.filter((x) => fits(x) && (x.receivedAt ?? x.at) < since)) {
+      this.mailbox = this.mailbox.filter((x) => x !== stale);
+      this.unmatched.push({ message: stale, reason: 'received before the await began' });
+      inst.event('unmatched', undefined, { type: stale.type, reason: 'received before the await began' });
+    }
+    const m = this.mailbox.find(fits);
     if (m) this.mailbox = this.mailbox.filter((x) => x !== m);
     return m;
   }
@@ -369,6 +386,7 @@ export class Run {
 
   /** Every message that reaches the platform passes the front door (Part 5, 5.3; R-05-30 to R-05-32). */
   frontDoor(m: Message) {
+    m.receivedAt = this.clock.now;
     this.messages.push(m);
     this.timeline.push({ at: this.clock.elapsed, instance: 'front-door', type: 'message-in', detail: { id: m.id, type: m.type, status: m.status, copy: m.copy } });
     const entry = this.catalogueEntry(m.type);
@@ -383,7 +401,7 @@ export class Run {
     }
     // Deliver: find the instance by correlation.
     const candidates = this.allInstances().filter((i) => this.correlates(i, m));
-    const alive = candidates.find((i) => !i.ended && (i.awaiting?.type === m.type || i.waiters.some((w) => w.type === m.type))) ?? [...candidates].reverse().find((i) => !i.ended);
+    const alive = candidates.find((i) => !i.ended && ((i.awaiting?.type === m.type && familyFits(i.awaiting.family, m)) || i.waiters.some((w) => w.type === m.type))) ?? [...candidates].reverse().find((i) => !i.ended);
     const target = alive ?? candidates[candidates.length - 1];
     if (!target) {
       this.unmatched.push({ message: m, reason: 'no instance' });
@@ -409,7 +427,7 @@ export class Run {
       w.resolve(m);
       return;
     }
-    if (target.awaiting && target.awaiting.type === m.type) {
+    if (target.awaiting && target.awaiting.type === m.type && familyFits(target.awaiting.family, m)) {
       const a = target.awaiting;
       target.awaiting = undefined;
       target.consumed.add(id);
@@ -684,7 +702,7 @@ async function execBlock(st: any, frame: Frame) {
   inst.event('block-start', label(frame, id), { of: st.block.of, by: st.block.by });
   let outcome = primaryOutcome(act);
   try {
-    await execSteps(st.block.do ?? [], { ...frame, detail: true });
+    await execSteps(st.block.do ?? [], { ...frame, detail: true, blockStartedAt: inst.run.clock.now });
   } catch (e) {
     if (e instanceof ReturnFlow) outcome = e.outcome;
     else throw e;
@@ -1194,8 +1212,13 @@ async function execAwait(st: any, frame: Frame) {
   const run = inst.run;
   const aw = st.await;
   const id = st.id ?? 'await';
-  inst.event('await-start', id, { message: aw.message, timeout: aw.timeout, calendar: aw.calendar });
-  const early = run.takeEarly(inst, aw.message);
+  const timeout = durationOf(aw.timeout, frame);
+  inst.event('await-start', id, { message: aw.message, family: aw.family, timeout, calendar: aw.calendar });
+  // R-05-43: once an await of this instance has waited for this message, a later await takes only a message
+  // received after the step that holds it began; an earlier one answered the earlier exchange.
+  const since = inst.awaitedKeys.has(aw.message) ? frame.blockStartedAt ?? run.clock.now : Number.NEGATIVE_INFINITY;
+  inst.awaitedKeys.add(aw.message);
+  const early = run.takeEarly(inst, aw.message, aw.family, since);
   let msg: Message | null = null;
   if (early) {
     inst.consumed.add(early.inReplyTo ? `${early.type}:${early.inReplyTo}:${early.status ?? ''}` : early.id);
@@ -1208,9 +1231,9 @@ async function execAwait(st: any, frame: Frame) {
         inst.awaiting = undefined;
         reject(new Cancelled(r));
       });
-      inst.awaiting = { type: aw.message, stepId: id, resolve: (m) => { kill(); off(); resolve(m); } };
-      if (aw.timeout) {
-        const at = addDuration(run.clock.now, aw.timeout, aw.calendar === 'business' ? DEFAULT_CALENDAR : undefined);
+      inst.awaiting = { type: aw.message, family: aw.family, stepId: id, resolve: (m) => { kill(); off(); resolve(m); } };
+      if (timeout) {
+        const at = addDuration(run.clock.now, timeout, aw.calendar === 'business' ? DEFAULT_CALENDAR : undefined);
         kill = run.clock.at(at, () => {
           off();
           inst.awaiting = undefined;
@@ -1235,8 +1258,20 @@ async function execAwait(st: any, frame: Frame) {
   frame.ctx.messages.lastReceived = ref;
 }
 
+/**
+ * A duration as a step names it: a literal, or a parameter of the composite whose subflow holds the step, looked up
+ * for the tenant on the business date the step starts, else its default (R-05-45).
+ */
+function durationOf(v: any, frame: Frame): string | undefined {
+  if (!v || typeof v !== 'object') return v;
+  const run = frame.inst.run;
+  const [owner, param] = String(v.parameter).split('#');
+  if (!param) throw new StepFailure('wait', `The parameter ${v.parameter} is not named in full; run the expanded form`);
+  return run.lookupParam(owner, param, { default: v.default ?? run.resolveDoc(owner)?.parameters?.[param]?.default }, run.clock.today());
+}
+
 async function execWait(st: any, frame: Frame) {
-  const d = st.wait;
+  const d = durationOf(st.wait, frame);
   if (!isDuration(d)) throw new StepFailure(st.id ?? 'wait', `wait needs a duration, not ${d}`);
   frame.inst.event('wait', st.id, { duration: d });
   await frame.inst.run.clock.sleepUntil(addDuration(frame.inst.run.clock.now, d), frame.scope, 'wait');

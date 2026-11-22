@@ -66,7 +66,7 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 | R-09-13 | Large batches MUST be chunked on history-based engines. The chunk size comes from the binding. | Conformance CK-FOREACH-02 |
 | R-09-14 | Handlers MUST be exported as plain request handlers at the interop boundary, outside the durable engine. | Conformance CK-HANDLER-01 |
 | R-09-15 | A generated BPMN document MUST be reproducible: the same input gives the same bytes. | Generator test (C22) |
-| R-09-16 | A binding MUST keep a message that reaches an instance before its `await` starts, and MUST hand a message that finds no waiting instance to operations as unmatched. Where an engine delivers a message only to an execution that is already waiting, the binding holds the message until it is. | Conformance CK-AWAIT-03, CK-AWAIT-04 |
+| R-09-16 | A binding MUST keep a message that reaches an instance before its `await` starts, and MUST hand a message that finds no waiting instance to operations as unmatched. Where an engine delivers a message only to an execution that is already waiting, the binding holds the message until it is. A held message goes only to an await of its family (R-05-44), and not to an await whose step began after it was received once an earlier await waited for it (R-05-43). | Conformance CK-AWAIT-03, CK-AWAIT-04, CK-AWAIT-06, CK-AWAIT-07 |
 | R-09-17 | An engine binding MUST receive the expanded form only. It MUST NOT resolve a composite activity at run time. | Conformance CK-BLOCK-01 |
 | R-09-18 | On Elsa, the interpreter MUST keep its journal (the instance input and every result, in the order it arrived) in the workflow state Elsa persists, and MUST resume only from a bookmark. A resumed run MUST reach the same operations in the same order; a journal entry the replay does not reach MUST fail the run. | Conformance kit on Elsa (`studio/engines/elsa`); replay check in the harness |
 | R-09-19 | The studio MUST be connected to exactly one GitHub repository and content branch, by its environment: `TH_CONTENT_REPO`, `TH_CONTENT_BRANCH`, `TH_GITHUB_TOKEN` and, for another API base, `TH_GITHUB_API`. The branch MUST already exist, and the studio MUST NOT start without a connection. Only a shared checker or service operations changes how the studio publishes (mode, engine target, environment), in `governance/settings.yaml`. The token MUST come from the environment: it is never stored, shown, logged or written to the audit. | Content store tests (`studio/test/content.test.ts`: "does not start without TH_CONTENT_REPO", "never stores, shows, logs or writes the token", the settings refusal in "in pull-request mode") |
@@ -106,7 +106,7 @@ Limits that remain: compensation runs in reverse document order, which in parall
 
 ### Proved on Elsa 3.10.2 (I-30)
 
-The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 46 of 46 scenarios pass, and two runs give the same traces.
+The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 48 of 48 scenarios pass, and two runs give the same traces.
 
 | Who does what | |
 | --- | --- |

@@ -10,6 +10,7 @@ Run:  python3 tools/build_factory.py
 import hashlib
 import json
 import pathlib
+import re
 
 import yaml
 
@@ -238,13 +239,22 @@ act("uae.wps.exchange.request-refund.v1", "Request a refund and wait for its set
 act("uae.wps.exchange.receive-supplement.v1", "Wait for the supplementary file that pairs with the payment file", ["header"], ["messages"],
     ["received", "missing"], "read", mode="receive", ports=WPS_PORT, policy={"replyTimeout": "PT2H"},
     sub="uae.wps.sub.receive-supplement.v1", p=WP)
+act("uae.wps.exchange.report-disbursement.v1", "Report disbursement and get the acknowledgement", ["header", "messages"],
+    ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="report", ports=WPS_PORT,
+    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.report-disbursement.v1", p=WP)
+# The returns exchange (Issue I-41): how long it waits for the acknowledgement and how long the upload is held are
+# the bank's values, not constants. The source waits 30 days and may hold the upload for up to 10 minutes.
 act("uae.wps.exchange.return-credits.v1", "Return the credits that failed and get the acknowledgement", ["header", "messages"],
     ["status", "messages"], ["accepted", "rejected", "pending"], "external", mode="send", ports=WPS_PORT,
-    policy={"replyTimeout": "P1D", "replyCalendar": "business"}, sub="uae.wps.sub.return-credits.v1", p=WP)
+    policy={"replyCalendar": "business"}, sub="uae.wps.sub.return-credits.v1", p=WP,
+    params={"replyWait": {"type": "duration", "default": "P30D", "bounds": {"min": "P1D", "max": "P30D"},
+                          "description": "How long to wait for WPS to acknowledge the returns file, on the business calendar."},
+            "uploadHold": {"type": "duration", "default": "PT0S", "bounds": {"min": "PT0S", "max": "PT10M"},
+                           "description": "How long to hold the returns file before it is uploaded."}})
 
 # the agent's returns: which credits go back, and the posting once WPS has accepted the returns file
 act("uae.wps.decide.returns.v1", "Find the employee credits to return", ["items[]"], ["facts.returns"],
-    ["none", "returns"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
+    ["none", "returns", "unverified"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
 act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the returns file", ["header", "batch", "facts.returns"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
     comp="p.post.reverse.v1", service="accounting", p=WP,
@@ -495,16 +505,54 @@ table("p.table.rail-choice.v1", "Which rail carries a payment", "first",
        {"name": "requested rail disabled", "given": {"Header": {"scheme": "uae.wps"}, "Param": {"name": "enabledRails", "value": []}},
         "expect": {"decisions": [{"name": "rail", "value": "none"}]}}],
       params={"enabledRails": {"type": "list", "default": [], "description": "Rails this bank runs, in order of preference. A bank value."}})
-# WPS agent returns (provisional). A credit the core system refused is returned. A credit whose outcome is
-# unknown is not: it may have posted. Which failed credits a returns file carries is Issue I-39.
-RET = lambda *outs: {"Item": [{"facts": {"posting": {"outcome": o}}} for o in outs]}
+# WPS agent returns (provisional; Issue I-39). A credit the core system refused, or one the inquiry found not
+# posted, is returned. A credit whose outcome is still unknown after the inquiry is not decided: the file goes to
+# operations. A line's amount is round2(fixed pay + variable pay), half away from zero, and the returned amount is
+# the sum of the rounded lines, not the rounded sum. Every credit refused is the whole file returned (Issue I-40).
+REFUSED = "i.facts.posting.outcome == 'rejected' or (i.facts.posting.outcome == 'unknown' and i.facts.postingVerified.outcome == 'mismatch')"
+UNVERIFIED = "i.facts.posting.outcome == 'unknown' and not (i.facts.postingVerified.outcome in ['verified', 'mismatch'])"
+
+
+def RET(*outs, verify=None):
+    """Example items: each credit's posting outcome, the inquiry's answer where there is one, and synthetic pay."""
+    pay = [(1200.005, 300), (1999.995, 0)]
+    items = []
+    for n, o in enumerate(outs):
+        it = {"facts": {"posting": {"outcome": o}}, "ext": {"uae": {"wps": {"fixedPay": pay[n][0], "variablePay": pay[n][1]}}}}
+        if verify and verify[n]:
+            it["facts"]["postingVerified"] = {"outcome": verify[n]}
+        items.append(it)
+    return {"Item": items}
+
+
+def DEC(returns, scope, count, amount):
+    return {"decisions": [{"name": "returns", "value": returns}, {"name": "returnScope", "value": scope},
+                          {"name": "count", "value": count}, {"name": "amount", "value": amount}]}
+
+
 table("uae.wps.table.returns.v1", "Which employee credits go back to WPS in a returns file", "first",
-      [("refused", "sum(items, i => i.facts.posting.outcome == 'rejected')")], ["returns", "count"],
-      [{"when": {"refused": {"gt": 0}}, "then": {"returns": "returns", "count": "refused"}, "reason": "One or more credits were refused and are returned"},
-       {"when": {}, "then": {"returns": "none", "count": "refused"}, "reason": "Every credit posted, or its outcome is not yet known"}],
-      [{"name": "every credit posted", "given": RET("posted", "posted"), "expect": {"decisions": [{"name": "returns", "value": "none"}, {"name": "count", "value": 0}]}},
-       {"name": "one credit refused", "given": RET("rejected", "posted"), "expect": {"decisions": [{"name": "returns", "value": "returns"}, {"name": "count", "value": 1}]}},
-       {"name": "an unknown credit is not returned", "given": RET("posted", "unknown"), "expect": {"decisions": [{"name": "returns", "value": "none"}, {"name": "count", "value": 0}]}}],
+      [("refused", "sum(items, i => %s)" % REFUSED), ("stillUnknown", "sum(items, i => %s)" % UNVERIFIED),
+       ("allRefused", "count(items) > 0 and sum(items, i => %s) == count(items)" % REFUSED),
+       ("amount", "sumWhere(items, i => %s, i => round2(i.ext.uae.wps.fixedPay + i.ext.uae.wps.variablePay))" % REFUSED)],
+      ["returns", "returnScope", "count", "amount"],
+      [{"when": {"stillUnknown": {"gt": 0}}, "then": {"returns": "unverified", "returnScope": "none", "count": "refused", "amount": "amount"},
+        "reason": "A credit's outcome is still unknown after the inquiry; nothing is returned until every credit is known"},
+       {"when": {"allRefused": True}, "then": {"returns": "returns", "returnScope": "whole-file", "count": "refused", "amount": "amount"},
+        "reason": "Every credit was refused; the whole file is returned"},
+       {"when": {"refused": {"gt": 0}}, "then": {"returns": "returns", "returnScope": "partial", "count": "refused", "amount": "amount"},
+        "reason": "Some credits were refused and are returned; the others were paid"},
+       {"when": {}, "then": {"returns": "none", "returnScope": "none", "count": "refused", "amount": "amount"}, "reason": "Every credit posted"}],
+      [{"name": "every credit posted", "given": RET("posted", "posted"), "expect": DEC("none", "none", 0, 0)},
+       {"name": "one credit refused is a partial return; its line is rounded half away from zero", "given": RET("rejected", "posted"),
+        "expect": DEC("returns", "partial", 1, 1500.01)},
+       {"name": "every credit refused is the whole file; the amount is the sum of the rounded lines", "given": RET("rejected", "rejected"),
+        "expect": DEC("returns", "whole-file", 2, 3500.01)},
+       {"name": "an unknown credit the inquiry found not posted is returned", "given": RET("posted", "unknown", verify=[None, "mismatch"]),
+        "expect": DEC("returns", "partial", 1, 2000)},
+       {"name": "an unknown credit the inquiry found posted is not returned", "given": RET("posted", "unknown", verify=[None, "verified"]),
+        "expect": DEC("none", "none", 0, 0)},
+       {"name": "an unknown credit the inquiry could not settle stops the decision", "given": RET("rejected", "unknown"),
+        "expect": DEC("unverified", "none", 1, 1500.01)}],
       p=WP)
 
 
@@ -568,6 +616,15 @@ sim("p.sim.core-banking.v1", "Core banking simulator", "outward", "p.port.core-b
     # the first request is refused, the next two accepted: one credit of a file fails, the rest post
     + [sc("reject-first-then-accept", {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "rejected", "reasonCode": "AC04"},
           {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"}),
+       # both credits of a file are refused, then the return is recorded: the whole file goes back (Issue I-40)
+       sc("reject-two-then-accept", {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "rejected", "reasonCode": "AC04"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "rejected", "reasonCode": "AC04"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"}),
+       # the first credit's outcome is unknown; the inquiry finds it not posted, so it is returned (Issue I-39)
+       sc("unknown-first-then-not-posted", {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "pending"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "rejected", "reasonCode": "AC04"},
+          {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"},
           {"expect": "p.core.request"}, {"send": "p.core.reply", "status": "accepted"})])
 sim("p.sim.sanctions.v1", "Sanctions engine simulator", "outward", "p.port.sanctions.v1", "sanctions screening engine",
     outward_set("p.sanctions.request", "p.sanctions.reply", "RR04"))
@@ -593,22 +650,30 @@ sim("uae.p.sim.calendar.v1", "Business calendar simulator", "outward", "uae.p.po
     outward_set("uae.p.calendar.request", "uae.p.calendar.reply", "DT01"))
 sim("uae.wps.sim.wps-outward.v1", "WPS simulator, replies to the bank", "outward", "uae.wps.port.wps.v1",
     "central bank wages protection system",
-    [sc("accept", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
-     sc("reject", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "status": "rejected", "reasonCode": "AM10", "after": "PT10M"}),
+    [sc("accept", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "family": "sif", "status": "accepted", "after": "PT10M"}),
+     sc("reject", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "family": "sif", "status": "rejected", "reasonCode": "AM10", "after": "PT10M"}),
      sc("no-reply", {"expect": "uae.wps.sif-submission"}, {"noReply": True}),
-     sc("late-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "status": "accepted", "after": "P2D"}),
-     sc("duplicate-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M", "duplicate": True}),
-     sc("fail-twice-then-accept", {"expect": "uae.wps.sif-submission", "failTimes": 2}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
-     sc("refund-settled", {"expect": "uae.wps.rfr"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"send": "uae.wps.rsu", "after": "P3D"}),
-     sc("refund-declined", {"expect": "uae.wps.rfr"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"send": "uae.wps.rsu", "status": "rejected", "after": "P3D"}),
-     sc("receipt-accepted", {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
-     sc("disbursement-accepted", {"expect": "uae.wps.dif"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
-     sc("malformed-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack"}, malformed=True)],
+     sc("late-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "family": "sif", "status": "accepted", "after": "P2D"}),
+     sc("duplicate-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "family": "sif", "status": "accepted", "after": "PT10M", "duplicate": True}),
+     sc("fail-twice-then-accept", {"expect": "uae.wps.sif-submission", "failTimes": 2}, {"send": "uae.wps.ack", "family": "sif", "status": "accepted", "after": "PT10M"}),
+     sc("refund-settled", {"expect": "uae.wps.rfr"}, {"send": "uae.wps.ack", "family": "rfr", "status": "accepted", "after": "PT10M"}, {"send": "uae.wps.rsu", "after": "P3D"}),
+     sc("refund-declined", {"expect": "uae.wps.rfr"}, {"send": "uae.wps.ack", "family": "rfr", "status": "accepted", "after": "PT10M"}, {"send": "uae.wps.rsu", "status": "rejected", "after": "P3D"}),
+     sc("receipt-accepted", {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "family": "prc", "status": "accepted", "after": "PT10M"}),
+     sc("disbursement-accepted", {"expect": "uae.wps.dif"}, {"send": "uae.wps.ack", "family": "dif", "status": "accepted", "after": "PT10M"}),
+     sc("malformed-reply", {"expect": "uae.wps.sif-submission"}, {"send": "uae.wps.ack", "family": "sif"}, malformed=True)],
     self_check=["uae.wps.ruleset.salary-file.v1"], p=WP)
 def payment_file():
     """The agent's conversation for one payment file, up to the disbursement file. Fresh dicts, so YAML writes no aliases."""
     return ({"send": "uae.wps.pif"}, {"send": "uae.wps.psi"},
-            {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"})
+            {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "family": "prc", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"},
+            {"send": "uae.wps.ack", "family": "dif", "status": "accepted", "after": "PT10M"})
+
+
+def payment_file_dif_refused():
+    """As payment_file, but WPS refuses the disbursement file (a DIF NAK)."""
+    return ({"send": "uae.wps.pif"}, {"send": "uae.wps.psi"},
+            {"expect": "uae.wps.prc"}, {"send": "uae.wps.ack", "family": "prc", "status": "accepted", "after": "PT10M"}, {"expect": "uae.wps.dif"},
+            {"send": "uae.wps.ack", "family": "dif", "status": "rejected", "reasonCode": "FF01", "after": "PT10M"})
 
 
 
@@ -616,9 +681,11 @@ sim("uae.wps.sim.wps-inward.v1", "WPS simulator, sends to the bank", "inward", "
     "central bank wages protection system",
     [sc("payment-file", *payment_file()),
      sc("payment-file-wrong-agent", {"send": "uae.wps.pif"}, {"send": "uae.wps.psi"}),
-     sc("payment-file-returns-accepted", *payment_file(), {"expect": "uae.wps.rfa"}, {"send": "uae.wps.ack", "status": "accepted", "after": "PT10M"}),
+     sc("payment-file-returns-accepted", *payment_file(), {"expect": "uae.wps.rfa"}, {"send": "uae.wps.ack", "family": "rfa", "status": "accepted", "after": "PT10M"}),
      sc("payment-file-returns-refused", *payment_file(), {"expect": "uae.wps.rfa"},
-        {"send": "uae.wps.ack", "status": "rejected", "reasonCode": "FF01", "after": "PT10M"}),
+        {"send": "uae.wps.ack", "family": "rfa", "status": "rejected", "reasonCode": "FF01", "after": "PT10M"}),
+     sc("payment-file-disbursement-refused-returns-accepted", *payment_file_dif_refused(), {"expect": "uae.wps.rfa"},
+        {"send": "uae.wps.ack", "family": "rfa", "status": "accepted", "after": "PT10M"}),
      sc("payment-file-returns-no-reply", *payment_file(), {"expect": "uae.wps.rfa"}, {"noReply": True}),
      sc("return-file", {"send": "uae.wps.rtc"})], self_check=["uae.wps.ruleset.payment-file.v1"], p=WP)
 sim("uae.wps.sim.employer-channel.v1", "Employer simulator", "inward", "uae.wps.port.employer-channel.v1", "employer file channel",
@@ -736,19 +803,30 @@ PIF = {"inbound": "samples/wps-pif-valid.pif"}
 AGENT_LEG = "uae.wps.wf.agent-payment-in.v1"
 
 
-def returns_bench(wps_scenario):
-    return bench((WPS, "uae.wps.sim.wps-inward.v1", wps_scenario), ("p.port.core-banking.v1", "p.sim.core-banking.v1", "reject-first-then-accept"),
+def returns_bench(wps_scenario, core="reject-first-then-accept"):
+    return bench((WPS, "uae.wps.sim.wps-inward.v1", wps_scenario), ("p.port.core-banking.v1", "p.sim.core-banking.v1", core),
                  ("p.port.sanctions.v1", "p.sim.sanctions.v1", "accept"), ("p.port.fraud.v1", "p.sim.fraud.v1", "accept"),
                  ("p.port.operations-queue.v1", "p.sim.operations.v1", "reject"))
 
 
-_RFA_HEAD = ["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:accepted", "credit[0]:rejected", "credit[1]:posted",
-             "render-disbursement:mapped", "report-disbursement:accepted", "returns:returns", "render-returns:mapped"]
+def rfa_head(credits=("credit[0]:rejected", "credit[1]:posted"), dif="accepted"):
+    return (["supplement:received", "file-checks:pass", "render-receipt:mapped", "confirm-receipt:accepted", *credits,
+             "render-disbursement:mapped", "report-disbursement:%s" % dif, "returns:returns", "render-returns:mapped"])
+
+
+_RFA_HEAD = rfa_head()
 TRACE_RFA = {"ack": _RFA_HEAD + ["return-credits:accepted", "record-return:posted", "end:settled"],
              "nak": _RFA_HEAD + ["return-credits:rejected", "returns-operations:rejected", "end:pending"],
              "timeout": _RFA_HEAD + ["return-credits:pending", "end:pending"]}
-_RFA_DETAIL = ["supplement.await-supplement:received", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
-               "confirm-receipt.read-ack:ack", "return-credits.send:accepted"]
+
+
+def rfa_detail(dif="ack"):
+    return ["supplement.await-supplement:received", "confirm-receipt.send:accepted", "confirm-receipt.await-ack:received",
+            "confirm-receipt.read-ack:ack", "report-disbursement.send:accepted", "report-disbursement.await-ack:received",
+            "report-disbursement.read-ack:%s" % dif, "return-credits.upload-hold:PT0S", "return-credits.send:accepted"]
+
+
+_RFA_DETAIL = rfa_detail()
 DETAIL_RFA = {"ack": _RFA_DETAIL + ["return-credits.await-ack:received", "return-credits.read-ack:ack"],
               "nak": _RFA_DETAIL + ["return-credits.await-ack:received", "return-credits.read-ack:nak"],
               "timeout": _RFA_DETAIL + ["return-credits.await-ack:timeout"]}
@@ -759,9 +837,30 @@ test("WPS-IN-002", "A refused credit is returned in a returns file; on ACK the r
 test("WPS-IN-003", "A returns file that WPS refuses goes to operations and ends pending", AGENT_LEG, "end-to-end", PIF,
      {"outcome": "pending", "messages": RFA_SENT, "trace": TRACE_RFA["nak"], "detail": DETAIL_RFA["nak"]},
      bench_=returns_bench("payment-file-returns-refused"), tenant="example-bank")
-test("WPS-IN-004", "No acknowledgement of the returns file within the wait ends pending", AGENT_LEG, "end-to-end", PIF,
-     {"outcome": "pending", "messages": RFA_SENT, "virtualElapsed": "P1D", "trace": TRACE_RFA["timeout"], "detail": DETAIL_RFA["timeout"]},
+# The example bank waits ten business days for the acknowledgement (its value of replyWait, Issue I-41): two weeks.
+test("WPS-IN-004", "No acknowledgement of the returns file within the bank's wait ends pending", AGENT_LEG, "end-to-end", PIF,
+     {"outcome": "pending", "messages": RFA_SENT, "virtualElapsed": "P14D", "trace": TRACE_RFA["timeout"], "detail": DETAIL_RFA["timeout"]},
      bench_=returns_bench("payment-file-returns-no-reply"), tenant="example-bank")
+# Issue I-40: no credit reached an employee and the whole amount went back, so the leg ends returned.
+test("WPS-IN-005", "Every credit refused: the whole file is returned and the leg ends returned", AGENT_LEG, "end-to-end", PIF,
+     {"outcome": "returned", "messages": RFA_SENT,
+      "trace": rfa_head(("credit[0]:rejected", "credit[1]:rejected")) + ["return-credits:accepted", "record-return:posted", "end:returned"],
+      "detail": DETAIL_RFA["ack"]},
+     bench_=returns_bench("payment-file-returns-accepted", "reject-two-then-accept"), tenant="example-bank")
+# Issue I-39: a credit whose outcome is unknown is asked about first; the inquiry finds it not posted, so it is returned.
+test("WPS-IN-006", "A credit whose outcome is unknown is verified before the returns are decided, and returned when not posted", AGENT_LEG,
+     "end-to-end", PIF,
+     {"outcome": "settled", "messages": RFA_SENT,
+      "trace": rfa_head(("credit[0]:unknown", "verify-credit[0]:mismatch", "credit[1]:posted")) + ["return-credits:accepted", "record-return:posted", "end:settled"],
+      "detail": DETAIL_RFA["ack"]},
+     bench_=returns_bench("payment-file-returns-accepted", "unknown-first-then-not-posted"), tenant="example-bank")
+# Issue I-39: the returns are decided after the disbursement file's NAK too; the file then stays with operations.
+test("WPS-IN-007", "After a refused disbursement file the refused credits are still returned, and the leg ends pending", AGENT_LEG,
+     "end-to-end", PIF,
+     {"outcome": "pending", "messages": RFA_SENT,
+      "trace": rfa_head(dif="rejected") + ["return-credits:accepted", "record-return:posted", "end:pending"],
+      "detail": rfa_detail("nak") + ["return-credits.await-ack:received", "return-credits.read-ack:ack"]},
+     bench_=returns_bench("payment-file-disbursement-refused-returns-accepted"), tenant="example-bank")
 test("P-RES-001", "Reservation survives two transient failures with one reservation made", "p.reserve.funds.v1", "activity", PAY_CTX,
      {"outcome": "reserved", "attempts": {"reserve": 3}}, bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "fail-twice-then-accept")),
      conformance=True)
@@ -777,6 +876,19 @@ test("BANK-LIM-002", "The same file passes the day before the bank's lower limit
      salary_file(150000), {"outcome": "pass", "findings": []}, date="2026-12-31", tenant="example-bank", base=EXAMPLES)
 
 # ------------------------------------------------------------------- writing
+NAME = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+\.v[0-9]+$")
+
+
+def names_in(doc, own=None):
+    """Every artefact name a document mentions, other than its own."""
+    if isinstance(doc, dict):
+        own = own or doc.get("name")
+        return set().union(*[names_in(v, own) for v in doc.values()]) if doc else set()
+    if isinstance(doc, list):
+        return set().union(*[names_in(v, own) for v in doc]) if doc else set()
+    return {doc} if isinstance(doc, str) and NAME.match(doc) and doc != own else set()
+
+
 def canon_hash(doc):
     return "sha256:" + hashlib.sha256(json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
@@ -836,7 +948,18 @@ def main():
                 "packType": ptype, "origin": "factory" if ptype == "shared" else "authored"}
         if ptype == "bank":
             pack["tenant"] = "example-bank"
-        deps = {"p": [], "uae.p": ["p"], "uae.wps": ["p", "uae.p"], "b": ["p", "uae.p", "uae.wps"]}[scope]
+        deps = {"p": [], "uae.p": ["p"], "uae.wps": ["p", "uae.p"]}.get(scope)
+        if scope == "b":
+            # A bank pack depends on the scopes its artefacts, its tests among them, refer to, with their parents,
+            # as the studio derives it (packManifest; Issue I-43).
+            reach = set()
+            for f in sorted(folder.rglob("*.yaml")):
+                doc = yaml.safe_load(f.read_text())
+                if f.name != "pack.yaml" and doc.get("kind") != "configuration-set":
+                    reach |= {scope_of(r) for r in names_in(doc)} - {"b", "ck"}
+            for s_ in list(reach):
+                reach |= {"p"} | ({"%s.p" % s_.split(".")[0]} if s_ not in ("p",) and not s_.endswith(".p") else set())
+            deps = [d for d in SHARED_PACKS if d in reach]
         if deps:
             pack["dependsOn"] = [{"scope": d, "release": REL} for d in deps]
         pack["artefacts"] = arts

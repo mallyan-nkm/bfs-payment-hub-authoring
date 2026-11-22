@@ -35,7 +35,7 @@ export type AttemptResponse =
   | { kind: 'hang' } // the attempt never answers; the engine's attempt timeout ends it
   | { kind: 'error'; name: string; retryable: boolean; message: string };
 
-export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'copy'> }
+export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'family' | 'copy'> }
 
 export class PartyService {
   readonly run: Run;
@@ -154,7 +154,7 @@ export class PartyService {
 }
 
 function pickMsg(m: Message): Delivery['message'] {
-  return { id: m.id, type: m.type, status: m.status, reasonCode: m.reasonCode, correlation: m.correlation, conversation: m.conversation, inReplyTo: m.inReplyTo, copy: m.copy };
+  return { id: m.id, type: m.type, status: m.status, reasonCode: m.reasonCode, correlation: m.correlation, conversation: m.conversation, inReplyTo: m.inReplyTo, ...(m.family ? { family: m.family } : {}), copy: m.copy };
 }
 
 /** Apply an attempt's writes to an engine's context, as the studio does. */

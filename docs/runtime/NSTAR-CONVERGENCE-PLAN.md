@@ -87,13 +87,13 @@ content-configurations/      what the studio publishes and what a bank configure
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
-- We start from what the studio has already proved. The conformance kit (46 scenarios) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
+- We start from what the studio has already proved. The conformance kit (48 scenarios since 2026-11-22; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
 - The runtime turns that into a product:
   - **Temporal:** the .NET SDK, with worker versioning by Build ID. Each release's activity versions run on their own versioned workers.
   - **DTFx:** `Microsoft.DurableTask.SqlServer`. Task-queue routing is done by the host (one hub per release line). The source's "`IsPatched` is always true" is not carried over: versions come from releases, not patches.
   - **Elsa 3.x:** journal replay inside one Elsa activity, with bookmarks, as the studio's harness does, now with Elsa's SQL Server and PostgreSQL persistence.
   - **Flowable 7:** BPMN generated from the expanded workflow (`src/export/bpmn.ts`). It runs in a Java sidecar with its own database. .NET external workers take the jobs over REST.
-- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 46 scenarios plus the WPS parity suite on each engine.
+- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 48 scenarios plus the WPS parity suite on each engine.
 - The runtime's own data is always through EF Core (W2). Each engine also keeps its own state:
 
 | Engine | Its own state on SQL Server | Its own state on PostgreSQL |
@@ -237,7 +237,7 @@ The results, pass by pass and project by project, with each failure classified (
 | P0 | Inputs and baseline | The missing `dsl/` and `.github/` files are added. The baseline is recorded with every failure classified. The parity matrix is listed, with targets still open. |
 | P1 | Model, store, releases, interpreter, Temporal | WPS outward (SIF upload to CB ACK and the NAK reversal) runs on the new runtime on Temporal, on SQL Server and PostgreSQL. Its golden runs match the source. Releases are insert-only and pinned. |
 | P2 | WPS complete | Inward PIF/PSI, PRC, DIF, RFA, RRI, DE, RTC and posting windows. Every WPS line of the parity matrix is green. |
-| P3 | DTFx, Elsa, Flowable | The kit (46) and the WPS parity suite pass on all four engines × two databases in CI. |
+| P3 | DTFx, Elsa, Flowable | The kit (48) and the WPS parity suite pass on all four engines × two databases in CI. |
 | P4 | Temporal on SQL Server | The plugin passes Temporal's persistence suite and the kit (if D2 is accepted). Met on 21 November 2026, see W5. |
 | P5 | Banks | DIB, ADIB, ENBD and FAB are each a configuration set. No bank name is in shared code, and a check enforces it. Switching the example bank's core banking needs only a binding. |
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |

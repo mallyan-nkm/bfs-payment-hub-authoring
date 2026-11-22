@@ -2,7 +2,7 @@
 # Run the conformance kit on Temporal servers whose state is in SQL Server. From runtime/temporal-mssql,
 # with SQL Server up (scripts/dev.sh sqlserver) and the binaries built (scripts/dev.sh build):
 #
-#   scripts/kit-on-sqlserver.sh                 all 46 scenarios
+#   scripts/kit-on-sqlserver.sh                 all 48 scenarios
 #   KIT_EXCLUDE="CK-AWAIT-02 ..." scripts/kit-on-sqlserver.sh
 #
 # On a real server the kit runs in real time, so its business waits are real waits (I-48), and run one

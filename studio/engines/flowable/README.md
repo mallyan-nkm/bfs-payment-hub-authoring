@@ -9,7 +9,7 @@ Java 21 or later and Node 22 are needed (the harness compiles for release 21). M
 ```
 cd studio
 engines/flowable/setup.sh                       # fetch Maven, build the harness (once)
-npx tsx engines/flowable/run-kit.ts             # all 46 scenarios, PASS or FAIL each
+npx tsx engines/flowable/run-kit.ts             # all 48 scenarios, PASS or FAIL each
 npx tsx engines/flowable/run-kit.ts CK-COMP-01 --verbose
 npx tsx engines/flowable/portability.ts         # C22-S5: every factory workflow, deployed into Flowable
 ```
@@ -19,7 +19,7 @@ Each run writes `out/<scenario>/`: the generated `*.bpmn20.xml`, the binding's `
 | File | What it is |
 | --- | --- |
 | `adapter.ts` | The `KitAdapter`. It expands and generates every workflow the scenario runs (root, each release, legs, bound hooks), writes the plan and runs the harness. |
-| `run-kit.ts` | Runs the kit with the adapter and prints `N of 46 conformance scenarios pass on Flowable`. |
+| `run-kit.ts` | Runs the kit with the adapter and prints `N of 48 conformance scenarios pass on Flowable`. |
 | `portability.ts` | The portability report (C22-S5). |
 | `harness/` | The Java harness: `Harness.java` (engine, worker, front door, signals, trace), `Handler.java` (plain request handlers), `Support.java` (clock, business calendar, party client, context paths). |
 

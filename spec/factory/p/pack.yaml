@@ -209,7 +209,7 @@ artefacts:
   - name: p.sim.core-banking.v1
     kind: simulator
     release: 1.0.0
-    hash: sha256:5ca57efecdabeed071150e4530f7f338d3ca462a89498102eef5b868b904bd19
+    hash: sha256:8cf8a4fd8cf0a35bfe79266002f076a09a4e0c96ebe9764b3b2f89f140a208e1
     path: simulators/p.sim.core-banking.v1.yaml
   - name: p.sim.facts-out.v1
     kind: simulator

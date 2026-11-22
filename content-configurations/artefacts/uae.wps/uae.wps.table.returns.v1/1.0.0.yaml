@@ -7,23 +7,56 @@ title: Which employee credits go back to WPS in a returns file
 hitPolicy: first
 inputs:
   - name: refused
-    expression: sum(items, i => i.facts.posting.outcome == 'rejected')
+    expression: sum(items, i => i.facts.posting.outcome == 'rejected' or (i.facts.posting.outcome == 'unknown' and
+      i.facts.postingVerified.outcome == 'mismatch'))
+  - name: stillUnknown
+    expression: sum(items, i => i.facts.posting.outcome == 'unknown' and not (i.facts.postingVerified.outcome in
+      ['verified', 'mismatch']))
+  - name: allRefused
+    expression: count(items) > 0 and sum(items, i => i.facts.posting.outcome == 'rejected' or (i.facts.posting.outcome
+      == 'unknown' and i.facts.postingVerified.outcome == 'mismatch')) == count(items)
+  - name: amount
+    expression: sumWhere(items, i => i.facts.posting.outcome == 'rejected' or (i.facts.posting.outcome == 'unknown'
+      and i.facts.postingVerified.outcome == 'mismatch'), i => round2(i.ext.uae.wps.fixedPay + i.ext.uae.wps.variablePay))
 outputs:
   - returns
+  - returnScope
   - count
+  - amount
 rows:
+  - when:
+      stillUnknown:
+        gt: 0
+    then:
+      returns: unverified
+      returnScope: none
+      count: refused
+      amount: amount
+    reason: A credit's outcome is still unknown after the inquiry; nothing is returned until every credit is known
+  - when:
+      allRefused: true
+    then:
+      returns: returns
+      returnScope: whole-file
+      count: refused
+      amount: amount
+    reason: Every credit was refused; the whole file is returned
   - when:
       refused:
         gt: 0
     then:
       returns: returns
+      returnScope: partial
       count: refused
-    reason: One or more credits were refused and are returned
+      amount: amount
+    reason: Some credits were refused and are returned; the others were paid
   - when: {}
     then:
       returns: none
+      returnScope: none
       count: refused
-    reason: Every credit posted, or its outcome is not yet known
+      amount: amount
+    reason: Every credit posted
 examples:
   - name: every credit posted
     given:
@@ -31,45 +64,178 @@ examples:
         - facts:
             posting:
               outcome: posted
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
         - facts:
             posting:
               outcome: posted
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
     expect:
       decisions:
         - name: returns
           value: none
+        - name: returnScope
+          value: none
         - name: count
           value: 0
-  - name: one credit refused
+        - name: amount
+          value: 0
+  - name: one credit refused is a partial return; its line is rounded half away from zero
     given:
       Item:
         - facts:
             posting:
               outcome: rejected
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
         - facts:
             posting:
               outcome: posted
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
     expect:
       decisions:
         - name: returns
           value: returns
+        - name: returnScope
+          value: partial
         - name: count
           value: 1
-  - name: an unknown credit is not returned
+        - name: amount
+          value: 1500.01
+  - name: every credit refused is the whole file; the amount is the sum of the rounded lines
+    given:
+      Item:
+        - facts:
+            posting:
+              outcome: rejected
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
+        - facts:
+            posting:
+              outcome: rejected
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
+    expect:
+      decisions:
+        - name: returns
+          value: returns
+        - name: returnScope
+          value: whole-file
+        - name: count
+          value: 2
+        - name: amount
+          value: 3500.01
+  - name: an unknown credit the inquiry found not posted is returned
     given:
       Item:
         - facts:
             posting:
               outcome: posted
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
         - facts:
             posting:
               outcome: unknown
+            postingVerified:
+              outcome: mismatch
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
+    expect:
+      decisions:
+        - name: returns
+          value: returns
+        - name: returnScope
+          value: partial
+        - name: count
+          value: 1
+        - name: amount
+          value: 2000
+  - name: an unknown credit the inquiry found posted is not returned
+    given:
+      Item:
+        - facts:
+            posting:
+              outcome: posted
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
+        - facts:
+            posting:
+              outcome: unknown
+            postingVerified:
+              outcome: verified
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
     expect:
       decisions:
         - name: returns
           value: none
+        - name: returnScope
+          value: none
         - name: count
           value: 0
+        - name: amount
+          value: 0
+  - name: an unknown credit the inquiry could not settle stops the decision
+    given:
+      Item:
+        - facts:
+            posting:
+              outcome: rejected
+          ext:
+            uae:
+              wps:
+                fixedPay: 1200.005
+                variablePay: 300
+        - facts:
+            posting:
+              outcome: unknown
+          ext:
+            uae:
+              wps:
+                fixedPay: 1999.995
+                variablePay: 0
+    expect:
+      decisions:
+        - name: returns
+          value: unverified
+        - name: returnScope
+          value: none
+        - name: count
+          value: 1
+        - name: amount
+          value: 1500.01
 provenance:
   origin: factory
   status: provisional
