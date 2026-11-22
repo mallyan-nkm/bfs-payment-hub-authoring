@@ -38,9 +38,9 @@ describe('import in the web app', () => {
     await page.getByTestId('import-summary').waitFor({ timeout: 60000 });
     expect(await page.getByText('may be imported').count()).toBe(1);
     const coverage = (await page.getByTestId('import-coverage').textContent()) ?? '';
-    expect(coverage).toMatch(/Source files87/);
+    expect(coverage).toMatch(/Source files94/);
     expect(coverage).toMatch(/Neither0/);
-    expect(await page.getByTestId('import-tests').locator('tbody tr').count()).toBe(16);
+    expect(await page.getByTestId('import-tests').locator('tbody tr').count()).toBe(18);
     expect(await page.getByTestId('import-tests').getByText('fail').count()).toBe(0);
     // The planned messages the extraction retired are listed, each with its reason.
     expect(await page.getByText(/Planned in the source, not built/).count()).toBe(3);
@@ -48,7 +48,7 @@ describe('import in the web app', () => {
 
   it('imports as drafts, publishing nothing', async () => {
     await page.getByRole('button', { name: /^Import as drafts, as / }).click();
-    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: 2 change sets wait for a checker/);
+    await expect.poll(async () => (await page.locator('[role="status"]').first().textContent()) ?? '', { timeout: 60000 }).toMatch(/Imported \d+ as drafts.*Nothing is published: 4 change sets wait for a checker/); // the PSI and RRI maps, referred to by nothing, are change sets of their own
     const drafts = await client(server.url).get('/api/drafts?tenant=owner');
     expect(drafts.data.some((d: any) => d.name === 'uae.wpsx.wf.salary-file-out.v1')).toBe(true);
     const cat = await client(server.url).get('/api/catalogue?q=uae.wpsx.wf.salary-file-out');

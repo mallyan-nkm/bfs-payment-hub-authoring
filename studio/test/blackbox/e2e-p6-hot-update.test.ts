@@ -145,7 +145,7 @@ async function pay(label: string, date: string) {
 
 describe('P6: the studio deploys a release to the runtime and hot-updates a rule value with no deployment', () => {
   it('1. the bank publishes its internal limit in the studio, and the change lands on the connected branch', async () => {
-    await publishLimit('1.1.0', 1200);
+    await publishLimit('1.2.0', 1200);
   }, 120000);
 
   it('2. the runtime stores the Temporal package once, activates it for test, and takes the bank\'s values from the branch', async () => {
@@ -169,7 +169,7 @@ describe('P6: the studio deploys a release to the runtime and hot-updates a rule
   }, 600000);
 
   it('4. the bank raises the limit to 2000 from 2026-11-20; the runtime takes it as a new value version, with no new release or activation', async () => {
-    await publishLimit('1.2.0', 2000, '2026-11-20');
+    await publishLimit('1.3.0', 2000, '2026-11-20');
     const imported = await pipeline();
     expect(imported.values).toBeGreaterThan(0);
     expect(imported.stored).toEqual([]);

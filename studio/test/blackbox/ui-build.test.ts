@@ -184,12 +184,12 @@ describe('the guide: build a full workflow in the web app', () => {
     await go('tenant');
     const cs = await (await fetch(`${server.url}/api/tenants/example-bank/configuration`)).json();
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
-    next.release = '1.1.0';
+    next.release = '1.2.0';
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));
     await page.getByRole('button', { name: 'Save the configuration set' }).click();
-    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.1\.0 as example\.maker/);
+    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.2\.0 as example\.maker/);
   }, 60000);
 
   it('step 9: a credit file from the bank\'s channel is paid end to end', async () => {
@@ -220,7 +220,7 @@ describe('the guide: build a full workflow in the web app', () => {
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     expect(out, out.slice(-1500)).toMatch(/^outcome settled/m);
     expect(out).toContain('worker th-uae-demo');
-    expect(out).toContain('configuration example-bank@1.1.0 from the package');
+    expect(out).toContain('configuration example-bank@1.2.0 from the package');
   }, 300000);
 
   it('caused no script error and no server error along the way', () => {
