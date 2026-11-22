@@ -256,7 +256,7 @@ The results, pass by pass and project by project, with each failure classified (
   - Flowable in the deploy runner and in the `store` matrix.
 
   Until then, P3's exit ("all four engines × two databases") is not met.
-- **Not yet: the WPS parity suite on DTFx and Elsa.** It runs on the interpreter and on Temporal.
+- **The WPS parity suite on DTFx and Elsa.** The scenarios of `e2e-wps-temporal.test.ts` run on DTFx and Elsa in `e2e-wps-parity.test.ts`: the salary file settles through four workers on four queues, and the scheme's rejection, a sanctions hit and a two-line file held and declined or approved each give the studio interpreter's trace and outcome. It runs on the studio's engine harnesses and, with `TH_STORE_PROVIDER`, on the runtime's builds with the store. The source's Central Bank SIF writer, imported and published through the studio, settles the salary file on DTFx and Elsa with the same SIF as on Temporal (`e2e-wps-source-slice.test.ts`, steps 6 and 7). CI job `wps-parity` runs all of it per engine.
 
 ## 7. Issues found while planning (beyond the review's 21)
 

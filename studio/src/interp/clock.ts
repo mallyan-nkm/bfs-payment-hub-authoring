@@ -130,6 +130,10 @@ export class VirtualClock {
 
   /** Work outside this process (a call to the native host): while any is outstanding, the run is not idle. */
   private outside = 0;
+  /** Whether work outside this process is under way. */
+  get busyOutside() {
+    return this.outside > 0;
+  }
   async external<T>(work: () => Promise<T>): Promise<T> {
     this.outside++;
     try {

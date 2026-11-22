@@ -1,6 +1,6 @@
 # The engines: the studio's black-box suites in the browser and on deployed packages; the conformance kit
 # on Temporal, DTFx, Elsa and Flowable; and the store matrix, the WPS salary file deployed on each runtime
-# engine against PostgreSQL and SQL Server (plan N4; Flowable is not yet a runtime engine, see
+# engine against PostgreSQL and SQL Server (plan N4), and the WPS parity suite on DTFx and Elsa (plan P3; Flowable is not yet a runtime engine, see
 # docs/runtime/NSTAR-CONVERGENCE-PLAN.md section 7). Heavier: on pushes to the runtime or the engines, and by hand.
 name: engines
 on:
@@ -130,6 +130,65 @@ jobs:
           else
             npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-engines-store.test.ts -t "${{ matrix.engine }} on ${{ matrix.database }}"
           fi
+  wps-parity:
+    # The WPS parity suite on DTFx and Elsa (plan P3): the scenarios e2e-wps-temporal runs on Temporal, each
+    # compared with the studio interpreter's trace; first on the studio's engine harnesses, then on the
+    # runtime's builds with the store on PostgreSQL; then the source's Central Bank SIF writer, imported
+    # and published through the studio, on the engine (e2e-wps-source-slice, steps 1, 2 and 6 or 7).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [dtfx, elsa]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: Th-Test-Only-1234   # a test-only password, as in the store tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      TH_PARITY_ENGINES: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Install
+        working-directory: studio
+        run: npm ci
+      - name: Temporal's test server (the slice's steps run beside it)
+        run: runtime/tools/temporal-test-server/setup.sh
+      - name: WPS parity on ${{ matrix.engine }}, the studio's harness
+        working-directory: studio
+        run: npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-parity.test.ts
+      - name: WPS parity on ${{ matrix.engine }}, the runtime's harness with the store on PostgreSQL
+        working-directory: studio
+        env:
+          TH_STORE_PROVIDER: PostgreSql
+          TH_STORE_CONNECTION: Host=127.0.0.1;Port=5432;Username=postgres;Password=Th-Test-Only-1234;Database=th_parity
+        run: npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-parity.test.ts
+      - name: The source's SIF writer on ${{ matrix.engine }}
+        working-directory: studio
+        run: |
+          step=$([ "${{ matrix.engine }}" = dtfx ] && echo 6 || echo 7)
+          npx vitest run --config vitest.blackbox.config.ts test/blackbox/e2e-wps-source-slice.test.ts -t "^the source WPS outward flow, through the north-star path (1|2|$step)\. "
   temporal-sqlserver:
     # Temporal's persistence on SQL Server (plan W5, P4): build the plugin (runtime/temporal-mssql), run
     # Temporal's own persistence suites against SQL Server 2022, start the server on SQL Server, prove a
