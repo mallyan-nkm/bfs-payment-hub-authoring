@@ -18,7 +18,6 @@ export const ROLES = [
   'bank configurator', 'bank approver',
   'workflow designer', 'workflow developer', 'platform approver',
   'administrator', 'auditor', 'service operations',
-  'operations', 'service engineer',
 ] as const;
 export type Role = (typeof ROLES)[number];
 
@@ -35,7 +34,6 @@ export const ROLE_TENANT: Record<Role, 'bank' | 'owner' | 'either'> = {
   'bank configurator': 'bank', 'bank approver': 'bank',
   'workflow designer': 'owner', 'workflow developer': 'owner', 'platform approver': 'owner',
   administrator: 'owner', auditor: 'either', 'service operations': 'owner',
-  operations: 'owner', 'service engineer': 'owner',
 };
 
 /** What a permission is about. Artefact kinds are the documents' `kind`; the rest are studio functions. */
@@ -63,14 +61,11 @@ export type ScopeClass = 'bank' | 'shared' | 'studio';
 export interface Grant { role: Role; scope: ScopeClass; kinds: readonly Kind[]; actions: readonly Action[] }
 
 const BANK_KINDS = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'] as const;
-// Owner's decision of 22 November 2026 (I-69): the Workflow Designer and Developer are studio roles for
-// workflows and their blocks only. Operations views (R-05-48) belong to the Operations role, and error
-// dictionaries (R-05-51) to the Service Engineer, who also owns the runtime's service console.
-const DESIGNER_KINDS = ['workflow', 'scheme', 'test', 'sample'] as const;
-const DEVELOPER_KINDS = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'] as const;
-const OPERATIONS_KINDS = ['operations-view'] as const;
-const SERVICE_KINDS = ['error-dictionary'] as const;
-const SHARED_KINDS = [...new Set<Kind>([...DESIGNER_KINDS, ...DEVELOPER_KINDS, ...OPERATIONS_KINDS, ...SERVICE_KINDS])];
+// An operations view (R-05-48) declares a workflow's operator actions; it is designed with the workflow (I-69).
+const DESIGNER_KINDS = ['workflow', 'scheme', 'operations-view', 'test', 'sample'] as const;
+// An error dictionary (R-05-51) documents the errors and codes the blocks raise; it is built with them (I-69).
+const DEVELOPER_KINDS = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'test', 'sample'] as const;
+const SHARED_KINDS = [...new Set<Kind>([...DESIGNER_KINDS, ...DEVELOPER_KINDS])];
 
 /**
  * The table. A role may do an action on a kind in a scope class when a row says so; nothing else is
@@ -96,13 +91,7 @@ export const GRANTS: readonly Grant[] = [
   { role: 'workflow developer', scope: 'shared', kinds: DEVELOPER_KINDS, actions: ['author'] },
   { role: 'workflow developer', scope: 'shared', kinds: ['supersession'], actions: ['author'] },
   { role: 'workflow developer', scope: 'shared', kinds: ['bench', 'import', 'export', 'deploy', 'assistant'], actions: ['run'] },
-  // Operations: the operations console's views of each scheme's legs.
-  { role: 'operations', scope: 'shared', kinds: OPERATIONS_KINDS, actions: ['author'] },
-  { role: 'operations', scope: 'shared', kinds: ['assistant'], actions: ['run'] },
-  // Service Engineer: the error dictionaries and their runbooks.
-  { role: 'service engineer', scope: 'shared', kinds: SERVICE_KINDS, actions: ['author'] },
-  { role: 'service engineer', scope: 'shared', kinds: ['assistant'], actions: ['run'] },
-  // Platform approver: approves designer, developer, operations and service engineer changes.
+  // Platform approver: approves designer and developer changes.
   { role: 'platform approver', scope: 'shared', kinds: [...SHARED_KINDS, 'supersession'], actions: ['approve'] },
   { role: 'platform approver', scope: 'shared', kinds: ['supersession'], actions: ['author'] },
   { role: 'platform approver', scope: 'studio', kinds: ['waiver'], actions: ['approve'] },
@@ -156,8 +145,6 @@ export const SURFACES: Record<Role, string[]> = {
   administrator: ['governance', 'catalogue'],
   auditor: ['catalogue', 'governance', 'kit'],
   'service operations': ['governance', 'catalogue', 'kit'],
-  operations: ['editors', 'catalogue', 'assistant', 'governance'],
-  'service engineer': ['editors', 'catalogue', 'assistant', 'governance'],
 };
 
 /** Where a role lands when it signs in. */
@@ -165,7 +152,6 @@ export const LANDING: Record<Role, string> = {
   'bank configurator': 'bank', 'bank approver': 'governance',
   'workflow designer': 'designer', 'workflow developer': 'editors', 'platform approver': 'governance',
   administrator: 'governance', auditor: 'catalogue', 'service operations': 'governance',
-  operations: 'editors', 'service engineer': 'editors',
 };
 
 const ORDER = ['bank', 'designer', 'editors', 'catalogue', 'data', 'assistant', 'import', 'tests', 'kit', 'tenant', 'export', 'governance'];

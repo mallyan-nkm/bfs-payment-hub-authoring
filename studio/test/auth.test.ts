@@ -114,6 +114,6 @@ describe('the server (R-11-32 to R-11-34)', () => {
 
   it('without a groups claim, takes the roles from governance/users.yaml alone', async () => {
     const url = await start();
-    expect((await signIn(url, 'shared.designer', 'studio:platform approver')).me.roles).toEqual(['workflow designer', 'workflow developer', 'operations', 'service engineer']);
+    expect((await signIn(url, 'shared.designer', 'studio:platform approver')).me.roles).toEqual(['workflow designer', 'workflow developer']);
   });
 });

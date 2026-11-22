@@ -8,9 +8,9 @@ import { freshEnv } from './helpers.js';
 // read from the code: a cell the code grants that is not here, or misses, fails.
 
 const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'];
-const DESIGN: Kind[] = ['workflow', 'scheme', 'test', 'sample'];
-const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'test', 'sample'];
-const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP, 'operations-view', 'error-dictionary'] as Kind[])];
+const DESIGN: Kind[] = ['workflow', 'scheme', 'operations-view', 'test', 'sample'];
+const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'test', 'sample'];
+const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP])];
 
 type Cell = `${ScopeClass}|${Kind}|${Action}`;
 const cells = (scope: ScopeClass, kinds: Kind[], actions: Action[]): Cell[] => kinds.flatMap((k) => actions.map((a) => `${scope}|${k}|${a}` as Cell));
@@ -30,9 +30,6 @@ const EXPECTED: Record<Role, Cell[]> = {
   administrator: cells('studio', ['users'], ['author', 'approve']),
   auditor: [],
   'service operations': [...cells('studio', ['release', 'in-flight'], ['retire']), ...cells('studio', ['settings'], ['author'])],
-  // Owner's decision of 2026-11-22: operations views to Operations, error dictionaries to the Service Engineer.
-  operations: [...cells('shared', ['operations-view'], ['author']), ...cells('shared', ['assistant'], ['run'])],
-  'service engineer': [...cells('shared', ['error-dictionary'], ['author']), ...cells('shared', ['assistant'], ['run'])],
 };
 
 const SCOPES: ScopeClass[] = ['bank', 'shared', 'studio'];
@@ -55,7 +52,7 @@ describe('the permission table (R-11-30)', () => {
   });
 
   it('lets no maker approve, and no approver make, except a supersession, which a platform approver may draft', () => {
-    for (const maker of ['bank configurator', 'workflow designer', 'workflow developer', 'operations', 'service engineer'] as Role[]) for (const s of SCOPES) for (const k of KINDS) expect(granted([maker], s, k, 'approve')).toEqual([]);
+    for (const maker of ['bank configurator', 'workflow designer', 'workflow developer'] as Role[]) for (const s of SCOPES) for (const k of KINDS) expect(granted([maker], s, k, 'approve')).toEqual([]);
     for (const s of SCOPES) for (const k of KINDS.filter((x) => !['supersession', 'settings'].includes(x))) {
       expect(granted(['bank approver'], s, k, 'author')).toEqual([]);
       expect(granted(['platform approver'], s, k, 'author')).toEqual([]);
