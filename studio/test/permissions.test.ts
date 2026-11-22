@@ -17,13 +17,15 @@ const cells = (scope: ScopeClass, kinds: Kind[], actions: Action[]): Cell[] => k
 
 const EXPECTED: Record<Role, Cell[]> = {
   'bank configurator': [...cells('bank', BANK, ['author']), ...cells('bank', ['bench', 'import', 'export', 'deploy', 'assistant'], ['run'])],
-  'bank approver': [...cells('bank', BANK, ['approve']), ...cells('bank', ['configuration-set'], ['accept']), ...cells('bank', ['bench', 'export', 'deploy'], ['run'])],
+  'bank approver': [...cells('bank', BANK, ['approve']), ...cells('bank', ['configuration-set'], ['accept']), ...cells('bank', ['bench', 'export', 'deploy'], ['run']), ...cells('bank', ['distribution', 'configuration-release'], ['approve'])],
   'workflow designer': [...cells('shared', [...DESIGN, 'supersession'], ['author']), ...cells('shared', ['bench', 'import', 'export', 'deploy', 'assistant'], ['run'])],
   'workflow developer': [...cells('shared', [...DEVELOP, 'supersession'], ['author']), ...cells('shared', ['bench', 'import', 'export', 'deploy', 'assistant'], ['run'])],
   'platform approver': [
     ...cells('shared', [...SHARED, 'supersession'], ['approve']), ...cells('shared', ['supersession'], ['author']),
     ...cells('studio', ['waiver'], ['approve']), ...cells('studio', ['release', 'in-flight'], ['retire']), ...cells('studio', ['settings'], ['author']),
     ...cells('shared', ['bench', 'export', 'deploy'], ['run']),
+    // The distribution of every bank that takes a platform or scheme change (R-11-40).
+    ...cells('shared', ['distribution'], ['approve']),
   ],
   administrator: cells('studio', ['users'], ['author', 'approve']),
   auditor: [],

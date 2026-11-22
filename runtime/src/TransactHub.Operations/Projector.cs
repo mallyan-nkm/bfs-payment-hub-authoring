@@ -530,6 +530,15 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 ["status"] = subj.Status, ["lastOutcome"] = subj.LastOutcome, ["lastStep"] = subj.LastStep, ["amount"] = subj.Amount, ["currency"] = subj.Currency,
                 ["count"] = subj.Count, ["acceptedAt"] = subj.AcceptedAt.ToString("O"), ["releaseId"] = subj.ReleaseId, ["hold"] = subj.Hold, ["holdReason"] = subj.HoldReason,
             };
+            // A payment's end (I-97): its payment.end fact, and the duration derived from it, the end's time less the acceptance (I-100).
+            var end = await o.Timeline.AsNoTracking().Where(x => x.SubjectId == subj.Id && x.Kind == "payment.end").OrderBy(x => x.Seq).FirstOrDefaultAsync(ct)
+                ?? o.Timeline.Local.Where(x => x.SubjectId == subj.Id && x.Kind == "payment.end").OrderBy(x => x.Seq).FirstOrDefault();
+            if (end is not null)
+            {
+                subject["endedAt"] = end.At.ToString("O");
+                subject["endOutcome"] = end.Code;
+                subject["duration"] = System.Xml.XmlConvert.ToString(end.At - subj.AcceptedAt);
+            }
             JsonObject? bulk = null, payment = null;
             var ext = new JsonObject();
             var lines = new List<JsonObject>();

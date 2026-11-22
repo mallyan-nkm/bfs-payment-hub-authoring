@@ -315,7 +315,7 @@ artefacts:
   - name: p.view.operations.v1
     kind: operations-view
     release: 1.1.0
-    hash: sha256:32456af5a8d7de8070cd6fc90ccf305d86275ccc34b1e95d18acd37c07530d46
+    hash: sha256:ff08e84c4fd4cc5ee8e17a6f75adf5ba4282e10a09f10941d018d67d9ddb4144
     path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow

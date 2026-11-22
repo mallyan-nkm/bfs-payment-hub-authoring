@@ -964,6 +964,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Release every change (R-11-35) and record what each seed publishes with its hash (R-11-36). Version the bank folders' own configuration sets as the example bank's are (`configuration-sets/<release>.yaml`) once the banks agree. Allocate change set ids per branch so parallel seeds cannot clash.
 
+**Done for the engine bindings (owner's decision of 2026-11-22).** Engine bindings are released like every other artefact: each is `p.binding.<target>.v1` at its release, its source `spec/examples/bindings/p.binding.<target>.v1@<release>.yaml`, published at `artefacts/bindings/<name>/<release>.yaml` (seed CS-2026-11-22-007). The forEachConcurrency change is release 1.1.0 of the Temporal, DTFx and Elsa bindings; their 1.0.0 is the text first published, and Flowable's binding is at 1.0.0. A distribution pins its binding's release and hash in its bill of materials. The exception that let a seed replace the bindings file is gone from `tools/validate.py`, the studio's L41 and the seed: a binding release is never replaced (mutation M61; `studio/test/releases.test.ts`, "engine bindings are released like every other artefact"). The old unreleased `artefacts/bindings/bindings.yaml` stays on the branch as a record, and its one replacement, recorded by CS-2026-11-22-005 before the decision, stays accepted as recorded; the studio no longer reads that file once released bindings are on the branch.
+
 **What is built.**
 - **The earlier releases, as first published.** Every changed file is back as its first publish had it, from the commit that added it. The changes are new releases (`tools/build_factory.py`, `RELEASES`):
   - minor, 1.1.0: `p.post.accounting.v1`, `p.sim.core-banking.v1`, `uae.wps.exchange.return-credits.v1`, `uae.wps.exchange.submit-salary-file.v1`, `uae.wps.post.return.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1`, `uae.wps.table.returns.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.submit-salary-file.v1`, the `uae.wps` scheme; with plan P2 `uae.wps.map.pif-in.v1`, `uae.wps.map.ack-in.v1`, `uae.wps.map.rfa-out.v1`, `uae.wps.wf.return-in.v1`;
@@ -1025,7 +1027,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Done (owner's decision of 2026-11-22): a file the bank sends is encrypted by a port of its own** (R-03-24, R-12-13).
 
-- A twelfth activity type, `protect`, of effect `read` with at least one port (schema `activity`, mutation M59). `p.port.encryption.v1` (operation `encrypt`), the pair of `p.port.decryption.v1`, with `p.sim.encryption.v1` carrying the standard outward scenarios. `p.protect.encrypt-file.v1` encrypts the outgoing file; its parameter `recipientKey` names the recipient's key by id, and the bank's binding holds the key by reference (`keys.<id>.secretRef`).
+- A twelfth activity type, `protect`, of effect `read` with at least one port (schema `activity`, mutation M62). `p.port.encryption.v1` (operation `encrypt`), the pair of `p.port.decryption.v1`, with `p.sim.encryption.v1` carrying the standard outward scenarios. `p.protect.encrypt-file.v1` encrypts the outgoing file; its parameter `recipientKey` names the recipient's key by id, and the bank's binding holds the key by reference (`keys.<id>.secretRef`).
 - The salary file's send path encrypts first: `uae.wps.sub.submit-salary-file.v1` 1.2.0 (step `encrypt`; a refusal returns `rejected` and nothing is sent). Tests WPS-OUT-001, 003 and 008, WPS-EXC-001 to 003, P-ENC-001 and 002.
 - DIB and ADIB bind it (`encryption.yaml`, adapter `openpgp`, the Central Bank's public key by `env:TH_<BANK>_CB_WPS_PUBLIC_KEY`, binary output as the source's profiles wrote it) and set `recipientKey` to `cbuae-wps`. The source has no encrypt profile for either bank, so the id is the folder's own name for the key.
 - The runtime's adapters (`runtime/src/TransactHub.Ports/OpenPgp.cs`): OpenPGP through BouncyCastle.Cryptography 2.6.2, pinned; AES-256 with an integrity packet; encryption and its pair, decryption with a secret key ring and passphrase by reference. `EncryptionTests` makes a key pair when it runs and proves the round trip, armour, a tampered file, another key's holder, an unknown key id and a key that is not a reference.
@@ -1114,6 +1116,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** The views name the sources (`message:uae.wps.sif.fileName`, `documents`), the read model projects every `message` row and the API serves its content to the payment's operators; `OperatorApiTests` shows a kept file listed and downloaded.
 
+**Done for (1) (22 November 2026).** A payment's end is a fact: when a payment's root instance ends, the host that runs it records `payment.end` with the outcome on the payment's chain, through the runtime's `POST /payments/end` (R-09-54). It is recorded on every engine (Temporal, DTFx, Elsa and Flowable) by the front door that runs the payment (`studio/src/deploy/front-door.ts`), which is the runtime's front door in this repository; `e2e-distributions.test.ts` ends every payment it runs and `DistributionApiTests` shows a second end changes nothing. A payment is open while it is pinned and has no end, and the open count per distribution is computed from these facts. (2), the files of a deployment, is still open.
+
 ## I-98. A hold answered by the runtime waits in one attempt
 
 **Issue.** A hold reaches the operator through its port, `p.port.operations-queue.v1`, given to the runtime (R-08-15): the native host opens the hold on the payment's chain and the attempt waits for the decision the console records (R-05-50). An attempt holds a connection while it waits, and is bounded (`TH_OPS_HOLD_WAIT_SECONDS`, default 240, under the worker's five minutes): a hold not decided by then ends `expired`, not after the hold's own `expiry` (P1D). The hold also finds its payment by the header's file id or end-to-end id, the newest of that tenant and scheme, because the header carries no id of the store's.
@@ -1139,13 +1143,14 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
 
 
-**Done (owner's decision of 2026-11-22: the recommendation, with ISO 20022 homes).** Coverage went from 101 mapped (15 empty) and 27 not mapped to 124 mapped (10 empty) and 4 not mapped of 128 rows (`docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`).
+**Done (owner's decision of 2026-11-22: the recommendation, with ISO 20022 homes).** Coverage went from 101 mapped (15 empty) and 27 not mapped to 125 mapped (10 empty) and 3 not mapped of 128 rows (`docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`).
 
 - Canonical model (studio `studio/src/core/model.ts`, runtime `TransactHub.Model/Iso20022.cs`): `batch.initiatingParty.id` (GrpHdr/InitgPty, an id only, personal data, R-02-18), `batch.debtor` and `batch.debtorAccount` (Dbtr/Nm, DbtrAcct), an account's `type` (CdtrAcct/Tp), an agent's `name` (FinInstnId/Nm), `status.transactions[]` (pain.002 TxInfAndSts, R-02-19); the store keeps the initiator as a party and the account type (migration `WpsConsoleFields` on SQL Server and PostgreSQL).
 - `uae.wps.ext.salary.v1` 1.1.0: the seven EVP allowance fields (item level, personal data, RmtInf/Strd semantics, provisional), `uploadChannel` and `employerStatus` (declared extensions, SplmtryData semantics).
 - `uae.wps.map.sif-in.v1` 1.1.0 reads the EVP record and what the channel declared beside the file at upload; amounts as decimal strings (I-109). `uae.wps.map.ack-in.v1` 1.2.0: the runtime's ACK reader writes each DER record as a TxInfAndSts (`WpsAckNakTests`). The runtime's posting writes camt.054 entries (accounts to their last four characters), the total debited and ChrgsInf with its tax (`CoreBankingPostingTests`).
 - Views: `uae.wps.view.operations.v1` 1.2.0 and `p.view.operations.v1` 1.1.0; the read model projects the initiator, the account type and the agent's name. The dashboard's counts are the list filtered.
-- Left: the account type and bank name have no writer (I-115); duration is derived when the end fact exists (I-97, not on this branch's head when this was done); the RRI, RRR and DCR flows (plan P2). The unmask stays not built.
+- The payment's end and its duration (the `payment.end` fact of I-97, less the acceptance) are projected into the platform view (`endedAt`, `endOutcome`, `duration`).
+- Left: the account type and bank name have no writer (I-115); the RRI, RRR and DCR flows (plan P2). The unmask stays not built.
 
 ## I-101. Troubleshooting actions with no engine path from the runtime
 
@@ -1169,6 +1174,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Build items 1 and 2 of section 10 of the packaging document: store distributions and configuration releases insert-only, pin `distributionId` on every payment at acceptance, record each state change as an activation row, and have each engine host stop a removed distribution's workers. Record an `end` fact per payment (I-97) and count open payments from it.
 
 **What is built.** Listing of every kind, verification, the difference against what is active (flows, files and parameters), install, activation from a date with the previous release recorded as draining, rollback, removal refused while active or while a pinned payment is open, and the open count per release (`ContentTests`, the `service-console` Playwright test).
+
+**Done (22 November 2026).** Items 1 to 3 of section 10 of the packaging document are built (R-09-48 to R-09-57, R-11-37 to R-11-40). The studio builds and signs a bank's distribution and configuration release and publishes each with its tag; the runtime stores both insert-only after verifying their signature and kind, activates a distribution per bank and environment with the old one draining in the same transaction, records the five states as insert-only facts, pins `distributionId` on each payment at acceptance, records each payment's end (I-97), refuses removal while a pinned payment is open or before the longest declared wait has passed, and rolls back. The service console lists, verifies, diffs, installs, activates, drains, removes and rolls back both kinds, and counts open payments per distribution exactly; the 501 refusal is gone. A workflow package's open payments are still counted from the read model's status, as before. What is not built is in I-114.
 
 ## I-103. What the runtime's errors and logs do not carry yet
 
@@ -1216,6 +1223,29 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** R-02-17 says an amount of more than 15 significant digits is a decimal string in canonical JSON. The factory's SIF intake map (`studio/scripts/uae.wps.map.sif-in.v1.ts`, behind `uae.wps.map.sif-in.v1`) parses each amount with `Number` and writes `batch.controlSum`, `fixedPay`, `variablePay` and `instructedAmount.value` as JSON numbers. Every amount below 10^13 dirhams has at most 15 digits and is exact, so no realistic salary file is affected; a control total of 10^13 or more would lose its last digits before any rule reads it.
 
 **Recommendation.** In a new release of the map (the factory's RELEASES in `spec/tools/build_factory.py`, after the WPS 1.1.0 work), write each amount with `rules.money.str` (or keep the SIF's own text) and compute `instructedAmount.value` with `rules.money.add`. Add a sample with a 16-digit total to the map's round-trip tests.
+## I-111. The bank packs' lock files do not list the schemes a bank licenses
+
+**Issue.** A distribution carries the schemes its bank licenses (R-11-37), but no lock file on the content branch has `licensedSchemes` yet: the bank packs under `content-configurations/banks/` were written before the list, and the example bank's (`spec/examples/bank/pack.yaml`, from `tools/build_factory.py`) depends on `p` only although its configuration set sets WPS dials. A published lock file is replaced only by a later release with its ledger (R-11-35, R-11-36), so the list was not added in place.
+
+**Recommendation.** Add `licensedSchemes` to each bank's lock file in its next release (and to the example bank pack in `tools/build_factory.py`), and then make it required. Until then the studio reads a lock file without the list as the scheme scopes it depends on and those its configuration set sets dials of (`licensedSchemes` in `studio/src/export/distribution.ts`); every bank in the repository then licenses `uae.wps`.
+
+## I-112. A leg writes what its slot contract does not list
+
+**Issue.** The slot-contract check (R-11-38, L43) compares a leg's outcomes and reads with its slot's contract. It does not compare writes: `uae.wps.wf.agent-payment-in.v2` writes `facts.returns`, which the `scheme-leg` slot of `p.wf.inward.v1` does not list among its writes. Checking writes would refuse every distribution today.
+
+**Recommendation.** Decide whether `facts.returns` belongs to the inward slot's contract. If it does, release `p.wf.inward` with it (a contract change is an interface change: a new major, and the slot contract becomes `scheme-leg@2`); if not, release the leg without it. Then extend L43 and `checkSlotContracts` to writes.
+
+## I-113. Who switches distributions on, and which engine a bank runs
+
+**Issue.** Building distributions and configuration releases on approval is a setting (`distributions: true` in `governance/settings.yaml`, off by default), so that a publish that does not want them is unchanged; a test environment's distributions carry simulators (`testDistributions: true`). The distributions built on approval are for the settings' engine target, one engine for every bank: no document records which engine a bank runs, so scenario 9 (a bank moves engine) builds the other engine's distribution on its own (`POST /api/distributions` with `engine`).
+
+**Recommendation.** Owner to decide whether distributions are on by default once every bank's lock file lists its schemes (I-111), and to record each bank's engine (and environments) in its bank pack, so that an approval builds each bank's distribution for its own engine.
+
+## I-114. Side by side, as the harnesses run it
+
+**Issue.** Each distribution runs as its own copy: the front door keeps one verified copy per distribution, and the engine names what it registers after it (on Temporal the task queues and the worker build id, on DTFx the orchestration's name, on Elsa the workflow definition, on Flowable the deployment). But each payment's run is its own harness process: no long-running engine host serves several distributions at once, Temporal's worker-versioning rules (a build id set per task queue on a server) are not used, the time-skipping test server does not support them, and a removed distribution's workers stop because nothing starts them, not because a host unregisters them. The longest declared wait is the largest bound or default of a duration dial named a wait, a timeout or a hold; an `await` with a literal timeout is not counted. Scenario 6 (a new scheme) is shown only as far as one scheme allows: every distribution lists only its bank's schemes, and a leg naming a slot contract the platform does not offer refuses the approval.
+
+**Recommendation.** When the runtime's engine hosts become long-running (I-89, I-101), give each a registry of the distributions it serves, started at activation and stopped at removal, with Temporal worker versioning on the real server; count an await's literal timeout in the longest wait (or make every wait a dial, as the DSL asks); and add a second scheme pack to the factory's tests so that scenario 6 builds a distribution for a bank that licenses it and not for one that does not.
 
 
 **Done (2026-11-22).** `uae.wps.map.sif-in.v1` 1.1.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.1.0.ts`) reads every amount from the file's own text into exact minor units and writes it as a decimal string with two places; a line's amount is the exact sum of its fixed and variable pay. WPS-MAP-004 maps a sixteen-digit total (`samples/wps-sif-large-total.sif`) with every digit. The runtime's `CanonicalMapper` reads an amount given as a string.

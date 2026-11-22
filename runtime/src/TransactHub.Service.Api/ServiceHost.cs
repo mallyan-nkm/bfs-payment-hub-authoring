@@ -112,7 +112,8 @@ public sealed class ServiceHost
             book.Run("activate", (who, a, ct) => content.Activate(a.Target!, (string?)a.Parameters?["environment"],
                 (string?)a.Parameters?["effectiveFrom"] is { Length: > 0 } f ? DateTimeOffset.Parse(f, System.Globalization.CultureInfo.InvariantCulture) : null, who, a.Reason!, ct));
             book.Run("rollback", (who, a, ct) => content.Rollback(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));
-            book.Run("remove", (who, a, ct) => content.Remove(a.Target!, who, a.Reason!, ct));
+            book.Run("remove", (who, a, ct) => content.Remove(a.Target!, who, a.Reason!, ct, (string?)a.Parameters?["environment"]));
+            book.Run("drain", (who, a, ct) => content.Drain(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));
             book.Run("rebuild-read-model", async (_, _, ct) => { await projector.Rebuild(ct); var l = await projector.Lag(ct); return new JsonObject { ["rebuilt"] = true, ["behind"] = l.Behind, ["applied"] = l.Applied }; });
             book.Run("replay-read-model", async (_, _, ct) => { var before = await projector.Lag(ct); await projector.CatchUp(ct); var l = await projector.Lag(ct); return new JsonObject { ["from"] = before.Through, ["through"] = l.Through, ["behind"] = l.Behind }; });
             book.Run("release-hold", ActionBook.ReleaseHold(store, clock));

@@ -104,30 +104,30 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect((await api.post(`/api/tenants/${TENANT}/configuration`, { actor: 'example.checker', yaml: toYaml({ ...shipped, release: '1.1.2' }) })).status).toBe(403);
   });
 
-  it('1.2.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone', async () => {
+  it('1.3.0 turns the WPS rail off: the payment is rejected at the route and its reservation undone', async () => {
     await release('1.3.0', (c) => { c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value = []; });
     const r = await bench();
     expect(r.outcome).toBe('rejected');
     expect(r.trace).toEqual(NO_WPS_RAIL);
   });
 
-  it('1.2.0 deployed on DTFx: rejected the same way, and nothing reaches the WPS worker past the intake', async () => {
+  it('1.3.0 deployed on DTFx: rejected the same way, and nothing reaches the WPS worker past the intake', async () => {
     const d = await deploy('1.3.0');
-    expect(d.out).toContain(`configuration ${TENANT}@1.2.0 from the package`);
+    expect(d.out).toContain(`configuration ${TENANT}@1.3.0 from the package`);
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(NO_WPS_RAIL);
     const wps = d.workers.find((w) => w.queue === 'th-uae-wps')!;
-    expect(Object.keys(wps.served)).toEqual(['uae.wps.map.sif-in.v1@1.0.0']);
+    expect(Object.keys(wps.served)).toEqual(['uae.wps.map.sif-in.v1@1.1.0']);
   }, 300000);
 
-  it('1.3.0 turns WPS back on and unbinds the pre-release hook: the payment settles without it', async () => {
+  it('1.4.0 turns WPS back on and unbinds the pre-release hook: the payment settles without it', async () => {
     await release('1.4.0', (c) => { c.bindings = c.bindings.filter((b: any) => b.hookPoint !== 'p.wf.corporate.v1#before-release'); });
     const r = await bench();
     expect(r.outcome).toBe('settled');
     expect(r.trace).toEqual(NO_HOLD_HOOK);
   });
 
-  it('1.3.0 deployed on DTFx: settled through four separate workers, each serving only its queue', async () => {
+  it('1.4.0 deployed on DTFx: settled through four separate workers, each serving only its queue', async () => {
     const d = await deploy('1.4.0');
     const files = new Map(unzip(fs.readFileSync(d.file)).map((e) => [e.name, e.content.toString('utf8')]));
     expect(parseYaml(files.get(`configuration/${TENANT}.yaml`)!).release).toBe('1.4.0');
@@ -155,7 +155,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     c.values.find((v: any) => v.parameter === 'b.rule.internal-limit.v1#internalLimit').value = value;
   };
 
-  it('1.4.0 sets the internal limit to 1200: every line is within, the file total is not, so the payment is held', async () => {
+  it('1.5.0 sets the internal limit to 1200: every line is within, the file total is not, so the payment is held', async () => {
     await release('1.5.0', limit(1200));
     const approved = await bench(TWO_LINES, [OPS('approve')]);
     expect(approved.trace).toEqual(HELD('approved'));
@@ -165,7 +165,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(declined.outcome).toBe('rejected');
   });
 
-  it('1.4.0 deployed on DTFx: held on the file total and declined, the bank worker ran the limit', async () => {
+  it('1.5.0 deployed on DTFx: held on the file total and declined, the bank worker ran the limit', async () => {
     const d = await deploy('1.5.0', TWO_LINES, [OPS('decline')]);
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(HELD('declined'));
@@ -173,12 +173,12 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(d.workers.find((w) => w.queue === 'th-p')!.served['p.hold.approval.v1@1.0.0']).toBe(1);
   }, 300000);
 
-  it('1.5.0 sets the limit to 900: the line of 1000 is above it, so the payment is held', async () => {
+  it('1.6.0 sets the limit to 900: the line of 1000 is above it, so the payment is held', async () => {
     await release('1.6.0', limit(900));
     expect((await bench(TWO_LINES, [OPS('approve')])).trace).toEqual(HELD('approved'));
   });
 
-  it('1.6.0 sets the limit to 2000: every line and the total are within, so nothing is held', async () => {
+  it('1.7.0 sets the limit to 2000: every line and the total are within, so nothing is held', async () => {
     await release('1.7.0', limit(2000));
     const r = await bench(TWO_LINES, [OPS('decline')]);
     expect(r.trace).toEqual(SETTLED);

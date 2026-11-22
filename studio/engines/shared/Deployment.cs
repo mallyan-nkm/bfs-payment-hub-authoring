@@ -132,10 +132,13 @@ public sealed class ClaimCheckStore
     public static bool IsStatePath(string p) => StateParts.Contains(p.Split('.')[0].Replace("[]", ""));
 
     /// <summary>What the store needs to accept a root's payments: the tenant, and the scheme and direction from the header.</summary>
+    /// <summary>The distribution a payment is pinned to, when the host runs one (R-09-53): its release id in the store.</summary>
+    public static string? Distribution;
+
     public static JsonObject AcceptFor(JsonObject state, string? tenant, string docKey)
     {
         var header = J.P(state, "header");
-        return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = docKey };
+        return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = Distribution ?? docKey };
     }
 
     /// <summary>Split a context into what the engine holds and what the store holds.</summary>

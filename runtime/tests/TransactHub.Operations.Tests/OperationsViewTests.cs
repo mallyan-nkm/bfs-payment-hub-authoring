@@ -94,7 +94,7 @@ public sealed class OperationsViewTests
         }
         Assert.True(problems.Count == 0, string.Join('\n', problems));
         var coverage = doc.Single(l => l.StartsWith("Of the "));
-        Assert.StartsWith($"Of the {rows.Count} rows above: {mapped} mapped ({empty} of them empty until the store keeps the files or a lookup answers them, I-97 and I-115), {notMapped} not mapped. Of the {notMapped}, {deliberately} are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and {notMapped - deliberately} wait for a flow or a fact not built yet (plan P2, I-97).", coverage);
+        Assert.StartsWith($"Of the {rows.Count} rows above: {mapped} mapped ({empty} of them empty until the store keeps the files or a lookup answers them, I-97 and I-115), {notMapped} not mapped. Of the {notMapped}, {deliberately} are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and {notMapped - deliberately} {(notMapped - deliberately == 1 ? "waits" : "wait")} for a flow or a fact not built yet (plan P2, I-97).", coverage);
         // The owner's decision of 2026-11-22 (Issue I-100): every field with no source before has one now, or waits for a flow or a fact.
         Assert.DoesNotContain(rows, r => r[1] == "not mapped" && !r[4].StartsWith("Deliberately") && !r[4].Contains("I-97") && !r[4].Contains("plan P2"));
     }

@@ -4,10 +4,12 @@
   "title": "Engine binding",
   "description": "Engine settings kept apart from the DSL. The designer never edits this file. See design/09.",
   "type": "object",
-  "required": ["kind", "target", "strategy", "queues", "taskNaming"],
+  "required": ["kind", "name", "release", "target", "strategy", "queues", "taskNaming"],
   "additionalProperties": false,
   "properties": {
     "kind": { "const": "engine-binding" },
+    "name": { "description": "p.binding.<target>.v<major>: a binding is released like every other artefact (Issue I-83).", "type": "string", "pattern": "^p\\.binding\\.[a-z]+\\.v[0-9]+$" },
+    "release": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "target": { "enum": ["temporal", "dtfx", "flowable", "elsa"] },
     "strategy": { "enum": ["interpreter", "generation"] },
     "queues": {

@@ -41,7 +41,7 @@ export const ARTEFACT_KINDS = [
   'workflow', 'scheme', 'activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table',
   'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'operations-view', 'error-dictionary',
 ] as const;
-export const STUDIO_KINDS = ['bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant'] as const;
+export const STUDIO_KINDS = ['bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant', 'distribution', 'configuration-release'] as const;
 export type Kind = (typeof ARTEFACT_KINDS)[number] | (typeof STUDIO_KINDS)[number];
 export const KINDS: Kind[] = [...ARTEFACT_KINDS, ...STUDIO_KINDS];
 
@@ -81,6 +81,8 @@ export const GRANTS: readonly Grant[] = [
   { role: 'bank approver', scope: 'bank', kinds: BANK_KINDS, actions: ['approve'] },
   { role: 'bank approver', scope: 'bank', kinds: ['configuration-set'], actions: ['accept'] },
   { role: 'bank approver', scope: 'bank', kinds: ['bench', 'export', 'deploy'], actions: ['run'] },
+  // A bank's distribution when its bank pack changes, and its configuration releases (R-11-40).
+  { role: 'bank approver', scope: 'bank', kinds: ['distribution', 'configuration-release'], actions: ['approve'] },
   // Workflow Designer: composition on the canvas, no code.
   { role: 'workflow designer', scope: 'shared', kinds: DESIGNER_KINDS, actions: ['author'] },
   { role: 'workflow designer', scope: 'shared', kinds: ['supersession'], actions: ['author'] },
@@ -96,6 +98,8 @@ export const GRANTS: readonly Grant[] = [
   { role: 'platform approver', scope: 'studio', kinds: ['release', 'in-flight'], actions: ['retire'] },
   { role: 'platform approver', scope: 'studio', kinds: ['settings'], actions: ['author'] },
   { role: 'platform approver', scope: 'shared', kinds: ['bench', 'export', 'deploy'], actions: ['run'] },
+  // The distribution of every bank that takes an approved platform or scheme change (R-11-40).
+  { role: 'platform approver', scope: 'shared', kinds: ['distribution'], actions: ['approve'] },
   // Administrator: users and roles only, through maker-checker.
   { role: 'administrator', scope: 'studio', kinds: ['users'], actions: ['author', 'approve'] },
   // Service operations: what the runtime tells the studio, and how it publishes.
@@ -106,7 +110,7 @@ export const GRANTS: readonly Grant[] = [
 
 /** The scope class of a scope: `b` is a bank's, every other scope is shared. */
 export function scopeClass(scope: string | undefined, kind: Kind): ScopeClass {
-  if ((STUDIO_KINDS as readonly string[]).includes(kind) && !['bench', 'import', 'export', 'deploy', 'assistant'].includes(kind)) return 'studio';
+  if ((STUDIO_KINDS as readonly string[]).includes(kind) && !['bench', 'import', 'export', 'deploy', 'assistant', 'distribution', 'configuration-release'].includes(kind)) return 'studio';
   return scope === 'b' ? 'bank' : 'shared';
 }
 

@@ -29,6 +29,7 @@ import { CodeRegistry, RegistryError } from '../core/registry.js';
 import { expandWorkflow } from '../core/expand.js';
 import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
 import * as gov from '../governance/governance.js';
+import * as distGov from '../governance/distributions.js';
 import { enforce, submitForReview } from '../governance/governance.js';
 import { reasonCodeCoverage } from '../sim/coverage.js';
 import { stubSource } from '../sim/stub.js';
@@ -400,8 +401,14 @@ route('POST', '/api/publish', async (env, req) => {
   const r = await gov.approveChangeSet(env, tenant, actorOf(req), keys);
   // The change set is one commit on the content branch, or in pull-request mode one on its own branch and a pull request (R-11-22, R-09-22).
   const git = r.write ? await r.write : undefined;
-  return { changeSet: r.changeSet, published: r.published.map(summary), ...(git ? { git: { changeSet: r.changeSet.id, skipped: r.skipped, ...git } } : {}) };
+  return { changeSet: r.changeSet, published: r.published.map(summary), bundles: r.bundles, ...(git ? { git: { changeSet: r.changeSet.id, skipped: r.skipped, ...git } } : {}) };
 });
+
+// A bank's distribution or configuration release built and published on its own (R-11-40), by the roles that approve one.
+route('POST', '/api/distributions', async (env, req) =>
+  distGov.buildAndPublish(env, actorOf(req), tenantOf(req), { kind: 'distribution', bank: String(req.body?.bank ?? ''), engine: req.body?.engine, withSimulators: req.body?.withSimulators === true }));
+route('POST', '/api/configuration-releases', async (env, req) =>
+  distGov.buildAndPublish(env, actorOf(req), tenantOf(req), { kind: 'configuration', bank: String(req.body?.bank ?? ''), bindings: req.body?.bindings, calendars: req.body?.calendars, release: req.body?.release }));
 
 route('GET', '/api/change-set', (env, req) => {
   const tenant = tenantOf(req);

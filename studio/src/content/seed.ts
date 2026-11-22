@@ -89,7 +89,8 @@ export function seedFiles(specRoot: string, studioRoot = STUDIO_DIR): SeedFile[]
     ? `banks/example-bank/configuration-sets/${docs[0].release}.yaml`
     : `banks/example-bank/${path.relative(bank, f).split(path.sep).join('/')}`), 'example-bank');
   const bindings = path.join(specRoot, 'examples', 'bindings');
-  if (fs.existsSync(bindings)) for (const f of walkYaml(bindings)) add(f, () => `artefacts/bindings/${path.basename(f)}`, OWNER_TENANT);
+  // Each binding at each release its own file, never replaced (Issue I-83): artefacts/bindings/<name>/<release>.yaml.
+  if (fs.existsSync(bindings)) for (const f of walkYaml(bindings)) add(f, (docs) => (docs.length === 1 && docs[0].name ? documentPath(docs[0], OWNER_TENANT) : `artefacts/bindings/${path.basename(f)}`), OWNER_TENANT);
   const sup = path.join(specRoot, 'examples', 'supersession');
   if (fs.existsSync(sup)) for (const f of walkYaml(sup)) add(f, (docs) => (docs.length === 1 ? documentPath(docs[0], OWNER_TENANT) : `supersessions/${path.basename(f)}`), OWNER_TENANT);
   // The factory's script-behinds and the samples of its tests, from the studio's own folders.
@@ -123,8 +124,6 @@ export interface SeedReport {
 
 /** A bank pack's lock file: a seeded file a later release replaces, its place fixed by R-11-28. */
 const BANK_LOCK = /^banks\/([^/]+)\/pack\.yaml$/;
-/** The engine bindings: no release, so a changed binding replaces the file; the ledger names the hash it replaces (R-11-36). */
-const BINDINGS = 'artefacts/bindings/bindings.yaml';
 const releaseOf = (text: string) => String(parseYamlAll(text).find((d: any) => d && typeof d === 'object')?.release ?? '');
 
 /**
@@ -147,7 +146,6 @@ export function seedPlan(env: StudioEnv) {
       const lock = BANK_LOCK.exec(f.path);
       const was = releaseOf(now);
       if (lock && was && compareReleases(releaseOf(f.text), was) > 0 && !c.has(`banks/${lock[1]}/packs/${was}.yaml`)) replace.push({ file: f, was: now, keptAt: `banks/${lock[1]}/packs/${was}.yaml` });
-      else if (f.path === BINDINGS) replace.push({ file: f, was: now });
       else clash.push(f);
     }
   }

@@ -124,7 +124,7 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
     /// <summary>The bank's role map: app roles and a group to the runtime's roles; a tenant claim in the token gives tenants.</summary>
     public const string RoleMap = """
         { "kind": "runtime-role-map", "tenantsClaim": "tenants", "grants": [
-          { "claim": "roles", "value": "TransactHub.Pipeline", "roles": ["release-importer", "release-activator", "release-reader", "values-reader"], "tenants": ["*"] },
+          { "claim": "roles", "value": "TransactHub.Pipeline", "roles": ["release-importer", "release-activator", "release-reader", "values-reader", "payment-intake"], "tenants": ["*"] },
           { "claim": "roles", "value": "TransactHub.Importer", "roles": ["release-importer"] },
           { "claim": "roles", "value": "TransactHub.Reader", "roles": ["release-reader"] },
           { "claim": "roles", "value": "TransactHub.Worker", "roles": ["values-reader"], "tenants": ["example-bank"] },

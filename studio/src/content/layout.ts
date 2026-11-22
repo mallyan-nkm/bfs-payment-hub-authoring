@@ -23,7 +23,7 @@ export function documentPath(doc: any, tenant: string): string {
   if (doc.kind === 'scheme') return `${base}/${safe(doc.scope)}/scheme/${safe(doc.release)}.yaml`;
   if (doc.kind === 'pack') return `${base}/${safe(doc.scope)}/pack/${safe(doc.release)}.yaml`;
   if (doc.kind === 'supersession') return `supersessions/${safe(doc.id)}.yaml`;
-  if (doc.kind === 'engine-binding') return `${base}/bindings/${safe(doc.target)}.yaml`;
+  if (doc.kind === 'engine-binding') return doc.name && doc.release ? `${base}/bindings/${safe(doc.name)}/${safe(doc.release)}.yaml` : `${base}/bindings/${safe(doc.target)}.yaml`;
   if (doc.name && doc.release) return `${base}/${safe(scopeOfName(doc.name))}/${safe(doc.name)}/${safe(doc.release)}.yaml`;
   return `${base}/${safe(doc.scope ?? 'p')}/${safe(doc.kind)}/${safe(doc.name ?? doc.id ?? doc.kind)}${doc.release ? `@${safe(doc.release)}` : ''}.yaml`;
 }

@@ -372,6 +372,6 @@ items:
   summary: The example bank's routing code for the new parameters
   target:
     kind: configuration
-    name: example-bank@1.2.0
+    name: example-bank@1.3.0
   note: 'Synthetic: the bank''s real values stay in its own repository (D5).'
   confidence: high

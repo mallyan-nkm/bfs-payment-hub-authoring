@@ -70,6 +70,10 @@ export interface Settings {
   mode: 'commit' | 'pull-request';
   /** The engine whose package each published workflow carries under `releases/`. */
   target: string;
+  /** On approval, also build and publish the distributions and configuration releases the change set calls for (R-11-40). */
+  distributions?: boolean;
+  /** Build those distributions for a test environment: with the simulators, never promotable (R-07-12). */
+  testDistributions?: boolean;
   /** When set, each publish also writes an activation for this environment. */
   environment?: string;
   changedBy?: string;
@@ -241,6 +245,8 @@ export class Store {
     const events: AuditEvent[] = [];
     for (const [p, text] of files) {
       const parts = p.split('/');
+      // The old, unreleased bindings file stays on the branch as a record; once the bindings have releases it is not read (Issue I-83).
+      if (p === 'artefacts/bindings/bindings.yaml' && files.some(([q]) => q.startsWith('artefacts/bindings/p.binding.'))) continue;
       if (p.startsWith('artefacts/') && isYaml(p)) this.loadFile(p, text, undefined);
       else if (p.startsWith('supersessions/') && parts.length === 2 && isYaml(p)) this.loadFile(p, text, undefined);
       else if (parts[0] === 'banks' && parts.length > 2) {

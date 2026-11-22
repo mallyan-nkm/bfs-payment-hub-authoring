@@ -107,26 +107,29 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     expect(releaseLedgerIssues(env.store.content!.files)).toEqual([]);
   }, 60000);
 
-  it('the engine bindings carry no release: a changed binding replaces their file, and the ledger names the hash it replaces', async () => {
+  it('engine bindings are released like every other artefact: a published binding release is never replaced (Issue I-83)', async () => {
     const full = forkRepo();
-    const P = `${ROOT}/artefacts/bindings/bindings.yaml`;
+    const P = `${ROOT}/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml`;
     const now = fake().files(full, BRANCH)[P];
-    // The branch as it was before the latest binding change (the bindings' own seed, CS-2026-11-22-005).
-    const before = now.replace(/^ {2}forEachConcurrency: 64\n/gm, '');
-    expect(before).not.toBe(now);
-    fake().commitFiles(full, BRANCH, { [P]: before, [`${ROOT}/change-sets/ledger/CS-2026-11-22-005.yaml`]: null }, 'Before the bindings change');
+    expect(now, 'the binding is published at its release').toBeDefined();
+    expect(fake().files(full, BRANCH)[`${ROOT}/artefacts/bindings/p.binding.temporal.v1/1.0.0.yaml`]).not.toMatch(/forEachConcurrency/);
+    expect(now).toMatch(/forEachConcurrency: 64/);
+    // A binding changed on the branch at a release already published: the seed refuses to write it again.
+    fake().commitFiles(full, BRANCH, { [P]: now.replace('forEachConcurrency: 64', 'forEachConcurrency: 32') }, 'A binding edited in place');
     const env = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
-    expect(seedPlan(env).replace.map((r) => r.file.path)).toEqual([P.slice(ROOT.length + 1)]);
-    const r = await seedContent(env);
-    const after = fake().files(full, BRANCH);
-    expect(after[P]).toBe(now);
-    const led = parseYamlAll(after[`${ROOT}/${ledgerPath(r.changeSet!)}`])[0] as any;
-    expect(led.replaced).toEqual([{ path: 'artefacts/bindings/bindings.yaml', sha256: textSha(before) }]);
-    expect(releaseLedgerIssues(env.store.content!.files)).toEqual([]);
-    // Any other seeded file is never replaced.
+    const plan = seedPlan(env);
+    expect(plan.replace.map((r) => r.file.path)).toEqual([]);
+    expect(plan.clash.map((c) => c.path)).toEqual([P.slice(ROOT.length + 1)]);
+    // L41: a ledger that replaces a binding release is refused, and so is a later replacement of the old unreleased file.
     const files = new Map(env.store.content!.files);
-    const p = 'artefacts/p/pack/1.0.0.yaml';
-    files.set(`change-sets/ledger/CS-2026-11-30-001.yaml`, `kind: release-ledger\nchangeSet: CS-2026-11-30-001\nfiles:\n  - { path: ${p}, sha256: ${textSha('x')} }\nreplaced:\n  - { path: ${p}, sha256: ${textSha(files.get(p)!)} }\n`);
-    expect(releaseLedgerIssues(files).map((i) => i.message).join('\n')).toMatch(/publishes artefacts\/p\/pack\/1\.0\.0\.yaml again/);
+    files.set(P.slice(ROOT.length + 1), now);
+    const b = 'artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml';
+    files.set('change-sets/ledger/CS-2026-11-30-001.yaml', `kind: release-ledger\nchangeSet: CS-2026-11-30-001\nfiles:\n  - { path: ${b}, sha256: ${textSha('x')} }\nreplaced:\n  - { path: ${b}, sha256: ${textSha(now)} }\n`);
+    expect(releaseLedgerIssues(files).map((i) => i.message).join('\n')).toMatch(/publishes artefacts\/bindings\/p\.binding\.temporal\.v1\/1\.1\.0\.yaml again/);
+    const old = 'artefacts/bindings/bindings.yaml';
+    files.set('change-sets/ledger/CS-2026-11-30-001.yaml', `kind: release-ledger\nchangeSet: CS-2026-11-30-001\nfiles:\n  - { path: ${old}, sha256: ${textSha('x')} }\nreplaced:\n  - { path: ${old}, sha256: ${textSha(files.get(old)!)} }\n`);
+    expect(releaseLedgerIssues(files).map((i) => i.message).join('\n')).toMatch(/publishes artefacts\/bindings\/bindings\.yaml again/);
+    // The studio reads the bindings at their latest release, and the old unreleased file is a record only.
+    expect(env.store.byKind('engine-binding').every((e) => e.doc.name && e.doc.release)).toBe(true);
   }, 60000);
 });

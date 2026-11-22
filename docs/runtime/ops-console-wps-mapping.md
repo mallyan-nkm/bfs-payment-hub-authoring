@@ -180,8 +180,8 @@ Screens inventoried: Banking Ops `features/reports/wps` (SIF Summary report, SIF
 | Sanction completed, failed, confirmed | mapped | p:subject:sanctions, p:subject:lastOutcome | `step:sanctions.outcome`, `subject.lastOutcome` | Per payment; the counts are the list filtered |
 | KPIs, MOHRE compliance status, employer establishments | mapped | (list) | the list's counts under a filter | Derived: a count is the list filtered (by CB response, by `employerStatus`, by `employerId`); a report of its own is I-68 |
 | Recent transactions: id, type, status, direction, tenant, start | mapped | (list) | the list's own columns | |
-| Recent transactions: duration | not mapped | | | Derived when available: the end fact's time less the acceptance time; the store records no end of a payment yet (I-97) |
+| Recent transactions: duration | mapped | p:subject:duration | `subject.duration` | Derived: the `payment.end` fact's time less the acceptance (I-97); empty while the payment is open |
 
 ## Coverage
 
-Of the 128 rows above: 124 mapped (10 of them empty until the store keeps the files or a lookup answers them, I-97 and I-115), 4 not mapped. Of the 4, 2 are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and 2 wait for a flow or a fact not built yet (plan P2, I-97). Before the owner's decision of 2026-11-22 (Issue I-100): 101 mapped (15 empty), 27 not mapped, 25 of them with no source in the new model.
+Of the 128 rows above: 125 mapped (10 of them empty until the store keeps the files or a lookup answers them, I-97 and I-115), 3 not mapped. Of the 3, 2 are kept out on purpose (request and reply bodies and the audit's payloads hold personal data; error texts can quote values), and 1 waits for a flow or a fact not built yet (plan P2, I-97). Before the owner's decision of 2026-11-22 (Issue I-100): 101 mapped (15 empty), 27 not mapped, 25 of them with no source in the new model.

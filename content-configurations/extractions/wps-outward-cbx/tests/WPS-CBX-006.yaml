@@ -10,6 +10,7 @@ expect:
   outcome: settled
   trace:
   - business-date:set
+  - employer-status:found
   - file-checks:pass
   - record-checks:pass
   - record-iban:pass
@@ -22,4 +23,10 @@ bench:
   scenario: accept
 - port: uae.p.port.calendar.v1
   simulator: uae.p.sim.calendar.v1
+  scenario: accept
+- port: p.port.encryption.v1
+  simulator: p.sim.encryption.v1
+  scenario: accept
+- port: uae.wps.port.labour-ministry.v1
+  simulator: uae.wps.sim.labour-ministry.v1
   scenario: accept

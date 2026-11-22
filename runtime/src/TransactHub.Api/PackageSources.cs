@@ -7,11 +7,11 @@ namespace TransactHub.Api;
 
 /// <summary>A released version a package source offers: its tag, the release it names, and where its package is.</summary>
 /// <param name="Kind">What the tag offers: a workflow package (<c>release/…</c>), or a bank's distribution (<c>dist/&lt;bank&gt;/&lt;id&gt;</c>,
-/// docs/runtime/PACKAGING-AND-DEPLOYMENT.md), listed so a console can show it; installing a distribution is not built yet.</param>
+/// docs/runtime/PACKAGING-AND-DEPLOYMENT.md), or a configuration release (<c>config/&lt;bank&gt;/&lt;release&gt;</c>).</param>
 public sealed record PublishedVersion(string Tag, string Workflow, string Release, string Target, string Commit, string Folder, string? Message, string Kind = ReleaseSignature.WorkflowPackage)
 {
     /// <summary>The release id the runtime stores it as, and the package's signature must name.</summary>
-    public string ReleaseId => Kind == ReleaseSignature.WorkflowPackage ? $"{Workflow}/{Target}@{Release}" : Tag;
+    public string ReleaseId => Kind switch { ReleaseSignature.Distribution => $"dist/{Workflow}@{Release}", ReleaseSignature.ConfigurationRelease => $"config/{Workflow}@{Release}", _ => $"{Workflow}/{Target}@{Release}" };
 }
 
 /// <summary>
@@ -73,7 +73,7 @@ public sealed class GitHubPackageSource(HttpClient http, Uri api, string owner, 
     public async Task<IReadOnlyList<PublishedVersion>> List(CancellationToken ct = default)
     {
         var refs = new JsonArray();
-        foreach (var prefix in new[] { "release", "dist" })
+        foreach (var prefix in new[] { "release", "dist", "config" })
             foreach (var r in await Get($"git/matching-refs/tags/{prefix}", ct, allow404: true) as JsonArray ?? []) refs.Add(r?.DeepClone());
         var list = new List<PublishedVersion>();
         foreach (var r in refs)
@@ -82,7 +82,8 @@ public sealed class GitHubPackageSource(HttpClient http, Uri api, string owner, 
             var parts = tag.Split('/');
             // release/<workflow>/<release>/<target>, or dist/<bank>/<id>: any other tag is not a release the studio made.
             var dist = parts.Length == 3 && parts[0] == "dist";
-            if (!dist && (parts.Length != 4 || parts[0] != "release")) continue;
+            var config = parts.Length == 3 && parts[0] == "config";
+            if (!dist && !config && (parts.Length != 4 || parts[0] != "release")) continue;
             var sha = (string?)r?["object"]?["sha"] ?? "";
             string commit = sha;
             string? message = null;
@@ -92,7 +93,9 @@ public sealed class GitHubPackageSource(HttpClient http, Uri api, string owner, 
                 commit = (string?)t?["object"]?["sha"] ?? "";
                 message = (string?)t?["message"];
             }
-            list.Add(dist
+            list.Add(config
+                ? new PublishedVersion(tag, parts[1], parts[2], "", commit, $"{root}/releases/configuration/{parts[1]}/{parts[2]}", message, ReleaseSignature.ConfigurationRelease)
+                : dist
                 ? new PublishedVersion(tag, parts[1], parts[2], "", commit, $"{root}/releases/distributions/{parts[1]}/{parts[2]}", message, ReleaseSignature.Distribution)
                 : new PublishedVersion(tag, parts[1], parts[2], parts[3], commit, $"{root}/releases/{ScopeOf(parts[1])}/{parts[1]}/{parts[2]}/{parts[3]}", message));
         }

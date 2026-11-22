@@ -6,7 +6,8 @@ description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
   reservation, route, posting, notification), its hold, and the actions the platform's workflows can take while it runs.
   A scheme's own view (for example uae.wps.view.operations.v1) adds the fields of its legs. Release 1.1.0 adds the posting's
-  amount with charges, its charge and VAT and its legs, from the posting fact (camt.054 entries and ChrgsInf, Issue I-100).
+  amount with charges, its charge and VAT and its legs, from the posting fact (camt.054 entries and ChrgsInf), and the payment's end and
+  duration, from its payment.end fact (Issues I-97, I-100).
 platform: [p.wf.corporate.v1, p.wf.inward.v1]
 subject:
   title: Payment
@@ -34,6 +35,9 @@ subject:
     - { id: postingLegs, label: Posting legs, group: posting, source: "step:post.writes.facts.posting.entries", format: json, oldScreen: "Integration 360, CORE posting, legs (D/C, account masked, amount, currency, branch, type code)" }
     - { id: notified, label: Channel notified, group: lifecycle, source: "step:notify.outcome", format: status }
     - { id: release, label: Release, group: lifecycle, source: subject.releaseId, format: code }
+    - { id: endedAt, label: Ended at, group: lifecycle, source: subject.endedAt, format: datetime }
+    - { id: endOutcome, label: End, group: lifecycle, source: subject.endOutcome, format: status }
+    - { id: duration, label: Duration, group: lifecycle, source: subject.duration, format: code, oldScreen: "WPS dashboard, Recent transactions, duration (derived: the end less the acceptance)" }
     - { id: holdStatus, label: Hold, group: hold, source: hold.status, format: status }
     - { id: holdKind, label: Hold kind, group: hold, source: hold.kind, format: code }
     - { id: holdReason, label: Held because, group: hold, source: hold.reason }

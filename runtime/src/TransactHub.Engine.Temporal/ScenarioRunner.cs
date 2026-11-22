@@ -72,22 +72,26 @@ public sealed class ScenarioRunner
 
         // A deployment puts each activity on the task queue of its scope (R-09-05); a kit run, on one.
         var queues = J.P(input, "queues") as JsonObject;
+        // A bank's distribution runs as its own copy beside the others (R-09-55): its task queues carry the distribution, and
+        // its workers carry it as their build id, so two distributions never take each other's tasks.
+        var distribution = J.S(input, "distribution");
+        string Q(string q) => distribution is null ? q : $"{q}@{distribution}";
         string queueOf(string activity)
         {
-            if (queues is null || activity == Interp.ClaimCheck) return HostQueue;
+            if (queues is null || activity == Interp.ClaimCheck) return Q(HostQueue);
             var parts = activity.Split('@')[0].Split('.');
             var scope = parts[0] is "p" or "b" ? parts[0] : $"{parts[0]}.{parts[1]}";
-            return J.S(queues, scope) ?? HostQueue;
+            return Q(J.S(queues, scope) ?? HostQueue);
         }
         InterpreterWorkflow.QueueOf = queueOf;
 
         var serverNow = (await env.GetCurrentTimeAsync()).ToUniversalTime();
         var offset = start - new DateTimeOffset(serverNow, TimeSpan.Zero).ToUnixTimeMilliseconds();
         var runId = Guid.NewGuid().ToString("N")[..8];
-        var frontDoorId = $"front-door-{runId}";
+        var frontDoorId = distribution is null ? $"front-door-{runId}" : $"front-door-{runId}@{distribution}";
 
-        var taskQueues = new HashSet<string> { HostQueue };
-        if (queues is not null) foreach (var (_, q) in queues) taskQueues.Add(q!.GetValue<string>());
+        var taskQueues = new HashSet<string> { Q(HostQueue) };
+        if (queues is not null) foreach (var (_, q) in queues) taskQueues.Add(Q(q!.GetValue<string>()));
         var workersRunning = new List<(TemporalWorker w, Task t)>();
         using var stop = new CancellationTokenSource();
         foreach (var q in taskQueues)
@@ -98,7 +102,10 @@ public sealed class ScenarioRunner
                 MaxConcurrentActivities = 500, MaxConcurrentWorkflowTasks = 200,
                 MaxConcurrentActivityTaskPolls = 8, MaxConcurrentWorkflowTaskPolls = 8,
             }.AddActivity(host.AnyAsync);
-            if (q == HostQueue) opts.AddWorkflow<InterpreterWorkflow>().AddWorkflow<FrontDoorWorkflow>();
+#pragma warning disable CS0618 // the build id names the distribution the worker runs
+            if (distribution is not null) opts.BuildId = distribution;
+#pragma warning restore CS0618
+            if (q == Q(HostQueue)) opts.AddWorkflow<InterpreterWorkflow>().AddWorkflow<FrontDoorWorkflow>();
             var w = new TemporalWorker(env.Client, opts);
             workersRunning.Add((w, w.ExecuteAsync(stop.Token)));
         }
@@ -116,7 +123,7 @@ public sealed class ScenarioRunner
             var (state, payload) = ClaimCheckStore.Split(c);
             var header = J.P(state, "header");
             var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
-            await host.Store.Create($"{id}#ctx", payload, new AcceptInfo(tenant, J.S(header, "scheme") ?? docKey.Split('.')[0], direction, docKey));
+            await host.Store.Create($"{id}#ctx", payload, new AcceptInfo(tenant, J.S(header, "scheme") ?? docKey.Split('.')[0], direction, distribution ?? docKey));
             var inp = new JsonObject { ["kind"] = "workflow", ["doc"] = docKey, ["state"] = state, ["payloadRef"] = $"{id}#ctx" };
             if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
             return inp;
@@ -156,7 +163,7 @@ public sealed class ScenarioRunner
             ["offset"] = offset, ["roots"] = J.Arr(roots.Select(r => r.id)), ["handlerOnly"] = handlerOnly,
             ["horizon"] = start + Duration.Ms("P60D"), ["starts"] = starts, ["signals"] = signals, ["deliveries"] = deliveries,
         };
-        var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), new WorkflowOptions(frontDoorId, HostQueue));
+        var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), new WorkflowOptions(frontDoorId, Q(HostQueue)));
         var fdOut = (JsonObject)J.Parse(await fd.GetResultAsync())!;
         foreach (var l in J.Strings(J.P(fdOut, "log"))) log.Add(l);
 
@@ -240,6 +247,7 @@ public sealed class ScenarioRunner
             ["startMs"] = start,
             ["engine"] = new JsonObject
             {
+                ["distribution"] = distribution is null ? null : new JsonObject { ["id"] = distribution, ["buildId"] = distribution, ["taskQueues"] = J.Arr(taskQueues.Order(StringComparer.Ordinal)) },
                 ["orchestrationInstances"] = runIds.Count,
                 ["executions"] = executions,
                 ["historyEvents"] = historyEvents,

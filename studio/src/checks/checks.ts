@@ -69,6 +69,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
   L41: 'A published release never changes once seeded',
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
+  L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
+  L44: 'Every parameter declares its type and a default within its own bounds',
 };
 
 // ---------------------------------------------------------------- walking
@@ -320,6 +322,21 @@ export class Checker {
         const contract = (host?.slots ?? []).find((s: any) => s.name === d.implements.slot)?.contract;
         if (!contract) err('L08', `${of} has no slot ${d.implements.slot}`);
         else for (const o of (d.exit?.outcomes ?? []).filter((x: string) => !contract.outcomes.includes(x)).sort()) err('L08', `Leg outcome ${o} is not in the slot contract of ${of}`);
+        // L43 (R-11-38): the slot contract <slot>@<major> of a platform workflow, and the leg reads only what it gives.
+        if (host && host.kind === 'workflow' && host.wfKind !== 'platform') err('L43', `fills ${d.implements.slot} of ${of}, which is not a platform workflow`);
+        else if (contract) {
+          const own = `ext.${d.name.split('.').slice(0, 2).join('.')}`;
+          for (const x of (d.entry?.reads ?? []).filter((p: string) => !p.startsWith(own) && !(contract.reads ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`))))
+            err('L43', `reads ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not give it`);
+        }
+      }
+    }
+    // L44 (R-11-39): every parameter declares its type and a default within its own bounds.
+    if (d.parameters && typeof d.parameters === 'object' && !Array.isArray(d.parameters)) {
+      for (const [k, decl] of Object.entries<any>(d.parameters)) {
+        if (!decl?.type) err('L44', `${d.name}#${k} declares no type`);
+        else if (decl.default === undefined) err('L44', `${d.name}#${k} declares no default`);
+        else if (!withinBounds(decl, decl.default)) err('L44', `${d.name}#${k}: its default ${JSON.stringify(decl.default)} is outside its own bounds ${JSON.stringify(decl.bounds)}`);
       }
     }
     // L29: step ids unique after segments are inlined.
@@ -928,7 +945,7 @@ export function factoryPackIssues(inventory: any | undefined, folders: string[],
 
 /**
  * L41 (R-11-35, R-11-36): every file a seed published is in its change set's ledger with the SHA-256 of its text, and still has
- * it; a path is published once, except a bank pack's lock file and the engine bindings, which a later ledger replaces; every
+ * it; a path is published once, except a bank pack's lock file, which a later ledger replaces (engine bindings have releases); every
  * seeded file is in a ledger.
  * `files` are the content branch's files, path to text, relative to its root. The same check as tools/validate.py.
  */
@@ -943,7 +960,10 @@ export function releaseLedgerIssues(files: Map<string, string>): Issue[] {
     const replaced = new Map<string, any>((led.replaced ?? []).map((r: any) => [r.path, r]));
     for (const row of led.files ?? []) {
       const prev = recorded.get(row.path);
-      if (prev && !(/^(banks\/[^/]+\/pack|artefacts\/bindings\/bindings)\.yaml$/.test(row.path) && replaced.get(row.path)?.sha256 === prev.sha256)) err(lp, `publishes ${row.path} again; ${prev.ledger} published it, and a published file is never replaced`);
+      // Only a bank pack's lock file is replaced. Engine bindings have releases (Issue I-83); the one replacement of the old,
+      // unreleased bindings file recorded before that decision stays on the record as it was.
+      const before = row.path === 'artefacts/bindings/bindings.yaml' && lp === 'change-sets/ledger/CS-2026-11-22-005.yaml';
+      if (prev && !((/^banks\/[^/]+\/pack\.yaml$/.test(row.path) || before) && replaced.get(row.path)?.sha256 === prev.sha256)) err(lp, `publishes ${row.path} again; ${prev.ledger} published it, and a published file is never replaced`);
       recorded.set(row.path, { sha256: row.sha256, ledger: lp });
     }
   }

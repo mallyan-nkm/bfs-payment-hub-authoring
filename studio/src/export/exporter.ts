@@ -5,7 +5,7 @@ import { generateBpmn, portabilityReport } from './bpmn.js';
 import { expandWorkflow } from '../core/expand.js';
 import { zip } from './zip.js';
 import { startEntryFor } from '../testing/runner.js';
-import { queueName } from './bindings.js';
+import { bindingOf, queueName } from './bindings.js';
 import { claimsOf, signFiles, SignatureRejected } from './signing.js';
 import { literalSecretsInText } from '../secrets/scan.js';
 import type { StudioEnv } from '../env.js';
@@ -24,6 +24,9 @@ export interface ExportRequest {
   includeTests?: boolean;
   /** A test deployment: each worker carries the simulators of the ports its tasks reach. Never promotable (R-07-12). */
   withSimulators?: boolean;
+  /** A distribution (R-09-48): only the legs of the schemes the bank licenses, and no values (they come in a configuration release). */
+  schemes?: string[];
+  values?: false;
 }
 
 export interface ExportPackage {
@@ -51,7 +54,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   const checker = Checker.fromEnv(env);
   const files: Record<string, string> = {};
   const issues: Issue[] = [];
-  const stored = env.store.byKind('engine-binding').map((e) => e.doc).find((b) => b.target === req.target);
+  const stored = bindingOf(env, req.target)?.doc;
   if (!stored) throw new Error(`No engine binding for ${req.target}`);
   // A copy: a scope the binding does not list yet (a new scheme) gets the queue the binding's rule
   // derives (R-09-05), and the package's binding says so.
@@ -68,6 +71,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
   };
   for (const w of req.workflows) addFlow(w);
   for (const scheme of env.store.byKind('scheme').map((e) => e.doc)) {
+    if (req.schemes && !req.schemes.includes(scheme.scope)) continue;
     const legs = (scheme.legs ?? []).filter((l: string) => {
       const d = env.store.doc(l);
       return d && (flows.has(l) || (d.implements?.of ?? []).some((o: string) => flows.has(o)));
@@ -97,7 +101,7 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
       const h = env.store.doc(b.hook, b.release);
       if (h) flows.set(h.name, h);
     }
-    files[`configuration/${req.tenant}.yaml`] = toYaml(config);
+    if (req.values !== false) files[`configuration/${req.tenant}.yaml`] = toYaml(config);
   }
 
   const blocks = new Map<string, any>();

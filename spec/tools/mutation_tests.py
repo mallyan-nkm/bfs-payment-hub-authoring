@@ -166,11 +166,18 @@ CASES = [
     ("M58", "ERROR L42", "factory/uae.wps/rules/uae.wps.rule.control-total-matches.v1.yaml",
      "        controlSum: 300\n", "        controlSum: 1234567890123456.78\n",
      "an example gives an amount a binary double cannot hold as a number"),
+    ("M59", "ERROR L43", SAL,
+     '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation]', '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation, facts.posting]',
+     "a leg reads what its slot contract does not give it"),
+    ("M60", "ERROR L44", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
+     "    default: P1D\n", "    default: P9D\n", "a dial's default is outside its own bounds"),
+    ("M61", "ERROR L41", "../content-configurations/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml",
+     "forEachConcurrency: 64", "forEachConcurrency: 32", "a published engine binding release is edited in place (Issue I-83)"),
     # R-03-24: a protect activity reaches its key service through a port and changes nothing in the bank (L00)
-    ("M59", "ERROR L00", "factory/p/activities/p.protect.encrypt-file.v1.yaml",
+    ("M62", "ERROR L00", "factory/p/activities/p.protect.encrypt-file.v1.yaml",
      "effect: read", "effect: pure", "the encryption block claims to need no key service"),
     # L27: a supersession's scope names a workflow release the repository has, the latest or a published one
-    ("M60", "ERROR L27", "examples/supersession/SUP-2026-001.yaml",
+    ("M63", "ERROR L27", "examples/supersession/SUP-2026-001.yaml",
      '["uae.wps.wf.salary-file-out.v1@1.0.0"]', '["uae.wps.wf.salary-file-out.v1@0.9.0"]', "a supersession names a release never published"),
 ]
 
