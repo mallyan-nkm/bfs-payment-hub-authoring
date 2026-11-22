@@ -33,7 +33,7 @@ Then open http://127.0.0.1:7400. Configuration:
 | `TH_STUDIO_ISSUER` | The studio's issuer, which is refused as an operator's |
 | `TH_AUTH_DEV=1` | Dev sign-in with synthetic users (`X-TH-Dev-Identity`); refused when the host runs in Production (the default environment) |
 
-For a WPS file's holds to wait for an operator, give the operations-queue port to the runtime (`--bench p.port.operations-queue.v1=runtime`) and run the native host with the store (`TH_STORE_PROVIDER`, `TH_STORE_CONNECTION`; `TH_OPS_HOLD_WAIT_SECONDS`, default 240).
+For a WPS file's holds to wait for an operator, give the operations-queue port to the runtime (`--bench p.port.operations-queue.v1=runtime`) and run the native host with the store (`TH_STORE_PROVIDER`, `TH_STORE_CONNECTION`): the hold answers held and the engine awaits the decision (R-05-56).
 
 ## Development
 
@@ -93,8 +93,8 @@ cd runtime && dotnet run --project src/TransactHub.Service.Api -- \
 ## Not finished
 
 - The store holds no end of a payment and no files of a deployment yet, so the duration and the documents of a deployed file are empty (I-97).
-- A hold answered by the runtime waits in one attempt, at most `TH_OPS_HOLD_WAIT_SECONDS` (I-98).
+- A harness on virtual time waits for a live operator at most `TH_OPERATOR_PATIENCE_SECONDS` of wall time (I-127).
 - Signals are put on the outbox for the engine host, which does not read them yet; retry and resend are recorded and refused (I-99).
 - Fields of the source's WPS screens with no source in the new model, and an unmask (I-100); reports, dashboards and exports (I-68).
 - One projecting process per installation is assumed; a lease for several is not built.
-- Service console: actions with no engine path (I-101); distributions and configuration releases are listed, not installed (I-102); errors classified by their words, logs of other hosts (I-103); the assistant's data handling is the bank's decision (I-104).
+- Service console: re-drive and reset reach a parked step only (I-125); new codes wait for the dictionary's next release, logs of other hosts (I-126); the adapters behind resend and reconcile (I-128); the assistant's data handling is the bank's decision (I-104).

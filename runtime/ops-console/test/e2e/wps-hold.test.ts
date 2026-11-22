@@ -12,9 +12,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // End to end (R-05-50, R-06-24): a WPS salary file of two lines runs on the runtime (the runtime's DTFx build, its claim
 // check and its steps journalled to the store on PostgreSQL). The bank's internal limit holds it before release, and
 // the hold is the runtime's (p.port.operations-queue.v1 given to the runtime): the native host opens it on the file's
-// chain and waits. In a real browser an operator signs in, filters the list to held WPS files, opens the file, sees
-// its declared fields, and approves the hold. The file then goes on: the WPS leg submits it, the acknowledgement comes
-// back, and the console shows the leg with its CB response. All values are synthetic.
+// chain and answers held, and the engine awaits the operator's decision (R-05-56, Issue I-98). In a real browser an
+// operator signs in, filters the list to held WPS files, opens the file, sees its declared fields, and approves the hold.
+// The decision goes on the outbox; the engine's host reads it and delivers it to the waiting instance (R-05-57). The file
+// then goes on: the WPS leg submits it, the acknowledgement comes back, and the console shows the leg with its CB response
+// and, on the timeline, the instance's engine ids and the delivery. All values are synthetic.
 
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -99,7 +101,7 @@ beforeAll(async () => {
   // The native host: it answers the operations-queue port's holds from the store.
   const nativePort = await freePort();
   start('native', 'dotnet', [path.join(RUNTIME, 'src/TransactHub.Native/bin/Release/net10.0/TransactHub.Native.dll')], {
-    ...store, TH_NATIVE_URLS: `http://127.0.0.1:${nativePort}`, TH_OPS_HOLD_WAIT_SECONDS: '280',
+    ...store, TH_NATIVE_URLS: `http://127.0.0.1:${nativePort}`,
   });
   await until('the native host', async () => (await fetch(`http://127.0.0.1:${nativePort}/health`)).ok);
 
@@ -113,7 +115,7 @@ beforeAll(async () => {
   const bench = ['p.port.core-banking.v1=p.sim.core-banking.v1:accept', 'p.port.sanctions.v1=p.sim.sanctions.v1:accept', 'p.port.fraud.v1=p.sim.fraud.v1:accept',
     'uae.wps.port.wps.v1=uae.wps.sim.wps-outward.v1:accept', 'uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept', 'p.port.operations-queue.v1=runtime'];
   const child = start('deploy', tsx, ['src/cli.ts', 'deploy', zip, '--workflow', 'p.wf.corporate.v1', '--message', 'uae.wps.sif', '--inbound', path.join(STUDIO, 'fixtures', 'samples', 'wps-sif-two-lines.sif'),
-    '--tenant', 'example-bank', '--config', config, ...bench.flatMap((b) => ['--bench', b])], { ...store, TH_NATIVE_HOST: `http://127.0.0.1:${nativePort}` }, STUDIO);
+    '--tenant', 'example-bank', '--config', config, ...bench.flatMap((b) => ['--bench', b])], { ...store, TH_NATIVE_HOST: `http://127.0.0.1:${nativePort}`, TH_OPERATOR_PATIENCE_SECONDS: '600' }, STUDIO);
   deployRun = new Promise((resolve) => child.on('close', () => resolve(logs.deploy)));
   browser = await require('playwright').chromium.launch();
 }, 900000);
@@ -165,7 +167,7 @@ describe('the operations console on a WPS file run through the runtime', () => {
     await page.getByRole('tab', { name: /Timeline/ }).click();
     expect(await page.getByRole('list', { name: 'Timeline' }).textContent()).toContain('internal-limit');
 
-    // Approve the hold: the operator's decision reaches the waiting hold through the operations-queue port.
+    // Approve the hold: the operator's decision reaches the instance that awaits it, through the engine's host.
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await page.locator('textarea[name=remarks]').fill('Within the employer agreement (synthetic)');
     await page.getByRole('button', { name: 'Confirm approve' }).click();
@@ -188,6 +190,11 @@ describe('the operations console on a WPS file run through the runtime', () => {
     expect(await page.getByTestId('fields-p.view.operations.v1').locator('[data-field=approvedBy] dd').textContent()).toBe('operator:ops.operator');
     expect(await page.getByTestId('hold-badge').count()).toBe(0);
     expect(await page.getByTestId('lag').textContent()).toContain('up to date');
+    // The timeline: the instance's engine ids when it started, and the decision delivered to it by the engine's host.
+    await page.getByRole('tab', { name: /Timeline/ }).click();
+    const timeline = await page.getByRole('list', { name: 'Timeline' }).textContent();
+    expect(timeline).toContain('engine');
+    expect(timeline).toContain('delivered');
 
     // The list filtered by the leg and its CB response, a declared filter, finds it.
     await page.goto(`${apiUrl}/#/payments?leg=uae.wps.wf.salary-file-out.v1&f:uae.wps.view.operations.v1:uae.wps.wf.salary-file-out.v1:cbResponse=ack`);

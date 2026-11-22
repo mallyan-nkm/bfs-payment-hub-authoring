@@ -179,6 +179,11 @@ CASES = [
     # L27: a supersession's scope names a workflow release the repository has, the latest or a published one
     ("M63", "ERROR L27", "examples/supersession/SUP-2026-001.yaml",
      '["uae.wps.wf.salary-file-out.v1@1.0.0"]', '["uae.wps.wf.salary-file-out.v1@0.9.0"]', "a supersession names a release never published"),
+    # L45 (R-05-55): a step parks for at least a minute and at most thirty days
+    ("M64", "ERROR L45", "factory/p/workflows/p.wf.commercial.v1.yaml",
+     "policy: { attemptTimeout: PT2S, totalTimeout: PT4S, retry: { maxAttempts: 2, firstInterval: PT1S } }",
+     "policy: { attemptTimeout: PT2S, totalTimeout: PT4S, retry: { maxAttempts: 2, firstInterval: PT1S }, park: P90D }",
+     "a step parks for longer than thirty days"),
 ]
 
 

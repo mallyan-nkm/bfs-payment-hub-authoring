@@ -246,6 +246,25 @@ for path, d in docs:
                 ok = a["effect"] in ("pure", "read") or (a["type"] == "exchange" and a.get("mode") == "respond")
                 if not ok or a["type"] == "hold" or waits(a):
                     err("L07", path, "handler calls %s, which waits or writes" % st["call"])
+    if d["kind"] == "workflow":
+        # L45 a step that parks (R-05-55) is a call outside a handler, to an activity that may run again (pure, read or with an
+        # idempotency key), and parks for at least a minute and at most thirty days
+        for st in all_steps(d):
+            park = (st.get("policy") or {}).get("park")
+            if park is None:
+                continue
+            sid = st.get("id", "?")
+            if d["wfKind"] == "handler":
+                err("L45", path, "step %s of a handler parks; a handler holds no state" % sid)
+            if "call" not in st:
+                err("L45", path, "step %s parks but calls no activity" % sid)
+            elif st["call"] in by_name:
+                a = by_name[st["call"]]
+                if a.get("effect") not in ("pure", "read") and not a.get("idempotencyKey"):
+                    err("L45", path, "step %s parks on %s, which may not run again: it is %s with no idempotency key" % (sid, st["call"], a.get("effect")))
+            s = seconds(park)
+            if s is not None and not (60 <= s <= 30 * 86400):
+                err("L45", path, "step %s parks for %s: a park is at least PT1M and at most P30D" % (sid, park))
     if d["kind"] == "workflow" and d["wfKind"] == "leg":
         # L08 a leg fills a declared slot and returns only what the slot allows
         for of in d["implements"]["of"]:

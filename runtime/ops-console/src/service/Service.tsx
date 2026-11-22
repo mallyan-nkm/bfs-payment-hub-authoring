@@ -201,7 +201,7 @@ function ErrorsPage({ api, code }: { api: ServiceClient; code?: string }) {
         <h3>Checks</h3><ol>{e.runbook.checks.map((c) => <li key={c}>{c}</li>)}</ol>
         <h3>Safe actions</h3><ul>{e.runbook.safeActions.map((c) => <li key={c}>{c}</li>)}</ul>
         {e.actionsOffered.length > 0 && <><h3>Troubleshooting actions</h3><ul>{e.actionsOffered.map((a) => (
-          <li key={a.id}><a href={`#/service/actions?action=${a.id}`}>{a.title}</a> <Badge s={a.path === 'built' ? 'ok' : a.path === 'outbox' ? 'warn' : 'fail'} />{a.risky && <span className="muted"> needs a ServiceApprover</span>}{a.missing && <span className="note"> {a.missing}</span>}</li>
+          <li key={a.id}><a href={`#/service/actions?action=${a.id}`}>{a.title}</a> <Badge s={a.path === 'built' ? 'ok' : 'fail'} />{a.risky && <span className="muted"> needs a ServiceApprover</span>}{a.missing && <span className="note"> {a.missing}</span>}</li>
         ))}</ul></>}
         <h3>Escalation</h3><p>{e.runbook.escalation}</p>
       </>}
@@ -240,14 +240,14 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
   return (
     <section>
       <h1>Troubleshooting actions</h1>
-      <p className="note">Each action is recorded with your name, the time and your reason. A risky one is carried out only when a ServiceApprover, another person, approves it. An action whose engine path is not built yet is recorded and refused (Issue I-101).</p>
+      <p className="note">Each action is recorded with your name, the time and your reason. A risky one is carried out only when a ServiceApprover, another person, approves it. An action on a running payment reaches its engine through the engine's host, which records the delivery on the payment's timeline; one that does not apply to the payment now is refused with its code.</p>
       <Problem e={err} />
       <Done r={result} />
       <div className="filters">
         <label><span>Action</span>
           <select name="action" value={action} onChange={(e) => { setAction(e.target.value); setConfirming(false); }}>
             <option value="">Choose…</option>
-            {catalogue?.map((a) => <option key={a.id} value={a.id}>{a.title}{a.path === 'missing' ? ' (no engine path yet)' : ''}</option>)}
+            {catalogue?.map((a) => <option key={a.id} value={a.id}>{a.title}{a.path === 'missing' ? ' (not built)' : ''}</option>)}
           </select>
         </label>
         <label><span>{spec?.target ?? 'target'}</span><input name="target" value={target} onChange={(e) => setTarget(e.target.value)} /></label>
@@ -278,7 +278,7 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
       <table className="grid" aria-label="Catalogue">
         <thead><tr><th>Action</th><th>Path</th><th>Approver</th><th>What it does</th></tr></thead>
         <tbody>{catalogue?.map((a) => (
-          <tr key={a.id}><td className="mono">{a.id}</td><td><Badge s={a.path === 'built' ? 'ok' : a.path === 'outbox' ? 'warn' : 'fail'} />{a.path}</td><td>{a.risky ? 'yes' : 'no'}</td><td>{a.does} <span className="note">{a.missing}</span></td></tr>
+          <tr key={a.id}><td className="mono">{a.id}</td><td><Badge s={a.path === 'built' ? 'ok' : 'fail'} />{a.path}</td><td>{a.risky ? 'yes' : 'no'}</td><td>{a.does} <span className="note">{a.missing}</span></td></tr>
         ))}</tbody>
       </table>
     </section>

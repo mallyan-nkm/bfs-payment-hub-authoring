@@ -162,7 +162,7 @@ afterAll(async () => {
 });
 
 describe('the service console', () => {
-  it('signs in a service engineer, shows health, installs a signed version from GitHub, links a refusal to its runbook, and confirms an action', async () => {
+  it('signs in a service engineer, shows health, installs a signed version from GitHub, links a refusal to its runbook, confirms an action, and has a pause of intake and a worker\'s drain approved', async () => {
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
     const problems: string[] = [];
     page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
@@ -238,6 +238,54 @@ describe('the service console', () => {
     const done = page.getByTestId('result').filter({ hasText: 'reverify-package' });
     await done.waitFor();
     expect(await done.locator('.badge').textContent()).toBe('done');
+
+    // Every troubleshooting action is built (Issue I-101): none is refused for want of a path.
+    await page.goto(`${apiUrl}/#/service/actions`);
+    await page.getByRole('heading', { name: 'Troubleshooting actions' }).waitFor();
+    const catalogue = page.getByRole('table', { name: 'Catalogue' });
+    await catalogue.locator('tr', { hasText: 'restart-worker' }).waitFor();
+    expect(await catalogue.textContent()).not.toContain('missing');
+    for (const a of ['retry-attempt', 'redrive-workflow', 'reset-activity', 'resend-file', 'expire-hold', 'reconcile-posting', 'pause-intake', 'drain-worker'])
+      expect(await catalogue.locator('tr', { hasText: a }).locator('.badge').textContent()).toBe('ok');
+
+    // Intake of a scheme paused and a worker drained (R-09-58, R-09-59): the engineer asks, a ServiceApprover approves, each reaches its target.
+    const calls: string[] = [];
+    const worker = http.createServer((req, res) => { calls.push(`${req.method} ${req.url}`); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ draining: true, inFlight: 0 })); });
+    await new Promise<void>((r) => worker.listen(0, '127.0.0.1', () => r()));
+    const workerUrl = `http://127.0.0.1:${(worker.address() as net.AddressInfo).port}`;
+    const ask = async (action: string, title: string, target: string, parameters?: any) => {
+      await page.goto(`${apiUrl}/#/service/actions`);
+      await page.reload();
+      await page.locator('select[name=action]').selectOption(action);
+      await page.locator('input[name=target]').fill(target);
+      if (parameters) await page.locator('input[name=parameters]').fill(JSON.stringify(parameters));
+      await page.getByRole('button', { name: 'Ask for it' }).click();
+      await page.locator('textarea[name=reason]').fill(`${title}: the scheme's window is closed (synthetic)`);
+      await page.getByRole('button', { name: `Confirm ${title.toLowerCase()}` }).click();
+      await page.getByTestId('result').filter({ hasText: action }).filter({ hasText: 'waits for a ServiceApprover' }).waitFor();
+    };
+    await ask('pause-intake', 'Pause intake for a scheme', 'uae.wps', { tenant: 'example-bank' });
+    await ask('drain-worker', 'Drain a worker', workerUrl);
+    const approver = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    approver.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    await approver.goto(apiUrl);
+    await approver.getByRole('button', { name: /Sign in as Example service approver/ }).click();
+    await approver.getByTestId('who').filter({ hasText: 'Example service approver' }).waitFor();
+    for (const action of ['pause-intake', 'drain-worker']) {
+      await approver.goto(`${apiUrl}/#/service/actions`);
+      await approver.reload();
+      const row = approver.getByTestId('pending-row').filter({ hasText: action });
+      await row.waitFor();
+      await row.getByRole('button', { name: 'Approve' }).click();
+      await approver.locator('textarea[name=reason]').fill('Agreed with the operations manager (synthetic)');
+      await approver.getByRole('button', { name: 'Confirm approval' }).click();
+      const r = approver.getByTestId('result').filter({ hasText: action });
+      await r.waitFor();
+      expect(await r.locator('.badge').textContent()).toBe('done');
+    }
+    expect(calls).toEqual(['POST /drain']);
+    await approver.close();
+    worker.close();
 
     const audit = await (await fetch(`${apiUrl}/service/api/audit`, { headers: { 'X-TH-Dev-Identity': JSON.stringify({ sub: 'svc.engineer', name: 'Example service engineer', roles: ['*:ServiceEngineer'] }) } })).json();
     const codes = audit.map((f: any) => f.code);

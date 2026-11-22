@@ -35,7 +35,7 @@ A story MAY start before its decision closes if it isolates the choice behind an
 
 ## Success for the component
 
-The interpreter produces the expected trace for all 51 scenarios of the conformance kit.
+The interpreter produces the expected trace for all 55 scenarios of the conformance kit.
 
 ## Stories
 
@@ -187,11 +187,12 @@ Size: 3 SP. Phase 3. Branch: `story/c09-s7-signals`.
 **Definition of Done**
 
 - Only the four fixed signals exist; cancel compensates then runs finally.
+- A hold awaits the operator's decision until its expiry, and a step that parks takes the operator's retry or re-drive (R-05-55, R-05-56).
 - The common Definition of Done in `CLAUDE.md` holds.
 
 **Definition of Success**
 
-- CK-SIGNAL-01 to 03 pass.
+- CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01 and CK-PARK-02 pass.
 
 ### C09-S8 Hook points and bindings
 

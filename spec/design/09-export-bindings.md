@@ -108,6 +108,8 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 | R-09-55 | Every leg, child, activity and rule of a payment MUST run from the distribution it is pinned to, loaded side by side with the others: on Temporal a build id and task queues per distribution, on DTFx an orchestration name carrying it, on Elsa a workflow definition per distribution, on Flowable one deployment per distribution. A message for a running payment goes to its pinned distribution. | `e2e-distributions.test.ts` (the engine's `distribution` in every run, on Temporal, DTFx, Elsa and Flowable) |
 | R-09-56 | A distribution's states MUST be insert-only facts (`distribution.state`: installed, active, draining, drained, removed) with who, when and why. Removal MUST be refused while it is active, while any payment pinned to it is open, and before its longest declared wait has passed since it stopped taking payments and since its last payment ended. The package stays in the store and on GitHub. | `DistributionApiTests.Switch_over_drains_...`; `e2e-distributions.test.ts` ("removal") |
 | R-09-57 | Rollback MUST activate the distribution active before the current one; a removed one is installed again first. Payments that started on the newer one finish on it. | `DistributionApiTests`; `e2e-distributions.test.ts` scenario 8 |
+| R-09-58 | The runtime MUST keep an intake switch per bank and scheme, as insert-only facts (`intake paused` or `resumed`), set only by the service console's `pause-intake` and `resume-intake`. While it is paused, the runtime MUST refuse to accept a new payment of that scheme for that bank (HTTP 423, code `ops.IntakePaused`) and MUST NOT pin it; a payment already accepted runs on. The front door MUST name the payment's scheme when it asks, and MAY keep a refused payment and offer it again until intake is resumed. | `ActionTests` ("intake per scheme"); `service-console` Playwright test |
+| R-09-59 | A deployed worker MUST answer `POST /drain` by taking no new attempt (each is answered 503 and the engine's router offers it again) while those in flight run to their end, and `POST /restart` by draining and then exiting with code 75 when nothing is in flight; the deploy runner MUST then start it again from the same package, so at the same version, on the same port. `GET /health` MUST give the worker's version, process, whether it drains and its attempts in flight. | `ActionTests` ("drain and restart a worker"); `service-console` Playwright test |
 
 ## 9.6 Core and extension profiles
 
@@ -141,7 +143,7 @@ Limits that remain: compensation runs in reverse document order, which in parall
 
 ### Proved on Elsa 3.10.2 (I-30)
 
-The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 51 of 51 scenarios pass, and two runs give the same traces.
+The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 55 of 55 scenarios pass, and two runs give the same traces.
 
 | Who does what | |
 | --- | --- |
