@@ -56,7 +56,13 @@ WORKER_PID=$!
 trap 'kill $WORKER_PID 2>/dev/null || true' EXIT
 
 say "starting workflow $WF_ID with the Temporal CLI"
-cli workflow start --namespace default --type durability.v1 --task-queue durability --workflow-id "$WF_ID" --input "$WAIT_NS"
+# A namespace just registered reaches the frontend's namespace cache within about ten seconds, so retry.
+started=
+for _ in $(seq 1 30); do
+  if cli workflow start --namespace default --type durability.v1 --task-queue durability --workflow-id "$WF_ID" --input "$WAIT_NS"; then started=1; break; fi
+  sleep 1
+done
+[ -n "$started" ] || { echo "could not start the workflow" >&2; exit 1; }
 
 for _ in $(seq 1 60); do
   if cli workflow show --namespace default --workflow-id "$WF_ID" 2>/dev/null | grep -q TimerStarted; then break; fi
