@@ -6,10 +6,10 @@ import type { StudioEnv } from '../env.js';
 // The settings are environment placeholders the designer never edits (R-09-03).
 
 const TARGETS: Record<string, { strategy: string; defaults?: any; extensions?: any }> = {
-  temporal: { strategy: 'interpreter', defaults: { queueTimeout: 'PT30S', heartbeat: 'PT10S', forEachChunk: 500, historyLimit: 10000 } },
-  dtfx: { strategy: 'interpreter', defaults: { forEachChunk: 500 }, extensions: { attemptTimeout: 'timer-race' } },
+  temporal: { strategy: 'interpreter', defaults: { queueTimeout: 'PT30S', heartbeat: 'PT10S', forEachChunk: 500, forEachConcurrency: 64, historyLimit: 10000 } },
+  dtfx: { strategy: 'interpreter', defaults: { forEachChunk: 500, forEachConcurrency: 64 }, extensions: { attemptTimeout: 'timer-race' } },
   flowable: { strategy: 'generation', extensions: { activityTask: 'external-worker', retry: 'modelled-loop' } },
-  elsa: { strategy: 'interpreter', defaults: { forEachChunk: 500 }, extensions: { suspension: 'bookmark', replay: 'journal-in-workflow-state', attemptTimeout: 'timer-race' } },
+  elsa: { strategy: 'interpreter', defaults: { forEachChunk: 500, forEachConcurrency: 64 }, extensions: { suspension: 'bookmark', replay: 'journal-in-workflow-state', attemptTimeout: 'timer-race' } },
 };
 
 export function queueName(scope: string): string {

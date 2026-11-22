@@ -111,6 +111,52 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
         }
     }
 
+    /// <summary>
+    /// Several facts of one subject in one save, in the order given, each chained to the one before (I-78): a writer that has
+    /// many facts for a subject (the items of a large file) writes them in one round trip. A writer that raced for the same
+    /// numbers reads the new head and writes them all again on top of it.
+    /// </summary>
+    public async Task<List<FactRow>> AppendMany(string subjectId, string subjectKind, IReadOnlyList<NewFact> facts, CancellationToken ct = default)
+    {
+        if (facts.Count == 0) return [];
+        for (var attempt = 0; ; attempt++)
+        {
+            var head = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId)
+                .OrderByDescending(f => f.Seq).Select(f => new { f.Seq, f.Hash }).FirstOrDefaultAsync(ct);
+            var at = StoreTime.Of(clock.GetUtcNow());
+            var seq = head?.Seq ?? 0;
+            var prev = head?.Hash ?? Genesis;
+            var rows = new List<FactRow>(facts.Count);
+            var notes = new List<OutboxRow>(facts.Count);
+            foreach (var fact in facts)
+            {
+                var row = new FactRow
+                {
+                    SubjectId = subjectId, SubjectKind = subjectKind, Seq = ++seq, Kind = fact.Kind, Code = fact.Code,
+                    DataJson = CanonicalJson.Of(fact.Data ?? new JsonObject()), At = at, ReleaseId = fact.ReleaseId, Actor = fact.Actor, PrevHash = prev,
+                };
+                row.Hash = HashOf(row);
+                prev = row.Hash;
+                rows.Add(row);
+                notes.Add(Outbox.Of(row));
+            }
+            // One fact and its outbox row after another, so both tables keep the facts' order.
+            for (var i = 0; i < rows.Count; i++) { db.Facts.Add(rows[i]); db.Outbox.Add(notes[i]); }
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return rows;
+            }
+            catch (DbUpdateException) when (attempt < 50)
+            {
+                foreach (var r in rows) db.Entry(r).State = EntityState.Detached;
+                foreach (var n in notes) db.Entry(n).State = EntityState.Detached;
+                if (!await db.Facts.AnyAsync(f => f.SubjectId == subjectId && f.Seq == rows[0].Seq, ct)) throw;
+                await Task.Delay(Random.Shared.Next(1, 5 + attempt * 2), ct);
+            }
+        }
+    }
+
     public Task<List<FactRow>> Of(string subjectId, CancellationToken ct = default) =>
         db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId).OrderBy(f => f.Seq).ToListAsync(ct);
 

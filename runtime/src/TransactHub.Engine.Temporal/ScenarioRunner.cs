@@ -53,7 +53,7 @@ public sealed class ScenarioRunner
     public async Task<JsonObject> Run(WorkflowEnvironment env)
     {
         var start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
-        var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100));
+        var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
         using IParty party = J.P(input, "workers") is JsonObject workers
             ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)

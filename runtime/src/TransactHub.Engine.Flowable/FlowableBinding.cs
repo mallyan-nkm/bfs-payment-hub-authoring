@@ -45,6 +45,9 @@ public sealed class FlowableBinding
     /// <summary>Production: timers the binding has placed, by job id, and the due date it gave each execution's timer.</summary>
     readonly HashSet<string> placed = new();
     readonly Dictionary<string, long> placedDue = new();
+    /// <summary>Production: the executions whose attempt timer the binding set when it began the attempt (R-05-54).</summary>
+    readonly HashSet<string> armed = new();
+    int attemptTimersParked, attemptTimersArmed;
     readonly List<JsonObject> deadLetters = new();
     readonly HashSet<string> deadSeen = new();
     int timersPlaced, handedOutAgain, crashes, pendingStarts;
@@ -74,7 +77,21 @@ public sealed class FlowableBinding
         public string Pid = "", Label = "", Name = "?", Release = "?", Kind = "workflow", Key = "", Ref = "";
         public Inst? Parent;
         public JsonObject State = new();
-        public readonly List<string> Trace = new(), Detail = new(), ReleaseTrace = new(), Pending = new(), RuleTraceSteps = new();
+        readonly List<string> trace = new(), detail = new();
+        public readonly List<string> ReleaseTrace = new(), Pending = new(), RuleTraceSteps = new();
+        /// <summary>
+        /// What the items of a forEach recorded, by item, while they ran side by side (R-05-53): each item's entries go into the
+        /// trace together, in item order, before anything else the instance records.
+        /// </summary>
+        public readonly SortedDictionary<int, List<(bool detail, string entry)>> Items = new();
+        void FlushItems()
+        {
+            if (Items.Count == 0) return;
+            foreach (var (_, es) in Items) foreach (var (d, e) in es) (d ? detail : trace).Add(e);
+            Items.Clear();
+        }
+        public List<string> Trace { get { FlushItems(); return trace; } }
+        public List<string> Detail { get { FlushItems(); return detail; } }
         public readonly JsonArray Steps = new();
         public readonly Dictionary<string, int> Attempts = new(), Calls = new(), NotifyAt = new();
         public readonly Dictionary<string, JsonObject> OpenStep = new();
@@ -173,7 +190,7 @@ public sealed class FlowableBinding
         now = start;
         wallStart = Wall();
         offset = start - wallStart;
-        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100));
+        dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
         using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!) : new PartyClient(J.S(input, "studioRoot")!);
         party = given ?? p!;
@@ -270,6 +287,7 @@ public sealed class FlowableBinding
                     ["handedOutAgain"] = handedOutAgain,
                     ["crashes"] = crashes,
                     ["timersPlaced"] = timersPlaced,
+                    ["attemptTimersParked"] = attemptTimersParked, ["attemptTimersArmed"] = attemptTimersArmed,
                     ["deadLetters"] = new JsonArray(deadLetters.Select(d => (JsonNode?)J.Clone(d)).ToArray()),
                     ["wallMs"] = Wall() - wallStart,
                     ["requests"] = requests,
@@ -499,6 +517,20 @@ public sealed class FlowableBinding
             if (!placed.Add(id)) continue;
             var element = J.S(t, "elementId") ?? "";
             var def = byDef.GetValueOrDefault(J.S(t, "processDefinitionId") ?? "");
+            // An attempt's timeout measures that attempt's own execution (R-05-54): Flowable starts its timer when the task is
+            // created, so time in the queue before the binding takes the job would count. It is moved out of the way here and
+            // set from when the binding begins the attempt (ArmAttemptTimer).
+            if (IsAttemptTimer(def, element))
+            {
+                if (armed.Contains(J.S(t, "executionId") ?? "")) continue;
+                if (FlowableRest.Time(J.S(t, "dueDate")).ToUnixTimeMilliseconds() - Wall() < TimeSpan.FromHours(12).TotalMilliseconds
+                    && await rest.RescheduleTimer(id, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + (long)TimeSpan.FromDays(1).TotalMilliseconds)))
+                {
+                    attemptTimersParked++;
+                    moved = true;
+                }
+                continue;
+            }
             var meta = def?.Ann(element, "timer");
             if (meta is null || !(meta.ContainsKey("parameter") || meta.ContainsKey("calendarParameter") || meta.GetValueOrDefault("calendar") == "business")) continue;
             var due = FlowableRest.Time(J.S(t, "dueDate")).ToUnixTimeMilliseconds();
@@ -518,6 +550,32 @@ public sealed class FlowableBinding
             }
         }
         return moved;
+    }
+
+    /// <summary>The timer boundary of an attempt (studio/src/export/bpmn.ts: <c>{sid}_timeout</c> on <c>{sid}_task</c>).</summary>
+    static bool IsAttemptTimer(BpmnProcess? def, string element) =>
+        def is not null && element.EndsWith("_timeout", StringComparison.Ordinal) && def.Ann(element[..^"_timeout".Length] + "_task", "task") is not null;
+
+    /// <summary>
+    /// Production: the attempt's timer, set from now for the attempt timeout as written (R-05-54). Its boundary execution is the
+    /// sibling of the task's, under the same parent; with one candidate in the instance, that one.
+    /// </summary>
+    async Task ArmAttemptTimer(ExternalJob job, BpmnProcess def)
+    {
+        if (!job.ElementId.EndsWith("_task", StringComparison.Ordinal)) return;
+        var element = job.ElementId[..^"_task".Length] + "_timeout";
+        if (def.DurationOf(element) is not string iso || !iso.StartsWith('P')) return;
+        var timers = (await rest.TimerJobsOf(job.ProcessInstanceId)).Where(t => J.S(t, "elementId") == element).ToList();
+        if (timers.Count > 1)
+        {
+            var execs = (await rest.Executions(job.ProcessInstanceId)).ToDictionary(e => J.S(e, "id") ?? "", e => J.S(e, "parentId"));
+            var parent = execs.GetValueOrDefault(job.ExecutionId);
+            timers = timers.Where(t => execs.GetValueOrDefault(J.S(t, "executionId") ?? "") == parent).ToList();
+        }
+        if (timers.Count != 1) return;
+        var exec = J.S(timers[0], "executionId") ?? "";
+        armed.Add(exec);
+        if (await rest.RescheduleTimer(J.S(timers[0], "id")!, DateTimeOffset.FromUnixTimeMilliseconds(Wall() + Duration.Ms(iso)))) attemptTimersArmed++;
     }
 
     /// <summary>
@@ -646,6 +704,7 @@ public sealed class FlowableBinding
             inst.OpenStep[label] = rec;
         }
         if (first) inst.Attempts[step] = inst.Attempts.GetValueOrDefault(step) + 1;
+        if (opts.Production && first) await ArmAttemptTimer(job, def);
         if (inst.Snapshots++ < 200) foreach (var k in job.Variables.Keys) inst.StateKeys.Add(k);
         var level = task.GetValueOrDefault("level");
         var ctx = index is int ix && level == "item" ? claim.FullForItem(inst.State, inst.Ref, ix) : claim.Full(inst.State, inst.Ref);
@@ -762,9 +821,17 @@ public sealed class FlowableBinding
         return step;
     }
 
-    static void Record(Inst i, IReadOnlyDictionary<string, string> p, string entry)
+    static void Record(Inst i, IReadOnlyDictionary<string, string> p, string entry, ExternalJob? job = null)
     {
-        if (p.GetValueOrDefault("record") == "detail") i.Detail.Add(entry);
+        var detail = p.GetValueOrDefault("record") == "detail";
+        // An item's entry waits with its item's others, so the trace is in item order (R-05-53).
+        if (job is not null && p.GetValueOrDefault("item") == "true" && Int(job.Variables.GetValueOrDefault("th_item")) is int n)
+        {
+            if (!i.Items.TryGetValue(n, out var es)) i.Items[n] = es = new();
+            es.Add((detail, entry));
+            return;
+        }
+        if (detail) i.Detail.Add(entry);
         else i.Trace.Add(entry);
     }
 
@@ -805,7 +872,7 @@ public sealed class FlowableBinding
             {
                 var step = p["step"];
                 var label = LabelOf(job, p, step);
-                Record(inst, p, p.GetValueOrDefault("record") == "finally" ? label : $"{label}:{Text(job.Variables.GetValueOrDefault(p["var"]))}");
+                Record(inst, p, p.GetValueOrDefault("record") == "finally" ? label : $"{label}:{Text(job.Variables.GetValueOrDefault(p["var"]))}", job);
                 break;
             }
             case "slotStart":
@@ -839,12 +906,12 @@ public sealed class FlowableBinding
                 break;
             case "awaitReceived":
                 inst.Awaited.Add(p["message"]);
-                Record(inst, p, $"{LabelOf(job, p, p["step"])}:received");
+                Record(inst, p, $"{LabelOf(job, p, p["step"])}:received", job);
                 break;
             case "awaitTimeout":
                 inst.Awaited.Add(p["message"]);
                 inst.Expired.Add(p["message"]);
-                Record(inst, p, $"{LabelOf(job, p, p["step"])}:timeout");
+                Record(inst, p, $"{LabelOf(job, p, p["step"])}:timeout", job);
                 break;
             case "hookStart":
                 inst.NotifyAt[p["hookPoint"]] = inst.Trace.Count;

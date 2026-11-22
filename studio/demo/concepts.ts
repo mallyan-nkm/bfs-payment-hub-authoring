@@ -116,7 +116,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       say: 'The conformance kit holds forty six scenarios, one for each construct of the language. Every engine must reproduce them: the studio, D T F X, and Flowable.',
-      do: async () => { await d.go('kit'); await d.click(p().getByRole('button', { name: 'Run all 48' })); await p().waitForTimeout(2500); },
+      do: async () => { await d.go('kit'); await d.click(p().getByRole('button', { name: 'Run all 50' })); await p().waitForTimeout(2500); },
     },
     {
       say: 'A bank changes values, not logic: which rails it runs, its limits, and the hooks it binds. Each change is a new release of its configuration set, checked against the bounds the scheme allows.',

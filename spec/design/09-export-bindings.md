@@ -42,8 +42,8 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 
 | Policy | Temporal | DTFx | Flowable | Elsa |
 | --- | --- | --- | --- | --- |
-| `attemptTimeout` | Start-To-Close | Durable timer raced against the task | Timer boundary on the external worker task | Journalled timer raced against the operation; a late result is abandoned |
-| `totalTimeout` | Schedule-To-Close | `RetryOptions.RetryTimeout` | Timer boundary on the enclosing sub-process | The retry plan's total time |
+| `attemptTimeout` | Start-To-Close of each attempt, counted from when a worker starts it; the binding keeps the deadline on business time and abandons a later answer (R-05-54) | Durable timer raced against the task | Timer boundary on the external worker task; in production the binding places it when it starts the attempt (R-05-54) | Journalled timer raced against the operation; a late result is abandoned |
+| `totalTimeout` | The retry plan's total time, on business time; no Schedule-To-Close | `RetryOptions.RetryTimeout` | Timer boundary on the enclosing sub-process | The retry plan's total time |
 | `retry` | Retry Policy | `RetryOptions` with `ScheduleWithRetry` | A modelled loop in a sub-process per call, for fixed and growing backoff alike (proved in C22-S1) | The retry plan, each backoff a journalled timer |
 | Queue timeout, heartbeat | Schedule-To-Start, Heartbeat; from the binding | Not available | Not available | Not available |
 
@@ -61,7 +61,7 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 | R-09-08 | The conformance kit MUST gate every release on every target. | Release check (C19) |
 | R-09-09 | A workflow that uses an extension construct MUST name the targets it supports. | Lint L24 |
 | R-09-10 | Engine state MUST carry references, never the payment payload. | Conformance CK-CLAIM-01 |
-| R-09-11 | On DTFx and Elsa, an attempt timeout abandons the late result; it does not cancel the running task. The activity MUST therefore be idempotent. | Conformance CK-TIMEOUT-01 |
+| R-09-11 | On DTFx, Elsa and Temporal, an attempt timeout abandons the late result; it does not cancel the running task. The activity MUST therefore be idempotent. | Conformance CK-TIMEOUT-01 |
 | R-09-12 | On Flowable, an activity MUST be exported as a wait state (external worker task) so that timer boundaries apply. | Generator test (C22) |
 | R-09-13 | Large batches MUST be chunked on history-based engines. The chunk size comes from the binding. | Conformance CK-FOREACH-02 |
 | R-09-14 | Handlers MUST be exported as plain request handlers at the interop boundary, outside the durable engine. | Conformance CK-HANDLER-01 |
@@ -89,6 +89,8 @@ The DSL is the single source of truth and stays engine-neutral. Temporal, DTFx, 
 | R-09-36 | Every long-running runtime host MUST answer `GET /health/live` and `GET /health/ready`, without authentication whatever else the host requires. Ready means what it depends on answers (the release API: its store). The answer names no server and no error text. A deployed worker answers the same. | `TelemetryTests` ("The release API answers live and ready without a token while every other endpoint is 401 ...") |
 | R-09-37 | The local monitoring stack (`runtime/observability/`) MUST pin every image by tag and digest and MUST ship the dashboards Payments, Engines, Ports and Store, reading only metrics the hosts emit. It is for development: an installation brings its own collector and backends. | `TelemetryTests` ("The local stack pins every image ...") |
 | R-09-38 | The runtime MUST have a repeatable load harness outside the studio (`runtime/load/`). It drives synthetic WPS salary files through a deployment on Temporal, on each Temporal persistence store and each store database, and reports throughput, latency percentiles, errors and the databases' CPU and IO. Its results are recorded in `docs/runtime/LOAD-TEST.md`, not committed as files. The targets it is held to are I-68's. | `runtime/load/matrix.sh`; `docs/runtime/LOAD-TEST.md` |
+| R-09-45 | An engine binding MAY set `defaults.forEachConcurrency`. A `forEach` that declares no `concurrency`, and whose steps are all calls of activities that hold no state (effect `pure` or `read`, not a hold) that handle an outcome only by ending, then runs that many items side by side, chunk by chunk where the batch is chunked (R-09-13). Its trace is the one item by item gives (R-05-53). | Conformance kit on DTFx, Elsa and Temporal with the binding's concurrency (CK-FOREACH-01, CK-FOREACH-03); `e2e-wps-temporal` |
+| R-09-46 | The claim check and the record of each step's outcome MUST keep a payload's facts in order without holding up another payload's: a lock per payload, never one per host. They MAY write the facts that queue for one payload in one save, each chained to the one before, so that every chain stays numbered without gaps and linked (`FactLog.Verify`). | `ClaimCheckTests` ("many payloads and many items side by side", on SQL Server and PostgreSQL); the store report of every deploy |
 
 ## 9.6 Core and extension profiles
 
@@ -122,7 +124,7 @@ Limits that remain: compensation runs in reverse document order, which in parall
 
 ### Proved on Elsa 3.10.2 (I-30)
 
-The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 48 of 48 scenarios pass, and two runs give the same traces.
+The kit runs on Elsa Workflows 3.10.2 (`studio/engines/elsa/`), with the same interpreter as DTFx (`studio/engines/shared/`). 50 of 50 scenarios pass, and two runs give the same traces.
 
 | Who does what | |
 | --- | --- |

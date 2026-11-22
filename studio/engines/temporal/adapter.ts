@@ -36,7 +36,9 @@ export function temporalBinding(env: StudioEnv): any {
  * makes the Java test server refuse a workflow task ("invalid history builder state for action") about
  * 1,100 items in; the real server runs it in about two minutes. It waits for nothing, so real time is fine.
  */
-export const REAL_SERVER_SCENARIOS = new Set(['CK-FOREACH-02']);
+// CK-TIMEOUT-03 (R-05-54) must run on a real server: only there does processing take time on the server's clock, so only
+// there does it show that an attempt's timeout measures its own execution and not the item loop's.
+export const REAL_SERVER_SCENARIOS = new Set(['CK-FOREACH-02', 'CK-TIMEOUT-03']);
 
 let devServer: string | undefined;
 /** Start Temporal's dev server once per process (TH_TEMPORAL_ADDRESS, if set, is used instead). */
@@ -70,6 +72,7 @@ export function temporalAdapter(env: StudioEnv, opts: { chunkSize?: number; keep
       const input = {
         studioRoot: env.studioRoot,
         chunkSize,
+        itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
         built: { id: b.id, spec: b.spec, workflow: b.workflow, config: b.config, context: b.context },
         documents: exportedDocuments(b.documents),
       };

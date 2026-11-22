@@ -42,7 +42,7 @@ public sealed class LoadRunner(JsonObject input)
     {
         var config = (JsonObject)J.P(built, "config")!;
         var start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
-        var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100));
+        var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
         using IParty party = new WorkerRouter((JsonObject)J.P(input, "workers")!, (JsonObject)J.P(input, "queues")!);
         var storeOpts = ScenarioRunner.StoreFromEnvironment();

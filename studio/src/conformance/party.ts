@@ -39,8 +39,11 @@ export type AttemptResponse =
 
 export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'family' | 'copy'> }
 
-/** The attempt in progress on this async path: its deliveries and whether it is a hold (a worker runs many at once). */
-interface AttemptOwner { due: Delivery[]; holding: boolean }
+/**
+ * The attempt in progress on this async path: its deliveries, whether it is a hold, and its own view of the clock (a worker runs
+ * many attempts at once, each at its engine's time: I-79).
+ */
+interface AttemptOwner { due: Delivery[]; holding: boolean; now?: number }
 const owners = new AsyncLocalStorage<AttemptOwner>();
 
 export class PartyService {
@@ -64,6 +67,19 @@ export class PartyService {
     const stubs = Object.fromEntries(Object.entries<any>(base.stubs ?? {}).map(([k, v]) => [k, { ...v, latency: undefined }]));
     const cfg: RunConfig = { ...base, stubs };
     this.run = new Run(cfg);
+    // Each attempt in flight reads and sets its own time (I-79): the clock's `now` is the attempt's on its async path, and the
+    // service's own outside any attempt.
+    let shared = this.run.clock.now;
+    Object.defineProperty(this.run.clock, 'now', {
+      configurable: true,
+      enumerable: true,
+      get: () => owners.getStore()?.now ?? shared,
+      set: (v: number) => {
+        const owner = owners.getStore();
+        if (owner) owner.now = v;
+        else shared = v;
+      },
+    });
     // A simulator's later reply is not run on the studio clock: it is handed to the engine. Timers are
     // the engine's too, so nothing else scheduled here runs: a block's own timeout is the engine's
     // attempt timeout.
@@ -107,7 +123,7 @@ export class PartyService {
    * attempts of many payments at once, and each must get back only the replies its own call set off.
    */
   async attemptOwn(req: AttemptRequest): Promise<{ result: AttemptResponse; deliveries: Delivery[] }> {
-    const owner: AttemptOwner = { due: [], holding: false };
+    const owner: AttemptOwner = { due: [], holding: false, now: req.now };
     const result = await owners.run(owner, () => this.attempt(req));
     return { result, deliveries: owner.due.sort((a, b) => a.at - b.at) };
   }
@@ -126,7 +142,9 @@ export class PartyService {
     this.run.clock.now = req.now;
     // Messages the context refers to by claim-check, handed over with the request (a deployed worker holds no payloads).
     for (const m of req.messages ?? []) if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push({ port: '', from: 'simulator', at: req.now, correlation: {}, ...m } as Message);
-    let inst = this.instances.get(req.instance);
+    // An item's attempt on a deployed worker runs on an instance of its own: the items of one payment run side by side
+    // (R-09-45), and one item's context must not become another's.
+    let inst = req.level === 'item' && owners.getStore() ? new Instance(this.run, { kind: 'workflow', name: req.instance, release: '0.0.0' }, req.ctx, 'engine') : this.instances.get(req.instance);
     if (!inst) {
       inst = new Instance(this.run, { kind: 'workflow', name: req.instance, release: '0.0.0' }, req.ctx, 'engine');
       this.instances.set(req.instance, inst);

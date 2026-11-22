@@ -113,6 +113,26 @@ describe('the party service', () => {
     expect((p as any).run.messages.some((m: any) => m.id === d[0].message.id)).toBe(true);
   });
 
+  // I-79: a deployed worker serves the attempts of many payments at once; each sees its own engine time and gets back only
+  // the replies its own call set off, due at its own time.
+  it('gives two attempts in flight on one worker each its own clock and its own replies', async () => {
+    const { b, p } = party('CK-AWAIT-01');
+    const later = T0 + 3_600_000;
+    const [x, y] = await Promise.all([
+      p.attemptOwn({ ...req(b, 'ck.kit.exchange.send.v1', 'send', 1, T0), instance: 'pay-a' }),
+      p.attemptOwn({ ...req(b, 'ck.kit.exchange.send.v1', 'send', 1, later), instance: 'pay-b', ctx: { ...b.context, header: { ...b.context.header, paymentId: 'P-2', endToEndId: 'E2E-2', conversation: 'conv-2' } } }),
+    ]);
+    expect([x.result.kind, y.result.kind]).toEqual(['result', 'result']);
+    expect(x.deliveries.length).toBeGreaterThan(0);
+    expect(y.deliveries.length).toBe(x.deliveries.length);
+    expect(x.deliveries.every((d) => d.at >= T0 && d.at < later)).toBe(true);
+    expect(y.deliveries.every((d) => d.at >= later)).toBe(true);
+    expect(new Set([...x.deliveries, ...y.deliveries].map((d) => d.message.id)).size).toBe(x.deliveries.length * 2);
+    expect(p.takeDeliveries()).toEqual([]);
+    // Outside any attempt the service keeps its own time.
+    expect((p as any).run.clock.now).not.toBe(later);
+  });
+
   it('registers payloads handed over with a request, and refuses an activity that does not resolve', async () => {
     const { b, p } = party('CK-SEQ-01');
     const r = await p.attempt({ ...req(b, 'ck.kit.nope.v1', 'x'), messages: [{ id: 'm-1', type: 't', payload: 'x' }] });

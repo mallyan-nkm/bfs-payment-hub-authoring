@@ -42,6 +42,8 @@ int code;
 WorkflowEnvironment? env = null;
 try
 {
+    // On a real server an attempt's Start-To-Close is its own budget (R-05-54); the test server may skip time while one runs.
+    TemporalEngine.RealServer = Environment.GetEnvironmentVariable("TH_TEMPORAL_ADDRESS") is { Length: > 0 };
     env = Environment.GetEnvironmentVariable("TH_TEMPORAL_ADDRESS") is { Length: > 0 } address
         ? new WorkflowEnvironment(await Temporalio.Client.TemporalClient.ConnectAsync(new(address) { Runtime = runtime, Interceptors = interceptors }))
         : await ScenarioRunner.StartTestServer(runtime, interceptors);

@@ -299,6 +299,8 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     const input = {
       studioRoot: req.studioRoot,
       chunkSize: binding.defaults?.forEachChunk ?? 500,
+      // Items of a forEach that holds no state run side by side, as the binding says (R-09-45).
+      itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
       built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),

@@ -47,35 +47,31 @@ public sealed class MemoryClaimCheck : IClaimCheck
 /// write committed, forked, copied. The payment itself is accepted into the ISO 20022 tables when its
 /// run starts. Reads are served from a cache that <see cref="Load"/> rebuilds from the facts, so a host
 /// that restarts goes on from what the store holds.
+/// Each payload is its own lane (I-78): the facts of one payload are written in order, several in one save when they
+/// queue, and the facts of different payloads side by side (<see cref="FactWriter"/>). Nothing waits for another payment.
 /// </summary>
 public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock = null) : IClaimCheck
 {
     readonly ClaimCheckStore cache = new();
-    readonly SemaphoreSlim gate = new(1, 1);
-    readonly Dictionary<string, (string r, List<(string path, JsonNode? value)> writes)> staged = new();
-    readonly HashSet<string> committed = new();
-    int seq;
+    readonly FactWriter writer = new(options, clock);
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string r, List<(string path, JsonNode? value)> writes)> staged = new();
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, Task> commits = new();
+    long seq;
     public Dictionary<string, JsonNode?> RuleTraces => cache.RuleTraces;
     public const string Kind = "payload";
     /// <summary>What was accepted into the store, by payload reference.</summary>
-    public readonly Dictionary<string, (string subjectId, string kind, int payments)> Accepted = new();
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string subjectId, string kind, int payments)> Accepted = new();
+    /// <summary>Saves made and facts written: how far the lanes batched.</summary>
+    public (long saves, long facts) Saves => writer.Counts;
 
-    async Task Fact(string r, string code, JsonObject data)
-    {
-        await using var db = StoreDbContext.Open(options);
-        await new FactLog(db, clock).Append(r, Kind, new NewFact("payload", code, data, Actor: "claim-check"));
-    }
+    Task Fact(string r, string code, JsonObject data, Action? after = null) =>
+        writer.Append(r, Kind, new NewFact("payload", code, data, Actor: "claim-check"), after);
 
     public async Task Create(string r, JsonObject payload, AcceptInfo? accept = null)
     {
-        await gate.WaitAsync();
-        try
-        {
-            await Fact(r, "create", new JsonObject { ["payload"] = J.Clone(payload) });
-            cache.Create(r, (JsonObject)J.Clone(payload)!);
-            if (accept is not null) await AcceptInto(r, payload, accept);
-        }
-        finally { gate.Release(); }
+        var copy = (JsonObject)J.Clone(payload)!;
+        await Fact(r, "create", new JsonObject { ["payload"] = J.Clone(payload) }, () => cache.Create(r, copy));
+        if (accept is not null) await AcceptInto(r, payload, accept);
     }
 
     async Task AcceptInto(string r, JsonObject payload, AcceptInfo a)
@@ -86,15 +82,18 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
         {
             var b = await store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId);
             Accepted[r] = (b.BulkId, "bulk", b.PaymentIds.Count);
-            await new FactLog(db, clock).Append(r, Kind, new NewFact("payload", "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, a.ReleaseId, "claim-check"));
+            await Fact(r, "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, null, a.ReleaseId);
         }
         else if (CanonicalMapper.ToPayment(payload, null, 0) is { } t)
         {
             var id = await store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId);
             Accepted[r] = (id, "payment", 1);
-            await new FactLog(db, clock).Append(r, Kind, new NewFact("payload", "accepted", new JsonObject { ["payment"] = id }, a.ReleaseId, "claim-check"));
+            await Fact(r, "accepted", new JsonObject { ["payment"] = id }, null, a.ReleaseId);
         }
     }
+
+    Task Fact(string r, string code, JsonObject data, Action? after, string? release) =>
+        writer.Append(r, Kind, new NewFact("payload", code, data, release, "claim-check"), after);
 
     public JsonObject Full(JsonNode? state, string r) => cache.Full(state, r);
     public JsonObject FullForItem(JsonNode? state, string r, int index) => cache.FullForItem(state, r, index);
@@ -102,55 +101,42 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
 
     public async Task<string> Stage(string r, List<(string path, JsonNode? value)> writes)
     {
-        await gate.WaitAsync();
-        try
-        {
-            var token = $"{r}!{++seq}";
-            await Fact(r, "staged", new JsonObject { ["token"] = token, ["writes"] = Writes(writes) });
-            staged[token] = (r, writes);
-            return token;
-        }
-        finally { gate.Release(); }
+        var token = $"{r}!{Interlocked.Increment(ref seq)}";
+        await Fact(r, "staged", new JsonObject { ["token"] = token, ["writes"] = Writes(writes) }, () => staged[token] = (r, writes));
+        return token;
     }
 
-    public async Task Commit(string token)
+    /// <summary>A commit that arrives twice (the engine retried its claim-check call) changes nothing: the second waits for the first.</summary>
+    public Task Commit(string token)
     {
-        await gate.WaitAsync();
-        try
-        {
-            // A commit that arrives twice (the engine retried its claim-check call) changes nothing.
-            if (committed.Contains(token) || !staged.TryGetValue(token, out var s)) return;
-            await Fact(s.r, "commit", new JsonObject { ["token"] = token });
-            committed.Add(token);
-            cache.Commit(cache.Stage(s.r, s.writes));
-        }
-        finally { gate.Release(); }
+        if (!staged.TryGetValue(token, out var s)) return Task.CompletedTask;
+        return commits.GetOrAdd(token, _ => CommitOnce(token, s));
     }
 
-    public async Task Fork(string from, string to)
+    async Task CommitOnce(string token, (string r, List<(string path, JsonNode? value)> writes) s)
     {
-        await gate.WaitAsync();
-        try
+        try { await Fact(s.r, "commit", new JsonObject { ["token"] = token }, () => cache.Commit(cache.Stage(s.r, s.writes))); }
+        catch
         {
-            await Fact(to, "fork", new JsonObject { ["from"] = from, ["payload"] = cache.Payload(from) });
-            cache.Fork(from, to);
+            commits.TryRemove(token, out _);
+            throw;
         }
-        finally { gate.Release(); }
     }
 
-    public async Task Copy(string from, string to, IEnumerable<string> paths)
+    public Task Fork(string from, string to)
+    {
+        var payload = cache.Payload(from);
+        return Fact(to, "fork", new JsonObject { ["from"] = from, ["payload"] = J.Clone(payload) }, () => cache.Create(to, payload));
+    }
+
+    public Task Copy(string from, string to, IEnumerable<string> paths)
     {
         var list = paths.ToList();
-        await gate.WaitAsync();
-        try
-        {
-            var src = cache.Payload(from);
-            var values = new JsonObject();
-            foreach (var p in list) values[p] = J.Clone(J.Get(src, p));
-            await Fact(to, "copy", new JsonObject { ["from"] = from, ["values"] = values });
-            cache.Copy(from, to, list);
-        }
-        finally { gate.Release(); }
+        var src = cache.Payload(from);
+        var values = new JsonObject();
+        foreach (var p in list) values[p] = J.Clone(J.Get(src, p));
+        // The values as the fact records them, so the cache holds what a rebuild from the facts gives.
+        return Fact(to, "copy", new JsonObject { ["from"] = from, ["values"] = values }, () => cache.CopyValues(to, values));
     }
 
     static JsonArray Writes(List<(string path, JsonNode? value)> writes) =>

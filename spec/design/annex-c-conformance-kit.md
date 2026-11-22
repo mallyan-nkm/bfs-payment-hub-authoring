@@ -21,7 +21,7 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 48 scenarios in draft 0.2.
+The machine-readable list is `conformance/kit.yaml`. It holds 50 scenarios in draft 0.2.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |

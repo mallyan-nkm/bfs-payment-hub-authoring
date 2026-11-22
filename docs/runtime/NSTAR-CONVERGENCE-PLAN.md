@@ -88,13 +88,13 @@ content-configurations/      what the studio publishes and what a bank configure
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
-- We start from what the studio has already proved. The conformance kit (48 scenarios since 2026-11-22; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
+- We start from what the studio has already proved. The conformance kit (50 scenarios since 2026-11-22; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
 - The runtime turns that into a product:
   - **Temporal:** the .NET SDK, with worker versioning by Build ID. Each release's activity versions run on their own versioned workers.
   - **DTFx:** `Microsoft.DurableTask.SqlServer`. Task-queue routing is done by the host (one hub per release line). The source's "`IsPatched` is always true" is not carried over: versions come from releases, not patches.
   - **Elsa 3.x:** journal replay inside one Elsa activity, with bookmarks, as the studio's harness does, now with Elsa's SQL Server and PostgreSQL persistence.
   - **Flowable 7:** BPMN generated from the expanded workflow (`src/export/bpmn.ts`). It runs in a Java sidecar with its own database. .NET external workers take the jobs over REST.
-- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 48 scenarios plus the WPS parity suite on each engine.
+- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 50 scenarios plus the WPS parity suite on each engine.
 - The runtime's own data is always through EF Core (W2). Each engine also keeps its own state:
 
 | Engine | Its own state on SQL Server | Its own state on PostgreSQL |
@@ -309,7 +309,7 @@ Decided by the owner on 2026-11-22: an operations console in the runtime, leg-ge
 - **Flowable on the store (D3).** Built on 22 November 2026. The Flowable REST server (`flowable/flowable-rest:7.1.0`, the Flowable of the kit harness) runs the BPMN the studio exports; `runtime/src/TransactHub.Engine.Flowable` is its external worker over REST, and keeps the payloads in `DurableClaimCheck`, as the Temporal binding does:
   - `FlowableRest` is the client: deploy through `/repository/deployments` (one zip), start through `/runtime/process-instances`, acquire and lock, complete, fail and BPMN errors through `/external-job-api`, run jobs and move timers through `/management`, deliver messages to executions;
   - `FlowableBinding` is the binding: every activity attempt goes to the worker of its task queue, and the binding's own tasks (topic `th.binding`) are where it writes the trace, names a slot's leg, counts a batch, checks a hook's contract and learns of each instance;
-  - the export for `flowable` generates BPMN for this REST binding (`binding: 'rest'` in `src/export/bpmn.ts`), and the bound hooks with it; the kit's embedded harness keeps the embedded form and passes 48 of 48;
+  - the export for `flowable` generates BPMN for this REST binding (`binding: 'rest'` in `src/export/bpmn.ts`), and the bound hooks with it; the kit's embedded harness keeps the embedded form and passes 50 of 50;
   - the server's async executor is off and the binding keeps the clock, firing each timer when the virtual clock reaches it (Issue I-53);
   - in production mode (`TH_FLOWABLE_MODE=production`, built 22 November 2026) the executor is on and time is real: the binding is a pure external worker, Flowable runs its jobs, fires its timers, retries failed jobs and hands out jobs whose lock expired, the binding reschedules the timers it computes (business calendar, a bank's parameter) and reports dead letters (Issues I-53 to I-55). `e2e-wps-flowable-production.test.ts` runs the WPS salary file so on the store on both databases, with a real timeout, a crashed worker and a dead letter (CI job `flowable-production`). The binding's own run state is still in memory (Issue I-89);
   - the deploy runner runs a Flowable package with `runtime/tools/TransactHub.FlowableHarness` against the server at `TH_FLOWABLE_URL`, its payloads in the store when `TH_STORE_PROVIDER` is set; `e2e-wps-engines-store.test.ts` starts the server as a container and asserts the trace and `engine.store` on both databases.

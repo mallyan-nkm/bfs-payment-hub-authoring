@@ -1,0 +1,27 @@
+kind: change-set
+id: CS-2026-11-22-004
+tenant: owner
+origin: seed
+checker: service.operations
+publishedAt: 2026-11-22T09:31:08.275Z
+makers:
+  - tools/build_factory.py
+sources:
+  - spec/examples/bindings
+members:
+  - kind: engine-binding
+    name: binding:dtfx
+    release: ""
+    key: binding:dtfx
+  - kind: engine-binding
+    name: binding:elsa
+    release: ""
+    key: binding:elsa
+  - kind: engine-binding
+    name: binding:flowable
+    release: ""
+    key: binding:flowable
+  - kind: engine-binding
+    name: binding:temporal
+    release: ""
+    key: binding:temporal

@@ -26,6 +26,7 @@
         "queueTimeout": { "$ref": "urn:th:schema:common#/$defs/duration" },
         "heartbeat": { "$ref": "urn:th:schema:common#/$defs/duration" },
         "forEachChunk": { "type": "integer", "minimum": 1 },
+        "forEachConcurrency": { "description": "Items of a forEach that declares no concurrency and holds no state, run side by side (R-09-45).", "type": "integer", "minimum": 1 },
         "historyLimit": { "type": "integer", "minimum": 1 }
       }
     },

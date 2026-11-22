@@ -43,7 +43,7 @@ describe('studio command line', () => {
   it('runs the conformance kit, whole and by scenario', () => {
     const all = studio('kit');
     expect(all.code).toBe(0);
-    expect(all.out).toContain('48 of 48 conformance scenarios pass');
+    expect(all.out).toContain('50 of 50 conformance scenarios pass');
     const one = studio('kit', 'CK-SEQ-01');
     expect(one.out).toContain('1 of 1 conformance scenarios pass');
   }, 300000);

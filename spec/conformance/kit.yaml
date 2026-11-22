@@ -15,12 +15,14 @@ scenarios:
   - { id: CK-PAR-01, construct: parallel, title: Branches run together and all are awaited, expect: [a:ok, b:ok, "join:all", c:ok, "end:done"], note: a and b may appear in either order }
   - { id: CK-FOREACH-01, construct: forEach, title: "Per-item outcomes are kept; one failing item does not stop the rest when onItemFailure is continue", expect: ["item[0]:ok", "item[1]:other", "item[2]:ok", "end:done"] }
   - { id: CK-FOREACH-02, construct: forEach, title: A large batch is chunked without changing the trace, expect: ["items:10000", "end:done"] }
+  - { id: CK-FOREACH-03, construct: forEach, title: "Items that run side by side keep item order in the trace, whatever order they end in", expect: ["a[0]:ok", "b[0]:ok", "a[1]:ok", "b[1]:ok", "a[2]:ok", "b[2]:ok", "end:done"] }
   - { id: CK-LOOP-01, construct: loop, title: A loop stops when its until condition is met, expect: [q:pending, q:pending, q:final, "end:done"] }
   - { id: CK-LOOP-02, construct: loop, title: A loop stops at max, expect: [q:pending, q:pending, q:pending, "end:gave-up"] }
   - { id: CK-RETRY-01, construct: retry, title: Two transient failures then success make three attempts and one accepted message, expect: [a:ok, "end:done"], attempts: { a: 3 }, accepted: 1 }
   - { id: CK-RETRY-02, construct: retry, title: A business rejection is not retried, expect: [a:rejected, "end:rejected"], attempts: { a: 1 } }
   - { id: CK-TIMEOUT-01, construct: attemptTimeout, title: "An attempt that exceeds its timeout is retried; a late result is ignored", expect: [a:ok, "end:done"], attempts: { a: 2 } }
   - { id: CK-TIMEOUT-02, construct: totalTimeout, title: The total timeout ends retries and surfaces as the unknown outcome, expect: [a:unknown, "end:pending"] }
+  - { id: CK-TIMEOUT-03, construct: attemptTimeout, title: "An attempt timeout measures the attempt's own execution; an item loop that outlasts it does not spend it", expect: ["items:300", b:ok, "end:done"], virtualElapsed: PT4S }
   - { id: CK-UNKNOWN-01, construct: inquiry, title: "An unknown send is followed by an inquiry with the original ids; nothing is sent twice with a new id", expect: [send:unknown, inquire:accepted, "end:done"], distinctIds: 1 }
   - { id: CK-POLICY-01, construct: policy, title: "A step override beats the block default, which beats the type default", expect: [a:ok, "end:done"], effective: { attemptTimeout: PT2S } }
   - { id: CK-AWAIT-01, construct: await, title: An awaited message resumes the workflow, expect: [send:accepted, "await:received", "end:done"] }

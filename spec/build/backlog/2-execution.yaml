@@ -155,7 +155,7 @@ components:
     design: [Part 5, Part 6, Annex C]
     schemas: [workflow, hook, configuration-set, test-case]
     dependsOn: [C04, C06, C07, C10, C23]
-    dos: The interpreter produces the expected trace for all 48 scenarios of the conformance kit.
+    dos: The interpreter produces the expected trace for all 50 scenarios of the conformance kit.
     stories:
       - id: C09-S1
         title: Core flow

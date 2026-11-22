@@ -9,7 +9,7 @@ What can go wrong in the north star, what it does, and what stops or finds it. I
 | F3 | Two writers take the same sequence number on a payment | Facts out of order | Unique index on (subject, sequence); a clean conflict | `StoreTests.Two_writers_on_one_subject_never_share_a_number` |
 | F4 | A future-dated rule hides the rule in force | Wrong charges or limits (the source's N1) | Date first, then version | `StoreTests.A_future_dated_rule_does_not_hide_the_rule_in_force` |
 | F5 | A hot update changes a payment that asked for its acceptance date | A payment's answer changes in flight | Lookup as of the date the rule declares | `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update` |
-| F6 | Engines disagree on a workflow | A payment's outcome depends on the installation | One interpreter; the kit's 48 scenarios on each engine | `run-kit.ts` per engine; CI job `kit` |
+| F6 | Engines disagree on a workflow | A payment's outcome depends on the installation | One interpreter; the kit's 50 scenarios on each engine | `run-kit.ts` per engine; CI job `kit` |
 | F7 | A test package reaches production | A simulator answers for a real party | A package with simulators is not promotable | `ReleaseApiTests` |
 | F8 | A bank is defaulted when none is given | One bank's values applied to another (the source's N5) | A tenant is always given; a port with no binding is refused | `BankConfigurationTests` |
 | F9 | Shared code names a bank | A fork grows back | Build check on bank names | `BankConfigurationTests.No_shared_code_names_a_bank` |
