@@ -40,6 +40,8 @@ export function gitStatus(env: StudioEnv) {
     writes: (c?.writes ?? []).slice(-20).reverse(),
     /** Change set branches deleted once the content branch took them in (R-11-26). */
     deletedBranches: (c?.deletedBranches ?? []).slice(-20).reverse(),
+    /** Change set branches kept because someone else moved them since the studio saw them (Issue I-61). */
+    keptBranches: (c?.keptBranches ?? []).slice(-20).reverse(),
   };
 }
 
