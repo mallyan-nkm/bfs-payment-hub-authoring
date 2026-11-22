@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

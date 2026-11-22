@@ -266,6 +266,7 @@ public sealed class PartyClient : IParty
 
     public async Task<JsonObject> Call(JsonObject req)
     {
+        using var span = J.S(req, "op") == "attempt" ? EngineTelemetry.Attempt(req, null) : null;
         await lk.WaitAsync();
         try
         {
@@ -274,6 +275,7 @@ public sealed class PartyClient : IParty
             var line = await proc.StandardOutput.ReadLineAsync() ?? throw new InvalidOperationException("party service closed");
             var res = (JsonObject)J.Parse(line)!;
             if (J.S(res, "error") is string err) throw new InvalidOperationException($"party: {err}");
+            span?.Answered(res);
             return res;
         }
         finally { lk.Release(); }
@@ -342,7 +344,15 @@ public sealed class WorkerRouter : IParty
                 Calls[queue] = Calls.GetValueOrDefault(queue) + 1;
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
-                return await Post($"{url}/attempt", body);
+                // One span per attempt; HttpClient carries its context to the worker (traceparent).
+                using var span = EngineTelemetry.Attempt(req, queue);
+                try
+                {
+                    var res = await Post($"{url}/attempt", body);
+                    span.Answered(res);
+                    return res;
+                }
+                catch (Exception e) { span.Failed(e); throw; }
             }
             case "sent":
             {

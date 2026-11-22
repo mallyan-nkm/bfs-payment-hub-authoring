@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using TransactHub.Api;
 using TransactHub.Store;
+using TransactHub.Telemetry;
 using YamlDotNet.Serialization;
 
 // The runtime's release API (plan W4). A package from the studio is stored once and never changed;
@@ -17,7 +18,11 @@ var options = new StoreOptions(provider, connection);
 var testEnvironments = (builder.Configuration["Releases:TestEnvironments"] ?? "test,dev,kit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
 builder.Services.AddSingleton(TimeProvider.System);
+// Traces, metrics and logs over OTLP when OTEL_* names an endpoint; /health/live and /health/ready (R-13-01, R-13-07).
+builder.Services.AddTransactHubTelemetry("transacthub-api");
+builder.Services.AddHealthChecks().AddCheck<StoreReady>("store", tags: [WebTelemetry.Ready]);
 var app = builder.Build();
+app.MapTransactHubHealth();
 
 if (app.Configuration["Store:Migrate"] != "false")
 {
@@ -33,6 +38,7 @@ async Task<IResult> StorePackage(StoreDbContext db, TimeProvider clock, Package 
     try
     {
         var r = await reg.Store(p.Scope, p.Release, p.CanonicalZip(), p.Manifest, actor);
+        if (r.Stored) RuntimeTelemetry.ReleasesStored.Add(1, new KeyValuePair<string, object?>("th.scope", p.Scope));
         var body = new { id = r.Id, scope = p.Scope, release = p.Release, stored = r.Stored, promotable = p.Promotable, hash = ReleaseRegistry.HashOf(p.CanonicalZip()) };
         return r.Stored ? Results.Json(body, statusCode: 201) : Results.Ok(body);
     }
@@ -77,6 +83,7 @@ app.MapPost("/activations", async (ActivationRequest a, StoreDbContext db, TimeP
     if (!promotable && !testEnvironments.Contains(a.Environment))
         return Problem(409, $"{a.Scope}@{a.Release} is not promotable (it carries simulators or has errors): it may be activated only in {string.Join(", ", testEnvironments)}");
     await new ReleaseRegistry(db, clock).Activate(a.Environment, a.Scope, a.Release, a.EffectiveFrom ?? clock.GetUtcNow(), a.Actor);
+    RuntimeTelemetry.Activations.Add(1, new KeyValuePair<string, object?>("th.environment", a.Environment), new KeyValuePair<string, object?>("th.scope", a.Scope));
     return Results.Json(new { a.Environment, a.Scope, a.Release, effectiveFrom = a.EffectiveFrom ?? clock.GetUtcNow() }, statusCode: 201);
 });
 
@@ -128,6 +135,7 @@ app.MapPost("/import-branch", async (BranchImport b, StoreDbContext db, TimeProv
                     var already = await db.Activations.AnyAsync(a => a.Environment == env && a.Scope == r && a.Release == release && a.EffectiveFrom == StoreTime.Of(from));
                     if (already) continue;
                     await reg.Activate(env, r, release, from, b.Actor);
+                    RuntimeTelemetry.Activations.Add(1, new KeyValuePair<string, object?>("th.environment", env), new KeyValuePair<string, object?>("th.scope", r));
                     activated.Add(new { environment = env, scope = r, release, effectiveFrom = from });
                 }
             }

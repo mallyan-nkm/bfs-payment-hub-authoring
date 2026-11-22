@@ -21,7 +21,12 @@ public static class Program
         int code;
         try
         {
+            // A span for the run and the payments it ended (EngineTelemetry: nothing listens unless a runtime host attached OpenTelemetry).
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            using var run = EngineTelemetry.StartRun("elsa", input);
             var obs = await h.Run();
+            EngineTelemetry.Observed(input, obs, watch.Elapsed);
+            run?.Dispose();
             Console.Out.WriteLine("OBSERVATION " + J.Str(obs));
             code = 0;
         }

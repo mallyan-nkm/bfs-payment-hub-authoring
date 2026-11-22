@@ -1,11 +1,22 @@
 using System.Runtime.CompilerServices;
+using TransactHub.Engines;
 using TransactHub.Engines.Durable;
+using TransactHub.Telemetry;
 
 namespace TransactHub.DtfxHarness;
 
 static class Store
 {
-    /// <summary>Before the harness's Main: the store journal, when the deployment names a store.</summary>
+    /// <summary>Before the harness's Main: the store journal, when the deployment names a store, and telemetry.</summary>
     [ModuleInitializer]
-    internal static void Install() => StoreJournal.InstallFromEnvironment();
+    internal static void Install()
+    {
+        StoreJournal.InstallFromEnvironment();
+        // Traces, metrics and logs over OTLP when OTEL_* names an endpoint (R-13-01). The engine runs the attempts on its
+        // own threads, so each attempt span joins the caller's trace (TRACEPARENT) through EngineTelemetry's parent.
+        var telemetry = TelemetryHost.Start("transacthub-engine-dtfx");
+        EngineTelemetry.Engine = "dtfx";
+        EngineTelemetry.LogSink = telemetry.Sink(EngineTelemetry.SourceName);
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => telemetry.Dispose();
+    }
 }

@@ -1,5 +1,6 @@
 import { CONTENT_DIR, openReadEnv, type StudioEnv } from './env.js';
 import { runAllTests, runTest } from './testing/runner.js';
+import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
 // `--bank <name>` (repeatable, any command) adds a bank pack from its folder on the branch (Issue I-43).
@@ -224,6 +225,8 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
   console.log(USAGE);
 }
 
+// Telemetry over OTLP when OTEL_* names an endpoint (R-13-01): a deploy is one trace across every process it starts.
+initTelemetry('transacthub-studio-cli');
 main().catch((e) => {
   if (e instanceof UsageError) {
     console.error(e.message);
@@ -233,4 +236,4 @@ main().catch((e) => {
   }
   console.error(e?.message ?? e);
   process.exitCode = 1;
-});
+}).finally(() => shutdownTelemetry());

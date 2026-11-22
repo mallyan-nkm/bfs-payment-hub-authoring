@@ -2,6 +2,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Temporal's spans (workflow, activity, signal) and its SDK metrics, into OpenTelemetry (R-13-02). -->
+    <PackageReference Include="Temporalio.Extensions.OpenTelemetry" Version="1.21.1" />
+    <PackageReference Include="Temporalio.Extensions.DiagnosticSource" Version="1.21.1" />
   </ItemGroup>
 
   <PropertyGroup>

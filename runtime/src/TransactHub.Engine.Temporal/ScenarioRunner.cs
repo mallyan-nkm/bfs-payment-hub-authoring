@@ -47,8 +47,8 @@ public sealed class ScenarioRunner
         throw new FileNotFoundException("runtime/tools/temporal-test-server/run.sh (run its setup.sh once)");
     }
 
-    public static Task<WorkflowEnvironment> StartTestServer() =>
-        WorkflowEnvironment.StartTimeSkippingAsync(new() { TestServer = new() { ExistingPath = TestServerScript() } });
+    public static Task<WorkflowEnvironment> StartTestServer(Temporalio.Runtime.TemporalRuntime? runtime = null, IReadOnlyCollection<Temporalio.Client.Interceptors.IClientInterceptor>? interceptors = null) =>
+        WorkflowEnvironment.StartTimeSkippingAsync(new() { TestServer = new() { ExistingPath = TestServerScript() }, Runtime = runtime, Interceptors = interceptors });
 
     public async Task<JsonObject> Run(WorkflowEnvironment env)
     {

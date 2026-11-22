@@ -5,6 +5,7 @@ import { Store } from '../core/store.js';
 import { parseYaml } from '../core/yaml.js';
 import { ScriptRegistry } from '../interp/sandbox.js';
 import { PartyService, type AttemptRequest } from '../conformance/party.js';
+import { attrs, contextFrom, inSpan, initTelemetry, log, meters, shutdownTelemetry, SpanKind } from '../telemetry/telemetry.js';
 
 // A deployed activity worker (Part 9; R-09-04, R-09-05). One process per task queue. It serves only
 // the tasks its manifest lists, registered as <name>@<release>, and refuses any other. It holds
@@ -19,6 +20,10 @@ import { PartyService, type AttemptRequest } from '../conformance/party.js';
 //   POST /start       -> deliveries from inward simulators
 //   GET  /sent        -> messages sent on ports
 //   GET  /stats       -> tasks served and refused
+//   GET  /health/live, /health/ready -> the process answers; it has loaded its tasks (R-13-07)
+//
+// Telemetry (R-13-01): with OTEL_EXPORTER_OTLP_ENDPOINT set, each attempt is a span in the trace the engine sent
+// (traceparent), with the port calls it makes inside it, and the worker's metrics and logs go there too.
 
 const args = process.argv.slice(2);
 const arg = (k: string, d?: string) => {
@@ -30,6 +35,9 @@ const port = Number(arg('port', '7100'));
 const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
 const environment = arg('env') ? JSON.parse(fs.readFileSync(path.resolve(arg('env')!), 'utf8')) : {};
 const tasks = new Set<string>(manifest.tasks);
+initTelemetry(process.env.OTEL_SERVICE_NAME ?? `transacthub-worker-${manifest.queue}`);
+// Stopped by the deploy runner or the host: send what is buffered first.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void shutdownTelemetry().finally(() => process.exit(0)); });
 
 const dirs = [path.join(dir, 'artefacts'), path.join(dir, 'simulators')].filter((d) => fs.existsSync(d));
 const store = Store.fromDirs(dirs);
@@ -61,6 +69,8 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', 'http://worker');
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { queue: manifest.queue, tasks: manifest.tasks, simulators: dirs.length > 1 });
+    if (req.method === 'GET' && url.pathname === '/health/live') return send(res, 200, { status: 'live' });
+    if (req.method === 'GET' && url.pathname === '/health/ready') return send(res, tasks.size > 0 ? 200 : 503, { status: tasks.size > 0 ? 'ready' : 'not ready', queue: manifest.queue, tasks: tasks.size });
     if (req.method === 'GET' && url.pathname === '/stats') return send(res, 200, { queue: manifest.queue, served, refused, valuesRead });
     if (req.method === 'GET' && url.pathname === '/sent') return send(res, 200, { messages: party.sent() });
     if (req.method === 'POST' && url.pathname === '/start') {
@@ -94,9 +104,23 @@ const server = http.createServer(async (req, res) => {
         }
       }
       served[task] = (served[task] ?? 0) + 1;
-      const r = await party.attempt({ ...b, release });
+      const t0 = performance.now();
+      const a = attrs({ 'th.activity': b.activity, 'th.release': release, 'th.queue': manifest.queue });
+      const { result: r, deliveries } = await inSpan(`th.activity ${b.activity}`, attrs({
+        ...a, 'th.step': b.step, 'th.attempt': b.attempt, 'th.instance': b.instance, 'th.level': b.level, 'th.payment.id': b.ctx?.header?.paymentId,
+      }), async (span) => {
+        const out = await party.attemptOwn({ ...b, release });
+        span.setAttributes(attrs({ 'th.kind': out.result.kind, 'th.outcome': (out.result as any).outcome, 'th.error': (out.result as any).name }));
+        if (out.result.kind === 'error') span.setStatus({ code: 2, message: out.result.name });
+        return out;
+      }, { kind: SpanKind.SERVER, parent: contextFrom(req.headers) });
+      meters().workerAttempt.record((performance.now() - t0) / 1000, { ...a, 'th.kind': r.kind });
+      if (r.kind === 'error') {
+        meters().workerErrors.add(1, { ...a, 'th.error': r.name });
+        log('warn', 'Attempt of {th.activity} on {th.queue} ended in {th.error}', { 'th.activity': b.activity, 'th.queue': manifest.queue, 'th.error': r.name });
+      }
       if (process.env.TH_WORKER_LOG) fs.appendFileSync(process.env.TH_WORKER_LOG, JSON.stringify({ queue: manifest.queue, task, step: b.step, messages: b.ctx?.messages, result: r }) + '\n');
-      return send(res, 200, { ...r, deliveries: party.takeDeliveries() });
+      return send(res, 200, { ...r, deliveries });
     }
     send(res, 404, { error: 'not found' });
   } catch (e: any) {
