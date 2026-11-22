@@ -28,7 +28,7 @@ public sealed class Job
 
 /// <summary>
 /// The test bench service: a small host of its own (never the production API), with the bank's sign-in, a queue that runs
-/// one job at a time on infrastructure kept for its life, the run history on disk, and the web UI (runtime/testbench/web).
+/// one job at a time on infrastructure kept for its life, the run history on disk, and the runtime web app (runtime/ops-console), whose Test bench section it serves.
 /// </summary>
 public static class Service
 {
@@ -59,8 +59,7 @@ public static class Service
         var b = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args ?? [], ContentRootPath = home.Bench });
         b.WebHost.UseUrls(urls);
         b.Logging.SetMinimumLevel(LogLevel.Warning);
-        var baseUrl = urls.Split(';')[0];
-        var auth = OidcBenchAuth.Add(b, home, baseUrl);
+        var auth = BenchAuth.Add(b).GetAwaiter().GetResult();
         var app = b.Build();
         var infra = new Infra(home, null);
         var runner = runnerFactory?.Invoke() ?? new RealRunner(home, infra);
@@ -107,6 +106,15 @@ public static class Service
             }
         }, stop);
 
+        // The app's files are served before routing, so the fallback to index.html does not hide them.
+        var dist = b.Configuration["TestBench:Console"] ?? Path.Combine(home.Runtime, "ops-console", "dist");
+        if (Directory.Exists(dist))
+        {
+            var files = new PhysicalFileProvider(dist);
+            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
+            app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+        }
+        app.UseRouting();
         app.UseAuthentication();
         app.UseAuthorization();
         app.Use(async (ctx, next) =>
@@ -115,17 +123,16 @@ public static class Service
             catch (BenchError e) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { error = e.Message }); }
             catch (Forbidden e) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsJsonAsync(new { error = e.Message }); }
         });
-        auth.Map(app);
 
-        app.MapGet("/api/health", () => Results.Json(new JsonObject { ["ok"] = true, ["auth"] = auth.Mode })).AllowAnonymous();
-        app.MapGet("/auth/config", () => Results.Json(auth.ClientConfig())).AllowAnonymous();
+        app.MapGet("/testbench/api/health", () => Results.Json(new JsonObject { ["ok"] = true, ["auth"] = J.S(auth.ClientConfig(), "mode") })).AllowAnonymous();
+        app.MapGet("/testbench/api/auth/config", () => Results.Json(auth.ClientConfig())).AllowAnonymous();
 
-        var api = app.MapGroup("/api").RequireAuthorization(BenchRoles.Policy);
+        var api = app.MapGroup("/testbench/api").RequireAuthorization(BenchRoles.Policy);
         api.MapGet("/me", (HttpContext c) => Results.Json(new JsonObject
         {
             ["name"] = BenchRoles.Actor(c.User),
-            ["roles"] = new JsonArray(c.User.FindAll(BenchRoles.RoleClaim).Select(x => (JsonNode?)x.Value).ToArray()),
-            ["tenants"] = new JsonArray(c.User.FindAll(BenchRoles.TenantClaim).Select(x => (JsonNode?)x.Value).ToArray()),
+            ["roles"] = new JsonArray(c.User.FindAll(TransactHub.Auth.RuntimeAuth.RoleClaim).Select(x => (JsonNode?)x.Value).Distinct().ToArray()),
+            ["tenants"] = new JsonArray(c.User.FindAll(TransactHub.Auth.RuntimeAuth.TenantClaim).Select(x => (JsonNode?)x.Value).Distinct().ToArray()),
         }));
         api.MapGet("/profiles", () => Results.Json(new JsonArray(catalogue.Profiles().Select(p =>
         {
@@ -249,16 +256,13 @@ public static class Service
         });
         api.MapGet("/suites/{id}", (string id) => jobs.TryGetValue(id, out var j) && j.Kind == "suite" ? Results.Json(j.Json()) : Results.NotFound());
 
-        // The web UI, built into runtime/testbench/web/dist.
-        var dist = Path.Combine(home.Bench, "web", "dist");
+        // The runtime's web app (runtime/ops-console, built into its dist): the test bench is its Test bench section, beside
+        // the operations and service sections, with one sign-in. TestBench:Console names another build.
         if (Directory.Exists(dist))
         {
-            var files = new PhysicalFileProvider(dist);
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
             app.MapFallback(async ctx =>
             {
-                if (ctx.Request.Path.StartsWithSegments("/api")) { ctx.Response.StatusCode = 404; return; }
+                if (ctx.Request.Path.Value?.Contains("/api", StringComparison.Ordinal) == true) { ctx.Response.StatusCode = 404; return; }
                 ctx.Response.ContentType = "text/html";
                 await ctx.Response.SendFileAsync(Path.Combine(dist, "index.html"));
             }).AllowAnonymous();

@@ -1,24 +1,30 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 using TransactHub.TestBench;
 
 namespace TransactHub.TestBench.Tests;
 
 /// <summary>
-/// The test bench service: the bank's sign-in (here the developer identity provider, a real code flow with PKCE), the
-/// role map, the Tester policy, the tenant check, and a run through POST /runs. The engines are stood in for by a runner
-/// that answers at once; the real runs are the suite's.
+/// The test bench service and its sign-in through the runtime's auth library (TransactHub.Auth): bearer JWTs of the bank's
+/// issuer with the bank's role map (Tester; Operator or Supervisor only when the installation allows them), the tenant
+/// check, the dev identity outside Production, and a run through POST /testbench/api/runs. The engines are stood in for by
+/// a runner that answers at once; the real runs are the suite's.
 /// </summary>
 [Collection("service")]
 public sealed class ServiceTests : IAsyncLifetime
 {
     static readonly Home H0 = Home.Find(AppContext.BaseDirectory);
+    const string Issuer = "https://idp.example.test/realms/bank";
+    const string Audience = "transacthub-runtime";
     readonly string local = Directory.CreateTempSubdirectory("th-tb-svc-").FullName;
+    readonly RSA rsa = RSA.Create(2048);
     WebApplication? app;
     string url = "";
 
@@ -35,12 +41,43 @@ public sealed class ServiceTests : IAsyncLifetime
     }
 
     static int FreePort() { var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0); l.Start(); var p = ((IPEndPoint)l.LocalEndpoint).Port; l.Stop(); return p; }
+    static string B64(byte[] b) => Base64UrlEncoder.Encode(b);
+    Home TempHome => new() { Repo = H0.Repo, Bench = H0.Bench, Local = local };
 
-    Task Start(params string[] args)
+    string Jwks()
+    {
+        var k = rsa.ExportParameters(false);
+        return new JsonObject { ["keys"] = new JsonArray(new JsonObject { ["kty"] = "RSA", ["use"] = "sig", ["alg"] = "RS256", ["kid"] = "k1", ["n"] = B64(k.Modulus!), ["e"] = B64(k.Exponent!) }) }.ToJsonString();
+    }
+
+    /// <summary>A token as the bank's identity provider would issue it: its groups, and the tenants it names.</summary>
+    string Token(string[] groups, string? tenants = null, string issuer = Issuer)
+    {
+        var claims = new Dictionary<string, object> { ["sub"] = "t.tester", ["name"] = "Test tester", ["groups"] = groups };
+        if (tenants is not null) claims["tenants"] = tenants;
+        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = issuer, Audience = Audience, Claims = claims, Expires = DateTime.UtcNow.AddMinutes(10), NotBefore = DateTime.UtcNow.AddMinutes(-1),
+            SigningCredentials = new SigningCredentials(new RsaSecurityKey(rsa) { KeyId = "k1" }, SecurityAlgorithms.RsaSha256),
+        });
+    }
+
+    const string Map = """{"kind":"runtime-role-map","tenantsClaim":"tenants","grants":[{"claim":"groups","value":"th-testers","roles":["Tester"],"tenants":["*"]},{"claim":"groups","value":"th-limited","roles":["Tester"]},{"claim":"groups","value":"th-operators","roles":["Operator"],"tenants":["*"]}]}""";
+
+    Task StartOidc(params string[] more)
+    {
+        Environment.SetEnvironmentVariable("TH_AUTH_DEV", null);
+        url = $"http://127.0.0.1:{FreePort()}";
+        app = Service.Build(TempHome, url, () => new FakeRunner(),
+            ["--environment", "Production", $"--Auth:Oidc:Issuer={Issuer}", $"--Auth:Oidc:Audience={Audience}", $"--Auth:Oidc:SigningKeys={Jwks()}", $"--Auth:RoleMap={Map}", .. more]);
+        return app.StartAsync();
+    }
+
+    Task StartDev()
     {
         Environment.SetEnvironmentVariable("TH_AUTH_DEV", "1");
         url = $"http://127.0.0.1:{FreePort()}";
-        app = Service.Build(new Home { Repo = H0.Repo, Bench = H0.Bench, Local = local }, url, () => new FakeRunner(), ["--environment", "Development", .. args]);
+        app = Service.Build(TempHome, url, () => new FakeRunner(), ["--environment", "Development"]);
         return app.StartAsync();
     }
 
@@ -53,88 +90,82 @@ public sealed class ServiceTests : IAsyncLifetime
         Directory.Delete(local, true);
     }
 
-    static string B64(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    /// <summary>The authorization code flow with PKCE against the developer identity provider, as the UI runs it.</summary>
-    async Task<string> SignIn(string[] groups, string tenants = "", string? wrongVerifier = null)
-    {
-        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
-        var verifier = B64(RandomNumberGenerator.GetBytes(40));
-        var challenge = B64(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
-        var form = new List<KeyValuePair<string, string>> { new("redirect_uri", url + "/"), new("code_challenge", challenge), new("state", "s"), new("user", "t.tester"), new("tenants", tenants) };
-        form.AddRange(groups.Select(g => new KeyValuePair<string, string>("groups", g)));
-        var auth = await http.PostAsync($"{url}/dev-idp/authorize", new FormUrlEncodedContent(form));
-        Assert.Equal(HttpStatusCode.Redirect, auth.StatusCode);
-        var code = System.Web.HttpUtility.ParseQueryString(auth.Headers.Location!.Query)["code"]!;
-        var tok = await http.PostAsync($"{url}/dev-idp/token", new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "authorization_code", ["code"] = code, ["redirect_uri"] = url + "/", ["client_id"] = DevIdentityProvider.ClientId, ["code_verifier"] = wrongVerifier ?? verifier,
-        }));
-        if (wrongVerifier is not null) { Assert.Equal(HttpStatusCode.BadRequest, tok.StatusCode); return ""; }
-        tok.EnsureSuccessStatusCode();
-        return (await tok.Content.ReadFromJsonAsync<JsonObject>())!["access_token"]!.ToString();
-    }
-
-    HttpClient Client(string? token)
+    HttpClient Client(string? token = null, string? dev = null)
     {
         var c = new HttpClient { BaseAddress = new Uri(url) };
         if (token is not null) c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (dev is not null) c.DefaultRequestHeaders.Add(BenchRoles.DevHeader, dev);
         return c;
     }
+
+    static JsonObject Sample(string? tenant = null) => new() { ["profile"] = "wps-reference", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" }, ["tenant"] = tenant };
 
     [Fact]
     public async Task A_tester_signed_in_by_the_bank_runs_a_profile_and_follows_it()
     {
-        await Start();
-        var c = Client(await SignIn(["th-testers"]));
-        var me = await c.GetFromJsonAsync<JsonObject>("/api/me");
-        Assert.Equal("t.tester", me!["name"]!.ToString());
-        Assert.Equal(["tester"], J.Strings(me["roles"]));
-        var post = await c.PostAsJsonAsync("/api/runs?wait=true", new JsonObject { ["profile"] = "wps-reference", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" } });
-        var job = await post.Content.ReadFromJsonAsync<JsonObject>();
-        Assert.Equal("done", job!["status"]!.ToString());
-        Assert.True(job["passed"]!.GetValue<bool>());
-        var queued = await c.PostAsJsonAsync("/api/runs", new JsonObject { ["profile"] = "wps-reference", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" } });
-        Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/api/runs", new JsonObject { ["profile"] = "no-such", ["data"] = "x" })).StatusCode);
-        Assert.NotEmpty((await c.GetFromJsonAsync<JsonArray>("/api/profiles"))!);
-        var built = await (await c.PostAsJsonAsync("/api/data/build", new JsonObject { ["template"] = "wps-sif", ["lines"] = 2 })).Content.ReadFromJsonAsync<JsonObject>();
+        await StartOidc();
+        var cfg = await Client().GetFromJsonAsync<JsonObject>("/testbench/api/auth/config");
+        Assert.Equal("oidc", J.S(cfg, "mode"));
+        Assert.Equal(BenchRoles.RuntimeClient, J.S(cfg, "clientId"));
+        var c = Client(Token(["th-testers"]));
+        var me = await c.GetFromJsonAsync<JsonObject>("/testbench/api/me");
+        Assert.Equal("t.tester", J.S(me, "name"));
+        Assert.Equal(["Tester"], J.Strings(me!["roles"]));
+        var job = await (await c.PostAsJsonAsync("/testbench/api/runs?wait=true", Sample())).Content.ReadFromJsonAsync<JsonObject>();
+        Assert.Equal("done", J.S(job, "status"));
+        Assert.True(job!["passed"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.Accepted, (await c.PostAsJsonAsync("/testbench/api/runs", Sample())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync("/testbench/api/runs", new JsonObject { ["profile"] = "no-such", ["data"] = "x" })).StatusCode);
+        Assert.NotEmpty((await c.GetFromJsonAsync<JsonArray>("/testbench/api/profiles"))!);
+        var built = await (await c.PostAsJsonAsync("/testbench/api/data/build", new JsonObject { ["template"] = "wps-sif", ["lines"] = 2 })).Content.ReadFromJsonAsync<JsonObject>();
         Assert.True(built!["validation"]!["valid"]!.GetValue<bool>());
     }
 
     [Fact]
-    public async Task No_token_a_role_the_map_does_not_give_or_a_wrong_verifier_is_refused()
+    public async Task No_token_another_issuer_or_a_role_the_map_does_not_give_is_refused()
     {
-        await Start();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await Client(null).GetAsync("/api/me")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await Client("not-a-token").GetAsync("/api/me")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Client(await SignIn(["th-readers"])).GetAsync("/api/me")).StatusCode);
+        await StartOidc();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client("not-a-token").GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client(Token(["th-testers"], issuer: "https://studio.example.test")).GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Client(Token(["th-readers"])).GetAsync("/testbench/api/me")).StatusCode);
         // Operators are not let in unless the installation allows them (Auth:AllowedRoles).
-        Assert.Equal(HttpStatusCode.Forbidden, (await Client(await SignIn(["th-operators"])).GetAsync("/api/me")).StatusCode);
-        await SignIn(["th-testers"], wrongVerifier: B64(RandomNumberGenerator.GetBytes(40)));
-        Assert.Equal(HttpStatusCode.OK, (await Client(null).GetAsync("/api/health")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Client(Token(["th-operators"])).GetAsync("/testbench/api/me")).StatusCode);
+        // A dev identity is no identity outside dev mode.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client(dev: """{"sub":"x","roles":["*:Tester"]}""").GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Client().GetAsync("/testbench/api/health")).StatusCode);
     }
 
     [Fact]
-    public async Task An_installation_may_let_operators_run_the_bench_and_limit_a_tester_to_tenants()
+    public async Task An_installation_may_let_operators_in_and_a_tester_limited_to_tenants_is_held_to_them()
     {
-        var map = """{"kind":"runtime-role-map","tenantsClaim":"tenants","grants":[{"claim":"groups","value":"th-testers","roles":["tester"]},{"claim":"groups","value":"th-operators","roles":["operator"],"tenants":["*"]}]}""";
-        await Start($"--Auth:RoleMap={map}", "--Auth:AllowedRoles=tester,operator");
-        Assert.Equal(HttpStatusCode.OK, (await Client(await SignIn(["th-operators"])).GetAsync("/api/me")).StatusCode);
-        var dibOnly = Client(await SignIn(["th-testers"], "dib"));
-        var r = await dibOnly.PostAsJsonAsync("/api/runs", new JsonObject { ["profile"] = "wps-reference", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" } });
-        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
-        var ok = await dibOnly.PostAsJsonAsync("/api/runs", new JsonObject { ["profile"] = "wps-reference", ["tenant"] = "dib", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" } });
-        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        await StartOidc("--Auth:AllowedRoles=Tester,Operator");
+        Assert.Equal(HttpStatusCode.OK, (await Client(Token(["th-operators"])).GetAsync("/testbench/api/me")).StatusCode);
+        var dibOnly = Client(Token(["th-limited"], tenants: "dib"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await dibOnly.PostAsJsonAsync("/testbench/api/runs", Sample())).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await dibOnly.PostAsJsonAsync("/testbench/api/runs", Sample("dib"))).StatusCode);
     }
 
     [Fact]
-    public void The_developer_login_is_refused_in_Production_and_the_bank_issuer_is_required_without_it()
+    public async Task The_dev_identity_works_outside_Production_as_the_shell_sends_it()
+    {
+        await StartDev();
+        Assert.Equal("dev", J.S(await Client().GetFromJsonAsync<JsonObject>("/testbench/api/auth/config"), "mode"));
+        Assert.Equal(HttpStatusCode.OK, (await Client(dev: """{"sub":"tb.tester","name":"Example tester","roles":["*:Tester"]}""").GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await Client(dev: """{"sub":"tb.reader","name":"Reader","roles":[]}""").GetAsync("/testbench/api/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Client().GetAsync("/testbench/api/me")).StatusCode);
+    }
+
+    [Fact]
+    public void Dev_mode_is_refused_in_Production_and_the_bank_issuer_is_required_without_it()
     {
         Environment.SetEnvironmentVariable("TH_AUTH_DEV", "1");
-        Assert.Contains("refused in Production", Assert.Throws<BenchError>(() => Service.Build(new Home { Repo = H0.Repo, Bench = H0.Bench, Local = local }, "http://127.0.0.1:1", () => new FakeRunner(), ["--environment", "Production"])).Message);
+        Assert.Contains("refused in Production", Assert.Throws<BenchError>(() => Service.Build(TempHome, "http://127.0.0.1:1", () => new FakeRunner(), ["--environment", "Production"])).Message);
         Environment.SetEnvironmentVariable("TH_AUTH_DEV", null);
-        Assert.Contains("Auth:Oidc:Issuer", Assert.Throws<BenchError>(() => Service.Build(new Home { Repo = H0.Repo, Bench = H0.Bench, Local = local }, "http://127.0.0.1:1", () => new FakeRunner(), ["--environment", "Development"])).Message);
-        Assert.Contains("does not know", Assert.Throws<BenchError>(() => BenchRoleMap.Parse("""{"kind":"runtime-role-map","grants":[{"claim":"groups","value":"x","roles":["admin"]}]}""")).Message);
+        Assert.Contains("Auth:Oidc:Issuer", Assert.Throws<BenchError>(() => Service.Build(TempHome, "http://127.0.0.1:1", () => new FakeRunner(), ["--environment", "Development"])).Message);
+        var bad = """{"kind":"runtime-role-map","grants":[{"claim":"groups","value":"x","roles":["Admin"]}]}""";
+        Assert.Contains("does not know", Assert.Throws<BenchError>(() => Service.Build(TempHome, "http://127.0.0.1:1", () => new FakeRunner(),
+            ["--environment", "Production", $"--Auth:Oidc:Issuer={Issuer}", $"--Auth:Oidc:Audience={Audience}", $"--Auth:Oidc:SigningKeys={Jwks()}", $"--Auth:RoleMap={bad}"])).Message);
+        Assert.Contains("Auth:AllowedRoles", Assert.Throws<BenchError>(() => Service.Build(TempHome, "http://127.0.0.1:1", () => new FakeRunner(), ["--environment", "Development", "--Auth:AllowedRoles=Admin"])).Message);
     }
 }

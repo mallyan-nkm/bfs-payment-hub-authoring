@@ -14,11 +14,13 @@
 // It reads the content branch (TH_CONTENT_REPO) or the in-memory fake seeded from content-configurations/.
 
 import * as fs from 'node:fs';
-import * as net from 'node:net';
 import * as path from 'node:path';
 import { openReadEnv } from '../../../studio/src/env.js';
 import { runTest } from '../../../studio/src/testing/runner.js';
-import { exportPackage, exportZip, packageHash } from '../../../studio/src/export/exporter.js';
+import { exportPackage, packageHash, signedZip } from '../../../studio/src/export/exporter.js';
+import { claimsOf, generateSigningKey, signFiles, trustedSignersJson } from '../../../studio/src/export/signing.js';
+import { verifyPackageDir } from '../../../studio/src/deploy/deploy.js';
+import { createPrivateKey } from 'node:crypto';
 import { deploy, type Engine } from '../../../studio/src/deploy/deploy.js';
 import { unzip } from '../../../studio/src/export/zip.js';
 import { parseYaml, toYaml } from '../../../studio/src/core/yaml.js';
@@ -69,13 +71,16 @@ function levelOf(doc: any, inbound: boolean) {
  * A promotable package carries no simulator (R-07-12). For a test run only, each worker of an unpacked copy
  * gets the simulators of the ports it reaches, from the content branch; the package itself is not changed.
  */
-function withSimulators(env: any, zipFile: string, dest: string): { dir: string; added: string[] } {
+function withSimulators(env: any, zipFile: string, dest: string): { dir: string; added: string[]; verified: Promise<any> } {
   fs.mkdirSync(dest, { recursive: true });
-  for (const e of unzip(fs.readFileSync(zipFile))) {
+  if (fs.statSync(zipFile).isDirectory()) fs.cpSync(zipFile, dest, { recursive: true });
+  else for (const e of unzip(fs.readFileSync(zipFile))) {
     const f = path.join(dest, e.name);
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, e.content);
   }
+  // The package as released is verified first, against the deployment's trusted signers (R-09-26).
+  const verified = verifyNow(dest);
   const manifest = parseYaml(fs.readFileSync(path.join(dest, 'manifest.yaml'), 'utf8'));
   const added: string[] = [];
   for (const w of manifest.workers ?? []) {
@@ -92,26 +97,42 @@ function withSimulators(env: any, zipFile: string, dest: string): { dir: string;
       added.push(`${w.queue}:${s.doc.name}`);
     }
   }
-  return { dir: dest, added };
+  // The test copy is no longer the released package: the bench signs it with its own key, trusted for this run only.
+  if (added.length) {
+    const files: Record<string, Buffer> = {};
+    const walk = (d: string) => { for (const x of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, x.name); if (x.isDirectory()) walk(f); else files[path.relative(dest, f).split(path.sep).join('/')] = fs.readFileSync(f); } };
+    walk(dest);
+    delete files['release.json'];
+    delete files['release.sig'];
+    delete files['package.sha256'];
+    const signed = signFiles(files, claimsOf(manifest), createPrivateKey(benchKey().privateKeyPem));
+    for (const [n, c] of Object.entries(signed)) if (n === 'release.json' || n === 'release.sig') fs.writeFileSync(path.join(dest, n), c);
+  }
+  return { dir: dest, added, verified };
 }
 
 /**
- * A run of free ports for the package's workers. The deploy runner picks 7400 to 7800 at random when it is given none;
- * on a machine where other deployments run at once, a worker may then answer for another run. These are checked free.
+ * The bench's own signing key, made for this run in its work folder and gone with it: it signs what the bench exports
+ * from the content branch, and a test copy it changed. Used only when the environment names no TH_SIGNING_KEY.
  */
-async function freePorts(n: number): Promise<number> {
-  const free = (p: number) => new Promise<boolean>((resolve) => {
-    const s = net.createServer();
-    s.once('error', () => resolve(false));
-    s.listen(p, '127.0.0.1', () => s.close(() => resolve(true)));
-  });
-  for (let tries = 0; tries < 50; tries++) {
-    const base = 20000 + Math.floor(Math.random() * 20000);
-    let ok = true;
-    for (let i = 0; i < n && ok; i++) ok = await free(base + i);
-    if (ok) return base;
-  }
-  throw new Error('No run of free ports for the workers');
+let key: { privateKeyPem: string; publicKeyPem: string; keyId: string; trust: string } | undefined;
+function benchKey() {
+  if (key) return key;
+  const k = generateSigningKey();
+  const dir = path.join(job.work, 'signing');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'key.pem'), k.privateKeyPem, { mode: 0o600 });
+  const trust = path.join(dir, 'trusted-signers.json');
+  fs.writeFileSync(trust, trustedSignersJson([k]));
+  key = { ...k, trust };
+  return key;
+}
+
+/** A released package's signature checked against TH_TRUSTED_SIGNERS; without one configured, said so. */
+async function verifyNow(dir: string) {
+  if (!process.env.TH_TRUSTED_SIGNERS) return { verified: false, note: 'TH_TRUSTED_SIGNERS is not set: the package as released was not verified' };
+  const v = await verifyPackageDir(dir);
+  return { verified: true, keyId: v.keyId, files: v.files };
 }
 
 async function main() {
@@ -139,7 +160,13 @@ async function main() {
       progress(`interpreter: ${r.outcome ?? r.error?.split('\n')[0]}`);
     }
 
-    // 2 and 3. Each engine: its package, then the deploy runner.
+    // 2 and 3. Each engine: its package, then the deploy runner. Every package is signed (R-09-23) and verified before it
+    // runs (R-09-26): with no TH_SIGNING_KEY the bench signs its exports with its own key and trusts that key alone.
+    if (!process.env.TH_SIGNING_KEY) {
+      process.env.TH_SIGNING_KEY = `file:${path.join(job.work, 'signing', 'key.pem')}`;
+      benchKey();
+      process.env.TH_TRUSTED_SIGNERS ??= `file:${benchKey().trust}`;
+    }
     const base = { ...process.env };
     for (const e of job.engines) {
       const r0 = Date.now();
@@ -153,21 +180,24 @@ async function main() {
           if (!given) throw new Error(`No package for ${e.engine}: the request names packages for ${Object.keys(job.packages).join(', ') || 'no engine'}`);
           const ws = withSimulators(env, given, path.join(job.work, `${e.engine}-package`));
           pkgPath = ws.dir;
-          res.package = { from: path.basename(given), simulatorsAdded: ws.added };
+          res.package = { from: path.basename(given), verified: ws.verified, simulatorsAdded: ws.added };
+          if (ws.added.length) res.package.resignedForTheTest = benchKey().keyId;
         } else {
           const pkg = exportPackage(env, { workflows: [job.workflow], target: e.engine, withSimulators: true, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined });
           pkgPath = path.join(job.work, `${e.engine}.zip`);
-          fs.writeFileSync(pkgPath, exportZip(pkg));
+          fs.writeFileSync(pkgPath, signedZip(pkg));
           res.package = { from: 'content', hash: packageHash(pkg), workers: pkg.manifest.workers.map((w: any) => w.queue) };
         }
+        if (res.package?.verified) res.package.verified = await res.package.verified;
         progress(`${e.engine}: running`);
         // The harness the deploy runner starts inherits this process's environment.
         for (const k of Object.keys(process.env)) if (!(k in base)) delete process.env[k];
         Object.assign(process.env, base, e.env);
+        if (res.package?.resignedForTheTest) process.env.TH_TRUSTED_SIGNERS = `file:${benchKey().trust}`;
         const d = await deploy({
           packagePath: pkgPath, workflow: job.workflow, studioRoot: env.studioRoot,
           environment: { evaluationDate: job.evaluationDate, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined, bench: job.bench },
-          inbound: job.inbound, context: job.context, basePort: await freePorts(8),
+          inbound: job.inbound, context: job.context,
         });
         Object.assign(res, {
           ok: true, outcome: d.outcome, failed: d.failed, trace: normalise(d.trace), detail: normalise(d.detail), attempts: d.attempts,

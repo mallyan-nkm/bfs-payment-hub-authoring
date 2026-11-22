@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type { DevIdentity, SignIn } from './auth';
 
 // The shell the runtime's web apps share: the sign-in, the top bar and the sections in the side bar. The operations
-// console registers its sections (payments, approvals); the test bench can register its own beside them.
+// console registers its sections (payments, approvals), the service console its Service section, the test bench its Test bench.
 
 export interface Section {
   id: string;
@@ -36,6 +36,8 @@ export const DEV_USERS: DevIdentity[] = [
   { sub: 'ops.other', name: 'Other bank operator', roles: ['other-bank:Operator'] },
   { sub: 'svc.engineer', name: 'Example service engineer', roles: ['*:ServiceEngineer'] },
   { sub: 'svc.approver', name: 'Example service approver', roles: ['*:ServiceApprover'] },
+  { sub: 'tb.tester', name: 'Example tester', roles: ['*:Tester'] },
+  { sub: 'tb.reader', name: 'Example reader without a role', roles: [] },
 ];
 
 function SignInPage({ auth, done }: { auth: SignIn; done(): void }) {

@@ -917,9 +917,9 @@ Still open: (2) decryption as an activity behind a port, (4) erasure and retenti
 
 **Issue 2.** The deploy runner gives a package's workers ports from 7400 to 7800 at random when it is given none, and takes a worker as up when anything on its port answers `/health`. With several deployments on one machine (CI runners, parallel test sessions), an engine can reach another run's worker: here Elsa on SQL Server failed with `p.validate.canonical.v1@1.0.0 is not registered on queue th-bank`, from a worker of another run.
 
-**Recommendation 2.** Let the deploy runner choose ports the system gives it (listen on port 0, then pass each worker its port), and check that `/health` answers with the deployment's own id.
+**Recommendation 2.** Let the deploy runner choose ports the system gives it (listen on port 0, then pass each worker its port), and check that `/health` answers with the deployment's own id. **Done since:** the deploy runner now starts its workers on port 0 and reads each worker's port from its first line; the test bench's own port check is gone.
 
-**What is built.** The test bench sets `TH_LOCAL_CLAIMCHECK=0` for Temporal when the store is on and Temporal is the test server, and runs a Temporal run on the test server whose outcome is not the interpreter's once more, on a fresh database, saying so in the result and the report (`runtime/tools/TransactHub.TestBench/Runner.cs`). A real difference shows on both runs and still fails the run. It retries nothing else. Its driver gives the deploy runner a run of ports it has checked free, from 20000 up (`runtime/testbench/driver/bench.ts`). On a real Temporal server (`environment.temporal: host:port`) it does neither. The harness and the e2e test are unchanged.
+**What is built.** The test bench sets `TH_LOCAL_CLAIMCHECK=0` for Temporal when the store is on and Temporal is the test server, and runs a Temporal run on the test server whose outcome is not the interpreter's once more, on a fresh database, saying so in the result and the report (`runtime/tools/TransactHub.TestBench/Runner.cs`). A real difference shows on both runs and still fails the run. It retries nothing else. On a real Temporal server (`environment.temporal: host:port`) it does neither. The harness and the e2e test are unchanged.
 
 ## I-94. The WPS inward flow cannot run on the engines through the deploy runner
 
