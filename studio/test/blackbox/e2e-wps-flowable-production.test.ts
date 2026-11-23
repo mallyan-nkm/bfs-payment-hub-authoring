@@ -154,7 +154,12 @@ describe('the WPS salary file on Flowable in production mode: the async executor
       expect(d.trace).toEqual(SETTLED);
       expect(d.out).toMatch(/^\[engine\] production mode: the server's async executor runs the jobs and fires the timers in real time/m);
       // The await's timer was written with the policy's day on the business calendar; the binding gave it the bank's two minutes.
-      expect(d.out).toMatch(/^\[engine\] timer submit\.await-ack_timeout placed at 2026-11-17T06:02:\d\d\.\d+Z \(business time\), .* written 2026-11-18T06:00:/m);
+      // Business time is the wall clock from 06:00 on the evaluation date, so the minute the wait starts is the run's own (on SQL
+      // Server the store's journal makes the steps before it slower, Issue I-169): what holds is that the timer is placed two
+      // minutes after the wait began, one business day minus two minutes before the day the BPMN wrote.
+      const placed = /^\[engine\] timer submit\.await-ack_timeout placed at (2026-11-17T\S+Z) \(business time\), .* written (2026-11-18T\S+Z)/m.exec(d.out);
+      expect(placed, d.out.slice(-3000)).not.toBeNull();
+      expect(Math.abs(Date.parse(placed![2]) - Date.parse(placed![1]) - (86400000 - 120000))).toBeLessThan(2000);
       expect(d.out, d.out.slice(-3000)).toMatch(storeLine(kind));
       // The reply came after its scaled six seconds, in real time.
       expect(d.ms).toBeGreaterThan(6000);
