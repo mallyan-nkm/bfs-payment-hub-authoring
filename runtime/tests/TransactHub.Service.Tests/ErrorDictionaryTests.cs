@@ -39,9 +39,14 @@ public sealed class ErrorDictionaryTests
             foreach (Match m in Regex.Matches(text, @"new NativeFailure\(""([A-Za-z.:-]+)""")) codes.Add(m.Groups[1].Value);
             foreach (Match m in Regex.Matches(text, @"new StepFailure\(.*,\s*""([A-Za-z]+)""\);\s*$", RegexOptions.Multiline)) codes.Add(m.Groups[1].Value);
             foreach (Match m in Regex.Matches(text, @"new AttemptFailed\(""([A-Za-z]+)""")) codes.Add(m.Groups[1].Value);
+            // The native host's own refusals (Issue I-230), and the fallback of a module refusal with no code of its own.
+            foreach (Match m in Regex.Matches(text, @"new NativeRefusal\((?:e\.Code \?\? )?""([A-Za-z.:-]+)""")) codes.Add(m.Groups[1].Value);
         }
         codes.Add("Failure");
         Assert.Contains("PortNotBound", codes);
+        Assert.Contains("native.WrongDistribution", codes);
+        Assert.Contains("native.NotPinned", codes);
+        Assert.Contains("native.ModuleRefused", codes);
         Assert.Contains("RetriesExhausted", codes);
         Assert.DoesNotContain(codes, c => Dict.Find(c) is null);
     }

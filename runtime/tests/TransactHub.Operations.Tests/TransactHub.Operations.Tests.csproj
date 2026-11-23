@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Operations\TransactHub.Operations.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Platform.Native\TransactHub.Activities.Platform.Native.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations.Api\TransactHub.Operations.Api.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations.Migrations.SqlServer\TransactHub.Operations.Migrations.SqlServer.csproj" />

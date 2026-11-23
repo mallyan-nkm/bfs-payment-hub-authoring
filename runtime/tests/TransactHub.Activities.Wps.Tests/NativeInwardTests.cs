@@ -162,6 +162,7 @@ public class NativeInwardTests
     [InlineData("bad", "14:00", "closed")]   // an invalid window fails closed
     public void The_posting_window_is_the_source_s_call_hours_gate(string start, string end, string expected)
     {
-        Run(new DecidePostingWindow(), new JsonObject(), new JsonObject { ["windowStart"] = start, ["windowEnd"] = end }).Outcome.Should().Be(expected);
+        // The platform module's since R-09-126: the posting window is a platform activity, carried as the platform's module.
+        Run(new TransactHub.Activities.Platform.Native.DecidePostingWindow(), new JsonObject(), new JsonObject { ["windowStart"] = start, ["windowEnd"] = end }).Outcome.Should().Be(expected);
     }
 }
