@@ -169,6 +169,8 @@ CASES = [
     ("M59", "ERROR L43", SAL,
      '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation]', '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation, facts.posting]',
      "a leg reads what its slot contract does not give it"),
+    ("M69", "ERROR L35", "../content-configurations/banks/dib/pack.yaml",
+     "licensedSchemes:\n  - uae.wps\n", "", "a bank pack names no scheme it licenses"),
     ("M68", "ERROR L43", "factory/uae.wps/workflows/uae.wps.wf.return-in.v1.yaml",
      "  writes: [status, facts.posting]", "  writes: [status, facts.posting, facts.reservation]",
      "a leg writes what its slot contract does not let it write"),

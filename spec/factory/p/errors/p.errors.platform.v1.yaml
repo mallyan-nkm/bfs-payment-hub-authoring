@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.0.0
+release: 1.1.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -858,6 +858,129 @@ entries:
       safeActions:
         - Use the runbook's manual steps on the engine's own console with the runtime's service team.
       escalation: Escalate to the runtime's service team with the payment id, the engine and the trace id.
+  - code: ops.IntakePaused
+    title: Intake of a scheme is paused for the bank
+    category: technical
+    retryable: true
+    raisedBy:
+      - store
+      - service-console
+    meaning: The service console paused intake of the scheme for the bank, so the runtime refuses a new payment of it. Payments
+      already accepted run on.
+    causes:
+      - A service engineer paused intake to drain a worker, switch a distribution or wait for a party.
+    runbook:
+      checks:
+        - Read the pause-intake fact on the service console's audit, with who paused it and why.
+        - Check whether the reason for the pause still holds.
+      safeActions:
+        - Send the payment again once intake is resumed; the channel's own retry does this.
+      actions:
+        - resume-intake
+      escalation: Escalate to the runtime's service team with the scheme, the bank and the time of the pause.
+  - code: ops.NoParkedStep
+    title: The payment has no parked step
+    category: business
+    retryable: false
+    raisedBy:
+      - operations-console
+      - service-console
+    meaning: A re-drive, reset or requeue applies to a parked step, and the payment has none now.
+    causes:
+      - The step was re-driven or reset already.
+      - The step's attempt succeeded on a retry before the action was asked.
+    runbook:
+      checks:
+        - Reload the payment and read its timeline for the step's last attempt.
+      safeActions:
+        - Take an action the payment offers now.
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: ops.NoFileKept
+    title: The runtime keeps no file to send again
+    category: business
+    retryable: false
+    raisedBy:
+      - operations-console
+      - service-console
+    meaning: A resend sends a file the runtime kept when it was first sent, and none is kept for this payment.
+    causes:
+      - The payment's scheme sends no file.
+      - The file was never sent, or its kept copy has passed its retention.
+    runbook:
+      checks:
+        - Read the payment's messages on its timeline.
+      safeActions:
+        - Ask the scheme's operations for the file's status instead of sending it again.
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: ops.NoPostingReference
+    title: The payment has no posting reference to reconcile
+    category: business
+    retryable: false
+    raisedBy:
+      - operations-console
+      - service-console
+    meaning: A reconcile asks core banking about a posting by its reference, and the payment's facts hold none.
+    causes:
+      - The payment did not reach its posting step.
+      - The posting was refused before core banking gave a reference.
+    runbook:
+      checks:
+        - Read the posting step on the payment's timeline.
+      safeActions:
+        - Take an action the payment offers now.
+      escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: ops.UnknownPayment
+    title: No payment or bulk has this id
+    category: business
+    retryable: false
+    raisedBy:
+      - operations-console
+      - service-console
+    meaning: The id an action or a search names is no payment or bulk of the store that the user's tenant may see.
+    causes:
+      - The id is mistyped, or belongs to another tenant.
+    runbook:
+      checks:
+        - Search the payment by its references in the operations console.
+      safeActions:
+        - Ask again with the payment's id from the console.
+      escalation: Escalate to the bank's payment operations supervisor with the reference the channel gave.
+  - code: ops.WorkerUnreachable
+    title: A worker does not answer its control
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: The service console asked a worker to drain or restart, and the worker did not answer on its control address.
+    causes:
+      - The worker is down, or its control address is not reachable from the console's host.
+      - The worker is busy and did not answer in time.
+    runbook:
+      checks:
+        - Check the worker's health on the service console's Health page.
+        - Check the worker's host and its logs, by the trace id of the action.
+      safeActions:
+        - Wait and ask again once the worker's health is good.
+      actions:
+        - restart-worker
+      escalation: Escalate to the runtime's service team with the worker's queue, its host and the trace id.
+  - code: service.LogSourceUnreachable
+    title: The installation's log back end does not answer
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: The service console reads other hosts' logs from the installation's log back end, and the back end did not answer
+      or refused the query. The console's own logs and the store's facts are still shown.
+    causes:
+      - The log back end is down, or its address or credential in the console's settings is wrong.
+    runbook:
+      checks:
+        - Check the log back end's health on the service console's Health page.
+        - Check the log source's address and its secret reference in the console's settings.
+      safeActions:
+        - Read the trace in the installation's own log and trace tools by its trace id.
+      escalation: Escalate to the runtime's service team with the trace id and the time.
   - code: service.ApproverRequired
     title: A risky action waits for a ServiceApprover
     category: technical

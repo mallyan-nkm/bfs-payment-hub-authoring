@@ -689,6 +689,13 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
         err("L35", where + "/pack.yaml", "is not a bank pack: it needs kind pack, packType bank, scope b and a tenant")
         continue
     tenant = pack["tenant"]
+    # R-11-37 (Issue I-111): a bank pack names the schemes the bank licenses, each a scheme of the factory.
+    lic = pack.get("licensedSchemes")
+    if not isinstance(lic, list) or not lic:
+        err("L35", where + "/pack.yaml", "names no licensedSchemes: a bank pack lists the schemes the bank licenses (R-11-37)")
+    for s_ in lic if isinstance(lic, list) else []:
+        if s_ not in schemes:
+            err("L35", where + "/pack.yaml", "licenses %s, which is no scheme of the factory" % s_)
     found, own = {}, {}
     for f in sorted(bank.rglob("*.yaml")):
         rel = f.relative_to(bank)

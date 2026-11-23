@@ -48,17 +48,17 @@ export function banks(env: StudioEnv): string[] {
 }
 
 /**
- * The schemes a bank licenses (R-11-37): the bank pack's `licensedSchemes`, or, in a lock file that has none yet, the scheme
- * scopes it depends on. A scheme is a scope `<cluster>.<scheme>` that is not a cluster platform.
+ * The schemes a bank licenses (R-11-37): the bank pack's `licensedSchemes`, each a scheme of the factory. A lock file without
+ * the list is refused (Issue I-111): a distribution carries the schemes the bank licenses and no other.
  */
 export function licensedSchemes(env: StudioEnv, bank: string): string[] {
   const pack = bankPackOf(env, bank)?.doc;
   if (!pack) throw new DistributionRefused(`${bank} has no bank pack`);
-  if (Array.isArray(pack.licensedSchemes)) return [...pack.licensedSchemes].sort();
-  // A lock file written before the list: the schemes it depends on and the schemes whose dials its configuration set sets (Issue I-111).
-  const isScheme = (s: string) => s.includes('.') && !s.endsWith('.p') && env.store.byKind('scheme').some((e) => e.doc.scope === s);
-  const fromSet = (env.store.configurationSet(bank)?.values ?? []).map((v: any) => scopeOfName(String(v.parameter).split('#')[0]));
-  return [...new Set([...(pack.dependsOn ?? []).map((d: any) => d.scope), ...fromSet])].filter(isScheme).sort();
+  // Required since Issue I-111: every bank's lock file names them (`npm run studio -- bank-pack <bank> --licensed <scheme>`).
+  if (!Array.isArray(pack.licensedSchemes) || !pack.licensedSchemes.length) throw new DistributionRefused(`The bank pack of ${bank} names no licensedSchemes: a distribution carries the schemes the bank licenses and no other (R-11-37)`);
+  const unknown = pack.licensedSchemes.filter((s: string) => !env.store.byKind('scheme').some((e) => e.doc.scope === s));
+  if (unknown.length) throw new DistributionRefused(`The bank pack of ${bank} licenses ${unknown.join(', ')}, which is no scheme of the factory`);
+  return [...pack.licensedSchemes].sort();
 }
 
 /** The scopes a distribution's platform is made of: `p` and the cluster platform of each licensed scheme. */

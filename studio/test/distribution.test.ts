@@ -27,6 +27,18 @@ beforeAll(() => {
 }, 120000);
 
 describe('a distribution', () => {
+  it('needs the bank pack to name the schemes it licenses, each a scheme of the factory (R-11-37, Issue I-111)', () => {
+    const e = freshEnv();
+    const pack = e.store.all().filter((x) => x.kind === 'pack' && x.doc.scope === 'b' && x.doc.tenant === 'example-bank').sort((a, b) => b.release.localeCompare(a.release, undefined, { numeric: true }))[0];
+    expect(pack.doc.licensedSchemes).toEqual(['uae.wps']);
+    pack.doc = { ...pack.doc, licensedSchemes: ['uae.ipi'] };
+    expect(() => licensedSchemes(e, 'example-bank')).toThrow(/licenses uae\.ipi, which is no scheme of the factory/);
+    const { licensedSchemes: _gone, ...without } = pack.doc;
+    pack.doc = without;
+    expect(() => licensedSchemes(e, 'example-bank')).toThrow(/names no licensedSchemes/);
+    expect(() => buildDistribution(e, { bank: 'example-bank', engine: 'temporal', id: '2026.11.22-8' })).toThrow(/names no licensedSchemes/);
+  });
+
   it('holds the platform, the schemes the bank licenses, its bank pack and the engine binding, each artefact with its SHA-256', () => {
     expect(licensedSchemes(env, 'example-bank')).toEqual(['uae.wps']);
     const m = dist.manifest;
