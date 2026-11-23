@@ -21,7 +21,7 @@ if [ "$MODE" = local ]; then
   export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
   # The runtime's hosts and tools, each where the repository's layout puts its build (the deploy runner and the test bench find
   # the harnesses there, and run them; nothing is built in the image).
-  for p in src/TransactHub.Api src/TransactHub.Service.Api src/TransactHub.Operations.Api src/TransactHub.Native \
+  for p in src/TransactHub.Api src/TransactHub.Service.Api src/TransactHub.Operations.Api src/TransactHub.Native src/TransactHub.FileApi \
            tools/TransactHub.TestBench tools/TransactHub.EngineHost tools/TransactHub.TemporalHarness tools/TransactHub.DtfxHarness \
            tools/TransactHub.ElsaHarness tools/TransactHub.FlowableHarness tools/TransactHub.DevIdentity tools/TransactHub.Migrate; do
     dotnet publish "runtime/$p" -c Release --nologo -v q $( [ "$p" = tools/TransactHub.TemporalHarness ] && echo "-r linux-x64 --self-contained false" ) -o "$OUT/opt/th/runtime/$p/bin/Release/net10.0" -p:UseAppHost=false -p:DebugType=none
