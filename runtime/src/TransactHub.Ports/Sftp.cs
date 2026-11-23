@@ -23,7 +23,7 @@ namespace TransactHub.Ports;
 //   sessions.max, sessions.reuse, sessions.idleSeconds, sessions.keepAliveSeconds, sessions.acquireSeconds, sessions.attempts
 //                                                  the session settings (the source's SftpWpsCb parameters), for every partner
 //
-// A folder names its partner by its first segment (`centralBank/sftp_user/wps/DIB/SIF/ToBeDone`); a folder whose first segment is no
+// A folder names its partner by its first segment (`centralBank/outbound/sif`); a folder whose first segment is no
 // partner is the default partner's (setting `defaultPartner`, else `centralBank`, else the only partner), and its remote path is the
 // folder itself from the root. A file is written to `<name>.part` and renamed into place, so the partner never reads half a file.
 // Errors name the partner, the host and the reference, never a credential.
