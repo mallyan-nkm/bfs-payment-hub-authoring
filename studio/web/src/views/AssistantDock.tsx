@@ -11,8 +11,9 @@ import { Badge, useDebounced, useStudio } from '../ui';
 //   change (allow once, allow always, deny), and it, or the designer, can undo what it changed.
 
 type Change = { id: string; tool: string; summary: string; before: any; after: any };
-type Pending = { toolUseId: string; tool: string; input: any; summary: string; preview: { changed?: string[]; check?: string; detail?: string }; results: any[]; index: number; model?: string };
-type Conv = { messages: any[]; history: Change[]; pending?: Pending; undone: string[] };
+type Pending = { toolUseId: string; tool: string; input: any; summary: string; preview: { changed?: string[]; check?: string; detail?: string }; results: any[]; index: number; model?: string; allowAlways?: boolean };
+type Flag = { toolUseId: string; tool: string; excerpt: string };
+type Conv = { messages: any[]; history: Change[]; pending?: Pending; undone: string[]; flagged?: Flag[] };
 
 const ACTIVITY: Record<string, (i: any) => string> = {
   get_document: () => 'Read the document',
@@ -222,7 +223,7 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
       }, reg.tenant ?? tenant);
       if ((r.changes?.length || r.undone?.length) && reg.setDoc) reg.setDoc(r.doc);
       setAllow(r.allow ?? allow);
-      setConv({ messages: r.messages, history: [...conv.history, ...(r.changes ?? [])], undone: [...conv.undone, ...(r.undone ?? [])], pending: r.pending });
+      setConv({ messages: r.messages, history: [...conv.history, ...(r.changes ?? [])], undone: [...conv.undone, ...(r.undone ?? [])], pending: r.pending, flagged: [...(conv.flagged ?? []), ...(r.flagged ?? [])] });
     } catch (e: any) {
       setError(refusal(e));
     } finally {
@@ -259,15 +260,21 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
           <div className="dock-card pending" data-testid="pending">
             <b>The assistant wants to: {conv.pending.summary}</b>
             {conv.pending.preview.changed?.length ? <p className="small">It changes: {conv.pending.preview.changed.join(', ')}</p> : null}
+            {conv.pending.allowAlways === false && <p className="small muted" data-testid="ask-every-time">You are asked about this every time: a sample goes into the change set, for its checker.</p>}
             {conv.pending.preview.check && <pre className="code small">{conv.pending.preview.check}</pre>}
             {conv.pending.preview.detail && <details><summary className="small">Show the whole {conv.pending.tool === 'edit_document' ? 'new document' : 'content'}</summary><pre className="code small">{conv.pending.preview.detail}</pre></details>}
             <div className="row-actions">
               <button className="primary" disabled={busy} onClick={() => decide('once')}>Allow once</button>
-              <button disabled={busy} onClick={() => decide('always')}>Allow always</button>
+              {conv.pending.allowAlways !== false && <button disabled={busy} onClick={() => decide('always')}>Allow always</button>}
               <button className="danger" disabled={busy} onClick={() => decide('deny')}>Deny</button>
             </div>
           </div>
         )}
+        {(conv.flagged ?? []).map((f, i) => (
+          <div key={`${f.toolUseId}-${i}`} className="alert warn small" role="status" data-testid="instruction-flag">
+            What the assistant read through {f.tool} holds text that looks like an instruction to it: <q>{f.excerpt}</q>. It treats it as data and does not follow it. Check where it came from.
+          </div>
+        ))}
         {busy && <p className="small muted">Working…</p>}
         {error && <div className="small fail-text" role="alert">{error}</div>}
         <div ref={end} />
