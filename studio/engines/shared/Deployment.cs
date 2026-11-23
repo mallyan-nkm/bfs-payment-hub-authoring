@@ -305,10 +305,14 @@ public sealed class PartyClient : IParty
 /// A deployment (Part 9; R-09-04, R-09-05): each activity attempt goes over HTTP to the worker
 /// process of the task queue the binding derives from the activity's scope. Workers are separate
 /// processes; a task that is not on a worker's queue is refused by that worker.
+/// Each attempt names the distribution the engine runs (R-09-130): an installation's workers can then serve several
+/// distributions, and the worker hands the name to the native host, which serves the attempt from that distribution's build.
 public sealed class WorkerRouter : IParty
 {
     readonly Dictionary<string, string> workers; // queue -> base URL
     readonly Dictionary<string, string> queues;  // scope -> queue
+    /// <summary>The distribution every attempt names (the engine's input <c>distribution</c>, the payment's pin); null names none.</summary>
+    public readonly string? Distribution;
     readonly HttpClient http = new() { Timeout = TimeSpan.FromMinutes(5) };
     public readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> Calls = new();
     /// <summary>
@@ -317,8 +321,9 @@ public sealed class WorkerRouter : IParty
     /// </summary>
     public static Func<JsonObject, JsonObject, Task>? Answered;
 
-    public WorkerRouter(JsonObject workers, JsonObject queues)
+    public WorkerRouter(JsonObject workers, JsonObject queues, string? distribution = null)
     {
+        Distribution = string.IsNullOrEmpty(distribution) ? null : distribution;
         this.workers = workers.ToDictionary(kv => kv.Key, kv => kv.Value!.GetValue<string>().TrimEnd('/'));
         this.queues = queues.ToDictionary(kv => kv.Key, kv => kv.Value!.GetValue<string>());
     }
@@ -382,6 +387,7 @@ public sealed class WorkerRouter : IParty
                 Calls.AddOrUpdate(queue, 1, (_, n) => n + 1);
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
+                if (Distribution is not null && J.S(body, "distribution") is null) body["distribution"] = Distribution;
                 // One span per attempt; HttpClient carries its context to the worker (traceparent).
                 using var span = EngineTelemetry.Attempt(req, queue);
                 try

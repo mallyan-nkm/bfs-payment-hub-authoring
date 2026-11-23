@@ -12,7 +12,7 @@ using TransactHub.Ports;
 
 // The native host (spec R-08-14): the runtime's own code-behind for activities bound `native`. The studio's
 // interpreter and every deployed worker call it with the attempt's view, parameters and time:
-//   POST /native        { activity, release, distribution, view, params, now, tenant, level, instance } -> { kind: result, outcome, reasonCode, writes } | { kind: error, ... }
+//   POST /native        { activity, release, distribution, workerDistribution, view, params, now, tenant, level, instance } -> { kind: result, outcome, reasonCode, writes } | { kind: error, ... }
 //   GET  /health        -> the activities it serves to an attempt that names no distribution, and the native contract it supports
 //   GET  /modules       -> the distributions loaded side by side, each its native modules, and those unloaded on removal
 //   GET  /files         -> the files native activities received or produced (a rendered SIF, PRC, DIF or RFA, an encrypted or decrypted file): hash, name, size
@@ -29,8 +29,8 @@ using TransactHub.Ports;
 // Side by side (spec R-09-120 to R-09-126): this image holds no native code-behind of any pack. The platform's native activities
 // (p's, Issue I-221), a scheme's (WPS's) and a bank's come in the distribution, each a module built from its code-behind project
 // when the studio built it, each assembly with its SHA-256 in the signed bill of materials. A module references the native
-// contract only (R-09-125): the image answers its core banking, ports and files through INativeServices. An attempt names the distribution its payment is pinned to (the worker's
-// TH_DISTRIBUTION); the host loads that distribution's assemblies from the store (TH_STORE_*) into a collectible context of its
+// contract only (R-09-125): the image answers its core banking, ports and files through INativeServices. An attempt names the distribution its payment is pinned to, as the engine
+// sent it (AttemptRouting, R-09-130 to R-09-132), else the worker's TH_DISTRIBUTION; the host loads that distribution's assemblies from the store (TH_STORE_*) into a collectible context of its
 // own, checks their hashes and native contract again, and serves the attempt from it by activity and release. A distribution
 // removed in every environment it was known in is unloaded (checked every TH_NATIVE_REFRESH, 10 seconds by default). An attempt
 // that names none (the studio's interpreter) is served by the modules TH_NATIVE_DEV_MODULES names, if any.
@@ -113,6 +113,7 @@ var refreshEvery = TimeSpan.TryParse(Environment.GetEnvironmentVariable("TH_NATI
 // The distributions are read from the store (TH_STORE_*, or Store:* as every runtime host names it).
 var modules = new NativeModules(Platform, (dist, _) => new NativeHostServices(dist, keep, files, bindings, coreBanking, registers), store, devModules, refreshEvery);
 var development = await modules.For(null);
+var routing = new AttemptRouting(store);
 app.Lifetime.ApplicationStopping.Register(modules.Dispose);
 
 var health = app.MapGet("/health", () => Results.Ok(new { activities = development.ByName.Keys.Order(), served, store = store is not null, signingKey = TransactHub.Store.FileSignature.KeyIdOf(signingKey), contract = NativeContract.Version }));
@@ -129,12 +130,13 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
     if (authenticated && (string?)body["tenant"] is { Length: > 0 } forTenant && !RuntimeAuth.HasRoleFor(user, NativeCaller, forTenant))
         return Results.Json(new { kind = "error", name = "NotAuthorised", retryable = false, message = $"{RuntimeAuth.Actor(user)} may not run native activities for {forTenant}" }, statusCode: 403);
     var name = (string?)body["activity"] ?? "";
-    // Dispatched by the payment's pinned distribution, then by activity and release (R-09-122).
-    var distribution = (string?)body["distribution"];
+    // Dispatched by the payment's pinned distribution, as the attempt names it, then by activity and release (R-09-122, R-09-130).
+    string? distribution = null;
     INativeActivity act;
     ActivityTable table;
     try
     {
+        distribution = await routing.DistributionOf(body, req.HttpContext.RequestAborted);
         table = await modules.For(distribution, req.HttpContext.RequestAborted);
         act = table.Find(name, (string?)body["release"]);
     }

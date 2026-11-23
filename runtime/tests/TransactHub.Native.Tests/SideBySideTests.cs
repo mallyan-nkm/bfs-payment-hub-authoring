@@ -96,7 +96,7 @@ public sealed class SideBySideTests(Store store)
         var c = host.CreateClient();
 
         // The image carries no scheme code: an attempt that names no distribution has no WPS activity to run.
-        Assert.Equal("NotNative", (string?)(await Post(c, Ack(null)))["name"]);
+        Assert.Equal("native.NotNative", (string?)(await Post(c, Ack(null)))["name"]);
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), x => x.GetName().Name == ModuleBuilds.Assembly && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(x) == System.Runtime.Loader.AssemblyLoadContext.Default);
 
         // A payment pinned to A runs A's build; one pinned to B runs B's, side by side in one host.
@@ -118,7 +118,7 @@ public sealed class SideBySideTests(Store store)
         Assert.Equal(1, (int)loaded[b]["served"]![ModuleBuilds.AckIn]!);
 
         // By release too: an activity at a release the distribution does not carry is refused, never served from another.
-        Assert.Equal("NotInDistribution", (string?)(await Post(c, Ack(a, "1.1.0")))["name"]);
+        Assert.Equal("native.NotInDistribution", (string?)(await Post(c, Ack(a, "1.1.0")))["name"]);
 
         // A drains once B is active; with no payment open it is removed (its longest wait is zero), and the host unloads it.
         await using (var db = StoreDbContext.Open(store.Options))
@@ -140,7 +140,7 @@ public sealed class SideBySideTests(Store store)
         Assert.True((bool)gone!["collected"]!, "A's context was unloaded and collected");
         var after = (await c.GetFromJsonAsync<JsonObject>("/modules"))!;
         Assert.DoesNotContain((after["loaded"] as JsonArray)!.OfType<JsonObject>(), x => (string?)x["distribution"] == a);
-        Assert.Equal("DistributionRemoved", (string?)(await Post(c, Ack(a)))["name"]);
+        Assert.Equal("native.DistributionRemoved", (string?)(await Post(c, Ack(a)))["name"]);
         // B goes on.
         Assert.Equal("wps-build-b", (string?)(await Post(c, Ack(b)))["writes"]!["status"]!["additionalInformation"]);
     }
@@ -166,7 +166,7 @@ public sealed class SideBySideTests(Store store)
         var c = host.CreateClient();
 
         // The image holds no platform native code-behind: with no distribution, and no development module, it has none to run.
-        Assert.Equal("NotNative", (string?)(await Post(c, Window(null)))["name"]);
+        Assert.Equal("native.NotNative", (string?)(await Post(c, Window(null)))["name"]);
         Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), x => x.GetName().Name == ModuleBuilds.PlatformAssembly && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(x) == System.Runtime.Loader.AssemblyLoadContext.Default);
 
         // A payment pinned to A runs A's build of the platform activity; one pinned to B runs B's, in one host.
@@ -216,14 +216,14 @@ public sealed class SideBySideTests(Store store)
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
         var t = await Post(c, Ack(tampered));
-        Assert.Equal("NativeModuleRefused", (string?)t["name"]);
+        Assert.Equal("native.ModuleRefused", (string?)t["name"]);
         Assert.Contains("does not match its SHA-256", (string?)t["message"]);
         var f = await Post(c, Ack(future));
-        Assert.Equal("NativeModuleRefused", (string?)f["name"]);
+        Assert.Equal("native.ModuleRefused", (string?)f["name"]);
         Assert.Contains("native contract 2.0.0", (string?)f["message"]);
         Assert.Contains("native contract 1.9.0", (string?)(await Post(c, Ack(newer)))["message"]);
         Assert.Contains("its manifest says 1.0.0", (string?)(await Post(c, Ack(claims)))["message"]);
-        Assert.Equal("DistributionUnknown", (string?)(await Post(c, Ack("dist/example-bank@2026.11.23-99")))["name"]);
+        Assert.Equal("native.DistributionUnknown", (string?)(await Post(c, Ack("dist/example-bank@2026.11.23-99")))["name"]);
     }
 
     [Fact]

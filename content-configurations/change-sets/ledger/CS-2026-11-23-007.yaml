@@ -5,9 +5,9 @@ files:
   - path: artefacts/inventory/1.12.0.yaml
     sha256: b615814e95a4ec45e18d9f0955bf741755f9e8a25a2311468ea1d199bf9061ac
   - path: artefacts/p/p.errors.platform.v1/1.3.0.yaml
-    sha256: 3c6b98356d8ab0a0faf95c4a3a96ca33e36138ab3b344aa1dddb4e4e1c86123a
+    sha256: 46abfb44b6734abad31446604edb4ea466764616ce41a6f81abce2f8d3184466
   - path: artefacts/p/pack/1.12.0.yaml
-    sha256: 364cec52192a1db0b3690edb27ab090a85826a904ca2ead50b8dc703bfdd0c9a
+    sha256: ee9d573f7c785bf94d6f751d91d17224130d81e761a22a2c58912a81361f46c8
   - path: artefacts/p/tests/P-CHG-001@1.12.0.yaml
     sha256: c025d6ce42156acfb16a115d4df86d9cc94c20eadcb9c38166ab233525dd4fee
   - path: artefacts/p/tests/P-CHG-002@1.12.0.yaml

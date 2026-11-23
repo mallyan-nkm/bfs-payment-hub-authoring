@@ -657,6 +657,125 @@ entries:
       safeActions:
         - Do not install it. Have the module reference the native contract only, build a new distribution and install that.
       escalation: Escalate to the platform's native code owners with the distribution, the module and the reference named.
+  - code: native.NotNative
+    title: 'The native host serves no such activity'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt asks the native host for an activity that neither the distribution''s native modules nor the runtime image answer. With no distribution named, only the development modules are served (TH_NATIVE_DEV_MODULES).'
+    causes:
+      - 'The distribution was built without its module (native.notCarried in its manifest), so the activity runs its script-behind and should not reach the host.'
+      - 'The worker gives the activity to the native host (TH_NATIVE_ACTIVITIES) though the distribution carries no native code for it.'
+    runbook:
+      checks:
+        - 'Read the distribution''s manifest, its native section and notCarried.'
+        - 'Read GET /modules on the native host: the modules loaded for the distribution and their activities.'
+      safeActions:
+        - 'Do not retry. Build the distribution with its native modules, or let the worker run the activity''s script-behind.'
+      escalation: 'Escalate to the runtime''s service team with the distribution id and the activity.'
+  - code: native.NotInDistribution
+    title: 'The distribution does not carry this activity at this release'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt names an activity at a release its payment''s distribution does not carry. A payment runs only the activities of the distribution it is pinned to, never another distribution''s build (R-09-122).'
+    causes:
+      - 'The worker''s package and the payment''s distribution are of different releases.'
+      - 'The engine sent an attempt for another release of the activity than the distribution''s bill of materials names.'
+    runbook:
+      checks:
+        - 'Read the activity''s release in the distribution''s bill of materials.'
+        - 'Read which package the worker set was started with.'
+      safeActions:
+        - 'Do not retry. Serve the payment from workers of its own distribution.'
+      escalation: 'Escalate to the runtime''s service team with the payment id, the distribution and the activity.'
+  - code: native.DistributionUnknown
+    title: 'The distribution is not installed in this runtime'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt names a distribution the native host cannot find in the runtime''s store, or the host has no store to read distributions from.'
+    causes:
+      - 'The distribution was never installed in this runtime, or the id is malformed.'
+      - 'The native host was started without TH_STORE_PROVIDER and TH_STORE_CONNECTION.'
+    runbook:
+      checks:
+        - 'List the distributions installed in the service console.'
+        - 'Check the native host''s store settings.'
+      safeActions:
+        - 'Do not retry. Install the distribution, or give the native host its store, then let the operator decide the payment.'
+      escalation: 'Escalate to the runtime''s service team with the distribution id.'
+  - code: native.DistributionRemoved
+    title: 'The distribution was removed'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt names a distribution that was removed in every environment it was known in; its native assemblies are unloaded (R-09-122).'
+    causes:
+      - 'A payment of the distribution was still open when it was removed.'
+      - 'A worker of a removed distribution is still running.'
+    runbook:
+      checks:
+        - 'Read the distribution''s states in the service console.'
+        - 'Find the payment''s pin and its open steps.'
+      safeActions:
+        - 'Do not retry. Install the distribution again if its open payments must finish on it; stop workers of removed distributions.'
+      escalation: 'Escalate to the runtime''s service team with the payment id and the distribution.'
+  - code: native.ModuleRefused
+    title: 'The distribution''s native module cannot be loaded'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The native host refused to load a module of the distribution: an assembly does not match its SHA-256 in the signed bill of materials, the native contract is one the runtime does not support, or the module names no entry point, another scope, or does not serve an activity it must (R-09-121, R-09-123).'
+    causes:
+      - 'The distribution was built against a newer native contract than this runtime supports.'
+      - 'The package in the store does not match its signed bill of materials.'
+    runbook:
+      checks:
+        - 'Read the message: the assembly and the check that failed.'
+        - 'Compare the distribution''s native contract with GET /health on the native host.'
+      safeActions:
+        - 'Do not retry. Upgrade the runtime or build the distribution again, and install that.'
+      escalation: 'Escalate to the runtime''s service team with the distribution, the module and the message.'
+  - code: native.WrongDistribution
+    title: 'The worker runs another distribution'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt names a distribution other than its worker''s TH_DISTRIBUTION: a worker started for one distribution never serves another''s payment (R-09-131).'
+    causes:
+      - 'The engine routed the payment''s task to the queue of another distribution''s workers.'
+      - 'A worker was started with the wrong TH_DISTRIBUTION.'
+    runbook:
+      checks:
+        - 'Read the attempt''s distribution and the worker''s TH_DISTRIBUTION.'
+        - 'Check the task queues the distribution''s plan names.'
+      safeActions:
+        - 'Do not retry. Correct the worker''s distribution or the queues, then let the engine retry the step.'
+      escalation: 'Escalate to the runtime''s service team with the payment id, both distributions and the worker.'
+  - code: native.NotPinned
+    title: 'The payment is pinned to another distribution'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+    meaning: 'The attempt names a distribution its payment (header.paymentId) is not pinned to by its distribution.pinned fact (R-09-132). A payment runs only the native activities of the distribution it is pinned to.'
+    causes:
+      - 'The engine instance runs another distribution than the payment''s pin.'
+      - 'The payment was pinned again after its instance started.'
+    runbook:
+      checks:
+        - 'Read the payment''s distribution.pinned fact and the attempt''s distribution.'
+        - 'Read the engine instance''s distribution.'
+      safeActions:
+        - 'Do not retry. An operator decides the payment; never move it to another distribution''s code.'
+      escalation: 'Escalate to the runtime''s service team with the payment id and both distributions.'
   - code: package.NotPromotable
     title: The package may not be activated here
     category: technical

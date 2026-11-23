@@ -505,6 +505,8 @@ public final class Harness {
         req.put("call", call);
         req.put("attempt", attempt);
         req.put("now", clock.virtual);
+        // The distribution the run is for, when it has one: a native activity runs that distribution's build (R-09-130).
+        if (plan.hasNonNull("distribution")) req.put("distribution", plan.get("distribution").asText());
         if (index != null && "item".equals(task.get("level"))) {
             ObjectNode c = inst.ctx.deepCopy();
             JsonNode item = inst.ctx.path("items").path(index);

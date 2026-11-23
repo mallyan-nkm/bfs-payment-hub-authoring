@@ -53,6 +53,33 @@ export interface DeployRequest {
   distribution?: string;
   /** The payment's id, as the front door accepted it. */
   paymentId?: string;
+  /**
+   * An installation's workers, shared by the bank's distributions (R-09-133): none is started or stopped for this run. Each attempt
+   * names the payment's distribution, and the native host serves it from that distribution's build. Started with startWorkers.
+   */
+  workers?: WorkerSet;
+}
+
+/** A worker of a deployment: its queue, where it listens and its process, when this process started it. */
+export interface WorkerProc { queue: string; port: number; url: string; tasks: string[]; restarts: number; child?: ChildProcess }
+
+/** A package's workers, one process per task queue (R-09-04, R-09-05), and how to stop them. */
+export interface WorkerSet { procs: WorkerProc[]; stop(): Promise<void> }
+
+export interface StartWorkers {
+  /** The unpacked engine package whose workers start. */
+  packageDir: string;
+  environment: DeployEnvironment;
+  studioRoot: string;
+  basePort?: number;
+  /**
+   * The distribution the workers run (TH_DISTRIBUTION): the native host refuses an attempt they send for another (R-09-131).
+   * Without one the workers name none, and serve each attempt for the distribution it names (R-09-133).
+   */
+  distribution?: string;
+  log?: string[];
+  /** Where the environment file and the simulators' shared state go; by default a folder of the set's own, removed on stop. */
+  workDir?: string;
 }
 
 export interface DeployResult {
@@ -177,47 +204,15 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
   if (!environment.configurationSet && packaged && fs.existsSync(packaged)) environment.configurationSet = parseYaml(fs.readFileSync(packaged, 'utf8'));
   if (environment.configurationSet) log.push(`configuration ${environment.tenant}@${environment.configurationSet.release}${req.environment.configurationSet ? '' : ' from the package'}`);
   if (process.env.TH_RUNTIME_URL) log.push(`values from the runtime at ${process.env.TH_RUNTIME_URL}, in force at each attempt's time`);
-  const envFile = path.join(tmp, 'environment.json');
-  fs.writeFileSync(envFile, JSON.stringify(environment));
 
-  // 1. Workers: one process per queue, each on a free port (port 0: the system picks it, the worker says which).
-  const procs: { queue: string; port: number; child: ChildProcess; url: string; tasks: string[]; restarts: number }[] = [];
-  let port = req.basePort;
-  let stopping = false;
-  const startWorker = (w: any, p: number) => {
-    const wdir = path.join(dir, w.path);
-    const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
-      env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), TH_SCRIPT_WORKER: path.join(wdir, 'script-worker.cjs'), TH_SIM_SHARED_DIR: path.join(tmp, 'simulators'), NODE_PATH: path.join(req.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(req.distribution ? { TH_DISTRIBUTION: req.distribution } : {}), ...(process.env.TH_NATIVE_ACTIVITIES ? { TH_NATIVE_ACTIVITIES: process.env.TH_NATIVE_ACTIVITIES } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
-    return child;
-  };
-  // A worker that was asked to restart (POST /restart, R-09-63) drains and exits with code 75: it is started again from the same
-  // package, so at the same version, on the same port; the engine's router waits for it meanwhile.
-  const superviseRestart = (pr: (typeof procs)[number], w: any) => {
-    pr.child.once('exit', (code) => {
-      if (stopping || code !== 75) return;
-      pr.restarts++;
-      pr.child = startWorker(w, pr.port);
-      log.push(`worker ${pr.queue} restarted on ${pr.port}, pid ${pr.child.pid}`);
-      superviseRestart(pr, w);
-    });
-  };
+  // 1. Workers: one process per queue, each on a free port; or an installation's workers, shared by distributions (R-09-133).
+  let set: WorkerSet | undefined;
   try {
-    for (const w of manifest.workers ?? []) {
-      const p = port === undefined ? 0 : port++;
-      procs.push({ queue: w.queue, port: p, child: startWorker(w, p), url: `http://127.0.0.1:${p}`, tasks: w.tasks, restarts: 0 });
-    }
-    for (const [i, pr] of procs.entries()) {
-      if (pr.port === 0) {
-        pr.port = await listening(pr.child, pr.queue);
-        pr.url = `http://127.0.0.1:${pr.port}`;
-      }
-      const h = await waitHealthy(pr.url);
-      log.push(`worker ${h.queue} up on ${pr.port} with ${h.tasks.length} task(s), pid ${pr.child.pid}`);
-      superviseRestart(pr, manifest.workers[i]);
-    }
+    if (req.workers) log.push(`workers: the installation's ${req.workers.procs.length}, shared by distributions; each attempt names ${req.distribution ?? 'no distribution'}`);
+    set = req.workers ? undefined : await startWorkers({ packageDir: dir, environment, studioRoot: req.studioRoot, basePort: req.basePort, distribution: req.distribution, log, workDir: tmp });
+    const procs = (set ?? req.workers!).procs;
+    // On shared workers a payment's own ids keep its conversation and its inbound message apart from another payment's.
+    const own = req.workers && req.paymentId ? req.paymentId : undefined;
     const urlOf = (queue: string) => procs.find((p) => p.queue === queue)?.url;
 
     // 2. The documents an engine receives: everything in the package but the workers and tests.
@@ -259,13 +254,13 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       if (!entry?.disposition?.start?.intakeMap) throw new Error(`No start message in the package's dispatch tables leads to ${req.workflow}`);
       const map = entry.disposition.start.intakeMap;
       const queue = binding.queues[scopeOf(map)];
-      const msg = { id: `in-${n}`, type: entry.id, payload: inbound.payload };
+      const msg = { id: own && n === 1 ? `in-${own}` : `in-${n}`, type: entry.id, payload: inbound.payload };
       // End to end when the workflow is not the leg the message starts: the front door runs the
       // platform workflow that workflow-select picks, with that leg in its slot (R-05-08).
       const endToEnd = entry.disposition.start.leg !== req.workflow;
       const direction = endToEnd ? (entry.direction === 'in' ? 'inward' : 'outward') : wf.direction ?? 'outward';
-      ctx = { header: { conversation: `conv-${n}`, paymentId: n === 1 && req.paymentId ? req.paymentId : `P-${n}`, scheme: scheme.scope, direction, receivedAt: new Date(start).toISOString(), ...(endToEnd ? routeOf(entry.disposition.start) : { kind: entry.disposition.start.kind }) }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
-      const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', headers: traceHeaders(), body: JSON.stringify({ instance: n === 1 ? 'intake' : `intake-${n}`, activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg] }) })).json();
+      ctx = { header: { conversation: own && n === 1 ? `conv-${own}` : `conv-${n}`, paymentId: n === 1 && req.paymentId ? req.paymentId : `P-${n}`, scheme: scheme.scope, direction, receivedAt: new Date(start).toISOString(), ...(endToEnd ? routeOf(entry.disposition.start) : { kind: entry.disposition.start.kind }) }, messages: { inbound: { id: msg.id, type: msg.type } }, ...ctx };
+      const r = await (await fetch(`${urlOf(queue)}/attempt`, { method: 'POST', headers: traceHeaders(), body: JSON.stringify({ instance: n === 1 ? 'intake' : `intake-${n}`, activity: map, step: 'intake', call: 1, attempt: 1, now: start, ctx, messages: [msg], ...(req.distribution ? { distribution: req.distribution } : {}) }) })).json();
       if (r.kind !== 'result') throw new Error(`Intake ${map} failed: ${r.message ?? r.kind}`);
       for (const [p, v] of Object.entries<any>(r.writes ?? {})) setPath(ctx, p, v);
       const intake: DeployResult['intake'] = { activity: map, queue, outcome: r.outcome };
@@ -323,6 +318,8 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
       // A bank's distribution runs as its own copy (R-09-55): the engine names its queues, orchestrations or deployment after it.
       ...(req.distribution ? { distribution: req.distribution } : {}),
+      // On shared workers each payment's root instance is its own, as the long-running host names it.
+      ...(own ? { rootId: `root-${own}` } : {}),
       built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, ...(environment.startTime ? { startTime: environment.startTime } : {}), tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),
@@ -365,7 +362,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       const workers: DeployResult['workers'] = [];
       for (const pr of procs) {
         const st = await (await fetch(`${pr.url}/stats`)).json();
-        workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
+        workers.push({ queue: pr.queue, port: pr.port, pid: pr.child?.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused });
       }
       return { workflow: req.workflow, release: wf.release, trace: [], detail: [], attempts: {}, workers, messages: [], engine: { log: r.stderr.split('\n').slice(-200000) }, elapsedMs: Date.now() - t0, log, verification, load: measured };
     }
@@ -385,7 +382,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     const workers: DeployResult['workers'] = [];
     for (const pr of procs) {
       const st = await (await fetch(`${pr.url}/stats`)).json();
-      workers.push({ queue: pr.queue, port: pr.port, pid: pr.child.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused, valuesRead: st.valuesRead ?? 0 });
+      workers.push({ queue: pr.queue, port: pr.port, pid: pr.child?.pid ?? 0, tasks: pr.tasks, served: st.served, refused: st.refused, valuesRead: st.valuesRead ?? 0 });
     }
     return {
       workflow: req.workflow, release: wf.release, expandedFrom: wf.expandedFrom,
@@ -394,19 +391,78 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       intake, workers, messages: obs.messages ?? [], engine: obs.engine, elapsedMs: Date.now() - t0, log, verification,
     };
   } finally {
-    // Stop the workers and wait for each to exit, so that none outlives the deploy.
-    stopping = true;
-    await Promise.all(procs.map((p) => new Promise<void>((done) => {
-      if (p.child.exitCode !== null || p.child.signalCode !== null) return done();
-      p.child.once('exit', () => done());
-      p.child.kill();
-    })));
+    // Stop the workers this run started and wait for each to exit, so that none outlives the deploy.
+    await set?.stop();
     if (!req.keep) {
       fs.rmSync(tmp, { recursive: true, force: true });
       // The folder a zip was unpacked to is the runner's own; a folder the caller gave is not.
       if (dir !== req.packagePath) fs.rmSync(dir, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * Starts a package's workers, one process per task queue, each on a free port (port 0: the system picks it, the worker says
+ * which). A worker that was asked to restart (POST /restart, R-09-63) is started again from the same package.
+ */
+export async function startWorkers(o: StartWorkers): Promise<WorkerSet> {
+  const manifest = parseYaml(fs.readFileSync(path.join(o.packageDir, 'manifest.yaml'), 'utf8'));
+  const own = !o.workDir;
+  const work = o.workDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'th-workers-'));
+  const log = o.log ?? [];
+  const envFile = path.join(work, 'environment.json');
+  fs.writeFileSync(envFile, JSON.stringify(o.environment));
+  const procs: WorkerProc[] = [];
+  let port = o.basePort;
+  let stopping = false;
+  const startWorker = (w: any, p: number) => {
+    const wdir = path.join(o.packageDir, w.path);
+    const child = spawn(process.execPath, [path.join(wdir, 'worker.cjs'), '--dir', wdir, '--port', String(p), '--env', envFile], {
+      env: { PATH: process.env.PATH, ...childEnv(), TH_PY_HARNESS: path.join(wdir, 'py_harness.py'), TH_SCRIPT_WORKER: path.join(wdir, 'script-worker.cjs'), TH_SIM_SHARED_DIR: path.join(work, 'simulators'), NODE_PATH: path.join(o.studioRoot, 'node_modules'), ...(process.env.TH_WORKER_LOG ? { TH_WORKER_LOG: process.env.TH_WORKER_LOG } : {}), ...(process.env.TH_NATIVE_HOST ? { TH_NATIVE_HOST: process.env.TH_NATIVE_HOST } : {}), ...(o.distribution ? { TH_DISTRIBUTION: o.distribution } : {}), ...(process.env.TH_NATIVE_ACTIVITIES ? { TH_NATIVE_ACTIVITIES: process.env.TH_NATIVE_ACTIVITIES } : {}), ...(process.env.TH_RUNTIME_URL ? { TH_RUNTIME_URL: process.env.TH_RUNTIME_URL } : {}), ...runtimeTokenEnv() },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stderr?.on('data', (d) => log.push(`[${w.queue}] ${String(d).trim()}`));
+    return child;
+  };
+  // A worker that was asked to restart drains and exits with code 75: it is started again from the same package, so at the same
+  // version, on the same port; the engine's router waits for it meanwhile.
+  const superviseRestart = (pr: WorkerProc, w: any) => {
+    pr.child!.once('exit', (code) => {
+      if (stopping || code !== 75) return;
+      pr.restarts++;
+      pr.child = startWorker(w, pr.port);
+      log.push(`worker ${pr.queue} restarted on ${pr.port}, pid ${pr.child.pid}`);
+      superviseRestart(pr, w);
+    });
+  };
+  const stop = async () => {
+    stopping = true;
+    await Promise.all(procs.map((p) => new Promise<void>((done) => {
+      if (!p.child || p.child.exitCode !== null || p.child.signalCode !== null) return done();
+      p.child.once('exit', () => done());
+      p.child.kill();
+    })));
+    if (own) fs.rmSync(work, { recursive: true, force: true });
+  };
+  try {
+    for (const w of manifest.workers ?? []) {
+      const p = port === undefined ? 0 : port++;
+      procs.push({ queue: w.queue, port: p, child: startWorker(w, p), url: `http://127.0.0.1:${p}`, tasks: w.tasks, restarts: 0 });
+    }
+    for (const [i, pr] of procs.entries()) {
+      if (pr.port === 0) {
+        pr.port = await listening(pr.child!, pr.queue);
+        pr.url = `http://127.0.0.1:${pr.port}`;
+      }
+      const h = await waitHealthy(pr.url);
+      log.push(`worker ${h.queue} up on ${pr.port} with ${h.tasks.length} task(s), pid ${pr.child!.pid}${o.distribution ? ` for ${o.distribution}` : ''}`);
+      superviseRestart(pr, manifest.workers[i]);
+    }
+  } catch (e) {
+    await stop();
+    throw e;
+  }
+  return { procs, stop };
 }
 
 /**

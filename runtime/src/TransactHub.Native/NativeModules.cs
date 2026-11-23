@@ -35,8 +35,8 @@ public sealed class ActivityTable
     public INativeActivity Find(string name, string? release)
     {
         if (Releases is not null && !Releases.Contains($"{name}@{release}"))
-            throw new NativeRefusal("NotInDistribution", $"{Key} carries no {name}@{release}: a payment runs only the activities of the distribution it is pinned to");
-        return ByName.TryGetValue(name, out var a) ? a : throw new NativeRefusal("NotNative", $"The native host serves no {name}{(Releases is null ? "" : $" in {Key}")}");
+            throw new NativeRefusal("native.NotInDistribution", $"{Key} carries no {name}@{release}: a payment runs only the activities of the distribution it is pinned to");
+        return ByName.TryGetValue(name, out var a) ? a : throw new NativeRefusal("native.NotNative", $"The native host serves no {name}{(Releases is null ? "" : $" in {Key}")}");
     }
 }
 
@@ -114,7 +114,7 @@ public sealed class NativeModules : IDisposable
             // Installed again after its removal (a rollback past a removal): loaded afresh from the store.
             await using (var db = StoreDbContext.Open(store!))
                 if (!Removed(await new DistributionRegistry(db).StatesOf(distribution, ct))) unloaded.TryRemove(distribution, out _);
-            if (unloaded.ContainsKey(distribution)) throw new NativeRefusal("DistributionRemoved", $"{distribution} was removed: its native assemblies are unloaded");
+            if (unloaded.ContainsKey(distribution)) throw new NativeRefusal("native.DistributionRemoved", $"{distribution} was removed: its native assemblies are unloaded");
         }
         // Loaded once for every attempt that asks, whichever asked first: not cancelled with that one attempt.
         var lazy = tables.GetOrAdd(distribution, d => new Lazy<Task<ActivityTable>>(() => Load(d, CancellationToken.None)));
@@ -128,21 +128,21 @@ public sealed class NativeModules : IDisposable
 
     async Task<ActivityTable> Load(string distribution, CancellationToken ct)
     {
-        if (store is null) throw new NativeRefusal("DistributionUnknown", $"The native host has no store (TH_STORE_PROVIDER, TH_STORE_CONNECTION): it cannot load {distribution}");
+        if (store is null) throw new NativeRefusal("native.DistributionUnknown", $"The native host has no store (TH_STORE_PROVIDER, TH_STORE_CONNECTION): it cannot load {distribution}");
         (string bank, string id) parts;
         try { parts = DistributionRegistry.Split(distribution); }
-        catch (DistributionRefused e) { throw new NativeRefusal("DistributionUnknown", e.Message); }
+        catch (DistributionRefused e) { throw new NativeRefusal("native.DistributionUnknown", e.Message); }
         await using var db = StoreDbContext.Open(store);
         var row = await new ReleaseRegistry(db).Get(DistributionRegistry.Scope(parts.bank), parts.id, ct)
-            ?? throw new NativeRefusal("DistributionUnknown", $"{distribution} is not installed in this runtime's store");
+            ?? throw new NativeRefusal("native.DistributionUnknown", $"{distribution} is not installed in this runtime's store");
         var states = await new DistributionRegistry(db).StatesOf(distribution, ct);
-        if (Removed(states)) throw new NativeRefusal("DistributionRemoved", $"{distribution} was removed");
+        if (Removed(states)) throw new NativeRefusal("native.DistributionRemoved", $"{distribution} was removed");
         var manifest = JsonNode.Parse(row.ManifestJson) as JsonObject ?? new JsonObject();
         var files = NativeAssemblies.Unzip(row.Package);
         IReadOnlyList<NativeModulePackage> modules;
         // Checked again as it is loaded (R-09-121): the bytes are the ones the signed bill of materials names.
         try { modules = NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
-        catch (NativeAssembliesRefused e) { throw new NativeRefusal(e.Code ?? "NativeModuleRefused", $"{distribution}: {e.Message}"); }
+        catch (NativeAssembliesRefused e) { throw new NativeRefusal(e.Code ?? "native.ModuleRefused", $"{distribution}: {e.Message}"); }
         var releases = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "activity").Select(a => $"{(string?)a["name"]}@{(string?)a["release"]}").ToHashSet(StringComparer.Ordinal);
         return Build(distribution, modules, releases);
@@ -162,14 +162,14 @@ public sealed class NativeModules : IDisposable
             {
                 var asm = ctx!.LoadFromAssemblyName(new AssemblyName(m.Assembly));
                 var type = asm.GetCustomAttribute<NativeModuleAttribute>()?.Module
-                    ?? throw new NativeRefusal("NativeModuleRefused", $"{m.Assembly}.dll of {key} names no native module ([assembly: NativeModule(...)])");
+                    ?? throw new NativeRefusal("native.ModuleRefused", $"{m.Assembly}.dll of {key} names no native module ([assembly: NativeModule(...)])");
                 var module = (INativeModule)Activator.CreateInstance(type)!;
-                if (module.Scope != m.Scope) throw new NativeRefusal("NativeModuleRefused", $"{m.Assembly}.dll of {key} implements {module.Scope}, not {m.Scope}");
+                if (module.Scope != m.Scope) throw new NativeRefusal("native.ModuleRefused", $"{m.Assembly}.dll of {key} implements {module.Scope}, not {m.Scope}");
                 var serves = module.Activities(new Scoped(svc, contributions)).ToList();
                 foreach (var a in serves) byName[a.Name] = a;
                 // Every native activity the distribution lists for the module must be served by it.
                 var missing = m.Activities.Select(x => x.Split('@')[0]).Where(n => !serves.Any(a => a.Name == n)).ToList();
-                if (missing.Count > 0) throw new NativeRefusal("NativeModuleRefused", $"{m.Assembly}.dll of {key} does not serve {string.Join(", ", missing)}");
+                if (missing.Count > 0) throw new NativeRefusal("native.ModuleRefused", $"{m.Assembly}.dll of {key} does not serve {string.Join(", ", missing)}");
                 described.Add(new JsonObject
                 {
                     ["scope"] = m.Scope, ["assembly"] = m.Assembly, ["sha256"] = m.Sha256.TryGetValue(m.Assembly, out var s) ? s : null,

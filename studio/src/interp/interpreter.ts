@@ -17,6 +17,7 @@ import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../c
 import { runPythonScript } from './pysandbox.js';
 import { attrs, inSpan, meters, SpanKind, SpanStatusCode, traceHeaders, tracer } from '../telemetry/telemetry.js';
 import { forgetNativeToken, nativeAuthHeaders, nativeFetch } from './native-auth.js';
+import { attemptDistribution } from './attempt-distribution.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
 // reference for every engine. It never evaluates rules, reads values or calls ports inline:
@@ -1066,10 +1067,12 @@ export async function runNative(act: any, view: any, params: Record<string, any>
     res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
       // The native host takes the bank's machine callers only (R-08-17, R-08-21): the worker's own client-credentials token,
       // kept fresh, or a token by reference, and over mutual TLS where it is configured (native-auth.ts).
-      // A deployed worker runs one distribution's copy (TH_DISTRIBUTION, set by whoever starts it): the host serves the attempt from
-      // that distribution's own native assemblies, by activity and release (R-09-122). The studio's interpreter names none.
-      const distribution = process.env.TH_DISTRIBUTION;
-      const body = JSON.stringify({ activity: act.name, release: act.release, ...(distribution ? { distribution } : {}), view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) });
+      // The attempt names its payment's distribution, as the engine sent it (R-09-130); else the worker's own (TH_DISTRIBUTION, set
+      // by whoever starts it). The host serves the attempt from that distribution's own native assemblies, by activity and release
+      // (R-09-122), and refuses it when the worker's distribution is another one (R-09-131). The studio's interpreter names none.
+      const workerDistribution = process.env.TH_DISTRIBUTION || undefined;
+      const distribution = attemptDistribution() ?? workerDistribution;
+      const body = JSON.stringify({ activity: act.name, release: act.release, ...(distribution ? { distribution } : {}), ...(workerDistribution ? { workerDistribution } : {}), view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) });
       const call = async () => nativeFetch(`${host.replace(/\/$/, '')}/native`, { method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...(await nativeAuthHeaders()) }, body });
       let r = await call();
       // A token the host no longer takes is fetched again once.

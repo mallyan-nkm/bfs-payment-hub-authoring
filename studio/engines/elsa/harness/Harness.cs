@@ -99,7 +99,7 @@ public sealed class Harness : IDisposable
 
         // A deployment calls the separate workers; a kit run calls the party service.
         party = J.P(input, "workers") is JsonObject workers
-            ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)
+            ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!, J.S(input, "distribution"))
             : new PartyClient(J.S(input, "studioRoot")!);
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
 

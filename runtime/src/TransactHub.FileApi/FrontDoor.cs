@@ -394,6 +394,8 @@ public sealed class WorkerIntake(Func<string, string, string?> workerOf, HttpCli
         {
             ["instance"] = "intake", ["activity"] = intakeMap, ["step"] = "intake", ["call"] = 1, ["attempt"] = 1, ["now"] = now.ToUnixTimeMilliseconds(),
             ["ctx"] = context.DeepClone(), ["messages"] = new JsonArray(message.DeepClone()), ["tenant"] = Dispatch.Str(context["header"] as JsonObject, "tenant"),
+            // The distribution the payment is pinned to: a native intake map runs that distribution's build (R-09-130).
+            ["distribution"] = distribution,
         };
         using var res = await http.PostAsync($"{url.TrimEnd('/')}/attempt", new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
         var r = JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonObject ?? throw new FrontDoorRefused("frontdoor.IntakeRefused", $"The worker of {intakeMap} answered {(int)res.StatusCode}");
