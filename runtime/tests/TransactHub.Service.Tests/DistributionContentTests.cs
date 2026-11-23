@@ -22,7 +22,7 @@ public sealed class DistributionContentTests(Databases dbs)
     static string Sha(string s) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(s)));
     static string Folder(string id) => $"content-configurations/releases/distributions/{Bank}/{id}";
 
-    public static Dictionary<string, byte[]> Distribution(ECDsa key, string id, string activityRelease = "1.0.0", string ackMax = "P7D")
+    public static Dictionary<string, byte[]> Distribution(ECDsa key, string id, string activityRelease = "1.0.0", string ackMax = "P7D", string bank = Bank)
     {
         var files = new Dictionary<string, string>
         {
@@ -36,9 +36,9 @@ public sealed class DistributionContentTests(Databases dbs)
         };
         var pc = new JsonObject { ["format"] = "th-parameter-contract/1", ["parameters"] = new JsonArray(new JsonObject { ["parameter"] = "uae.wps.exchange.submit-salary-file.v1#ackWait", ["type"] = "duration", ["default"] = "P1D", ["bounds"] = new JsonObject { ["min"] = "PT1H", ["max"] = ackMax } }) };
         files["errors/uae.wps.errors.wps.v1@1.0.0.yaml"] = "kind: error-dictionary\nname: uae.wps.errors.wps.v1\nrelease: 1.0.0\nentries: []\n";
-        files["manifest.yaml"] = new JsonObject { ["kind"] = "distribution", ["id"] = id, ["bank"] = Bank, ["engine"] = "temporal", ["schemes"] = new JsonArray("uae.wps"), ["longestWait"] = "PT0S", ["billOfMaterials"] = bom.DeepClone(), ["parameterContract"] = pc.DeepClone() }.ToJsonString();
+        files["manifest.yaml"] = new JsonObject { ["kind"] = "distribution", ["id"] = id, ["bank"] = bank, ["engine"] = "temporal", ["schemes"] = new JsonArray("uae.wps"), ["longestWait"] = "PT0S", ["billOfMaterials"] = bom.DeepClone(), ["parameterContract"] = pc.DeepClone() }.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
-        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"dist/{Bank}@{id}", "", id, "temporal", Bank, "CS-TEST-010", ReleaseSignature.Distribution, new JsonObject { ["billOfMaterials"] = bom, ["parameterContract"] = pc }), key, DateTimeOffset.UtcNow);
+        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"dist/{bank}@{id}", "", id, "temporal", bank, "CS-TEST-010", ReleaseSignature.Distribution, new JsonObject { ["billOfMaterials"] = bom, ["parameterContract"] = pc }), key, DateTimeOffset.UtcNow);
         bytes[ReleaseSignature.StatementFile] = st;
         bytes[ReleaseSignature.SignatureFile] = sig;
         return bytes;
@@ -78,13 +78,13 @@ public sealed class DistributionContentTests(Databases dbs)
         Assert.Equal(["configuration", "configuration", "distribution", "distribution", "distribution"], versions.Select(v => (string)v!["kind"]!).Order());
         Assert.All(versions, v => Assert.True((bool)v!["installable"]!));
         Assert.True((bool)(await J.Of(await Post(se, "/service/api/content/verify", new { tag = $"dist/{Bank}/2026.11.22-1", reason = "check" })))["verified"]!);
-        var bad = await Post(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-3", reason = "try" });
+        var bad = await api.Consented(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-3", reason = "try" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
         Assert.Equal("signing.Tampered", (string?)(await J.Of(bad))["code"]);
         // A configuration release with no distribution to check it against is refused.
-        Assert.Equal(HttpStatusCode.Conflict, (await Post(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.0", reason = "early" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await api.Consented(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.0", reason = "early" })).StatusCode);
 
-        Assert.Equal(HttpStatusCode.Created, (await Post(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-1", reason = "CR-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await api.Consented(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-1", reason = "CR-1" })).StatusCode);
         async Task<JsonNode> Approved(string action, string target, object? parameters = null)
         {
             var ask = await J.Of(await Post(se, "/service/api/actions", new { action, target, reason = $"CR: {action}", parameters = parameters ?? new { environment = "production" } }));
@@ -94,8 +94,8 @@ public sealed class DistributionContentTests(Databases dbs)
         Assert.Equal("done", (string?)(await Approved("activate", D1))["status"]);
 
         // A configuration release within D1's contract installs; one out of its bounds is refused.
-        Assert.Equal(HttpStatusCode.Created, (await Post(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.0", reason = "values" })).StatusCode);
-        var outOf = await J.Of(await Post(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.1", reason = "values" }));
+        Assert.Equal(HttpStatusCode.Created, (await api.Consented(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.0", reason = "values" })).StatusCode);
+        var outOf = await J.Of(await api.Consented(se, "/service/api/content/install", new { tag = $"config/{Bank}/1.0.1", reason = "values" }));
         Assert.Contains("is above its maximum P7D", (string?)outOf["error"]);
 
         // A payment pinned to D1 at acceptance, still open.
@@ -107,7 +107,7 @@ public sealed class DistributionContentTests(Databases dbs)
         Assert.Contains(diff["artefacts"]!.AsArray(), a => (string?)a!["key"] == "activity:uae.wps.exchange.submit-salary-file.v1" && (string?)a["change"] == "changed");
         Assert.Contains(diff["packs"]!.AsArray(), a => (string?)a!["key"] == "uae.wps");
 
-        Assert.Equal(HttpStatusCode.Created, (await Post(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-2", reason = "CR-2" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await api.Consented(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.22-2", reason = "CR-2" })).StatusCode);
         var up = await Approved("activate", D2);
         Assert.Equal(D1, (string?)up["result"]!["draining"]);
         var rel = (await J.Of(await se.GetAsync("/service/api/content/releases"))).AsArray().Where(r => (string?)r!["kind"] == "distribution").ToDictionary(r => (string)r!["releaseId"]!);

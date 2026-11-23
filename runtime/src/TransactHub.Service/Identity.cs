@@ -3,12 +3,18 @@ using TransactHub.Auth;
 
 namespace TransactHub.Service;
 
-/// <summary>The service console's two roles (spec R-06-25), from the bank's role map like every runtime host's.</summary>
+/// <summary>
+/// The service console's roles (spec R-06-25), from the bank's role map like every runtime host's. A service engineer asks;
+/// a bank approver, another person, consents to every action that changes the system (owner's decision of 23 November 2026,
+/// R-09-74). <see cref="Approver"/> (ServiceApprover) is the name an earlier role map gave the same consent, kept so such a map
+/// still starts (Issue I-148).
+/// </summary>
 public static class ServiceRoles
 {
     public const string Engineer = "ServiceEngineer";
+    public const string BankApprover = "BankApprover";
     public const string Approver = "ServiceApprover";
-    public static readonly string[] All = [Engineer, Approver];
+    public static readonly string[] All = [Engineer, BankApprover, Approver];
 }
 
 /// <summary>
@@ -19,8 +25,11 @@ public sealed record ServiceIdentity(string Subject, string DisplayName, IReadOn
 {
     public const string AnyTenant = "*";
 
-    /// <summary>A ServiceApprover may do what a ServiceEngineer may.</summary>
-    public bool Has(string role) => Roles.Contains(role) || (role == ServiceRoles.Engineer && Roles.Contains(ServiceRoles.Approver));
+    /// <summary>A bank approver may see what a service engineer may (to judge what it consents to).</summary>
+    public bool Has(string role) => Roles.Contains(role) || (role == ServiceRoles.Engineer && MayConsent) || (role == ServiceRoles.BankApprover && Roles.Contains(ServiceRoles.Approver));
+
+    /// <summary>Whether this person may consent to a change of the system another person asked for (R-09-74).</summary>
+    public bool MayConsent => Roles.Contains(ServiceRoles.BankApprover) || Roles.Contains(ServiceRoles.Approver);
 
     public bool Sees(string tenant) => Tenants.Contains(AnyTenant) || Tenants.Contains(tenant);
 

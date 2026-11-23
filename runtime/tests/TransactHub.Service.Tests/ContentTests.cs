@@ -47,21 +47,21 @@ public sealed class ContentTests(Databases dbs)
         var verify = await J.Of(await Post(c, "/service/api/content/verify", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "before install" }));
         Assert.True((bool)verify["verified"]!);
         Assert.Equal(s.KeyId, (string?)verify["keyId"]);
-        Assert.Equal(HttpStatusCode.BadRequest, (await Post(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0") })).StatusCode);
-        var install = await Post(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "CR-1: first release" });
+        Assert.Equal(HttpStatusCode.BadRequest, (await api.Consented(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0") })).StatusCode);
+        var install = await api.Consented(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "CR-1: first release" });
         Assert.Equal(HttpStatusCode.Created, install.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await Post(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "again" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await api.Consented(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "again" })).StatusCode);
 
         foreach (var (release, code, why) in new[] { ("1.0.1", "signing.NotSigned", "is not signed"), ("1.0.2", "signing.Tampered", "does not match its hash"), ("1.0.3", "signing.UntrustedKey", "does not trust") })
         {
-            var r = await Post(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, release), reason = "try" });
+            var r = await api.Consented(c, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, release), reason = "try" });
             Assert.Equal(HttpStatusCode.UnprocessableEntity, r.StatusCode);
             var j = await J.Of(r);
             Assert.Equal(code, (string?)j["code"]);
             Assert.Contains(why, (string?)j["error"]);
             Assert.Equal($"#/service/errors/{code}", (string?)j["runbook"]);
         }
-        var d = await Post(c, "/service/api/content/install", new { tag = "dist/example-bank/2026.11.22-1", reason = "try" });
+        var d = await api.Consented(c, "/service/api/content/install", new { tag = "dist/example-bank/2026.11.22-1", reason = "try" });
         // A distribution is installed by its own kind (R-09-49): this one is not signed, so it is refused.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, d.StatusCode);
         Assert.Equal("package.Rejected", (string?)(await J.Of(d))["code"]);
@@ -70,10 +70,14 @@ public sealed class ContentTests(Databases dbs)
         Assert.Equal(1, await db.Releases.CountAsync());
         var audit = await db.Facts.AsNoTracking().Where(f => f.Kind == "service").OrderBy(f => f.Id).ToListAsync();
         var installs = audit.Where(f => f.Code == "install").Select(f => JsonNode.Parse(f.DataJson)!).ToList();
-        Assert.Equal(["installed", "already installed", "refused", "refused", "refused", "refused"], installs.Select(x => (string)x["result"]!));
-        Assert.All(audit, f => Assert.Equal("service:se-1", f.Actor));
+        // Installed on the bank approver's consent (R-09-74); a version that does not verify is refused when asked for, before any consent.
+        Assert.Equal(["installed", "already installed"], installs.Select(x => (string)x["result"]!));
+        Assert.All(audit.Where(f => f.Code == "install"), f => Assert.Equal("service:ba-1", f.Actor));
+        Assert.All(audit.Where(f => f.Code is "verify" or "action.requested"), f => Assert.Equal("service:se-1", f.Actor));
         Assert.Contains(installs, x => (string?)x["why"] == "CR-1: first release");
-        Assert.Equal("signing.Tampered", (string?)installs[3]["error"]);
+        var refused = audit.Where(f => f.Code == "verify").Select(f => JsonNode.Parse(f.DataJson)!).Where(x => (string?)x["result"] == "refused").ToList();
+        Assert.Equal(4, refused.Count);
+        Assert.Equal("signing.Tampered", (string?)refused[1]["error"]);
         var released = await db.Facts.AsNoTracking().Where(f => f.SubjectId == Packages.Id(Wf, "1.0.0")).Select(f => f.Kind).ToListAsync();
         Assert.Contains("release.verified", released);
     }
@@ -88,7 +92,7 @@ public sealed class ContentTests(Databases dbs)
         await using var api = new ServiceApi(dbs.Fresh(), s, gh);
         var se = api.Engineer;
         var sa = api.Approver;
-        foreach (var r in new[] { "1.0.0", "1.1.0" }) await Post(se, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, r), reason = "install" });
+        foreach (var r in new[] { "1.0.0", "1.1.0" }) await api.Consented(se, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, r), reason = "install" });
 
         async Task<JsonNode> Activate(string release, HttpClient approver)
         {

@@ -60,6 +60,8 @@ public sealed class ServiceHost
         var auth = await builder.AddServiceAuthentication();
         var testEnvs = (cfg["Releases:TestEnvironments"] ?? "test,dev,kit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
         var environment = cfg["Service:Environment"] ?? "production";
+        // The one bank this runtime serves, set at install (R-09-73).
+        var bank = RuntimeBank.FromConfiguration(cfg);
         var errorsDir = cfg["Service:Errors"] ?? Find("content-configurations/artefacts");
         var docsDir = cfg["Service:Docs"] ?? Find("docs/north-star");
         var viewsDir = cfg["Operations:Views"] ?? errorsDir;
@@ -72,7 +74,8 @@ public sealed class ServiceHost
         var s = builder.Services;
         s.AddSingleton(logBuffer);
         s.AddSingleton<TimeProvider>(clock);
-        s.AddSingleton(new ContentSettings(trust, secrets, testEnvs, environment));
+        s.AddSingleton(bank);
+        s.AddSingleton(new ContentSettings(trust, secrets, testEnvs, environment, bank));
         s.AddSingleton(sp => ErrorDictionary.FromFolder(errorsDir));
         s.AddSingleton(sp => ViewCatalog.FromFolder(viewsDir ?? "content-configurations/artefacts"));
         s.AddSingleton(sp => new Projector(store, ops, sp.GetRequiredService<ViewCatalog>(), clock));
@@ -118,6 +121,12 @@ public sealed class ServiceHost
             var content = sp.GetRequiredService<ContentService>();
             var projector = sp.GetRequiredService<Projector>();
             book.Run("reverify-package", (who, a, ct) => content.Reverify(a.Target!, who, ct));
+            // Installing and restoring wait for a bank approver's consent like every change of the system (R-09-74, Issue I-122):
+            // checked when asked for, so a version that does not verify is refused at once; carried out on consent.
+            book.Check("install", async (who, a, ct) => await content.Verify(a.Target!, who, a.Reason, ct));
+            book.Run("install", (who, a, ct) => content.Install(a.Target!, who, a.Reason!, ct));
+            var backups = sp.GetRequiredService<BackupService>();
+            book.Run("restore", async (who, a, ct) => await backups.Restore(await backups.Kept(a.Target!, ct), dryRun: false, who, a.Reason!, ct));
             book.Run("activate", (who, a, ct) => content.Activate(a.Target!, (string?)a.Parameters?["environment"],
                 (string?)a.Parameters?["effectiveFrom"] is { Length: > 0 } f ? DateTimeOffset.Parse(f, System.Globalization.CultureInfo.InvariantCulture) : null, who, a.Reason!, ct));
             book.Run("rollback", (who, a, ct) => content.Rollback(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));

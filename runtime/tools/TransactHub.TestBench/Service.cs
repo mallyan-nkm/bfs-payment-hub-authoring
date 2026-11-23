@@ -126,7 +126,14 @@ public static class Service
             catch (Forbidden e) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsJsonAsync(new { error = e.Message }); }
         });
 
-        app.MapGet("/testbench/api/health", () => Results.Json(new JsonObject { ["ok"] = true, ["auth"] = J.S(auth.ClientConfig(), "mode") })).AllowAnonymous();
+        // The default engine (R-09-76), and where Temporal is (a configured server, the Temporal SQL Server plugin in a deployment, or the test server).
+        app.MapGet("/testbench/api/health", () => Results.Json(new JsonObject
+        {
+            ["ok"] = true, ["auth"] = J.S(auth.ClientConfig(), "mode"),
+            ["defaultEngines"] = new JsonArray(Catalogue.DefaultEngines.Select(e => (JsonNode?)e).ToArray()),
+            ["engines"] = new JsonArray(Catalogue.AllEngines.Select(e => (JsonNode?)e).ToArray()),
+            ["temporal"] = Environment.GetEnvironmentVariable("TH_TEMPORAL_ADDRESS") is { Length: > 0 } ta ? ta : "test-server",
+        })).AllowAnonymous();
         app.MapGet("/testbench/api/auth/config", () => Results.Json(auth.ClientConfig())).AllowAnonymous();
 
         var api = app.MapGroup("/testbench/api").RequireAuthorization(BenchRoles.Policy);

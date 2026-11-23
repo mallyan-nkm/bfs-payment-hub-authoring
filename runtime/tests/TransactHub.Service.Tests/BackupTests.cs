@@ -65,7 +65,7 @@ public sealed class BackupTests(Databases dbs)
         var source = dbs.Fresh();
         await using var a = new ServiceApi(source, s, gh, Settings(s, banks));
         var se = a.Engineer;
-        await se.PostAsJsonAsync("/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "install" });
+        await a.Consented(se, "/service/api/content/install", new { tag = FakeGitHub.Tag(Wf, "1.0.0"), reason = "install" });
         await using (var db = StoreDbContext.Open(source))
         {
             await new ReleaseRegistry(db).Activate("production", $"{Wf}/temporal", "1.0.0", new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero), "pipeline");
@@ -98,7 +98,11 @@ public sealed class BackupTests(Databases dbs)
         Assert.Equal(1, (int)dry["activations"]!);
         await using (var db = StoreDbContext.Open(b.Store)) Assert.False(db.Releases.Any());
 
-        var done = await se2.PostAsync("/service/api/restore?dryRun=false&reason=DR%20test", new ByteArrayContent(zip));
+        // A real restore waits for a bank approver's consent like every change of the system (R-09-74, Issue I-122).
+        var asked = await se2.PostAsync("/service/api/restore?dryRun=false&reason=DR%20test", new ByteArrayContent(zip));
+        Assert.Equal(HttpStatusCode.Accepted, asked.StatusCode);
+        await using (var db = StoreDbContext.Open(b.Store)) Assert.False(db.Releases.Any());
+        var done = await b.Consented(se2, "/service/api/restore?dryRun=false&reason=DR%20test", content: new ByteArrayContent(zip));
         Assert.Equal(HttpStatusCode.OK, done.StatusCode);
         Assert.True((bool)(await J.Of(done))["restored"]!);
         Assert.Contains("secretRef: 'env:TH_EXAMPLE_CORE_TOKEN'", File.ReadAllText(Path.Combine(restoreDir, "banks", "example-bank", "port-bindings.yaml")));

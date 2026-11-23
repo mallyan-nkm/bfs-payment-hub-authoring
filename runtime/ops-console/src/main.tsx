@@ -57,8 +57,8 @@ function ServiceGate({ auth, path }: { auth: SignIn; path: string[] }) {
   const [me, setMe] = useState<{ roles: string[]; service: boolean } | null | undefined>(undefined);
   useEffect(() => { api.me().then(setMe).catch(() => setMe(null)); }, []);
   if (me === undefined) return <p className="muted">Loading…</p>;
-  if (!me?.service) return <p className="muted">You have no service role (ServiceEngineer or ServiceApprover) in the bank's role map.</p>;
-  return <ServiceSection api={api} path={path} approver={me.roles.includes('ServiceApprover')} />;
+  if (!me?.service) return <p className="muted">You have no service role (ServiceEngineer or BankApprover) in the bank's role map.</p>;
+  return <ServiceSection api={api} path={path} approver={me.roles.includes('BankApprover') || me.roles.includes('ServiceApprover')} />;
 }
 
 /** The test bench needs the Tester role (or a role the installation lets in); the API says which the caller has. */

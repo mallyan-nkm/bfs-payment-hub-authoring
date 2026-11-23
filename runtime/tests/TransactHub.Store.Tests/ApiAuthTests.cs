@@ -123,6 +123,7 @@ public sealed class ApiAuthTests(Databases dbs)
             {
                 b.UseSetting("Store:Provider", o.Provider.ToString());
                 b.UseSetting("Store:Connection", o.ConnectionString);
+                b.UseSetting("TH_BANK", ApiHost.Bank);
                 foreach (var (k, v) in settings) b.UseSetting(k, v);
             });
             return Assert.ThrowsAny<Exception>(() => f.CreateClient()).ToString();

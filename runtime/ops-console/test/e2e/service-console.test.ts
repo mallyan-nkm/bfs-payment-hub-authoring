@@ -94,13 +94,13 @@ function fakeGitHub(published: { tag: string; folder: string; files: Record<stri
 }
 
 /** A small distribution as the studio builds it: its files, a manifest with the bill of materials and the parameter contract, signed. */
-function distribution(id: string): Record<string, Buffer> {
+function distribution(id: string, bank = 'example-bank'): Record<string, Buffer> {
   const files: Record<string, string> = { 'binding.yaml': 'kind: engine-binding\ntarget: temporal\n', 'workflows/p.wf.corporate.v1@1.0.0.yaml': 'kind: workflow\nname: p.wf.corporate.v1\nrelease: 1.0.0\n' };
   const sha = (t: string) => `sha256:${createHash('sha256').update(t).digest('hex')}`;
   const billOfMaterials = { packs: [{ scope: 'p', release: '1.1.0' }], artefacts: Object.entries(files).map(([p, t]) => ({ name: p.split('/').pop()!.split('@')[0], kind: p.startsWith('binding') ? 'engine-binding' : 'workflow', release: '1.0.0', path: p, sha256: sha(t) })).sort((a, b) => a.path.localeCompare(b.path)) };
   const parameterContract = { format: 'th-parameter-contract/1', parameters: [] };
-  files['manifest.yaml'] = JSON.stringify({ kind: 'distribution', id, bank: 'example-bank', engine: 'temporal', schemes: ['uae.wps'], longestWait: 'P30D', billOfMaterials, parameterContract });
-  const signed = signFiles(files, { kind: 'distribution', releaseId: `dist/example-bank@${id}`, workflow: '', release: id, target: 'temporal', tenant: 'example-bank', changeSet: 'CS-SYNTHETIC-1', extra: { billOfMaterials, parameterContract } });
+  files['manifest.yaml'] = JSON.stringify({ kind: 'distribution', id, bank, engine: 'temporal', schemes: ['uae.wps'], longestWait: 'P30D', billOfMaterials, parameterContract });
+  const signed = signFiles(files, { kind: 'distribution', releaseId: `dist/${bank}@${id}`, workflow: '', release: id, target: 'temporal', tenant: bank, changeSet: 'CS-SYNTHETIC-1', extra: { billOfMaterials, parameterContract } });
   return Object.fromEntries(Object.entries(signed).map(([k, v]) => [k, Buffer.from(v)]));
 }
 
@@ -122,6 +122,8 @@ beforeAll(async () => {
     { tag: `release/p.wf.corporate.v1/${r}/temporal`, folder: `content-configurations/releases/p/p.wf.corporate.v1/${r}/temporal`, files },
     // A bank's distribution (R-09-48, R-09-49), signed with this run's key: offered, verified, installed (Issue I-102 done).
     { tag: 'dist/example-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/example-bank/2026.11.22-1', files: distribution('2026.11.22-1') },
+    // Another bank's distribution, signed by the same key: listed, never installable in this bank's runtime (R-09-73).
+    { tag: 'dist/second-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/second-bank/2026.11.22-1', files: distribution('2026.11.22-1', 'second-bank') },
     // A tag that names another release than the package in its folder: refused.
     { tag: 'release/p.wf.corporate.v1/9.9.9/temporal', folder: 'content-configurations/releases/p/p.wf.corporate.v1/9.9.9/temporal', files },
   ]);
@@ -139,7 +141,7 @@ beforeAll(async () => {
   const p = spawn('dotnet', [path.join(RUNTIME, 'src/TransactHub.Service.Api/bin/Release/net10.0/TransactHub.Service.Api.dll')], {
     cwd: REPO,
     env: {
-      ...process.env, ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: apiUrl, TH_AUTH_DEV: '1',
+      ...process.env, ASPNETCORE_ENVIRONMENT: 'Development', ASPNETCORE_URLS: apiUrl, TH_AUTH_DEV: '1', TH_BANK: 'example-bank',
       Store__Provider: 'PostgreSql', Store__Connection: connection, Service__Project: 'true', Service__Environment: 'production',
       PackageSource__GitHub__Repository: 'bank/content', PackageSource__GitHub__Api: `http://127.0.0.1:${ghPort}/`,
       Service__Errors: path.join(REPO, 'content-configurations', 'artefacts'), Service__Docs: path.join(REPO, 'docs', 'north-star'),
@@ -162,11 +164,29 @@ afterAll(async () => {
 });
 
 describe('the service console', () => {
-  it('signs in a service engineer, shows health, installs a signed version from GitHub, links a refusal to its runbook, confirms an action, and has a pause of intake and a worker\'s drain approved', async () => {
+  it('signs in a service engineer, shows health, installs a signed version from GitHub once a bank approver consents, links a refusal to its runbook, confirms an action, and has a pause of intake and a worker\'s drain consented to', async () => {
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
     const problems: string[] = [];
     page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
     page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    // The bank approver, another person, consents to every change of the system the engineer asks for (R-09-74).
+    const approver = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    approver.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    await approver.goto(apiUrl);
+    await approver.getByRole('button', { name: /Sign in as Example bank approver/ }).click();
+    await approver.getByTestId('who').filter({ hasText: 'Example bank approver' }).waitFor();
+    const consent = async (action: string) => {
+      await approver.goto(`${apiUrl}/#/service/actions`);
+      await approver.reload();
+      const row = approver.getByTestId('pending-row').filter({ hasText: action }).first();
+      await row.waitFor();
+      await row.getByRole('button', { name: 'Approve' }).click();
+      await approver.locator('textarea[name=reason]').fill('Agreed with the operations manager (synthetic)');
+      await approver.getByRole('button', { name: 'Confirm approval' }).click();
+      const r = approver.getByTestId('result').filter({ hasText: action });
+      await r.waitFor();
+      expect(await r.locator('.badge').textContent()).toBe('done');
+    };
     await page.goto(apiUrl);
     await page.getByRole('button', { name: /Sign in as Example service engineer/ }).click();
     await page.getByTestId('who').filter({ hasText: 'Example service engineer' }).waitFor();
@@ -188,7 +208,12 @@ describe('the service console', () => {
     await good.getByRole('button', { name: 'Install' }).click();
     await page.locator('textarea[name=reason]').fill('CR-0001: first release of the corporate workflow (synthetic)');
     await page.getByRole('button', { name: 'Confirm install 1.0.0' }).click();
-    await page.getByTestId('result').filter({ hasText: 'p.wf.corporate.v1/temporal@1.0.0' }).waitFor();
+    // Verified now; stored once a bank approver consents.
+    await page.getByTestId('result').filter({ hasText: 'install' }).filter({ hasText: 'waits for the consent of a bank approver' }).waitFor();
+    expect(await page.locator('[data-testid=release-row][data-release="p.wf.corporate.v1/temporal@1.0.0"]').count()).toBe(0);
+    await consent('install');
+    await page.goto(`${apiUrl}/#/service/content`);
+    await page.reload();
     const installed = page.locator('[data-testid=release-row][data-release="p.wf.corporate.v1/temporal@1.0.0"]');
     await installed.waitFor();
     expect(await installed.locator('.badge').textContent()).toBe('installed');
@@ -223,6 +248,15 @@ describe('the service console', () => {
     await dist.getByRole('button', { name: 'Install' }).click();
     await page.locator('textarea[name=reason]').fill('CR-0002: the first distribution of the example bank (synthetic)');
     await page.getByRole('button', { name: 'Confirm install 2026.11.22-1' }).click();
+    await page.getByTestId('result').filter({ hasText: 'waits for the consent of a bank approver' }).waitFor();
+    await consent('install');
+    await page.goto(`${apiUrl}/#/service/content`);
+    await page.reload();
+    // The other bank's distribution is listed and never installable here.
+    const other = page.locator('[data-testid=version-row][data-tag="dist/second-bank/2026.11.22-1"]');
+    await other.waitFor();
+    expect(await other.textContent()).toContain('this runtime serves example-bank only');
+    expect(await other.getByRole('button', { name: 'Install' }).count()).toBe(0);
     const distRow = page.locator('[data-testid=release-row][data-release="dist/example-bank@2026.11.22-1"]');
     await distRow.waitFor();
     expect(await distRow.locator('.badge').textContent()).toBe('installed');
@@ -248,7 +282,7 @@ describe('the service console', () => {
     for (const a of ['retry-attempt', 'redrive-workflow', 'reset-activity', 'resend-file', 'expire-hold', 'reconcile-posting', 'pause-intake', 'drain-worker'])
       expect(await catalogue.locator('tr', { hasText: a }).locator('.badge').textContent()).toBe('ok');
 
-    // Intake of a scheme paused and a worker drained (R-09-62, R-09-63): the engineer asks, a ServiceApprover approves, each reaches its target.
+    // Intake of a scheme paused and a worker drained (R-09-62, R-09-63): the engineer asks, a bank approver consents, each reaches its target.
     const calls: string[] = [];
     const worker = http.createServer((req, res) => { calls.push(`${req.method} ${req.url}`); res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ draining: true, inFlight: 0 })); });
     await new Promise<void>((r) => worker.listen(0, '127.0.0.1', () => r()));
@@ -262,15 +296,10 @@ describe('the service console', () => {
       await page.getByRole('button', { name: 'Ask for it' }).click();
       await page.locator('textarea[name=reason]').fill(`${title}: the scheme's window is closed (synthetic)`);
       await page.getByRole('button', { name: `Confirm ${title.toLowerCase()}` }).click();
-      await page.getByTestId('result').filter({ hasText: action }).filter({ hasText: 'waits for a ServiceApprover' }).waitFor();
+      await page.getByTestId('result').filter({ hasText: action }).filter({ hasText: 'waits for the consent of a bank approver' }).waitFor();
     };
     await ask('pause-intake', 'Pause intake for a scheme', 'uae.wps', { tenant: 'example-bank' });
     await ask('drain-worker', 'Drain a worker', workerUrl);
-    const approver = await browser.newPage({ viewport: { width: 1360, height: 900 } });
-    approver.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
-    await approver.goto(apiUrl);
-    await approver.getByRole('button', { name: /Sign in as Example service approver/ }).click();
-    await approver.getByTestId('who').filter({ hasText: 'Example service approver' }).waitFor();
     for (const action of ['pause-intake', 'drain-worker']) {
       await approver.goto(`${apiUrl}/#/service/actions`);
       await approver.reload();
@@ -290,7 +319,10 @@ describe('the service console', () => {
     const audit = await (await fetch(`${apiUrl}/service/api/audit`, { headers: { 'X-TH-Dev-Identity': JSON.stringify({ sub: 'svc.engineer', name: 'Example service engineer', roles: ['*:ServiceEngineer'] }) } })).json();
     const codes = audit.map((f: any) => f.code);
     expect(codes).toEqual(expect.arrayContaining(['install', 'action.requested', 'action.done']));
-    expect(audit.filter((f: any) => f.code === 'install').every((f: any) => f.actor === 'service:svc.engineer' && f.data.why)).toBe(true);
+    // Installed on the bank approver's consent; asked for by the engineer.
+    expect(audit.filter((f: any) => f.code === 'install').every((f: any) => f.actor === 'service:bank.approver' && f.data.why)).toBe(true);
+    expect(audit.filter((f: any) => f.code === 'action.requested' && f.data.name === 'install').every((f: any) => f.actor === 'service:svc.engineer')).toBe(true);
+    expect(audit.filter((f: any) => f.code === 'action.approved').every((f: any) => f.actor === 'service:bank.approver' && f.data.requestedBy === 'service:svc.engineer')).toBe(true);
     expect(problems).toEqual([]);
     await page.close();
   });

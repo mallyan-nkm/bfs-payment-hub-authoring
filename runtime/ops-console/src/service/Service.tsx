@@ -49,7 +49,7 @@ function Done({ r }: { r: ActionResult | any }) {
   return (
     <p role="status" data-testid="result">
       {r.name ?? r.releaseId ?? 'Done'}: <Badge s={r.status ?? r.state ?? (r.verified ? 'verified' : 'done')} />
-      {r.needs && <span> waits for a {r.needs}</span>}
+      {r.needs && <span> waits for the consent of a {r.needs === 'BankApprover' ? 'bank approver' : r.needs}</span>}
       {r.code && <> <a href={runbookHref(r.code)} data-testid="error-link">{r.code}</a></>}
       {r.result?.message && <span className="note"> {r.result.message}</span>}
     </p>
@@ -96,7 +96,7 @@ function ContentPage({ api }: { api: ServiceClient }) {
   return (
     <section>
       <h1>Content</h1>
-      <p className="note">Signed versions on GitHub, read only, of every kind: workflow packages, a bank's distributions and its configuration releases. A version is verified against the trusted signers before it is stored. Activating, draining, rolling back and removing need a ServiceApprover. A distribution is removed only when no payment pinned to it is open and its longest declared wait has passed.</p>
+      <p className="note">Signed versions on GitHub, read only, of every kind: workflow packages, a bank's distributions and its configuration releases. A version is verified against the trusted signers before it is stored. Installing, activating, draining, rolling back and removing each wait for a bank approver's consent, another person's. This runtime serves one bank: another bank's version is listed, never installed. A distribution is removed only when no payment pinned to it is open and its longest declared wait has passed.</p>
       <Problem e={err} />
       <Done r={result} />
       {ask && <Confirm label={ask.label} detail={ask.detail} onCancel={() => setAsk(null)} onConfirm={async (reason) => {
@@ -203,7 +203,7 @@ function ErrorsPage({ api, code }: { api: ServiceClient; code?: string }) {
         <h3>Checks</h3><ol>{e.runbook.checks.map((c) => <li key={c}>{c}</li>)}</ol>
         <h3>Safe actions</h3><ul>{e.runbook.safeActions.map((c) => <li key={c}>{c}</li>)}</ul>
         {e.actionsOffered.length > 0 && <><h3>Troubleshooting actions</h3><ul>{e.actionsOffered.map((a) => (
-          <li key={a.id}><a href={`#/service/actions?action=${a.id}`}>{a.title}</a> <Badge s={a.path === 'built' ? 'ok' : 'fail'} />{a.risky && <span className="muted"> needs a ServiceApprover</span>}{a.missing && <span className="note"> {a.missing}</span>}</li>
+          <li key={a.id}><a href={`#/service/actions?action=${a.id}`}>{a.title}</a> <Badge s={a.path === 'built' ? 'ok' : 'fail'} />{a.risky && <span className="muted"> needs a bank approver's consent</span>}{a.missing && <span className="note"> {a.missing}</span>}</li>
         ))}</ul></>}
         <h3>Escalation</h3><p>{e.runbook.escalation}</p>
       </>}
@@ -242,7 +242,7 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
   return (
     <section>
       <h1>Troubleshooting actions</h1>
-      <p className="note">Each action is recorded with your name, the time and your reason. A risky one is carried out only when a ServiceApprover, another person, approves it. An action on a running payment reaches its engine through the engine's host, which records the delivery on the payment's timeline; one that does not apply to the payment now is refused with its code.</p>
+      <p className="note">Each action is recorded with your name, the time and your reason. One that changes the system is carried out only when a bank approver, another person, consents. An action on a running payment reaches its engine through the engine's host, which records the delivery on the payment's timeline; one that does not apply to the payment now is refused with its code.</p>
       <Problem e={err} />
       <Done r={result} />
       <div className="filters">
@@ -256,12 +256,12 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
         <label><span>Parameters (JSON)</span><input name="parameters" value={params} onChange={(e) => setParams(e.target.value)} /></label>
         <button className="primary" disabled={!spec} onClick={() => { setResult(null); setErr(null); setConfirming(true); }}>Ask for it</button>
       </div>
-      {spec && <p className="note" data-testid="action-spec">{spec.does} {spec.risky && 'It needs a ServiceApprover.'} {spec.missing}</p>}
+      {spec && <p className="note" data-testid="action-spec">{spec.does} {spec.risky && 'It needs a bank approver\'s consent.'} {spec.missing}</p>}
       {confirming && spec && <Confirm label={spec.title.toLowerCase()} detail={<>{spec.title} on <span className="mono">{target || '(none)'}</span>.</>} onCancel={() => setConfirming(false)} onConfirm={async (reason) => {
         try { setResult(await api.act(spec.id, target || undefined, reason, params ? JSON.parse(params) : undefined)); } catch (e) { setErr(e); }
         setConfirming(false); load();
       }} />}
-      <h2>Waiting for a ServiceApprover</h2>
+      <h2>Waiting for a bank approver's consent</h2>
       {pending?.length === 0 && <p className="muted">Nothing waits.</p>}
       <table className="grid" aria-label="Pending actions">
         <thead><tr><th>Action</th><th>Target</th><th>Asked by</th><th>Why</th><th></th></tr></thead>
@@ -295,7 +295,7 @@ function BackupPage({ api }: { api: ServiceClient }) {
   return (
     <section>
       <h1>Configuration backup and restore</h1>
-      <p className="note">A signed backup of the releases' ids, activations, configuration values, bindings (secret references only, never a value), the role map and the trusted signers. A restore goes only into an empty or a test runtime, after a dry run.</p>
+      <p className="note">A signed backup of the releases' ids, activations, configuration values, bindings (secret references only, never a value), the role map and the trusted signers. A restore goes only into an empty or a test runtime, after a dry run, and only once a bank approver consents.</p>
       <Problem e={err} />
       <div className="action-buttons">
         <button onClick={() => setAsk('export')}>Export a backup</button>
@@ -343,7 +343,7 @@ function AssistantPage({ api }: { api: ServiceClient }) {
           <p style={{ whiteSpace: 'pre-wrap' }}>{t.a.answer}</p>
           <p className="muted">Sources: {t.a.sources.map((s) => s.startsWith('error:') ? <a key={s} href={runbookHref(s.slice(6))} style={{ marginRight: 8 }}>{s}</a> : <span key={s} className="mono" style={{ marginRight: 8 }}>{s}</span>)}</p>
           {t.a.proposals.map((p, j) => (
-            <p key={j} data-testid="proposal">Proposed: <a href={p.confirm}>{p.title}</a> on <span className="mono">{p.target ?? '—'}</span>, by the runbook <a href={p.runbookLink}>{p.runbook}</a>. {p.why} {p.risky && <span className="muted">Needs a ServiceApprover.</span>}</p>
+            <p key={j} data-testid="proposal">Proposed: <a href={p.confirm}>{p.title}</a> on <span className="mono">{p.target ?? '—'}</span>, by the runbook <a href={p.runbookLink}>{p.runbook}</a>. {p.why} {p.risky && <span className="muted">Needs a bank approver's consent.</span>}</p>
           ))}
         </div>
       ))}

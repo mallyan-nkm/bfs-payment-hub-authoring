@@ -1,0 +1,9 @@
+{
+  "kind": "runtime-role-map",
+  "tenantsClaim": "tenants",
+  "grants": [
+    { "claim": "roles", "value": "TransactHub.Pipeline", "roles": ["release-importer", "release-reader", "values-reader"] },
+    { "claim": "roles", "value": "TransactHub.FrontDoor", "roles": ["payment-intake", "release-reader", "values-reader"] },
+    { "claim": "groups", "value": "th-service-engineers", "roles": ["release-reader"] }
+  ]
+}

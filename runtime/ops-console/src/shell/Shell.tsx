@@ -35,7 +35,7 @@ export const DEV_USERS: DevIdentity[] = [
   { sub: 'ops.supervisor', name: 'Example supervisor', roles: ['example-bank:Supervisor'] },
   { sub: 'ops.other', name: 'Other bank operator', roles: ['other-bank:Operator'] },
   { sub: 'svc.engineer', name: 'Example service engineer', roles: ['*:ServiceEngineer'] },
-  { sub: 'svc.approver', name: 'Example service approver', roles: ['*:ServiceApprover'] },
+  { sub: 'bank.approver', name: 'Example bank approver', roles: ['*:BankApprover'] },
   { sub: 'tb.tester', name: 'Example tester', roles: ['*:Tester'] },
   { sub: 'tb.reader', name: 'Example reader without a role', roles: [] },
 ];

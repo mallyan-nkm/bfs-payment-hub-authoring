@@ -1,0 +1,7 @@
+{
+  "kind": "runtime-role-map",
+  "tenantsClaim": "tenants",
+  "grants": [
+    { "claim": "roles", "value": "TransactHub.FrontDoor", "roles": ["native-caller"] }
+  ]
+}

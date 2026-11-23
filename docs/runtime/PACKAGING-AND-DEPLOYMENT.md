@@ -80,6 +80,9 @@ A distribution moves through these states. Each change is an insert-only activat
 - **Switch-over:** activating a new distribution moves the old one to Draining in the same step. From that instant, new payments take the new one.
 - **Removal** is refused while any payment pinned to the distribution is open, or before its longest declared wait (for example the 30-day returns wait) has passed. The service console shows the open count per distribution.
 - **Rollback:** activate the previous distribution again. If it was removed, reinstall it from GitHub first. Payments that started on the newer one finish on it.
+- **One bank per runtime** (owner's decision of 23 November 2026, R-09-73): a runtime is configured with its bank at install (`TH_BANK`) and refuses a distribution or configuration release whose signed manifest names another bank, at verify, install and activate. The studio builds distributions for every bank; each bank's runtime takes only its own.
+- **Consent** (owner's decision of 23 November 2026, R-09-74): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-75).
+- **Insert-only, at the database too** (R-09-78): a deployment runs the hosts as a login that may insert and read the store, never update or delete it. `deploy/laptop/test/insert-only.mts` shows a switch-over end to end on the laptop stack and that no row of a distribution, its activations or the fact log changed.
 
 ## 7. The dependency tree
 

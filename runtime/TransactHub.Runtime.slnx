@@ -34,10 +34,12 @@
     <Project Path="tests/TransactHub.TestBench.Tests/TransactHub.TestBench.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
+    <Project Path="tools/TransactHub.DevIdentity/TransactHub.DevIdentity.csproj" />
     <Project Path="tools/TransactHub.DtfxHarness/TransactHub.DtfxHarness.csproj" />
     <Project Path="tools/TransactHub.ElsaHarness/TransactHub.ElsaHarness.csproj" />
     <Project Path="tools/TransactHub.EngineHost/TransactHub.EngineHost.csproj" />
     <Project Path="tools/TransactHub.FlowableHarness/TransactHub.FlowableHarness.csproj" />
+    <Project Path="tools/TransactHub.Migrate/TransactHub.Migrate.csproj" />
     <Project Path="tools/TransactHub.TemporalHarness/TransactHub.TemporalHarness.csproj" />
     <Project Path="tools/TransactHub.TestBench/TransactHub.TestBench.csproj" />
   </Folder>

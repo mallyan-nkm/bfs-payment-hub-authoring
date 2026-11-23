@@ -2,12 +2,16 @@ using System.Security.Claims;
 
 namespace TransactHub.Operations;
 
-/// <summary>The two operator roles (R-06-24). A supervisor may do what an operator may, and is the second approver.</summary>
+/// <summary>
+/// The operator roles (R-06-24). A supervisor may do what an operator may, and is the second approver of a payment's action.
+/// A bank approver consents to a change of the system another person asked for (R-09-74); it is not an operator's role.
+/// </summary>
 public static class OperatorRoles
 {
     public const string Operator = "Operator";
     public const string Supervisor = "Supervisor";
-    public static readonly string[] All = [Operator, Supervisor];
+    public const string BankApprover = "BankApprover";
+    public static readonly string[] All = [Operator, Supervisor, BankApprover];
 }
 
 /// <summary>
@@ -26,6 +30,9 @@ public sealed record OperatorIdentity(string Subject, string DisplayName, IReadO
     public IEnumerable<string> Tenants => RolesByTenant.Keys;
 
     public bool AllTenants => RolesByTenant.ContainsKey(AnyTenant);
+
+    /// <summary>Whether this person may consent to a change of the system (R-09-74): a bank approver of any tenant the runtime serves.</summary>
+    public bool MayConsent => RolesByTenant.Values.Any(r => r.Contains(OperatorRoles.BankApprover));
 
     /// <summary>What the facts record as the actor: the identity provider's subject, never a display name alone.</summary>
     public string Actor => $"operator:{Subject}";

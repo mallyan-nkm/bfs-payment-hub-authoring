@@ -14,8 +14,13 @@ namespace TransactHub.Api;
 /// parameter contract of every distribution of its bank not removed, and its values, port bindings and calendars become
 /// effective-dated versions.
 /// </summary>
-public sealed class DistributionService(StoreDbContext db, TimeProvider clock, Func<CancellationToken, Task<TrustedSigners>> trust, IReadOnlySet<string>? testEnvironments = null)
+public sealed class DistributionService(StoreDbContext db, TimeProvider clock, Func<CancellationToken, Task<TrustedSigners>> trust, IReadOnlySet<string>? testEnvironments = null, RuntimeBank? bank = null)
 {
+    /// <summary>The one bank this runtime serves (R-09-73): another bank's bundle, distribution or payment is refused. Null only in a library test.</summary>
+    public RuntimeBank? Bank => bank;
+
+    void OwnBank(string? b, string what) => bank?.Check(b, what);
+
     DistributionRegistry Registry => new(db, clock);
     public const string BindingKind = "binding";
     public const string CalendarKind = "calendar";
@@ -37,6 +42,7 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     public async Task<JsonObject> InstallDistribution(Bundle b, string actor, string purpose, CancellationToken ct = default)
     {
         if (b.Kind != ReleaseSignature.Distribution) throw new BundleRefused(422, $"{b.ReleaseId} is a {b.Kind}, not a distribution");
+        OwnBank(b.Bank, b.ReleaseId);
         var v = await VerifyBundle(b, ct);
         StoreResult r;
         try { r = await Registry.Store(b.Bank, b.Release, b.CanonicalZip(), b.Manifest, b.ContentHash, actor, purpose, ct); }
@@ -73,7 +79,10 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     /// <summary>Activation (the switch-over): verified again against the signers trusted now; the one active until now drains.</summary>
     public async Task<JsonObject> Activate(string dist, string environment, string actor, string why, CancellationToken ct = default)
     {
+        OwnBank(SplitDist(dist).Item1, dist);
         var b = await Stored(dist, ct);
+        // The signed manifest's bank, not only the id: a distribution stored before the runtime had its bank is refused too.
+        OwnBank(b.Bank, dist);
         var v = await VerifyBundle(b, ct);
         // A distribution that carries simulators is for a test environment only (R-07-12).
         if (b.Manifest["promotable"] is JsonValue pv && pv.TryGetValue<bool>(out var promotable) && !promotable && !(testEnvironments ?? new HashSet<string> { "test", "dev", "kit" }).Contains(environment))
@@ -85,12 +94,14 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
 
     public async Task<JsonObject> Drain(string dist, string environment, string actor, string why, CancellationToken ct = default)
     {
+        OwnBank(SplitDist(dist).Item1, dist);
         await Guard(async () => { await Registry.Drain(dist, environment, actor, why, ct); return 0; });
         return new JsonObject { ["draining"] = dist, ["environment"] = environment };
     }
 
     public async Task<JsonObject> Rollback(string bank, string environment, string actor, string why, CancellationToken ct = default)
     {
+        OwnBank(bank, $"A rollback of {bank}");
         var current = await Registry.Active(bank, environment, ct);
         var acts = await db.Activations.AsNoTracking().Where(a => a.Environment == environment && a.Scope == DistributionRegistry.Scope(bank)).OrderByDescending(a => a.Id).Select(a => a.Release).ToListAsync(ct);
         var previous = acts.FirstOrDefault(r => current is null || DistributionRegistry.IdOf(bank, r) != current);
@@ -106,8 +117,11 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
         return new JsonObject { ["removed"] = dist, ["environment"] = environment, ["state"] = "removed" };
     }
 
-    public async Task<string> Pin(string paymentId, string bank, string environment, string actor, CancellationToken ct = default) =>
-        await Guard(() => Registry.Pin(paymentId, bank, environment, actor, ct));
+    public async Task<string> Pin(string paymentId, string bank, string environment, string actor, CancellationToken ct = default)
+    {
+        OwnBank(bank, $"Payment {paymentId}");
+        return await Guard(() => Registry.Pin(paymentId, bank, environment, actor, ct));
+    }
 
     public async Task<bool> End(string paymentId, string outcome, string actor, CancellationToken ct = default) =>
         await Guard(() => Registry.End(paymentId, outcome, actor, ct));
@@ -162,6 +176,7 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     public async Task<JsonObject> InstallConfiguration(Bundle b, string actor, string purpose, CancellationToken ct = default)
     {
         if (b.Kind != ReleaseSignature.ConfigurationRelease) throw new BundleRefused(422, $"{b.ReleaseId} is a {b.Kind}, not a configuration release");
+        OwnBank(b.Bank, b.ReleaseId);
         var v = await VerifyBundle(b, ct);
         var contracts = await Contracts(b.Bank, ct);
         if (contracts.Count == 0) throw new BundleRefused(409, $"{b.ReleaseId} is refused: {b.Bank} has no installed distribution whose parameter contract it could be checked against");

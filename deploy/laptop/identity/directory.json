@@ -1,0 +1,15 @@
+{
+  "comment": "The laptop's development identity provider (deploy/laptop, R-09-77): synthetic users and machine clients of one bank's runtime. No real person, no secret: a client's secret is a reference resolved from the provider's environment.",
+  "users": [
+    { "sub": "svc.engineer", "name": "Example service engineer", "groups": ["th-service-engineers"] },
+    { "sub": "bank.approver", "name": "Example bank approver", "groups": ["th-bank-approvers"] },
+    { "sub": "ops.operator", "name": "Example operator", "groups": ["th-operators"] },
+    { "sub": "ops.supervisor", "name": "Example supervisor", "groups": ["th-supervisors"] },
+    { "sub": "bench.tester", "name": "Example tester", "groups": ["th-testers"] }
+  ],
+  "clients": [
+    { "clientId": "th-pipeline", "name": "The bank's release pipeline", "secretRef": "env:TH_LAPTOP_PIPELINE_SECRET", "roles": ["TransactHub.Pipeline"] },
+    { "clientId": "th-front-door", "name": "The front door and its workers", "secretRef": "env:TH_LAPTOP_FRONTDOOR_SECRET", "roles": ["TransactHub.FrontDoor"] }
+  ],
+  "publicClients": ["transacthub-runtime-ui"]
+}

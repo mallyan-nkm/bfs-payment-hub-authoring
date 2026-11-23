@@ -39,6 +39,18 @@ public sealed class CatalogueTests
         Assert.Equal(["SqlServer"], ms.Databases);
     }
 
+    /// <summary>Temporal is the default engine (R-09-76); a tester still starts DTFx, Elsa or Flowable by naming them.</summary>
+    [Fact]
+    public void A_profile_that_names_no_engine_runs_on_Temporal_and_a_request_may_start_the_others()
+    {
+        Assert.Equal(["temporal"], Catalogue.DefaultEngines);
+        var plan = C.Resolve(new JsonObject { ["profile"] = "wps-default-engine", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" } });
+        Assert.Equal(["temporal"], plan.Engines);
+        Assert.Equal(["SqlServer"], plan.Databases);
+        foreach (var other in new[] { "dtfx", "elsa", "flowable" })
+            Assert.Equal([other], C.Resolve(new JsonObject { ["profile"] = "wps-default-engine", ["data"] = new JsonObject { ["sample"] = "wps-sif-happy" }, ["engines"] = new JsonArray(other) }).Engines);
+    }
+
     [Fact]
     public void A_bench_extends_another_and_a_request_overrides_one_port()
     {

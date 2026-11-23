@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- A development identity provider for one bank's runtime on a laptop (deploy/laptop, spec R-09-77), and the one-off key
+       maker of a laptop stack. Never for production: it refuses to start there. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TransactHub.Security\TransactHub.Security.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TransactHub.DevIdentity</AssemblyName>
+  </PropertyGroup>
+
+</Project>

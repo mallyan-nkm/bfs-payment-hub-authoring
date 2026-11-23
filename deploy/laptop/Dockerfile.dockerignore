@@ -1,0 +1,25 @@
+# The laptop images' build context is the repository's root: keep out what is built elsewhere, what is local and any secret.
+.git
+.claude
+**/.env
+**/*.pem
+**/*.key
+**/node_modules
+runtime/**/bin
+runtime/**/obj
+runtime/tests
+runtime/load
+runtime/testbench/local
+runtime/temporal-mssql/bin
+runtime/temporal-mssql/.dev
+runtime/tools/temporal-test-server/lib
+studio/engines/*/harness/bin
+studio/engines/*/harness/obj
+studio/test/blackbox
+studio/coverage
+docs/demo
+docs/*.docx
+spec/*.docx
+deploy/laptop/.build/opt/**/*.pdb
+!deploy/laptop/.build/opt/**/bin
+!deploy/laptop/.build/studio-deps/node_modules

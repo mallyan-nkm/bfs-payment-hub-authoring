@@ -256,7 +256,7 @@ export class FakeGitHub {
   // -------------------------------------------------------------------- HTTP
 
   /** `unref`: do not keep the process alive for it (a command that reads, then exits). */
-  async start(opts: { unref?: boolean; port?: number } = {}): Promise<string> {
+  async start(opts: { unref?: boolean; port?: number; host?: string } = {}): Promise<string> {
     this.server = http.createServer((req, res) => {
       let raw = '';
       req.on('data', (c) => (raw += c));
@@ -278,7 +278,8 @@ export class FakeGitHub {
     });
     // Keep idle connections open longer than a test waits, so a client never reuses one being closed.
     this.server.keepAliveTimeout = 120_000;
-    await new Promise<void>((r) => this.server!.listen(opts.port ?? 0, '127.0.0.1', () => r()));
+    // A container's other services reach it on another interface (deploy/laptop, TH_FAKE_GITHUB_HOST); by default loopback only.
+    await new Promise<void>((r) => this.server!.listen(opts.port ?? 0, opts.host ?? '127.0.0.1', () => r()));
     if (opts.unref) this.server.unref();
     this.url = `http://127.0.0.1:${(this.server!.address() as AddressInfo).port}`;
     return this.url;

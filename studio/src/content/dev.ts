@@ -8,7 +8,8 @@ import { generateSigningKey, trustedSignersJson } from '../export/signing.js';
 // content-configurations/. Everything the studio writes stays in that fake, in memory, and is gone
 // when the process ends: still no local copy (R-11-24). `TH_FAKE_GITHUB_PORT` fixes its port.
 
-const local = await startLocalContent({ port: process.env.TH_FAKE_GITHUB_PORT ? Number(process.env.TH_FAKE_GITHUB_PORT) : undefined });
+// TH_FAKE_GITHUB_HOST: the interface it listens on (loopback by default; a laptop stack's runtime reads it from another container).
+const local = await startLocalContent({ port: process.env.TH_FAKE_GITHUB_PORT ? Number(process.env.TH_FAKE_GITHUB_PORT) : undefined, host: process.env.TH_FAKE_GITHUB_HOST || undefined });
 process.env.TH_GITHUB_API = local.url;
 process.env.TH_CONTENT_REPO = `${LOCAL_REPO.owner}/${LOCAL_REPO.repo}`;
 process.env.TH_CONTENT_BRANCH = LOCAL_REPO.branch;
