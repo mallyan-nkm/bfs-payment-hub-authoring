@@ -137,9 +137,11 @@ public sealed class AdibWpsBankFolderTests
     {
         var bindings = PortBindings.FromDirectory(Folder());
         // The labour ministry register (Issue I-118) is bound to the REST adapter with a placeholder host until the bank says where it is.
-        Assert.Equal(["p.port.core-banking.v1", "p.port.encryption.v1", "p.port.file-transfer.v1", "uae.wps.port.labour-ministry.v1"], bindings.All.Select(x => x.Port).Order(StringComparer.Ordinal));
+        // The party register (R-12-27) is the runtime's own, read from the store.
+        Assert.Equal(["p.port.core-banking.v1", "p.port.encryption.v1", "p.port.file-transfer.v1", "p.port.party-register.v1", "uae.wps.port.labour-ministry.v1"], bindings.All.Select(x => x.Port).Order(StringComparer.Ordinal));
         Assert.All(bindings.All, x => Assert.Equal(Tenant, x.Tenant));
-        Assert.All(bindings.All, x => Assert.Equal(From, x.ValidFrom));
+        Assert.All(bindings.All.Where(x => x.Port != PartyRegisterAdapters.Port), x => Assert.Equal(From, x.ValidFrom));
+        Assert.Equal(StorePartyRegister.Name, bindings.All.Single(x => x.Port == PartyRegisterAdapters.Port).Adapter);
         // No decryption: the source's WPS workflow for the bank reads unencrypted files (fileEncrypted false), and its
         // decrypt step names no key (AdibDecryptSifFile).
         Assert.False(File.Exists(Path.Combine(Folder(), "decryption.yaml")));
