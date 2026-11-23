@@ -534,7 +534,9 @@ public sealed partial class Interp
         if (early is not null) { mailbox.Remove(early); Consumed.Add(MessageKey(early)); msg = early; }
         else
         {
-            var at = expiry is not null ? Duration.Add(eng.Now, expiry) : long.MaxValue;
+            // On the bank's business calendar when the hold says so (R-09-88, Issue I-127): the calendar comes with the answer.
+            var calendar = J.S(held, "expiryCalendar") == "business" ? BusinessCalendar.Of(J.P(held, "calendar")) ?? BusinessCalendar.Default : null;
+            var at = expiry is not null ? Duration.Add(eng.Now, expiry, calendar) : long.MaxValue;
             OperatorWaits[key] = at;
             try
             {

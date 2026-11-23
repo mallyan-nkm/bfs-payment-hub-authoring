@@ -112,7 +112,7 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
         var r = act.Run(new NativeAttempt(name, (string?)body["release"], view, body["params"] as JsonObject ?? new JsonObject(), now, tenant, (string?)body["level"]));
         served.AddOrUpdate(name, 1, (_, n) => n + 1);
         // A hold opened: the engine awaits the operator's decision (R-05-56, Issue I-98).
-        if (r.Held is { } held) return Results.Ok(new JsonObject { ["kind"] = "held", ["hold"] = (string?)held["hold"], ["expiry"] = (string?)held["expiry"] });
+        if (r.Held is { } held) return Results.Ok(new JsonObject { ["kind"] = "held", ["hold"] = (string?)held["hold"], ["expiry"] = (string?)held["expiry"], ["expiryCalendar"] = (string?)held["expiryCalendar"], ["calendar"] = held["calendar"]?.DeepClone() });
         return Results.Ok(new JsonObject { ["kind"] = "result", ["outcome"] = r.Outcome, ["reasonCode"] = r.ReasonCode, ["writes"] = r.Writes });
     }
     catch (NativeFailure e)

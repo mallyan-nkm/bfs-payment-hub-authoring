@@ -1,4 +1,4 @@
-import { resolveReferenceValues } from '../core/reference.js';
+import { businessCalendarIn, resolveReferenceValues, type CalendarDays } from '../core/reference.js';
 import { addDuration, durationMs, DEFAULT_CALENDAR, isDuration } from '../core/duration.js';
 import { clone } from '../core/canonical.js';
 import { coveredByAny, getPath, pick, setPath, type DeltaEntry } from '../core/paths.js';
@@ -371,6 +371,16 @@ export class Run {
     inForce.sort((a: any, b: any) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
     if (inForce.length) return inForce[inForce.length - 1].value;
     return decl?.default;
+  }
+
+  /**
+   * The bank's business calendar on a date (R-09-88, Issue I-127): the reference table of domain business-calendar the run sees
+   * (the bank's own, else the platform's), as weekend days and holidays; the default calendar (Saturday and Sunday) without one.
+   */
+  businessCalendar(date: string): CalendarDays {
+    const names = new Set<string>([...this.cfg.store.byKind('reference-table').map((e) => e.name), ...Object.values<any>(this.docs).filter((d) => d?.kind === 'reference-table').map((d) => d.name)]);
+    const tables = [...names].map((n) => this.resolveDoc(n)).filter(Boolean);
+    return businessCalendarIn(tables, date) ?? { weekend: [...DEFAULT_CALENDAR.weekend], holidays: [...DEFAULT_CALENDAR.holidays] };
   }
 
   /** Hook bindings in force when an instance starts (R-06-13). */
@@ -1249,6 +1259,8 @@ function makeIO(act: any, frame: Frame, scope: Scope, stepId: string, view: any,
     now: () => run.clock.iso(),
     today: () => run.clock.today(),
     param: (name: string) => run.lookupParam(act.name, name, act.parameters?.[name], run.clock.today()),
+    nowMs: () => run.clock.now,
+    calendar: () => run.businessCalendar(run.clock.today()),
     received: () => {
       const refs = frame.ctx?.messages ?? {};
       const last = refs.lastReceived ?? refs.inbound;

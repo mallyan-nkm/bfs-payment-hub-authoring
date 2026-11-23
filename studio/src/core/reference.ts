@@ -105,3 +105,37 @@ export function rowsAt(table: any, date: string): any[] {
   const eds = [...(table?.editions ?? [])].filter((e: any) => String(e.validFrom) <= date).sort((a: any, b: any) => String(a.validFrom).localeCompare(String(b.validFrom)));
   return eds.length ? eds[eds.length - 1].rows ?? [] : [];
 }
+
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** A business calendar as the engines take it: weekend days (0 = Sunday, in UTC) and holidays (ISO dates). */
+export interface CalendarDays { weekend: number[]; holidays: string[]; table?: string }
+
+/**
+ * The business calendar a reference table of domain `business-calendar` gives on a date (R-09-88, Issue I-127): the edition in
+ * force on that date, its weekday rows as the weekend and its dated rows as holidays. Undefined when no edition is in force.
+ */
+export function businessCalendarOf(table: any, date: string): CalendarDays | undefined {
+  const eds = [...(table?.editions ?? [])].filter((e: any) => String(e.validFrom) <= date);
+  if (!eds.length) return undefined;
+  const weekend: number[] = [];
+  const holidays: string[] = [];
+  for (const r of rowsAt(table, date)) {
+    const day = String(r.day ?? '');
+    const w = WEEKDAYS.indexOf(day);
+    if (w >= 0) weekend.push(w);
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(day)) holidays.push(day);
+  }
+  return { weekend: weekend.sort((a, b) => a - b), holidays: holidays.sort(), table: table.name };
+}
+
+/** The business calendar in force on a date: the bank's own table of domain business-calendar first, else a shared one (R-09-88). */
+export function businessCalendarIn(tables: any[], date: string): CalendarDays | undefined {
+  const cal = tables.filter((t) => t?.kind === 'reference-table' && t.domain === 'business-calendar');
+  cal.sort((a, b) => Number(!String(a.name).startsWith('b.')) - Number(!String(b.name).startsWith('b.')));
+  for (const t of cal) {
+    const c = businessCalendarOf(t, date);
+    if (c) return c;
+  }
+  return undefined;
+}

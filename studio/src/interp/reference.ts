@@ -4,6 +4,8 @@
 // the rule service, the decision table or the simulator's reply.
 
 import type { SessionResult } from '../rules/service.js';
+import { addDuration } from '../core/duration.js';
+import type { CalendarDays } from '../core/reference.js';
 import type { SimResponse, Message } from '../sim/runtime.js';
 
 export interface ActivityIO {
@@ -17,6 +19,9 @@ export interface ActivityIO {
   now(): string;
   today(): string;
   param(name: string): any;
+  /** The clock's now, epoch ms, and the bank's business calendar on today (R-09-88). */
+  nowMs?(): number;
+  calendar?(): CalendarDays;
   sentType(): string | undefined;
   received(): Message | undefined;
 }
@@ -184,11 +189,18 @@ export async function reference(act: any, view: any, io: ActivityIO): Promise<Ac
 export async function holdDecision(act: any, io: ActivityIO): Promise<ActivityResult> {
   const prim = primaryOutcome(act);
   const expiry = io.param('expiry');
-  const ms = expiry ? durationToMs(expiry) : null;
+  // Counted on the bank's business calendar when the hold says so (owner's decision of 23 November 2026, R-09-88, Issue I-127).
+  const cal = io.param('expiryCalendar') === 'business' && io.calendar && io.nowMs ? io.calendar() : undefined;
+  const ms = expiry ? (cal ? holdExpiryAt(io.nowMs!(), expiry, cal) - io.nowMs!() : durationToMs(expiry)) : null;
   const decision = await io.waitFor('p.ops.decision', ms);
   if (!decision) return { outcome: names(act).includes('expired') ? 'expired' : negativeOutcomeOrSecond(act), writes: genericWrites(act, 'expired') };
   const outcome = outcomeForStatus(act, decision.status) ?? prim;
   return { outcome, writes: genericWrites(act, outcome, decision), reply: decision };
+}
+
+/** When a hold opened at `now` expires: its whole days are business days of the calendar, the rest elapsed time (R-09-88). */
+export function holdExpiryAt(now: number, expiry: string, calendar?: CalendarDays): number {
+  return calendar ? addDuration(now, expiry, { weekend: calendar.weekend, holidays: calendar.holidays }) : now + durationToMs(expiry);
 }
 
 function negativeOutcomeOrSecond(act: any): string {

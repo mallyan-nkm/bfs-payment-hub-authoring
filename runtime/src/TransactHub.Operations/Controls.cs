@@ -138,10 +138,18 @@ public sealed class HoldExpiry(StoreOptions store, IEngineSignals signals, TimeP
             var d = JsonNode.Parse(f.DataJson) as JsonObject;
             var hold = (string?)d?["hold"];
             if (hold is null || closed.Contains((f.SubjectId, hold))) continue;
-            if ((string?)d!["expiry"] is not string e) continue;
-            TimeSpan expiry;
-            try { expiry = XmlConvert.ToTimeSpan(e); } catch (FormatException) { continue; }
-            if (f.At + expiry > clock.GetUtcNow()) continue;
+            // The instant the hold recorded when it opened, counted on the bank's business calendar (R-09-88); else its elapsed expiry.
+            if ((string?)d!["expiresAt"] is string ea && DateTimeOffset.TryParse(ea, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var expiresAt))
+            {
+                if (expiresAt > clock.GetUtcNow()) continue;
+            }
+            else
+            {
+                if ((string?)d["expiry"] is not string e) continue;
+                TimeSpan expiry;
+                try { expiry = XmlConvert.ToTimeSpan(e); } catch (FormatException) { continue; }
+                if (f.At + expiry > clock.GetUtcNow()) continue;
+            }
             await Expire(f.SubjectId, f.SubjectKind, hold, "runtime", null, "its expiry passed", ct);
             n++;
         }

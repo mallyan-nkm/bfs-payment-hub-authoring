@@ -35,7 +35,7 @@ export interface AttemptRequest {
 export type AttemptResponse =
   | { kind: 'result'; outcome: string; reasonCode?: string; writes: Record<string, any>; decisions?: Record<string, any>; ruleTrace?: any; latencyMs?: number }
   | { kind: 'hang' } // the attempt never answers; the engine's attempt timeout ends it
-  | { kind: 'held'; expiry?: string } // a hold opened its item; the engine awaits the operator's decision (Issue I-98)
+  | { kind: 'held'; expiry?: string; expiryCalendar?: string; calendar?: { weekend: number[]; holidays: string[]; table?: string } } // a hold opened its item; the engine awaits the operator's decision (Issue I-98)
   | { kind: 'error'; name: string; retryable: boolean; message: string };
 
 export interface Delivery { at: number; message: Pick<Message, 'id' | 'type' | 'status' | 'reasonCode' | 'correlation' | 'conversation' | 'inReplyTo' | 'family' | 'copy'> }
@@ -185,7 +185,10 @@ export class PartyService {
       // in force, and the engine awaits the decision (p.ops.decision) until then (Issue I-98, R-05-56).
       if (act.type === 'hold') {
         const expiry = act.parameters?.expiry ? this.run.lookupParam(act.name, 'expiry', act.parameters.expiry, this.run.clock.today()) : undefined;
-        return { kind: 'held', ...(expiry ? { expiry } : {}) };
+        // Counted on the bank's business calendar (R-09-88, Issue I-127): the engine adds the expiry on the calendar it is given.
+        const expiryCalendar = act.parameters?.expiryCalendar ? this.run.lookupParam(act.name, 'expiryCalendar', act.parameters.expiryCalendar, this.run.clock.today()) : undefined;
+        const calendar = expiryCalendar === 'business' ? this.run.businessCalendar(this.run.clock.today()) : undefined;
+        return { kind: 'held', ...(expiry ? { expiry } : {}), ...(expiryCalendar ? { expiryCalendar } : {}), ...(calendar ? { calendar } : {}) };
       }
       return { kind: 'hang' };
     }

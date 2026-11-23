@@ -352,7 +352,7 @@ public sealed class Harness : IDisposable
         if (kind == "error")
             return new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["at"] = Clock.Now };
         // A hold opened its item: the orchestration awaits the operator's decision (Issue I-98).
-        if (kind == "held") return new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry"), ["at"] = Clock.Now };
+        if (kind == "held") return new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry"), ["expiryCalendar"] = J.S(res, "expiryCalendar"), ["calendar"] = J.Clone(J.P(res, "calendar")), ["at"] = Clock.Now };
         // Writes: references go back to the engine; the payload part is staged in the claim-check store.
         var stateWrites = new JsonObject();
         var stagedWrites = new List<(string, JsonNode?)>();

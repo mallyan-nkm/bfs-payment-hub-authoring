@@ -846,7 +846,10 @@ public sealed partial class FlowableBinding
         if (J.S(res, "kind") == "held")
         {
             // A hold opened its item: the instance awaits the operator's decision until the hold's expiry (Issue I-98, R-05-56).
-            await CompleteJob(job.Id, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = J.S(res, "expiry") ?? "P1D" });
+            // On the bank's business calendar when the hold says so (R-09-88): the timer waits until the expiry so counted.
+            var expiry = J.S(res, "expiry") ?? "P1D";
+            if (J.S(res, "expiryCalendar") == "business") expiry = Duration.Seconds(Duration.Add(now, expiry, BusinessCalendar.Of(J.P(res, "calendar")) ?? BusinessCalendar.Default) - now);
+            await CompleteJob(job.Id, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = expiry });
             return;
         }
         var latency = J.S(dep.Stub(step, activity), "latency") is string l ? Duration.Ms(l) : 0;

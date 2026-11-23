@@ -155,6 +155,53 @@ public static class J
     public static JsonArray Arr(IEnumerable<string> xs) => new(xs.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
 }
 
+/// <summary>
+/// A business calendar (R-09-88): weekend days (0 = Sunday, in UTC) and holidays (ISO dates), as the bank's reference table of
+/// domain business-calendar gives them (the studio's businessCalendarOf, the runtime's lookups). The default is Saturday and Sunday.
+/// </summary>
+public sealed record BusinessCalendar(int[] Weekend, HashSet<string> Holidays)
+{
+    public static readonly BusinessCalendar Default = new([0, 6], []);
+
+    public bool IsBusinessDay(long t)
+    {
+        var d = DateTimeOffset.FromUnixTimeMilliseconds(t).UtcDateTime;
+        return !Weekend.Contains((int)d.DayOfWeek) && !Holidays.Contains(d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>A calendar as a hold's answer carries it: <c>{ weekend: [0, 6], holidays: ["2026-12-02"] }</c>; null when absent.</summary>
+    public static BusinessCalendar? Of(JsonNode? n)
+    {
+        if (n is not JsonObject o) return null;
+        var weekend = (o["weekend"] as JsonArray ?? []).Select(x => x is JsonValue v && v.TryGetValue<int>(out var i) ? i : -1).Where(i => i is >= 0 and <= 6).ToArray();
+        var holidays = (o["holidays"] as JsonArray ?? []).Select(x => x?.GetValue<string>()).Where(s => s is not null).Select(s => s!).ToHashSet(StringComparer.Ordinal);
+        return new BusinessCalendar(weekend, holidays);
+    }
+
+    public JsonObject ToJson() => new()
+    {
+        ["weekend"] = new JsonArray(Weekend.Order().Select(i => (JsonNode?)JsonValue.Create(i)).ToArray()),
+        ["holidays"] = new JsonArray(Holidays.Order(StringComparer.Ordinal).Select(h => (JsonNode?)JsonValue.Create(h)).ToArray()),
+    };
+
+    static readonly string[] Days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+    /// <summary>The calendar of a reference table's rows (<c>day</c>: a weekday name or an ISO date), as the studio reads them.</summary>
+    public static BusinessCalendar FromRows(IEnumerable<JsonNode?> rows)
+    {
+        var weekend = new List<int>();
+        var holidays = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var r in rows)
+        {
+            var day = r?["day"]?.GetValue<string>() ?? "";
+            var w = Array.IndexOf(Days, day);
+            if (w >= 0) weekend.Add(w);
+            else if (Regex.IsMatch(day, @"^\d{4}-\d{2}-\d{2}$")) holidays.Add(day);
+        }
+        return new BusinessCalendar(weekend.Order().ToArray(), holidays);
+    }
+}
+
 /// <summary>ISO 8601 durations and the business calendar, as the studio's duration.ts has them.</summary>
 public static class Duration
 {
@@ -179,23 +226,28 @@ public static class Duration
         return (long)(((((d.Weeks * 7 + d.Days) * 24 + d.Hours) * 60 + d.Minutes) * 60 + d.Seconds) * 1000);
     }
 
-    static readonly int[] Weekend = { 0, 6 };
+    /// <summary>The ISO duration of a span of milliseconds, in seconds (a BPMN timer's duration).</summary>
+    public static string Seconds(long ms) => $"PT{Math.Max(0, ms / 1000).ToString(CultureInfo.InvariantCulture)}S";
 
-    static bool IsBusinessDay(long t) => !Weekend.Contains((int)DateTimeOffset.FromUnixTimeMilliseconds(t).UtcDateTime.DayOfWeek);
+    public static long Add(long t, string s, bool business = false) => Add(t, s, business ? BusinessCalendar.Default : null);
 
-    public static long Add(long t, string s, bool business = false)
+    /// <summary>
+    /// A duration added on a business calendar (R-09-88, Issue I-127): each whole day counts one business day of the calendar and
+    /// lands on one; the time part is elapsed time. Without a calendar, every day counts.
+    /// </summary>
+    public static long Add(long t, string s, BusinessCalendar? calendar)
     {
         var d = Parse(s);
         var outp = t;
         if (d.Years != 0 || d.Months != 0)
             outp = new DateTimeOffset(DateTimeOffset.FromUnixTimeMilliseconds(outp).UtcDateTime.AddYears((int)d.Years).AddMonths((int)d.Months)).ToUnixTimeMilliseconds();
         var days = (long)(d.Weeks * 7 + d.Days);
-        if (business)
+        if (calendar is not null)
         {
             for (long i = 0; i < days; i++)
             {
                 outp += 86400000;
-                while (!IsBusinessDay(outp)) outp += 86400000;
+                while (!calendar.IsBusinessDay(outp)) outp += 86400000;
             }
         }
         else outp += days * 86400000;
