@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The native contract (spec R-09-123): the one assembly between the runtime image and the native activities a distribution
+    carries. Its Version is the contract version. A distribution's manifest names the version its native assemblies were built
+    against, and the runtime takes the major it supports at a minor no later than its own (NativeContract.Supports). A type a
+    module could see that is added here is a new minor; one changed or removed is a new major. Keep NativeContract.Version the same.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+</Project>

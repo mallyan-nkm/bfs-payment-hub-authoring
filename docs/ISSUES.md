@@ -1882,6 +1882,30 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
+## I-220. A native module still reaches into the image beyond the contract
+
+**Issue.** R-09-123 puts one versioned assembly, `TransactHub.Activities.Contract`, between the runtime image and a distribution's native assemblies. The WPS module needs more than that assembly holds: it derives from the platform's `CoreBankingActivity`, builds `BoundAdapters` over `PortBindings`, gives the platform's party register a `PartyMatcher`, and reads the source's rules over `TransactHub.Model` and `TransactHub.Store` types. Those assemblies stay in the image and are shared with the module by name. A change to one of their public types that the module uses breaks a distribution that the contract version says is supported.
+
+**Recommendation.** Until the module needs the contract only, treat a change to a public type of `TransactHub.Activities.Platform`, `TransactHub.Ports`, `TransactHub.Model`, `TransactHub.Store` or `TransactHub.Security` that a module uses as a new major of the native contract. Then narrow the surface: move what a scheme module needs (the posting base, the bound adapters, the party match) behind interfaces of the contract assembly, so that a module references the contract and nothing else.
+
+## I-221. The platform's native activities stay in the runtime image
+
+**Issue.** By the owner's direction of 23 November 2026, a distribution carries the scheme and bank native activities, and the platform's own (`p.post.accounting.v2`, `p.enrich.fx-rate.v1`, `p.enrich.charges.v1`, `p.enrich.party-register.v1`, the file protection and the platform's production adapters) stay in the runtime image as runtime software (R-09-120). A fix to one of them is therefore a runtime software upgrade, not a platform release and a new distribution, and two distributions side by side share one build of them. Section 8 of `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` says scenario 5 (a platform release) changes the code that runs; for these activities it does not.
+
+**Recommendation.** Decide whether the platform pack's native activities become a module of their own, carried like a scheme's, with only the ports, the store and the adapters left in the image. Until then the packaging document says that a platform native activity changes with the runtime image.
+
+## I-222. Only the worker says which distribution an attempt is for
+
+**Issue.** The native host serves an attempt from the distribution the attempt names (R-09-122). The worker names it from `TH_DISTRIBUTION`, which the deploy runner sets for the workers it starts for a pinned payment. An engine's attempt request (Temporal's `Host.Attempt`, the DTFx and Elsa harnesses, the Flowable binding) does not carry the distribution, so a worker started without `TH_DISTRIBUTION` sends none, and the host then serves the attempt from its development modules, or refuses it. The long-running engine host takes its workers from the installation (`TH_WORKER_URL`), and does not say which distribution each serves.
+
+**Recommendation.** Put the distribution in every attempt request the engines send, from the payment's pin, and have the worker forward it to the native host before its own `TH_DISTRIBUTION`. Until then an installation runs one worker set per distribution, each with its `TH_DISTRIBUTION`, as the deploy runner does.
+
+## I-223. A module built ahead of time is trusted as the studio is
+
+**Issue.** The studio builds a distribution's native assemblies from the code-behind project at publish (`TH_NATIVE_MODULES=build`, R-09-120). A studio with no .NET SDK, such as the laptop image, takes the same build made ahead of time (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh` in the image's build stage). That folder is checked against its own SHA-256, but nothing signs it: it is trusted as the studio's own files are. The distribution's signature then covers whatever the folder held.
+
+**Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
+
 ## Not done, and why
 
 | Story | Why |

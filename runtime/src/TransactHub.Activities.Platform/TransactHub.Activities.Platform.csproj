@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TransactHub.Ports\TransactHub.Ports.csproj" />
     <ProjectReference Include="..\TransactHub.Model\TransactHub.Model.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Contract\TransactHub.Activities.Contract.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
