@@ -28,16 +28,23 @@ using TransactHub.Ports;
 // the attempt names. Configure Auth:Oidc:Issuer, Auth:Oidc:Audience, Auth:Oidc:SigningKeys or discovery, and Auth:RoleMap,
 // as for every runtime host. Without them the host answers only on loopback addresses (one machine: a developer's, a
 // harness); a host that listens beyond the machine with no authentication does not start. A worker sends its token by
-// reference, TH_NATIVE_TOKEN (env:, file:, vault:, akv:, aws-sm:, aws-ssm:).
+// reference, TH_NATIVE_TOKEN (env:, file:, vault:, akv:, aws-sm:, aws-ssm:), or gets its own by client credentials
+// (TH_NATIVE_TOKEN_URL). With Tls:CertificateRef, Tls:KeyRef and Tls:ClientCaRef the host takes a client certificate signed
+// by the bank's CA in place of a token, with the same role per tenant (R-08-21).
 
 var builder = WebApplication.CreateBuilder(args);
 var urls = builder.Configuration["TH_NATIVE_URLS"] ?? "http://127.0.0.1:7300";
 builder.WebHost.UseUrls(urls);
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 const string NativeCaller = "native-caller";
-var authenticated = !string.IsNullOrEmpty(builder.Configuration["Auth:Oidc:Issuer"]);
+// Mutual TLS, as an option (R-08-21, Issue I-121): Tls:CertificateRef and Tls:KeyRef serve https; Tls:ClientCaRef takes only
+// callers with a client certificate that CA signed, and the role map gives them native-caller per tenant as it does a token.
+var hostSecrets = SecretResolver.FromEnvironment(k => builder.Configuration[k]);
+var tls = await RuntimeTls.FromConfiguration(builder.Configuration, hostSecrets);
+if (tls is not null) builder.WebHost.ConfigureKestrel(k => tls.Apply(k));
+var authenticated = !string.IsNullOrEmpty(builder.Configuration["Auth:Oidc:Issuer"]) || tls?.ClientCa is not null;
 if (authenticated)
-    await builder.Services.AddRuntimeAuth(builder.Configuration, SecretResolver.FromEnvironment(k => builder.Configuration[k]), [NativeCaller]);
+    await builder.Services.AddRuntimeAuth(builder.Configuration, hostSecrets, [NativeCaller], tls);
 else if (!LoopbackOnly(urls))
     throw new InvalidOperationException($"The native host listens beyond this machine ({urls}) and has no authentication: set Auth:Oidc:Issuer, Auth:Oidc:Audience and Auth:RoleMap granting the {NativeCaller} role to the workers' client credentials (spec R-08-17)");
 var app = builder.Build();

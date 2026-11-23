@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { compareReleases, parseName, parseRelease, isShared } from './names.js';
 import type { Change, ContentStore, WriteResult } from '../content/content-store.js';
 import {
-  BANK_STUDIO_FOLDERS, SETTINGS_PATH, USERS_PATH, changeSetAuditPath, changeSetPath, documentPath, draftBranch, eventAuditPath, isYaml, scriptPath,
+  BANK_STUDIO_FOLDERS, SETTINGS_PATH, USERS_PATH, changeSetAuditPath, changeSetPath, documentPath, draftBranch, eventAuditPath, isYaml, samplePath, scriptPath,
 } from '../content/layout.js';
 
 // The artefact store (C01; R-11-08, R-11-21 to R-11-25). Every artefact and every piece of studio state
@@ -138,7 +138,13 @@ const GENESIS = 'sha256:' + '0'.repeat(64);
 const hashOf = (body: any) => 'sha256:' + createHash('sha256').update(canonicalJson(body), 'utf8').digest('hex');
 const streamOf = (e: AuditEvent) => e.changeSet ?? '';
 
-export interface ScriptSource { name: string; language: 'typescript' | 'python'; source: string; file: string; changeSet?: string }
+export interface ScriptSource { name: string; language: 'typescript' | 'python'; source: string; file: string; changeSet?: string; tenant?: string }
+
+/** A synthetic sample on a change set's branch, not yet published: an assistant's, for the checker to see (R-11-49). */
+export interface DraftSample { tenant: string; name: string; content: string; changeSet: string; path: string }
+
+/** Where a tenant's own script, sample or entry is held in memory: a bank's under its tenant, so two banks may use one name. */
+export const ownKey = (tenant: string | undefined, name: string) => (tenant && tenant !== OWNER_TENANT ? `${tenant}/${name}` : name);
 
 export class Store {
   entries = new Map<string, Entry>(); // key -> entry
@@ -156,8 +162,10 @@ export class Store {
   readonly factorySamples = new Set<string>();
   /** Script-behinds on the branch (published) and on change set branches (drafts), by activity name. */
   readonly scriptSources = new Map<string, ScriptSource>();
-  /** Synthetic samples on the branch: those a designer added, and a loaded bank's own. */
+  /** Synthetic samples on the branch: those a designer added, and a loaded bank's own (a bank's keyed `<tenant>/<name>`). */
   readonly sampleFiles = new Map<string, string>();
+  /** Samples on change set branches, waiting for their change set's approval (R-11-49), keyed as `sampleFiles`. */
+  readonly draftSamples = new Map<string, DraftSample>();
   readonly specRoot: string;
   /** Where the store reads and writes. Absent for a deployed worker's store and an import's shadow: those write nothing. */
   content?: ContentStore;
@@ -200,6 +208,7 @@ export class Store {
     for (const k of this.factorySamples) s.factorySamples.add(k);
     for (const [k, v] of this.scriptSources) s.scriptSources.set(k, v);
     for (const [k, v] of this.sampleFiles) s.sampleFiles.set(k, v);
+    for (const [k, v] of this.draftSamples) s.draftSamples.set(k, v);
     return s;
   }
 
@@ -221,6 +230,7 @@ export class Store {
     this.settings = { ...DEFAULT_SETTINGS };
     this.scriptSources.clear();
     this.sampleFiles.clear();
+    this.draftSamples.clear();
     this.factorySamples.clear();
     this.bankPacks.clear();
     this.loadDir(path.join(this.specRoot, 'conformance'));
@@ -255,11 +265,12 @@ export class Store {
       else if (p.startsWith('supersessions/') && parts.length === 2 && isYaml(p)) this.loadFile(p, text, undefined);
       else if (parts[0] === 'banks' && parts.length > 2) {
         const tenant = parts[1];
-        if (BANK_STUDIO_FOLDERS.includes(parts[2])) {
+        if (parts[2] === 'samples' && parts.length === 4) this.sampleFiles.set(ownKey(tenant, parts[3]), text);
+        else if (BANK_STUDIO_FOLDERS.includes(parts[2])) {
           if (parts[2] === 'scripts') this.addScript(p, text);
           else if (isYaml(p)) this.loadFile(p, text, tenant);
         } else if (wantBank.has(tenant) && c.files.has(`banks/${tenant}/pack.yaml`)) {
-          if (parts[2] === 'tests' && parts[3] === 'samples' && parts.length === 5) this.sampleFiles.set(parts[4], text);
+          if (parts[2] === 'tests' && parts[3] === 'samples' && parts.length === 5) this.sampleFiles.set(ownKey(tenant, parts[4]), text);
         }
       } else if (/^change-sets\/[^/]+\.yaml$/.test(p)) {
         const cs = parseYamlAll(text)[0];
@@ -298,6 +309,12 @@ export class Store {
             if (awaiting) e.awaitingMerge = awaiting;
           }
         } else if (parts.at(-2) === 'scripts') this.addScript(p, text, d.id);
+        else if ((parts[0] === 'samples' && parts.length === 2) || (parts[0] === 'banks' && parts[2] === 'samples' && parts.length === 4)) {
+          // A sample saved into this change set, published with it (R-11-49).
+          const tenant = parts[0] === 'banks' ? parts[1] : OWNER_TENANT;
+          const name = parts[parts.length - 1];
+          if (!this.content?.files.has(p)) this.draftSamples.set(ownKey(tenant, name), { tenant, name, content: text, changeSet: d.id, path: p });
+        }
         else if (p === USERS_PATH && !c.published(d.id)) {
           const maker = (parseYamlAll(d.files.get(changeSetAuditPath(d.id)) ?? '')[0]?.events ?? []).find((a: any) => a.action === 'propose-users')?.actor;
           (this.extra.userProposals ??= []).push({ id: d.id, maker, users: parseYamlAll(text)[0]?.users });
@@ -341,7 +358,9 @@ export class Store {
     if (!m) return;
     // A factory script the seed published carries a first line naming its source; the script is the rest.
     const source = SEED_SOURCE_HEADER.test(text) ? text.slice(text.indexOf('\n') + 1) : text;
-    this.scriptSources.set(m[1], { name: m[1], language: m[2] === 'py' ? 'python' : 'typescript', source, file: `content:${p}`, changeSet });
+    // A bank's script is the bank's: another bank's activity of the same name never runs it (R-11-48).
+    const tenant = p.startsWith('banks/') ? p.split('/')[1] : undefined;
+    this.scriptSources.set(ownKey(tenant, m[1]), { name: m[1], language: m[2] === 'py' ? 'python' : 'typescript', source, file: `content:${p}`, changeSet, tenant });
   }
 
   /** A sample on the branch. One the seed published from the studio's fixtures is factory content (R-11-25). */
@@ -378,7 +397,7 @@ export class Store {
     if (pack?.kind !== 'pack' || pack.packType !== 'bank' || pack.scope !== 'b' || typeof pack.tenant !== 'string' || !pack.tenant || pack.tenant === OWNER_TENANT) {
       throw new StoreError('bank-pack', `${c.conn.root}/${packFile} is not a bank pack: it needs kind pack, packType bank, scope b and a tenant`);
     }
-    for (const [p, t] of [...c.files].filter(([p]) => p.startsWith(dir) && isYaml(p) && !BANK_STUDIO_FOLDERS.includes(p.split('/')[2])).sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [p, t] of [...c.files].filter(([p]) => p.startsWith(dir) && isYaml(p) && !BANK_STUDIO_FOLDERS.includes(p.split('/')[2]) && p.split('/')[2] !== 'samples').sort(([a], [b]) => a.localeCompare(b))) {
       const seed = SEED_HEADER.exec(t);
       const body = seed ? t.slice(t.indexOf('\n') + 1) : t;
       for (const doc of parseYamlAll(body)) {
@@ -586,7 +605,7 @@ export class Store {
     const draft = this.drafts(tenant).find((d) => d.name === activity && d.kind === 'activity');
     const cs = draft?.changeSet;
     const p = scriptPath(tenant, activity, language);
-    this.scriptSources.set(activity, { name: activity, language, source, file: `content:${p}`, changeSet: cs });
+    this.scriptSources.set(ownKey(tenant, activity), { name: activity, language, source, file: `content:${p}`, changeSet: cs, tenant: tenant === OWNER_TENANT ? undefined : tenant });
     this.transaction(() => {
       if (cs) this.write(draftBranch(cs), `Script ${activity} (${cs})`, [{ path: p, text: source, guard: 'free' }]);
       this.record({ tenant, actor, action: 'save-script', key: activity, detail: p.split('/').pop(), changeSet: cs });
@@ -594,15 +613,43 @@ export class Store {
     return p;
   }
 
-  /** A synthetic sample for tests: one file on the content branch, never rewritten. */
+  /** A synthetic sample for tests: one file on the content branch, never rewritten; a bank's in its own folder (R-11-48). */
   saveSampleFile(tenant: string, actor: string, name: string, content: string) {
-    const prior = this.sampleFiles.get(name);
-    if (prior !== undefined && prior !== content) throw new StoreError('R-11-23', `samples/${name} is on the branch with other content; a published file is never rewritten. Choose another name.`);
-    this.sampleFiles.set(name, content);
+    const key = ownKey(tenant, name);
+    const p = samplePath(name, tenant);
+    const prior = this.sampleFiles.get(key);
+    if (prior !== undefined && prior !== content) throw new StoreError('R-11-23', `${p} is on the branch with other content; a published file is never rewritten. Choose another name.`);
+    this.sampleFiles.set(key, content);
     this.transaction(() => {
-      this.write(this.contentBranch, `Sample ${name}\n\nAdded by ${actor} (${tenant}).`, [{ path: `samples/${name}`, text: content, guard: 'create' }]);
-      this.record({ tenant, actor, action: 'save-sample', key: `samples/${name}` });
+      this.write(this.contentBranch, `Sample ${name}\n\nAdded by ${actor} (${tenant}).`, [{ path: p, text: content, guard: 'create' }]);
+      this.record({ tenant, actor, action: 'save-sample', key: p });
     });
+  }
+
+  /**
+   * A sample saved into a change set (R-11-49): the assistant's. It is a file on the change set's branch, the tenant's open
+   * change set, and reaches the content branch only when a checker approves that change set. Without an open change set it is
+   * refused: the sample goes with the draft that uses it.
+   */
+  saveSampleDraft(tenant: string, actor: string, name: string, content: string): DraftSample {
+    const key = ownKey(tenant, name);
+    const p = samplePath(name, tenant);
+    if (this.sampleFiles.has(key)) throw new StoreError('R-11-23', `${p} is on the branch already; a published file is never rewritten. Choose another name.`);
+    const open = this.drafts(tenant).filter((d) => d.changeSet && !d.awaitingMerge).map((d) => d.changeSet!).sort();
+    const cs = this.draftSamples.get(key)?.changeSet ?? open[0];
+    if (!cs) throw new StoreError('R-11-49', 'A sample the assistant writes goes into a change set with the draft that uses it, for the checker to see: save that draft first');
+    const d: DraftSample = { tenant, name, content, changeSet: cs, path: p };
+    this.draftSamples.set(key, d);
+    this.transaction(() => {
+      this.write(draftBranch(cs), `Sample ${name} (${cs})\n\nSaved by ${actor} through the assistant.`, [{ path: p, text: content, guard: 'free' }]);
+      this.record({ tenant, actor, action: 'save-sample', key: p, changeSet: cs, detail: 'in the change set, for its checker' });
+    });
+    return d;
+  }
+
+  /** The samples waiting on a change set's branches (R-11-49). */
+  draftSamplesOf(changeSets: string[]): DraftSample[] {
+    return [...this.draftSamples.values()].filter((d) => changeSets.includes(d.changeSet)).sort((a, b) => a.path.localeCompare(b.path));
   }
 
   /** Publish one draft through maker-checker (R-06-04): a change set of one. */
@@ -663,7 +710,7 @@ export class Store {
     const members = opts.filesOnly ? [] : changeSet.members.map((m: any) => this.entries.get(m.key)).filter(Boolean) as Entry[];
     for (const e of members) {
       add(e.path.startsWith('artefacts/') || e.path.startsWith('banks/') ? e.path : documentPath(e.doc, e.tenant), toYaml(e.doc));
-      const sc = this.scriptSources.get(e.name);
+      const sc = this.scriptSources.get(ownKey(e.tenant, e.name));
       if (sc && sc.changeSet && branches.includes(sc.changeSet)) {
         add(sc.file.replace(/^content:/, ''), sc.source);
         if (!opts.pullRequest) sc.changeSet = undefined;
@@ -672,6 +719,16 @@ export class Store {
     for (const [p, t] of Object.entries(extraFiles)) {
       if (typeof t === 'string') add(p, t);
       else changes.push({ ...t, path: p });
+    }
+    // The samples saved into the change set publish with it, and its record names them for the checker (R-11-49).
+    const samples = opts.filesOnly ? [] : this.draftSamplesOf(branches).filter((d) => d.tenant === (changeSet.tenant ?? d.tenant));
+    for (const d of samples) add(d.path, d.content);
+    if (samples.length) changeSet.samples = samples.map((d) => d.path);
+    if (!opts.pullRequest) {
+      for (const d of samples) {
+        this.draftSamples.delete(ownKey(d.tenant, d.name));
+        this.sampleFiles.set(ownKey(d.tenant, d.name), d.content);
+      }
     }
     const record = toYaml({ kind: 'change-set', ...changeSet });
     add(changeSetPath(changeSet.id), record);
@@ -927,4 +984,93 @@ function leafDiff(a: any, b: any, prefix = '', out: Record<string, { before: any
     else out[p] = { before: x, after: y };
   }
   return out;
+}
+
+// ------------------------------------------------------------------ one tenant's view (R-11-48, Issue I-120)
+
+/** A map that shows only the entries `keep` allows; writes go to the map it views. */
+class ViewMap<K, V> {
+  constructor(private readonly inner: Map<K, V>, private readonly keep: (k: K, v: V) => boolean) {}
+  get(k: K): V | undefined {
+    const v = this.inner.get(k);
+    return v !== undefined && this.keep(k, v) ? v : undefined;
+  }
+  has(k: K): boolean {
+    return this.get(k) !== undefined;
+  }
+  set(k: K, v: V): this {
+    this.inner.set(k, v);
+    return this;
+  }
+  delete(k: K): boolean {
+    return this.has(k) ? this.inner.delete(k) : false;
+  }
+  clear(): void {
+    for (const k of [...this.keys()]) this.inner.delete(k);
+  }
+  *entries(): IterableIterator<[K, V]> {
+    for (const [k, v] of this.inner) if (this.keep(k, v)) yield [k, v];
+  }
+  *keys(): IterableIterator<K> {
+    for (const [k] of this.entries()) yield k;
+  }
+  *values(): IterableIterator<V> {
+    for (const [, v] of this.entries()) yield v;
+  }
+  forEach(f: (v: V, k: K, m: any) => void): void {
+    for (const [k, v] of this.entries()) f(v, k, this);
+  }
+  get size(): number {
+    let n = 0;
+    for (const _ of this.entries()) n++;
+    return n;
+  }
+  [Symbol.iterator]() {
+    return this.entries();
+  }
+}
+
+const views = new WeakMap<Store, Map<string, Store>>();
+
+/** The tenant a store view is for, or undefined for the whole store. */
+export const viewTenant = (store: Store): string | undefined => (store as any).__viewOf;
+
+/**
+ * The store as one tenant reads it (R-11-48, Issue I-120): shared content and the tenant's own, never another bank's. Every
+ * query of the store (the entries, the releases, the latest, the kinds, the drafts, the scripts and the samples) answers from
+ * the view, so a listing, a read, a test run, an export or an assistant's tool that is given it cannot name another bank's
+ * artefact. Writes go through to the store. The audit and the studio's state files are the store's; the routes that serve
+ * them filter by tenant.
+ */
+export function tenantView(store: Store, tenant: string): Store {
+  const of = (store as any).__viewOf;
+  if (of !== undefined) {
+    if (of === tenant) return store;
+    store = (store as any).__store;
+  }
+  let byTenant = views.get(store);
+  if (!byTenant) views.set(store, (byTenant = new Map()));
+  const known = byTenant.get(tenant);
+  if (known) return known;
+  const mine = (t: string | undefined) => !t || t === OWNER_TENANT || t === tenant;
+  const entries = new ViewMap(store.entries, (_k, e) => mine(e.tenant));
+  const scripts = new ViewMap(store.scriptSources, (_k, sc) => mine(sc.tenant));
+  const samples = new ViewMap(store.sampleFiles, (k) => !k.includes('/') || k.startsWith(`${tenant}/`));
+  const draftSamples = new ViewMap(store.draftSamples, (_k, d) => mine(d.tenant));
+  const view = new Proxy(store, {
+    get(target, prop, receiver) {
+      if (prop === 'entries') return entries;
+      if (prop === 'scriptSources') return scripts;
+      if (prop === 'sampleFiles') return samples;
+      if (prop === 'draftSamples') return draftSamples;
+      if (prop === '__viewOf') return tenant;
+      if (prop === '__store') return target;
+      return Reflect.get(target, prop, receiver);
+    },
+    set(target, prop, value) {
+      return Reflect.set(target, prop, value);
+    },
+  });
+  byTenant.set(tenant, view);
+  return view;
 }

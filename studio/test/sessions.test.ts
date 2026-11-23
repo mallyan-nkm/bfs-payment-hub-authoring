@@ -160,3 +160,93 @@ describe('the command line signs in by device authorization (R-11-46)', () => {
     expect((await fetch(`${a}/api/me`, { headers: { authorization: `Bearer ${token.slice(0, -2)}xx` } })).status).toBe(401);
   });
 });
+
+// R-11-50, Issue I-139 (owner's decision of 23 November 2026): sessions stay sealed and stateless, are short, and are checked
+// with the identity provider every few minutes. A session the provider ended stops at its next heartbeat on every instance.
+describe('the session heartbeat with the identity provider (R-11-50)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'th-cli-heartbeat-'));
+  afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const BEAT = { TH_SESSION_HEARTBEAT_MINUTES: '0.01' }; // 0.6 s, so a test can wait for it
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const cookieOf = (r: Response, prior: string) => r.headers.getSetCookie().map((c) => c.split(';')[0]).filter((c) => c.startsWith('th_session=')).pop() ?? prior;
+  const endAtProvider = (url: string, sub: string) => fetch(`${url}/auth/dev/end-session`, { method: 'POST', body: new URLSearchParams({ sub }) });
+
+  it('has the decided defaults: 8 hours, 30 minutes idle, a heartbeat every 5 minutes, 1 hour for the command line', () => {
+    const cfg = authConfigFromEnv({ TH_AUTH_DEV: '1', NODE_ENV: 'test' } as any, 1);
+    expect(cfg).toMatchObject({ sessionHours: 8, idleMinutes: 30, heartbeatMinutes: 5, cliHours: 1 });
+    const prod = { TH_OIDC_ISSUER: 'https://id.example.invalid', TH_OIDC_CLIENT_ID: 'studio', NODE_ENV: 'production', TH_SESSION_KEY_REF: 'env:K', K: 'k'.repeat(32) };
+    expect(() => authConfigFromEnv({ ...prod, TH_SESSION_HEARTBEAT_MINUTES: '0' } as any)).toThrow(/heartbeat/i);
+    expect(authConfigFromEnv(prod as any).heartbeatMinutes).toBe(5);
+  });
+
+  it('renews a session at its heartbeat, and ends it on every instance once the provider ended it', async () => {
+    const [a, b] = await instances(2, BEAT);
+    let { cookie } = await signIn(a, a, 'example.maker');
+    expect((await fetch(`${b}/api/me`, { headers: { cookie: cookie! } })).status).toBe(200);
+    await wait(700);
+    // Due: the instance asks the provider, which renews the session; the cookie comes back with the new check.
+    const renewed = await fetch(`${a}/api/me`, { headers: { cookie: cookie! } });
+    expect(renewed.status).toBe(200);
+    const next = cookieOf(renewed, cookie!);
+    expect(next).not.toBe(cookie);
+    cookie = next;
+    expect((await fetch(`${b}/api/me`, { headers: { cookie: cookie! } })).status).toBe(200);
+    // The provider ends the user's session (signed out everywhere, or disabled). Before the next heartbeat it still holds.
+    expect((await endAtProvider(a, 'example.maker')).status).toBe(200);
+    expect((await fetch(`${b}/api/me`, { headers: { cookie: cookie! } })).status).toBe(200);
+    await wait(700);
+    // At the heartbeat each instance asks for itself, and stops it.
+    const onB = await fetch(`${b}/api/me`, { headers: { cookie: cookie! } });
+    expect(onB.status).toBe(401);
+    expect(onB.headers.getSetCookie().join(';')).toMatch(/th_session=;.*Max-Age=0/);
+    expect((await fetch(`${a}/api/me`, { headers: { cookie: cookie! } })).status).toBe(401);
+  });
+
+  it('a command line\'s token is renewed at its heartbeat and stops once the provider ended its session', async () => {
+    const [a] = await instances(1, BEAT);
+    const env = { TH_STUDIO_TOKEN_FILE: path.join(tmp, 'maker.json') } as any;
+    const t = await login(a, {
+      env, timeoutMs: 20_000,
+      say: (line) => {
+        const m = /open (\S+) and enter the code (\S+)/.exec(line);
+        if (m) void fetch(m[1], { method: 'POST', body: new URLSearchParams({ user_code: m[2], user: 'example.maker' }) });
+      },
+    });
+    expect(Date.parse(t.expiresAt) - Date.now()).toBeLessThanOrEqual(3600_000 + 5000);
+    const first = tokenFor(a, env);
+    await wait(700);
+    expect((await api(a, 'GET', '/api/me', undefined, env)).user).toBe('example.maker');
+    // The renewed token, with the provider's new refresh token, is the one kept.
+    expect(tokenFor(a, env)).not.toBe(first);
+    await endAtProvider(a, 'example.maker');
+    await wait(700);
+    await expect(api(a, 'GET', '/api/me', undefined, env)).rejects.toThrow(/^401/);
+  });
+
+  it('a provider that cannot be reached gives one more interval, never more; a session with no refresh token ends at its first heartbeat', async () => {
+    const cfg = authConfigFromEnv({ TH_AUTH_DEV: '1', NODE_ENV: 'test', ...KEY, ...BEAT } as any, 1);
+    const sessions = new Sessions(cfg);
+    const down = { refresh: async () => { throw new Error('unreachable'); } };
+    const s = sessions.create('example.maker', 'example.maker', undefined, 'rt-synthetic');
+    s.checkedAt = Date.now() - 700;
+    expect(await sessions.heartbeat(s, down)).toBe('deferred');
+    s.checkedAt = Date.now() - 1300;
+    expect(await sessions.heartbeat(s, down)).toBe('ended');
+    const none = sessions.create('example.maker', 'example.maker');
+    none.checkedAt = Date.now() - 700;
+    expect(await sessions.heartbeat(none, { refresh: async () => ({}) })).toBe('ended');
+    // One heartbeat at a time for one session on an instance: two requests at once ask the provider once.
+    let asked = 0;
+    const slow = { refresh: async () => { asked++; await wait(50); return { refreshToken: 'rt-next' }; } };
+    const t = sessions.create('example.maker', 'example.maker', undefined, 'rt-first');
+    t.checkedAt = Date.now() - 700;
+    const u = { ...t };
+    expect(await Promise.all([sessions.heartbeat(t, slow), sessions.heartbeat(u, slow)])).toEqual(['renewed', 'renewed']);
+    expect(asked).toBe(1);
+    expect(u.refreshToken).toBe('rt-next');
+    // The page's own heartbeat is not use: its cookie keeps the time the session was last used, so the idle time runs on.
+    const idle = { ...u, lastSeen: Date.now() - 31 * 60_000 };
+    expect(sessions.fromCookieHeader(sessions.sessionCookie(idle, true).split(';')[0])).toBeUndefined();
+    expect(sessions.fromCookieHeader(sessions.sessionCookie(idle).split(';')[0])?.user).toBe('example.maker');
+  });
+});

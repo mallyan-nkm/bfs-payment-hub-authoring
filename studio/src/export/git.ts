@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { toYaml } from '../core/yaml.js';
 import { OWNER_TENANT, StoreError, type Settings } from '../core/store.js';
-import { SETTINGS_PATH, scopeOfName } from '../content/layout.js';
+import { SETTINGS_PATH, draftBranch, scopeOfName } from '../content/layout.js';
+import { scopeOf } from '../core/scope.js';
+import type { WriteResult } from '../content/content-store.js';
 import { TOKEN_ENV } from '../content/github.js';
 import type { StudioEnv } from '../env.js';
 import { Forbidden, permit } from '../governance/governance.js';
@@ -30,17 +32,26 @@ export function mayChangeSettings(env: StudioEnv, actor: string): string | undef
 export function gitStatus(env: StudioEnv) {
   const c = env.store.content;
   const host = c ? new URL(c.conn.api).host : undefined;
+  // A bank's user sees what was written for its own change sets only (R-11-48): another bank's commit names its files.
+  const tenant = scopeOf(env);
+  const own = new Set<string>();
+  if (tenant) {
+    for (const e of env.store.all()) if (e.tenant === tenant && e.changeSet) own.add(draftBranch(e.changeSet));
+    for (const cs of env.store.extra.changeSets ?? []) if (cs?.tenant === tenant) own.add(draftBranch(cs.id));
+  }
+  const mineFile = (f: string) => !tenant || f.startsWith(`banks/${tenant}/`);
+  const mine = (w: WriteResult) => !tenant || own.has(w.branch) || (w.files.length > 0 && w.files.every(mineFile));
   return {
     connection: c ? { repository: c.repository, branch: c.conn.branch, root: c.conn.root, api: host, head: c.head } : null,
     tokenPresent: !!process.env[TOKEN_ENV],
     settings: env.store.settings,
     drafts: c ? [...c.drafts.values()].filter((d) => env.store.all().some((e) => e.changeSet === d.id && (e.status === 'draft' || e.status === 'in-review'))).map((d) => ({ id: d.id, branch: d.branch, members: env.store.all().filter((e) => e.changeSet === d.id && (e.status === 'draft' || e.status === 'in-review')).map((e) => e.key), awaitingMerge: env.store.all().some((e) => e.changeSet === d.id && e.awaitingMerge) })) : [],
-    pending: env.store.extra.pendingChangeSets ?? [],
-    writes: (c?.writes ?? []).slice(-20).reverse(),
+    pending: (env.store.extra.pendingChangeSets ?? []).filter((p: any) => !tenant || p.tenant === tenant),
+    writes: (c?.writes ?? []).filter(mine).slice(-20).reverse(),
     /** Change set branches deleted once the content branch took them in (R-11-26). */
-    deletedBranches: (c?.deletedBranches ?? []).slice(-20).reverse(),
+    deletedBranches: (c?.deletedBranches ?? []).filter((b) => !tenant || own.has(b)).slice(-20).reverse(),
     /** Change set branches kept because someone else moved them since the studio saw them (Issue I-61). */
-    keptBranches: (c?.keptBranches ?? []).slice(-20).reverse(),
+    keptBranches: (c?.keptBranches ?? []).filter((k) => !tenant || own.has(k.branch)).slice(-20).reverse(),
   };
 }
 

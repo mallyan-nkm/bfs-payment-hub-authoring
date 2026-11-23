@@ -188,6 +188,10 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     for (const i of issues) console.log(`${i.severity.toUpperCase().padEnd(5)} ${i.code}  ${i.key}${i.step ? ' step ' + i.step : ''}: ${i.message}`);
     const errors = issues.filter((i) => i.severity === 'error').length;
     console.log(`${errors} error(s), ${issues.length - errors} warning(s)`);
+    // Where script-behinds run on this machine (R-08-20, Issue I-147): which layers of the worker's isolation hold here.
+    const { isolation } = await import('./interp/isolation.js');
+    const iso = isolation();
+    console.log(`Script-behinds: a worker process each, empty environment; files: ${iso.files}; network: ${iso.network}; memory ${iso.memoryMb} MB`);
     process.exitCode = errors ? 1 : 0;
     return;
   }

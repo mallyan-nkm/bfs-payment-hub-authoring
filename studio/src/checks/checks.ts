@@ -15,6 +15,7 @@ import { flowablePortable } from '../export/bpmn.js';
 import { literalSecretsInText } from '../secrets/scan.js';
 import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
+import { scopeOf as viewOf } from '../core/scope.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
 // one document as it is edited and on the whole store, and names the step each issue concerns.
@@ -1060,7 +1061,9 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
   const files = env.store.content?.files;
   if (!files) return out;
   const isPort = (n: string) => env.store.all().some((e) => e.kind === 'port' && e.name === n && e.status !== 'draft');
-  for (const folder of [...new Set(env.store.bankPacks.values())].sort()) {
+  // A bank's view checks its own folder only (R-11-48).
+  const tenant = viewOf(env);
+  for (const folder of [...new Set([...env.store.bankPacks].filter(([t]) => !tenant || t === tenant).map(([, f]) => f))].sort()) {
     for (const [p, text] of [...files].filter(([p]) => p.startsWith(`banks/${folder}/`) && p.split('/').length === 3 && /\.ya?ml$/.test(p)).sort(([a], [b]) => a.localeCompare(b))) {
       let docs: any[] = [];
       try {
@@ -1081,8 +1084,12 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
 export function literalSecretIssues(env: StudioEnv): Issue[] {
   const out: Issue[] = [];
   const files = env.store.content?.files;
+  // A bank's view reads the shared files and its own folder, never another bank's (R-11-48).
+  const tenant = viewOf(env);
+  const own = tenant ? `banks/${env.store.bankPacks.get(tenant) ?? tenant}/` : '';
+  const mine = (p: string) => !tenant || !p.startsWith('banks/') || p.startsWith(own);
   if (files) {
-    for (const [p, text] of [...files].sort(([a], [b]) => a.localeCompare(b)))
+    for (const [p, text] of [...files].filter(([p]) => mine(p)).sort(([a], [b]) => a.localeCompare(b)))
       for (const s of literalSecretsInText(text, p)) out.push({ code: 'L37', severity: 'error', key: p, step: s.at || undefined, message: `${p}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: p });
   } else {
     for (const e of env.store.all())

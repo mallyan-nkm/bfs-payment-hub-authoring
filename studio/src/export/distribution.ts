@@ -11,6 +11,7 @@ import { signFiles, type ReleaseClaims } from './signing.js';
 import { resolveReferenceValues } from '../core/reference.js';
 import { compareReleases } from '../core/names.js';
 import type { StudioEnv } from '../env.js';
+import { scopedEnv } from '../core/scope.js';
 
 // A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-48 to R-09-52,
 // R-11-37 to R-11-40). A distribution is the complete, signed copy of everything one bank runs on one engine: the platform
@@ -190,6 +191,8 @@ export interface BuiltBundle {
  */
 export function buildDistribution(env: StudioEnv, req: { bank: string; engine: Target; id?: string; changeSets?: string[]; date?: string; withSimulators?: boolean }): BuiltBundle {
   const { bank, engine } = req;
+  // A bank's distribution holds shared content and that bank's own only (R-11-48).
+  env = scopedEnv(env, bank);
   const schemes = licensedSchemes(env, bank);
   const schemeDocs = env.store.byKind('scheme').map((e) => e.doc);
   for (const s of schemes) if (!schemeDocs.some((d) => d.scope === s)) throw new DistributionRefused(`${bank} licenses ${s}, which the studio has no scheme pack for`);
@@ -269,6 +272,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
  */
 export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; release?: string; changeSet?: string; against: { releaseId: string; parameterContract: any }[]; bindings?: any[]; calendars?: any[]; set?: any }): BuiltBundle {
   const { bank } = req;
+  env = scopedEnv(env, bank);
   const set = clone(req.set ?? env.store.configurationSet(bank));
   if (!set) throw new DistributionRefused(`${bank} has no configuration set`);
   // A value read from a reference table goes out as the values it reads, one per edition (R-11-48).

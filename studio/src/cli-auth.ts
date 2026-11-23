@@ -51,9 +51,24 @@ export async function api(server: string, method: string, p: string, body?: unkn
     headers: { authorization: `Bearer ${tokenFor(server, env)}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  // After a heartbeat the studio seals the session again with the provider's new refresh token (R-11-50): keep that one.
+  const renewed = r.headers.get('x-th-renewed-token');
+  if (renewed) keepRenewed(server, renewed, env);
   const out = await r.json().catch(() => ({}));
   if (!r.ok) throw new CliAuthError(`${r.status} ${out?.error ?? r.statusText}${out?.code ? ` (${out.code})` : ''}`);
   return out;
+}
+
+/** The token a heartbeat renewed: written over the saved one, or held for this process when it came from TH_STUDIO_TOKEN. */
+function keepRenewed(server: string, token: string, env: NodeJS.ProcessEnv) {
+  if (!token.startsWith('thcli.')) return;
+  if (env.TH_STUDIO_TOKEN) {
+    env.TH_STUDIO_TOKEN = token;
+    return;
+  }
+  const saved = readSaved(env);
+  if (!saved || saved.server !== server) return;
+  fs.writeFileSync(tokenFile(env), JSON.stringify({ ...saved, token }, null, 2), { mode: 0o600 });
 }
 
 /** Sign in: start the device authorization, tell the operator where to go, and poll until it is done. */
