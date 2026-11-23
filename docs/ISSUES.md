@@ -1888,7 +1888,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
-<<<<<<< HEAD
+**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
+
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
 **Issue.** The north-star review of 23 November 2026 found that `POST /import-branch` loaded every configuration set under a branch's `banks/` folder into the store as values in force: no signature, no check against any distribution's parameter contract, no consent. The spec asked for values to arrive in signed configuration releases checked against the parameter contracts (R-09-51, PACKAGING section 7), but did not say whether a test environment might keep a shorter path.
@@ -1922,7 +1923,6 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
->>>>>>> claude/cool-ptolemy-js3lcz
 
 ## I-220. A native module still reaches into the image beyond the contract
 
@@ -1947,8 +1947,6 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The studio builds a distribution's native assemblies from the code-behind project at publish (`TH_NATIVE_MODULES=build`, R-09-120). A studio with no .NET SDK, such as the laptop image, takes the same build made ahead of time (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh` in the image's build stage). That folder is checked against its own SHA-256, but nothing signs it: it is trusted as the studio's own files are. The distribution's signature then covers whatever the folder held.
 
 **Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
-=======
-**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
 
 ## Not done, and why
 
