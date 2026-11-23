@@ -245,13 +245,13 @@ public sealed class CoreBankingPostingTests
     {
         var r = Resolver();
         var view = (JsonObject)JsonNode.Parse("""{ "header": { "paymentId": "P-3", "businessDate": "2026-11-24" }, "batch": { "currency": "AED" }, "facts": { "returns": { "returns": "yes", "count": 1, "amount": 500 } } }""")!;
-        var res = new PostReturn(r).Run(At("uae.wps.post.return.v1", view, Template(p => p["template"] = "wps-return"), OnSimulator));
+        var res = new PostReturn(new NativeCoreBanking(r)).Run(At("uae.wps.post.return.v1", view, Template(p => p["template"] = "wps-return"), OnSimulator));
         Assert.Equal("posted", res.Outcome);
         var batch = r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot().Single();
         Assert.Equal("P-3:return", batch.Reference);
         Assert.Equal([("debit", "9990000000002", 500m), ("credit", "9990000000001", 500m)], batch.Legs.Select(l => (l.Kind, l.Account, l.Amount)));
         view["facts"]!["returns"]!.AsObject().Remove("amount");
-        Assert.Equal("BusinessReject", Assert.Throws<NativeFailure>(() => new PostReturn(r).Run(At("uae.wps.post.return.v1", view, Template(), OnSimulator))).Name);
+        Assert.Equal("BusinessReject", Assert.Throws<NativeFailure>(() => new PostReturn(new NativeCoreBanking(r)).Run(At("uae.wps.post.return.v1", view, Template(), OnSimulator))).Name);
     }
 
     [Fact]

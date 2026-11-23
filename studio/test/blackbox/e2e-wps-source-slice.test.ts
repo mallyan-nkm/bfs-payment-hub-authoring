@@ -9,7 +9,7 @@ import { zip } from '../../src/export/zip.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
 import { runtimeApiEnv, runtimeHeaders } from './runtime-auth.js';
 import { TEST_TOKEN } from '../support/content.js';
-import { wpsDevModules } from './native-module.js';
+import { devModules } from './native-module.js';
 
 // The north-star vertical slice (plan step 2), end to end, black box:
 //   the TransactHub source's WPS outward flow, extracted (docs/import/extract_wps_outward_cbx.py) ->
@@ -63,7 +63,7 @@ beforeAll(async () => {
   const tts = path.join(RUNTIME, 'tools', 'temporal-test-server');
   if (!fs.existsSync(path.join(tts, 'classpath.txt'))) spawnSync(path.join(tts, 'setup.sh'), { encoding: 'utf8' });
   nativeUrl = `http://127.0.0.1:${await freePort()}`;
-  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_NATIVE_DEV_MODULES: wpsDevModules() }, stdio: 'ignore' });
+  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_NATIVE_DEV_MODULES: devModules() }, stdio: 'ignore' });
   await waitFor(`${nativeUrl}/health`);
   process.env.TH_NATIVE_HOST = nativeUrl;
   server = await startServer({ TH_NATIVE_HOST: nativeUrl });

@@ -51,13 +51,13 @@ public sealed record ChargeSlab(decimal UpTo, decimal Charge)
     }
 }
 
-/// <summary>What the posting activities share: the resolver, the accounts, the window gate and the reply classification.</summary>
-public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativeActivity
+/// <summary>
+/// The core-banking calls the posting activities make, and the image's answer of <see cref="INativeCoreBanking"/> to a native module
+/// (R-09-125): the binding in force with its posting window, the accounts and branches it keys, and the posting with its reply classified.
+/// </summary>
+public static class CoreBankingCalls
 {
-    public abstract string Name { get; }
-    public abstract NativeResult Run(NativeAttempt a);
-
-    protected (ICoreBanking Cb, PortBinding Binding) Bound(NativeAttempt a)
+    public static (ICoreBanking Cb, PortBinding Binding) Bound(CoreBankingResolver resolver, NativeAttempt a)
     {
         var (cb, b) = resolver.For(a.Tenant, a.Now);
         // Posting windows: the hours the bound core banking takes calls, business-local, as settings of the binding.
@@ -75,7 +75,7 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
     }
 
     /// <summary>The account core banking knows: its id, else its IBAN. A binding may say core banking keys accounts by an IBAN's last digits.</summary>
-    protected static string AccountOf(JsonNode? account, PortBinding b)
+    public static string AccountOf(JsonNode? account, PortBinding b)
     {
         var id = NativeContext.S(account, "id");
         if (id.Length > 0) return id;
@@ -85,10 +85,10 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
     }
 
     /// <summary>The source's branch rule: an account number longer than nine digits carries its branch in its first three; otherwise the binding's.</summary>
-    protected static string BranchFor(string account, PortBinding b) =>
+    public static string BranchFor(string account, PortBinding b) =>
         account.Length > 9 && account.All(char.IsAsciiDigit) ? account[..3] : b.Setting("defaultBranch", b.Setting("uploadBranch", ""));
 
-    protected static JsonObject LegsJson(IEnumerable<PostingLeg> legs) => new()
+    public static JsonObject LegsJson(IEnumerable<PostingLeg> legs) => new()
     {
         ["legs"] = new JsonArray(legs.Select(l => (JsonNode?)new JsonObject
         {
@@ -97,7 +97,7 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
     };
 
     /// <summary>Posts a batch and classifies the reply: posted, rejected by core banking, or unknown when the call may have reached it.</summary>
-    protected static (string Outcome, string? Reason, JsonObject Fact) Post(ICoreBanking cb, PortBinding b, PostingBatch batch, string primary)
+    public static (string Outcome, string? Reason, JsonObject Fact) Post(ICoreBanking cb, PortBinding b, PostingBatch batch, string primary)
     {
         var fact = LegsJson(batch.Legs);
         fact["adapter"] = b.Adapter;
@@ -137,6 +137,43 @@ public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativ
         fact["outcome"] = outcome; fact["result"] = outcome;
         return (outcome, answer.Posted ? null : "NARR", fact);
     }
+}
+
+/// <summary>The image's core banking as a native module sees it (native contract 1.1.0, R-09-125).</summary>
+public sealed class NativeCoreBanking(CoreBankingResolver resolver) : INativeCoreBanking
+{
+    public INativeCoreBankingBinding For(NativeAttempt a)
+    {
+        var (cb, b) = CoreBankingCalls.Bound(resolver, a);
+        return new Binding(cb, b);
+    }
+
+    sealed class Binding(ICoreBanking cb, PortBinding b) : INativeCoreBankingBinding
+    {
+        public string Adapter => b.Adapter;
+        public string AccountOf(JsonNode? account) => CoreBankingCalls.AccountOf(account, b);
+        public string BranchFor(string account) => CoreBankingCalls.BranchFor(account, b);
+
+        public NativePosted Post(NativePostingBatch batch, string primary)
+        {
+            var (outcome, reason, fact) = CoreBankingCalls.Post(cb, b, new PostingBatch(batch.Reference, batch.ValueDate,
+                batch.Legs.Select(l => new PostingLeg(l.Kind, l.Branch, l.Account, l.Amount, l.Currency, l.TxnCode, l.Narration)).ToList()), primary);
+            return new NativePosted(outcome, reason, fact);
+        }
+    }
+}
+
+/// <summary>What the posting activities share: the resolver, the accounts, the window gate and the reply classification.</summary>
+public abstract class CoreBankingActivity(CoreBankingResolver resolver) : INativeActivity
+{
+    public abstract string Name { get; }
+    public abstract NativeResult Run(NativeAttempt a);
+
+    protected (ICoreBanking Cb, PortBinding Binding) Bound(NativeAttempt a) => CoreBankingCalls.Bound(resolver, a);
+    protected static string AccountOf(JsonNode? account, PortBinding b) => CoreBankingCalls.AccountOf(account, b);
+    protected static string BranchFor(string account, PortBinding b) => CoreBankingCalls.BranchFor(account, b);
+    protected static JsonObject LegsJson(IEnumerable<PostingLeg> legs) => CoreBankingCalls.LegsJson(legs);
+    protected static (string Outcome, string? Reason, JsonObject Fact) Post(ICoreBanking cb, PortBinding b, PostingBatch batch, string primary) => CoreBankingCalls.Post(cb, b, batch, primary);
 
     protected static string Reference(NativeAttempt a, string suffix)
     {
@@ -289,101 +326,6 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
     }
 }
 
-/// <summary>
-/// <c>p.post.accounting.v2</c> (R-12-23, R-12-25; Issue I-136): an order posted from what the platform's own steps found, as its
-/// script-behind (studio/scripts/p.post.accounting.v2.ts) posts it. Each line, in line order, posts its converted amount
-/// (<c>facts.fx.amount</c> in <c>facts.fx.to</c>, else its instructed amount) between the line's account and the settlement
-/// account (a line with a debtor account is debited, one with only a creditor account credited), then its charge and its VAT
-/// (<c>facts.charges</c>), each debited from the line's account. The template has no slabs: nothing is priced here. One batch for
-/// the order, keyed by the order, so a retry is the same posting. Amounts are exact, numbers as the script writes them.
-/// </summary>
-public sealed class PostAccountingV2(CoreBankingResolver resolver) : CoreBankingActivity(resolver)
-{
-    public override string Name => "p.post.accounting.v2";
-
-    static string Mask(string a) => a.Length <= 4 ? new string('*', a.Length) : new string('*', a.Length - 4) + a[^4..];
-
-    public override NativeResult Run(NativeAttempt a)
-    {
-        var (cb, b) = Bound(a);
-        var t = AccountingTemplate.From(a.Params);
-        var (_, lines) = Money.Lines(a.View, v => new JsonObject
-        {
-            ["payment"] = v["payment"]?.DeepClone() ?? new JsonObject(),
-            ["facts"] = new JsonObject { ["fx"] = NativeContext.Node(v, "facts.fx")?.DeepClone(), ["charges"] = NativeContext.Node(v, "facts.charges")?.DeepClone() },
-        });
-        var reference = Reference(a, "");
-        var narration = $"{t.Narration} {reference}".Trim();
-        var legs = new List<PostingLeg>();
-        var detail = new JsonArray();
-        var customerTotal = 0m;
-        var currencies = new List<string>();
-        decimal amounts = 0m, chargeTotal = 0m, vatTotal = 0m;
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines[i];
-            var fx = NativeContext.Node(line, "facts.fx");
-            var ch = NativeContext.Node(line, "facts.charges");
-            var amount = Money.Read(NativeContext.Node(fx, "amount")) ?? Money.Read(NativeContext.Node(line, "payment.instructedAmount.value")) ?? 0m;
-            var currency = new[] { NativeContext.S(fx, "to"), NativeContext.S(fx, "currency"), NativeContext.S(line, "payment.instructedAmount.currency"), "AED" }.First(c => c.Length > 0);
-            var debit = NativeContext.Node(line, "payment.debtorAccount") is not null;
-            var account = AccountOf(NativeContext.Node(line, debit ? "payment.debtorAccount" : "payment.creditorAccount"), b);
-            if (account.Length == 0) return new NativeResult("rejected", "AC01", new JsonObject());
-            var branch = BranchFor(account, b);
-            var settlementBranch = BranchFor(t.SettlementAccount, b);
-            legs.Add(new(debit ? "debit" : "credit", branch, account, amount, currency, t.TransactionCode, narration));
-            legs.Add(new(debit ? "credit" : "debit", settlementBranch, t.SettlementAccount, amount, currency, t.TransactionCode, narration));
-            var charge = Money.Read(NativeContext.Node(ch, "amount")) ?? 0m;
-            var vat = Money.Read(NativeContext.Node(ch, "tax.amount")) ?? 0m;
-            if (charge > 0m)
-            {
-                if (t.ChargeIncomeAccount.Length == 0 || t.ChargeTransactionCode.Length == 0) throw new NativeFailure("BusinessReject", "A charge applies but the template names no charge account or charge code", false);
-                legs.Add(new("debit", branch, account, charge, currency, t.ChargeTransactionCode, t.ChargeNarration));
-                legs.Add(new("credit", BranchFor(t.ChargeIncomeAccount, b), t.ChargeIncomeAccount, charge, currency, t.ChargeTransactionCode, t.ChargeNarration));
-            }
-            if (vat > 0m)
-            {
-                if (t.VatAccount.Length == 0 || t.VatTransactionCode.Length == 0) throw new NativeFailure("BusinessReject", "VAT applies but the template names no VAT account or VAT code", false);
-                legs.Add(new("debit", branch, account, vat, currency, t.VatTransactionCode, t.ChargeNarration));
-                legs.Add(new("credit", BranchFor(t.VatAccount, b), t.VatAccount, vat, currency, t.VatTransactionCode, t.ChargeNarration));
-            }
-            customerTotal += debit ? amount + charge + vat : amount - (charge + vat);
-            amounts += amount; chargeTotal += charge; vatTotal += vat;
-            if (!currencies.Contains(currency)) currencies.Add(currency);
-            detail.Add(new JsonObject
-            {
-                ["line"] = i, ["side"] = debit ? "debit" : "credit", ["amount"] = Money.Json(amount), ["currency"] = currency,
-                ["charge"] = Money.Json(charge), ["vat"] = Money.Json(vat),
-            });
-        }
-        var (outcome, reason, fact) = Post(cb, b, new PostingBatch(reference, ValueDate(a), legs), "posted");
-        fact["template"] = t.Template;
-        fact["reversalTransactionCode"] = t.ReversalTransactionCode;
-        fact["entries"] = new JsonArray(legs.Select(l => (JsonNode?)new JsonObject
-        {
-            ["creditDebitIndicator"] = l.Kind == "debit" ? "DBIT" : "CRDT", ["amount"] = Money.Json(l.Amount), ["currency"] = l.Currency,
-            ["account"] = Mask(l.Account), ["branch"] = l.Branch, ["transactionCode"] = l.TxnCode,
-        }).ToArray());
-        fact["entryCount"] = legs.Count;
-        fact["lines"] = detail;
-        fact["amount"] = Money.Json(amounts);
-        fact["totalAmount"] = Money.Json(customerTotal);
-        if (currencies.Count == 1) fact["currency"] = currencies[0];
-        if (chargeTotal + vatTotal > 0m)
-        {
-            var rate = lines.Select(l => Money.Read(NativeContext.Node(l, "facts.charges.tax.rate"))).FirstOrDefault(r => r is not null)
-                ?? Money.Read(NativeContext.Node(a.View, "facts.charges.tax.rate")) ?? 0m;
-            var charges = new JsonObject { ["amount"] = Money.Json(chargeTotal) };
-            if (currencies.Count == 1) charges["currency"] = currencies[0];
-            charges["type"] = "BANK";
-            charges["tax"] = new JsonObject { ["rate"] = Money.Json(rate), ["amount"] = Money.Json(vatTotal) };
-            charges["totalChargesAndTaxAmount"] = Money.Json(chargeTotal + vatTotal);
-            fact["charges"] = charges;
-        }
-        return new NativeResult(outcome, reason, new JsonObject { ["facts.posting"] = fact });
-    }
-}
-
 /// <summary><c>p.post.reverse.v1</c>: the posted legs again, each the other way, under the reversal code the posting recorded.</summary>
 public sealed class ReversePosting(CoreBankingResolver resolver) : CoreBankingActivity(resolver)
 {
@@ -431,9 +373,12 @@ public sealed class VerifyPosting : INativeActivity
     }
 }
 
-/// <summary>The platform's core-banking activities, as the native host registers them.</summary>
+/// <summary>
+/// The platform's core-banking activities the image answers (the builtin accounting and reservation services, R-08-15), as the native
+/// host registers them. <c>p.post.accounting.v2</c>, a native code-behind, is the platform module's (R-09-126).
+/// </summary>
 public static class PlatformActivities
 {
     public static IReadOnlyList<INativeActivity> CoreBanking(CoreBankingResolver r) =>
-        [new ReserveFunds(r), new ReleaseReservation(), new PostAccounting(r), new PostAccountingV2(r), new ReversePosting(r), new VerifyPosting()];
+        [new ReserveFunds(r), new ReleaseReservation(), new PostAccounting(r), new ReversePosting(r), new VerifyPosting()];
 }

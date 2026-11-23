@@ -2,7 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj" />
     <Project Path="src/TransactHub.Activities.Platform/TransactHub.Activities.Platform.csproj" />
+    <Project Path="src/TransactHub.Activities.Platform.Native/TransactHub.Activities.Platform.Native.csproj" />
     <Project Path="src/TransactHub.Activities.Wps/TransactHub.Activities.Wps.csproj" />
+    <Project Path="src/TransactHub.Activities.Wps.Store/TransactHub.Activities.Wps.Store.csproj" />
     <Project Path="src/TransactHub.Api/TransactHub.Api.csproj" />
     <Project Path="src/TransactHub.FileApi/TransactHub.FileApi.csproj" />
     <Project Path="src/TransactHub.Auth/TransactHub.Auth.csproj" />

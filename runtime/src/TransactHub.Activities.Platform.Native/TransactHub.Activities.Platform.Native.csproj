@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The platform's native module (spec R-09-126, Issue I-221): the native code-behinds of the platform pack's activities that say the
+    runtime implements them (implementation.native: true). A distribution carries its build under activities/native/p/, as it
+    carries a scheme's; the runtime image never holds it. Like every module it references the native contract and no other
+    assembly of TransactHub (R-09-125): core banking, the bank's ports and the host's files come through INativeServices.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Activities.Contract\TransactHub.Activities.Contract.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

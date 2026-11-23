@@ -4,17 +4,24 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSecretRef, resolveSecretSync } from '../secrets/secrets.js';
+import { assemblyReferences } from './assembly-refs.js';
+import { parseTrustedSigners, SignatureRejected, verifyFiles } from './signing.js';
 
-// The native assemblies a distribution carries (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3, spec R-09-120 to R-09-123).
-// A scheme's or a bank's native activities (`implementation.binding: native`, or a script-behind the runtime also implements,
-// `implementation.native: true`) are code in a code-behind project; the platform's own (`p`, `<cluster>.p`) are runtime
-// software and stay in the runtime image. When the studio builds a distribution it takes each such scope's module build:
+// The native assemblies a distribution carries (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3, spec R-09-120 to R-09-127).
+// The native activities of every pack (`implementation.binding: native`, or a script-behind the runtime also implements,
+// `implementation.native: true`) are code in a code-behind project: the platform's (`p`, R-09-126), a scheme's and a bank's. The
+// runtime image holds none of them. When the studio builds a distribution it takes each such scope's module build:
 //
 //   TH_NATIVE_MODULES=build    build it from the code-behind project at publish (`dotnet build`, deterministic), cached by the
 //                              SHA-256 of the project's sources and the native contract version; TH_NATIVE_PROJECTS names the
 //                              project of a scope (`uae.wps=<dir>,...`; by default runtime/src/TransactHub.Activities.Wps for WPS)
 //   TH_NATIVE_MODULES=<dir>    take the build made ahead of time from the same project (`<dir>/<scope>/native-module.json` and its
-//                              assemblies, as runtime/tools/native-module/build.sh writes it), for a studio with no .NET SDK
+//                              assemblies, as runtime/tools/native-module/build.sh writes it), for a studio with no .NET SDK. The
+//                              folder MUST be signed by a key TH_NATIVE_MODULE_SIGNERS trusts (R-09-127, release.json and
+//                              release.sig as a distribution's are); an unsigned or wrongly signed folder is refused, unless
+//                              TH_NATIVE_MODULES_UNVERIFIED is `dev` or `test` and NODE_ENV is not production, when it is taken
+//                              and the distribution's manifest says so (`signature: { unverified: <mode> }`)
 //   unset                      no build: the distribution records the scopes it does not carry (`native.notCarried`), and the
 //                              runtime runs none of their activities natively; each runs its script-behind instead. An activity
 //                              with no script-behind (`implementation.binding: native`) cannot run without its build, so a
@@ -22,14 +29,24 @@ import { fileURLToPath } from 'node:url';
 //
 // Each assembly goes in the distribution as base64 text (the content branch holds text), under
 // `activities/native/<scope>/<name>.dll.base64`, with the SHA-256 of its bytes in the bill of materials; the bill of materials is
-// signed with the manifest. The runtime checks every hash and the native contract at install and again when it loads them.
+// signed with the manifest. The runtime checks every hash and the native contract at install and again when it loads them. A
+// module's assemblies reference the native contract and no other assembly of TransactHub (R-09-125): the studio refuses to carry one
+// that does (package.NativeImageReference), and the runtime refuses such a distribution.
 
 export const NATIVE_FOLDER = 'activities/native';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const DEFAULT_PROJECTS: Record<string, string> = { 'uae.wps': 'runtime/src/TransactHub.Activities.Wps' };
+const DEFAULT_PROJECTS: Record<string, string> = { p: 'runtime/src/TransactHub.Activities.Platform.Native', 'uae.wps': 'runtime/src/TransactHub.Activities.Wps' };
 const CONTRACT_PROJECT = 'runtime/src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj';
 /** The native contract this studio builds against when the runtime's sources are not here (a prebuilt module says its own). */
-export const NATIVE_CONTRACT = '1.0.0';
+export const NATIVE_CONTRACT = '1.1.0';
+/** The native contract's assembly: the one assembly of TransactHub a module references (R-09-125). */
+export const CONTRACT_ASSEMBLY = 'TransactHub.Activities.Contract';
+/** The error dictionary's code of a module that references the runtime image beyond the contract (R-09-125, Issue I-220). */
+export const IMAGE_REFERENCE = 'package.NativeImageReference';
+/** The signers of module builds made ahead of time that the studio trusts: the trusted-signers JSON, or a reference to it (R-09-127). */
+export const MODULE_SIGNERS_ENV = 'TH_NATIVE_MODULE_SIGNERS';
+/** `dev` or `test`: a module build made ahead of time is taken unsigned or wrongly signed, never when NODE_ENV is production. */
+export const UNVERIFIED_ENV = 'TH_NATIVE_MODULES_UNVERIFIED';
 
 export interface NativeModuleBuild {
   scope: string;
@@ -40,6 +57,8 @@ export interface NativeModuleBuild {
   files: { name: string; content: Buffer; sha256: string }[];
   /** The folder it was read from (a module build folder, as TH_NATIVE_DEV_MODULES names one). */
   dir?: string;
+  /** A build made ahead of time: the key that signed it, or the mode that took it unverified (R-09-127). */
+  signature?: { keyId: string } | { unverified: string; reason: string };
 }
 
 const sha = (b: Buffer | string) => `sha256:${createHash('sha256').update(b).digest('hex')}`;
@@ -49,7 +68,7 @@ export function isNative(doc: any): boolean {
   return doc?.kind === 'activity' && (doc.implementation?.binding === 'native' || doc.implementation?.native === true);
 }
 
-/** A scope whose native code is the runtime image's: the platform and the cluster platforms. */
+/** A platform scope: the platform and the cluster platforms. Since R-09-126 their native code is a module like any other. */
 export const isPlatformScope = (scope: string) => scope === 'p' || /^[a-z0-9-]+\.p$/.test(scope);
 
 /** The project of a scope's code-behind, by TH_NATIVE_PROJECTS, else the factory's. */
@@ -66,19 +85,23 @@ export function contractVersion(): string {
   return /<Version>([^<]+)<\/Version>/.exec(fs.readFileSync(f, 'utf8'))?.[1] ?? NATIVE_CONTRACT;
 }
 
-/** The SHA-256 of a project's sources: every .cs and .csproj file, by relative path, outside bin and obj. */
+/**
+ * The SHA-256 of a project's sources: of the lines `<sha256 hex>  <relative path>`, one per .cs and .csproj file outside bin and obj,
+ * in the byte order of their paths, as `sha256sum` prints them. runtime/tools/native-module/build.sh computes the same with
+ * `find`, `sort` and `sha256sum`, so a build made ahead of time names the sources it was built from (R-09-127).
+ */
 export function sourceSha256(project: string): string {
   const files: string[] = [];
   const walk = (d: string) => {
-    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       if (e.isDirectory()) { if (e.name !== 'bin' && e.name !== 'obj') walk(path.join(d, e.name)); continue; }
-      if (/\.(cs|csproj)$/.test(e.name)) files.push(path.join(d, e.name));
+      if (/\.(cs|csproj)$/.test(e.name)) files.push(path.relative(project, path.join(d, e.name)).replace(/\\/g, '/'));
     }
   };
   walk(project);
-  const h = createHash('sha256');
-  for (const f of files) h.update(path.relative(project, f).replace(/\\/g, '/')).update('\0').update(fs.readFileSync(f)).update('\0');
-  return `sha256:${h.digest('hex')}`;
+  files.sort((x, y) => Buffer.compare(Buffer.from(x), Buffer.from(y)));
+  const lines = files.map((f) => `${createHash('sha256').update(fs.readFileSync(path.join(project, f))).digest('hex')}  ${f}\n`).join('');
+  return `sha256:${createHash('sha256').update(lines).digest('hex')}`;
 }
 
 /** A module build folder (native-module.json and its assemblies), as the runtime's native host also reads it. */
@@ -146,18 +169,66 @@ export function buildModule(scope: string, project: string): NativeModuleBuild {
 }
 
 /** A scope's module, from the source TH_NATIVE_MODULES names; undefined when none is configured or the scope has no project. */
-export function moduleFor(scope: string): NativeModuleBuild | undefined {
-  const how = process.env.TH_NATIVE_MODULES;
+export function moduleFor(scope: string, env = process.env): NativeModuleBuild | undefined {
+  const how = env.TH_NATIVE_MODULES;
   if (!how) return undefined;
   if (how === 'build') {
     const project = nativeProject(scope);
     return project && fs.existsSync(project) ? buildModule(scope, project) : undefined;
   }
-  return readModuleFolder(path.join(path.resolve(how), scope));
+  const dir = path.join(path.resolve(how), scope);
+  const m = readModuleFolder(dir);
+  return m ? { ...m, signature: moduleSignature(dir, scope, env) } : undefined;
+}
+
+/** The signers of module builds this studio trusts (TH_NATIVE_MODULE_SIGNERS: the JSON, or a reference to it). */
+function moduleSigners(env: NodeJS.ProcessEnv) {
+  const v = env[MODULE_SIGNERS_ENV];
+  if (!v) throw new SignatureRejected(`${MODULE_SIGNERS_ENV} is not set: no signer of module builds is trusted`);
+  return parseTrustedSigners(v.trimStart().startsWith('{') ? v : isSecretRef(v) ? resolveSecretSync(v, env).reveal() : v);
 }
 
 /**
- * The native section of a distribution's manifest and its files (R-09-120): per scheme or bank scope with native activities its
+ * The signature of a module build made ahead of time (R-09-127): `release.json` and `release.sig` in its folder, a `native-module`
+ * statement for `native-module/<scope>` naming every other file of the folder with its SHA-256, by a key TH_NATIVE_MODULE_SIGNERS
+ * trusts. An unsigned or wrongly signed folder is refused, unless TH_NATIVE_MODULES_UNVERIFIED says `dev` or `test` outside production.
+ */
+export function moduleSignature(dir: string, scope: string, env = process.env): { keyId: string } | { unverified: string; reason: string } {
+  const files: Record<string, Buffer> = {};
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isFile()) files[e.name] = fs.readFileSync(path.join(dir, e.name));
+  try {
+    const v = verifyFiles(files, { releaseId: `native-module/${scope}`, tenant: null, kind: 'native-module' }, moduleSigners(env));
+    return { keyId: v.keyId };
+  } catch (e) {
+    if (!(e instanceof SignatureRejected)) throw e;
+    const mode = env[UNVERIFIED_ENV];
+    if ((mode === 'dev' || mode === 'test') && env.NODE_ENV !== 'production') return { unverified: mode, reason: e.message };
+    const why = mode && env.NODE_ENV === 'production' ? ` (${UNVERIFIED_ENV}=${mode} is refused when NODE_ENV is production)` : '';
+    throw new SignatureRejected(`The module build of ${scope} in ${dir} is refused: ${e.message}${why}. A build made ahead of time is signed by runtime/tools/native-module/build.sh with a key ${MODULE_SIGNERS_ENV} trusts (R-09-127)`);
+  }
+}
+
+/**
+ * What a module's assemblies reference of TransactHub beyond the native contract and the module's own assemblies (R-09-125): each
+ * a refusal, with the error dictionary's code. An assembly that is not a .NET assembly, or that does not reference the contract, is
+ * refused too.
+ */
+export function imageReferences(m: NativeModuleBuild): string[] {
+  const own = new Set(m.files.map((f) => f.name.replace(/\.dll$/i, '').toLowerCase()));
+  const out: string[] = [];
+  for (const f of m.files) {
+    const refs = assemblyReferences(f.content);
+    if (!refs) { out.push(`${f.name} of ${m.scope} is not a .NET assembly`); continue; }
+    if (f.name.replace(/\.dll$/i, '') === m.assembly && !refs.some((r) => r.name === CONTRACT_ASSEMBLY)) out.push(`${f.name} of ${m.scope} does not reference the native contract (${CONTRACT_ASSEMBLY})`);
+    for (const r of refs)
+      if (/^TransactHub\./i.test(r.name) && r.name !== CONTRACT_ASSEMBLY && !own.has(r.name.toLowerCase()))
+        out.push(`${IMAGE_REFERENCE}: ${f.name} of ${m.scope} references ${r.name}, which is the runtime image's; a native module references ${CONTRACT_ASSEMBLY} and no other assembly of TransactHub (R-09-125)`);
+  }
+  return out;
+}
+
+/**
+ * The native section of a distribution's manifest and its files (R-09-120, R-09-126): per scope with native activities (the platform's too) its
  * module, with the activities (`name@release`) it must serve. A promotable distribution without the module of an activity that has
  * no script-behind (`binding: native`) is refused; a
  * test distribution lists it as not carried.
@@ -167,7 +238,6 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
   const nativeOnly = new Map<string, string[]>();
   for (const d of docs.filter(isNative)) {
     const s = scopeOf(d.name);
-    if (isPlatformScope(s)) continue;
     byScope.set(s, [...(byScope.get(s) ?? []), `${d.name}@${d.release}`].sort());
     if (d.implementation?.binding === 'native') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
   }
@@ -178,7 +248,8 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
   const problems: string[] = [];
   let contract = contractVersion();
   for (const [scope, activities] of [...byScope].sort(([a], [b]) => a.localeCompare(b))) {
-    const m = moduleFor(scope);
+    let m: NativeModuleBuild | undefined;
+    try { m = moduleFor(scope); } catch (e: any) { problems.push(e.message); continue; }
     if (!m) {
       const only = nativeOnly.get(scope) ?? [];
       if (promotable && only.length) problems.push(`${scope} has native activities with no script-behind (${only.join(', ')}) and the studio has no build of their code-behind: set TH_NATIVE_MODULES (R-09-120)`);
@@ -186,6 +257,8 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
       continue;
     }
     if (m.scope !== scope) problems.push(`The module build for ${scope} is of ${m.scope}`);
+    const refused = imageReferences(m);
+    if (refused.length) { problems.push(...refused); continue; }
     contract = m.contract ?? contract;
     const listed = m.files.map((f) => {
       const p = `${NATIVE_FOLDER}/${scope}/${f.name}.base64`;
@@ -193,8 +266,8 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
       artefacts.push({ scope, name: f.name, kind: 'native-assembly', path: p, sha256: sha(files[p]), assemblySha256: f.sha256 });
       return { path: p, name: f.name, sha256: f.sha256 };
     });
-    modules.push({ scope, assembly: m.assembly, ...(m.project ? { project: m.project } : {}), ...(m.sourceSha256 ? { sourceSha256: m.sourceSha256 } : {}), activities, files: listed });
+    modules.push({ scope, assembly: m.assembly, ...(m.project ? { project: m.project } : {}), ...(m.sourceSha256 ? { sourceSha256: m.sourceSha256 } : {}), ...(m.signature ? { signature: m.signature } : {}), activities, files: listed });
   }
-  const section = { contract, platform: 'runtime-image', modules, ...(notCarried.length ? { notCarried } : {}) };
+  const section = { contract, modules, ...(notCarried.length ? { notCarried } : {}) };
   return { section, files, artefacts, problems };
 }

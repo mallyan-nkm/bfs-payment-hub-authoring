@@ -256,7 +256,9 @@ public sealed class RegisterTests(Databases dbs)
         var bindings = new PortBindings();
         bindings.Add($"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.party-register.v1\n    adapter: register\n    validFrom: 2026-01-01T00:00:00Z\n");
         RegisterReader reader = async (tenant, kind, field, value, at, ct) => await regs.FindBy(tenant, kind, field, value, at, ct);
-        var act = EnrichPartyRegister.On(bindings, reader, WpsCorporateMatch.Matchers);
+        // The platform module's lookup on the image's register port; WPS's match is its module's contribution (native contract 1.1.0).
+        var act = new TransactHub.Activities.Platform.Native.EnrichPartyRegister(new NativePorts(bindings, new MemoryNativeFiles(), reader),
+            key => key == $"party-matcher:{WpsCorporateMatch.Scheme}" ? (PartyMatcher)WpsCorporateMatch.Match : null);
         var now = clock.Now.AddMinutes(1);
         NativeResult Ask(string mol, string? account = null, string scheme = "uae.wps") => act.Run(new NativeAttempt(act.Name, "1.0.0", new JsonObject
         {

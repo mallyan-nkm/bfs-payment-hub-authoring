@@ -5,14 +5,16 @@
     carries. Its Version is the contract version. A distribution's manifest names the version its native assemblies were built
     against, and the runtime takes the major it supports at a minor no later than its own (NativeContract.Supports). A type a
     module could see that is added here is a new minor; one changed or removed is a new major. Keep NativeContract.Version the same.
+    1.1.0 (R-09-125, Issue I-220): INativeServices gives core banking, the bank's other ports, the host's files and the contributions
+    of the other modules of the distribution, so a module references this assembly and no other of TransactHub.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>

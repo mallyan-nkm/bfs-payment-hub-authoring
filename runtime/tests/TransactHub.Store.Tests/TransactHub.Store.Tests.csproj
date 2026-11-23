@@ -29,7 +29,9 @@
     <ProjectReference Include="..\..\src\TransactHub.Api\TransactHub.Api.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Auth\TransactHub.Auth.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
-    <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Wps.Store\TransactHub.Activities.Wps.Store.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Platform.Native\TransactHub.Activities.Platform.Native.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Ports\TransactHub.Ports.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />

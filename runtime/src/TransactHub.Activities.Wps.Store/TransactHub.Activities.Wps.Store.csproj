@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    WPS on the store (plans W1, W2, W6): a bank's WPS rule values as configuration values, and the Central Bank SIF of a bulk the store
+    holds. It reads and writes the store, so it is not part of the WPS native module (which references the native contract only,
+    R-09-125) and no distribution carries it.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

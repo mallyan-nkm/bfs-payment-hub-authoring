@@ -69,20 +69,13 @@ public sealed record FileRules(long MaxBytes, IReadOnlyList<string> Extensions, 
     }
 }
 
-/// <summary>The decryption binding of each bank, through the native code-behind of <c>p.protect.decrypt-file.v1</c>.</summary>
+/// <summary>
+/// The decryption binding of each bank, through the image's file protection (the same the platform module's
+/// <c>p.protect.decrypt-file.v1</c> asks for, R-09-125): the front door decrypts a received file before it is kept and routed.
+/// </summary>
 public sealed class Decryptor(PortBindings bindings, TransactHub.Security.ISecretResolver? secrets = null)
 {
-    sealed class Kept : INativeFiles
-    {
-        public readonly Dictionary<string, byte[]> Files = new(StringComparer.Ordinal);
-        public string Keep(string direction, string kind, string fileName, byte[] content)
-        {
-            var sha = FileStore.Sha256Hex(content);
-            Files[sha] = content;
-            return sha;
-        }
-        public byte[]? Get(string sha256) => Files.GetValueOrDefault(sha256);
-    }
+    readonly FileProtectionPort protection = new(bindings, secrets);
 
     /// <summary>Whether the bank binds <c>p.port.decryption.v1</c> at this moment.</summary>
     public bool Binds(string tenant, DateTimeOffset at)
@@ -94,16 +87,16 @@ public sealed class Decryptor(PortBindings bindings, TransactHub.Security.ISecre
     /// <summary>Decrypts a received file: the plain bytes and the file name without its encryption extension, or what refused it.</summary>
     public (byte[]? Plain, string Name, string? Refused) Decrypt(string tenant, string fileName, byte[] cipher, DateTimeOffset at)
     {
-        var files = new Kept();
-        var activity = new DecryptFile(files, new BoundAdapters<IFileDecryption>(bindings, OpenPgpDecryption.Port, b => FileProtectionAdapters.Decryption(b, secrets)));
-        var view = new JsonObject { ["messages"] = new JsonObject { ["inbound"] = new JsonObject { ["fileName"] = fileName, ["contentBase64"] = Convert.ToBase64String(cipher) } } };
-        NativeResult r;
-        try { r = activity.Run(new NativeAttempt(activity.Name, null, view, new JsonObject(), at, tenant)); }
+        var files = new MemoryNativeFiles();
+        if (cipher.Length == 0) return (null, fileName, "There is no inbound file to decrypt");
+        var plainName = fileName.EndsWith(".gpg", StringComparison.OrdinalIgnoreCase) ? fileName[..^4] : fileName;
+        try
+        {
+            var (sha, _, _, _) = protection.Decrypt(files, tenant, at, cipher, fileName.Length > 0 ? fileName : "inbound", plainName.Length > 0 ? plainName : "inbound");
+            return (files.Get(sha), plainName.Length > 0 ? plainName : FileRules.Plain(fileName), null);
+        }
+        catch (NativePortRefused e) { return (null, fileName, e.Message); }
         catch (NativeFailure e) { return (null, fileName, e.Message); }
-        if (r.Outcome != "decrypted") return (null, fileName, (string?)r.Writes["facts.decryption"]?["error"] ?? r.Outcome);
-        var sha = (string)r.Writes["facts.decryption"]!["sha256"]!;
-        var name = (string?)r.Writes["facts.decryption"]!["fileName"] is { Length: > 0 } n ? n : FileRules.Plain(fileName);
-        return (files.Get(sha), name, null);
     }
 }
 

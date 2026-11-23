@@ -2,13 +2,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { buildModule, nativeProject } from '../../src/export/native-modules.js';
 
-// The runtime image carries no scheme's native code (R-09-122): a payment's distribution brings it. A black-box test that runs WPS
-// activities on a native host outside any distribution gives the host the WPS module build as its development modules
-// (TH_NATIVE_DEV_MODULES), built from the code-behind project as the studio builds it for a distribution.
+// The runtime image carries no native code-behind (R-09-122, R-09-126): a payment's distribution brings the platform's and the
+// schemes'. A black-box test that runs native activities on a native host outside any distribution gives the host the platform's
+// and WPS's module builds as its development modules (TH_NATIVE_DEV_MODULES), built from their code-behind projects as the studio
+// builds them for a distribution.
 
-/** The folder of the WPS module build (native-module.json and its assembly), for TH_NATIVE_DEV_MODULES. */
-export function wpsDevModules(): string {
-  return buildModule('uae.wps', nativeProject('uae.wps')!).dir!;
+/** The folders of the platform's and the WPS module builds (native-module.json and its assembly), for TH_NATIVE_DEV_MODULES. */
+export function devModules(): string {
+  return ['p', 'uae.wps'].map((s) => buildModule(s, nativeProject(s)!).dir!).join(';');
 }
 
 /**

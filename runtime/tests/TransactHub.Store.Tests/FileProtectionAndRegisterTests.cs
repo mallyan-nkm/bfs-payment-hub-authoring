@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using TransactHub.Activities.Native;
+using TransactHub.Activities.Platform.Native;
 using TransactHub.Activities.Wps.Native;
 using TransactHub.Ports;
 using TransactHub.Security;
@@ -118,8 +119,9 @@ public sealed class FileProtectionAndRegisterTests
                   secretRef: env:TH_TEST_PASSPHRASE
             """);
         var files = new MemoryFiles();
-        var all = FileProtectionActivities.All(bindings, files, secrets);
-        return ((EncryptFile)all.Single(a => a.Name == "p.protect.encrypt-file.v1"), (DecryptFile)all.Single(a => a.Name == "p.protect.decrypt-file.v1"), files, keys);
+        // The platform module's activities, on the image's ports as the native host gives them (native contract 1.1.0, R-09-125).
+        var ports = new NativePorts(bindings, files, secrets: secrets);
+        return (new EncryptFile(files, ports), new DecryptFile(files, ports), files, keys);
     }
 
     [Fact]
@@ -209,7 +211,7 @@ public sealed class FileProtectionAndRegisterTests
                   suspended: "0000001234567"
                   notRegistered: "0000009999999"
             """);
-        var act = EnrichEmployerStatus.On(bindings);
+        var act = new EnrichEmployerStatus(new NativePorts(bindings, new MemoryNativeFiles()));
         NativeResult Ask(string employer, string tenant = "test-bank") => act.Run(new NativeAttempt(act.Name, "1.1.0",
             new JsonObject { ["ext"] = new JsonObject { ["uae"] = new JsonObject { ["wps"] = new JsonObject { ["employerId"] = employer } } } }, new JsonObject(), Now, tenant, "batch"));
         Assert.Equal(("found", "suspended"), (Ask("0000001234567").Outcome, (string?)Ask("0000001234567").Writes["ext.uae.wps.employerStatus"]));
