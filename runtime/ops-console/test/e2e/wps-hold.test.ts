@@ -148,6 +148,61 @@ afterAll(async () => {
 });
 
 describe(`the operations console on a WPS file run through the runtime on ${ENGINE}`, () => {
+  it('takes the held file in the work queue, which a supervisor sees live, and keeps a saved filter (R-05-71)', async () => {
+    const op = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    const sup = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    const problems: string[] = [];
+    for (const page of [op, sup]) {
+      page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+      page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    }
+    await sup.goto(apiUrl);
+    await sup.getByRole('button', { name: /Sign in as Example supervisor/ }).click();
+    await op.goto(apiUrl);
+    await op.getByRole('button', { name: /Sign in as Example operator/ }).click();
+    await op.getByRole('heading', { name: 'Payments' }).waitFor();
+    // The held file is a work item once its hold is in the read model.
+    await until('the held file in the work queue', async () => {
+      await op.goto(`${apiUrl}/#/work`);
+      await op.reload();
+      await op.getByRole('heading', { name: 'Work queue' }).waitFor();
+      await op.getByTestId('work-total').filter({ hasText: 'item' }).waitFor();
+      return (await op.getByTestId('work-row').count()) === 1;
+    }, 300000);
+    await sup.goto(`${apiUrl}/#/work`);
+    await sup.getByTestId('work-row').first().waitFor();
+    expect(await sup.getByTestId('work-holder').first().textContent()).toBe('Unassigned');
+
+    // The operator takes it; the supervisor's queue follows without a reload.
+    await op.getByTestId('work-row').first().getByRole('checkbox').check();
+    await op.getByRole('button', { name: /^Take \(1\)$/ }).click();
+    await op.getByTestId('work-note').filter({ hasText: '1 done, 0 refused' }).waitFor();
+    await until('the supervisor\'s live queue', async () => (await sup.getByTestId('work-holder').first().textContent()) === 'Example operator', 60000);
+    // Another taking it in bulk is refused for that item; the supervisor releases it.
+    await sup.getByTestId('work-row').first().getByRole('checkbox').check();
+    await sup.locator('input[name=work-remarks]').fill('back to the pool for the approval (synthetic)');
+    await sup.getByRole('button', { name: 'Release' }).click();
+    await sup.getByTestId('work-note').filter({ hasText: '1 done' }).waitFor();
+    await until('the operator\'s live queue', async () => (await op.getByTestId('work-holder').first().textContent()) === 'Unassigned', 60000);
+
+    // A saved filter: the operator's own.
+    op.on('dialog', (d: any) => d.accept('Held WPS files'));
+    await op.goto(`${apiUrl}/#/payments?scheme=uae.wps&hold=open`);
+    await op.reload();
+    await op.getByRole('heading', { name: 'Payments' }).waitFor();
+    await op.getByRole('button', { name: 'Save this filter' }).click();
+    await op.getByRole('button', { name: 'Remove saved filter Held WPS files' }).waitFor();
+    await op.goto(`${apiUrl}/#/payments`);
+    await op.reload();
+    await op.getByRole('heading', { name: 'Payments' }).waitFor();
+    await until('the saved filter offered', async () => (await op.locator('select[name=saved-filter] option').count()) === 2, 20000);
+    await op.locator('select[name=saved-filter]').selectOption({ label: 'Held WPS files' });
+    await until('the saved filter applied', async () => (await op.locator('select[name=hold]').inputValue()) === 'open' && (await op.getByTestId('payment-row').count()) === 1, 20000);
+    expect(problems).toEqual([]);
+    await op.close();
+    await sup.close();
+  });
+
   it('filters to held WPS files, opens one with its declared fields, approves the hold, and shows the leg it then runs', async () => {
     const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
     const problems: string[] = [];
@@ -248,6 +303,14 @@ describe(`the operations console on a WPS file run through the runtime on ${ENGI
     expect(csv.split('\r\n')[0]).toContain('Id,Kind,Tenant,Scheme');
     expect(csv).toContain('0000*****4567');
     expect(csv).not.toContain('AE070331234567890123456');
+    // The WPS fixed reports the view declares (R-05-67): the SIF detail, one row per line, masked; the download an audit fact.
+    await page.getByRole('table', { name: 'Fixed reports' }).waitFor();
+    const [detail] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download SIF detail' }).click()]);
+    const sif = fs.readFileSync(await detail.path(), 'utf8').split('\r\n').filter(Boolean);
+    expect(sif[0]).toContain('Employee person id');
+    expect(sif).toHaveLength(3);
+    expect(sif.join('\n')).not.toContain('AE070331234567890123456');
+    await page.getByTestId('fixed-report-note').filter({ hasText: 'SIF detail: 2 row(s), audit fact' }).waitFor();
     expect(problems).toEqual([]);
     await page.close();
   });

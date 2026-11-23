@@ -3,7 +3,7 @@
 kind: test
 id: WPS-IN-001
 title: Payment file confirmed, employees credited, disbursement reported
-target: p.wf.inward.v2
+target: p.wf.inward.v1
 level: end-to-end
 evaluationDate: '2026-11-17'
 tenant: example-bank

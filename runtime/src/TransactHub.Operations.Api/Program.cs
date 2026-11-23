@@ -38,11 +38,28 @@ builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.Ge
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
 builder.Services.AddSingleton(new Reports(ops, views));
 // The console's own chain (R-09-77, R-05-65): its exports, and the changes of the system it waits for a bank approver's consent to.
-builder.Services.AddSingleton(new ConsoleRecord(store, clock));
+var consoleRecord = new ConsoleRecord(store, clock);
+builder.Services.AddSingleton(consoleRecord);
 // The reconciliation break queue (R-09-92): the breaks the scheme reports' runs recorded, resolved with consent where they change the system.
 builder.Services.AddSingleton(new BreakQueue(store, clock));
 // The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
 builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
+// Work management, saved filters, the console's dials, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
+//   Operations:Notify:Adapter, Operations:Notify:Url   where the console's alerts go (log by default; simulator; webhook)
+//   Operations:TatSweepSeconds                          how often turnaround breaches are looked for and alerted (default 60)
+//   Operations:Banks (or TH_BANKS_DIR)                  the bank folder whose core-banking binding the channel's enquiries use
+//                                                       where no configuration release bound one (R-09-100)
+//   Operations:Registers:SystemReadsMasked              true: the register API answers core banking masked (Issue I-149, I-181)
+var dials = new OperationsDials(store, views);
+var notifier = OpsNotifiers.From(k => builder.Configuration[k], m => Console.Error.WriteLine($"operations alert: {m}"));
+builder.Services.AddSingleton(dials);
+builder.Services.AddSingleton(notifier);
+builder.Services.AddSingleton(new WorkQueue(store, ops, clock));
+builder.Services.AddSingleton(new SavedFilters(store, clock));
+builder.Services.AddSingleton(new FixedReports(ops, views));
+builder.Services.AddSingleton(sp => new Erasure(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), clock));
+builder.Services.AddSingleton(sp => new Unmasking(ops, views, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<Projector>(), dials, sp.GetRequiredService<Erasure>(), clock));
+builder.Services.AddSingleton(sp => new Turnaround(ops, dials, sp.GetRequiredService<ConsoleRecord>(), notifier, clock));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
@@ -230,9 +247,11 @@ api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILog
 });
 
 // A document as it was kept (the old Raw File tab): operators of the payment's tenant only.
-api.MapGet("/payments/{id}/documents/{doc}", async (string id, string doc, HttpContext http) =>
+api.MapGet("/payments/{id}/documents/{doc}", async (string id, string doc, HttpContext http, Erasure erasure) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
+    // An erased payment's kept files are not given out again (R-05-70, Issue I-180).
+    if (await erasure.IsErased(id, http.RequestAborted)) return Problem(410, $"{id} is erased; its documents are not given out");
     await using var s = StoreDbContext.Open(store);
     await using var o = OpsDbContext.Open(ops);
     var m = await s.Messages.AsNoTracking().FirstOrDefaultAsync(x => x.Id == doc);
@@ -296,13 +315,24 @@ api.MapPost("/rebuild", async (Reasoned? body, HttpContext http, ConsoleRecord r
 });
 api.MapGet("/system-actions/pending", async (HttpContext http, ConsoleRecord record) =>
     Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "No role for the console's system actions") : Results.Ok(await record.Pending()));
-api.MapPost("/system-actions/{id}/decision", async (string id, DecisionRequest body, HttpContext http, ConsoleRecord record, Projector p) =>
+api.MapPost("/system-actions/{id}/decision", async (string id, DecisionRequest body, HttpContext http, ConsoleRecord record, Projector p, Unmasking unmask, Erasure erasure) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
     try
     {
-        return Results.Ok(await record.Decide(who, id, body.Approve, body.Remarks, async (name, ct) =>
+        return Results.Ok(await record.Decide(who, id, body.Approve, body.Remarks, async (name, details, requestedBy, ct) =>
         {
+            switch (name)
+            {
+                case ConsoleRecord.Unmask: return await unmask.Grant(details, requestedBy, ct);
+                case ConsoleRecord.Erase:
+                {
+                    var r = await erasure.Erase(details, requestedBy, who.Actor, id, ct);
+                    await p.CatchUp(ct);
+                    return r;
+                }
+                case ConsoleRecord.ReleaseLegalHold: return await erasure.Release(details, requestedBy, who.Actor, ct);
+            }
             await p.Rebuild(ct);
             var lag = await p.Lag(ct);
             return new JsonObject { ["rebuilt"] = true, ["behind"] = lag.Behind, ["applied"] = lag.Applied };
@@ -312,7 +342,11 @@ api.MapPost("/system-actions/{id}/decision", async (string id, DecisionRequest b
 });
 api.MapGet("/audit", async (HttpContext http, ConsoleRecord record) =>
     Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "The console's audit is for supervisors and bank approvers")
-    : Results.Ok(new { exports = await record.Recent(ConsoleRecord.ExportKind), consents = await record.Recent(ConsoleRecord.ConsentKind) }));
+    : Results.Ok(new
+    {
+        exports = await record.Recent(ConsoleRecord.ExportKind), consents = await record.Recent(ConsoleRecord.ConsentKind),
+        unmasks = await record.Recent(ConsoleRecord.UnmaskKind), legalHolds = await record.Recent(ConsoleRecord.LegalHoldKind), turnaround = await record.Recent(ConsoleRecord.TatKind),
+    }));
 
 // The reconciliation break queue (R-09-92): list, resolve, and a bank approver's consent to a resolution that changes the system.
 api.MapGet("/breaks", async (HttpContext http, BreakQueue q) =>
@@ -330,9 +364,12 @@ api.MapPost("/breaks/{id}/consent", async (string id, DecisionRequest body, Http
     catch (ActionRefused e) { return Problem(e.Status, e.Message); }
 });
 
-// The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74).
-app.MapRegisters();
+// The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74, R-09-100).
+app.MapRegisters(app.Configuration["Operations:Registers:SystemReadsMasked"] == "true");
 app.MapChannel(ops);
+app.MapEnquiries(store, app.Configuration["Operations:Banks"] ?? app.Configuration["TH_BANKS_DIR"]);
+// Work management, saved filters, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
+app.MapWork(ops);
 
 api.MapMethods("/{**rest}", ["PUT", "PATCH", "DELETE"], () => Problem(405, "The operations console changes a payment only through its declared actions")).AllowAnonymous();
 
@@ -377,13 +414,16 @@ public sealed record Reasoned(string? Remarks);
 public sealed record BreakResolution(string Resolution, string? Remarks);
 
 /// <summary>Keeps the read model up with the outbox: a poll every Operations:PollMilliseconds (default 500).</summary>
-sealed class ProjectionService(Projector p, HoldExpiry expiry, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
+sealed class ProjectionService(Projector p, HoldExpiry expiry, Turnaround tat, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var every = TimeSpan.FromMilliseconds(int.TryParse(cfg["Operations:PollMilliseconds"], out var ms) ? ms : 500);
         var sweepEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:HoldSweepSeconds"], out var hs) ? hs : 30);
+        var tatEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:TatSweepSeconds"], out var ts) ? ts : 60);
         var swept = DateTimeOffset.MinValue;
+        // The first turnaround sweep comes one interval after the start, once the projection has caught up.
+        var tatSwept = DateTimeOffset.UtcNow;
         while (!ct.IsCancellationRequested)
         {
             try { await p.CatchUp(ct); }
@@ -396,6 +436,14 @@ sealed class ProjectionService(Projector p, HoldExpiry expiry, IConfiguration cf
                 try { await expiry.Sweep(ct); }
                 catch (OperationCanceledException) { break; }
                 catch (Exception e) { log.LogWarning("hold expiry: {Error}", e.Message); }
+            }
+            // A payment past its turnaround limit is alerted once, a fact and the notification port (R-05-68).
+            if (DateTimeOffset.UtcNow - tatSwept > tatEvery)
+            {
+                tatSwept = DateTimeOffset.UtcNow;
+                try { await tat.Sweep(ct); }
+                catch (OperationCanceledException) { break; }
+                catch (Exception e) { log.LogWarning("turnaround: {Error}", e.Message); }
             }
             try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
         }

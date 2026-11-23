@@ -3,7 +3,7 @@ id: CS-2026-11-23-003
 tenant: owner
 origin: seed
 checker: service.operations
-publishedAt: 2026-11-23T08:54:11.961Z
+publishedAt: 2026-11-23T08:52:11.377Z
 makers:
   - tools/build_factory.py
 sources:
@@ -13,6 +13,18 @@ sources:
   - spec/factory/uae.p
   - spec/factory/uae.wps
 members:
+  - kind: reference-table
+    name: b.ref.bank-calendar.v1
+    release: 1.0.0
+    key: example-bank/b.ref.bank-calendar.v1@1.0.0
+  - kind: reference-table
+    name: b.ref.cut-offs.v1
+    release: 1.0.0
+    key: example-bank/b.ref.cut-offs.v1@1.0.0
+  - kind: configuration-set
+    name: config:example-bank
+    release: 1.8.0
+    key: example-bank/config:example-bank@1.8.0
   - kind: test
     name: P-CHG-001
     release: ""
@@ -181,26 +193,10 @@ members:
     name: P-RES-002
     release: ""
     key: P-RES-002
-  - kind: activity
-    name: p.hold.approval.v1
-    release: 1.1.0
-    key: p.hold.approval.v1@1.1.0
-  - kind: activity
-    name: p.hold.repair.v1
-    release: 1.1.0
-    key: p.hold.repair.v1@1.1.0
-  - kind: table
-    name: p.table.workflow-select.v1
-    release: 1.3.0
-    key: p.table.workflow-select.v1@1.3.0
   - kind: operations-view
     name: p.view.operations.v1
     release: 1.4.0
     key: p.view.operations.v1@1.4.0
-  - kind: workflow
-    name: p.wf.inward.v2
-    release: 2.0.0
-    key: p.wf.inward.v2@2.0.0
   - kind: pack
     name: pack:p
     release: 1.8.0
@@ -213,18 +209,10 @@ members:
     name: pack:uae.wps
     release: 1.8.0
     key: pack:uae.wps@1.8.0
-  - kind: workflow
-    name: uae.wps.wf.agent-payment-in.v2
-    release: 2.2.0
-    key: uae.wps.wf.agent-payment-in.v2@2.2.0
-  - kind: workflow
-    name: uae.wps.wf.inward-refuse.v1
-    release: 1.1.0
-    key: uae.wps.wf.inward-refuse.v1@1.1.0
-  - kind: workflow
-    name: uae.wps.wf.return-in.v1
-    release: 1.3.0
-    key: uae.wps.wf.return-in.v1@1.3.0
+  - kind: operations-view
+    name: uae.wps.view.operations.v1
+    release: 1.5.0
+    key: uae.wps.view.operations.v1@1.5.0
   - kind: test
     name: WPS-ENR-001
     release: ""

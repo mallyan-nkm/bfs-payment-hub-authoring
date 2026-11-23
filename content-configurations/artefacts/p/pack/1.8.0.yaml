@@ -54,13 +54,13 @@ artefacts:
     path: activities/p.enrich.payment-record.v1.yaml
   - name: p.hold.approval.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:f6c049c5c4313465f916c3c3da2dd4b528164d238127e0254e146ca2a1d62305
+    release: 1.0.0
+    hash: sha256:f81d0e576083cd41dc97575e9c31f090fca51851a4a3a583524899f5e8986616
     path: activities/p.hold.approval.v1.yaml
   - name: p.hold.repair.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:76a3058b5860b488558f7a7f5e49441acb3a19a1fd1b91f7f0b637fe2efeb4a5
+    release: 1.0.0
+    hash: sha256:601e7971a381fb998fdb650a704481db8c0810c7536de845acc397892eaabd2a
     path: activities/p.hold.repair.v1.yaml
   - name: p.notify.channel.v1
     kind: activity
@@ -269,8 +269,8 @@ artefacts:
     path: rules/p.table.rail-choice.v1.yaml
   - name: p.table.workflow-select.v1
     kind: table
-    release: 1.3.0
-    hash: sha256:81922b42dc747bd8702eebb723a858625e7805c35f14b6ac417998c02977fa8f
+    release: 1.2.0
+    hash: sha256:231a7f26aa981c5c09dcbe45ea23255abd279ae65a4e040d4d722a668a325792
     path: rules/p.table.workflow-select.v1.yaml
   - name: p.sim.channel.v1
     kind: simulator
@@ -430,7 +430,7 @@ artefacts:
   - name: p.view.operations.v1
     kind: operations-view
     release: 1.4.0
-    hash: sha256:20c04f83f6ea38c90d7355dcadf4977898314a41f5f28897d8162bcb6174a573
+    hash: sha256:a7e4528146eed5f7ff943af74a961bf50d1a14f3775115a727708b323f585880
     path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow
@@ -452,11 +452,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:68fb398dbb38eeb0bc5762fccbaf66b62c2f791f3eebaa749b43d44d59a8f73c
     path: workflows/p.wf.corporate.v1.yaml
-  - name: p.wf.inward.v2
+  - name: p.wf.inward.v1
     kind: workflow
-    release: 2.0.0
-    hash: sha256:66f051ffc9d38256adf1ab1d6a60e617a7f6252e4c758bcdbcea61f14dad0084
-    path: workflows/p.wf.inward.v2.yaml
+    release: 1.0.0
+    hash: sha256:ccfd6359604b7236fdaf7919b98c698808ce7f4df4827ccec66b1bb58a2bdf45
+    path: workflows/p.wf.inward.v1.yaml
   - name: p.wf.refund-out.v1
     kind: workflow
     release: 1.0.0

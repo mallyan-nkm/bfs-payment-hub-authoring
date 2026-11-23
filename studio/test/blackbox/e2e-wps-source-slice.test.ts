@@ -4,6 +4,7 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseYaml } from '../../src/core/yaml.js';
 import { zip } from '../../src/export/zip.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
 import { runtimeApiEnv, runtimeHeaders } from './runtime-auth.js';
@@ -20,6 +21,8 @@ import { TEST_TOKEN } from '../support/content.js';
 const REPO = path.resolve(STUDIO, '..');
 const RUNTIME = path.join(REPO, 'runtime');
 const BUNDLE = path.join(REPO, 'content-configurations', 'extractions', 'wps-outward-cbx');
+// The release of the leg the bundle carries: the factory leg's next minor (a published release is never edited, R-01-10).
+const LEG: string = parseYaml(fs.readFileSync(path.join(BUNDLE, 'artefacts', 'workflows', 'uae.wps.wf.salary-file-out.v1.yaml'), 'utf8')).release;
 const TENANT = 'example-bank';
 const PLATFORM = 'p.wf.corporate.v1';
 const BENCH = [
@@ -103,7 +106,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
       expect(pub.status, JSON.stringify(pub.data).slice(0, 600)).toBe(200);
       expect(pub.data.git?.status, JSON.stringify(pub.data.git)).toBe('committed');
     }
-    const leg = (await api.get('/api/catalogue?q=uae.wps.wf.salary-file-out.v1')).data.items.find((e: any) => e.release === '1.3.0');
+    const leg = (await api.get('/api/catalogue?q=uae.wps.wf.salary-file-out.v1')).data.items.find((e: any) => e.release === LEG);
     expect(leg?.status).toBe('published');
     // The bank part, once the shared part is a version: imported by the bank configurator, approved by the bank approver.
     const bank = await api.post('/api/import/apply', { bundle: bundleB64, actor: 'example.maker' });
@@ -148,7 +151,10 @@ describe('the source WPS outward flow, through the north-star path', () => {
     try {
       for (let i = 0; i < 120; i++) { try { await fetch(`${apiUrl}/activations/active?environment=x&scope=x`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
       const imp = await (await fetch(`${apiUrl}/import-branch`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ path: look }) })).json();
-      expect(imp.problems, JSON.stringify(imp.problems)).toEqual([]);
+      // One bank per runtime (R-09-76): the other banks' configuration sets on the branch are named and not imported, nothing else.
+      const problems: string[] = imp.problems ?? [];
+      expect(problems.filter((p) => !/^[a-z-]+: the configuration set of [a-z-]+ is not this runtime's bank \(example-bank\), not imported \(R-09-76\)$/.test(p)), JSON.stringify(problems)).toEqual([]);
+      expect(problems.some((p) => p.startsWith('example-bank:')), JSON.stringify(problems)).toBe(false);
       // Every engine package the studio published on the branch carried its signature, and the runtime verified each.
       const onBranch = Object.keys(server.fake.files(server.repo, 'main')).filter((p) => /^content-configurations\/releases\/.+\/manifest\.yaml$/.test(p));
       for (const m of onBranch) expect(server.fake.files(server.repo, 'main')[m.replace(/manifest\.yaml$/, 'release.sig')], m).toBeDefined();
@@ -170,7 +176,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
         expect((await inst.json()).signedBy).toMatch(/^[0-9a-f]{32}$/);
       }
       // A leg is packaged with the platform workflow that uses it: the corporate workflow's Temporal
-      // package, which now carries leg 1.3.0 and the native writer, is stored once and activated for test.
+      // package, which now carries the bundle's leg and the native writer, is stored once and activated for test.
       const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
       const stored = await (await fetch(`${apiUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
       expect(stored, JSON.stringify(stored)).toMatchObject({ scope: `${PLATFORM}/temporal`, stored: true, promotable: false });

@@ -1414,7 +1414,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Done in part (22 November 2026).** A hold waits in the long-running host for as long as its expiry says (R-09-68): on Temporal on the server's clock with no patience at all (the decision comes from the outbox, as before), on Flowable in production mode with the binding's journal (I-89), and on DTFx and Elsa, whose engines still keep a virtual clock in a harness run, for at most the host's patience (`TH_HOST_OPERATOR_PATIENCE`, default 30 days) instead of the test harness's ten minutes. `TH_OPERATOR_PATIENCE_SECONDS` stays for the harnesses of tests. Shown by `EngineHostTests` (each payment waits on its hold in the host until the operator decides it). Whether a hold's expiry is counted on the business calendar is still the scheme's to decide; DTFx and Elsa on real time are in I-138.
 
-**Done (23 November 2026), as decided by the owner: business days (R-09-88).** `p.hold.approval.v1` and `p.hold.repair.v1` 1.1.0 (factory release 1.8.0) declare `expiryCalendar` (default `business`, or `elapsed`). The expiry counts business days of the bank's reference table of domain `business-calendar` in force on the day the hold opens: the studio interpreter waits that long; the party answers an engine with the expiry, its calendar and the days, and the shared interpreter (DTFx, Elsa, Temporal) and the Flowable binding set their timers on it; the runtime's hold reads the table its configuration installed, records `expiresAt` on the `opened` fact and the sweep expires it then. Evidence: `studio/test/hold-expiry.test.ts` (a Friday's approval expires on Monday, one opened before the December holidays on the Friday after them), `HoldExpiryCalendarTests` (both databases). The engine host runs DTFx and Elsa in real time now (R-09-93), so an operator wait there is as long as its expiry, not the host's patience. What is left: I-166.
+**Done (23 November 2026), as decided by the owner: business days (R-09-88).** `p.hold.approval.v1` and `p.hold.repair.v1` 1.1.0 (factory release 1.9.0) declare `expiryCalendar` (default `business`, or `elapsed`). The expiry counts business days of the bank's reference table of domain `business-calendar` in force on the day the hold opens: the studio interpreter waits that long; the party answers an engine with the expiry, its calendar and the days, and the shared interpreter (DTFx, Elsa, Temporal) and the Flowable binding set their timers on it; the runtime's hold reads the table its configuration installed, records `expiresAt` on the `opened` fact and the sweep expires it then. Evidence: `studio/test/hold-expiry.test.ts` (a Friday's approval expires on Monday, one opened before the December holidays on the Friday after them), `HoldExpiryCalendarTests` (both databases). The engine host runs DTFx and Elsa in real time now (R-09-93), so an operator wait there is as long as its expiry, not the host's patience. What is left: I-166.
 
 ## I-128. The adapters behind resend, reconcile, intake and drain
 
@@ -1545,7 +1545,7 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **Recommendation.** Since the platform reads nothing of it, release the leg without `facts.returns` in its exit (`uae.wps.wf.agent-payment-in.v3`, the returns kept in its step facts for the operations view), together with the next WPS release so the tests and the view move once; then remove the entry from `SLOT_WRITE_OPEN`. If the owner wants the platform to act on returns (a returns notice to the channel, a report), release `p.wf.inward.v2` with `facts.returns` in its `scheme-leg@2` instead.
 
-**Decided (owner, 23 November 2026) and done (R-09-87).** The returns stay. `p.wf.inward.v2` 2.0.0 (hand-written, a new major line) gives its leg `scheme-leg@2`, which lets the leg write `facts.returns`, and hands the returns on in its exit. `p.table.workflow-select.v1` 1.3.0 routes inward payments and returns to it; `uae.wps.wf.agent-payment-in.v2` 2.2.0, `uae.wps.wf.return-in.v1` 1.3.0 and `uae.wps.wf.inward-refuse.v1` 1.1.0 fill its slots; `p.view.operations.v1` 1.4.0 shows it in place of v1. `p.wf.inward.v1` left `spec/factory` and stays on the content branch as published, for the payments started on it. `SLOT_WRITE_OPEN` is empty in `tools/validate.py` and `studio/src/checks/checks.ts`, and L43 reports nothing. The factory is release 1.8.0, seeded with `seed-content --write-local`; the four banks' lock files moved to 1.8.0, the 1.7.0 ones kept in `packs/`; their configuration sets still accept the 1.7.0 packs (I-170).
+**Decided (owner, 23 November 2026) and done (R-09-87).** The returns stay. `p.wf.inward.v2` 2.0.0 (hand-written, a new major line) gives its leg `scheme-leg@2`, which lets the leg write `facts.returns`, and hands the returns on in its exit. `p.table.workflow-select.v1` 1.3.0 routes inward payments and returns to it; `uae.wps.wf.agent-payment-in.v2` 2.2.0, `uae.wps.wf.return-in.v1` 1.3.0 and `uae.wps.wf.inward-refuse.v1` 1.1.0 fill its slots; `p.view.operations.v1` 1.5.0 shows it in place of v1. `p.wf.inward.v1` left `spec/factory` and stays on the content branch as published, for the payments started on it. `SLOT_WRITE_OPEN` is empty in `tools/validate.py` and `studio/src/checks/checks.ts`, and L43 reports nothing. The factory is release 1.9.0, seeded with `seed-content --write-local`; the four banks' lock files moved to 1.9.0, the earlier ones kept in `packs/`; their configuration sets still accept the 1.7.0 packs (I-170).
 
 ## I-142. Engine failures seen only by the long-running host, and one kind of log back end
 
@@ -1566,6 +1566,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 **Recommendation.** Ask each bank's operations which of the source's reports they use, and express each as a view's declared report (an operations-view schema change with its lint, in the same change as the console that renders it), not as a screen. Keep CSV as the one export format unless a regulator asks for another. Decide with the bank whether an export needs its own role, and if it does, record each export as an audit fact like the service console's actions.
 
 **Decided (23 November 2026).** CSV is the one export format, an export needs no role of its own beyond the operator's right to read the list, and every export is an audit fact on the operations console's own chain: who, when, the filter as asked and the number of rows, with the fact's number in the answer's `x-th-export-fact` header (R-05-65, `ConsoleRecordTests`). A supervisor or a bank approver reads them at `GET /ops/api/audit`. Which fixed reports a bank needs is still open.
+
+**Built (owner's direction of 23 November 2026).** The SIF summary, the SIF detail and the upload history, as fixed reports the WPS view declares (R-05-67): CSV only, masked, each download an export fact. What they leave open is Issue I-183.
 
 ## I-145. The employer's refund pair is retired by draining, not by a supersession
 
@@ -1610,6 +1612,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 4. **References between registers and reference tables.** The corporate's emirate, free zone and branch name codes of the reference tables (R-01-25), but the runtime does not yet check them against the installed configuration's tables.
 
 **Recommendation.** Keep the register kinds declared in the runtime software (a new kind is a runtime release, since it is bank data, not configuration); add the reference check of (4) on `/lookups` when a bank installs its first configuration release with branches; decide (1) with each bank's security officer.
+
+**Addressed (owner's direction of 23 November 2026).** (1) is a setting, not a guess: the register API answers core banking unmasked by default and masked where the installation sets `Operations:Registers:SystemReadsMasked` (R-09-101); the choice stays the bank's security officer's. (2) A payment's masked field is unmasked on a bank approver's consent (R-05-69); a register record is not yet. Issue I-181.
 
 ## I-150. Reference tables: a kind of their own, not rule tables
 
@@ -1770,11 +1774,90 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Done: the test now reads the line's two times and checks what the requirement says, that the timer was placed one business day minus two minutes before the day the BPMN wrote, whatever minute the wait began. If the line is ever missing again, keep the binding's log of the run (the assertion prints its tail) and look at the reschedule's answer.
 
-## I-170. The banks' configuration sets accept the 1.7.0 packs
+## I-170. The banks' configuration sets accept earlier packs
 
-**Issue.** Factory release 1.8.0 adds `expiryCalendar` to the holds (R-09-88) and routes inward payments to `p.wf.inward.v2` (R-09-87). The four banks' lock files moved to 1.8.0, but their configuration sets still name the 1.7.0 packs in `accepts`, so a bank cannot yet set `expiryCalendar` (the default, business days, applies) and its configuration is checked against the 1.7.0 parameter contract.
+**Issue.** Factory release 1.9.0 adds `expiryCalendar` to the holds (R-09-88) and routes inward payments to `p.wf.inward.v2` (R-09-87). The four banks' lock files moved to 1.9.0, but their configuration sets name earlier packs in `accepts`, so a bank cannot yet set `expiryCalendar` (the default, business days, applies) and its configuration is checked against the 1.7.0 parameter contract.
 
-**Recommendation.** Release each bank's configuration set again, accepting the 1.8.0 packs, when the bank's configurator next changes a value, with its approver's consent.
+**Recommendation.** Release each bank's configuration set again, accepting the 1.9.0 packs, when the bank's configurator next changes a value, with its approver's consent.
+## I-180. Erasure in an insert-only store: the design and what it does not do
+
+**Issue.** The owner asked for retention and erasure with periods the bank sets. The store is insert-only, at the database too (R-09-81): a host may insert and read, never update or delete, and every fact is chained to the one before it. A payment's personal data is in several places: the read model (masked), the store's payment and line rows (`bulk`, `payment`, `party`, their supplementary data), the kept messages and files (`message`, `stored_file`, `file_content`), and the payload facts of the claim check. Deleting or overwriting any of them would break the rule, the chain and every distribution's record.
+
+**Decided and built (R-05-70).** An erasure is a tombstone: a fact `erasure`/`erased` on the payment's own chain, with the consent's id, who asked, who consented and why (the retention period or a request), and no value. It is asked for by a supervisor and carried out only on a different bank approver's consent (R-09-77, the console's system actions); it is refused while the payment is open, erased already, or under a legal hold, when asked and again at the consent (a refusal at the consent is recorded as `failed`). From the tombstone the read model shows every field a view masks as `[erased]`, which a rebuild gives again; the console refuses the payment's kept documents (410) and its unmasking. A payment is due when it ended longer ago than the bank's `retentionPeriod` (R-05-66, P0D by default: nothing is due until the bank sets one). Legal holds are facts on the console's chain: placed at once by a supervisor or a bank approver, released only on a bank approver's consent.
+
+**What it does not do.**
+1. **The values stay in the store.** The payment rows, the kept files and the payload facts still hold them, readable by whoever reads the database or a backup. The tombstone governs what the runtime gives out, not what the database holds.
+2. **Only the operations console honours it.** The channel enquiries show no personal field today; the release API, the File API's outbox, the engines' own histories (Temporal's event history, DTFx's and Elsa's instance stores, Flowable's variables) and the observability back ends are not read for it.
+3. **Registers.** A corporate's record in the bank's registers (R-05-62) is not erased this way; a register change can blank fields, but every earlier version is kept by design.
+4. **A field shown whole** (`mask: none`, a corporate's name) is erased too, since it declares a mask; a field that declares none is not personal by the view's own lint (L38) and stays.
+
+**Recommendation.** To make an erasure reach the bytes, crypto-shred: encrypt each payment's personal values and kept files at acceptance with a key of its own (a data key per payment, wrapped by the bank's key in its key vault, as the secret providers of I-73 already reach), keep only the wrapped key in the store, and erase by destroying the data key in the vault, which the insert-only store does not hold. That needs the store's write path (accept, keep a file, the claim check) and every reader to decrypt, and a decision with each bank's data protection officer on the periods per kind of data (payments, kept files, registers, logs) and on the engines' histories. Until then, say to each bank that an erasure in TransactHub masks and refuses, and that the database keeps the values for as long as the bank keeps the database and its backups.
+
+## I-181. Unmasking, and the register API's answer to core banking (I-149 (1) and (2))
+
+**Issue.** The console shows personal fields masked only (I-100, I-149 (2)); the owner asked for an unmask on a bank approver's consent. I-149 (1) left open whether core banking should read the registers masked.
+
+**Decided and built.** Unmasking (R-05-69): an operator asks for one field of a payment or a line with a reason; a different bank approver consents through the console's system actions; the value is shown to the asker only, for the bank's `unmaskWindow` (a dial of the platform's view, P0D by default, so unmasking is off until the bank sets it, at most four hours). The request, the consent and each view are facts with ids only; the answer carries `Cache-Control: no-store`. The register API (R-09-101) keeps answering core banking unmasked by default, and answers masked where the installation sets `Operations:Registers:SystemReadsMasked=true`.
+
+**Still open.** (1) Unmasking reads a field of a payment or its lines; a leg's fields and a register record's are not unmasked yet. (2) The value is shown in the browser: a screenshot or a copy is outside the runtime's reach. (3) Whether a bank approver may consent to unmasks of every tenant (`MayConsent` is any tenant's bank approver) only matters if a runtime ever served several banks (R-09-76).
+
+**Recommendation.** Ask each bank's security officer to choose `SystemReadsMasked` and the unmask window before go-live, and record both in the bank's README with the date.
+
+## I-182. The operations console's notification port, and the turnaround alerts
+
+**Issue.** The owner asked for turnaround breaches to be alerted "through the notification port". The factory has no port for operator alerts: `p.port.channel.v1#notify` tells the originating channel of a payment's outcome, and the alert rules of R-09-72 go to the observability stack, not to a person.
+
+**Decided and built (R-05-68).** The console has a notification port of its own, bound by its settings (`Operations:Notify:Adapter`): `log` by default (a warning with ids only), `simulator` for tests, `webhook` (a POST of the alert, ids only, to `Operations:Notify:Url`). The console sweeps for breaches every `Operations:TatSweepSeconds` (60 by default) and alerts each once: a fact `tat`/`breached` on its chain, then the port; a port that fails is recorded as `alert-failed` and not retried. The limit is the bank's `tatLimit` (P0D: none) in force on the day the payment was accepted, the scheme view's where the bank set one. The breach list reads the read model, up to 100 000 payments a pass.
+
+**Recommendation.** Add `p.port.notification.v1` to the platform pack (operations: `alert`, style send) with a simulator, so a bank binds where operator alerts go in its configuration release like any port, and move the console's adapters behind it; decide with each bank whether a turnaround is counted on the business calendar (today elapsed time) and whether a breach should also be a metric for the alert rules (I-143).
+
+## I-183. The fixed WPS reports: what the source's reports had that the read model does not
+
+**Issue.** I-144 left open which of the source's fixed reports a bank needs. The owner asked for the SIF summary, the SIF detail and the upload history as fixed reports, CSV only, every export audited.
+
+**Decided and built (R-05-67).** A view declares its fixed reports as data; the WPS view 1.5.0 declares the three, each column a field the view already declares (with the old screen it came from), plus the file's status. The console renders any declared report the same way, so no WPS screen is written; each download is an export fact (R-05-65) naming the report.
+
+**Still open.** (1) The source's upload history showed the uploading user's name and the channel's error text per record; the new model holds the channel user's id (masked) and the validation findings, not a name. (2) The source's SIF detail had the MOHRE update date; the new model has the labour ministry's status only. (3) Excel and PDF are not offered (I-144, CSV only). (4) A report is not sent on a schedule (deferred by the owner).
+
+**Recommendation.** Confirm with DIB's and ADIB's operations that the three reports, with these columns, replace the source's; add a column only as a field of the view (an operations-view release), never as a report's own source.
+
+## I-184. The channel's enquiries of core banking: what the port contract does not say
+
+**Issue.** The owner asked for balance, associated accounts and charge preview as channel enquiries through the core-banking port. `p.port.core-banking.v1` declares reserve, release, post, verify and reverse only; the runtime's port already had a balance call, used by no factory activity. The source's "associated accounts" (`WpsAssociatedAccountsEndpoints`) were the bank's own GL accounts a WPS upload posts against (nostro, suspense, P&L, VAT), from its GL mapping, and its charge preview came from its charge resolution service, the one the workflow priced with.
+
+**Decided and built (R-09-100).** Three enquiries for `channel-enquiry` callers: a balance of an account the corporate register holds for the corporate, the accounts core banking holds for the corporate's CIF (each marked whether the register holds it), and a charge preview for a file of a scheme, records and amount. Each asks the bank's core-banking binding in force: the `simulator` answers from its settings, `gateway-rest` (and `file-bulk`, whose enquiries go to its gateway) from `accountsPath`/`accountsFunctionId` and `chargesPath`/`chargesFunctionId`. A corporate or account the register does not hold is 404 and nothing is sent; a binding with no path is 503.
+
+**Still open.** (1) The bank's GL accounts of the source's "associated accounts" are the accounting template's parameters in the new model (`p.post.accounting.v2`), not a core-banking answer; they are not offered as an enquiry. (2) The charge preview is core banking's; the workflow prices with `p.enrich.charges.v1` and the bank's slabs, so the two can differ.
+
+**Recommendation.** Add `balance`, `accounts` and `charges` to `p.port.core-banking.v1` in its next release (and their simulator scenarios), so a binding's settings for them are checked like the others (L48); decide with each bank whether the charge preview should be the platform's own pricing (`p.enrich.charges.v1` on the bank's dials, what the payment will post) instead of core banking's, and whether the channel needs the GL accounts at all.
+
+## I-185. Work management: what the queue does not yet do
+
+**Issue.** The owner asked for assignment, escalation and reassignment of a payment or a queue item, bulk actions, saved filters per user and a live queue.
+
+**Decided and built (R-05-71).** Each item (a payment with an open hold, or an operator action waiting for its second approver) has its own chain of `work` facts; the rules are the tenant's roles; a bulk change and a bulk operator action apply each item's own rules and its second approver, item by item; saved filters are facts on each person's own chain; the queue long-polls the store's outbox and reloads when anything was written. Assigning changes no payment and needs no bank approver.
+
+**Still open.** (1) An escalation goes to the supervisors as a role; there are no named teams or levels beyond the count, and nothing escalates by itself on time (a breach is alerted, R-05-68, but not escalated). (2) The queue reads the facts of every item it shows; past some thousands of open items it needs a projection of its own, like the read model. (3) An assignee is named by the identity provider's subject; the runtime has no directory to offer names. (4) The live queue wakes on any write to the store, not only on its own items.
+
+**Recommendation.** Decide with each bank's operations whether an item escalates by itself after a time (a dial of the platform's view) and to whom, and project the queue into the read model when a bank's open items pass a thousand.
+
+## I-186. A bank's own reference table built a distribution, not a configuration release
+
+**Issue.** Reference tables travel to the runtime in the bank's configuration release, never in a distribution (R-01-25). But the studio's approval classified a bank's own reference table as bank pack content: approving `b.ref.branches.v1` built a new distribution of the bank (without the table) and no configuration release, so the table reached the runtime only with the next change of the bank's values.
+
+**Decided and built (R-11-52).** A bank's own reference table is values: its approval builds the bank's configuration release, which carries the table with all its editions, and no distribution. The example bank has a calendar of its own closing days (`b.ref.bank-calendar.v1`) and its cut-off times (`b.ref.cut-offs.v1`), synthetic, edited in the studio's Bank page by the Bank Configurator as a new edition and approved by the Bank Approver.
+
+**Still open.** (1) The runtime serves the tables under `/lookups` (R-09-75) but no activity reads the bank's calendar or cut-offs yet: `uae.p.port.calendar.v1` does not read a table (I-151 (3)), and no step refuses or defers a file after the cut-off. (2) A shared reference table approved by the platform approver still builds distributions for the banks that take it, not configuration releases.
+
+**Recommendation.** Have the calendar adapter read `uae.p.ref.business-calendar.v1` and the bank's `b.ref.bank-calendar.v1` by date, and add a platform step (or a front-door rule) that reads `b.ref.cut-offs.v1` for the file's scheme and direction, each with its tests; make a shared reference table's approval build each taking bank's configuration release.
+
+## I-187. The source slice's bundle carried a release the factory had since published
+
+**Issue.** `studio/test/blackbox/e2e-wps-source-slice.test.ts` failed at its first step: the extraction bundle (`content-configurations/extractions/wps-outward-cbx`) held `uae.wps.wf.salary-file-out.v1` at 1.3.0, written when the factory's leg was at 1.2.0; the factory then published its own 1.3.0 (the employer looked up in the party register, R-12-27). The import refused it rightly (R-01-10: a published release is never edited). The test and its bundle were stale, not the code. The bundle's configuration set (1.7.0) was also no later than the example bank's own.
+
+**Decided and fixed.** The bundle's leg is now the factory's current leg at its next minor (1.4.0), with the source's writer in the render step; its test WPS-CBX-006 runs the party register step; its configuration set is the example bank's next release. The generator (`docs/import/extract_wps_outward_cbx.py`) now derives the leg's release from the factory's, so it cannot fall behind again, and the test reads the leg's release from the bundle. `e2e-wps.test.ts` likewise reads the shipped configuration release and makes the next ones after it. Once step 1 passed, step 4 failed the same way: it expected the runtime's branch import to report nothing, but since one runtime serves one bank (R-09-76) the import names the other banks' configuration sets it does not take; the test now allows exactly those.
+
+**Recommendation.** Regenerate the bundle with the generator whenever the factory's leg changes.
 
 ## Not done, and why
 

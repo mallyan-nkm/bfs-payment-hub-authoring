@@ -61,7 +61,9 @@ public static class RegisterEndpoints
         fields = k.Fields.Select(f => new { f.Id, f.Title, f.Type, f.Required, f.Personal, f.Mask, f.Lookup, f.Iso, f.References }),
     };
 
-    public static void MapRegisters(this WebApplication app)
+    /// <param name="systemReadsMasked">Issue I-149 (1), I-181: true makes the register API answer core banking masked, as the kind declares;
+    /// false (the default) answers it unmasked, as the system the data came from.</param>
+    public static void MapRegisters(this WebApplication app, bool systemReadsMasked = false)
     {
         var ops = app.MapGroup("/ops/api/registers");
 
@@ -144,7 +146,7 @@ public static class RegisterEndpoints
             var (tenant, refused) = SystemTenant(http, SystemRoles.RegisterClient);
             if (refused is not null) return refused;
             var r = await regs.InForce(tenant!, kind, key, AsOf(http), http.RequestAborted);
-            return r is null ? Problem(404, $"No {regs.Kind(kind).Title} {key} in force") : Results.Ok(new { tenant, key, record = r });
+            return r is null ? Problem(404, $"No {regs.Kind(kind).Title} {key} in force") : Results.Ok(new { tenant, key, record = systemReadsMasked ? RegisterService.Show(regs.Kind(kind), r) : r, masked = systemReadsMasked });
         }));
 
         api.MapGet("/{kind}", (string kind, HttpContext http, RegisterService regs) => Guard(async () =>
@@ -155,9 +157,10 @@ public static class RegisterEndpoints
             // A lookup by a declared field (?cif=, ?establishmentId=, ?accounts=), else a search and a page.
             foreach (var f in k.Lookups)
                 if (Q(http, f.Id) is { } v)
-                    return Results.Ok(new { tenant, by = f.Id, rows = await regs.FindBy(tenant!, kind, f.Id, v, AsOf(http), http.RequestAborted) });
+                    return Results.Ok(new { tenant, by = f.Id, rows = Shown(await regs.FindBy(tenant!, kind, f.Id, v, AsOf(http), http.RequestAborted)), masked = systemReadsMasked });
             var (total, rows) = await regs.Search(tenant!, kind, Q(http, "q"), AsOf(http), int.TryParse(Q(http, "page"), out var p) ? p : 1, int.TryParse(Q(http, "pageSize"), out var s) ? s : 100, http.RequestAborted);
-            return Results.Ok(new { tenant, total, rows });
+            return Results.Ok(new { tenant, total, rows = Shown(rows), masked = systemReadsMasked });
+            List<JsonObject> Shown(List<JsonObject> rs) => systemReadsMasked ? rs.Select(r => RegisterService.Show(k, r)).ToList() : rs;
         }));
 
         api.MapPost("/{kind}/changes", (string kind, ChangeRequest body, HttpContext http, RegisterService regs) => Guard(async () =>

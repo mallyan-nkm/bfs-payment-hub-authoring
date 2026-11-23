@@ -207,7 +207,7 @@ if loop:
 # requirement ids are unique across the design
 seen = {}
 for name, text in design_text.items():
-    for rid in re.findall(r"^\| (R-\d\d-\d\d) \|", text, re.M):
+    for rid in re.findall(r"^\| (R-\d\d-\d{2,3}) \|", text, re.M):
         if rid in seen:
             err("requirement %s appears in %s and in %s" % (rid, seen[rid], name))
         seen[rid] = name
@@ -355,7 +355,7 @@ def counts_block():
     shared = sum(p["total"] for p in inventory["packs"] if p["packType"] == "shared")
     parts = len(list(DESIGN.glob("[0-9][0-9]-*.md")))
     annexes = len(list(DESIGN.glob("annex-*.md")))
-    reqs = sum(len(re.findall(r"^\| R-\d\d-\d\d \|", t, re.M)) for t in design_text.values())
+    reqs = sum(len(re.findall(r"^\| R-\d\d-\d{2,3} \|", t, re.M)) for t in design_text.values())
     return ["| What | Count |", "| --- | --- |",
             "| Design parts and annexes | %d and %d |" % (parts, annexes),
             "| Numbered requirements | %d |" % reqs,

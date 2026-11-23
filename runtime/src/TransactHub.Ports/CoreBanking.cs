@@ -99,9 +99,10 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
     public const string Name = "gateway-rest";
     public string Adapter => Name;
     readonly ISecretResolver secrets = secrets ?? SecretResolver.FromEnvironment();
+    internal HttpClient Http => http;
     Uri Url(string path) => new(new Uri(b.Required("baseUrl")), b.Required(path));
 
-    async Task<HttpRequestMessage> Request(string pathSetting, string functionSetting, string reference, JsonObject body, CancellationToken ct)
+    internal async Task<HttpRequestMessage> Request(string pathSetting, string functionSetting, string reference, JsonObject body, CancellationToken ct)
     {
         var m = new HttpRequestMessage(HttpMethod.Post, Url(pathSetting)) { Content = JsonContent.Create(body) };
         m.Headers.Add("X-Function-Id", b.Required(functionSetting));

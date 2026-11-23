@@ -1,6 +1,6 @@
 import { parseYaml, parseYamlAll, toYaml } from '../core/yaml.js';
 import { OWNER_TENANT, StoreError, keyOf } from '../core/store.js';
-import { parseName } from '../core/names.js';
+import { compareReleases, parseName } from '../core/names.js';
 import { CONTEXT_PARTS, coveredByAny } from '../core/paths.js';
 import { Checker, CHECK_CATALOGUE, checkAll, checkDocument, interfaceDiff, proposeRelease, refsOf, allSteps, stepLabel } from '../checks/checks.js';
 import { analyseTable, runExamples } from '../rules/service.js';
@@ -643,6 +643,37 @@ route('GET', '/api/tenants/:tenant/port-bindings', (env, req, { tenant }) => {
     bindings: runtime.flatMap((r) => r.doc.bindings ?? []).map((b: any) => ({ ...b, validFrom: String(b.validFrom) })),
   });
   return { released: released ?? null, draft: draft ?? null, runtime, ports, start, yaml: toYaml(start), issues: checkDocument(env, start, tenantOf(req), gov.draftSet(env, tenantOf(req))) };
+});
+
+/**
+ * A bank's own reference tables, for their editor (R-11-52): its calendar, its cut-offs and its branches, each the release the
+ * studio last published, the draft in progress, and the document to start the next edition from (the draft, else the release at
+ * its next minor). A Bank Configurator saves a new edition as a draft through /api/drafts; a Bank Approver approves it, and the
+ * approval builds the bank's configuration release that carries the table to the runtime (R-01-25), never a distribution.
+ */
+route('GET', '/api/tenants/:tenant/reference-tables', (env, req, { tenant }) => {
+  const bump = (r: string) => r.split('.').map((x, i) => (i === 1 ? Number(x) + 1 : i === 2 ? 0 : Number(x))).join('.');
+  const drafts = env.store.drafts(tenant).filter((e) => e.kind === 'reference-table');
+  const latest = new Map<string, any>();
+  for (const e of env.store.byKind('reference-table').filter((x) => x.tenant === tenant))
+    if (!latest.has(e.name) || compareReleases(e.release, latest.get(e.name).release) > 0) latest.set(e.name, e);
+  const names = [...new Set([...latest.keys(), ...drafts.map((d) => d.name)])].sort();
+  return {
+    tables: names.map((name) => {
+      const released = latest.get(name)?.doc ?? null;
+      const draft = drafts.find((d) => d.name === name)?.doc ?? null;
+      const start = draft ?? (released ? { ...released, release: bump(released.release) } : null);
+      return { name, title: (draft ?? released)?.title, domain: (draft ?? released)?.domain, released, draft, start, issues: start ? checkDocument(env, start, tenant, gov.draftSet(env, tenant)) : [] };
+    }),
+  };
+});
+
+/** Check a bank's reference table without saving it: the schema and L49 (columns, key, editions in order, every row fits). */
+route('POST', '/api/tenants/:tenant/reference-tables/check', (env, req, { tenant }) => {
+  const doc = req.body?.doc ?? safeParse(req.body?.yaml ?? '');
+  if (doc.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: doc.__parseError }] };
+  if (doc.kind !== 'reference-table' || !String(doc.name ?? '').startsWith('b.')) return { issues: [{ code: 'R-11-52', severity: 'error', message: 'A bank edits its own reference tables only, in scope b' }] };
+  return { issues: checkDocument(env, doc, tenant, gov.draftSet(env, tenant)) };
 });
 
 /** Check a bank's port bindings without saving them: the schema and L48 against the port contracts. */

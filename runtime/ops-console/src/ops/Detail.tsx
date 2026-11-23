@@ -11,7 +11,35 @@ function Value({ f, v }: { f: FieldDecl; v: unknown }) {
   return <span className={f.format === 'code' || f.format === 'json' ? 'mono' : ''}>{show(v, f.format)}</span>;
 }
 
-function Fields({ section, values, testid }: { section?: Section; values: Record<string, any>; testid?: string }) {
+/**
+ * Unmasking (R-05-69): a masked field is asked for with a reason; a bank approver, another person, consents; the value is then
+ * shown here to the person who asked, for the bank's window. The request is the console's, by ids only.
+ */
+function Unmask({ api, subject, field }: { api: Client; subject: string; field: FieldDecl }) {
+  const [asked, setAsked] = useState<string | null>(null);
+  const [shown, setShown] = useState<{ value: any; until: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  if (!field.mask || field.mask === 'none') return null;
+  return (
+    <span className="unmask">
+      {shown ? <span className="mono" data-testid={`unmasked-${field.id}`}>{show(shown.value)} <span className="muted small">until {show(shown.until, 'datetime')}</span></span>
+        : asked ? (
+          <button className="link" onClick={async () => {
+            try { setShown(await api.unmasked(asked)); setMsg(null); } catch (e: any) { setMsg(e.message); }
+          }}>Show</button>
+        ) : (
+          <button className="link" aria-label={`Unmask ${field.label}`} onClick={async () => {
+            const why = window.prompt(`Why do you need to see ${field.label}?`) ?? '';
+            if (!why.trim()) return;
+            try { const r = await api.unmask(subject, `subject:${field.id}`, why); setAsked(r.action); setMsg('Asked; a bank approver must consent.'); } catch (e: any) { setMsg(e.message); }
+          }}>Unmask</button>
+        )}
+      {msg && <span className="muted small" role="status"> {msg}</span>}
+    </span>
+  );
+}
+
+function Fields({ section, values, testid, api, subject }: { section?: Section; values: Record<string, any>; testid?: string; api?: Client; subject?: string }) {
   const groups = grouped(section?.fields, section?.groups);
   return (
     <div className="cards" data-testid={testid}>
@@ -23,6 +51,7 @@ function Fields({ section, values, testid }: { section?: Section; values: Record
               <div key={f.id} data-field={f.id}>
                 <dt>{f.label}</dt>
                 <dd><Value f={f} v={values?.[f.id]} /></dd>
+                {api && subject && values?.[f.id] != null && values[f.id] !== '[erased]' && <Unmask api={api} subject={subject} field={f} />}
               </div>
             ))}
           </dl>
@@ -104,7 +133,7 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
       {mine.map((v) => (
         <div key={v.name}>
           <h2>{v.subject?.title ?? v.title}</h2>
-          <Fields section={v.subject} values={p.fields} testid={`fields-${v.name}`} />
+          <Fields section={v.subject} values={p.fields} testid={`fields-${v.name}`} api={api} subject={p.id} />
         </div>
       ))}
       <div className="tabs" role="tablist">

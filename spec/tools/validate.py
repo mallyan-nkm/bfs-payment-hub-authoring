@@ -936,6 +936,10 @@ OPS_PERSONAL = {"bulk.debtorName", "bulk.initiatingParty.id", "bulk.debtorAccoun
                 "line.creditorAccount.iban", "line.creditorAccount.other"}
 OPS_HOLDS = {"approve": ("p.hold.approval.v1", "approved"), "decline": ("p.hold.approval.v1", "declined"),
              "release": ("p.hold.repair.v1", "released"), "reject": ("p.hold.repair.v1", "rejected")}
+# R-05-66, R-05-67: the dials the operations console reads from a view, and the attributes of a kept document a report may show.
+OPS_DIALS = {"tatLimit", "unmaskWindow", "retentionPeriod"}
+OPS_SCHEME_DIALS = {"tatLimit", "retentionPeriod"}
+OPS_DOCUMENT_ATTRS = {"fileName", "at", "size", "source", "direction", "signed"}
 STEP_SRC = re.compile(r"^step:(?P<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?P<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$")
 MSG_SRC = re.compile(r"^message:(?P<kind>[a-z0-9.\-]+?)\.(?:fileName|at|size|count|direction)$")
 
@@ -1121,6 +1125,32 @@ for path, d in docs:
                     err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
                 err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
+        # R-05-67 (Issue I-144): a fixed report is the subject's, and every column is a declared field, a declared line field
+        # or a document's attribute; a report of documents lists a kind the view declares.
+        for rep in sec.get("reports") or []:
+            rid = rep.get("id")
+            if leg is not None:
+                err("L38", at, "report %s is declared on a leg; reports are the subject's" % rid)
+                continue
+            kinds = {doc["kind"] for doc in sec.get("documents") or []}
+            if rep.get("rows") == "documents" and rep.get("document") not in kinds:
+                err("L38", at, "report %s lists documents of kind %s, which the view does not declare" % (rid, rep.get("document")))
+            if rep.get("rows") != "documents" and rep.get("document"):
+                err("L38", at, "report %s names a document kind but its rows are not documents" % rid)
+            for c in rep.get("columns") or []:
+                if c.startswith("line."):
+                    ok = c[5:] in lfields and rep.get("rows") == "lines"
+                elif c.startswith("document."):
+                    ok = c[9:] in OPS_DOCUMENT_ATTRS and rep.get("rows") == "documents"
+                else:
+                    ok = c in fields
+                if not ok:
+                    err("L38", at, "report %s column %s is not a declared field of its rows" % (rid, c))
+    # R-05-66: a view declares only the dials the operations console reads, each a duration.
+    for k, decl in (d.get("parameters") or {}).items():
+        allowed = OPS_DIALS if not scheme_scope else OPS_SCHEME_DIALS
+        if k not in allowed or decl.get("type") != "duration":
+            err("L38", path, "parameter %s is not a dial the operations console reads (%s, each a duration)" % (k, ", ".join(sorted(allowed))))
 # ------------------------------------------------- published releases never change
 # L41 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
 # (content-configurations/change-sets/ledger/<id>.yaml), and still has that text: a published release is never edited. A path

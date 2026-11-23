@@ -232,12 +232,16 @@ public static class Sources
 /// <summary>A view's fields evaluated for a subject (or a leg, or a line), masked as declared.</summary>
 public static class ViewEval
 {
-    public static JsonObject Fields(JsonArray? fields, SourceContext c, JsonObject? line = null)
+    /// <summary>The value an erased field reads (R-05-70): every field that declares a mask, the personal ones, once erased.</summary>
+    public const string Erased = "[erased]";
+
+    public static JsonObject Fields(JsonArray? fields, SourceContext c, JsonObject? line = null, bool erased = false)
     {
         var o = new JsonObject();
         foreach (var f in (fields ?? []).OfType<JsonObject>())
         {
             var id = (string)f["id"]!;
+            if (erased && f["mask"] is not null) { o[id] = Erased; continue; }
             var v = Sources.Eval((string)f["source"]!, c, line);
             if (v is JsonObject or JsonArray) { o[id] = v.DeepClone(); continue; }
             var mask = (string?)f["mask"];

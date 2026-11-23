@@ -69,13 +69,16 @@ render = {
 }
 dump('artefacts/activities/uae.wps.map.cb-sif-out.v1.yaml', render)
 
-# The leg, release 1.1.0: the same interface, the file rendered by the source's writer.
+# The leg, at the factory leg's next minor: the same interface, the file rendered by the source's writer. A published release
+# is never edited (R-01-10), so the bundle's leg is always a release the factory has not published.
 leg = yaml.safe_load(open(os.path.join(REPO, 'spec/factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml')))
-leg['release'] = '1.1.0'
+base = leg['release']
+lmaj, lmi, _ = (int(x) for x in base.split('.'))
+leg['release'] = f'{lmaj}.{lmi + 1}.0'
 for st in leg['do']:
     if st.get('id') == 'render':
         st['call'] = 'uae.wps.map.cb-sif-out.v1'
-leg['provenance'] = PROV('Release 1.1.0 of the factory leg: the salary file is rendered by the source\'s Central Bank SIF writer (native). Same interface: payments started on 1.0.0 finish on it.')
+leg['provenance'] = PROV(f"Release {leg['release']} of the factory leg, after its {base}: the salary file is rendered by the source's Central Bank SIF writer (native). Same interface: payments started on {base} finish on it.")
 dump('artefacts/workflows/uae.wps.wf.salary-file-out.v1.yaml', leg)
 
 # Tests: the CBX checks on a canonical context, and the leg with the native writer.
@@ -91,9 +94,10 @@ def t(id_, title, target, level, outcome, given, **extra):
     d.update(extra)
     dump(f'tests/{id_}.yaml', d)
 t('WPS-CBX-006', 'The leg renders the file with the source\'s writer and settles', 'uae.wps.wf.salary-file-out.v1', 'leg', 'settled', {'inbound': 'samples/wps-sif-valid.sif'},
-  bench=[{'port': 'uae.wps.port.wps.v1', 'simulator': 'uae.wps.sim.wps-outward.v1', 'scenario': 'accept'}, {'port': 'uae.p.port.calendar.v1', 'simulator': 'uae.p.sim.calendar.v1', 'scenario': 'accept'}])
+  bench=[{'port': p, 'simulator': s, 'scenario': 'accept'} for p, s in [('uae.wps.port.wps.v1', 'uae.wps.sim.wps-outward.v1'), ('uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1'),
+         ('p.port.encryption.v1', 'p.sim.encryption.v1'), ('uae.wps.port.labour-ministry.v1', 'uae.wps.sim.labour-ministry.v1'), ('p.port.party-register.v1', 'p.sim.party-register.v1')]])
 with open(os.path.join(out, 'tests/WPS-CBX-006.yaml')) as f: d6 = yaml.safe_load(f)
-d6['expect']['trace'] = ['business-date:set', 'file-checks:pass', 'record-checks:pass', 'record-iban:pass', 'render:mapped', 'submit:accepted', 'end:settled']
+d6['expect']['trace'] = ['business-date:set', 'corporate:registered', 'employer-status:found', 'file-checks:pass', 'record-checks:pass', 'record-iban:pass', 'render:mapped', 'submit:accepted', 'end:settled']
 dump('tests/WPS-CBX-006.yaml', d6)
 
 # The example bank's values for the new parameters.
