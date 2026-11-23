@@ -356,6 +356,7 @@ export async function record(prod: Production, outDir: string) {
   }
   if (DRY) {
     console.log(`${prod.NAME}: ${list.length} scenes ran, dry`);
+    fs.rmSync(work, { recursive: true, force: true });
     return { scenes: list.length };
   }
   const webm = fs.readdirSync(work).find((f) => f.endsWith('.webm'))!;
@@ -395,5 +396,7 @@ export async function record(prod: Production, outDir: string) {
   const srt = d.marks.map((m, i) => `${i + 1}\n${ts(m.at)} --> ${ts(m.at + m.seconds)}\n${m.text}\n`).join('\n');
   fs.writeFileSync(out.replace(/\.mp4$/, '.srt'), srt);
   console.log(`${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB, ${Math.floor(length / 60)} min ${Math.round(length % 60)} s, ${list.length} scenes`);
+  // The raw recording and the mix script were only the way to the mp4.
+  fs.rmSync(work, { recursive: true, force: true });
   return { scenes: list.length, out };
 }
