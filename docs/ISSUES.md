@@ -1846,6 +1846,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add `balance`, `accounts` and `charges` to `p.port.core-banking.v1` in its next release (and their simulator scenarios), so a binding's settings for them are checked like the others (L48); decide with each bank whether the charge preview should be the platform's own pricing (`p.enrich.charges.v1` on the bank's dials, what the payment will post) instead of core banking's, and whether the channel needs the GL accounts at all.
 
+**Done for (1) (23 November 2026, owner's decision, docs/OWNER-ACTIONS.md A3, R-05-91).** The bank's own ledger accounts (settlement, suspense, charge income and VAT of each accounting activity, as its configuration in force names them, an account it does not set shown as not set) are a read-only page of the operations console for supervisors (`GET /ops/api/ledger-accounts`). They are bank settings, changed only in the studio, and not offered to channels: the channel keeps the corporate's own accounts from core banking. (2) stays open; what the view cannot know is I-282.
+
 ## I-185. Work management: what the queue does not yet do
 
 **Issue.** The owner asked for assignment, escalation and reassignment of a payment or a queue item, bulk actions, saved filters per user and a live queue.
@@ -1897,6 +1899,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done for the circuit breakers of (5) (23 November 2026, owner's decision, R-09-155, R-09-156).** Every production adapter that calls an outside system calls it through a breaker per target: core banking and the bank's other gateways, SFTP, MQTT, Kafka and the webhooks. After `breakerFailures` failures in a row (default 5, 1 to 100) it stops calling for `breakerOpenSeconds` (default 30, 1 to 3600), then tries one call; each move is a row of `breaker_change`, and the service console's health shows an open breaker (`circuit-breakers`). The Kubernetes portal is dropped and the customer 360 and the workspace deferred (docs/OWNER-ACTIONS.md A2); the exchange-rate feed and the fraud alert list are still to build. What is left of the breakers: I-255 and I-259.
 
+**Done for the exchange-rate feed of (4) and the fraud alerts of (2) (23 November 2026, owner's decision, R-09-177 to R-09-179, R-05-90, R-05-92, R-11-95, R-11-96).** (4) The rates port `p.port.fx-rates.v1` (factory 1.17.0, with its simulator) and its runtime adapters `simulator` and `gateway-rest`; a scheduled job of the service console's host, the rates feed, asks the bank's binding every `refreshMinutes` and publishes the rates as a signed configuration release of the bank (the table `b.ref.fx-rates.v1` and the value `p.enrich.fx-rate.v1#rates`, each rate with its `asOf`), put in force on the bank approver's standing consent to rate releases or else waiting for its own (I-275). `p.enrich.fx-rate.v1` 1.2.0 refuses a rate older than the bank's `maxRateAge` (default PT24H, from PT1H to P7D) as `no-rate` with `fx.RateStale`, on the studio interpreter and the native code alike, and the operations console says "rates stale" in its top bar. Each real bank binds the rates port by placeholder until it names its rates service (I-163). (2) A suspect payment is an alert in the work queue, with its reason and a link to the payment; staff take, escalate, note and close it, and release or refuse its payment by the payment's own action with the view's rules. Left: I-276 to I-280.
+
 ## I-190. Annex C and Part 9 still count 55 conformance scenarios
 
 **Issue.** `spec/design/annex-c-conformance-kit.md` says `conformance/kit.yaml` "holds 55 scenarios in draft 0.2", and `spec/design/09-export-bindings.md` (section on Elsa) says 55 of 55 pass on Elsa. The kit holds 57 since CK-PARK-03 (R-09-91): `npm run studio -- kit` reports 57 of 57 on the studio interpreter, and `studio/test/execution.test.ts` expects 57. The engines' black-box test (`studio/test/blackbox/engines.test.ts`) still expects "56 of 56" on DTFx, Elsa and Flowable, so it fails once the kit runs all 57.
@@ -1919,7 +1923,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Give the WPS port a `file-transfer` adapter in the runtime (the SIF to `centralBank.sifFolder`, the ACK and NAK read from `centralBank.ackFolder`, correlated as I-160 (2) says), so that a bank's outward file leaves through the File API's outbox. Until then the laptop test shows the outbox the way every host uses it: a file posted to `POST /outbox` with the front door's client is delivered on the laptop's SFTP binding, and the consoles' client resends the same bytes through `POST /files/{id}/resend`, once per action (R-09-105). Every host that could put a file names the File API (`TH_FILE_API_URL`).
 
-**Done (23 November 2026, owner's decision A7, R-09-160 to R-09-162).** The File API is a port that sends data out: a port may be bound to adapter `file-transfer` (`runtime/src/TransactHub.Ports/PortFileTransfer.cs`), whose send puts the file on the bank's binding of `p.port.file-transfer.v1`, the File API's outbox on a runtime host, at the folder the port's binding names (`<operation>.folder`, here `centralBank.sifFolder`), kept as the payment's file (`<operation>.kind`), delivered, audited and resent there. The image answers it for a native module (`NativePorts`). The salary file is rendered by the source's writer (`uae.wps.map.sif-out.v1` 1.1.0, native) and sent (`uae.wps.exchange.send-salary-file.v1` 1.1.0, native) on the bank's binding of the WPS port. The ACK or NAK the Central Bank leaves in its inbox comes back through the File API: the sent file's stem is recorded as the payment's key, the inbox's `stemDrop` strips the Central Bank's file id (I-160 (2), Issue I-267), and the worker reads the file the File API kept (Issue I-265). ADIB's laptop configuration release binds the WPS port so (`deploy/laptop/banks/adib/file-transfer.yaml`); the laptop's bench gives the port to the runtime and its workers give the render, the send and the ACK's reading to the native host. A test distribution keeps the port's simulator, and any other bench may name it. Factory 1.16.0, change set CS-2026-11-23-011. Tests: `PortFileTransferTests`, `FileApiTests.An_answer_named_after_the_file_a_payment_sent_reaches_that_payment`, and `deploy/laptop/test/insert-only.mts` step 7 (each payment's SIF on the SFTP server through the outbox, the test answering as the Central Bank with an ACK and one NAK, P1's file resent). What remains: Issues I-266 (the encrypted file) and I-268 (the scheme's other sends).
+**Done (23 November 2026, owner's decision A7, R-09-160 to R-09-162).** The File API is a port that sends data out: a port may be bound to adapter `file-transfer` (`runtime/src/TransactHub.Ports/PortFileTransfer.cs`), whose send puts the file on the bank's binding of `p.port.file-transfer.v1`, the File API's outbox on a runtime host, at the folder the port's binding names (`<operation>.folder`, here `centralBank.sifFolder`), kept as the payment's file (`<operation>.kind`), delivered, audited and resent there. The image answers it for a native module (`NativePorts`). The salary file is rendered by the source's writer (`uae.wps.map.sif-out.v1` 1.1.0, native) and sent (`uae.wps.exchange.send-salary-file.v1` 1.1.0, native) on the bank's binding of the WPS port. The ACK or NAK the Central Bank leaves in its inbox comes back through the File API: the sent file's stem is recorded as the payment's key, the inbox's `stemDrop` strips the Central Bank's file id (I-160 (2), Issue I-267), and the worker reads the file the File API kept (Issue I-265). ADIB's laptop configuration release binds the WPS port so (`deploy/laptop/banks/adib/file-transfer.yaml`); the laptop's bench gives the port to the runtime and its workers give the render, the send and the ACK's reading to the native host. A test distribution keeps the port's simulator, and any other bench may name it. Factory 1.18.0, change set CS-2026-11-23-013 (1.16.0 and CS-2026-11-23-011 were held for it; merged after 1.17.0 and CS-2026-11-23-012, it is released as 1.18.0 under the next change set). Tests: `PortFileTransferTests`, `FileApiTests.An_answer_named_after_the_file_a_payment_sent_reaches_that_payment`, and `deploy/laptop/test/insert-only.mts` step 7 (each payment's SIF on the SFTP server through the outbox, the test answering as the Central Bank with an ACK and one NAK, P1's file resent). What remains: Issues I-266 (the encrypted file) and I-268 (the scheme's other sends).
 
 ## I-193. The laptop's workers, and the tokens its hosts give the File API
 
@@ -1943,7 +1947,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** A minor release of the map (its script at `scripts/uae.wps.map.sif-in.v1@<release>.ts`) that takes the name from the inbound message's `fileName` when the file carries no `# file:` line, with a test that maps a file without it; then the laptop test drops the line.
 
-**Done (23 November 2026, R-05-85).** `uae.wps.map.sif-in.v1` 1.4.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.4.0.ts`) takes the file's name from the inbound message's `fileName` when the file carries no `# file:` line; the interpreter hands a map the message's `fileName`, and a test may give it (`given.fileName`, `test-case.schema.json`). Tests: WPS-MAP-006 (a file with no line maps by the File API's name), WPS-MAP-007 (with neither it is unmappable, as before), and `studio/test/sif-file-name.test.ts` (the worker's attempt as the front door asks it; release 1.3.0, pinned in flight, still reads the line only). The laptop test's files carry no `# file:` line (sample `wps-sif-no-file-line.sif`). Factory 1.16.0.
+**Done (23 November 2026, R-05-85).** `uae.wps.map.sif-in.v1` 1.4.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.4.0.ts`) takes the file's name from the inbound message's `fileName` when the file carries no `# file:` line; the interpreter hands a map the message's `fileName`, and a test may give it (`given.fileName`, `test-case.schema.json`). Tests: WPS-MAP-006 (a file with no line maps by the File API's name), WPS-MAP-007 (with neither it is unmappable, as before), and `studio/test/sif-file-name.test.ts` (the worker's attempt as the front door asks it; release 1.3.0, pinned in flight, still reads the line only). The laptop test's files carry no `# file:` line (sample `wps-sif-no-file-line.sif`). Factory 1.18.0.
 
 ## I-200. On the laptop stack the File API keeps a file but cannot start its payment
 
@@ -2164,7 +2168,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Keep the refusal: a switch-over the approver consented to was a switch-over from the distribution active then, and another may now be active. Have the service console's action say so and offer to ask again from the distribution active now. The refusal's code, `distribution.ActivationRaced`, has no entry in the platform's error dictionary yet: add one with its runbook in the next release of `p.errors.platform.v1`, and have `ErrorDictionaryTests` read the store's refusal codes too.
 
-**Done in part (23 November 2026).** `distribution.ActivationRaced` has its entry and runbook in `p.errors.platform.v1` 1.6.0 (factory 1.16.0): ask again from the distribution active now, with a new consent. `ErrorDictionaryTests.Every_code_a_refusal_of_the_store_carries_has_an_entry` reads every code the store's refusals carry. The service console's own "ask again" button is not built.
+**Done in part (23 November 2026).** `distribution.ActivationRaced` has its entry and runbook in `p.errors.platform.v1` 1.8.0 (factory 1.18.0; 1.6.0 was held for it and never published): ask again from the distribution active now, with a new consent. `ErrorDictionaryTests.Every_code_a_refusal_of_the_store_carries_has_an_entry` reads every code the store's refusals carry. The service console's own "ask again" button is not built.
 
 ## I-240. On Flowable a value read as of the payment's date is read as of the timer
 
@@ -2198,11 +2202,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a binding setting `stream` (default the port's name) that names the position, so a bank that wants a replay to a new topic names a new stream, and `from` (`earliest`, the default, or `latest`), read only when the stream has no position yet. Both values with defaults and bounds, set in the configuration release.
 
+**Done as recommended (23 November 2026, owner's acceptance, R-09-176).** The relay reads `stream` (default `p.port.event-stream.v1`; small letters, digits, dots and dashes) and `from` (`earliest` or `latest`) from the binding in force. A topic changed under the same stream goes on from its position; a new stream starts at the first fact or, with `latest`, records the newest outbox number as its start and sends no history. A value outside its bounds is refused, never clamped (`EventStreamTests`).
+
 ## I-257. A save slower than the gap timeout is passed over by the event stream
 
 **Issue.** The relay publishes only an unbroken run of outbox numbers and waits at a gap (a save in flight) until the row after it is ten seconds old, as the read model's projection does (R-05-49). A save that takes longer than that between taking its outbox number and committing is taken for one that was rolled back, and its event is never published, though at-least-once delivery is asked for.
 
 **Recommendation.** Make the gap timeout a dial of the operations console with a default and bounds, record each gap passed over as a fact on the console's chain so it can be looked for, and, when the store can give one, publish in commit order instead (a commit-ordered sequence or the database's change feed).
+
+**Done (23 November 2026, owner's acceptance, R-09-175), by re-scanning behind the position.** When the relay passes a gap after the timeout it keeps the range of numbers it passed over in its position row (`stream_position.GapsJson`, insert-only, a column added on both databases), and every later pass looks for them again: a save that commits after the timeout is published on the next pass, before anything newer, even after a restart. Order per payment holds, because a payment's next fact can only be saved once the one before it committed (its chain's hash). The gap timeout is the binding's dial `gapSeconds` (default 10, from 1 to 600), not the console's, since it is the stream's; a range is dropped only after `gapHorizonMinutes` (default 1440, from 10 to 10080), and each range dropped is written in the position row so it can be looked for. `EventStreamTests` commits a save after the timeout, with the relay restarted in between, and sees every fact once. What is left is I-281.
 
 ## I-258. The laptop's configuration release does not carry its alert and event bindings
 
@@ -2218,7 +2226,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** In `p.errors.platform.v1` 1.5.0 add `port.CircuitOpen` with a runbook (find the failing system in the probe's detail, mend it or its binding, and wait for the trial call), raise it from the probe and from a step's refusal, and have `ErrorDictionaryTests` read it.
 
-**Done (23 November 2026).** `port.CircuitOpen` is in `p.errors.platform.v1` 1.6.0 (1.4.0 and 1.5.0 were never used) with its runbook. The service console's probe `circuit-breakers` fails with it, and a step a breaker refused fails with it, retryable (`PlatformPorts.Call`, `NativePorts` for a port's file); the code is `CircuitBreakers.OpenCode`. `ErrorDictionaryTests` reads it; `BreakerHealthTests` expects it.
+**Done (23 November 2026).** `port.CircuitOpen` is in `p.errors.platform.v1` 1.8.0, with 1.7.0's entries (1.4.0 to 1.6.0 were never published) with its runbook. The service console's probe `circuit-breakers` fails with it, and a step a breaker refused fails with it, retryable (`PlatformPorts.Call`, `NativePorts` for a port's file); the code is `CircuitBreakers.OpenCode`. `ErrorDictionaryTests` reads it; `BreakerHealthTests` expects it.
 
 ## I-265. A message a payment received is carried by reference only, so a map that reads it on the runtime saw no content
 
@@ -2253,6 +2261,53 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** On the engine host a message for a running payment reached the run on DTFx and Elsa (tests since R-09-93) but not on Temporal: the host signalled the payment's front door workflow with the message as the sender gave it, and a message with no key of the run's was counted unmatched (found by the last change, fixed here: R-09-161, `DistributionWorkers.ForPayment` gives it the payment's conversation and id, and `LiveSignals.EventOf` adds the payment's id beside a sender's keys). The same test on Flowable cannot run on the stored package the test builds: Flowable runs the BPMN the studio exports, and a package without it is refused (`The plan has no BPMN`). Flowable takes the message on the same live path as DTFx and Elsa (`FlowableBinding`, `LiveSignals.EventOf`), so the fix applies, but no test shows it.
 
 **Recommendation.** Give `EngineHostTests.MessageAfterStart` a Flowable variant whose stored package carries the exported BPMN of `p.wf.ask.v1` (an event-based await, as the generator writes it for a REST binding), so that Flowable is held to R-09-161 as the other engines are.
+## I-275. Who consents to the exchange-rate feed's releases
+
+**Issue.** The owner asked that the rates feed publish its rates as a signed configuration release, which goes in force like any configuration (R-09-110, R-09-111): on a bank approver's consent. Rates refresh many times a day. The spec does not say whether each rate release needs its own consent, or whether the bank approver may consent once to a kind of release.
+
+**Recommendation, built (R-09-179).** A standing consent the bank approver grants once, for rate releases only. It is asked for in the service console's book (`grant-rate-consent`, by a service engineer) and given by a bank approver, another person, like every change of the system (R-09-77); it is revoked the same way (`revoke-rate-consent`); each is a fact on its own chain (`standing-consent:fx-rates:<bank>`). It covers only a release whose configuration set sets `p.enrich.fx-rate.v1#rates` and nothing else, whose only other file is the rates table `b.ref.fx-rates.v1`, with no binding, and whose manifest names the feed (`feed: fx-rates`). Such a release is still verified against the trusted signers and checked against every distribution's parameter contract, and its in-force fact names the standing consent and who gave it. Every other release, and every rate release while no standing consent is in force, waits for a consent of its own. Why not a consent each time: an hourly consent would either be given without reading or leave payments refusing stale rates; the rates are market data the bank's own rates service gives, and the staleness limit (R-09-178) and the bounds still hold. Decide with each bank's treasury and its bank approver whether to grant it.
+
+## I-276. The rates feed's releases and the studio's releases share one line of numbers
+
+**Issue.** A configuration release is numbered on the bank's one line of releases, and the value in force is the one the latest release that sets the parameter gives (R-09-111). The feed numbers its release the patch after the bank's newest (`1.10.1`, `1.10.2`, ...). The studio's next release is a minor (`1.11.0`), so the two do not collide while the studio makes no patch releases; but a studio release that sets `p.enrich.fx-rate.v1#rates` (the example bank's does) is newer than the feed's and its rates win until the feed runs again, and a studio patch release could take a number the feed took (the install refuses it, `ReleaseConflict`).
+
+**Recommendation.** For a bank on the feed, the studio should not set `p.enrich.fx-rate.v1#rates` (lint: a bank whose configuration binds `p.port.fx-rates.v1` sets no `rates`), and should never make a patch release of a bank's configuration; or give the feed a line of its own (a configuration release per kind, ordered per parameter by release and kind). Until one is decided, a bank that takes the feed removes its typed rates.
+
+## I-277. The feed's signing key is trusted like the studio's
+
+**Issue.** The feed signs its releases with a key of its own (`Service:FxRates:SigningKeyRef`, by reference), which the bank adds to its trusted signers. The trust list does not say what a key may sign, so a leak of the feed's key could sign any configuration release. That release would still wait for a bank approver's consent (the standing consent covers rate releases only), but it would verify.
+
+**Recommendation.** Let a trusted signer name the kinds it may sign (`kinds: [configuration]`) and, for a configuration release, a scope (`feed: fx-rates`), checked at verification; give the feed's key that scope only.
+
+## I-278. A rate set by hand is never aged
+
+**Issue.** `p.enrich.fx-rate.v1` 1.2.0 ages a rate only by its `asOf`, which the feed gives (R-09-178). A rate the bank types into its configuration has no `asOf`, so it is never refused as stale, and the operations console lists it as standing. That keeps every refund order of today running, but a bank that forgets to remove its typed rates once it takes the feed keeps old rates in force without a warning.
+
+**Recommendation.** Add a dial `requireAsOf` (default false) to `p.enrich.fx-rate.v1`; a bank on the feed sets it, so that a rate with no `asOf` is refused like a stale one. Decide with each bank's treasury.
+
+## I-279. Releasing a suspect payment needs no second approver
+
+**Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
+
+**Recommendation.** Let a view's action say `when: { hold: approval, activity: p.screen.fraud.v1 }` (the step that led to the hold), and give the platform view an `approve` for fraud holds with `secondApprover: Supervisor`, in its next release. Decide with each bank's fraud team.
+
+## I-280. What makes a fraud alert, beyond a suspect payment
+
+**Issue.** An alert is a payment `p.screen.fraud.v1` found `suspect` (R-05-90). The spec does not say whether a sanctions hit (`p.screen.sanctions.v1`, `hit`), a fraud engine that did not answer, or a payment the engine scored high but cleared is an alert too, nor whether an alert should carry the engine's score and case reference (the fraud port answers only a status, a reason code and a reference).
+
+**Recommendation.** Keep sanctions hits out of the fraud list (they are compliance work, deferred with the cases, I-188); ask each bank's fraud team whether a high but clear score should be an alert, and if so add a `score` to the fraud port's answer and a dial for the threshold.
+
+## I-281. The event stream still drops a gap after its horizon
+
+**Issue.** The relay looks for a passed-over outbox number until the gap horizon (R-09-175, default a day). A save that commits later than that is still never published. No save of the store lasts that long (each is one transaction with the database's command timeout), but the spec asks that no committed fact is ever skipped.
+
+**Recommendation.** When the store can give one, publish in commit order instead: on SQL Server a `rowversion` read below `MIN_ACTIVE_ROWVERSION()`, on PostgreSQL the transaction id read below `pg_snapshot_xmin(pg_current_snapshot())`; then no gap is passed over at all. Until then, keep the horizon well above the store's longest transaction.
+
+## I-282. The ledger view knows four parameter names
+
+**Issue.** The operations console's ledger view lists the accounts of every accounting activity whose parameters are named `settlementAccount`, `suspenseAccount`, `chargeIncomeAccount` or `vatAccount` (R-05-91). An activity that names a ledger account otherwise (a scheme's charge account, a future nostro per currency) is not shown, and the console cannot know it is an account.
+
+**Recommendation.** Let an activity's parameter say what it is (`role: ledger-account`, with its kind), in its next release, and have the view list every parameter so marked; until then the four names are the platform's convention, held by the accounting templates.
 
 ## Not done, and why
 

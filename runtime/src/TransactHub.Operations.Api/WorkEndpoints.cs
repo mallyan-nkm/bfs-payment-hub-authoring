@@ -42,7 +42,7 @@ public static class WorkEndpoints
     }
 
     static WorkItem Item(string? kind, string? id) =>
-        kind is null || id is null || !WorkItem.Kinds.Contains(kind) ? throw new ActionRefused(400, "Name the item: kind (payment or action) and id", OpsCodes.NotFound) : new WorkItem(kind, id);
+        kind is null || id is null || !WorkItem.Kinds.Contains(kind) ? throw new ActionRefused(400, "Name the item: kind (payment, action or alert) and id", OpsCodes.NotFound) : new WorkItem(kind, id);
 
     public static void MapWork(this WebApplication app, StoreOptions ops)
     {

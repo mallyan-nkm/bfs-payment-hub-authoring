@@ -925,6 +925,9 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                     b.Property<int>("Events")
                         .HasColumnType("integer");
 
+                    b.Property<string>("GapsJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("Stream")
                         .IsRequired()
                         .HasMaxLength(140)

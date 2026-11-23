@@ -9,8 +9,8 @@ namespace TransactHub.Operations;
 /// <summary>An item of an operator's work: a payment or bulk (its hold, its repair), or an action that waits for its second approver.</summary>
 public sealed record WorkItem(string Kind, string Id)
 {
-    public const string Payment = "payment", Action = "action";
-    public static readonly string[] Kinds = [Payment, Action];
+    public const string Payment = "payment", Action = "action", Alert = "alert";
+    public static readonly string[] Kinds = [Payment, Action, Alert];
 
     /// <summary>The item's own chain in the store: insert-only, one per item (R-05-71).</summary>
     public string Chain
@@ -38,7 +38,7 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
     readonly TimeProvider clock = clock ?? TimeProvider.System;
     public const string Kind = "work";
     public const string SubjectKind = "work";
-    public static readonly string[] Ops = ["assign", "escalate", "release"];
+    public static readonly string[] Ops = ["assign", "escalate", "release", "note", "close"];
 
     /// <summary>The tenant of an item, from the read model: the payment's, or the waiting action's.</summary>
     public async Task<string> TenantOf(WorkItem item, CancellationToken ct = default)
@@ -48,7 +48,8 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
         {
             WorkItem.Payment => await o.Subjects.AsNoTracking().Where(s => s.Id == item.Id).Select(s => s.Tenant).FirstOrDefaultAsync(ct),
             WorkItem.Action => await o.Actions.AsNoTracking().Where(a => a.Id == item.Id).Select(a => a.Tenant).FirstOrDefaultAsync(ct),
-            _ => throw new ActionRefused(400, $"No work item kind {item.Kind}: write payment or action", OpsCodes.NotFound),
+            WorkItem.Alert => await new FraudAlerts(store, ops).TenantOf(item.Id, ct),
+            _ => throw new ActionRefused(400, $"No work item kind {item.Kind}: write payment, action or alert", OpsCodes.NotFound),
         };
         return tenant ?? throw new ActionRefused(404, $"No {item.Kind} {item.Id}", OpsCodes.NotFound);
     }
@@ -136,8 +137,22 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
                 code = "released";
                 data["from"] = now.Assignee;
                 break;
+            case "note":
+                // A note changes nothing but the item's history (R-05-90): who wrote what, and when.
+                if (string.IsNullOrWhiteSpace(reason)) throw new ActionRefused(400, "A note needs its text", OpsCodes.RemarksRequired);
+                code = "noted";
+                break;
+            case "close":
+                // An alert that needs no more work (R-05-90): its payment was decided; a held one is decided first, through its actions.
+                if (item.Kind != WorkItem.Alert) throw new ActionRefused(400, "Only an alert is closed; a payment or an action ends with its own decision", OpsCodes.ActionNotOffered);
+                if (string.IsNullOrWhiteSpace(reason)) throw new ActionRefused(400, "Closing an alert needs a note", OpsCodes.RemarksRequired);
+                var alert = (await new FraudAlerts(store, ops).List([tenant], ct)).FirstOrDefault(a => a.Id == item.Id);
+                if (alert is null || alert.Closed) throw new ActionRefused(409, $"alert {item.Id} is closed already", OpsCodes.AlreadyDecided);
+                if (alert.State == FraudAlerts.Held) throw new ActionRefused(409, $"alert {item.Id}: its payment is still held; release or refuse it first", OpsCodes.AlreadyDecided);
+                code = "closed";
+                break;
             default:
-                throw new ActionRefused(400, $"No work change {op}: write assign, escalate or release", OpsCodes.ActionNotOffered);
+                throw new ActionRefused(400, $"No work change {op}: write assign, escalate, release, note or close", OpsCodes.ActionNotOffered);
         }
         await using var db = StoreDbContext.Open(store);
         var fact = await new FactLog(db, clock).Append(item.Chain, SubjectKind, new NewFact(Kind, code, data, Actor: who.Actor), ct);
@@ -175,9 +190,12 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
     public async Task<JsonObject> Queue(OperatorIdentity who, IReadOnlyCollection<string> tenants, string filter, CancellationToken ct = default)
     {
         await using var o = OpsDbContext.Open(ops);
-        var held = await o.Subjects.AsNoTracking().Where(s => tenants.Contains(s.Tenant) && s.Hold == "open").OrderBy(s => s.UpdatedAt).Take(2000).ToListAsync(ct);
+        // A payment held as suspect is the alert's item, not a payment item as well (R-05-90).
+        var alerts = (await new FraudAlerts(store, ops).List(tenants, ct)).Where(FraudAlerts.Open).ToList();
+        var alerted = alerts.Select(a => a.Id).ToHashSet();
+        var held = (await o.Subjects.AsNoTracking().Where(s => tenants.Contains(s.Tenant) && s.Hold == "open").OrderBy(s => s.UpdatedAt).Take(2000).ToListAsync(ct)).Where(s => !alerted.Contains(s.Id)).ToList();
         var waiting = await o.Actions.AsNoTracking().Where(a => tenants.Contains(a.Tenant) && a.Status == "pending-approval").OrderBy(a => a.RequestedAt).Take(2000).ToListAsync(ct);
-        var items = held.Select(s => new WorkItem(WorkItem.Payment, s.Id)).Concat(waiting.Select(a => new WorkItem(WorkItem.Action, a.Id))).ToList();
+        var items = held.Select(s => new WorkItem(WorkItem.Payment, s.Id)).Concat(waiting.Select(a => new WorkItem(WorkItem.Action, a.Id))).Concat(alerts.Select(a => new WorkItem(WorkItem.Alert, a.Id))).ToList();
         var states = await States(items, ct);
         var rows = new List<JsonObject>();
         foreach (var s in held)
@@ -191,6 +209,13 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
             var row = Row(st, a.Tenant, null, a.SubjectId, $"{a.Action} waits for {a.SecondApprover ?? "a second approver"}", null, null, a.RequestedAt);
             row["requestedBy"] = a.RequestedBy;
             row["action"] = a.Action;
+            rows.Add(row);
+        }
+        foreach (var a in alerts)
+        {
+            var st = states[new WorkItem(WorkItem.Alert, a.Id)];
+            var row = Row(st, a.Tenant, a.Scheme, a.Id, $"fraud alert: {a.Reason ?? "suspect"} ({a.State})", a.Amount, a.Currency, a.RaisedAt);
+            row["alert"] = FraudAlerts.Show(a, st);
             rows.Add(row);
         }
         IEnumerable<JsonObject> pick = filter switch

@@ -43,7 +43,7 @@ export interface Dashboard {
 export interface Lag { behind: number; oldestSeconds: number; through: number; applied: number; lastFactAt?: string; projectedAt?: string; rebuiltAt?: string }
 
 export interface WorkRow {
-  item: string; itemKind: 'payment' | 'action'; tenant: string; scheme?: string; payment: string; what: string; amount?: number; currency?: string;
+  item: string; itemKind: 'payment' | 'action' | 'alert'; tenant: string; scheme?: string; payment: string; what: string; amount?: number; currency?: string;
   waitingSince: string; assignee?: string | null; assigneeName?: string | null; escalated: boolean; level: number; assignedAt?: string | null;
   action?: string; requestedBy?: string;
 }
@@ -124,6 +124,11 @@ export function client(auth: SignIn) {
     },
     // The console's own chain for its audit page (R-05-75): newest first, filtered, each fact with its hash, and whether it verifies.
     audit: (q: Record<string, string>) => call<{ rows: any[]; chain: import('../shell/audit').ChainState }>('GET', `/audit?${new URLSearchParams(q)}`),
+    // The fraud alerts (R-05-90), the bank's ledger accounts for supervisors (R-05-91) and the rates' staleness (R-05-92).
+    alerts: (all = false) => call<import('./oversight').AlertList>('GET', `/alerts${all ? '?state=all' : ''}`),
+    alertAction: (id: string, action: 'release' | 'refuse', remarks?: string) => call<any>('POST', `/alerts/${encodeURIComponent(id)}/payment-action`, { action, remarks }),
+    ledger: () => call<{ banks: import('./oversight').LedgerBank[] }>('GET', '/ledger-accounts'),
+    rates: () => call<import('./oversight').Rates>('GET', '/fx-rates'),
     headers: () => auth.headers(),
   };
 }

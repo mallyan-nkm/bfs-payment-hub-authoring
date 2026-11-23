@@ -38,10 +38,14 @@ The original had these; nothing in the new design covers them yet.
 
 **Done for the circuit breakers (23 November 2026).** Core banking, the gateways, SFTP, MQTT, Kafka and the webhooks each stop calling a failing system for a while, then try one call; the thresholds are settings with defaults and bounds, and an open breaker shows in the service console's health (R-09-155, R-09-156). Left: the File API's and the engine host's breakers are not yet shown there (I-255).
 
+**Done for the exchange-rate feed and the fraud alerts (23 November 2026).** A scheduled job asks the bank's rates service through a rates port (a simulator, and a REST adapter for production) and publishes the rates as a signed configuration release, which goes in force on a standing consent the bank approver grants once for rate releases only (my recommendation, I-275); every other release still needs its own consent. A payment refuses a rate older than the bank's limit (a setting, a day by default) with `fx.RateStale`, and the operations console shows "rates stale". A suspect payment is now a fraud alert in the work queue, with its reason and a link; staff take it, note it, and release or refuse the payment through its usual action and approvals. Left: I-276 to I-280 (one to decide: whether releasing a suspect payment needs a second approver, I-279).
+
 ### A3. "Associated accounts" (I-184)
 **What it is.** In the original, "associated accounts" meant the bank's own ledger accounts a WPS upload posts to (settlement, suspense, income, VAT). I built the corporate's own accounts from core banking.
 
 **Recommendation.** Keep the corporate's accounts for channels. Add a read-only view of the bank's ledger accounts in the operations console for supervisors. Those accounts are bank settings, so they should not be offered to channels.
+
+**Done (23 November 2026).** The operations console has a "Ledger accounts" page for supervisors: settlement, suspense, charge income and VAT, as the bank's configuration names them, read-only. Channels are not offered it (R-05-91).
 
 ### A4. Erasure that removes the bytes (I-180)
 **What it is.** An erased payment now shows `[erased]` everywhere, but the original values are still inside the database rows, kept files and backups, because the store never deletes.

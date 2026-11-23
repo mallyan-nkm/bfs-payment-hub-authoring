@@ -9,6 +9,7 @@ import { Reports } from './ops/Reports';
 import { Breaks } from './ops/Breaks';
 import { Work } from './ops/Work';
 import { Upload } from './ops/Upload';
+import { Alerts, Ledger, RatesBadge } from './ops/Oversight';
 import { AuditTrail } from './shell/AuditTrail';
 import { Consents, Retention, Turnaround } from './ops/Controls';
 import { show } from './ops/format';
@@ -92,6 +93,9 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     // Work management (R-05-71): the queue, taken, escalated and given out, live.
     { id: 'work', title: 'Work queue', render: (_p, ctx) => <Work api={api} go={ctx.go} /> },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
+    // The fraud alerts (R-05-90) and, for supervisors, the bank's ledger accounts, read-only (R-05-91).
+    { id: 'alerts', title: 'Fraud alerts', render: (_p, ctx) => <Alerts api={api} go={ctx.go} /> },
+    { id: 'ledger', title: 'Ledger accounts', render: () => <Ledger api={api} /> },
     { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
     // Reconciliation breaks (R-09-92): a bank approver consents to a resolution that changes the system.
     { id: 'breaks', title: 'Breaks', render: (_p, ctx) => <Breaks api={api} go={ctx.go} /> },
@@ -107,7 +111,7 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
   );
   if (hosts.service) sections.push({ id: 'service', title: 'Service', render: (path) => <ServiceGate auth={auth} path={path} /> });
   if (hosts.testbench) sections.push({ id: 'testbench', title: 'Test bench', render: (path, ctx) => <TestBenchGate auth={auth} path={path} go={ctx.go} /> });
-  return <Shell auth={auth} sections={sections} title={hosts.ops ? 'TransactHub Operations' : hosts.service ? 'TransactHub Service' : 'TransactHub Test bench'} status={signedIn && hosts.ops ? <LagBadge api={api} /> : null} />;
+  return <Shell auth={auth} sections={sections} title={hosts.ops ? 'TransactHub Operations' : hosts.service ? 'TransactHub Service' : 'TransactHub Test bench'} status={signedIn && hosts.ops ? <><LagBadge api={api} /> <RatesBadge api={api} /></> : null} />;
 }
 
 async function answers(url: string): Promise<boolean> {

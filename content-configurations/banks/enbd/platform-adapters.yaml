@@ -73,3 +73,13 @@ bindings:
       securityProtocol: sasl_ssl
       saslMechanism: SCRAM-SHA-512
       secretRef: env:TH_ENBD_EVENTS_KAFKA_LOGIN
+  # The bank's exchange-rate service, which the rates feed asks every refreshMinutes and publishes as a configuration release
+  # (R-09-177): its REST interface, the token by reference. A placeholder host until the bank names its own (Issue I-163).
+  - port: p.port.fx-rates.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      baseUrl: https://fx-rates.enbd.invalid/
+      ratesPath: /rates
+      refreshMinutes: "60"
+      secretRef: env:TH_ENBD_FX_RATES_TOKEN

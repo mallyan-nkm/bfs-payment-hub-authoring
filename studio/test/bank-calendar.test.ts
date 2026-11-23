@@ -19,7 +19,7 @@ describe('the bank\'s calendar and cut-offs (R-11-52)', () => {
     const env = freshEnv();
     const r = await as(env, 'example.maker', 'GET', '/api/tenants/example-bank/reference-tables');
     expect(r.status, JSON.stringify(r.body)).toBe(200);
-    expect(r.body.tables.map((t: any) => t.name)).toEqual(['b.ref.bank-calendar.v1', 'b.ref.branches.v1', 'b.ref.cut-offs.v1']);
+    expect(r.body.tables.map((t: any) => t.name)).toEqual(['b.ref.bank-calendar.v1', 'b.ref.branches.v1', 'b.ref.cut-offs.v1', 'b.ref.fx-rates.v1']);
     const cut = r.body.tables.find((t: any) => t.name === 'b.ref.cut-offs.v1');
     expect(cut.released.release).toBe('1.0.0');
     expect(cut.start.release).toBe('1.1.0');

@@ -47,22 +47,38 @@ public static class Money
 public sealed class EnrichFxRate : INativeActivity
 {
     public string Name => "p.enrich.fx-rate.v1";
+    /// <summary>The staleness limit's default (the activity's 1.2.0, R-09-178) and the code a stale rate's refusal carries.</summary>
+    public const string DefaultMaxRateAge = "PT24H", RateStale = "fx.RateStale";
 
     public NativeResult Run(NativeAttempt a)
     {
         var rates = Money.List(a.Params["rates"]).OfType<JsonObject>().ToList();
-        (decimal rate, string source)? RateFor(string from, string to)
+        // The staleness limit (R-09-178, Issue I-189): a rate the feed gave (with its asOf) older than the bank's maxRateAge is refused.
+        var limitText = (string?)a.Params["maxRateAge"] is { Length: > 0 } l ? l : DefaultMaxRateAge;
+        var limit = System.Xml.XmlConvert.ToTimeSpan(limitText);
+        bool Stale(JsonObject r, out string? asOf)
         {
-            if (from == to) return (1m, "same-currency");
+            asOf = NativeContext.S(r, "asOf") is { Length: > 0 } s ? s : null;
+            return asOf is not null && DateTimeOffset.TryParse(asOf, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) && a.Now - at > limit;
+        }
+        (decimal rate, string source, string? asOf, bool stale)? RateFor(string from, string to)
+        {
+            if (from == to) return (1m, "same-currency", null, false);
             var direct = rates.FirstOrDefault(r => NativeContext.S(r, "from") == from && NativeContext.S(r, "to") == to);
-            if (direct is not null) return (Money.Read(direct["rate"]) ?? 0m, "bank");
+            if (direct is not null)
+            {
+                var ds = Stale(direct, out var d);
+                return (Money.Read(direct["rate"]) ?? 0m, "bank", d, ds);
+            }
             var inverse = rates.FirstOrDefault(r => NativeContext.S(r, "from") == to && NativeContext.S(r, "to") == from && (Money.Read(r["rate"]) ?? 0m) > 0m);
-            if (inverse is not null) return (1m / Money.Read(inverse["rate"])!.Value, "bank-inverse");
-            return null;
+            if (inverse is null) return null;
+            var s = Stale(inverse, out var i);
+            return (1m / Money.Read(inverse["rate"])!.Value, "bank-inverse", i, s);
         }
         var (lined, items) = Money.Lines(a.View, v => new JsonObject { ["payment"] = v["payment"]?.DeepClone() ?? new JsonObject() });
         var lines = new List<JsonObject>();
         var missing = new List<string>();
+        var stale = new List<string>();
         foreach (var item in items)
         {
             var amt = NativeContext.Node(item, "payment.instructedAmount");
@@ -75,19 +91,33 @@ public sealed class EnrichFxRate : INativeActivity
                 lines.Add(new JsonObject { ["outcome"] = "no-rate", ["from"] = from, ["to"] = to });
                 continue;
             }
+            if (r.stale)
+            {
+                if (!stale.Contains($"{from}/{to}")) stale.Add($"{from}/{to}");
+                lines.Add(new JsonObject { ["outcome"] = "no-rate", ["from"] = from, ["to"] = to, ["stale"] = true, ["asOf"] = r.asOf, ["code"] = RateStale });
+                continue;
+            }
             var value = Money.Read(NativeContext.Node(amt, "value")) ?? 0m;
-            lines.Add(new JsonObject
+            var line = new JsonObject
             {
                 ["outcome"] = "converted", ["from"] = from, ["to"] = to, ["rate"] = Money.Json(r.rate), ["source"] = r.source,
                 ["instructed"] = NativeContext.Node(amt, "value")?.DeepClone(), ["amount"] = Money.Json(Money.Round2(value * r.rate)),
-            });
+            };
+            if (r.asOf is not null) line["asOf"] = r.asOf;
+            lines.Add(line);
         }
         var writes = new JsonObject();
         if (lined) writes["items[]"] = WithFact(items, lines, "fx");
-        var outcome = missing.Count > 0 ? "no-rate" : "converted";
+        var outcome = missing.Count > 0 || stale.Count > 0 ? "no-rate" : "converted";
         var fx = new JsonObject { ["outcome"] = outcome, ["result"] = outcome, ["lines"] = lines.Count };
         if (missing.Count > 0) fx["missing"] = string.Join(", ", missing);
-        else
+        if (stale.Count > 0)
+        {
+            fx["stale"] = string.Join(", ", stale);
+            fx["code"] = RateStale;
+            fx["maxRateAge"] = limitText;
+        }
+        if (outcome == "converted")
         {
             var currencies = lines.Select(l => NativeContext.S(l, "to")).Distinct().ToList();
             if (currencies.Count == 1)

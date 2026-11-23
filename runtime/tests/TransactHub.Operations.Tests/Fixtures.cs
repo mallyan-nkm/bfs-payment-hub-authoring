@@ -66,7 +66,7 @@ public static class WpsRun
     public const string Tenant = "example-bank";
     public const string FileId = "0000001234567261117083000";
 
-    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack", bool console = false)
+    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack", bool console = false, bool suspect = false)
     {
         await using var db = StoreDbContext.Open(o);
         var store = new PaymentStore(db);
@@ -103,6 +103,14 @@ public static class WpsRun
         await Step(root, "validate", "p.validate.canonical.v1", "pass", new JsonObject { ["facts.validation"] = new JsonObject { ["worst"] = "pass", ["findings"] = new JsonArray() } });
         await Step(root, "duplicate", "p.validate.duplicate.v1", "unique");
         await Step(root, "sanctions", "p.screen.sanctions.v1", "clear", new JsonObject { ["facts.screening.sanctions"] = new JsonObject { ["outcome"] = "clear" } });
+        if (suspect)
+        {
+            // The bank's fraud engine finds the file suspect (synthetic): held for review, as p.seg.check-and-screen.v1 says (R-05-90).
+            await Step(root, "fraud", "p.screen.fraud.v1", "suspect", new JsonObject { ["facts.screening.fraud"] = new JsonObject { ["outcome"] = "suspect", ["reasonCode"] = "FRAD" } }, reasonCode: "FRAD");
+            await Step(root, "fraud-review", "p.hold.approval.v1", "held");
+            await log.Append(accepted.BulkId, "bulk", new NewFact("hold", "opened", new JsonObject { ["hold"] = $"fraud-{fileId[^4..]}-{root[^6..]}", ["kind"] = "approval", ["activity"] = "p.hold.approval.v1", ["reason"] = "FRAD at fraud (p.screen.fraud.v1)", ["expiry"] = "P1D" }, Actor: "runtime"));
+            return accepted.BulkId;
+        }
         await Step(root, "fraud", "p.screen.fraud.v1", "clear");
         await Step(root, "reserve", "p.reserve.funds.v1", "reserved");
         await Step(root, "route", "p.decide.rail.v1", "decided", new JsonObject { ["facts.route"] = new JsonObject { ["rail"] = "uae.wps" } });

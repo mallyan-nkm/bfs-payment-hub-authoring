@@ -1,0 +1,48 @@
+# Written by hand (spec/CLAUDE.md, "Generated files"): reference data, effective-dated (R-01-25). A new edition is a new minor release.
+kind: reference-table
+name: b.ref.fx-rates.v1
+release: 1.0.0
+title: Exchange rates from the bank's rates service
+description: The exchange rates the bank's rates service gave, each as of its instant. On a runtime the rates feed publishes a
+  new edition of this table in each of its configuration releases, with the value p.enrich.fx-rate.v1#rates the payments read
+  (R-09-177); the operations console reads it to warn when the rates are stale (R-05-92). This edition is the example bank's,
+  synthetic.
+domain: fx-rates
+key:
+  - from
+  - to
+columns:
+  - id: from
+    type: code
+    title: From
+    required: true
+    pattern: ^[A-Z]{3}$
+  - id: to
+    type: code
+    title: To
+    required: true
+    pattern: ^[A-Z]{3}$
+  - id: rate
+    type: number
+    title: Rate
+    required: true
+  - id: asOf
+    type: text
+    title: As of
+    required: true
+    pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$
+editions:
+  - validFrom: '2026-11-16'
+    rows:
+      - from: AED
+        to: EUR
+        rate: 0.2511
+        asOf: '2026-11-15T09:00:00Z'
+      - from: AED
+        to: GBP
+        rate: 0.2134
+        asOf: '2026-11-16T12:00:00Z'
+provenance:
+  origin: authored
+  status: confirmed
+  note: Synthetic exchange rates of the example bank.

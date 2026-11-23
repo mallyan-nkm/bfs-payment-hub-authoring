@@ -127,9 +127,13 @@ RELEASES = {
     # by the source's SIF writer and sent on the bank's binding of the WPS port by native code-behinds; a code-behind added, a minor.
     "uae.wps.map.sif-out.v1": ("1.1.0", "native code-behind: the source's SIF writer, the file kept by the host (Issue I-192)"),
     "uae.wps.exchange.send-salary-file.v1": ("1.1.0", "native code-behind: the kept file sent on the bank's binding of the WPS port (Issue I-192)"),
+    # Owner's decision of 2026-11-23 (docs/OWNER-ACTIONS.md A2, Issue I-189, R-09-178): the rates feed gives each rate its asOf, and
+    # the bank's staleness limit maxRateAge refuses an older one as no-rate with fx.RateStale. A parameter added with a default, and a
+    # write's fields: no read, write path, outcome or port changed, a minor.
+    "p.enrich.fx-rate.v1": ("1.2.0", "maxRateAge: a rate older than the bank's staleness limit is refused (fx.RateStale)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
-SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
+SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
 # packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
@@ -149,12 +153,17 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # p.port.notification.v1 and event-streaming port p.port.event-stream.v1, each with its simulator (R-11-85; owner's decisions of
 # 23 November 2026, Issue I-182, docs/OWNER-ACTIONS.md A5), and p.view.operations.v1 1.6.0, written by hand: the turnaround limit
 # counted in business days of the bank's calendar (R-05-81).
-# 1.16.0 (change set CS-2026-11-23-011; 1.13.0 and 1.14.0 are other changes', and 1.15.0 the one above): the platform's error dictionary 1.6.0, hand-written
-# in factory/p/errors, with distribution.ActivationRaced (Issue I-239); the salary file's intake map 1.4.0, which takes the file's
-# name from the File API (Issue I-195, R-05-85); native code-behinds of the salary file's render and send, whose send goes out on the
-# bank's binding of the WPS port, the File API's outbox where the bank binds it so (Issue I-192, R-09-162).
-PACK_RELEASES = {"p": "1.16.0", "uae.p": "1.16.0", "uae.wps": "1.16.0", "b": "1.16.0"}
-FACTORY_RELEASE = "1.16.0"
+# 1.17.0 (change set CS-2026-11-23-012; 1.16.0 is another change's): the exchange-rate feed (R-11-95; owner's decision of 23 November
+# 2026, docs/OWNER-ACTIONS.md A2, Issue I-189): the rates port p.port.fx-rates.v1 and its simulator, p.enrich.fx-rate.v1 1.2.0 with
+# the staleness limit maxRateAge (R-09-178), and the platform's error dictionary 1.7.0, hand-written, with fx.RateStale and
+# fx.FeedFailed; the example bank's rates table b.ref.fx-rates.v1 and its configuration set 1.10.0.
+# 1.18.0 (change set CS-2026-11-23-013; 1.16.0 and CS-2026-11-23-011, held for this change, was never published: it was merged after 1.17.0): the platform's
+# error dictionary 1.8.0, hand-written in factory/p/errors, 1.7.0's entries and distribution.ActivationRaced (Issue I-239) and
+# port.CircuitOpen (Issue I-259); the salary file's intake map 1.4.0, which takes the file's name from the File API (Issue I-195,
+# R-05-85); native code-behinds of the salary file's render and send, whose send goes out on the bank's binding of the WPS port, the
+# File API's outbox where the bank binds it so (Issue I-192, R-09-162).
+PACK_RELEASES = {"p": "1.18.0", "uae.p": "1.18.0", "uae.wps": "1.18.0", "b": "1.18.0"}
+FACTORY_RELEASE = "1.18.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -304,7 +313,10 @@ act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting
 # other than its account's has no rate and an order bears no charge until the bank sets its own. Exact decimals (R-02-17): the
 # scripts compute with rules.money, the rule language's arithmetic, and round half away from zero only where a value says so.
 RATE_LIST = {"rates": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
-                       "description": "The bank's exchange rates, each {from, to, rate}: one unit of from is rate units of to. None, and only a line in its account's own currency converts."}}
+                       "description": "The bank's exchange rates, each {from, to, rate} and, from the rates feed, asOf (the instant the bank's rates service gave it): one unit of from is rate units of to. None, and only a line in its account's own currency converts."},
+             # R-09-178 (owner's decision of 2026-11-23, Issue I-189): a rate the feed gave is refused once older than this.
+             "maxRateAge": {"type": "duration", "default": "PT24H", "bounds": {"min": "PT1H", "max": "P7D"},
+                            "description": "How old a rate with an asOf may be: an older one is refused (the line is no-rate, facts.fx.code fx.RateStale). A rate with no asOf, set by hand, is not aged."}}
 act("p.enrich.fx-rate.v1", "Convert each line at the bank's exchange rate", ["payment.instructedAmount", "payment.debtorAccount", "items[]"],
     ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True, native=True)
 CHARGE_DIALS = {
@@ -920,6 +932,9 @@ port("p.port.facts-out.v1", "Outward facts", "downstream consumers of published 
 # store's outbox streams out. Each bank binds them in its configuration release like any port.
 port("p.port.notification.v1", "Operator notification", "the bank's alerting service for operators", [("alert", SEND)])
 port("p.port.event-stream.v1", "Payment event stream", "the bank's event streaming platform", [("publish", SEND)])
+# Owner's decision of 23 November 2026 (Issue I-189, R-09-177): the bank's exchange-rate service, which the rates feed asks on its
+# schedule and publishes as a configuration release.
+port("p.port.fx-rates.v1", "Exchange rates", "the bank's exchange-rate service", [("rates", RR)])
 port("p.port.payment-record.v1", "Payment record", "payment record store", [("read", RR), ("find-duplicate", RR)])
 port("p.port.operations-queue.v1", "Operations queue", "operations console", [("create-item", SEND), ("decision", RECV)])
 port("p.port.liquidity.v1", "Liquidity position", "liquidity service", [("position", RR)])
@@ -1007,6 +1022,8 @@ sim("p.sim.notification.v1", "Operator notification simulator", "outward", "p.po
     outward_set("p.notification.alert", "p.notification.ack", "NARR"))
 sim("p.sim.event-stream.v1", "Payment event stream simulator", "outward", "p.port.event-stream.v1", "the bank's event streaming platform",
     outward_set("p.events.publish", "p.events.ack", "NARR"))
+sim("p.sim.fx-rates.v1", "Exchange-rate service simulator", "outward", "p.port.fx-rates.v1", "the bank's exchange-rate service",
+    outward_set("p.fx.rates.request", "p.fx.rates.reply", "NARR"))
 sim("p.sim.operations.v1", "Operator simulator", "inward", "p.port.operations-queue.v1", "operations console user",
     [sc("release", {"expect": "p.ops.item"}, {"send": "p.ops.decision", "status": "released", "after": "PT5M"}),
      sc("reject", {"expect": "p.ops.item"}, {"send": "p.ops.decision", "status": "rejected", "after": "PT5M"}),
@@ -1410,6 +1427,15 @@ test("P-FX-002", "A line in another currency converts at the bank's rate, exactl
      {"outcome": "converted", "writes": {"facts.fx.rate": 0.2723, "facts.fx.amount": 27.24, "facts.fx.currency": "USD"}}, tenant="example-bank")
 test("P-FX-003", "A line in another currency with no rate the bank has set has no rate", "p.enrich.fx-rate.v1", "activity",
      refund_lines(100, currency="USD"), {"outcome": "no-rate", "writes": {"facts.fx.missing": "AED/USD"}})
+# The staleness limit (R-09-178, Issue I-189): the example bank's rates of 1 November 2026 (synthetic) carry the feed's asOf; the test's
+# clock is 06:00 on 17 November, so the AED/EUR rate of 15 November 09:00 is older than the default PT24H and AED/GBP of 16 November
+# 12:00 is not.
+test("P-FX-004", "A rate older than the bank's staleness limit is refused with fx.RateStale", "p.enrich.fx-rate.v1", "activity",
+     refund_lines(100, currency="EUR"),
+     {"outcome": "no-rate", "writes": {"facts.fx.stale": "AED/EUR", "facts.fx.code": "fx.RateStale", "facts.fx.maxRateAge": "PT24H"}}, tenant="example-bank")
+test("P-FX-005", "A rate the feed gave within the staleness limit converts, and the line keeps its asOf", "p.enrich.fx-rate.v1", "activity",
+     refund_lines(100, currency="GBP"),
+     {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
 test("P-CHG-001", "A line is priced on the bank's slab: fixed plus a percentage, then VAT", "p.enrich.charges.v1", "activity", refund_lines(100, 499.75),
      # 5.10 and 0.26 VAT on 100.00; 5.49975, so 5.50 and 0.28 (0.275) on 499.75: the sums of the rounded lines
      {"outcome": "priced", "writes": {"facts.charges.amount": 10.6, "facts.charges.tax.amount": 0.54, "facts.charges.totalChargesAndTaxAmount": 11.14}},

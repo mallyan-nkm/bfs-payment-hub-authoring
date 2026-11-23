@@ -77,13 +77,13 @@ describe('the reference tables travel in the configuration release, never in a d
     const env = freshEnv();
     const dist = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-1' });
     expect(Object.keys(dist.files).some((f) => f.includes('.ref.'))).toBe(false);
-    expect(referenceTablesFor(env, 'example-bank').map((t) => t.name)).toEqual(['b.ref.bank-calendar.v1', 'b.ref.branches.v1', 'b.ref.cut-offs.v1', 'p.ref.purpose-codes.v1', 'uae.p.ref.business-calendar.v1', 'uae.p.ref.emirates.v1', 'uae.p.ref.free-zones.v1', 'uae.p.ref.participant-directory.v1']);
+    expect(referenceTablesFor(env, 'example-bank').map((t) => t.name)).toEqual(['b.ref.bank-calendar.v1', 'b.ref.branches.v1', 'b.ref.cut-offs.v1', 'b.ref.fx-rates.v1', 'p.ref.purpose-codes.v1', 'uae.p.ref.business-calendar.v1', 'uae.p.ref.emirates.v1', 'uae.p.ref.free-zones.v1', 'uae.p.ref.participant-directory.v1']);
     const set = clone(env.store.configurationSet('example-bank'));
     set.values = set.values.filter((v: any) => v.parameter !== 'uae.wps.table.participant-names.v1#participants');
     set.values.push({ parameter: 'uae.wps.table.participant-names.v1#participants', fromReference: { table: 'uae.p.ref.participant-directory.v1', columns: { routingCode: 'routingCode', name: 'name' } }, validFrom: '2026-12-01' });
     const c = buildConfigurationRelease(env, { bank: 'example-bank', release: '1.7.1', against: [{ releaseId: dist.releaseId, parameterContract: dist.manifest.parameterContract }], set });
-    expect(Object.keys(c.files).filter((f) => f.startsWith('reference/')).sort()).toEqual(['reference/b.ref.bank-calendar.v1.yaml', 'reference/b.ref.branches.v1.yaml', 'reference/b.ref.cut-offs.v1.yaml', 'reference/p.ref.purpose-codes.v1.yaml', 'reference/uae.p.ref.business-calendar.v1.yaml', 'reference/uae.p.ref.emirates.v1.yaml', 'reference/uae.p.ref.free-zones.v1.yaml', 'reference/uae.p.ref.participant-directory.v1.yaml']);
-    expect(c.manifest.referenceTables).toBe(8);
+    expect(Object.keys(c.files).filter((f) => f.startsWith('reference/')).sort()).toEqual(['reference/b.ref.bank-calendar.v1.yaml', 'reference/b.ref.branches.v1.yaml', 'reference/b.ref.cut-offs.v1.yaml', 'reference/b.ref.fx-rates.v1.yaml', 'reference/p.ref.purpose-codes.v1.yaml', 'reference/uae.p.ref.business-calendar.v1.yaml', 'reference/uae.p.ref.emirates.v1.yaml', 'reference/uae.p.ref.free-zones.v1.yaml', 'reference/uae.p.ref.participant-directory.v1.yaml']);
+    expect(c.manifest.referenceTables).toBe(9);
     expect(c.manifest.billOfMaterials.artefacts.map((a: any) => a.path)).toContain('reference/uae.p.ref.participant-directory.v1.yaml');
     const shipped = parseYaml(c.files['configuration/configuration-set.yaml']).values.find((v: any) => v.parameter === 'uae.wps.table.participant-names.v1#participants');
     expect(shipped).toEqual({ parameter: 'uae.wps.table.participant-names.v1#participants', value: [{ routingCode: '802420101', name: 'Dubai Islamic Bank P.J.S.C' }], validFrom: '2026-12-01' });

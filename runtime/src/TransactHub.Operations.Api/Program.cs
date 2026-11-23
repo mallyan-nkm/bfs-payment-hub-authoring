@@ -64,6 +64,9 @@ builder.Services.AddSingleton(dials);
 builder.Services.AddSingleton(new OperatorAlerts(bankBindings, m => Console.Error.WriteLine($"operations alert: {m}")));
 if (runtimeBank is not null) builder.Services.AddSingleton(new EventStreamRelay(store, runtimeBank, bankBindings, clock: clock));
 builder.Services.AddSingleton(new WorkQueue(store, ops, clock));
+// The bank's ledger accounts for supervisors (R-05-91) and the exchange rates' staleness (R-05-92), from its configuration in force.
+builder.Services.AddSingleton(new LedgerAccounts(store, clock));
+builder.Services.AddSingleton(new FxRateStatus(store, clock));
 builder.Services.AddSingleton(new SavedFilters(store, clock));
 builder.Services.AddSingleton(new FixedReports(ops, views));
 builder.Services.AddSingleton(sp => new Erasure(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), clock));
@@ -393,6 +396,8 @@ StoreBindings.RefuseFolder(app.Configuration["Operations:Banks"] ?? app.Configur
 app.MapEnquiries(store);
 // Work management, saved filters, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
 app.MapWork(ops);
+// The fraud alert list, the bank's ledger accounts and the rates' staleness (R-05-90 to R-05-92).
+app.MapOversight(store, ops);
 // The upload page (R-05-73, R-05-74): a person's file to the File API's POST /files/ui, with the person's own token.
 app.MapUpload(store);
 
