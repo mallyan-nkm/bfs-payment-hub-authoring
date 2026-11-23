@@ -43,7 +43,9 @@ export class DistributionRefused extends StoreError {
 
 /** The bank's pack manifest (its lock file), by tenant. */
 export function bankPackOf(env: StudioEnv, bank: string): Entry | undefined {
-  return env.store.byKind('pack').find((e) => e.doc.scope === 'b' && (e.doc.tenant ?? 'example-bank') === bank);
+  // Its latest release: a lock file the studio published after the seeded one is the one in force (R-11-76).
+  return env.store.byKind('pack').filter((e) => e.doc.scope === 'b' && (e.doc.tenant ?? 'example-bank') === bank)
+    .sort((a, b) => compareReleases(a.release || '1.0.0', b.release || '1.0.0')).pop();
 }
 
 /** The banks the studio knows: every tenant with a bank pack. */
