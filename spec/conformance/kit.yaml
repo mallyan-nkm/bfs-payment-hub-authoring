@@ -16,6 +16,7 @@ scenarios:
   - { id: CK-FOREACH-01, construct: forEach, title: "Per-item outcomes are kept; one failing item does not stop the rest when onItemFailure is continue", expect: ["item[0]:ok", "item[1]:other", "item[2]:ok", "end:done"] }
   - { id: CK-FOREACH-02, construct: forEach, title: A large batch is chunked without changing the trace, expect: ["items:10000", "end:done"] }
   - { id: CK-FOREACH-03, construct: forEach, title: "Items that run side by side keep item order in the trace, whatever order they end in", expect: ["a[0]:ok", "b[0]:ok", "a[1]:ok", "b[1]:ok", "a[2]:ok", "b[2]:ok", "end:done"] }
+  - { id: CK-FOREACH-04, construct: forEach, title: "Where an item that runs side by side stops the forEach, no entry of a later item is in the trace", expect: ["item[0]:ok", "item[1]:other", "end:item-failed"] }
   - { id: CK-LOOP-01, construct: loop, title: A loop stops when its until condition is met, expect: [q:pending, q:pending, q:final, "end:done"] }
   - { id: CK-LOOP-02, construct: loop, title: A loop stops at max, expect: [q:pending, q:pending, q:pending, "end:gave-up"] }
   - { id: CK-RETRY-01, construct: retry, title: Two transient failures then success make three attempts and one accepted message, expect: [a:ok, "end:done"], attempts: { a: 3 }, accepted: 1 }

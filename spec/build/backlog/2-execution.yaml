@@ -193,7 +193,7 @@ components:
         needs: [C09-S1]
         dod:
           - parallel joins on all; forEach honours concurrency and onItemFailure and records per-item outcomes.
-        dos: CK-PAR-01 and CK-FOREACH-01 to 03 pass.
+        dos: CK-PAR-01 and CK-FOREACH-01 to 04 pass.
       - id: C09-S5
         title: Try, compensate, finally and deadline
         sp: 5

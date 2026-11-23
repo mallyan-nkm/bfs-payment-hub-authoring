@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, STUDIO, type Server } from './server.js';
+import { unzip } from '../../src/export/zip.js';
 
 // End to end, black box: the WPS salary file on Flowable in production mode (Issues I-53 to I-55). The
 // Flowable REST server runs with its async executor on, in real time: it runs its own jobs, fires its timers,
@@ -114,8 +115,8 @@ async function pkg() {
   return zip;
 }
 
-async function deploy(env: Record<string, string>, wps: string, values: Record<string, string>) {
-  const args = ['src/cli.ts', 'deploy', await pkg(), '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', SAMPLE), '--tenant', TENANT,
+async function deploy(env: Record<string, string>, wps: string, values: Record<string, string>, sample = path.join(STUDIO, 'fixtures', SAMPLE)) {
+  const args = ['src/cli.ts', 'deploy', await pkg(), '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', sample, '--tenant', TENANT,
     ...bench(wps).flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`]), ...Object.entries(values).flatMap(([k, v]) => ['--value', `${k}=${v}`])];
   const t0 = Date.now();
   const out = await new Promise<string>((resolve) => {
@@ -127,6 +128,19 @@ async function deploy(env: Record<string, string>, wps: string, values: Record<s
     child.on('close', () => { clearTimeout(timer); resolve(text); });
   });
   return { out, ms: Date.now() - t0, trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [], outcome: /^outcome (.*)$/m.exec(out)?.[1] };
+}
+
+/** A valid synthetic UAE IBAN for bank code 033 (ISO 13616 check digits). */
+function iban(account: number): string {
+  const bban = `033${String(account).padStart(16, '0')}`;
+  let mod = 0;
+  for (const ch of `${bban}101400`) mod = (mod * 10 + Number(ch)) % 97;
+  return `AE${String(98 - mod).padStart(2, '0')}${bban}`;
+}
+/** A synthetic salary file of n lines of 100.00 each, for one employer. */
+function salaryFile(n: number): string {
+  const edr = Array.from({ length: n }, (_, i) => `EDR,${String(91000000000000 + i).padStart(14, '0')},203320101,${iban(7100000000000000 + i)},2026-10-01,2026-10-31,31,100.00,0.00,0`);
+  return [`# file: 0000001234567261117084000.sif`, `SCR,0000001234567,302620122,2026-11-17,0840,102026,${n},${(n * 100).toFixed(2)},AED,REF-MANY`, ...edr].join('\n') + '\n';
 }
 
 const storeLine = (kind: string) => new RegExp(`^store: ${kind} holds 1 bulk\\(s\\), 1 payment\\(s\\), \\d+ part\\(ies\\); [1-9]\\d* payload\\(s\\) rebuilt from their facts, chains unbroken, all match the run$`, 'm');
@@ -167,6 +181,35 @@ describe('the WPS salary file on Flowable in production mode: the async executor
     expect(d.trace).toEqual(SETTLED);
     expect(d.out).toMatch(/^\[engine\] post: the worker stopped holding job \S+ \(TH_FLOWABLE_FAULT\); its lock expires after PT5S/m);
     expect(d.out).toMatch(storeLine('PostgreSql'));
+  }, 900000);
+
+  // Issue I-89, R-09-65: the binding's host is killed in the middle of the payment (after the posting's answer is recorded, before
+  // it completes the job) and started again with the same run key; it goes on from its facts in the store and the file settles.
+  it('on PostgreSql: a binding that stops in the middle of the payment is started again and goes on from the store', async () => {
+    const env = { ...(await database('PostgreSql', 'th_flowable_live_restart')), ...(await flowableServer('production')), ...PRODUCTION, TH_FLOWABLE_FAULT: 'exit:post' };
+    const d = await deploy(env, 'accept', { [ACK_WAIT]: 'PT2M', [ACK_CALENDAR]: 'elapsed' });
+    expect(d.outcome, d.out.slice(-3000)).toBe('settled');
+    expect(d.trace).toEqual(SETTLED);
+    expect(d.out).toMatch(/^\[engine\] the binding stops at post \(TH_FLOWABLE_FAULT\)/m);
+    expect(d.out).toMatch(/engine: the Flowable binding stopped \(exit 75\); started again with run key deploy-\S+ \(restart 1\)/);
+    expect(d.out).toMatch(/^\[engine\] restarted \(restart 1\): run deploy-/m);
+    expect(d.out).toMatch(/^\[engine\] post: job \S+ handed out again after the restart; answered from the journal, not called again$/m);
+    expect(d.out).toMatch(storeLine('PostgreSql'));
+  }, 900000);
+
+  // Issue I-107, R-09-45: a file of many lines on Flowable, its record checks side by side in a chunk of the binding's concurrency (64).
+  it('on PostgreSql: a file of forty lines runs its lines side by side and settles with the trace of every other engine', async () => {
+    const files = Object.fromEntries(unzip(fs.readFileSync(await pkg())).map((e) => [e.name, e.content.toString('utf8')]));
+    const leg = Object.entries(files).find(([n]) => n.startsWith('bpmn/uae.wps.wf.salary-file-out.v1@'))?.[1] ?? '';
+    expect(leg).toMatch(/<multiInstanceLoopCharacteristics isSequential="false"><loopCardinality>\$\{execution\.getVariable\('th_count_items'\) - execution\.getVariable\('th_chunk'\) \* 64 &lt; 64/);
+    expect(leg).toContain('kind="itemStop"');
+    const sample = path.join(work, 'wps-sif-forty-lines.sif');
+    fs.writeFileSync(sample, salaryFile(40));
+    const env = { ...(await database('PostgreSql', 'th_flowable_live_many')), ...(await flowableServer('production')), ...PRODUCTION };
+    const d = await deploy(env, 'accept', { [ACK_WAIT]: 'PT2M', [ACK_CALENDAR]: 'elapsed' }, sample);
+    expect(d.outcome, d.out.slice(-3000)).toBe('settled');
+    expect(d.trace).toEqual(SETTLED);
+    expect(d.out).toMatch(/^store: PostgreSql holds 1 bulk\(s\), 40 payment\(s\), \d+ part\(ies\); [1-9]\d* payload\(s\) rebuilt from their facts, chains unbroken, all match the run$/m);
   }, 900000);
 
   it('on SqlServer: a step whose worker never answers is retried by Flowable, then is a dead letter the binding surfaces', async () => {

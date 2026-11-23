@@ -9,7 +9,7 @@ description: 'The scheme side of an outward refund order (p.wf.refund-out.v1). B
   and the request block encrypts it for WPS, sends it, reads its acknowledgement and waits for the refund settlement
   (RSU). The leg moves no money: the credit to the employer, its FX, charge and VAT are the platform''s. It replaces
   uae.wps.wf.refund-out.v1, which posted the employer''s credit itself on p.wf.request.v1; that release stays published,
-  and requests started on it finish on it (Issue I-137).'
+  and requests started on it finish on it (Issue I-139).'
 direction: outward
 implements:
   slot: scheme-leg
@@ -96,4 +96,4 @@ provenance:
 form: expanded
 expandedFrom:
   release: 2.0.0
-  hash: sha256:3c964f9063b9fec2a059f233bf6b989d38e14550e5863849a290d7ba104365ce
+  hash: sha256:545b07b50c7f242257e46e5de82ded613ffb201b4e15b8e140549f3257e16015

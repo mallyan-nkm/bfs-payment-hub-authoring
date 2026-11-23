@@ -17,6 +17,11 @@ public interface IClaimCheck
     JsonObject Full(JsonNode? state, string r);
     JsonObject FullForItem(JsonNode? state, string r, int index);
     Task<string> Stage(string r, List<(string path, JsonNode? value)> writes);
+    /// <summary>
+    /// A staged write under a token the caller names (the engine job it belongs to), so that a host that restarts and stages it
+    /// again records it once (Issue I-89). By default an ordinary stage.
+    /// </summary>
+    Task<string> StageAs(string r, List<(string path, JsonNode? value)> writes, string token) => Stage(r, writes);
     Task Commit(string token);
     Task Fork(string from, string to);
     Task Copy(string from, string to, IEnumerable<string> paths);
@@ -67,8 +72,75 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
     Task Fact(string r, string code, JsonObject data, Action? after = null) =>
         writer.Append(r, Kind, new NewFact("payload", code, data, Actor: "claim-check"), after);
 
+    /// <summary>
+    /// After <see cref="Resume"/>: a host that restarted may do again what its predecessor did just before it stopped. A create, a
+    /// fork, a copy or a stage the store already records is then not recorded twice (Issue I-89).
+    /// </summary>
+    bool resumed;
+
+    /// <summary>
+    /// A host that restarts (Issue I-89): the payloads of these references rebuilt from their facts, the writes still staged among
+    /// them, and what was accepted, so that the engine goes on from what the store holds.
+    /// </summary>
+    public async Task Resume(IEnumerable<string> refs)
+    {
+        resumed = true;
+        foreach (var r in refs.Distinct()) await Reload(r);
+    }
+
+    /// <summary>One payload as its facts give it, into the cache: true when the store has any fact of it.</summary>
+    async Task<bool> Reload(string r)
+    {
+        await using var db = StoreDbContext.Open(options);
+        var facts = await new FactLog(db).Of(r);
+        if (facts.Count == 0) return false;
+        var p = new JsonObject();
+        var pending = new Dictionary<string, List<(string path, JsonNode? value)>>();
+        foreach (var f in facts)
+        {
+            var d = (JsonObject)JsonNode.Parse(f.DataJson)!;
+            switch (f.Code)
+            {
+                case "create":
+                case "fork":
+                    p = (JsonObject)J.Clone(d["payload"])!;
+                    break;
+                case "staged":
+                    pending[(string)d["token"]!] = ((JsonArray)d["writes"]!).Select(w => ((string)w!["path"]!, J.Clone(w["value"]))).ToList();
+                    break;
+                case "commit":
+                    if (pending.Remove((string)d["token"]!, out var ws)) foreach (var (path, v) in ws) J.Set(p, path, J.Clone(v));
+                    break;
+                case "copy":
+                    foreach (var (path, v) in (JsonObject)d["values"]!) if (v is not null) J.Set(p, path, J.Clone(v));
+                    break;
+                case "accepted":
+                    if (J.S(d, "bulk") is string b) Accepted[r] = (b, "bulk", (int)(J.Num(d, "payments") ?? 0));
+                    else if (J.S(d, "payment") is string pay) Accepted[r] = (pay, "payment", 1);
+                    break;
+            }
+        }
+        cache.Create(r, p);
+        foreach (var (token, ws) in pending)
+        {
+            staged[token] = (r, ws);
+            if (token.LastIndexOf('!') is var bang and > 0 && long.TryParse(token[(bang + 1)..], out var n) && n > seq) seq = n;
+        }
+        return true;
+    }
+
+    /// <summary>After a restart: whether the last fact of a reference already records this change.</summary>
+    async Task<bool> Recorded(string r, string code, Func<JsonObject, bool> same)
+    {
+        if (!resumed) return false;
+        await using var db = StoreDbContext.Open(options);
+        var facts = await new FactLog(db).Of(r);
+        return facts.Any(f => f.Code == code && JsonNode.Parse(f.DataJson) is JsonObject d && same(d));
+    }
+
     public async Task Create(string r, JsonObject payload, AcceptInfo? accept = null)
     {
+        if (resumed && await Reload(r)) return;
         var copy = (JsonObject)J.Clone(payload)!;
         await Fact(r, "create", new JsonObject { ["payload"] = J.Clone(payload) }, () => cache.Create(r, copy));
         if (accept is not null) await AcceptInto(r, payload, accept);
@@ -106,6 +178,14 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
         return token;
     }
 
+    public async Task<string> StageAs(string r, List<(string path, JsonNode? value)> writes, string token)
+    {
+        token = $"{r}!{token}";
+        if (staged.ContainsKey(token) || await Recorded(r, "staged", d => J.S(d, "token") == token)) return token;
+        await Fact(r, "staged", new JsonObject { ["token"] = token, ["writes"] = Writes(writes) }, () => staged[token] = (r, writes));
+        return token;
+    }
+
     /// <summary>A commit that arrives twice (the engine retried its claim-check call) changes nothing: the second waits for the first.</summary>
     public Task Commit(string token)
     {
@@ -123,18 +203,30 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
         }
     }
 
-    public Task Fork(string from, string to)
+    public async Task Fork(string from, string to)
+    {
+        if (resumed && await Reload(to)) return;
+        await ForkOnce(from, to);
+    }
+
+    Task ForkOnce(string from, string to)
     {
         var payload = cache.Payload(from);
         return Fact(to, "fork", new JsonObject { ["from"] = from, ["payload"] = J.Clone(payload) }, () => cache.Create(to, payload));
     }
 
-    public Task Copy(string from, string to, IEnumerable<string> paths)
+    public async Task Copy(string from, string to, IEnumerable<string> paths)
     {
         var list = paths.ToList();
         var src = cache.Payload(from);
         var values = new JsonObject();
         foreach (var p in list) values[p] = J.Clone(J.Get(src, p));
+        if (await Recorded(to, "copy", d => J.S(d, "from") == from && CanonicalJson.Of(d["values"]) == CanonicalJson.Of(values))) return;
+        await CopyOnce(from, to, values);
+    }
+
+    Task CopyOnce(string from, string to, JsonObject values)
+    {
         // The values as the fact records them, so the cache holds what a rebuild from the facts gives.
         return Fact(to, "copy", new JsonObject { ["from"] = from, ["values"] = values }, () => cache.CopyValues(to, values));
     }

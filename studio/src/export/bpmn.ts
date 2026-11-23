@@ -34,6 +34,12 @@ export interface Ctx {
    * when it completes that task. The flow is the same in both.
    */
   binding?: 'embedded' | 'rest';
+  /**
+   * The engine binding's `defaults.forEachConcurrency` (R-09-45): a `forEach` that declares no `concurrency`, and whose steps
+   * all call an activity that holds no state and handle an outcome only by ending, runs that many items side by side, in
+   * chunks (Issue I-107). Absent or 1: item by item.
+   */
+  forEachConcurrency?: number;
 }
 
 export const TH_NS = 'urn:transacthub:flowable:1';
@@ -55,6 +61,8 @@ interface Opts {
   item: boolean;
   hookOwner: string;
   tryScope?: TryScope;
+  /** Inside an item of a forEach whose items run side by side and stop it on failure (R-05-53): an end marks the stopping item. */
+  stopItems?: boolean;
 }
 
 interface TryScope { markers: string[]; parent?: TryScope }
@@ -102,6 +110,24 @@ class Gen {
     return this.rest
       ? `<serviceTask id="${id}"${nm} flowable:type="external-worker" flowable:topic="${BINDING_TOPIC}" flowable:exclusive="false">${inner}</serviceTask>`
       : `<intermediateThrowEvent id="${id}"${nm}>${inner}</intermediateThrowEvent>`;
+  }
+
+  /**
+   * The concurrency of a forEach that declares none (R-09-45), as the interpreter computes it: the binding's where every step
+   * of its body calls an activity that holds no state (effect pure or read, not a hold) and handles an outcome only by ending;
+   * else one, item by item.
+   */
+  itemConcurrency(body: any[]): number {
+    const n = Math.max(1, Math.floor(this.ctx.forEachConcurrency ?? 1));
+    if (n <= 1) return 1;
+    for (const st of body) {
+      if (!st || typeof st !== 'object' || !st.call) return 1;
+      let d: any;
+      try { d = this.ctx.resolve(st.call); } catch { return 1; }
+      if (d?.kind !== 'activity' || d.type === 'hold' || !['pure', 'read'].includes(d.effect)) return 1;
+      if (Object.values(st.handle ?? {}).some((h: any) => !h || typeof h !== 'object' || Array.isArray(h) || !('end' in h))) return 1;
+    }
+    return n;
   }
 
   /** A called process tells a REST binding who called it, and from where (`slot:<step>`, `hook:<point>`). */
@@ -243,6 +269,14 @@ class B {
       }
     }
     for (let b: B | undefined = this; b; b = b.parent) b.endsHere.add(outcome);
+    if (this.o.stopItems) {
+      // The item that stops a forEach whose items run side by side: the binding keeps no entry of a later item (R-05-53).
+      const stop = this.point({ kind: 'itemStop', item: 'true' });
+      this.flow(src, stop, cond, name);
+      src = stop;
+      cond = undefined;
+      name = undefined;
+    }
     const id = this.g.id('end');
     this.els.push(`<endEvent id="${id}" name="end:${esc(outcome)}"><errorEventDefinition errorRef="${this.g.error(`end:${outcome}`, `err_end_${safe(outcome)}`)}"/></endEvent>`);
     this.flow(src, id, cond, name);
@@ -263,6 +297,12 @@ class B {
     for (let b: B | undefined = this; b; b = b.parent) b.failsHere = true;
     const id = this.g.id('fail');
     this.els.push(`<endEvent id="${id}" name="failed"><errorEventDefinition errorRef="${this.g.error('th:failed', 'err_th_failed')}"/></endEvent>`);
+    if (this.o.stopItems) {
+      const stop = this.point({ kind: 'itemStop', item: 'true' });
+      this.flow(from, stop, cond, name, flowId);
+      this.flow(stop, id);
+      return;
+    }
     this.flow(from, id, cond, name, flowId);
   }
 
@@ -665,7 +705,9 @@ class B {
     const fe = st.forEach;
     const id = st.id ? this.g.stepId(st.id) : this.g.id('forEach');
     const count = `th_count_${safe(String(fe.in).replace('[]', ''))}`;
-    const inner = this.child({ item: true });
+    const conc = Math.max(1, fe.concurrency ?? this.g.itemConcurrency(fe.do ?? []));
+    const onItemFailure = fe.onItemFailure ?? 'stop';
+    const inner = this.child({ item: true, stopItems: conc > 1 && onItemFailure === 'stop' });
     const f = inner.steps(fe.do ?? []);
     const s = `${id}_start`;
     const e = `${id}_end`;
@@ -674,7 +716,6 @@ class B {
     const ids = new Set<string>();
     const walk = (xs: any[]) => { for (const x of xs ?? []) { if (x.call) ids.add(x.id ?? shortName(x.call)); if (x.block) ids.add(x.id); for (const a of Object.values(x.handle ?? {})) if (Array.isArray(a)) walk(a); } };
     walk(fe.do);
-    const conc = Math.max(1, fe.concurrency ?? 1);
     // The item's index in the list, kept local to the item: th_chunk * concurrency + loopCounter.
     const index = conc > 1 ? `\${execution.setVariable('th_item', ${v('th_chunk')} * ${conc} + ${v('loopCounter')})}` : `\${execution.setVariable('th_item', ${v('loopCounter')})}`;
     body.push(`<dataObject id="${id}_index" name="th_item" itemSubjectRef="xsd:int"/>`);
@@ -685,13 +726,13 @@ class B {
       f.exits.forEach((x) => inner.flow(x, e));
     } else inner.flow(s, e);
     // onItemFailure continue: an end inside an item ends that item only.
-    if ((fe.onItemFailure ?? 'stop') === 'continue') {
+    if (onItemFailure === 'continue') {
       for (const o of [...inner.endsHere].sort()) {
         const es = `${id}_itemEnd_${safe(o)}`;
         body.push(`<subProcess id="${es}" triggeredByEvent="true"><startEvent id="${es}_start"><errorEventDefinition errorRef="err_end_${safe(o)}"/></startEvent><endEvent id="${es}_end"/><sequenceFlow id="${es}_flow" sourceRef="${es}_start" targetRef="${es}_end"/></subProcess>`);
       }
     }
-    const meta = ext(ann('forEach', { in: fe.in, count, onItemFailure: fe.onItemFailure ?? 'stop', concurrency: conc }));
+    const meta = ext(ann('forEach', { in: fe.in, count, onItemFailure, concurrency: conc }));
     // A REST binding counts the items before the multi-instance starts (embedded: as it starts).
     const counted = this.restPoint({ kind: 'forEachStart', in: fe.in, count });
     if (counted) this.flow(counted, id);

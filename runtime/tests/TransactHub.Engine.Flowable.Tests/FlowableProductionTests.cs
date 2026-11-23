@@ -26,7 +26,8 @@ public sealed class FlowableLiveServer : IAsyncLifetime
 
     public Task InitializeAsync() => container.StartAsync();
     public Task DisposeAsync() => container.DisposeAsync().AsTask();
-    public FlowableRest Client() => new($"http://{container.Hostname}:{container.GetMappedPublicPort(8080)}/flowable-rest", FlowableServer.User, FlowableServer.Password);
+    public string Url => $"http://{container.Hostname}:{container.GetMappedPublicPort(8080)}/flowable-rest";
+    public FlowableRest Client() => new(Url, FlowableServer.User, FlowableServer.Password);
 }
 
 /// <summary>The party of a deployment whose worker does not answer the first <c>down</c> calls (or never, with -1), then passes.</summary>

@@ -1,23 +1,23 @@
 kind: audit
 changeSet: CS-2026-11-22-011
 events:
-  - at: 2026-11-22T23:14:37.735Z
+  - at: 2026-11-22T22:59:56.519Z
     outcome: done
     tenant: owner
     actor: service.operations
     action: seed-content
     key: CS-2026-11-22-011
-    detail: 73 file(s) from spec/examples/bank, spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.p, spec/factory/uae.wps, studio/scripts
+    detail: 1 file(s) from spec/examples/bindings
     changeSet: CS-2026-11-22-011
     prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    hash: sha256:81b97dd9340c1de7d9f57df58e959dccb8b967b2adb03ce0ad2d02fac078dff6
-  - at: 2026-11-22T23:14:37.739Z
+    hash: sha256:dc1e3bf92d9d8b4d7635c80dc32f8cb84917f97c0349e82b9ba2d65cad1715ac
+  - at: 2026-11-22T22:59:56.521Z
     outcome: done
     tenant: owner
     actor: service.operations
     action: publish-change-set
     key: CS-2026-11-22-011
-    detail: 72 members, listed in change-sets/CS-2026-11-22-011.yaml
+    detail: p.binding.flowable.v1@1.1.0
     changeSet: CS-2026-11-22-011
-    prevHash: sha256:81b97dd9340c1de7d9f57df58e959dccb8b967b2adb03ce0ad2d02fac078dff6
-    hash: sha256:f944a60bf5b03b0608b04dc35eaf60be957bd5d251aa97d7b785124dfe479edf
+    prevHash: sha256:dc1e3bf92d9d8b4d7635c80dc32f8cb84917f97c0349e82b9ba2d65cad1715ac
+    hash: sha256:47d6ae5b18bad5542181a9eec9c9b8215fc9eb047af1f449648a41698bfe3615

@@ -580,7 +580,7 @@ artefacts:
   - name: uae.wps.wf.refund-out.v2
     kind: workflow
     release: 2.0.0
-    hash: sha256:3c964f9063b9fec2a059f233bf6b989d38e14550e5863849a290d7ba104365ce
+    hash: sha256:545b07b50c7f242257e46e5de82ded613ffb201b4e15b8e140549f3257e16015
     path: workflows/uae.wps.wf.refund-out.v2.yaml
   - name: uae.wps.wf.refund-request-in.v1
     kind: workflow

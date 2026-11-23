@@ -67,6 +67,8 @@ public sealed class StoreSignals(StoreOptions store, TimeProvider? clock = null)
     public sealed class Feed(StoreOptions store, TimeProvider clock, string subject, string kind, string engine, string instance) : ILiveFeed
     {
         public string Subject => subject;
+        public string SubjectKind => kind;
+        public string Instance => instance;
 
         public async Task<List<JsonObject>> Poll(CancellationToken ct = default)
         {
