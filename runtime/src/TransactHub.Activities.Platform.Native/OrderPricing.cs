@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
+using TransactHub.Activities.Native;
 
-namespace TransactHub.Activities.Native;
+namespace TransactHub.Activities.Platform.Native;
 
 // FX and charges on an order (R-12-20, R-12-25; Issue I-136): the native code-behinds of p.enrich.fx-rate.v1 and
 // p.enrich.charges.v1. Each gives what its script-behind gives (studio/scripts/p.enrich.fx-rate.v1.ts and
@@ -172,10 +173,4 @@ public sealed class EnrichCharges : INativeActivity
         writes["facts.charges"] = charges;
         return new NativeResult(outcome, null, writes);
     }
-}
-
-/// <summary>The platform's order activities the native host registers (FX and charges; the posting is with the core-banking ones).</summary>
-public static class OrderActivities
-{
-    public static IReadOnlyList<INativeActivity> All() => [new EnrichFxRate(), new EnrichCharges()];
 }

@@ -15,8 +15,9 @@ public sealed class NativeRefusal(string name, string message) : Exception(messa
 }
 
 /// <summary>
-/// The activities one distribution runs on this host (spec R-09-122): the platform's own, from the runtime image, and its native
-/// modules' (a scheme's, a bank's), loaded from the distribution's own assemblies in a collectible context of its own. A payment
+/// The activities one distribution runs on this host (spec R-09-122, R-09-126): its native modules' (the platform's, a scheme's, a
+/// bank's), loaded from the distribution's own assemblies in a collectible context of its own, and the builtin services and
+/// production adapters the runtime image answers itself. A payment
 /// pinned to the distribution is served from here only, by activity and release: an activity at a release the distribution does
 /// not carry is refused.
 /// </summary>
@@ -41,13 +42,13 @@ public sealed class ActivityTable
 
 /// <summary>
 /// One distribution's load context, collectible (spec R-09-122): it loads the assemblies the distribution carries, from their
-/// checked bytes, and nothing else. Every other assembly, the native contract and the platform among them, is the runtime image's,
+/// checked bytes, and nothing else. Every other assembly, the native contract and the framework among them, is the runtime image's,
 /// from the default context, so a module and the host share the contract's types.
 /// </summary>
 sealed class ModuleContext(string name, IReadOnlyDictionary<string, byte[]> carried) : AssemblyLoadContext(name, isCollectible: true)
 {
     // What the distribution carries is loaded here, from its own bytes, even where an assembly of the same name is loaded elsewhere:
-    // each distribution runs its own build. The contract and the platform are never carried (NativeAssemblies.Shared), so they,
+    // each distribution runs its own build. The contract and the image's runtime software are never carried (NativeAssemblies.Shared), so they,
     // and every other assembly, resolve in the default context.
     protected override Assembly? Load(AssemblyName n) =>
         n.Name is { } name && !NativeAssemblies.Shared.Contains(name) && carried.TryGetValue(name, out var bytes) ? LoadFromStream(new MemoryStream(bytes)) : null;
@@ -57,8 +58,8 @@ sealed class ModuleContext(string name, IReadOnlyDictionary<string, byte[]> carr
 /// The native host's distributions, side by side (spec R-09-122): one table per distribution, loaded from the store the first time
 /// a payment pinned to it asks, its native assemblies checked again against the signed manifest; a distribution removed in every
 /// environment it was known in is dropped and its context unloaded. Attempts that name no distribution (the studio's
-/// interpreter, a development run) are served by the development table: the platform's activities and the modules
-/// <c>TH_NATIVE_DEV_MODULES</c> names.
+/// interpreter, a development run) are served by the development table: what the image answers and the modules
+/// <c>TH_NATIVE_DEV_MODULES</c> names (the platform's among them, for a platform native activity).
 /// </summary>
 public sealed class NativeModules : IDisposable
 {
@@ -141,7 +142,7 @@ public sealed class NativeModules : IDisposable
         IReadOnlyList<NativeModulePackage> modules;
         // Checked again as it is loaded (R-09-121): the bytes are the ones the signed bill of materials names.
         try { modules = NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
-        catch (NativeAssembliesRefused e) { throw new NativeRefusal("NativeModuleRefused", $"{distribution}: {e.Message}"); }
+        catch (NativeAssembliesRefused e) { throw new NativeRefusal(e.Code ?? "NativeModuleRefused", $"{distribution}: {e.Message}"); }
         var releases = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "activity").Select(a => $"{(string?)a["name"]}@{(string?)a["release"]}").ToHashSet(StringComparer.Ordinal);
         return Build(distribution, modules, releases);
@@ -193,6 +194,10 @@ public sealed class NativeModules : IDisposable
         public void KeepRendered(string sha256, string fileName, byte[] content) => inner.KeepRendered(sha256, fileName, content);
         public T? Service<T>() where T : class => inner.Service<T>();
         public void Contribute(string key, object value) => contributions[key] = value;
+        public object? Contribution(string key) => contributions.TryGetValue(key, out var v) ? v : null;
+        public INativeCoreBanking CoreBanking => inner.CoreBanking;
+        public INativePorts Ports => inner.Ports;
+        public INativeFiles Files => inner.Files;
     }
 
     /// <summary>

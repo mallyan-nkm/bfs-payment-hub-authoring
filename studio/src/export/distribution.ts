@@ -239,8 +239,8 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
   }
   files['workflows/slots.yaml'] = toYaml({ kind: 'slot-fills', slots });
 
-  // The native assemblies of the schemes' and the bank's native activities, each with its SHA-256 (R-09-120): the platform's
-  // own stay in the runtime image. A promotable distribution carries every one; a test distribution says which it does not.
+  // The native assemblies of the platform's, the schemes' and the bank's native activities, each with its SHA-256 (R-09-120,
+  // R-09-126). A promotable distribution carries every one; a test distribution says which it does not.
   const native = nativeModules(all.map((e) => e.doc), scopeOfName, !req.withSimulators);
   if (native.problems.length) throw new DistributionRefused(`The distribution of ${bank} is refused: ${native.problems.join('; ')}`);
   Object.assign(files, native.files);

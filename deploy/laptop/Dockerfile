@@ -1,12 +1,13 @@
 # The laptop stack's images (deploy/laptop/README.md, spec R-09-80): three targets from one file, each on one pinned base.
 #
-#   --target studio     th-laptop-studio     the studio's API and web app (Node 22), with the WPS native module built ahead of
-#                                            time (TH_NATIVE_MODULES): the native assemblies it puts in each distribution
+#   --target studio     th-laptop-studio     the studio's API and web app (Node 22), with the platform's and WPS's native modules
+#                                            built ahead of time and signed (TH_NATIVE_MODULES, R-09-127): the native assemblies
+#                                            it puts in each distribution
 #   --target runtime    th-laptop-runtime    every runtime host: the release API, the operations and service consoles' APIs and
 #                                            web app, the test bench, the native host, the engine host supervisor, the harnesses,
 #                                            the migrations and the laptop's development identity provider (.NET 10). The native
-#                                            host holds the platform's native activities only: a scheme's native code (WPS's)
-#                                            is never in this image; it comes in each distribution (R-09-120 to R-09-122)
+#                                            host holds no native code-behind: the platform's (R-09-126) and a scheme's (WPS's)
+#                                            come in each distribution (R-09-120 to R-09-122)
 #   --target temporal   th-laptop-temporal   the Temporal server and schema tool with the SQL Server plugin (runtime/temporal-mssql)
 #
 # Every target runs as the unprivileged user app (uid 1654), holds no key, password or token (they come from the environment or
@@ -58,7 +59,13 @@ RUN set -e; for p in src/TransactHub.Api src/TransactHub.Service.Api src/Transac
       rid=""; [ "$p" = tools/TransactHub.TemporalHarness ] && rid="-r linux-x64 --self-contained false"; \
       dotnet publish "runtime/$p" -c Release --nologo -v q $rid -o "/out/opt/th/runtime/$p/bin/Release/net10.0" -p:UseAppHost=false -p:DebugType=none; done; \
     sh /src/dedupe.sh /out/opt/th/runtime; \
-    sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps /out/native-modules
+    # The native modules, signed by a key this build makes and holds in its environment only (R-09-127): the laptop's studio trusts
+    # that key alone (its public key, in native-module-signers.json). A bank's studio trusts its module builder's key instead.
+    TH_LAPTOP_MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"; export TH_LAPTOP_MODULE_KEY; \
+    export TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY; \
+    sh runtime/tools/native-module/build.sh p runtime/src/TransactHub.Activities.Platform.Native /out/native-modules; \
+    sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps /out/native-modules; \
+    sh runtime/tools/native-module/build.sh --signers > /out/native-module-signers.json
 FROM ${NODE_IMAGE} AS ops-console-source
 WORKDIR /src/runtime/ops-console
 COPY runtime/ops-console/package.json runtime/ops-console/package-lock.json ./
@@ -72,6 +79,7 @@ COPY --from=ops-console-source /out/ /out/
 FROM scratch AS dotnet-local
 COPY deploy/laptop/.build/opt/ /out/opt/
 COPY deploy/laptop/.build/native-modules/ /out/native-modules/
+COPY deploy/laptop/.build/native-module-signers.json /out/native-module-signers.json
 
 FROM ${GO_IMAGE} AS temporal-source
 WORKDIR /src
@@ -96,9 +104,11 @@ COPY --from=studio-bits /out/web-dist /opt/th/studio/web/dist
 
 # ---- th-laptop-studio --------------------------------------------------------------------------------------------------------
 FROM studio-bundle AS studio
-# The scheme native modules the studio puts in a distribution, built from their code-behind projects in the build stage: the
-# studio image has no .NET SDK to build them at publish (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.1, Issue I-223).
+# The platform's and the schemes' native modules the studio puts in a distribution, built from their code-behind projects in the
+# build stage and signed there: the studio image has no .NET SDK to build them at publish (docs/runtime/PACKAGING-AND-DEPLOYMENT.md
+# section 3.1, R-09-127). bin/studio.mjs trusts the build's key from native-module-signers.json unless TH_NATIVE_MODULE_SIGNERS is set.
 COPY --from=dotnet-bits /out/native-modules/ /opt/th/native-modules/
+COPY --from=dotnet-bits /out/native-module-signers.json /opt/th/native-module-signers.json
 ENV TH_NATIVE_MODULES=/opt/th/native-modules
 USER app
 WORKDIR /opt/th/studio

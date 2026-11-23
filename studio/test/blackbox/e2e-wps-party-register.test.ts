@@ -3,7 +3,7 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, STUDIO, type Server } from './server.js';
-import { wpsDevModules } from './native-module.js';
+import { devModules } from './native-module.js';
 
 // End to end, black box (R-12-27, R-05-62, R-05-63): a WPS salary file matched against the bank's party register on the runtime.
 // The store is PostgreSQL in a container of this run's own; the operations console's API migrates it and is where a register maker
@@ -74,7 +74,7 @@ beforeAll(async () => {
   start('native', path.join(RUNTIME, 'src/TransactHub.Native/bin/Release/net10.0/TransactHub.Native.dll'), {
     TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: path.join(REPO, 'content-configurations', 'banks'), TH_STORE_PROVIDER: 'PostgreSql', TH_STORE_CONNECTION: connection,
     // WPS's match of the registered corporate is the WPS module's, outside any distribution here (R-09-122).
-    TH_NATIVE_DEV_MODULES: wpsDevModules(),
+    TH_NATIVE_DEV_MODULES: devModules(),
   });
   await until('the native host', async () => (await fetch(`${nativeUrl}/health`)).ok);
   studio = await startServer({ TH_NATIVE_HOST: nativeUrl, TH_NATIVE_ACTIVITIES: 'p.enrich.party-register.v1' });

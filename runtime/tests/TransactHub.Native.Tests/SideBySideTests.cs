@@ -15,7 +15,7 @@ public sealed class Store : IAsyncLifetime
 {
     readonly PostgreSqlContainer pg = new PostgreSqlBuilder("postgres:16-alpine").Build();
     public StoreOptions Options => new(StoreProvider.PostgreSql, pg.GetConnectionString());
-    public byte[] BuildA = [], BuildB = [];
+    public byte[] BuildA = [], BuildB = [], PlatformA = [], PlatformB = [];
 
     public async Task InitializeAsync()
     {
@@ -23,6 +23,9 @@ public sealed class Store : IAsyncLifetime
         // Two scheme patch releases of WPS: the same code-behind, built twice with another ACK mapping.
         BuildA = await Task.Run(() => ModuleBuilds.Wps("wps-build-a"));
         BuildB = await Task.Run(() => ModuleBuilds.Wps("wps-build-b"));
+        // Two platform releases: the platform module built twice with another posting window decision (R-09-126).
+        PlatformA = await Task.Run(() => ModuleBuilds.Platform("platform-build-a"));
+        PlatformB = await Task.Run(() => ModuleBuilds.Platform("platform-build-b"));
         await start;
         await using var db = StoreDbContext.Open(Options);
         await db.Database.MigrateAsync();
@@ -35,7 +38,7 @@ public sealed class Store : IAsyncLifetime
 public sealed class StoreCollection : ICollectionFixture<Store> { public const string Name = "native-store"; }
 
 /// <summary>
-/// Spec R-09-120 to R-09-124: the native host's image holds no scheme code; each distribution's native assemblies are loaded from
+/// Spec R-09-120 to R-09-126: the native host's image holds no native code-behind of any pack; each distribution's native assemblies are loaded from
 /// the store side by side, one collectible context per distribution, checked again against the signed manifest; an attempt is
 /// served from its payment's pinned distribution by activity and release; a distribution removed is unloaded and its context
 /// collected while the others go on.
@@ -65,9 +68,12 @@ public sealed class SideBySideTests(Store store)
         view = new { header = new { scheme = "uae.wps", paymentId = "PAY-NATIVE-1" }, messages = new { lastReceived = new { status = "accepted" } } },
     };
 
-    async Task<string> Install(string id, byte[] module, string contract = "1.0.0", byte[]? carried = null)
+    async Task<string> Install(string id, byte[] module, string contract = "1.1.0", byte[]? carried = null) =>
+        await Install(ModuleBuilds.Distribution(Bank, id, module, contract, carried), id);
+
+    async Task<string> Install((System.Text.Json.Nodes.JsonObject Manifest, byte[] Package) d, string id)
     {
-        var (manifest, package) = ModuleBuilds.Distribution(Bank, id, module, contract, carried);
+        var (manifest, package) = d;
         await using var db = StoreDbContext.Open(store.Options);
         await new DistributionRegistry(db).Store(Bank, id, package, manifest, ModuleBuilds.Sha(package)[7..], "test", "native side by side");
         return DistributionRegistry.IdOf(Bank, id);
@@ -113,9 +119,6 @@ public sealed class SideBySideTests(Store store)
 
         // By release too: an activity at a release the distribution does not carry is refused, never served from another.
         Assert.Equal("NotInDistribution", (string?)(await Post(c, Ack(a, "1.1.0")))["name"]);
-        // A platform activity runs from the image, within the distribution's own table.
-        var pw = await Post(c, new { activity = "p.decide.posting-window.v1", release = "1.0.0", distribution = a, now = "2026-11-23T08:00:00Z", tenant = Bank, @params = new { windowStart = "06:00", windowEnd = "20:00" }, view = new { } });
-        Assert.Equal("result", (string?)pw["kind"]);
 
         // A drains once B is active; with no payment open it is removed (its longest wait is zero), and the host unloads it.
         await using (var db = StoreDbContext.Open(store.Options))
@@ -142,12 +145,74 @@ public sealed class SideBySideTests(Store store)
         Assert.Equal("wps-build-b", (string?)(await Post(c, Ack(b)))["writes"]!["status"]!["additionalInformation"]);
     }
 
+    static object Window(string? distribution) => new
+    {
+        activity = ModuleBuilds.PostingWindow, release = ModuleBuilds.PostingWindowRelease, distribution, now = "2026-11-23T08:00:00Z", tenant = Bank,
+        @params = new { windowStart = "06:00", windowEnd = "20:00" }, view = new { header = new { paymentId = "PAY-NATIVE-2" } },
+    };
+
+    [Fact]
+    public async Task Each_distribution_runs_its_own_build_of_a_platform_native_activity_side_by_side()
+    {
+        // R-09-126 (Issue I-221): the platform's native activities are a module each distribution carries, as a scheme's are.
+        Assert.NotEqual(ModuleBuilds.Sha(store.PlatformA), ModuleBuilds.Sha(store.PlatformB));
+        var window = $"{ModuleBuilds.PostingWindow}@{ModuleBuilds.PostingWindowRelease}";
+        var a = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-11", "1.1.0",
+            new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [window]),
+            new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"])), "2026.11.23-11");
+        var b = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-12", "1.1.0",
+            new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformB, [window])), "2026.11.23-12");
+        await using var host = new Host(store.Options);
+        var c = host.CreateClient();
+
+        // The image holds no platform native code-behind: with no distribution, and no development module, it has none to run.
+        Assert.Equal("NotNative", (string?)(await Post(c, Window(null)))["name"]);
+        Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), x => x.GetName().Name == ModuleBuilds.PlatformAssembly && System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(x) == System.Runtime.Loader.AssemblyLoadContext.Default);
+
+        // A payment pinned to A runs A's build of the platform activity; one pinned to B runs B's, in one host.
+        var ra = await Post(c, Window(a));
+        Assert.Equal("result", (string?)ra["kind"]);
+        Assert.Equal("open", (string?)ra["outcome"]);
+        Assert.Equal("platform-build-a", (string?)ra["writes"]!["facts.postingWindow"]!["build"]);
+        Assert.Equal("platform-build-b", (string?)(await Post(c, Window(b)))["writes"]!["facts.postingWindow"]!["build"]);
+        Assert.Equal("platform-build-a", (string?)(await Post(c, Window(a)))["writes"]!["facts.postingWindow"]!["build"]);
+        // A's WPS module runs beside A's platform module, in the same context.
+        Assert.Equal("wps-build-a", (string?)(await Post(c, Ack(a)))["writes"]!["status"]!["additionalInformation"]);
+
+        var loaded = ((await c.GetFromJsonAsync<JsonObject>("/modules"))!["loaded"] as JsonArray)!.OfType<JsonObject>().ToDictionary(x => (string)x["distribution"]!);
+        var mods = (JsonArray)loaded[a]["modules"]!;
+        Assert.Equal(["p", "uae.wps"], mods.Select(m => (string)m!["scope"]!).Order());
+        Assert.Equal(ModuleBuilds.Sha(store.PlatformA), (string?)mods.First(m => (string?)m!["scope"] == "p")!["sha256"]);
+        Assert.Equal(ModuleBuilds.Sha(store.PlatformB), (string?)loaded[b]["modules"]![0]!["sha256"]);
+        Assert.NotEqual((string?)loaded[a]["context"], (string?)loaded[b]["context"]);
+    }
+
+    [Fact]
+    public async Task A_distribution_whose_module_references_the_image_beyond_the_contract_is_not_loaded()
+    {
+        // R-09-125 (Issue I-220): a module references the native contract only; one that references the ports is refused, with its code.
+        var reaching = ModuleBuilds.ReachesIntoTheImage();
+        var bad = await Install("2026.11.23-13", reaching);
+        var good = await Install("2026.11.23-14", store.BuildA);
+        await using var host = new Host(store.Options);
+        var c = host.CreateClient();
+        var r = await Post(c, Ack(bad));
+        Assert.Equal(NativeAssemblies.ImageReference, (string?)r["name"]);
+        Assert.Contains("references TransactHub.Ports", (string?)r["message"]);
+        // The WPS module as built references the contract only, and runs.
+        Assert.Equal("ack", (string?)(await Post(c, Ack(good)))["outcome"]);
+        Assert.DoesNotContain(NativeAssemblies.References(store.BuildA), n => n.StartsWith("TransactHub.") && n != NativeContract.AssemblyName);
+        Assert.DoesNotContain(NativeAssemblies.References(store.PlatformA), n => n.StartsWith("TransactHub.") && n != NativeContract.AssemblyName);
+    }
+
     [Fact]
     public async Task A_distribution_whose_assembly_does_not_match_its_hash_or_whose_contract_is_unsupported_is_not_loaded()
     {
         var tampered = await Install("2026.11.23-3", store.BuildA, carried: store.BuildB);
         var future = await Install("2026.11.23-4", store.BuildA, contract: "2.0.0");
         var newer = await Install("2026.11.23-5", store.BuildA, contract: "1.9.0");
+        // Built against 1.1.0, its manifest claiming 1.0.0: refused, though 1.0.0 itself is supported.
+        var claims = await Install("2026.11.23-6", store.BuildA, contract: "1.0.0");
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
         var t = await Post(c, Ack(tampered));
@@ -157,6 +222,7 @@ public sealed class SideBySideTests(Store store)
         Assert.Equal("NativeModuleRefused", (string?)f["name"]);
         Assert.Contains("native contract 2.0.0", (string?)f["message"]);
         Assert.Contains("native contract 1.9.0", (string?)(await Post(c, Ack(newer)))["message"]);
+        Assert.Contains("its manifest says 1.0.0", (string?)(await Post(c, Ack(claims)))["message"]);
         Assert.Equal("DistributionUnknown", (string?)(await Post(c, Ack("dist/example-bank@2026.11.23-99")))["name"]);
     }
 
@@ -166,13 +232,17 @@ public sealed class SideBySideTests(Store store)
         var v = typeof(INativeModule).Assembly.GetName().Version!;
         Assert.Equal(NativeContract.Version, $"{v.Major}.{v.Minor}.{v.Build}");
         Assert.Equal(NativeContract.AssemblyName, typeof(INativeModule).Assembly.GetName().Name);
+        // 1.1.0 (R-09-125): the same major, at a minor no later than the runtime's own.
+        Assert.Equal("1.1.0", NativeContract.Version);
         Assert.True(NativeContract.Supports("1.0.0"));
+        Assert.True(NativeContract.Supports("1.1.0"));
+        Assert.False(NativeContract.Supports("1.2.0"));
         Assert.False(NativeContract.Supports("2.0.0"));
-        Assert.False(NativeContract.Supports("1.1.0"));
         Assert.False(NativeContract.Supports("0.9.0"));
         Assert.False(NativeContract.Supports(null));
         // The WPS build references the contract it was built against, read without loading it.
-        Assert.Equal("1.0.0", NativeAssemblies.ContractOf(store.BuildA));
+        Assert.Equal("1.1.0", NativeAssemblies.ContractOf(store.BuildA));
+        Assert.Equal("1.1.0", NativeAssemblies.ContractOf(store.PlatformA));
         Assert.Null(NativeAssemblies.ContractOf(File.ReadAllBytes(typeof(NativeContract).Assembly.Location)));
     }
 }

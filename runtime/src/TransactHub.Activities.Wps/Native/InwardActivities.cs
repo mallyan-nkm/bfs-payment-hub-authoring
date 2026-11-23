@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
 using TransactHub.Activities.Native;
-using TransactHub.Activities.Platform.Posting;
 using TransactHub.Activities.Wps.Inward;
 using TransactHub.Activities.Wps.Inward.Dif;
 using TransactHub.Activities.Wps.Inward.Rfa;
@@ -316,18 +315,21 @@ public sealed class MapAckIn : INativeActivity
 /// </summary>
 public static class AckStatus
 {
-    public static IReadOnlyList<TransactHub.Model.TransactionStatusLine> Lines(WpsAckNakDocument doc) => doc.DetailErrors
-        .Select(e => new TransactHub.Model.TransactionStatusLine(e.LineNumber, TransactHub.Model.TransactionStatus.RJCT, "NARR",
+    /// <summary>One transaction's status of a pain.002: its line, its status (RJCT), the ISO reason, the scheme's code and its text.</summary>
+    public sealed record Line(int LineNo, string Status, string IsoReason, string? SchemeCode, string? AdditionalInformation);
+
+    public static IReadOnlyList<Line> Lines(WpsAckNakDocument doc) => doc.DetailErrors
+        .Select(e => new Line(e.LineNumber, "RJCT", "NARR",
             string.IsNullOrWhiteSpace(e.ErrorNumber) ? null : e.ErrorNumber, string.IsNullOrWhiteSpace(e.ErrorDescription) ? null : e.ErrorDescription))
         .ToList();
 
-    public static JsonObject Json(IReadOnlyList<TransactHub.Model.TransactionStatusLine> lines, string? reason)
+    public static JsonObject Json(IReadOnlyList<Line> lines, string? reason)
     {
         var o = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = reason ?? "NARR" };
         if (reason is not null) o["schemeCode"] = reason;
         o["transactions"] = new JsonArray(lines.Select(l => (JsonNode?)new JsonObject
         {
-            ["lineNo"] = l.LineNo, ["code"] = l.Status.ToString(), ["reasonCode"] = l.IsoReason, ["schemeCode"] = l.SchemeCode, ["additionalInformation"] = l.AdditionalInformation,
+            ["lineNo"] = l.LineNo, ["code"] = l.Status, ["reasonCode"] = l.IsoReason, ["schemeCode"] = l.SchemeCode, ["additionalInformation"] = l.AdditionalInformation,
         }).ToArray());
         return o;
     }
@@ -427,28 +429,9 @@ public sealed class MapRtcIn : INativeActivity
     }
 }
 
-/// <summary>
-/// <c>p.decide.posting-window.v1</c>: whether core banking takes postings now, by the bank's window (<c>windowStart</c>, <c>windowEnd</c>,
-/// HH:mm business-local), with the source's call-hours gate (<c>CbCallWindowGate</c>, here <c>PostingWindow</c>). An invalid window fails
-/// closed. The composite <c>p.exchange.await-posting-window.v1</c> waits and asks again while it is closed (the schedule-gated await).
-/// </summary>
-public sealed class DecidePostingWindow : INativeActivity
-{
-    public string Name => "p.decide.posting-window.v1";
-
-    public NativeResult Run(NativeAttempt a)
-    {
-        var w = PostingWindow.Evaluate(NativeContext.Param(a.Params, "windowStart"), NativeContext.Param(a.Params, "windowEnd"), NativeContext.Business(a.Now));
-        var state = w.State == PostingWindowState.Open ? "open" : "closed";
-        var fact = new JsonObject { ["outcome"] = state, ["result"] = state, ["windowId"] = w.WindowId, ["at"] = w.NowLocal.ToString("HH:mm", CultureInfo.InvariantCulture) };
-        if (w.State == PostingWindowState.ConfigInvalid) fact["invalid"] = true;
-        return new NativeResult(state, null, new JsonObject { ["facts.postingWindow"] = fact });
-    }
-}
-
 /// <summary>The WPS inward activities, as the native host registers them.</summary>
 public static class WpsInwardActivities
 {
     public static IReadOnlyList<INativeActivity> All(Action<string, string, byte[]>? keep = null) =>
-        [new MapPifIn(), new MapPsiIn(), new RenderPrc(keep), new RenderDif(keep), new RenderRfa(keep), new MapAckIn(), new MapRriIn(), new MapRtcIn(), new DecidePostingWindow()];
+        [new MapPifIn(), new MapPsiIn(), new RenderPrc(keep), new RenderDif(keep), new RenderRfa(keep), new MapAckIn(), new MapRriIn(), new MapRtcIn()];
 }

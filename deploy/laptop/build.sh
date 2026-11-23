@@ -29,8 +29,14 @@ if [ "$MODE" = local ]; then
     rm -rf "runtime/$p/bin/Release" "runtime/$p/obj/Release"
   done
   sh deploy/laptop/dedupe.sh "$OUT/opt/th/runtime"
-  # The scheme native modules for the studio image: a distribution carries them; the runtime image never does (R-09-120).
-  rm -rf "$OUT/native-modules" && sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps "$OUT/native-modules"
+  # The platform's and the schemes' native modules for the studio image: a distribution carries them; the runtime image never
+  # does (R-09-120, R-09-126). Signed by a key made for this build and held in the environment only (R-09-127); the studio image
+  # trusts that key, by its public key in native-module-signers.json.
+  rm -rf "$OUT/native-modules"
+  TH_LAPTOP_MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)" TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY sh -c '
+    sh runtime/tools/native-module/build.sh p runtime/src/TransactHub.Activities.Platform.Native "$0/native-modules"
+    sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps "$0/native-modules"
+    sh runtime/tools/native-module/build.sh --signers > "$0/native-module-signers.json"' "$OUT"
   # The runtime's web app, built.
   (cd runtime/ops-console && npm run build --silent)
   mkdir -p "$OUT/opt/th/runtime/ops-console" && cp -r runtime/ops-console/dist "$OUT/opt/th/runtime/ops-console/dist"

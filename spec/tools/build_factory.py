@@ -134,8 +134,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # calendar (Issue I-127, R-09-88); p.view.operations.v1 1.5.0 (R-09-91).
 # 1.10.0: the platform's error dictionary 1.2.0, hand-written in factory/p/errors: another bank's content has its own code,
 # package.WrongBank (Issue I-154), and service.ApproverRequired names the bank approver (Issue I-155, R-09-115).
-PACK_RELEASES = {"p": "1.10.0", "uae.p": "1.10.0", "uae.wps": "1.10.0", "b": "1.10.0"}
-FACTORY_RELEASE = "1.10.0"
+# 1.12.0: the platform's error dictionary 1.3.0: a native module that references the runtime image beyond the native contract has
+# its own code, package.NativeImageReference (R-09-125, Issue I-220). 1.11.0 is another change's.
+PACK_RELEASES = {"p": "1.12.0", "uae.p": "1.12.0", "uae.wps": "1.12.0", "b": "1.12.0"}
+FACTORY_RELEASE = "1.12.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 

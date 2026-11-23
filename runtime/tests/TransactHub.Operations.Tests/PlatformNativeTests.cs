@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using TransactHub.Activities.Native;
+using TransactHub.Activities.Platform.Native;
 using TransactHub.Activities.Platform.Posting;
 using TransactHub.Ports;
 
@@ -63,7 +64,8 @@ public sealed class PlatformNativeTests
                   currency: AED
             {(refuse ? "      rejectAccount: AE070331234567890123456\n" : "")}
             """, "parity");
-        return new PostAccountingV2(new CoreBankingResolver(bindings));
+        // The platform module's posting on the image's core banking, as the native host gives it (native contract 1.1.0, R-09-125).
+        return new PostAccountingV2(new NativeCoreBanking(new CoreBankingResolver(bindings)));
     }
 
     /// <summary>A dotted path into the writes as the context would hold them: "facts.posting.entries.0.amount".</summary>

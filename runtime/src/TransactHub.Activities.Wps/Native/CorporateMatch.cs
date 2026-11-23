@@ -1,7 +1,6 @@
 using System.Text.Json.Nodes;
 using TransactHub.Activities.Native;
 using TransactHub.Activities.Wps.Rules;
-using TransactHub.Ports;
 
 namespace TransactHub.Activities.Wps.Native;
 
@@ -16,7 +15,7 @@ public static class WpsCorporateMatch
 {
     public const string Scheme = "uae.wps";
 
-    public static PartyMatch? Match(string id, RegisteredParty? party, JsonObject view)
+    public static PartyMatch? Match(string id, NativeParty? party, JsonObject view)
     {
         SifRegisteredCorporate? corporate = null;
         if (party is { } p && (bool?)p.Record["active"] == true && (bool?)p.Record["wpsRegistrationFormHeld"] == true)
