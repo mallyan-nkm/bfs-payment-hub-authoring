@@ -125,6 +125,7 @@ const PLATFORM_PORTS: [string, string, string][] = [
 const DEMO_PORTS: [string, string, string][] = [
   [PORT.name, SIM.name, 'accept'],
   ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1', 'accept'],
+  ['p.port.encryption.v1', 'p.sim.encryption.v1', 'accept'],
 ];
 
 describe('the guide: build a full workflow in the web app', () => {

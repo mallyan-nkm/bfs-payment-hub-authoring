@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { STUDIO } from '../test/blackbox/server.js';
+// A key of its own for the run's studio when none is set: approving a change set signs what it builds (R-09-23), as in the tests.
+import '../test/support/signing-env.js';
 import { record, type Production } from './record.js';
 
 // Records one production: npx tsx demo/run.ts concepts|build|ideas|hands-on|install|architecture|full-run [--out dir]

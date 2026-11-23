@@ -19,7 +19,7 @@ const PLATFORM: [string, string][] = [
   ['p.port.sanctions.v1', 'p.sim.sanctions.v1'],
   ['p.port.fraud.v1', 'p.sim.fraud.v1'],
 ];
-const DEMO: [string, string][] = [[PORT.name, SIM.name], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1']];
+const DEMO: [string, string][] = [[PORT.name, SIM.name], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1'], ['p.port.encryption.v1', 'p.sim.encryption.v1']];
 
 export function scenes(d: Director): Scene[] {
   const p = () => d.page;
