@@ -98,7 +98,7 @@ public sealed class BackupTests(Databases dbs)
         Assert.Equal(1, (int)dry["activations"]!);
         await using (var db = StoreDbContext.Open(b.Store)) Assert.False(db.Releases.Any());
 
-        // A real restore waits for a bank approver's consent like every change of the system (R-09-74, Issue I-122).
+        // A real restore waits for a bank approver's consent like every change of the system (R-09-77, Issue I-122).
         var asked = await se2.PostAsync("/service/api/restore?dryRun=false&reason=DR%20test", new ByteArrayContent(zip));
         Assert.Equal(HttpStatusCode.Accepted, asked.StatusCode);
         await using (var db = StoreDbContext.Open(b.Store)) Assert.False(db.Releases.Any());

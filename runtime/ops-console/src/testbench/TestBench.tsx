@@ -40,7 +40,7 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
   const benches = useLoad<Record<string, any>>(() => api.call('/benches'));
   const library = useLoad<any[]>(() => api.call('/data/library'));
   const templates = useLoad<any>(() => api.call('/data/templates'));
-  // The default engine (R-09-76): Temporal, on the Temporal SQL Server plugin in a deployment; the others a tester may start.
+  // The default engine (R-09-79): Temporal, on the Temporal SQL Server plugin in a deployment; the others a tester may start.
   const health = useLoad<any>(() => fetch('/testbench/api/health').then((r) => r.json()));
   const defaults: string[] = health?.defaultEngines ?? ['temporal'];
   const [profile, setProfile] = useState('');

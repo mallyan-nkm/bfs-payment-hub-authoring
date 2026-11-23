@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace TransactHub.Security.Tests;
 
 /// <summary>
-/// The laptop deployment (deploy/laptop, spec R-09-77), read as files: every image pinned by digest or built here (th-laptop-*),
+/// The laptop deployment (deploy/laptop, spec R-09-80), read as files: every image pinned by digest or built here (th-laptop-*),
 /// every final image an unprivileged user with a health check, no secret value in the compose file or the images (a password or
 /// a client secret only from the environment, a key only from a volume), every port on 127.0.0.1, and the development identity
 /// provider refused in Production. The stack itself is brought up by deploy/laptop/test/insert-only.mts.

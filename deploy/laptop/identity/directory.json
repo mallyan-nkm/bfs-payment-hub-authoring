@@ -1,5 +1,5 @@
 {
-  "comment": "The laptop's development identity provider (deploy/laptop, R-09-77): synthetic users and machine clients of one bank's runtime. No real person, no secret: a client's secret is a reference resolved from the provider's environment.",
+  "comment": "The laptop's development identity provider (deploy/laptop, R-09-80): synthetic users and machine clients of one bank's runtime. No real person, no secret: a client's secret is a reference resolved from the provider's environment.",
   "users": [
     { "sub": "svc.engineer", "name": "Example service engineer", "groups": ["th-service-engineers"] },
     { "sub": "bank.approver", "name": "Example bank approver", "groups": ["th-bank-approvers"] },

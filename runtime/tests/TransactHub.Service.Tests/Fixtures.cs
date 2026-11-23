@@ -239,7 +239,7 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
 
     public HttpClient Engineer => As("se-1", "*:ServiceEngineer");
     public HttpClient Approver => As("sa-1", "*:ServiceApprover");
-    /// <summary>The bank approver who consents to a change of the system another person asked for (R-09-74).</summary>
+    /// <summary>The bank approver who consents to a change of the system another person asked for (R-09-77).</summary>
     public HttpClient BankApprover => As("ba-1", "*:BankApprover");
 
     /// <summary>An action asked for by <paramref name="maker"/>; when it waits for consent, the bank approver consents. The final answer.</summary>
@@ -251,7 +251,7 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
     }
 
     /// <summary>
-    /// A change asked for at <paramref name="path"/> (an install, a restore) and consented to by the bank approver (R-09-74), answered
+    /// A change asked for at <paramref name="path"/> (an install, a restore) and consented to by the bank approver (R-09-77), answered
     /// as the route answered before it waited for consent: 201 for an install that stored, 200 otherwise, a refusal with its status.
     /// </summary>
     public async Task<HttpResponseMessage> Consented(HttpClient maker, string path, object? body = null, HttpContent? content = null)

@@ -1,4 +1,4 @@
-// The runtime image's one entry point (deploy/laptop, R-09-77): `<host> [args...]` starts that host of the runtime in the
+// The runtime image's one entry point (deploy/laptop, R-09-80): `<host> [args...]` starts that host of the runtime in the
 // foreground, its signals passed on, so each compose service is one host. Nothing here holds a secret: every host reads its
 // settings from its environment, and its secrets by reference (env:, file:).
 import { spawn } from 'node:child_process';
@@ -11,7 +11,7 @@ const hosts = {
   ops: () => ['dotnet', [dll('src/TransactHub.Operations.Api', 'TransactHub.Operations.Api')]],
   native: () => ['dotnet', [dll('src/TransactHub.Native', 'TransactHub.Native')]],
   testbench: () => ['dotnet', [dll('tools/TransactHub.TestBench', 'testbench'), 'serve', '--urls', process.env.ASPNETCORE_URLS ?? 'http://0.0.0.0:8080']],
-  // Temporal is the default engine (R-09-76); TH_ENGINE names DTFx, Elsa or Flowable for a supervisor of its own.
+  // Temporal is the default engine (R-09-79); TH_ENGINE names DTFx, Elsa or Flowable for a supervisor of its own.
   enginehost: () => ['dotnet', [dll('tools/TransactHub.EngineHost', 'TransactHub.EngineHost'), 'supervise', '--engine', process.env.TH_ENGINE ?? 'temporal',
     '--environment', process.env.TH_ENVIRONMENT ?? 'test', '--plans', process.env.TH_HOST_PLANS ?? '/var/lib/transacthub/work/plans', '--urls', process.env.TH_HOST_URLS ?? 'http://127.0.0.1:7600/']],
   idp: () => ['dotnet', [dll('tools/TransactHub.DevIdentity', 'TransactHub.DevIdentity'), 'serve']],

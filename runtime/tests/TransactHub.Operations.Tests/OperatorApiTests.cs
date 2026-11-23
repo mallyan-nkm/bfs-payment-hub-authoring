@@ -187,7 +187,7 @@ public sealed class OperatorApiTests(Databases dbs)
         Assert.Equal(HttpStatusCode.Forbidden, (await op.GetAsync("/ops/api/payments?tenant=other-bank")).StatusCode);
         var me = await Json(await op.GetAsync("/ops/api/me"));
         Assert.Equal("op-1", (string?)me["subject"]);
-        // An operator may not ask for a rebuild; a supervisor may, and it then waits for a bank approver's consent (R-09-74).
+        // An operator may not ask for a rebuild; a supervisor may, and it then waits for a bank approver's consent (R-09-77).
         Assert.Equal(HttpStatusCode.Forbidden, (await op.PostAsJsonAsync("/ops/api/rebuild", new { remarks = "x" })).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await Bearer(idp.Token("sup-1", ["ops-wps-supervisors"])).PostAsJsonAsync("/ops/api/rebuild", new { remarks = "after an incident (synthetic)" })).StatusCode);
         // A token of another issuer, or one with no group the map knows, gives nothing.

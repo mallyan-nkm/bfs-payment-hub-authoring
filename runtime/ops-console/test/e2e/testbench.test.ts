@@ -85,7 +85,7 @@ describe('the Test bench section of the runtime web app', () => {
     expect(errors).toEqual([]);
   });
 
-  it('Temporal is the default engine, and a tester starts another engine for a run by ticking it (R-09-76)', async () => {
+  it('Temporal is the default engine, and a tester starts another engine for a run by ticking it (R-09-79)', async () => {
     const { page, errors } = await signIn(/Sign in as Example tester/);
     await page.getByRole('link', { name: 'Test bench' }).waitFor();
     // The default engine is marked: Temporal (on the Temporal SQL Server plugin in a deployment).

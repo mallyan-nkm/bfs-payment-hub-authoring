@@ -8,9 +8,9 @@ namespace TransactHub.Service.Tests;
 
 /// <summary>
 /// The owner's decisions of 23 November 2026 in the service console. Every action that changes the system is asked for by one
-/// person and carried out only when another person with the bank approver's role consents, both as facts (R-09-74); installing a
+/// person and carried out only when another person with the bank approver's role consents, both as facts (R-09-77); installing a
 /// version and restoring a backup among them (Issue I-122). The runtime serves one bank, configured at install: another bank's
-/// distribution is refused at verify, install and activate (R-09-73).
+/// distribution is refused at verify, install and activate (R-09-76).
 /// </summary>
 [Collection(DatabaseCollection.Name)]
 public sealed class ConsentTests(Databases dbs)
@@ -20,7 +20,7 @@ public sealed class ConsentTests(Databases dbs)
     [Fact]
     public async Task Every_change_of_the_system_waits_for_a_bank_approver_who_is_another_person_and_both_are_facts()
     {
-        // The line drawn (R-09-74): only what the runtime does by itself is carried out at once.
+        // The line drawn (R-09-77): only what the runtime does by itself is carried out at once.
         var immediate = ActionBook.Catalogue.Where(a => !a.Risky).Select(a => a.Id).Order().ToArray();
         Assert.Equal(["replay-read-model", "reverify-package"], immediate);
         Assert.Contains(ActionBook.Catalogue, a => a.Id == "install" && a.Risky);

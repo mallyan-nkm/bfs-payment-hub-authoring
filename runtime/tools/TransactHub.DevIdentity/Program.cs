@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using TransactHub.Security;
 
-// A development identity provider for one bank's runtime on a laptop (deploy/laptop, spec R-09-77). It plays the bank's OIDC
+// A development identity provider for one bank's runtime on a laptop (deploy/laptop, spec R-09-80). It plays the bank's OIDC
 // issuer, which the runtime trusts and keeps no identities of (R-09-27): discovery, a JWKS, the authorisation code flow with
 // PKCE for the runtime's web app (a page of synthetic users to choose from), client credentials for the machine callers, and,
 // for the laptop's own tests only, the password grant for a synthetic user. Its RSA key is made on first start and kept in its
@@ -25,7 +25,7 @@ if (args.Length > 0 && args[0] == "keys") return Keys.Make(args);
 var builder = WebApplication.CreateBuilder(args);
 if (builder.Environment.IsProduction())
 {
-    Console.Error.WriteLine("The development identity provider is refused in Production: a bank's runtime trusts only the bank's own identity provider (R-09-77).");
+    Console.Error.WriteLine("The development identity provider is refused in Production: a bank's runtime trusts only the bank's own identity provider (R-09-80).");
     return 2;
 }
 var cfg = builder.Configuration;

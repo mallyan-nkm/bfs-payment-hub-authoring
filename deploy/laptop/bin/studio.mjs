@@ -1,4 +1,4 @@
-// The studio image's entry point (deploy/laptop, R-09-77). With TH_CONTENT_REPO (and TH_CONTENT_BRANCH, TH_GITHUB_TOKEN from
+// The studio image's entry point (deploy/laptop, R-09-80). With TH_CONTENT_REPO (and TH_CONTENT_BRANCH, TH_GITHUB_TOKEN from
 // the environment only) the studio works on that real content branch; without it, on its in-memory fake GitHub seeded from the
 // image's content-configurations/ (npm run studio:dev), which the runtime's package source reads on TH_FAKE_GITHUB_PORT.
 import { spawn } from 'node:child_process';

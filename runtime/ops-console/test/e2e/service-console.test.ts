@@ -122,7 +122,7 @@ beforeAll(async () => {
     { tag: `release/p.wf.corporate.v1/${r}/temporal`, folder: `content-configurations/releases/p/p.wf.corporate.v1/${r}/temporal`, files },
     // A bank's distribution (R-09-48, R-09-49), signed with this run's key: offered, verified, installed (Issue I-102 done).
     { tag: 'dist/example-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/example-bank/2026.11.22-1', files: distribution('2026.11.22-1') },
-    // Another bank's distribution, signed by the same key: listed, never installable in this bank's runtime (R-09-73).
+    // Another bank's distribution, signed by the same key: listed, never installable in this bank's runtime (R-09-76).
     { tag: 'dist/second-bank/2026.11.22-1', folder: 'content-configurations/releases/distributions/second-bank/2026.11.22-1', files: distribution('2026.11.22-1', 'second-bank') },
     // A tag that names another release than the package in its folder: refused.
     { tag: 'release/p.wf.corporate.v1/9.9.9/temporal', folder: 'content-configurations/releases/p/p.wf.corporate.v1/9.9.9/temporal', files },
@@ -169,7 +169,7 @@ describe('the service console', () => {
     const problems: string[] = [];
     page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
     page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
-    // The bank approver, another person, consents to every change of the system the engineer asks for (R-09-74).
+    // The bank approver, another person, consents to every change of the system the engineer asks for (R-09-77).
     const approver = await browser.newPage({ viewport: { width: 1360, height: 900 } });
     approver.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
     await approver.goto(apiUrl);

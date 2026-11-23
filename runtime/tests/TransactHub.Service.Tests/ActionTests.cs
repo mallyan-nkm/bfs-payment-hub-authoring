@@ -8,7 +8,7 @@ using TransactHub.Store;
 namespace TransactHub.Service.Tests;
 
 /// <summary>
-/// Troubleshooting actions (R-09-43): each needs a reason; one that changes the system waits for a bank approver who is another person (R-09-74);
+/// Troubleshooting actions (R-09-43): each needs a reason; one that changes the system waits for a bank approver who is another person (R-09-77);
 /// each runs end to end (a hold released or expired, the operator's controls on the outbox for the engine's host, a file resent,
 /// a posting reconciled, intake paused and resumed, a worker drained and restarted, a dead-letter job requeued, a key rotated, the
 /// read model rebuilt), Issue I-101. Every step is a fact.

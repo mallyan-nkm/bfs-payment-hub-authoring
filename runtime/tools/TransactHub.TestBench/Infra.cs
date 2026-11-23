@@ -129,7 +129,7 @@ public sealed class Infra(Home home, Action<string>? log = null) : IAsyncDisposa
     /// <summary>Builds each harness a run needs, once per process: the runtime's builds with a store, the studio's DTFx and Elsa without.</summary>
     public void Build(IEnumerable<string> engines, bool onStore)
     {
-        // An image that carries the harnesses built (deploy/laptop, R-09-77) has no SDK to build them with.
+        // An image that carries the harnesses built (deploy/laptop, R-09-80) has no SDK to build them with.
         if (Environment.GetEnvironmentVariable("TH_TESTBENCH_PREBUILT") == "1") return;
         foreach (var e in engines)
         {

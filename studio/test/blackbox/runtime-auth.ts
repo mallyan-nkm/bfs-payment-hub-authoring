@@ -26,7 +26,7 @@ const token = jwt({ sub: 'pipeline', azp: 'pipeline', roles: ['TransactHub.Pipel
 /** What the runtime's API host needs: the bank's issuer, audience and keys, and the bank's role map. */
 export function runtimeApiEnv(): Record<string, string> {
   return {
-    // The one bank the runtime serves (R-09-73), and where the pipeline may still change which release runs (R-09-75).
+    // The one bank the runtime serves (R-09-76), and where the pipeline may still change which release runs (R-09-78).
     TH_BANK: 'example-bank',
     Releases__MachineActivationEnvironments: 'test,dev,kit,uat,prod',
     Auth__Oidc__Issuer: ISSUER,

@@ -1,7 +1,7 @@
-// The front door's one-off run of a payment already pinned (deploy/laptop, R-09-77): `run-pinned '<json>'` in the runtime image.
+// The front door's one-off run of a payment already pinned (deploy/laptop, R-09-80): `run-pinned '<json>'` in the runtime image.
 // It takes the front door's client-credentials token from the bank's identity provider, fetches the distribution the payment is
 // pinned to from the release API (verified against the trusted signers), runs the payment from that copy on its engine (Temporal
-// on the SQL Server plugin by default, R-09-76) with the store on SQL Server, records its end, and prints one JSON line.
+// on the SQL Server plugin by default, R-09-79) with the store on SQL Server, records its end, and prints one JSON line.
 //   { paymentId, distribution, bank, environment, workflow, message, sample (a file under content-configurations/), date, bench }
 import * as fs from 'node:fs';
 import * as path from 'node:path';

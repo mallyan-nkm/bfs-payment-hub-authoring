@@ -5,7 +5,7 @@ using TransactHub.Store;
 namespace TransactHub.Operations;
 
 /// <summary>
-/// The operations console's own record (spec R-09-74, R-05-62): its chain of facts in the store, beside the payments' chains.
+/// The operations console's own record (spec R-09-77, R-05-65): its chain of facts in the store, beside the payments' chains.
 /// A change of the system the console offers (rebuilding the read model) is asked for by one person and carried out only when
 /// a bank approver, another person, consents: both are facts with who, when and why (owner's decision of 23 November 2026).
 /// An operator's decision on a payment (approve or decline a hold, retry, repair, cancel) is a business decision on that payment,

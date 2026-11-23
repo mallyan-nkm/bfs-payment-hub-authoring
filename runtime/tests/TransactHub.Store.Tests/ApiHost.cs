@@ -137,7 +137,7 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
 
     public readonly TestIdp Idp = new();
 
-    /// <summary>The bank the test runtime serves (TH_BANK, R-09-73).</summary>
+    /// <summary>The bank the test runtime serves (TH_BANK, R-09-76).</summary>
     public const string Bank = "example-bank";
 
     protected override void ConfigureWebHost(IWebHostBuilder b)
@@ -145,7 +145,7 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
         b.UseSetting("Store:Provider", o.Provider.ToString());
         b.UseSetting("Store:Connection", o.ConnectionString);
         b.UseSetting("TH_TRUSTED_SIGNERS", $"file:{signers.TrustFile}");
-        // The one bank this runtime serves (R-09-73); the pipeline may still change which release runs in these environments (R-09-75).
+        // The one bank this runtime serves (R-09-76); the pipeline may still change which release runs in these environments (R-09-78).
         b.UseSetting("TH_BANK", Bank);
         b.UseSetting("Releases:MachineActivationEnvironments", "test,dev,kit,uat,prod");
         b.UseSetting("Auth:Oidc:Issuer", TestIdp.Issuer);

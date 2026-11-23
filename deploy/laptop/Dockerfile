@@ -1,4 +1,4 @@
-# The laptop stack's images (deploy/laptop/README.md, spec R-09-77): three targets from one file, each on one pinned base.
+# The laptop stack's images (deploy/laptop/README.md, spec R-09-80): three targets from one file, each on one pinned base.
 #
 #   --target studio     th-laptop-studio     the studio's API and web app (Node 22)
 #   --target runtime    th-laptop-runtime    every runtime host: the release API, the operations and service consoles' APIs and

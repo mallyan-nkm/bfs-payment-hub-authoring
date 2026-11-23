@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Applies the store's and the read model's migrations once, as the database's owner, and exits (deploy/laptop, R-09-78): the
+  <!-- Applies the store's and the read model's migrations once, as the database's owner, and exits (deploy/laptop, R-09-81): the
        runtime's hosts then run with Store:Migrate=false as a user that may not change or delete what the store holds. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />

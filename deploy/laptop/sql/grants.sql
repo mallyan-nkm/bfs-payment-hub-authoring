@@ -1,4 +1,4 @@
--- The laptop stack's logins and what each may do (deploy/laptop, R-09-78). Run once by db-grants as the server's owner, after
+-- The laptop stack's logins and what each may do (deploy/laptop, R-09-81). Run once by db-grants as the server's owner, after
 -- the migrations. Passwords come from sqlcmd variables, set from the environment; nothing here is a secret.
 --
 -- th_runtime: every runtime host. In the store (th_store) it may read and insert, and is denied UPDATE, DELETE and ALTER on

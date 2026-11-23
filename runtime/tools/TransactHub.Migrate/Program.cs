@@ -3,7 +3,7 @@ using TransactHub.Operations;
 using TransactHub.Security;
 using TransactHub.Store;
 
-// Applies the store's migrations and the operations read model's, once, and exits (deploy/laptop, R-09-78). It connects as the
+// Applies the store's migrations and the operations read model's, once, and exits (deploy/laptop, R-09-81). It connects as the
 // databases' owner; the runtime's hosts then run with Store:Migrate=false as a user granted SELECT and INSERT on the store and
 // denied UPDATE and DELETE, so that what the store holds is never changed or removed (insert-only, plan W2), by the database's
 // own permissions as well as by the store's guard.

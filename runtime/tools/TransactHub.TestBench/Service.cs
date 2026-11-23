@@ -126,7 +126,7 @@ public static class Service
             catch (Forbidden e) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsJsonAsync(new { error = e.Message }); }
         });
 
-        // The default engine (R-09-76), and where Temporal is (a configured server, the Temporal SQL Server plugin in a deployment, or the test server).
+        // The default engine (R-09-79), and where Temporal is (a configured server, the Temporal SQL Server plugin in a deployment, or the test server).
         app.MapGet("/testbench/api/health", () => Results.Json(new JsonObject
         {
             ["ok"] = true, ["auth"] = J.S(auth.ClientConfig(), "mode"),

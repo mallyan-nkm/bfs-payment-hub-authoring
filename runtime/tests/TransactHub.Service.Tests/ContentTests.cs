@@ -70,7 +70,7 @@ public sealed class ContentTests(Databases dbs)
         Assert.Equal(1, await db.Releases.CountAsync());
         var audit = await db.Facts.AsNoTracking().Where(f => f.Kind == "service").OrderBy(f => f.Id).ToListAsync();
         var installs = audit.Where(f => f.Code == "install").Select(f => JsonNode.Parse(f.DataJson)!).ToList();
-        // Installed on the bank approver's consent (R-09-74); a version that does not verify is refused when asked for, before any consent.
+        // Installed on the bank approver's consent (R-09-77); a version that does not verify is refused when asked for, before any consent.
         Assert.Equal(["installed", "already installed"], installs.Select(x => (string)x["result"]!));
         Assert.All(audit.Where(f => f.Code == "install"), f => Assert.Equal("service:ba-1", f.Actor));
         Assert.All(audit.Where(f => f.Code is "verify" or "action.requested"), f => Assert.Equal("service:se-1", f.Actor));

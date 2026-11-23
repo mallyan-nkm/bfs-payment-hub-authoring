@@ -39,7 +39,7 @@ public sealed class CatalogueTests
         Assert.Equal(["SqlServer"], ms.Databases);
     }
 
-    /// <summary>Temporal is the default engine (R-09-76); a tester still starts DTFx, Elsa or Flowable by naming them.</summary>
+    /// <summary>Temporal is the default engine (R-09-79); a tester still starts DTFx, Elsa or Flowable by naming them.</summary>
     [Fact]
     public void A_profile_that_names_no_engine_runs_on_Temporal_and_a_request_may_start_the_others()
     {

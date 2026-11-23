@@ -1,6 +1,6 @@
 # The studio and one bank's runtime on a laptop
 
-The TransactHub Designer Studio and one bank's runtime, as separate services in Docker containers (spec R-09-77). One runtime serves one bank (R-09-73), ADIB by default; the studio is multi-tenant. Temporal on the SQL Server plugin is the default engine (R-09-76). Every change of the system in the consoles waits for a bank approver's consent (R-09-74).
+The TransactHub Designer Studio and one bank's runtime, as separate services in Docker containers (spec R-09-80). One runtime serves one bank (R-09-76), ADIB by default; the studio is multi-tenant. Temporal on the SQL Server plugin is the default engine (R-09-79). Every change of the system in the consoles waits for a bank approver's consent (R-09-77).
 
 ## Services
 
@@ -52,9 +52,9 @@ sh deploy/laptop/prune-cache.sh                                             # th
 
 ## Insert, never update
 
-`test/insert-only.mts` brings a stack of its own up healthy, with passwords made for the run, and shows: distribution A published by the studio, installed and activated through the service console with a bank approver's consent; a payment pinned to A; B published, installed and activated, A draining; a payment on B; the payment on A finishing on A, on Temporal on SQL Server; every row of `release`, `release_activation` and `payment_fact` unchanged after all of it, and the runtime's login refused an UPDATE, a DELETE and a TRUNCATE on each by the database (`sql/grants.sql`, R-09-78); a second install of A's id with other content refused at the release API and at the database's unique key; and DIB's distribution refused in the ADIB runtime at verify, install and the release API. It removes its stack and volumes at the end (`--keep` leaves them).
+`test/insert-only.mts` brings a stack of its own up healthy, with passwords made for the run, and shows: distribution A published by the studio, installed and activated through the service console with a bank approver's consent; a payment pinned to A; B published, installed and activated, A draining; a payment on B; the payment on A finishing on A, on Temporal on SQL Server; every row of `release`, `release_activation` and `payment_fact` unchanged after all of it, and the runtime's login refused an UPDATE, a DELETE and a TRUNCATE on each by the database (`sql/grants.sql`, R-09-81); a second install of A's id with other content refused at the release API and at the database's unique key; and DIB's distribution refused in the ADIB runtime at verify, install and the release API. It removes its stack and volumes at the end (`--keep` leaves them).
 
-On a real Temporal server a WPS payment waits in real time for the simulator's acknowledgement, so each payment takes about ten minutes (Issue I-149 (5)).
+On a real Temporal server a WPS payment waits in real time for the simulator's acknowledgement, so each payment takes about ten minutes (Issue I-156 (5)).
 
 ## What is not here
 

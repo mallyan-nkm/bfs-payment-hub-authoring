@@ -65,7 +65,7 @@ public sealed class Catalogue(Home home)
 {
     public static readonly string[] AllEngines = ["temporal", "dtfx", "elsa", "flowable"];
     /// <summary>
-    /// The default engine (owner's decision of 23 November 2026, R-09-76): Temporal, on the Temporal SQL Server plugin in a
+    /// The default engine (owner's decision of 23 November 2026, R-09-79): Temporal, on the Temporal SQL Server plugin in a
     /// deployment. A run whose profile and request name no engines runs on it; a tester may still start DTFx, Elsa or Flowable.
     /// </summary>
     public static readonly string[] DefaultEngines = ["temporal"];

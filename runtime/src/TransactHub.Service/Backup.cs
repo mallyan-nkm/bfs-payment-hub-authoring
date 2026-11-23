@@ -150,7 +150,7 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         var test = contentSettings.TestEnvironments.Contains(contentSettings.Environment);
         var problems = new JsonArray();
         if (!empty && !test) problems.Add($"This runtime ({contentSettings.Environment}) is not empty and not a test environment: a restore goes only into one that is");
-        // A backup of another bank's runtime is never restored here (R-09-73): every release, value and binding is this bank's.
+        // A backup of another bank's runtime is never restored here (R-09-76): every release, value and binding is this bank's.
         if (contentSettings.Bank is { } own)
         {
             static string? BankOf(JsonObject r) => (string?)r["scope"] is { } sc && (sc.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || sc.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal))
@@ -159,7 +159,7 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
                 .Concat((doc["values"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
                 .Concat((doc["bindings"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
                 .Where(b => b is { Length: > 0 } && !own.Serves(b)).Distinct().Order(StringComparer.Ordinal).ToList();
-            if (others.Count > 0) problems.Add($"The backup holds content of {string.Join(", ", others)}, but this runtime serves {own.Id} only (TH_BANK): it is not restored (R-09-73)");
+            if (others.Count > 0) problems.Add($"The backup holds content of {string.Join(", ", others)}, but this runtime serves {own.Id} only (TH_BANK): it is not restored (R-09-76)");
         }
         var versions = (await content.Versions(ct)).OfType<JsonObject>().ToList();
         var plan = new JsonArray();
@@ -231,7 +231,7 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         return result;
     }
 
-    /// <summary>Keeps a backup's bytes in the store, insert-only by their hash, while a restore waits for a bank approver's consent (R-09-74).</summary>
+    /// <summary>Keeps a backup's bytes in the store, insert-only by their hash, while a restore waits for a bank approver's consent (R-09-77).</summary>
     public async Task<string> Keep(byte[] zip, CancellationToken ct = default)
     {
         var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(zip));

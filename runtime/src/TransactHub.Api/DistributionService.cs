@@ -16,7 +16,7 @@ namespace TransactHub.Api;
 /// </summary>
 public sealed class DistributionService(StoreDbContext db, TimeProvider clock, Func<CancellationToken, Task<TrustedSigners>> trust, IReadOnlySet<string>? testEnvironments = null, RuntimeBank? bank = null)
 {
-    /// <summary>The one bank this runtime serves (R-09-73): another bank's bundle, distribution or payment is refused. Null only in a library test.</summary>
+    /// <summary>The one bank this runtime serves (R-09-76): another bank's bundle, distribution or payment is refused. Null only in a library test.</summary>
     public RuntimeBank? Bank => bank;
 
     void OwnBank(string? b, string what) => bank?.Check(b, what);

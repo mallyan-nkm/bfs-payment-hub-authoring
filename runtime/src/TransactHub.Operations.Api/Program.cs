@@ -34,7 +34,7 @@ builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.Ge
     resendFolder is { Length: > 0 } ? new FileResend(store, new FolderFileTransfer(resendFolder), clock) : null));
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
 builder.Services.AddSingleton(new Reports(ops, views));
-// The console's own chain (R-09-74, R-05-62): its exports, and the changes of the system it waits for a bank approver's consent to.
+// The console's own chain (R-09-77, R-05-65): its exports, and the changes of the system it waits for a bank approver's consent to.
 builder.Services.AddSingleton(new ConsoleRecord(store, clock));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -212,7 +212,7 @@ api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILog
     var (csv, rows, cut) = await reports.Csv(tenants!, f, http.RequestAborted);
     // Who exported what is logged with ids only (R-09-35).
     logs.CreateLogger("TransactHub.Operations.Export").LogWarning("Export of {Rows} payment(s) for {Tenants} by {Subject}", rows, string.Join(",", tenants!), Who(http)!.Subject);
-    // Every export is an audit fact on the console's chain: who, when, the filter and the row count (R-05-62, Issue I-144).
+    // Every export is an audit fact on the console's chain: who, when, the filter and the row count (R-05-65, Issue I-144).
     var filter = new JsonObject();
     foreach (var (k, v) in http.Request.Query.OrderBy(q => q.Key, StringComparer.Ordinal)) filter[k] = v.ToString();
     var fact = await record.Exported(Who(http)!, "csv", tenants!, filter, rows, cut, http.RequestAborted);
@@ -279,7 +279,7 @@ api.MapGet("/actions/pending", async (HttpContext http) =>
 });
 
 // Throw the read model away and replay every fact: a supervisor asks (it changes nothing in the store, but it changes the
-// system operators read), and it is carried out once a bank approver, another person, consents (R-09-74).
+// system operators read), and it is carried out once a bank approver, another person, consents (R-09-77).
 api.MapPost("/rebuild", async (Reasoned? body, HttpContext http, ConsoleRecord record) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");

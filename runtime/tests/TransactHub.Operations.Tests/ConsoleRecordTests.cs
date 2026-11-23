@@ -13,8 +13,8 @@ namespace TransactHub.Operations.Tests;
 
 /// <summary>
 /// The operations console's own chain (owner's decisions of 23 November 2026): every CSV export is an audit fact with who, when,
-/// the filter and the row count, and no separate role (R-05-62, Issue I-144); rebuilding the read model, the console's one change
-/// of the system, is asked for by a supervisor and carried out only when a bank approver, another person, consents (R-09-74).
+/// the filter and the row count, and no separate role (R-05-65, Issue I-144); rebuilding the read model, the console's one change
+/// of the system, is asked for by a supervisor and carried out only when a bank approver, another person, consents (R-09-77).
 /// An operator's decision on a payment's hold is a business decision and needs no such consent.
 /// </summary>
 [Collection(DatabaseCollection.Name)]

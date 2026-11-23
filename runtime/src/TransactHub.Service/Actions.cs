@@ -21,7 +21,7 @@ public sealed record ActionAsk(string Action, string? Target, string? Reason, Js
 /// The service console's actions: each needs a person's confirmation with a reason, is a fact with who, when and why, and one
 /// that changes the system (<see cref="ActionSpec.Risky"/>: every action but re-verifying a package and replaying the read
 /// model from its checkpoint, which the runtime does by itself) is carried out only when a bank approver, another person,
-/// consents (owner's decision of 23 November 2026, R-09-74). Installing a version and restoring a backup are actions of the
+/// consents (owner's decision of 23 November 2026, R-09-77). Installing a version and restoring a backup are actions of the
 /// same book, so they wait for the same consent.
 /// </summary>
 public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
@@ -85,7 +85,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         return await Execute(who, id, ask, spec, payment, kind, ct);
     }
 
-    /// <summary>A bank approver consents to (or refuses) an action another person asked for (R-09-74).</summary>
+    /// <summary>A bank approver consents to (or refuses) an action another person asked for (R-09-77).</summary>
     public async Task<JsonObject> Decide(ServiceIdentity who, string actionId, bool approve, string? reason, CancellationToken ct = default)
     {
         if (!who.MayConsent) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"Consenting needs the {ServiceRoles.BankApprover} role");

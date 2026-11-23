@@ -63,7 +63,7 @@ public sealed class DistributionApiTests(Databases dbs)
     }
 
     /// <summary>
-    /// The runtime serves one bank (R-09-73): a distribution or configuration release signed for another bank, by a key the
+    /// The runtime serves one bank (R-09-76): a distribution or configuration release signed for another bank, by a key the
     /// runtime trusts and with every role the caller could hold, is refused at install; one of another bank already in the
     /// store (put there before the runtime had its bank) is refused at activation; a payment of another bank is not pinned.
     /// </summary>
@@ -97,7 +97,7 @@ public sealed class DistributionApiTests(Databases dbs)
 
     /// <summary>
     /// The release API's machine caller may change which distribution runs only in the environments it is given, by default the
-    /// test environments (R-09-75): elsewhere a change of the system goes through the service console with a bank approver's consent.
+    /// test environments (R-09-78): elsewhere a change of the system goes through the service console with a bank approver's consent.
     /// </summary>
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task Outside_a_test_environment_the_pipeline_may_not_change_which_distribution_runs(StoreProvider p)
@@ -115,7 +115,7 @@ public sealed class DistributionApiTests(Databases dbs)
         Assert.Equal(HttpStatusCode.Created, (await Act(c, "activate", new { id = "dist/example-bank@2026.11.23-1", environment = "test", why = "kit" })).StatusCode);
     }
 
-    /// <summary>A runtime without its bank does not start (R-09-73).</summary>
+    /// <summary>A runtime without its bank does not start (R-09-76).</summary>
     [Fact]
     public async Task A_runtime_without_its_bank_does_not_start()
     {

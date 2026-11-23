@@ -1,4 +1,4 @@
-// "Insert, never update" for workflows, proved in the laptop deployment (deploy/laptop, spec R-09-77, R-09-78, R-09-73, R-09-74).
+// "Insert, never update" for workflows, proved in the laptop deployment (deploy/laptop, spec R-09-80, R-09-81, R-09-76, R-09-77).
 //
 //   cd studio && node_modules/.bin/tsx ../deploy/laptop/test/insert-only.mts [--keep] [--no-up]
 //
@@ -8,15 +8,15 @@
 //  2. installs and activates A through the service console's API: a service engineer asks, a bank approver consents;
 //  3. pins payment P1 to A at the front door (the release API), and leaves it open;
 //  4. publishes B, installs it and activates it with consent: A drains;
-//  5. pins P2 to B; runs P1 and P2 from the distributions they are pinned to, on Temporal (the SQL Server plugin): P1 finishes
-//     on A, P2 on B;
-//  6. checks at the database that no row of a distribution, its definitions, its activations or the fact log was updated or
-//     deleted: every row seen after step 2 is unchanged at the end, the chains verify, and the runtime's login is refused an
-//     UPDATE, a DELETE and a TRUNCATE on each of those tables by the database itself;
-//  7. refuses a second install of A's id with other content (signed by the studio's own key), at the release API and at the
+//  5. refuses a second install of A's id with other content (signed by the studio's own key), at the release API and at the
 //     database's unique key;
-//  8. refuses a distribution of DIB, published by the same studio and signed by the same key, in the ADIB runtime: at verify
-//     and at install in the service console, and at the release API.
+//  6. refuses a distribution of DIB, published by the same studio and signed by the same key, in the ADIB runtime: at verify
+//     and at install in the service console, and at the release API;
+//  7. pins P2 to B; runs P1 and P2 from the distributions they are pinned to, on Temporal (the SQL Server plugin): P1 finishes
+//     on A, P2 on B;
+//  8. checks at the database that no row of a distribution, its definitions, its activations or the fact log was updated or
+//     deleted: every row seen after step 2 is unchanged at the end, and the runtime's login is refused an UPDATE, a DELETE and
+//     a TRUNCATE on each of those tables by the database itself.
 // It removes its containers and volumes at the end unless --keep is given.
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -155,62 +155,7 @@ async function main() {
   const sw = await activate(B.releaseId);
   check('activating B moves A to draining in the same step', sw.active === B.releaseId && sw.draining === A.releaseId, sw);
 
-  log('5. P2 pinned to B; P1 runs on A, P2 on B (Temporal on SQL Server)');
-  const p2 = await pin(P2);
-  check('P2 is pinned to B', p2.status === 200 && p2.data.distribution === B.releaseId, p2.data);
-  check('P1 stays pinned to A', (await pin(P1)).data.distribution === A.releaseId);
-  const bench = [
-    ...['core-banking', 'sanctions', 'fraud', 'channel', 'payment-record', 'facts-out'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
-    { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'release' },
-    { port: 'p.port.encryption.v1', simulator: 'p.sim.encryption.v1', scenario: 'accept' },
-    { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'accept' },
-    { port: 'uae.wps.port.labour-ministry.v1', simulator: 'uae.wps.sim.labour-ministry.v1', scenario: 'accept' },
-    { port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' },
-    { port: 'b.port.aml-screening.v1', simulator: 'b.sim.aml-screening.v1', scenario: 'accept' },
-    { port: 'b.port.labour-ministry.v1', simulator: 'b.sim.labour-ministry.v1', scenario: 'accept' },
-  ];
-  // Both run side by side (each waits in real time for the simulator's acknowledgement, Issue I-149 (5)), each from its own copy.
-  const run = (paymentId: string, distribution: string) => new Promise<{ status: number | null; out: any; err: string }>((resolve) => {
-    const c = spawn('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), 'exec', '-T', 'testbench', 'node', '/opt/th/deploy/laptop/bin/runtime.mjs', 'run-pinned',
-      JSON.stringify({ paymentId, distribution, bank: BANK, environment: ENV, date: '2026-11-24', bench })], { env });
-    let out = '', err = '';
-    c.stdout.on('data', (d) => (out += d));
-    c.stderr.on('data', (d) => (err += d));
-    c.on('close', (status) => {
-      const line = out.trim().split('\n').filter((l) => l.startsWith('{')).pop();
-      resolve({ status, out: line ? JSON.parse(line) : undefined, err: `${out.slice(-2000)}\n${err.slice(-3000)}` });
-    });
-  });
-  const [r1, r2] = await Promise.all([run(P1, A.releaseId), run(P2, B.releaseId)]);
-  check('P1 runs to its end', r1.status === 0 && !!r1.out?.outcome && r1.out.ended === true, r1.out ?? r1.err);
-  check(`P1 finished on A (${r1.out.outcome}, ${r1.out.ms} ms), its queues and build id A's`, r1.out.distribution?.id === A.releaseId && (r1.out.distribution?.taskQueues ?? []).every((q: string) => q.endsWith(`@${A.releaseId}`)), r1.out.distribution);
-  check(`P2 finished on B (${r2.out?.outcome})`, r2.status === 0 && r2.out?.distribution?.id === B.releaseId && r2.out.ended === true, r2.out ?? r2.err);
-  const states = await call(SVC, se, 'GET', '/content/releases');
-  const st = Object.fromEntries((states.data as any[]).filter((x) => x.kind === 'distribution').map((x) => [x.releaseId, x.state]));
-  check('A is drained once P1 ended; B is active', ['drained', 'draining'].includes(st[A.releaseId]) && st[B.releaseId] === 'active', st);
-
-  log('6. at the database: nothing inserted was updated or deleted');
-  const after = snapshot();
-  const changed = [...before].filter(([k, h]) => after.get(k) !== h).map(([k]) => k);
-  check(`every one of the ${before.size} rows seen after A's activation is unchanged at the end (${after.size} rows now)`, changed.length === 0 && after.size > before.size, changed);
-  const verify = await call(SVC, se, 'POST', '/actions', { action: 'reverify-package', target: A.releaseId, reason: 'laptop test (synthetic)' });
-  check('A still verifies against the studio\'s key', verify.data.status === 'done', verify.data);
-  for (const t of ['release', 'release_activation', 'payment_fact']) {
-    const key = t === 'release' ? `Id = '${A.releaseId}'` : `Id = (SELECT MIN(Id) FROM ${t})`;
-    const col = t === 'release' ? 'StoredBy' : t === 'release_activation' ? 'Actor' : 'Actor';
-    const u = sql('th_runtime', `UPDATE ${t} SET ${col} = 'tampered' WHERE ${key}`);
-    check(`the runtime's login may not UPDATE ${t}`, !u.ok && /permission was denied/i.test(u.out), u.out);
-    const d = sql('th_runtime', `DELETE FROM ${t} WHERE ${key}`);
-    check(`the runtime's login may not DELETE from ${t}`, !d.ok && /permission was denied/i.test(d.out), d.out);
-    const tr = sql('th_runtime', `TRUNCATE TABLE ${t}`);
-    check(`the runtime's login may not TRUNCATE ${t}`, !tr.ok && /(permission|does not have)/i.test(tr.out), tr.out);
-  }
-  const perms = sql('th_runtime', "SELECT permission_name FROM fn_my_permissions('dbo', 'SCHEMA') ORDER BY permission_name");
-  check('the runtime\'s login holds SELECT and INSERT on the store, and neither UPDATE nor DELETE', perms.ok && /INSERT/.test(perms.out) && /SELECT/.test(perms.out) && !/UPDATE|DELETE/.test(perms.out), perms.out);
-  const again = snapshot();
-  check('the refused statements changed nothing', [...after].every(([k, h]) => again.get(k) === h), '');
-
-  log('7. a second install of A\'s id with other content is refused');
+  log('5. a second install of A\'s id with other content is refused');
   const pkg = await call(API, pipeline, 'GET', `/distributions/package?id=${encodeURIComponent(A.releaseId)}`);
   check('the release API gives A\'s package as stored', pkg.status === 200 && Buffer.isBuffer(pkg.data), pkg.status);
   const files: Record<string, string | Buffer> = {};
@@ -235,7 +180,7 @@ async function main() {
   const dup = sql('th_runtime', `INSERT INTO release (Id, Scope, Release, ContentHash, ManifestJson, Package, StoredBy, StoredAt) SELECT Id + '#2', Scope, Release, 'x', ManifestJson, Package, 'tamper', StoredAt FROM release WHERE Id = '${A.releaseId}'`);
   check('the database refuses a second row of the same distribution id (its unique key)', !dup.ok && /duplicate|unique/i.test(dup.out), dup.out);
 
-  log('8. DIB\'s distribution is refused in the ADIB runtime');
+  log('6. DIB\'s distribution is refused in the ADIB runtime');
   const D = await publish(OTHER);
   const versions = (await call(SVC, se, 'GET', '/content/versions')).data as any[];
   check('the service console lists DIB\'s distribution as not installable here', versions.find((v) => v.tag === D.tag)?.installable === false, versions.find((v) => v.tag === D.tag));
@@ -250,6 +195,61 @@ async function main() {
   check('the release API refuses it too', viaApi.status === 422 && /serves adib only/.test(JSON.stringify(viaApi.data)) && listed.some((x) => x.tag === D.tag), viaApi.data);
   const none = sql('sa', `SELECT COUNT(*) FROM release WHERE Scope = 'dist/${OTHER}'`);
   check('nothing of DIB is in the ADIB runtime\'s store', none.ok && none.out.trim().split('\n').pop() === '0', none.out);
+  log('7. P2 pinned to B; P1 runs on A, P2 on B (Temporal on SQL Server)');
+  const p2 = await pin(P2);
+  check('P2 is pinned to B', p2.status === 200 && p2.data.distribution === B.releaseId, p2.data);
+  check('P1 stays pinned to A', (await pin(P1)).data.distribution === A.releaseId);
+  const bench = [
+    ...['core-banking', 'sanctions', 'fraud', 'channel', 'payment-record', 'facts-out'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
+    { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'release' },
+    { port: 'p.port.encryption.v1', simulator: 'p.sim.encryption.v1', scenario: 'accept' },
+    { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'accept' },
+    { port: 'uae.wps.port.labour-ministry.v1', simulator: 'uae.wps.sim.labour-ministry.v1', scenario: 'accept' },
+    { port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' },
+    { port: 'b.port.aml-screening.v1', simulator: 'b.sim.aml-screening.v1', scenario: 'accept' },
+    { port: 'b.port.labour-ministry.v1', simulator: 'b.sim.labour-ministry.v1', scenario: 'accept' },
+  ];
+  // Both run side by side (each waits in real time for the simulator's acknowledgement, Issue I-156 (5)), each from its own copy.
+  const run = (paymentId: string, distribution: string) => new Promise<{ status: number | null; out: any; err: string }>((resolve) => {
+    const c = spawn('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), 'exec', '-T', 'testbench', 'node', '/opt/th/deploy/laptop/bin/runtime.mjs', 'run-pinned',
+      JSON.stringify({ paymentId, distribution, bank: BANK, environment: ENV, date: '2026-11-24', bench })], { env });
+    let out = '', err = '';
+    c.stdout.on('data', (d) => (out += d));
+    c.stderr.on('data', (d) => (err += d));
+    c.on('close', (status) => {
+      const line = out.trim().split('\n').filter((l) => l.startsWith('{')).pop();
+      resolve({ status, out: line ? JSON.parse(line) : undefined, err: `${out.slice(-2000)}\n${err.slice(-3000)}` });
+    });
+  });
+  const [r1, r2] = await Promise.all([run(P1, A.releaseId), run(P2, B.releaseId)]);
+  check('P1 runs to its end', r1.status === 0 && !!r1.out?.outcome && r1.out.ended === true, r1.out ?? r1.err);
+  check(`P1 finished on A (${r1.out.outcome}, ${r1.out.ms} ms), its queues and build id A's`, r1.out.distribution?.id === A.releaseId && (r1.out.distribution?.taskQueues ?? []).every((q: string) => q.endsWith(`@${A.releaseId}`)), r1.out.distribution);
+  check(`P2 finished on B (${r2.out?.outcome})`, r2.status === 0 && r2.out?.distribution?.id === B.releaseId && r2.out.ended === true, r2.out ?? r2.err);
+  const states = await call(SVC, se, 'GET', '/content/releases');
+  const st = Object.fromEntries((states.data as any[]).filter((x) => x.kind === 'distribution').map((x) => [x.releaseId, x.state]));
+  check('A is drained once P1 ended; B is active', ['drained', 'draining'].includes(st[A.releaseId]) && st[B.releaseId] === 'active', st);
+
+  log('8. at the database: nothing inserted was updated or deleted');
+  const after = snapshot();
+  const changed = [...before].filter(([k, h]) => after.get(k) !== h).map(([k]) => k);
+  check(`every one of the ${before.size} rows seen after A's activation is unchanged at the end (${after.size} rows now)`, changed.length === 0 && after.size > before.size, changed);
+  const verify = await call(SVC, se, 'POST', '/actions', { action: 'reverify-package', target: A.releaseId, reason: 'laptop test (synthetic)' });
+  check('A still verifies against the studio\'s key', verify.data.status === 'done', verify.data);
+  for (const t of ['release', 'release_activation', 'payment_fact']) {
+    const key = t === 'release' ? `Id = '${A.releaseId}'` : `Id = (SELECT MIN(Id) FROM ${t})`;
+    const col = t === 'release' ? 'StoredBy' : t === 'release_activation' ? 'Actor' : 'Actor';
+    const u = sql('th_runtime', `UPDATE ${t} SET ${col} = 'tampered' WHERE ${key}`);
+    check(`the runtime's login may not UPDATE ${t}`, !u.ok && /permission was denied/i.test(u.out), u.out);
+    const d = sql('th_runtime', `DELETE FROM ${t} WHERE ${key}`);
+    check(`the runtime's login may not DELETE from ${t}`, !d.ok && /permission was denied/i.test(d.out), d.out);
+    const tr = sql('th_runtime', `TRUNCATE TABLE ${t}`);
+    check(`the runtime's login may not TRUNCATE ${t}`, !tr.ok && /(permission|does not have)/i.test(tr.out), tr.out);
+  }
+  const perms = sql('th_runtime', "SELECT permission_name FROM fn_my_permissions('dbo', 'SCHEMA') ORDER BY permission_name");
+  check('the runtime\'s login holds SELECT and INSERT on the store, and neither UPDATE nor DELETE', perms.ok && /INSERT/.test(perms.out) && /SELECT/.test(perms.out) && !/UPDATE|DELETE/.test(perms.out), perms.out);
+  const again = snapshot();
+  check('the refused statements changed nothing', [...after].every(([k, h]) => again.get(k) === h), '');
+
 }
 
 let error: unknown;

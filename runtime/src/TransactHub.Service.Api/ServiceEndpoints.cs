@@ -61,7 +61,7 @@ public static class ServiceEndpoints
         api.MapGet("/content/open-payments", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.OpenPayments(http.RequestAborted)); }));
         api.MapGet("/content/diff", (string tag, string? environment, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Diff(tag, environment, http.RequestAborted)); }));
         api.MapPost("/content/verify", (TagAsk b, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.Verify(b.Tag, Who(http), b.Reason, http.RequestAborted))));
-        // Installing changes the system: verified now, carried out once a bank approver consents (R-09-74).
+        // Installing changes the system: verified now, carried out once a bank approver consents (R-09-77).
         api.MapPost("/content/install", (TagAsk b, HttpContext http, ActionBook book) => Guard(async () =>
         {
             var r = await book.Request(Who(http), new ActionAsk("install", b.Tag, Need(b.Reason, "Installing"), null), http.RequestAborted);
@@ -78,7 +78,7 @@ public static class ServiceEndpoints
             return Results.Ok(new { verified = true, signedBy = v.KeyId, signedAt = v.SignedAt, releases = (doc["releases"] as JsonArray)?.Count, activations = (doc["activations"] as JsonArray)?.Count, values = (doc["values"] as JsonArray)?.Count, bindings = (doc["bindings"] as JsonArray)?.Count });
         }));
         // A dry run changes nothing and answers at once. A restore is planned now (a backup that does not verify, or one that may
-        // not go into this runtime, is refused at once), kept by its hash, and carried out once a bank approver consents (R-09-74, I-122).
+        // not go into this runtime, is refused at once), kept by its hash, and carried out once a bank approver consents (R-09-77, I-122).
         api.MapPost("/restore", (bool? dryRun, string? reason, HttpContext http, BackupService s, ActionBook book) => Guard(async () =>
         {
             var who = Who(http);

@@ -1,11 +1,11 @@
-# The TransactHub studio and one bank's runtime on a laptop, as separate services (deploy/laptop/README.md, spec R-09-77).
+# The TransactHub studio and one bank's runtime on a laptop, as separate services (deploy/laptop/README.md, spec R-09-80).
 #
 #   docker compose -f deploy/laptop/compose.yaml up -d --wait                       studio, runtime, Temporal on SQL Server
 #   docker compose -f deploy/laptop/compose.yaml --profile dtfx --profile elsa up -d    and an engine host supervisor per engine
 #   docker compose -f deploy/laptop/compose.yaml --profile flowable up -d              and the Flowable REST server with its supervisor
 #   docker compose -f deploy/laptop/compose.yaml --profile observability up -d         and the OpenTelemetry collector and Prometheus
 #
-# One runtime serves one bank (TH_LAPTOP_BANK, R-09-73); the studio is multi-tenant. Every secret comes from the environment
+# One runtime serves one bank (TH_LAPTOP_BANK, R-09-76); the studio is multi-tenant. Every secret comes from the environment
 # (a password or a client secret, required below with :?) or a file in a volume (the keys keys-init makes on first start); no
 # image holds one. Ports are published on 127.0.0.1 only.
 
@@ -191,6 +191,8 @@ services:
       Releases__TestEnvironments: test
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
+      # A distribution with its engine packages is larger than Kestrel's default 30 MB body (Issue I-156).
+      Kestrel__Limits__MaxRequestBodySize: "268435456"
     ports: ["127.0.0.1:8481:8080"]
 
   service-api:
@@ -244,7 +246,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-testbench.json
       TH_SECRET_FILE_ROOTS: /var/lib/transacthub:/opt/th/deploy/laptop/identity
-      # Temporal is the default engine, on the SQL Server plugin (R-09-76); DTFx and Elsa run in the bench's harnesses, Flowable
+      # Temporal is the default engine, on the SQL Server plugin (R-09-79); DTFx and Elsa run in the bench's harnesses, Flowable
       # on its REST server with the flowable profile.
       TH_TEMPORAL_ADDRESS: temporal:7233
       TH_FLOWABLE_URL: ${TH_LAPTOP_FLOWABLE_URL:-http://flowable:8080/flowable-rest}
@@ -278,7 +280,7 @@ services:
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-native.json
       TH_HEALTH_URL: http://127.0.0.1:7300/health
 
-  # The long-running engine host: a supervisor per engine for the runtime's bank, Temporal by default (R-09-66, R-09-76).
+  # The long-running engine host: a supervisor per engine for the runtime's bank, Temporal by default (R-09-66, R-09-79).
   enginehost: &enginehost
     <<: *runtime
     command: ["enginehost"]

@@ -35,10 +35,10 @@ var trustSetting = builder.Configuration["Signing:TrustedSigners"] ?? builder.Co
     ?? throw new InvalidOperationException("Set TH_TRUSTED_SIGNERS (or Signing:TrustedSigners): the signers whose packages this runtime accepts (spec R-09-25)");
 // Read once now, so a broken list stops the start; then again at each verification, so a key added, retired or revoked needs no restart.
 _ = await TrustedSigners.Load(trustSetting, secrets);
-// The one bank this runtime serves, set at install (R-09-73): another bank's content is refused here, whatever the caller may do.
+// The one bank this runtime serves, set at install (R-09-76): another bank's content is refused here, whatever the caller may do.
 var runtimeBank = RuntimeBank.FromConfiguration(builder.Configuration);
-// Where a machine caller (the pipeline) may change which distribution runs (R-09-75): by default the test environments only.
-// Elsewhere a distribution's state changes only through the service console, with a bank approver's consent (R-09-74).
+// Where a machine caller (the pipeline) may change which distribution runs (R-09-78): by default the test environments only.
+// Elsewhere a distribution's state changes only through the service console, with a bank approver's consent (R-09-77).
 var machineActivation = (builder.Configuration["Releases:MachineActivationEnvironments"] is { Length: > 0 } machineEnvs ? machineEnvs : string.Join(",", testEnvironments))
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
@@ -83,7 +83,7 @@ async Task<Verification> Verify(StoreDbContext db, TimeProvider clock, Package p
 
 async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package p, string actor, string purpose)
 {
-    // A package exported for a tenant is that bank's: another bank's is refused (R-09-73). Shared content names no tenant.
+    // A package exported for a tenant is that bank's: another bank's is refused (R-09-76). Shared content names no tenant.
     if (p.Tenant is { Length: > 0 } tenant && runtimeBank.Refusal(tenant, p.ReleaseId) is { } wrongBank) return Outcome.Refused(422, wrongBank);
     Verification v;
     try { v = await Verify(db, clock, p, purpose, actor, record: false); }
@@ -291,9 +291,9 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
 // A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-48 to R-09-57).
 DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct), testEnvironments, runtimeBank);
 
-// A change of which distribution runs, asked by a machine caller outside the environments it may change (R-09-75).
+// A change of which distribution runs, asked by a machine caller outside the environments it may change (R-09-78).
 string? MachineRefusal(string environment, string what) => machineActivation.Contains(environment) ? null
-    : $"The release API may not {what} in {environment}: outside {string.Join(", ", machineActivation.Order())} a change to the system is asked for in the service console and carried out once a bank approver consents (R-09-74)";
+    : $"The release API may not {what} in {environment}: outside {string.Join(", ", machineActivation.Order())} a change to the system is asked for in the service console and carried out once a bank approver consents (R-09-77)";
 IResult? NeedsConsent(string environment, string what) => MachineRefusal(environment, what) is { } m ? Problem(403, m) : null;
 
 async Task<IResult> Refusable(Func<Task<IResult>> f)

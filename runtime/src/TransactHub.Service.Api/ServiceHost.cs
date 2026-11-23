@@ -60,7 +60,7 @@ public sealed class ServiceHost
         var auth = await builder.AddServiceAuthentication();
         var testEnvs = (cfg["Releases:TestEnvironments"] ?? "test,dev,kit").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
         var environment = cfg["Service:Environment"] ?? "production";
-        // The one bank this runtime serves, set at install (R-09-73).
+        // The one bank this runtime serves, set at install (R-09-76).
         var bank = RuntimeBank.FromConfiguration(cfg);
         var errorsDir = cfg["Service:Errors"] ?? Find("content-configurations/artefacts");
         var docsDir = cfg["Service:Docs"] ?? Find("docs/north-star");
@@ -121,7 +121,7 @@ public sealed class ServiceHost
             var content = sp.GetRequiredService<ContentService>();
             var projector = sp.GetRequiredService<Projector>();
             book.Run("reverify-package", (who, a, ct) => content.Reverify(a.Target!, who, ct));
-            // Installing and restoring wait for a bank approver's consent like every change of the system (R-09-74, Issue I-122):
+            // Installing and restoring wait for a bank approver's consent like every change of the system (R-09-77, Issue I-122):
             // checked when asked for, so a version that does not verify is refused at once; carried out on consent.
             book.Check("install", async (who, a, ct) => await content.Verify(a.Target!, who, a.Reason, ct));
             book.Run("install", (who, a, ct) => content.Install(a.Target!, who, a.Reason!, ct));

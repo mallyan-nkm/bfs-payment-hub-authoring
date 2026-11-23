@@ -9,7 +9,7 @@ using TransactHub.Store;
 namespace TransactHub.Service;
 
 /// <summary>How the service console reaches the content it installs, and what it trusts.</summary>
-/// <param name="Bank">The one bank this runtime serves (R-09-73): another bank's version is refused at verify, install and activate.</param>
+/// <param name="Bank">The one bank this runtime serves (R-09-76): another bank's version is refused at verify, install and activate.</param>
 public sealed record ContentSettings(string TrustSetting, ISecretResolver Secrets, IReadOnlySet<string> TestEnvironments, string Environment, RuntimeBank? Bank = null);
 
 /// <summary>
@@ -51,7 +51,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
                 ["tag"] = v.Tag, ["kind"] = v.Kind, ["workflow"] = v.Workflow, ["release"] = v.Release, ["target"] = v.Target, ["commit"] = v.Commit,
                 ["bank"] = v.Kind == ReleaseSignature.WorkflowPackage ? null : v.Workflow,
                 ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered",
-                // Another bank's distribution or configuration release is listed, never installable here (R-09-73).
+                // Another bank's distribution or configuration release is listed, never installable here (R-09-76).
                 ["installable"] = v.Kind == ReleaseSignature.WorkflowPackage || settings.Bank?.Serves(v.Workflow) != false,
                 ["notInstallable"] = v.Kind != ReleaseSignature.WorkflowPackage && settings.Bank is { } own && !own.Serves(v.Workflow) ? $"{v.Workflow}'s: this runtime serves {own.Id} only" : null,
             };
@@ -60,7 +60,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
 
     DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct), settings.TestEnvironments, settings.Bank);
 
-    /// <summary>Refuses a version whose signed manifest names another bank than this runtime's (R-09-73).</summary>
+    /// <summary>Refuses a version whose signed manifest names another bank than this runtime's (R-09-76).</summary>
     void OwnBank(string? bank, string what)
     {
         if (settings.Bank?.Refusal(bank, what) is { } why) throw new ServiceRefused(422, ErrorCodes.PackageRejected, why);

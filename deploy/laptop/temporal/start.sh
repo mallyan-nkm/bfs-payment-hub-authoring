@@ -1,5 +1,5 @@
 #!/bin/sh
-# Temporal on the SQL Server plugin (runtime/temporal-mssql), the laptop's default engine (R-09-76).
+# Temporal on the SQL Server plugin (runtime/temporal-mssql), the laptop's default engine (R-09-79).
 #   start.sh schema   create both databases if absent and bring their schemas to the plugin's version (as the databases' owner)
 #   start.sh server   run the server, its frontend on 0.0.0.0:7233 for the other containers (as the least-privileged login)
 # TEMPORAL_SQLSERVER_ADDR, TEMPORAL_SQLSERVER_USER and TEMPORAL_SQLSERVER_PASSWORD come from the environment only.
