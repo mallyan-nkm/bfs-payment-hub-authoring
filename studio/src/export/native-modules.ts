@@ -15,8 +15,10 @@ import { fileURLToPath } from 'node:url';
 //                              project of a scope (`uae.wps=<dir>,...`; by default runtime/src/TransactHub.Activities.Wps for WPS)
 //   TH_NATIVE_MODULES=<dir>    take the build made ahead of time from the same project (`<dir>/<scope>/native-module.json` and its
 //                              assemblies, as runtime/tools/native-module/build.sh writes it), for a studio with no .NET SDK
-//   unset                      no build: a promotable distribution with such activities is refused; a test distribution
-//                              records the scopes it does not carry (`native.notCarried`), and the runtime runs none of them
+//   unset                      no build: the distribution records the scopes it does not carry (`native.notCarried`), and the
+//                              runtime runs none of their activities natively; each runs its script-behind instead. An activity
+//                              with no script-behind (`implementation.binding: native`) cannot run without its build, so a
+//                              promotable distribution that needs one and has no build is refused
 //
 // Each assembly goes in the distribution as base64 text (the content branch holds text), under
 // `activities/native/<scope>/<name>.dll.base64`, with the SHA-256 of its bytes in the bill of materials; the bill of materials is
@@ -156,15 +158,18 @@ export function moduleFor(scope: string): NativeModuleBuild | undefined {
 
 /**
  * The native section of a distribution's manifest and its files (R-09-120): per scheme or bank scope with native activities its
- * module, with the activities (`name@release`) it must serve. A promotable distribution without a scope's module is refused; a
+ * module, with the activities (`name@release`) it must serve. A promotable distribution without the module of an activity that has
+ * no script-behind (`binding: native`) is refused; a
  * test distribution lists it as not carried.
  */
 export function nativeModules(docs: any[], scopeOf: (name: string) => string, promotable: boolean): { section: any; files: Record<string, string>; artefacts: any[]; problems: string[] } {
   const byScope = new Map<string, string[]>();
+  const nativeOnly = new Map<string, string[]>();
   for (const d of docs.filter(isNative)) {
     const s = scopeOf(d.name);
     if (isPlatformScope(s)) continue;
     byScope.set(s, [...(byScope.get(s) ?? []), `${d.name}@${d.release}`].sort());
+    if (d.implementation?.binding === 'native') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
   }
   const modules: any[] = [];
   const files: Record<string, string> = {};
@@ -175,7 +180,8 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
   for (const [scope, activities] of [...byScope].sort(([a], [b]) => a.localeCompare(b))) {
     const m = moduleFor(scope);
     if (!m) {
-      if (promotable) problems.push(`${scope} has native activities (${activities.join(', ')}) and the studio has no build of their code-behind: set TH_NATIVE_MODULES (R-09-120)`);
+      const only = nativeOnly.get(scope) ?? [];
+      if (promotable && only.length) problems.push(`${scope} has native activities with no script-behind (${only.join(', ')}) and the studio has no build of their code-behind: set TH_NATIVE_MODULES (R-09-120)`);
       else notCarried.push(scope);
       continue;
     }

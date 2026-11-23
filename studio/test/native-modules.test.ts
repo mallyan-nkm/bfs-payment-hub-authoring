@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildDistribution } from '../src/export/distribution.js';
-import { isNative, isPlatformScope, sourceSha256 } from '../src/export/native-modules.js';
+import { isNative, isPlatformScope, nativeModules, sourceSha256 } from '../src/export/native-modules.js';
 import { parseTrustedSigners, verifyFiles } from '../src/export/signing.js';
 import { freshEnv } from './helpers.js';
 import { testSigning } from './support/signing-env.js';
@@ -50,13 +50,19 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     expect(a.manifest.native.modules[0].files[0].sha256).not.toBe(b.manifest.native.modules[0].files[0].sha256);
   });
 
-  it('without a build of the scheme\'s code-behind, a promotable distribution is refused and a test distribution says what it does not carry', () => {
+  it('without a build of the scheme\'s code-behind, the distribution says what it does not carry; one with no script-behind is refused', () => {
     delete process.env.TH_NATIVE_MODULES;
     const env = freshEnv();
-    expect(() => buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.23-4' })).toThrow(/uae\.wps has native activities .* set TH_NATIVE_MODULES \(R-09-120\)/);
-    const t = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.23-5', withSimulators: true });
-    expect(t.manifest.native).toMatchObject({ modules: [], notCarried: ['uae.wps'] });
-    expect(Object.keys(t.files).some((p) => p.startsWith('activities/native/'))).toBe(false);
+    // The WPS activities have script-behinds (implementation.native: true): without the build they run as scripts.
+    for (const withSimulators of [false, true]) {
+      const t = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: withSimulators ? '2026.11.23-5' : '2026.11.23-4', withSimulators });
+      expect(t.manifest.native).toMatchObject({ modules: [], notCarried: ['uae.wps'] });
+      expect(Object.keys(t.files).some((p) => p.startsWith('activities/native/'))).toBe(false);
+    }
+    // An activity with no script-behind cannot run without its build: a promotable distribution that needs one is refused.
+    const only = [{ kind: 'activity', name: 'uae.wps.enrich.synthetic.v1', release: '1.0.0', implementation: { binding: 'native' } }];
+    expect(nativeModules(only, (n) => n.split('.').slice(0, 2).join('.'), true).problems.join()).toMatch(/uae\.wps has native activities with no script-behind \(uae\.wps\.enrich\.synthetic\.v1@1\.0\.0\) .* set TH_NATIVE_MODULES \(R-09-120\)/);
+    expect(nativeModules(only, (n) => n.split('.').slice(0, 2).join('.'), false)).toMatchObject({ problems: [], section: { notCarried: ['uae.wps'] } });
   });
 
   it('a module build whose assembly does not match its own hash is refused', () => {

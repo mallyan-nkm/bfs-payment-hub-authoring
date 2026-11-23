@@ -131,7 +131,9 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
         act = table.Find(name, (string?)body["release"]);
     }
     catch (NativeRefusal e) { return Results.Ok(new { kind = "error", name = e.Name, retryable = false, message = e.Message }); }
-    var now = DateTimeOffset.TryParse((string?)body["now"], out var t) ? t : DateTimeOffset.UtcNow;
+    // The store could not be read, or an assembly could not be loaded: the step's retry policy tries again.
+    catch (Exception e) when (e is not OperationCanceledException) { return Results.Ok(new { kind = "error", name = "TransientError", retryable = true, message = $"{distribution} could not be loaded: {e.GetType().Name}: {e.Message}" }); }
+    var now =DateTimeOffset.TryParse((string?)body["now"], out var t) ? t : DateTimeOffset.UtcNow;
     var view = body["view"] as JsonObject ?? new JsonObject();
     var tenant = (string?)body["tenant"];
     try
