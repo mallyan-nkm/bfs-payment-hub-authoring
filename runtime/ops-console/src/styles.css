@@ -124,3 +124,15 @@ tr.error-row td { background: var(--fail-soft); }
 a.badge { text-decoration: none; }
 pre.card { white-space: pre-wrap; overflow-wrap: anywhere; }
 .big { font-size: 1.6rem; font-weight: 600; margin: 0; }
+
+/* The registers area (R-05-62). */
+.subnav { display: flex; gap: 12px; margin-bottom: 12px; }
+.subnav a.active { font-weight: 600; }
+.register-form { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px 16px; margin-bottom: 8px; }
+.form-grid label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.form-grid label.wide { grid-column: 1 / -1; }
+.form-grid input[type=text], .form-grid input[type=date], .form-grid textarea { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); }
+dl.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 16px; }
+dl.fields dt { color: var(--muted); font-size: 12px; }
+dl.fields dd { margin: 0; }

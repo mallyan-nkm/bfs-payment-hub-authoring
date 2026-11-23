@@ -21,6 +21,10 @@ bench:
   - port: uae.wps.port.labour-ministry.v1
     simulator: uae.wps.sim.labour-ministry.v1
     scenario: accept
+  # The bank's party register (R-12-27): the employer is registered.
+  - port: p.port.party-register.v1
+    simulator: p.sim.party-register.v1
+    scenario: accept
 given:
   inbound: samples/wps-sif-valid.sif
 expect:

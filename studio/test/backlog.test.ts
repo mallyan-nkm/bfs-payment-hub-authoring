@@ -113,9 +113,9 @@ describe('C19 retirement, propagation and supersession; C18 configuration', () =
     env.store.publish('owner', d.key, 'shared.designer', 'shared.checker');
     const p = await gov.propagate(env, 'uae.p.rule.iban-checksum.v1', '1.0.1');
     const by = Object.fromEntries(p.workflows.map((w: any) => [w.workflow, w.proposed]));
-    // A patch of each workflow's own release: the salary-file leg is at 1.1.0 since the labour ministry lookup (Issue I-88).
-    expect(by['uae.wps.wf.salary-file-out.v1']).toBe('1.2.1');
-    expect(Object.keys(by).every((w) => by[w] === (w === 'uae.wps.wf.salary-file-out.v1' ? '1.2.1' : '1.0.1'))).toBe(true);
+    // A patch of each workflow's own release: the salary-file leg is at 1.3.0 since the party register lookup (R-12-27).
+    expect(by['uae.wps.wf.salary-file-out.v1']).toBe('1.3.1');
+    expect(Object.keys(by).every((w) => by[w] === (w === 'uae.wps.wf.salary-file-out.v1' ? '1.3.1' : '1.0.1'))).toBe(true);
   });
   it('rebuilds a supersession, reruns it green, and hands it over with two approvers (C19-S4, S5)', async () => {
     const env = freshEnv();

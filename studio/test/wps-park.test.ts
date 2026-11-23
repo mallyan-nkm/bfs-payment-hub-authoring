@@ -42,7 +42,7 @@ describe('the WPS payment flows park a failed step that may run again (R-12-26)'
       walk(env.store.doc(name).do);
       return out;
     };
-    expect(parks('uae.wps.wf.salary-file-out.v1')).toEqual(['business-date', 'employer-status', 'file-checks', 'render']);
+    expect(parks('uae.wps.wf.salary-file-out.v1')).toEqual(['business-date', 'corporate', 'employer-status', 'file-checks', 'render']);
     expect(parks('uae.wps.wf.agent-payment-in.v2')).toEqual(['file-checks', 'render-receipt', 'render-disbursement', 'returns', 'render-returns', 'record-return']);
     expect(parks('uae.wps.wf.return-in.v1')).toEqual(['credit-employer']);
   });

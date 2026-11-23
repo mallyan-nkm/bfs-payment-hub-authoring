@@ -149,6 +149,8 @@ def refs_of(d):
             for k in ("handler", "sentBy"):
                 if k in disp:
                     out.add(disp[k])
+    if kind == "reference-table":
+        out |= {c["references"] for c in d.get("columns") or [] if c.get("references")}
     if kind == "test":
         out.add(d["target"])
         for b in d.get("bench") or []:

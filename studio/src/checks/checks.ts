@@ -134,6 +134,8 @@ export function refsOf(d: any): Set<string> {
       for (const k of ['handler', 'sentBy']) if (disp[k]) out.add(disp[k]);
     }
   }
+  // A reference table's column that holds another table's keys (R-01-25).
+  if (kind === 'reference-table') for (const c of d.columns ?? []) if (c.references) out.add(c.references);
   if (kind === 'test') {
     out.add(d.target);
     for (const b of d.bench ?? []) {
