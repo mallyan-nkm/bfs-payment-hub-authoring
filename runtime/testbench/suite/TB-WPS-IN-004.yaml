@@ -1,9 +1,9 @@
 # A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
 kind: testbench-case
 id: TB-WPS-IN-004
-title: 'A payment file addressed to another bank'
+title: 'A payment file addressed to another bank: the leg ends pending, the payment goes to review'
 request:
   profile: wps-inward-all-engines
   data: { sample: wps-pif-wrong-agent }
 expect:
-  outcome: pending
+  outcome: review

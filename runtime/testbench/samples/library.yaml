@@ -143,7 +143,7 @@ samples:
     direction: inward
     scenario: wrong agent
     bench: wps-inward-happy
-    expect: pending
+    expect: review
     profiles: [wps-inward-all-engines, wps-inward-reference]
   - id: iso-pain001-salary
     title: ISO 20022 pain.001 of two credit transfers, as the corporate workflow's context
