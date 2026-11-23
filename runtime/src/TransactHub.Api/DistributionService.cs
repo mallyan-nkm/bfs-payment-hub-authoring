@@ -74,6 +74,7 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     {
         try { return await f(); }
         catch (DistributionRefused e) { throw new BundleRefused(409, e.Message); }
+        catch (ActivationRaced e) { throw new BundleRefused(409, e.Message, e.Code); }
     }
 
     /// <summary>Activation (the switch-over): verified again against the signers trusted now; the one active until now drains.</summary>

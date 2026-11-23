@@ -1,7 +1,10 @@
 // "Insert, never update" for workflows, proved in the laptop deployment (deploy/laptop, spec R-09-80, R-09-81, R-09-76, R-09-77),
 // with every payment's file entering as a bank's would (R-09-105).
 //
-//   cd studio && node_modules/.bin/tsx ../deploy/laptop/test/insert-only.mts [--keep] [--no-up]
+//   cd studio && node_modules/.bin/tsx ../deploy/laptop/test/insert-only.mts [--keep] [--no-up] [--postgres]
+//
+// With --postgres (or TH_LAPTOP_IT_DB=postgres) the stack runs with compose.postgres.yaml: the store, the read model and Temporal on
+// PostgreSQL 16, its logins from sql/grants-postgres.sql (R-09-140), and every check at the database is made there.
 //
 // It brings the compose stack up healthy (the images built by deploy/laptop/build.sh, TH_LAPTOP_TAG), with passwords, client
 // secrets and the SFTP server's login made for this run and given to compose by its environment only, the SFTP server's host keys
@@ -41,6 +44,10 @@ const BANK = 'adib';
 const OTHER = 'dib';
 const ENV = 'test';
 const keep = process.argv.includes('--keep');
+/** The database the stack runs on: SQL Server by default, PostgreSQL with --postgres (R-09-140). */
+const PG = process.argv.includes('--postgres') || process.env.TH_LAPTOP_IT_DB === 'postgres';
+const DB_NAME = PG ? 'PostgreSQL' : 'SQL Server';
+const FILES_ARGS = ['-f', path.join(LAPTOP, 'compose.yaml'), ...(PG ? ['-f', path.join(LAPTOP, 'compose.postgres.yaml')] : [])];
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-laptop-it-'));
 const secret = (prefix = '') => prefix + randomBytes(15).toString('base64url').replace(/[^A-Za-z0-9]/g, 'x');
 const base = Number(process.env.TH_LAPTOP_IT_PORTS ?? 0);
@@ -58,7 +65,7 @@ const env: Record<string, string> = {
   TH_LAPTOP_BANK: BANK, ...PORTS,
   TH_LAPTOP_IDP_URL: `http://localhost:${PORTS.TH_LAPTOP_IDP_PORT}`, TH_LAPTOP_STUDIO_URL: `http://localhost:${PORTS.TH_LAPTOP_STUDIO_PORT}`,
 };
-const compose = (...a: string[]) => spawnSync('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), ...a], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+const compose = (...a: string[]) => spawnSync('docker', ['compose', '-p', PROJECT, ...FILES_ARGS, ...a], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const results: { step: string; ok: boolean; detail?: string }[] = [];
 let failed = false;
 function check(step: string, ok: boolean, detail?: unknown) {
@@ -89,18 +96,28 @@ async function call(baseUrl: string, bearer: string, method: string, p: string, 
   return { status: r.status, data };
 }
 
-/** sqlcmd in the SQL Server container, as a login; the rows as tab-separated text. */
+/** sqlcmd in the SQL Server container, or psql in the PostgreSQL one, as a login ('sa' is the server's owner); the rows as tab-separated text. */
 function sql(login: 'sa' | 'th_runtime', query: string, db = 'th_store'): { ok: boolean; out: string } {
   const pw = login === 'sa' ? env.TH_LAPTOP_SA_PASSWORD : env.TH_LAPTOP_RUNTIME_DB_PASSWORD;
-  const r = compose('exec', '-T', '-e', `SQLCMDPASSWORD=${pw}`, 'sqlserver', '/opt/mssql-tools18/bin/sqlcmd', '-C', '-S', 'localhost', '-U', login, '-d', db, '-h', '-1', '-W', '-s', '\t', '-b', '-Q', `SET NOCOUNT ON; ${query}`);
+  const r = PG
+    ? compose('exec', '-T', '-e', `PGPASSWORD=${pw}`, 'postgres', 'psql', '-h', '127.0.0.1', '-U', login === 'sa' ? 'postgres' : login, '-d', db, '-At', '-F', '\t', '-v', 'ON_ERROR_STOP=1', '-c', query)
+    : compose('exec', '-T', '-e', `SQLCMDPASSWORD=${pw}`, 'sqlserver', '/opt/mssql-tools18/bin/sqlcmd', '-C', '-S', 'localhost', '-U', login, '-d', db, '-h', '-1', '-W', '-s', '\t', '-b', '-Q', `SET NOCOUNT ON; ${query}`);
   return { ok: r.status === 0, out: `${r.stdout}${r.stderr}`.trim() };
 }
+/** A column of the store as each database names it: PostgreSQL keeps the model's names quoted. */
+const c = (name: string) => (PG ? `"${name}"` : name);
+/** The refusal each database gives a statement the login may not make. */
+const DENIED = PG ? /permission denied/i : /permission was denied/i;
 const lastLine = (s: string) => s.trim().split('\n').pop()?.trim() ?? '';
 /** Every row of the insert-only tables, as one line each: its key and a hash of every column. */
 function snapshot(): Map<string, string> {
-  const q = [
+  const q = PG ? [
+    `SELECT 'release|'||"Id", encode(sha256(convert_to(concat_ws('|',"Scope","Release","ContentHash","ManifestJson","StoredBy","StoredAt"::text,encode(sha256("Package"),'hex')),'UTF8')),'hex') FROM release`,
+    `SELECT 'activation|'||"Id", encode(sha256(convert_to(concat_ws('|',"Environment","Scope","Release","EffectiveFrom"::text,"Actor","RecordedAt"::text,"Sequence"::text),'UTF8')),'hex') FROM release_activation`,
+    `SELECT 'fact|'||"Id", encode(sha256(convert_to(concat_ws('|',"SubjectId","Seq"::text,"Kind","Code","Hash","PrevHash","DataJson"),'UTF8')),'hex') FROM payment_fact`,
+  ].join(' UNION ALL ') : [
     "SELECT 'release|'+Id, CONVERT(varchar(64), HASHBYTES('SHA2_256', CONCAT(Scope,'|',Release,'|',ContentHash,'|',ManifestJson,'|',StoredBy,'|',CONVERT(varchar(40),StoredAt,127),'|',CONVERT(varchar(64),HASHBYTES('SHA2_256',Package),2))), 2) FROM release",
-    "SELECT 'activation|'+CONVERT(varchar(20),Id), CONVERT(varchar(64), HASHBYTES('SHA2_256', CONCAT(Environment,'|',Scope,'|',Release,'|',CONVERT(varchar(40),EffectiveFrom,127),'|',Actor,'|',CONVERT(varchar(40),RecordedAt,127))), 2) FROM release_activation",
+    "SELECT 'activation|'+CONVERT(varchar(20),Id), CONVERT(varchar(64), HASHBYTES('SHA2_256', CONCAT(Environment,'|',Scope,'|',Release,'|',CONVERT(varchar(40),EffectiveFrom,127),'|',Actor,'|',CONVERT(varchar(40),RecordedAt,127),'|',Sequence)), 2) FROM release_activation",
     "SELECT 'fact|'+CONVERT(varchar(20),Id), CONVERT(varchar(64), HASHBYTES('SHA2_256', CONCAT(SubjectId,'|',Seq,'|',Kind,'|',Code,'|',Hash,'|',PrevHash,'|',DataJson)), 2) FROM payment_fact",
   ].join(' UNION ALL ');
   const r = sql('sa', q);
@@ -113,7 +130,7 @@ const SFTP_HOME = '/home/th/upload';
 const PICKUP = `${SFTP_HOME}/wps/inbound`;
 /** The channel drops a file on the SFTP server: written beside the folder, then moved in whole, as an SFTP client renames its upload. */
 function drop(name: string, content: string) {
-  const r = spawnSync('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), 'exec', '-T', '-u', '1001', 'sftp', 'sh', '-c',
+  const r = spawnSync('docker', ['compose', '-p', PROJECT, ...FILES_ARGS, 'exec', '-T', '-u', '1001', 'sftp', 'sh', '-c',
     `mkdir -p ${PICKUP} ${SFTP_HOME}/wps/uploading && cat > ${SFTP_HOME}/wps/uploading/${name} && mv ${SFTP_HOME}/wps/uploading/${name} ${PICKUP}/${name}`], { env, input: content, encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`drop ${name}: ${r.stderr}`);
 }
@@ -136,7 +153,9 @@ function salaryFile(n: number): { name: string; text: string } {
 async function startedFrom(fileName: string, ms = 180000): Promise<{ paymentId: string; fileId: string }> {
   const until = Date.now() + ms;
   for (;;) {
-    const r = sql('sa', `SELECT TOP 1 f.SubjectId + '|' + f.Id FROM stored_file f WHERE f.FileName = '${fileName}' AND f.Direction = 'in' AND EXISTS (SELECT 1 FROM payment_fact p WHERE p.SubjectId = f.SubjectId AND p.Kind = 'frontdoor.started')`);
+    const r = PG
+      ? sql('sa', `SELECT f."SubjectId" || '|' || f."Id" FROM stored_file f WHERE f."FileName" = '${fileName}' AND f."Direction" = 'in' AND EXISTS (SELECT 1 FROM payment_fact p WHERE p."SubjectId" = f."SubjectId" AND p."Kind" = 'frontdoor.started') LIMIT 1`)
+      : sql('sa', `SELECT TOP 1 f.SubjectId + '|' + f.Id FROM stored_file f WHERE f.FileName = '${fileName}' AND f.Direction = 'in' AND EXISTS (SELECT 1 FROM payment_fact p WHERE p.SubjectId = f.SubjectId AND p.Kind = 'frontdoor.started')`);
     const line = lastLine(r.out);
     if (r.ok && line.includes('|')) {
       const [paymentId, fileId] = line.split('|');
@@ -256,7 +275,8 @@ async function main() {
   const signed = signFiles(files, { kind: 'distribution', releaseId: A.releaseId, workflow: '', release: manifest.id, target: manifest.engine, tenant: BANK, changeSet: 'CS-LAPTOP-TAMPER', extra: { billOfMaterials: manifest.billOfMaterials, parameterContract: manifest.parameterContract } });
   const second = await call(API, pipeline, 'POST', '/distributions', undefined, zip(Object.entries(signed).map(([name, c]) => ({ name, content: Buffer.from(c) }))));
   check('the release API refuses it: the id is stored with other content (409)', second.status === 409 && /already|other content|stored/i.test(JSON.stringify(second.data)), second.data);
-  const dup = sql('th_runtime', `INSERT INTO release (Id, Scope, Release, ContentHash, ManifestJson, Package, StoredBy, StoredAt) SELECT Id + '#2', Scope, Release, 'x', ManifestJson, Package, 'tamper', StoredAt FROM release WHERE Id = '${A.releaseId}'`);
+  const cols = ['Id', 'Scope', 'Release', 'ContentHash', 'ManifestJson', 'Package', 'StoredBy', 'StoredAt'].map(c).join(', ');
+  const dup = sql('th_runtime', `INSERT INTO release (${cols}) SELECT ${c('Id')} ${PG ? '||' : '+'} '#2', ${c('Scope')}, ${c('Release')}, 'x', ${c('ManifestJson')}, ${c('Package')}, 'tamper', ${c('StoredAt')} FROM release WHERE ${c('Id')} = '${A.releaseId}'`);
   check('the database refuses a second row of the same distribution id (its unique key)', !dup.ok && /duplicate|unique/i.test(dup.out), dup.out);
 
   log('6. DIB\'s distribution is refused in the ADIB runtime');
@@ -270,10 +290,10 @@ async function main() {
   const listed = (await call(API, pipeline, 'GET', '/sources/versions')).data as any[];
   const viaApi = await call(API, pipeline, 'POST', '/sources/install', { tag: D.tag });
   check('the release API refuses it too', viaApi.status === 422 && /serves adib only/.test(JSON.stringify(viaApi.data)) && listed.some((x) => x.tag === D.tag), viaApi.data);
-  const none = sql('sa', `SELECT COUNT(*) FROM release WHERE Scope = 'dist/${OTHER}'`);
+  const none = sql('sa', `SELECT COUNT(*) FROM release WHERE ${c('Scope')} = 'dist/${OTHER}'`);
   check('nothing of DIB is in the ADIB runtime\'s store', none.ok && lastLine(none.out) === '0', none.out);
 
-  log('7. P2 by SFTP and P3 by POST /files, both on B; P1 runs on A, P2 and P3 on B (Temporal on SQL Server)');
+  log(`7. P2 by SFTP and P3 by POST /files, both on B; P1 runs on A, P2 and P3 on B (Temporal on ${DB_NAME})`);
   drop(f2.name, f2.text);
   const up3 = await call(FILES, channel, 'POST', '/files', { tenant: BANK, message: 'uae.wps.sif', fileName: f3.name, contentBase64: Buffer.from(f3.text).toString('base64') });
   check('the channel\'s POST /files is taken and started (202)', up3.status === 202 && up3.data.disposition === 'started' && !!up3.data.payment, up3.data);
@@ -319,16 +339,18 @@ async function main() {
   const verify = await call(SVC, se, 'POST', '/actions', { action: 'reverify-package', target: A.releaseId, reason: 'laptop test (synthetic)' });
   check('A still verifies against the studio\'s key', verify.data.status === 'done', verify.data);
   for (const t of ['release', 'release_activation', 'payment_fact']) {
-    const key = t === 'release' ? `Id = '${A.releaseId}'` : `Id = (SELECT MIN(Id) FROM ${t})`;
-    const col = t === 'release' ? 'StoredBy' : 'Actor';
+    const key = t === 'release' ? `${c('Id')} = '${A.releaseId}'` : `${c('Id')} = (SELECT MIN(${c('Id')}) FROM ${t})`;
+    const col = c(t === 'release' ? 'StoredBy' : 'Actor');
     const u = sql('th_runtime', `UPDATE ${t} SET ${col} = 'tampered' WHERE ${key}`);
-    check(`the runtime's login may not UPDATE ${t}`, !u.ok && /permission was denied/i.test(u.out), u.out);
+    check(`the runtime's login may not UPDATE ${t}`, !u.ok && DENIED.test(u.out), u.out);
     const d = sql('th_runtime', `DELETE FROM ${t} WHERE ${key}`);
-    check(`the runtime's login may not DELETE from ${t}`, !d.ok && /permission was denied/i.test(d.out), d.out);
+    check(`the runtime's login may not DELETE from ${t}`, !d.ok && DENIED.test(d.out), d.out);
     const tr = sql('th_runtime', `TRUNCATE TABLE ${t}`);
     check(`the runtime's login may not TRUNCATE ${t}`, !tr.ok && /(permission|does not have)/i.test(tr.out), tr.out);
   }
-  const perms = sql('th_runtime', "SELECT permission_name FROM fn_my_permissions('dbo', 'SCHEMA') ORDER BY permission_name");
+  const perms = PG
+    ? sql('th_runtime', "SELECT DISTINCT privilege_type FROM information_schema.role_table_grants WHERE grantee = 'th_runtime' AND table_catalog = 'th_store' ORDER BY 1")
+    : sql('th_runtime', "SELECT permission_name FROM fn_my_permissions('dbo', 'SCHEMA') ORDER BY permission_name");
   check('the runtime\'s login holds SELECT and INSERT on the store, and neither UPDATE nor DELETE', perms.ok && /INSERT/.test(perms.out) && /SELECT/.test(perms.out) && !/UPDATE|DELETE/.test(perms.out), perms.out);
   const again = snapshot();
   check('the refused statements changed nothing', [...after].every(([k, h]) => again.get(k) === h), '');

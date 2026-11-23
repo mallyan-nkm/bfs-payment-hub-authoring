@@ -101,4 +101,38 @@ public sealed class AttemptRoutingTests(Store store)
         Assert.Equal(3, (int)loaded[a]["served"]![ModuleBuilds.AckIn]!);
         Assert.Equal(3, (int)loaded[b]["served"]![ModuleBuilds.AckIn]!);
     }
+
+    /// <summary>
+    /// R-09-143 (Issue I-231): a runtime's native host (TH_BANK) refuses an attempt for a payment with no pin as NotPinned; only an
+    /// explicit development or test mode (TH_NATIVE_MODE dev or test) serves it, as a host that serves no runtime's bank does.
+    /// </summary>
+    [Fact]
+    public async Task A_runtimes_native_host_refuses_an_attempt_for_a_payment_with_no_pin_unless_in_dev_or_test_mode()
+    {
+        var a = DistributionRegistry.IdOf(Bank, "2026.11.24-9");
+        const string pinned = "PAY-PIN-RUNTIME", unpinned = "PAY-PIN-NONE";
+        await using (var db = StoreDbContext.Open(store.Options))
+        {
+            var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-9", store.BuildA);
+            var reg = new DistributionRegistry(db);
+            await reg.Store(Bank, "2026.11.24-9", package, manifest, ModuleBuilds.Sha(package)[7..], "test", "routing");
+            await reg.Activate(a, "pins", "test.engineer", "A takes new payments");
+            Assert.Equal(a, await reg.Pin(pinned, Bank, "pins", "test"));
+        }
+        JsonObject Body(string? paymentId) => JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(Ack(paymentId ?? "", a)))!.AsObject();
+        string? Env(Dictionary<string, string> e, string k) => e.GetValueOrDefault(k);
+
+        var runtime = AttemptRouting.FromEnvironment(store.Options, k => Env(new() { ["TH_BANK"] = Bank }, k));
+        Assert.Equal(a, await runtime.DistributionOf(Body(pinned)));
+        foreach (var id in new[] { unpinned, null })
+        {
+            var e = await Assert.ThrowsAsync<NativeRefusal>(() => runtime.DistributionOf(Body(id)));
+            Assert.Equal("NotPinned", e.Name);
+        }
+        foreach (var mode in new[] { "dev", "test" })
+            Assert.Equal(a, await AttemptRouting.FromEnvironment(store.Options, k => Env(new() { ["TH_BANK"] = Bank, ["TH_NATIVE_MODE"] = mode }, k)).DistributionOf(Body(unpinned)));
+        // A host that serves no runtime's bank (the studio's test runs) keeps the earlier rule (R-09-132).
+        Assert.Equal(a, await AttemptRouting.FromEnvironment(store.Options, k => null).DistributionOf(Body(unpinned)));
+        Assert.Throws<InvalidOperationException>(() => AttemptRouting.FromEnvironment(store.Options, k => Env(new() { ["TH_NATIVE_MODE"] = "lenient" }, k)));
+    }
 }

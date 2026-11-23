@@ -20,6 +20,8 @@ using TransactHub.Telemetry;
 //                               (role file-reader); the operations console's documents tab reads the same rows.
 //   POST /outbox                a file a workflow sends (the native host's exchanges, role file-outbox): kept, queued and delivered.
 //   POST /files/{id}/resend     the same kept bytes again (the operations and service consoles, role file-resender).
+//   POST /transfer              a read, a listing or a removal on the bank's binding (role file-outbox): the hosts never reach a
+//                               bank's folder or SFTP partner themselves (R-09-138).
 //
 // Settings: Store:Provider, Store:Connection; FileApi:Environment (the environment whose active distribution routes a file);
 // the bank's port bindings are those of its configuration release in force, read from the store at each use (R-09-112, I-158 (2));
@@ -191,6 +193,30 @@ app.MapPost("/outbox", async (OutboxRequest o, ClaimsPrincipal user, FileOutbox 
     return Results.Json(new { file = row.Id, sha256 = row.ContentHash, delivery = d.Result, adapter = d.Adapter, attempt = d.Attempt, error = d.Error }, statusCode: d.Result == "failed" ? 202 : 201);
 }).RequireAuthorization(FileApiAuth.Outbox);
 
+// A read, a listing or a removal on the bank's binding, for a host whose files go through the File API (R-09-138): a file-bulk core
+// banking reads its file back, a gateway's answer is collected. The host never opens the bank's folder or SFTP session itself.
+app.MapPost("/transfer", async (TransferRequest t, ClaimsPrincipal user, ITransferPorts ports, CancellationToken ct) =>
+{
+    if (!RuntimeAuth.HasRoleFor(user, FileApiAuth.Outbox, t.Tenant)) return Problem(403, $"{RuntimeAuth.Actor(user)} may not reach the files of {t.Tenant}");
+    try
+    {
+        var (transfer, binding) = ports.For(t.Tenant, DateTimeOffset.UtcNow);
+        switch (t.Op)
+        {
+            case "get":
+                var content = await transfer.Get(t.Folder, t.FileName ?? throw new PortBindingException("get names a file"), ct);
+                return Results.Ok(new { adapter = binding.Adapter, found = content is not null, contentBase64 = content is null ? null : Convert.ToBase64String(content) });
+            case "list":
+                return Results.Ok(new { adapter = binding.Adapter, names = await transfer.List(t.Folder, ct) });
+            case "delete":
+                return Results.Ok(new { adapter = binding.Adapter, deleted = await transfer.Delete(t.Folder, t.FileName ?? throw new PortBindingException("delete names a file"), ct) });
+            default:
+                return Problem(400, $"op is get, list or delete, not {t.Op}");
+        }
+    }
+    catch (PortBindingException e) { return Problem(400, e.Message); }
+}).RequireAuthorization(FileApiAuth.Outbox);
+
 app.MapPost("/files/{id}/resend", async (string id, ResendRequest r, ClaimsPrincipal user, FileOutbox outbox, CancellationToken ct) =>
 {
     await using (var db = StoreDbContext.Open(store))
@@ -210,6 +236,8 @@ app.Run();
 
 /// <summary>A file a workflow sends.</summary>
 public sealed record OutboxRequest(string Tenant, string Scheme, string Kind, string Folder, string FileName, string ContentBase64, string? PaymentId = null, string? Leg = null, string? Activity = null);
+/// <summary>A read, a listing or a removal on the bank's binding of its file transfer (R-09-138).</summary>
+public sealed record TransferRequest(string Tenant, string Op, string Folder, string? FileName = null);
 /// <summary>A resend: the console's action id (the same id sends once) and the person it acts for.</summary>
 public sealed record ResendRequest(string? ActionId = null, string? OnBehalfOf = null);
 

@@ -78,7 +78,8 @@ public sealed class ScenarioRunner
         if (storeOpts is not null && hosted is null)
         {
             await using var db = StoreDbContext.Open(storeOpts);
-            await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+            // Only where the installation lets a host migrate: on a runtime its migrate step did, as the owner (R-09-141).
+            if (StoreMigration.Allowed()) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
             StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
         }
         var host = hosted?.Host ?? new Host(party, dep, durable);

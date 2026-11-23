@@ -106,7 +106,7 @@ public sealed class AssistantService(IAssistantModel? model, bool enabled, Store
     [
         new("get_health", "The runtime's health now: each engine host and server, the store, the read model and its lag, each port's probe, the workers and their versions, the signing keys and certificates, disk. Source: health.", new JsonObject(), []),
         new("get_payment_trace", "A payment's or bulk's facts on its chain (steps, holds, operator and service actions), its legs and status, masked. Source: trace:<id>.", Obj(("paymentId", "string", "The payment or bulk id")), ["paymentId"]),
-        new("recent_errors", "Recent errors and events from the store's facts and the host's logs, masked, optionally for one error code, tenant or scheme. Source: logs.", Obj(("code", "string", "An error code"), ("tenant", "string", "A tenant id"), ("scheme", "string", "A scheme scope, e.g. uae.wps")), []),
+        new("recent_errors", "Recent errors and events from the store's facts and the host's logs, masked, optionally for one error code, tenant or scheme. Source: logs.", Obj(("code", "string", "An error code"), ("tenant", "string", "A tenant id"), ("scheme", "string", "A scheme scope, <cluster>.<scheme>")), []),
         new("get_configuration", "The installed releases (workflow packages) with their state (active, draining, drained, installed, removed), open payments, activations and signers. Source: configuration.", new JsonObject(), []),
         new("lookup_error", "The error dictionary's entry for a code: meaning, causes, retryable, ISO reason code, and its runbook (checks, safe actions, the console's troubleshooting actions, escalation). Source: error:<code>.", Obj(("code", "string", "The error code as raised"), ("scheme", "string", "The payment's scheme, for its own entries")), ["code"]),
         new("search_docs", "Search the runtime's design documents (docs/north-star): returns the passages that match, with their file. Source: doc:<path>.", Obj(("query", "string", "Words to look for")), ["query"]),
@@ -129,7 +129,7 @@ public sealed class AssistantService(IAssistantModel? model, bool enabled, Store
             "Use the tools to look before you answer. Every tool is read-only. You never change anything: to suggest a troubleshooting action, call propose_action with the runbook it relies on; a person confirms it in the console.",
             "Cite every fact you state with its source in square brackets, as the tools give it: [health], [trace:<id>], [logs], [configuration], [error:<code>], [doc:<path>]. Do not state what no source says; say what you would need instead.",
             "Personal data is masked before you see it ([masked], ****1234). Never ask for it and never try to reconstruct it.",
-            "Scheme facts of uae.wps are provisional: say so when you rely on one.",
+            "A scheme fact whose pack does not say its provenance is confirmed is provisional: say so when you rely on one.",
             "<documents>", docs, "</documents>",
             "<error-dictionary>", codes, "</error-dictionary>",
             "<troubleshooting-actions>", actions, "</troubleshooting-actions>",

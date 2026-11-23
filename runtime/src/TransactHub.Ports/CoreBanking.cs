@@ -107,7 +107,8 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
         var m = new HttpRequestMessage(HttpMethod.Post, Url(pathSetting)) { Content = JsonContent.Create(body) };
         m.Headers.Add("X-Function-Id", b.Required(functionSetting));
         m.Headers.Add("X-External-Host-Id", b.Required("externalHostId"));
-        m.Headers.Add("X-Channel", b.Setting("channel", "WPS"));
+        // The channel the gateway knows the caller by is the bank's binding's (R-09-142): platform code names no scheme.
+        if (b.Setting("channel", "") is { Length: > 0 } channel) m.Headers.Add("X-Channel", channel);
         m.Headers.Add("X-Txn-Type", "RQST");
         m.Headers.Add("X-Txn-Flag", b.Required("txnFlag"));
         m.Headers.Add("X-Ref", reference);

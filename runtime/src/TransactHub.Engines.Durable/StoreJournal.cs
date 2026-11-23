@@ -28,10 +28,13 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
         var c = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
         if (string.IsNullOrEmpty(p) || string.IsNullOrEmpty(c)) return null;
         var o = new StoreOptions(Enum.Parse<StoreProvider>(p, true), c);
-        using (var db = StoreDbContext.Open(o)) db.Database.Migrate();
+        // The schema is the migrate step's on a runtime (R-09-141): a harness migrates only where the installation lets it.
+        if (StoreMigration.Allowed()) { using var db = StoreDbContext.Open(o); db.Database.Migrate(); }
         var j = new StoreJournal(o);
         ClaimCheckStore.DefaultJournal = j;
         StoreSignals.Install(o, StepFacts.Install(o));
+        // A plan the engine host built reads the bank's values from the store, step by step (R-09-135).
+        StoreValues.Install(o);
         return j;
     }
 

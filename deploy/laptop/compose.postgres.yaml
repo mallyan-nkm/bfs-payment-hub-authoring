@@ -1,0 +1,86 @@
+# The laptop stack on PostgreSQL 16 instead of SQL Server (deploy/laptop/README.md, spec R-09-140): the store (th_store), the
+# operations read model (th_ops) and Temporal's two databases (temporal, temporal_visibility, on Temporal's own postgres12 plugin)
+# on one PostgreSQL server; every other service as compose.yaml has it. An override, given after compose.yaml:
+#
+#   docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.postgres.yaml up -d --wait
+#
+# The logins are those of SQL Server's sql/grants.sql, given by sql/grants-postgres.sql: th_runtime reads and inserts in the store and
+# is refused UPDATE, DELETE, TRUNCATE and ALTER; th_temporal holds data rights in Temporal's databases only. The migrate step
+# (db-init) migrates the store, the read model and Temporal's schemas as the owner, once (R-09-141). Every password comes from the
+# environment, as in compose.yaml.
+
+x-store-pg: &store-pg
+  Store__Provider: PostgreSql
+  Store__Connection: "Host=postgres;Port=5432;Database=th_store;Username=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD}"
+  Operations__Connection: "Host=postgres;Port=5432;Database=th_ops;Username=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD}"
+
+x-host-pg: &host-pg
+  TH_STORE_PROVIDER: PostgreSql
+  TH_STORE_CONNECTION: "Host=postgres;Port=5432;Database=th_store;Username=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD}"
+
+services:
+  # SQL Server is left out: only its profile starts it.
+  sqlserver:
+    profiles: [sqlserver]
+
+  postgres:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${TH_LAPTOP_SA_PASSWORD:?set TH_LAPTOP_SA_PASSWORD}
+    volumes: [pg:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:${TH_LAPTOP_SQL_PORT:-14330}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  db-init:
+    depends_on: !override
+      postgres: { condition: service_healthy }
+    environment:
+      TH_STORE_PROVIDER: PostgreSql
+      TH_OWNER_STORE: "Host=postgres;Port=5432;Database=th_store;Username=postgres;Password=${TH_LAPTOP_SA_PASSWORD}"
+      TH_OWNER_OPS: "Host=postgres;Port=5432;Database=th_ops;Username=postgres;Password=${TH_LAPTOP_SA_PASSWORD}"
+      TH_TEMPORAL_SCHEMA_PLUGIN: postgres12
+      TH_TEMPORAL_SCHEMA_ADDR: postgres:5432
+      TH_TEMPORAL_SCHEMA_USER: postgres
+
+  db-grants:
+    image: postgres:16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    environment:
+      PGPASSWORD: ${TH_LAPTOP_SA_PASSWORD}
+      TH_SA: !reset null
+    volumes: !override ["./sql:/grants:ro"]
+    entrypoint: !override ["/bin/sh", "-c", "psql -h postgres -U postgres -d postgres -v ON_ERROR_STOP=1 -v runtime_password=\"$$RUNTIME_PASSWORD\" -v testbench_password=\"$$TESTBENCH_PASSWORD\" -v temporal_password=\"$$TEMPORAL_PASSWORD\" -f /grants/grants-postgres.sql"]
+
+  temporal:
+    environment:
+      TEMPORAL_DB_PLUGIN: postgres12
+      TEMPORAL_POSTGRES_ADDR: postgres:5432
+      TEMPORAL_POSTGRES_USER: th_temporal
+      TEMPORAL_POSTGRES_PASSWORD: ${TH_LAPTOP_TEMPORAL_DB_PASSWORD}
+      TEMPORAL_SQLSERVER_ADDR: !reset null
+      TEMPORAL_SQLSERVER_USER: !reset null
+      TEMPORAL_SQLSERVER_PASSWORD: !reset null
+
+  runtime-api: { environment: *store-pg }
+  service-api: { environment: *store-pg }
+  ops-api: { environment: *store-pg }
+  native: { environment: *store-pg }
+  file-api: { environment: *store-pg }
+
+  testbench:
+    environment:
+      <<: *host-pg
+      TH_TESTBENCH_POSTGRESQL: "Host=postgres;Port=5432;Username=th_testbench;Password=${TH_LAPTOP_TESTBENCH_DB_PASSWORD}"
+      TH_TESTBENCH_SQLSERVER: !reset null
+
+  enginehost: { environment: *host-pg }
+  enginehost-dtfx: { environment: *host-pg }
+  enginehost-elsa: { environment: *host-pg }
+  enginehost-flowable: { environment: *host-pg }
+
+volumes:
+  pg:

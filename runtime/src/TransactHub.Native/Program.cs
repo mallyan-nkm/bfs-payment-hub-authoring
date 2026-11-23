@@ -112,7 +112,7 @@ var refreshEvery = TimeSpan.TryParse(Environment.GetEnvironmentVariable("TH_NATI
 // The distributions are read from the store (TH_STORE_*, or Store:* as every runtime host names it).
 var modules = new NativeModules(Platform, (dist, _) => new HostServices(dist, keep, bindings, coreBanking), store, devModules, refreshEvery);
 var development = await modules.For(null);
-var routing = new AttemptRouting(store);
+var routing = AttemptRouting.FromEnvironment(store);
 app.Lifetime.ApplicationStopping.Register(modules.Dispose);
 
 var health = app.MapGet("/health", () => Results.Ok(new { activities = development.ByName.Keys.Order(), served, store = store is not null, signingKey = TransactHub.Store.FileSignature.KeyIdOf(signingKey), contract = NativeContract.Version }));

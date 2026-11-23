@@ -113,7 +113,8 @@ public sealed class ServiceHost
             probes.AddRange(Probes.Configured(cfg, http, bindings));
             return new HealthMonitor(probes, clock);
         });
-        s.AddSingleton(_ => new RuntimeGauges(store, ops, clock: clock));
+        // The replies the gauge watches are the installation's to name, never the platform's (R-09-142, Issue I-235).
+        s.AddSingleton(_ => new RuntimeGauges(store, ops, RuntimeGauges.FromSetting(cfg["Service:Gauges:AwaitedReplies"]), clock: clock));
         s.AddHostedService<HealthSampler>();
         s.AddSingleton(_ => new AssistantModel(AnthropicAssistantModel.FromEnvironment(k => cfg[k])));
         s.AddSingleton(sp => new AssistantService(sp.GetRequiredService<AssistantModel>().Model, cfg["TH_ASSISTANT_ENABLED"] == "true", store, sp.GetRequiredService<HealthMonitor>(),
@@ -150,10 +151,9 @@ public sealed class ServiceHost
             book.Run("expire-hold", ActionBook.ExpireHold(store, new HoldExpiry(store, signals, clock)));
             // The file-transfer port the runtime resends on (R-05-58): a folder the scheme's gateway collects from.
             // With the File API (Service:FileApi:Url), through its outbox, delivered on the bank's binding (R-09-84).
-            if (FileApiPort.FromConfiguration(k => cfg[k], "Service") is { } viaFileApi)
-                book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, viaFileApi, clock)));
-            else if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
-                book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, new FolderFileTransfer(outFolder), clock)));
+            // A folder of its own only on a development host that says so (TH_FILES_DIRECT=dev, R-09-138).
+            if (FileApiPort.ForResend(k => cfg[k], "Service") is { } resendPort)
+                book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, resendPort, clock)));
             // Core banking, as the bank's configuration release in force binds it (R-08-19, R-09-112): what reconcile-posting asks.
             var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(bindings, secrets: secrets);
             book.Run("reconcile-posting", ActionBook.ReconcilePosting(store, signals, tenant => { try { return resolver.For(tenant, clock.GetUtcNow()).CoreBanking; } catch (Exception) { return null; } }, clock));

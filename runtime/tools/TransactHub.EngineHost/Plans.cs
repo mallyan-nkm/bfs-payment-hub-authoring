@@ -90,7 +90,10 @@ public static class Plans
                 ["built"] = new JsonObject
                 {
                     ["id"] = distribution, ["spec"] = new JsonObject(), ["workflow"] = wf,
-                    ["config"] = new JsonObject { ["evaluationDate"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["tenant"] = bank, ["values"] = new JsonArray() },
+                    // No values in the plan: the bank's values are read from the configuration releases in force, as of each step
+                    // (liveValues, R-09-135), never the factory's defaults of an empty list or a list frozen when the host started.
+                    // Each payment's run starts at its own time (RunPayment), not at the evaluation date of the host's start.
+                    ["config"] = new JsonObject { ["evaluationDate"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd"), ["tenant"] = bank, ["values"] = new JsonArray(), ["liveValues"] = true },
                     ["context"] = new JsonObject(),
                 },
                 ["documents"] = documents, ["queues"] = queues.DeepClone(), ["workers"] = workers,

@@ -56,9 +56,15 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<long>("Sequence")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Environment", "Scope", "EffectiveFrom");
+
+                    b.HasIndex("Environment", "Scope", "Sequence")
+                        .IsUnique();
 
                     b.ToTable("release_activation", (string)null);
                 });

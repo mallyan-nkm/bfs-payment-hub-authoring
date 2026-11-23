@@ -79,6 +79,20 @@ public sealed class FolderFileTransfer(string folder) : IFileTransferPort
 /// <summary>The File API port of a host, when its settings name one: <c>&lt;section&gt;:FileApi:Url</c>, <c>:Folder</c>, <c>:TokenRef</c>.</summary>
 public static class FileApiPort
 {
+    /// <summary>
+    /// The port a console resends on (R-05-58, R-09-138): the File API's outbox by default; a folder of its own
+    /// (<c>&lt;section&gt;:FileTransfer:Folder</c> or <c>TH_FILE_TRANSFER_DIR</c>) only on a development host that says so
+    /// (<c>TH_FILES_DIRECT=dev</c>). A folder named on any other host is refused at the start. Null: no resend.
+    /// </summary>
+    public static IFileTransferPort? ForResend(Func<string, string?> cfg, string section)
+    {
+        if (FromConfiguration(cfg, section) is { } viaFileApi) return viaFileApi;
+        if ((cfg($"{section}:FileTransfer:Folder") ?? cfg("TH_FILE_TRANSFER_DIR")) is not { Length: > 0 } folder) return null;
+        if (cfg(TransactHub.Ports.FileTransferAdapters.DirectSetting) != "dev")
+            throw new InvalidOperationException($"{section}:FileTransfer:Folder names a folder, but a console resends only through the File API (spec R-09-138): set {section}:FileApi:Url, :Folder and :TokenRef, or {TransactHub.Ports.FileTransferAdapters.DirectSetting}=dev on a development machine");
+        return new FolderFileTransfer(folder);
+    }
+
     public static IFileTransferPort? FromConfiguration(Func<string, string?> cfg, string section)
     {
         if (cfg($"{section}:FileApi:Url") is not { Length: > 0 } url) return null;

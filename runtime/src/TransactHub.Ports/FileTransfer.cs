@@ -23,17 +23,27 @@ public static class FileTransferAdapters
 {
     public const string Port = "p.port.file-transfer.v1";
 
+    /// <summary>The setting that lets a development host reach a folder or an SFTP partner itself, not through the File API (R-09-138).</summary>
+    public const string DirectSetting = "TH_FILES_DIRECT";
+
     /// <summary>
-    /// The adapter a binding names. On a host whose files go through the File API (<c>TH_FILE_API_URL</c>, with its token by reference in
-    /// <c>TH_FILE_API_TOKEN_REF</c>), a file put is written to the File API's outbox, which delivers it on the same binding and records
-    /// the delivery (R-09-84); reads stay on the adapter. The File API itself builds the adapter direct.
+    /// The adapter a binding names, for a host of the runtime. By default every file goes through the File API (R-09-138): on a host
+    /// that names it (<c>TH_FILE_API_URL</c>, with its token by reference in <c>TH_FILE_API_TOKEN_REF</c>) a put is written to the File
+    /// API's outbox, which delivers it on the same binding and records the delivery (R-09-84), and a read, a listing or a removal is
+    /// asked of it too. A host that names no File API is refused a folder (<c>directory</c>) or an SFTP partner (<c>sftp</c>) unless it
+    /// says it is a development host (<c>TH_FILES_DIRECT=dev</c>); the in-memory <c>simulator</c> holds no file of the bank's and is
+    /// built as it is. The File API itself builds its adapters direct (<see cref="Direct"/>).
     /// </summary>
-    public static IFileTransfer Create(PortBinding b, ISecretResolver? secrets = null) =>
-        Environment.GetEnvironmentVariable("TH_FILE_API_URL") is { Length: > 0 } api
-            ? new OutboxFileTransfer(Direct(b, secrets), b.Tenant, new Uri(api.EndsWith('/') ? api : api + "/"),
-                Environment.GetEnvironmentVariable("TH_FILE_API_TOKEN_REF") ?? throw new PortBindingException("TH_FILE_API_URL is set: set TH_FILE_API_TOKEN_REF, this host's token for the File API, by reference"),
-                secrets ?? SecretResolver.FromEnvironment())
-            : Direct(b, secrets);
+    public static IFileTransfer Create(PortBinding b, ISecretResolver? secrets = null, Func<string, string?>? setting = null)
+    {
+        setting ??= Environment.GetEnvironmentVariable;
+        if (setting("TH_FILE_API_URL") is { Length: > 0 } api)
+            return new OutboxFileTransfer(b.Adapter, b.Tenant, new Uri(api.EndsWith('/') ? api : api + "/"),
+                setting("TH_FILE_API_TOKEN_REF") ?? throw new PortBindingException("TH_FILE_API_URL is set: set TH_FILE_API_TOKEN_REF, this host's token for the File API, by reference"),
+                secrets ?? SecretResolver.FromEnvironment());
+        if (b.Adapter == SimulatedFileTransfer.Name || setting(DirectSetting) == "dev") return Direct(b, secrets);
+        throw new PortBindingException($"{b.Port} for {b.Tenant} names adapter {b.Adapter}, and a host of the runtime reaches a bank's files only through the File API (spec R-09-138): set TH_FILE_API_URL and TH_FILE_API_TOKEN_REF, or {DirectSetting}=dev on a development machine");
+    }
 
     /// <summary>The adapter a binding names, never through the File API: what the File API delivers with.</summary>
     public static IFileTransfer Direct(PortBinding b, ISecretResolver? secrets = null) => b.Adapter switch
