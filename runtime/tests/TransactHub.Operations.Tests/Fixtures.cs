@@ -112,6 +112,16 @@ public static class WpsRun
             await log.Append(accepted.BulkId, "bulk", new NewFact("hold", "opened", new JsonObject { ["hold"] = $"hold-{fileId[^4..]}-{root[^6..]}", ["kind"] = "approval", ["activity"] = "p.hold.approval.v1", ["reason"] = "AM02 at internal-limit (b.validate.internal-limit.v1)", ["expiry"] = "P1D" }, Actor: "runtime"));
         }
         await Step($"{root}/leg3", "business-date", "uae.p.enrich.business-date.v1", "set");
+        // The bank's cut-off (R-12-28): accepted at 15:00 in Dubai, after its 14:00 cut-off, so it counts for the next business day.
+        await Step($"{root}/leg3", "cut-off", "p.decide.cut-off.v1", "taken", new JsonObject
+        {
+            ["header.businessDate"] = "2026-11-18",
+            ["facts.cutOff"] = new JsonObject
+            {
+                ["outcome"] = "taken", ["applied"] = true, ["scheme"] = "uae.wps", ["direction"] = "outward", ["cutOff"] = "14:00", ["timeZone"] = "Asia/Dubai",
+                ["afterCutOff"] = "next-business-day", ["receivedLocal"] = "2026-11-17T15:00:00", ["businessDate"] = "2026-11-18", ["movedFrom"] = "2026-11-17",
+            },
+        });
         await Step($"{root}/leg3", "file-checks", "uae.wps.validate.salary-file.v1", "pass", new JsonObject { ["facts.validation"] = new JsonObject { ["worst"] = "pass", ["findings"] = new JsonArray() } }, level: "batch");
         // The lines' own checks, as the claim check commits them on the leg's payload.
         for (var i = 0; i < 2; i++)

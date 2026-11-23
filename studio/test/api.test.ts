@@ -126,7 +126,7 @@ describe('governance', () => {
     const cs = (await get('/api/tenants/example-bank/configuration')).body.configurationSet;
     expect((await post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml(cs) })).status).toBe(409);
     expect((await post('/api/tenants/example-bank/configuration', { actor: 'example.checker', yaml: toYaml({ ...cs, release: '9.0.0' }) })).status).toBe(403);
-    const saved = await post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml({ ...cs, release: '1.9.0' }) });
+    const saved = await post('/api/tenants/example-bank/configuration', { actor: 'example.maker', yaml: toYaml({ ...cs, release: '1.10.0' }) });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect((await post('/api/tenants/example-bank/configuration/validate', { doc: cs })).body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
     const run = await post('/api/tenants/example-bank/compatibility-run', { candidates: [] });

@@ -21,6 +21,10 @@ const hosts = {
   migrate: () => ['dotnet', [dll('tools/TransactHub.Migrate', 'TransactHub.Migrate')]],
   // A payment at the front door, run from the distribution it is pinned to (the laptop's insert-only test, deploy/laptop/test).
   'run-pinned': () => ['/opt/th/studio/node_modules/.bin/tsx', ['/opt/th/deploy/laptop/bin/run-pinned.mts']],
+  // Every distribution's activity workers, side by side, for the engine host and the File API's front door (R-09-105).
+  workers: () => ['/opt/th/studio/node_modules/.bin/tsx', ['/opt/th/deploy/laptop/bin/workers.mts']],
+  // Fresh client-credentials tokens in files, for the hosts that call the File API with a token by reference (R-09-105).
+  tokens: () => ['node', ['/opt/th/deploy/laptop/bin/tokens.mjs']],
 };
 
 const [name, ...rest] = process.argv.slice(2);
@@ -33,6 +37,6 @@ if (name === 'enginehost') {
   const fs = await import('node:fs');
   fs.mkdirSync(process.env.TH_HOST_PLANS ?? '/var/lib/transacthub/work/plans', { recursive: true });
 }
-const child = spawn(cmd, [...args, ...rest], { stdio: 'inherit', env: process.env, cwd: name === 'run-pinned' ? '/opt/th/studio' : '/opt/th' });
+const child = spawn(cmd, [...args, ...rest], { stdio: 'inherit', env: process.env, cwd: name === 'run-pinned' || name === 'workers' ? '/opt/th/studio' : '/opt/th' });
 for (const s of ['SIGTERM', 'SIGINT']) process.on(s, () => child.kill(s));
 child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

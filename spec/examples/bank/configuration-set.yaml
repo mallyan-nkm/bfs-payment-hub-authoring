@@ -1,6 +1,6 @@
 kind: configuration-set
 tenant: example-bank
-release: 1.8.0
+release: 1.9.0
 title: Example bank configuration
 accepts:
   - { scope: p, release: 1.8.0 }
@@ -61,6 +61,20 @@ values:
   - parameter: uae.wps.map.rri-in.v1#fileNameAgentCode
     value: "999"
     validFrom: "2026-01-01"
+  # The bank's cut-off (R-12-28, Issue I-191): its cut-off times and its own closing days, each read from its reference table,
+  # edition by edition (R-11-51), and the market's non-business days from the platform vendor's calendar. Synthetic.
+  - parameter: p.decide.cut-off.v1#cutOffs
+    fromReference: { table: b.ref.cut-offs.v1, columns: { scheme: scheme, direction: direction, cutOff: cutOff, timeZone: timeZone, afterCutOff: afterCutOff } }
+    validFrom: "2026-10-01"
+  - parameter: p.decide.cut-off.v1#closingDays
+    fromReference: { table: b.ref.bank-calendar.v1, columns: { day: day, kind: kind } }
+    validFrom: "2026-10-01"
+  - parameter: p.decide.cut-off.v1#earlyClosings
+    fromReference: { table: b.ref.bank-calendar.v1, columns: { day: day, closesAt: closesAt } }
+    validFrom: "2026-10-01"
+  - parameter: p.decide.cut-off.v1#nonBusinessDays
+    fromReference: { table: uae.p.ref.business-calendar.v1, columns: { day: day } }
+    validFrom: "2026-10-01"
 bindings:
   - hookPoint: p.wf.corporate.v1#before-release
     hook: b.hook.pre-release-approval.v1

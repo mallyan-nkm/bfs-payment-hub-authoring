@@ -1,0 +1,46 @@
+# The laptop's file transfer for ADIB (deploy/laptop, R-09-105, Issues I-160 and I-161). It reaches the runtime only inside the bank's
+# signed configuration release (R-09-110 to R-09-112): the insert-only test asks the studio to build ADIB's release with it, and the
+# service console puts it in force with a bank approver's consent; no host reads a folder of bindings (R-09-113). So that on a laptop
+# every partner of the bank is the stack's one SFTP server (the `sftp` service). Synthetic: no host, folder or login of the bank's.
+# Each inbox names the message its files are, as I-160 asks of a bank; the host key is pinned by reference (I-161) and the login is
+# a reference too, both made by the stack at its start, never in a file of the repository.
+kind: port-bindings
+tenant: adib
+bindings:
+  - port: p.port.file-transfer.v1
+    adapter: sftp
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      hostKeyRef: env:TH_LAPTOP_SFTP_HOST_KEY
+      secretRef: env:TH_LAPTOP_SFTP_LOGIN
+      defaultPartner: centralBank
+      sessions.max: "2"
+      sessions.reuse: "true"
+      sessions.idleSeconds: "60"
+      sessions.keepAliveSeconds: "30"
+      sessions.acquireSeconds: "30"
+      sessions.attempts: "3"
+      # The corporate channel's salary files (the source's pick-up folder /wps/inbound).
+      pickup.host: sftp
+      pickup.port: "22"
+      pickup.folder: upload/wps/inbound
+      pickup.message: uae.wps.sif
+      pickup.doneFolder: done
+      pickup.errorFolder: error
+      pickup.minimumAgeSeconds: "1"
+      # The Central Bank's answers (the source's /cb/wps/ack and /cb/wps/rtc) and where the bank's files to it go.
+      centralBank.host: sftp
+      centralBank.port: "22"
+      centralBank.inbox.ack.folder: upload/cb/wps/ack
+      centralBank.inbox.ack.message: uae.wps.ack
+      centralBank.inbox.ack.doneFolder: done
+      centralBank.inbox.ack.errorFolder: error
+      centralBank.inbox.rtc.folder: upload/cb/wps/rtc
+      centralBank.inbox.rtc.message: uae.wps.rtc
+      centralBank.inbox.rtc.doneFolder: done
+      centralBank.inbox.rtc.errorFolder: error
+      centralBank.sifFolder: upload/cb/wps/sif
+      # The result files to the corporate (the source's /wps/outbound).
+      result.host: sftp
+      result.port: "22"
+      result.folder: upload/wps/outbound

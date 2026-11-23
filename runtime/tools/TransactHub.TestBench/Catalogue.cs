@@ -37,6 +37,10 @@ public sealed class Plan
     public required string BenchName { get; init; }
     public required List<BenchPort> Bench { get; init; }
     public required string EvaluationDate { get; init; }
+    /// <summary>When the run starts that day, HH:MM:SS UTC (clock.time); null for the studio's default, 06:00 (R-12-28: a cut-off is a time of day).</summary>
+    public string? StartTime { get; init; }
+    /// <summary>Values the request gives beside the bank's configuration (values: parameter, value, validFrom), on the interpreter and every engine.</summary>
+    public JsonArray? Values { get; init; }
     /// <summary>test-server (Temporal's time-skipping server, started by the harness) or host:port of a Temporal server.</summary>
     public required string Temporal { get; init; }
     /// <summary>container (a Flowable REST container for the run) or the URL of a Flowable REST server.</summary>
@@ -54,7 +58,7 @@ public sealed class Plan
         ["engines"] = new JsonArray(Engines.Select(e => (JsonNode?)e).ToArray()), ["reference"] = Reference,
         ["databases"] = new JsonArray(Databases.Select(d => (JsonNode?)d).ToArray()),
         ["bench"] = BenchName, ["ports"] = new JsonArray(Bench.Select(b => (JsonNode?)b.ToString()).ToArray()),
-        ["clock"] = new JsonObject { ["date"] = EvaluationDate },
+        ["clock"] = new JsonObject { ["date"] = EvaluationDate, ["time"] = StartTime }, ["values"] = J.Clone(Values),
         ["environment"] = new JsonObject { ["temporal"] = Temporal, ["flowable"] = Flowable, ["engineTimeoutMinutes"] = (long)EngineTimeout.TotalMinutes },
         ["source"] = J.Clone(Source), ["input"] = Input.Summary(), ["expect"] = J.Clone(Expect),
     };
@@ -157,6 +161,8 @@ public sealed class Catalogue(Home home)
             Engines = engines, Reference = (node("reference") as JsonValue)?.GetValue<bool>() ?? true,
             Databases = dbs, Connections = connections, BenchName = benchName, Bench = bench,
             EvaluationDate = J.S(clock, "date") ?? "2026-11-17",
+            StartTime = J.S(clock, "time") is { Length: > 0 } t ? (System.Text.RegularExpressions.Regex.IsMatch(t, @"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$") ? (t.Length == 5 ? $"{t}:00" : t) : throw new BenchError($"clock.time {t} is not HH:mm or HH:mm:ss (UTC)")) : null,
+            Values = (request["values"] ?? profile["values"]) as JsonArray is { } vs ? (JsonArray)vs.DeepClone() : null,
             Temporal = Environment.GetEnvironmentVariable("TH_TEMPORAL_ADDRESS") is { Length: > 0 } ta ? ta : J.S(envNode, "temporal") ?? "test-server",
             Flowable = Environment.GetEnvironmentVariable("TH_FLOWABLE_URL") is { Length: > 0 } fu ? fu : J.S(envNode, "flowable") ?? "container",
             EngineTimeout = TimeSpan.FromMinutes(J.Long(envNode["engineTimeoutMinutes"]) ?? 15),

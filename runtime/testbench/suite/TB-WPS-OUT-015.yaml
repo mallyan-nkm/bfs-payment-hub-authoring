@@ -1,0 +1,16 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+# A bank whose cut-off refuses a late file (afterCutOff: refuse; R-12-28, Issue I-191): the request gives that value beside the
+# example bank's configuration, from 1 November 2026. A file accepted at 15:00 in Dubai is refused (TM01), the same on every engine.
+kind: testbench-case
+id: TB-WPS-OUT-015
+title: 'A salary file after a cut-off that refuses late files is rejected'
+request:
+  profile: wps-all-engines
+  data: { sample: wps-sif-happy }
+  clock: { date: '2026-11-17', time: '11:00' }
+  values:
+    - parameter: p.decide.cut-off.v1#cutOffs
+      value: [{ scheme: uae.wps, direction: outward, cutOff: '14:00', timeZone: Asia/Dubai, afterCutOff: refuse }]
+      validFrom: '2026-11-01'
+expect:
+  outcome: rejected

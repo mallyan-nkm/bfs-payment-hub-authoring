@@ -317,6 +317,38 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         finally { Directory.Delete(root, true); }
     }
 
+    /// <summary>R-09-104: one runtime serves one bank; its poller never reads another bank's inbox, from a binding or a setting.</summary>
+    [Fact]
+    public async Task The_inbox_poller_reads_the_inboxes_of_the_runtimes_bank_only()
+    {
+        var root = Directory.CreateTempSubdirectory("th-fileapi-bank-").FullName;
+        try
+        {
+            const string other = "other-bank";
+            var bindings = new PortBindings();
+            foreach (var t in new[] { Bank, other })
+                bindings.Add($"kind: port-bindings\ntenant: {t}\nbindings:\n  - port: p.port.file-transfer.v1\n    adapter: directory\n    validFrom: 2026-01-01T00:00:00Z\n    settings: {{ rootRef: env:IN_ROOT, inbox.folder: {t}/inbox, inbox.message: uae.wps.pif, inbox.doneFolder: done }}\n");
+            var r = await Make(bindings);
+            var ports = new BoundTransfers(bindings, new SecretResolver([new EnvSecretProvider(k => k == "IN_ROOT" ? root : null)]));
+            var boxes = new[] { Bank, other }.SelectMany(t => Inbox.Of(bindings.InForce(t, FileTransferAdapters.Port, DateTimeOffset.UtcNow)))
+                .Append(new Inbox(other, $"{other}/extra", "uae.wps.pif", null, null, TimeSpan.Zero)).ToList();
+            Assert.Equal(3, boxes.Count);
+            foreach (var f in new[] { $"{Bank}/inbox", $"{other}/inbox", $"{other}/extra" }) Directory.CreateDirectory(Path.Combine(root, f));
+            await File.WriteAllBytesAsync(Path.Combine(root, Bank, "inbox", "000000000021.PIF"), Pif("mine"));
+            await File.WriteAllBytesAsync(Path.Combine(root, other, "inbox", "000000000022.PIF"), Pif("theirs"));
+            await File.WriteAllBytesAsync(Path.Combine(root, other, "extra", "000000000023.PIF"), Pif("theirs too"));
+            var poller = new InboxPoller(ports, r.Intake, Env, () => boxes, bank: Bank);
+            Assert.Equal([Bank], poller.Inboxes().Select(b => b.Tenant).Distinct());
+            var taken = await poller.PollOnce();
+            Assert.Equal(["accepted"], taken.Select(t => t.Status));
+            Assert.Single(r.Engines.Started);
+            // The other bank's files are where they were: neither taken nor moved.
+            Assert.True(File.Exists(Path.Combine(root, other, "inbox", "000000000022.PIF")));
+            Assert.True(File.Exists(Path.Combine(root, other, "extra", "000000000023.PIF")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task The_HTTP_upload_takes_a_system_clients_file_and_refuses_a_caller_without_the_role()
     {

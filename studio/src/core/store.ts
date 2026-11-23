@@ -92,6 +92,14 @@ export class StoreError extends Error {
   }
 }
 
+/**
+ * A path as the store reads the branch in order: in release order where it names a release (`tests/<id>@1.10.0.yaml` after
+ * `@1.9.0.yaml`, `packs/1.10.0.yaml` after `packs/1.9.0.yaml`), so that of two files of one document the later release is read last.
+ */
+export function naturalPath(p: string): string {
+  return p.replace(/\d+/g, (d) => d.padStart(8, '0'));
+}
+
 function scopeOfDoc(doc: any): string {
   if (typeof doc.scope === 'string') return doc.scope;
   if (doc.kind === 'supersession' && doc.artefact) return parseName(doc.artefact)?.scope ?? 'p';
@@ -253,7 +261,7 @@ export class Store {
 
   private readContent(banks: string[]) {
     const c = this.content!;
-    const files = [...c.files].sort(([a], [b]) => a.localeCompare(b));
+    const files = [...c.files].sort(([a], [b]) => naturalPath(a).localeCompare(naturalPath(b)));
     const wantBank = new Set(['example-bank', ...banks]);
     for (const b of banks) if (!c.files.has(`banks/${b}/pack.yaml`)) throw new StoreError('bank-pack', `No bank pack ${b} on ${c.repository} ${c.conn.branch}: there is no ${c.conn.root}/banks/${b}/pack.yaml`);
     const events: AuditEvent[] = [];
@@ -397,7 +405,7 @@ export class Store {
     if (pack?.kind !== 'pack' || pack.packType !== 'bank' || pack.scope !== 'b' || typeof pack.tenant !== 'string' || !pack.tenant || pack.tenant === OWNER_TENANT) {
       throw new StoreError('bank-pack', `${c.conn.root}/${packFile} is not a bank pack: it needs kind pack, packType bank, scope b and a tenant`);
     }
-    for (const [p, t] of [...c.files].filter(([p]) => p.startsWith(dir) && isYaml(p) && !BANK_STUDIO_FOLDERS.includes(p.split('/')[2]) && p.split('/')[2] !== 'samples').sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [p, t] of [...c.files].filter(([p]) => p.startsWith(dir) && isYaml(p) && !BANK_STUDIO_FOLDERS.includes(p.split('/')[2]) && p.split('/')[2] !== 'samples').sort(([a], [b]) => naturalPath(a).localeCompare(naturalPath(b)))) {
       const seed = SEED_HEADER.exec(t);
       const body = seed ? t.slice(t.indexOf('\n') + 1) : t;
       for (const doc of parseYamlAll(body)) {
