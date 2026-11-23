@@ -155,6 +155,13 @@ public sealed class OperatorActionTests(Databases dbs)
             TransactHub.Engines.Interp.Decided!((JsonObject)req.DeepClone(), (JsonObject)res.DeepClone()); // a replay takes it again: one fact
         }
         finally { TransactHub.Engines.Interp.Decided = before; }
+        // The decision is written off the workflow's thread: wait for it.
+        for (var i = 0; i < 100; i++)
+        {
+            await using var db = StoreDbContext.Open(store);
+            if (await db.Facts.AsNoTracking().AnyAsync(x => x.SubjectId == id && x.Kind == "step" && x.Code == "approved")) break;
+            await Task.Delay(100);
+        }
         await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
         await using (var o = OpsDbContext.Open(ops))
         {
