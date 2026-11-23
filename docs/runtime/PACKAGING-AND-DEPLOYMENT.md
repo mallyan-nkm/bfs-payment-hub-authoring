@@ -127,6 +127,9 @@ Runtime software (NEST images, store schema)
 - A scheme pack declares the platform slot contract it fills (for example `scheme-leg@1`). The studio refuses to build a distribution whose scheme does not fit its platform's slot contract.
 - A configuration release is refused at install if any value is unknown to, or outside the bounds of, a distribution that will read it (one that is Installed, Active, Draining or Drained), and checked again when it is put in force. A value for a new dial is ignored by distributions that do not declare that dial. Values reach the runtime in no other way: no folder brings them (R-09-110, I-210).
 - Port bindings are values too: every host of the runtime reads them from the configuration release in force, as of each attempt's time, so scenario 2 needs no restart (R-09-112, R-09-113, I-213).
+- The long-running engine host reads the values its steps need (a wait, an await's timeout and calendar) from the configuration releases in force, as of each step, or as of the payment's acceptance for a value its owner reads as of the payment's date; each read is recorded by the engine, so a run replays it, and scenario 1 reaches the later steps of a running payment with no restart (R-09-135). Its plan carries no values.
+- Two activations of one bank and environment at once cannot both win: the store numbers each activation and holds the number unique (R-09-137).
+- Every host reaches a bank's files through the File API, reads and removals as well as puts; a folder or an SFTP partner direct only on a development machine that says so (R-09-138). Every schema migration runs once, from the migrate step, as the owner (R-09-141).
 
 ## 8. Scenarios
 

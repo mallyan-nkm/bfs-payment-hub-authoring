@@ -532,6 +532,111 @@ public class EngineHostTests(Servers servers)
         }
     }
 
+    /// <summary>A stored package whose platform workflow waits as long as the bank says, twice as of the step and once as of the payment's date.</summary>
+    static byte[] WaitingPackage(string release)
+    {
+        var docs = Documents(release);
+        docs[$"p.wf.wait.v1@{release}"] = Doc($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.wait.v1", "release": "{{release}}",
+              "parameters": {
+                "gap": { "type": "duration", "default": "PT20M", "bounds": { "min": "PT0S", "max": "PT1H" } },
+                "late": { "type": "duration", "default": "PT20M", "bounds": { "min": "PT0S", "max": "PT1H" }, "lookupDate": "payment-date" } },
+              "do": [
+              { "id": "a", "call": "p.enrich.check.v1" },
+              { "id": "w1", "wait": { "parameter": "p.wf.wait.v1#gap", "default": "PT20M" } },
+              { "id": "pause", "wait": "PT20S" },
+              { "id": "w2", "wait": { "parameter": "p.wf.wait.v1#gap", "default": "PT20M" } },
+              { "id": "w3", "wait": { "parameter": "p.wf.wait.v1#late", "default": "PT20M" } },
+              { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
+        var ms = new MemoryStream();
+        using (var z = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            void Put(string name, string text) { using var w = new StreamWriter(z.CreateEntry(name).Open()); w.Write(text); }
+            Put("manifest.yaml", $"kind: distribution\nrelease: {release}\n");
+            Put("engine/p.wf.wait.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
+            foreach (var (k, v) in docs) Put($"engine/p.wf.wait.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>A configuration release put in force: each value a version of kind config, as BankValues puts it in force (R-09-111).</summary>
+    async Task PutInForce(string bank, string release, params (string parameter, string value, DateTimeOffset from, DateTimeOffset? to)[] values)
+    {
+        await using var db = StoreDbContext.Open(servers.Store);
+        foreach (var (parameter, value, from, to) in values)
+            await new VersionedValues(db).Publish(ConfigurationValues.Kind, bank, parameter, new JsonObject { ["value"] = value, ["configurationSet"] = release }, from, to, "test.approver");
+    }
+
+    /// <summary>
+    /// R-09-135 (the north-star review of 23 November 2026): the engine host reads the bank's values from the configuration release in
+    /// force as of each step, not an empty list (the factory's twenty minutes) and not a list frozen at its start. A later release
+    /// put in force while the payment runs reaches its later steps with no restart; a value read as of the payment's date keeps the
+    /// value of its acceptance.
+    /// </summary>
+    async Task ValuesAsOfEachStep(string engine)
+    {
+        var bank = $"val-{engine}-{Guid.NewGuid():N}"[..20];
+        const string id = "2026.11.23-1";
+        var dist = DistributionRegistry.IdOf(bank, id);
+        using var worker = new Worker();
+        var plans = Path.Combine(Path.GetTempPath(), $"th-hosts-{bank}");
+        var since = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        try
+        {
+            var package = WaitingPackage("1.0.0");
+            await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
+            await WithRegistry(r => r.Activate(dist, Environment, "test", "e2e"));
+            await PutInForce(bank, "2026.11.23", ("p.wf.wait.v1#gap", "PT1S", since, null), ("p.wf.wait.v1#late", "PT1S", since, null));
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", new JsonObject { ["th-p"] = worker.Url }.ToJsonString());
+            await using var sup = await StartSupervisor(engine, bank, plans);
+            try
+            {
+                await Until(async () => J.Truthy(J.P(J.P(await sup.Distribution(dist), "host"), "current")), TimeSpan.FromMinutes(3), $"{dist} current");
+                var p = $"V1-{bank}";
+                var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.wait.v1" });
+                Assert.True(r.status == 202, r.body.ToJsonString());
+                await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
+                // The payment pauses for twenty seconds after w1. A later configuration release is put in force meanwhile, with no
+                // restart of any host: from now on the gap is two seconds, and so is the late value, but the payment was accepted before.
+                await Task.Delay(TimeSpan.FromSeconds(4));
+                var cut = DateTimeOffset.UtcNow;
+                await PutInForce(bank, "2026.11.24", ("p.wf.wait.v1#gap", "PT1S", since, cut), ("p.wf.wait.v1#gap", "PT2S", cut, null),
+                    ("p.wf.wait.v1#late", "PT1S", since, cut), ("p.wf.wait.v1#late", "PT2S", cut, null));
+                JsonObject? e = null;
+                try { await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(4), $"{p} ended"); }
+                catch (Xunit.Sdk.XunitException x)
+                {
+                    await using var db = StoreDbContext.Open(servers.Store);
+                    var subject = await SubjectOf(p);
+                    var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject).OrderBy(f => f.Seq).Select(f => f.Kind + ":" + f.Code).ToListAsync();
+                    throw new Xunit.Sdk.XunitException($"{x.Message}: {e?.ToJsonString()}; facts: {string.Join(", ", steps)}");
+                }
+                Assert.True(J.S(e, "outcome") == "done", e!.ToJsonString());
+                var trace = J.Strings(J.P(J.A(J.P(e, "observation"), "instances")[0], "trace"));
+                // As of each step: the first release's second before, the later release's two seconds after; as of acceptance, a second.
+                Assert.Contains("w1:PT1S", trace);
+                Assert.Contains("w2:PT2S", trace);
+                Assert.Contains("w3:PT1S", trace);
+                Assert.DoesNotContain(trace, x => x.Contains("PT20M"));
+            }
+            catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+            {
+                throw new Xunit.Sdk.XunitException($"{x.Message}\n--- the supervisor's log ---\n{sup.Log}");
+            }
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
+    [Fact] public Task Temporal_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("temporal");
+    [Fact] public Task Dtfx_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("dtfx");
+    [Fact] public Task Elsa_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("elsa");
+
     [Fact] public Task Dtfx_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("dtfx");
     [Fact] public Task Elsa_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("elsa");
 

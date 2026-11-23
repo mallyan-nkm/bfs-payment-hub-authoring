@@ -154,7 +154,7 @@ public sealed class ActionTests(Databases dbs)
         var outFolder = Directory.CreateTempSubdirectory("th-resend-").FullName;
         try
         {
-            await using var api = new ServiceApi(dbs.Fresh(), s, new FakeGitHub(), new() { ["TH_FILE_TRANSFER_DIR"] = outFolder });
+            await using var api = new ServiceApi(dbs.Fresh(), s, new FakeGitHub(), new() { ["TH_FILE_TRANSFER_DIR"] = outFolder, ["TH_FILES_DIRECT"] = "dev" });
             _ = api.Engineer; // the host starts and migrates the store
             var bulk = await Seed.Bulk(api.Store, "p.wf.corporate.v1");
             var sif = System.Text.Encoding.ASCII.GetBytes("EDR,synthetic\r\nSCR,synthetic\r\n");

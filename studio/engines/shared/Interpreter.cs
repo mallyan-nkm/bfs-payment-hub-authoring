@@ -671,16 +671,38 @@ public sealed partial class Interp
     /// full by the expansion with its default. Its value is the deployment's value in force on the business date the
     /// step starts, else the default (R-05-45).
     /// </summary>
-    string? DurationOf(JsonNode? v)
+    string? DurationOf(JsonNode? v, Func<string, string?>? valueOf = null)
     {
         if (v is not JsonObject o) return v?.GetValue<string>();
         var name = J.S(o, "parameter")!;
+        if (valueOf is not null) return valueOf(name) ?? J.S(o, "default");
         var today = Duration.Today(eng.Now);
         var inForce = J.A(dep.Config, "values").OfType<JsonObject>()
             .Where(x => J.S(x, "parameter") == name && string.CompareOrdinal(J.S(x, "validFrom") ?? "", today) <= 0
                         && (J.S(x, "validTo") is not string to || string.CompareOrdinal(to, today) >= 0))
             .OrderBy(x => J.S(x, "validFrom"), StringComparer.Ordinal).LastOrDefault();
         return inForce is not null ? J.S(inForce, "value") : J.S(o, "default");
+    }
+
+    /// <summary>
+    /// The bank's values a step reads, as of the step (R-09-135): on a runtime's engine host (<see cref="Deployment.Live"/>) each read
+    /// is a call of the host's claim check (op <c>values</c>), recorded by the engine as any activity is, so a run replays the value it
+    /// read and a value a later configuration release puts in force reaches the later steps with no restart; each parameter is read
+    /// as of the step's time or of the payment's acceptance, as its owner declares (R-04-10). Elsewhere, the deployment's values on
+    /// the engine's day, as before. Null when no live read is needed.
+    /// </summary>
+    async Task<Func<string, string?>?> LiveValuesOf(IEnumerable<string?> parameters, Frame frame)
+    {
+        if (!dep.Live) return null;
+        var names = parameters.OfType<string>().Distinct().ToList();
+        if (names.Count == 0) return null;
+        var asked = new JsonArray(names.Select(n => (JsonNode)new JsonObject { ["parameter"] = n, ["lookupDate"] = dep.LookupDateOf(n) }).ToArray());
+        var r = await eng.Activity(ClaimCheck, new JsonObject
+        {
+            ["op"] = "values", ["tenant"] = J.S(dep.Config, "tenant"), ["paymentId"] = J.S(J.P(frame.State, "header"), "paymentId"), ["at"] = eng.Now, ["parameters"] = asked,
+        });
+        var values = J.P(r, "values") as JsonObject;
+        return name => values?[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : values?[name]?.ToJsonString();
     }
 
     public void OnChunk(JsonObject data)
@@ -1296,6 +1318,8 @@ public sealed partial class Interp
         var type = J.S(aw, "message")!;
         var family = J.S(aw, "family");
         JsonObject? msg;
+        // The bank's values this await reads, as of now, on a runtime's engine host (R-09-135), read before the mailbox is looked at.
+        var live = await LiveValuesOf([J.S(aw, "timeoutParameter"), J.S(aw, "calendarParameter"), J.S(J.P(aw, "timeout"), "parameter")], frame);
         // R-05-43: once an await of this instance has waited for this message, a later one takes only a message
         // received after the step that holds it began.
         var since = awaitedTypes.Contains(type) ? frame.BlockStartedAt ?? eng.Now : long.MinValue;
@@ -1317,9 +1341,10 @@ public sealed partial class Interp
             // A wait the bank may set (R-05-47): the composite's parameter in force on the engine's day; the timeout is its default.
             // A timeout that itself names a parameter (R-05-45) is resolved first, and is the default of the bank's value.
             var today = Duration.Today(eng.Now);
-            var literal = DurationOf(J.P(aw, "timeout"));
-            var timeoutValue = J.S(aw, "timeoutParameter") is string tp ? dep.ValueAt(tp, today) ?? literal : literal;
-            var calendarValue = J.S(aw, "calendarParameter") is string cp ? dep.ValueAt(cp, today) ?? J.S(aw, "calendar") : J.S(aw, "calendar");
+            var literal = DurationOf(J.P(aw, "timeout"), live);
+            Func<string, string?> valueOf = live ?? (k => dep.ValueAt(k, today));
+            var timeoutValue = J.S(aw, "timeoutParameter") is string tp ? valueOf(tp) ?? literal : literal;
+            var calendarValue = J.S(aw, "calendarParameter") is string cp ? valueOf(cp) ?? J.S(aw, "calendar") : J.S(aw, "calendar");
             if (timeoutValue is string timeout)
             {
                 var at = Duration.Add(eng.Now, timeout, calendarValue == "business");
@@ -1348,7 +1373,7 @@ public sealed partial class Interp
 
     async Task ExecWait(JsonObject st, Frame frame)
     {
-        var d = DurationOf(J.P(st, "wait"));
+        var d = DurationOf(J.P(st, "wait"), await LiveValuesOf([J.S(J.P(st, "wait"), "parameter")], frame));
         if (!Duration.IsDuration(d)) throw new StepFailure(J.S(st, "id") ?? "wait", $"wait needs a duration, not {d}");
         await Sleep(Duration.Add(eng.Now, d!), frame.Scope);
         Record(frame, $"{J.S(st, "id") ?? "wait"}:{d}");

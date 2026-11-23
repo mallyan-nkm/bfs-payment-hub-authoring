@@ -1709,6 +1709,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done for the laptop's workers (23 November 2026, R-09-105).** The laptop sets `FileApi__Workers__uae.wps` and `FileApi__Workers__p` to its `workers` service, by distribution, and its engine hosts name the same service (`TH_HOST_WORKERS_URL`); every host that puts a file names the File API (`TH_FILE_API_URL`), and the operations and service consoles resend through it (`Operations__FileApi__*`, `Service__FileApi__*`). The inbox poller reads only the runtime's bank's inboxes (R-09-104). (2) and (4) stay open.
 
+**Done for every host's files (23 November 2026, R-09-138, R-09-141).** A host that put a file through the File API still read, listed and removed the bank's files itself, on the folder or SFTP partner of the binding (`OutboxFileTransfer` kept the direct adapter for them), and a host that named no File API wrote to the folder directly. Now a read, a listing and a removal go through the File API too (`POST /transfer`, role `file-outbox`), and a host that names no File API is refused a `directory` or `sftp` binding unless it says it is a development machine (`TH_FILES_DIRECT=dev`); a console's resend folder (`Operations:FileTransfer:Folder`, `Service:FileTransfer:Folder`, `TH_FILE_TRANSFER_DIR`) likewise. The remaining direct readers of a bank's files are the File API itself and the in-memory `simulator`. (4) stays open.
+
 ## I-159. The scheme declares no file rules
 
 **Issue.** The File API checks a file's size, extension and name and refuses a name received before, but the scheme manifest says nothing of a message's file: not its name pattern, its extensions, its largest size, whether a name may come twice, nor whether it is encrypted. The source's WPS upload checked a file name structure and date and refused a repeated file name (codes 002, 005).
@@ -1921,6 +1923,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Found on the way, and what remains.** (3) A plan built from the stored package (R-09-94) read its YAML documents with every scalar a string, so the first step with a retry policy failed on the engine host ("Nullable object must have a value"); `Plans.Yaml` now types the scalars as YAML's core schema does. (4) A distribution carries no values, so a payment on the engine host reads the bank's values from its installed configuration release: the laptop's workers call the release API's `GET /values` at each attempt's time (`TH_RUNTIME_URL`), and the insert-only test installs ADIB's configuration release with consent before it activates A. (5) The engine host's plan names no hook bindings (they are the bank's configuration set's, not the distribution's), so a hook the bank binds (ADIB's labour ministry notice on close) does not run on the engine host. Recommendation: have the supervisor read the bindings in force from the installed configuration release, as the workers read the values, with a test that a bound hook runs on each engine.
 
+**Done for the engine host's own values (23 November 2026, R-09-135; the north-star review of 23 November 2026).** (4) covered the workers only: the engine host's plan held no values, so a wait or an await's timeout that the bank sets (the WPS acknowledgement wait) ran on the factory's default. A plan built from the stored package now says `liveValues`, and the engines read each value the step needs from the configuration releases in force in the store, as of the step's time or, for a parameter its owner reads as of the payment's date, as of the payment's acceptance (its pin). Each read is a call of the host's claim check (op `values`), recorded by Temporal, DTFx and Elsa as an activity is, so a run replays what it read; a later configuration release reaches the later steps of a running payment with no restart. On Flowable the binding reads the value once per timer and journals it. Each payment's Temporal run now starts at its own time, not at the evaluation date of the host's start. `EngineHostTests` (`Temporal_`, `Dtfx_` and `Elsa_reads_the_banks_values_as_of_each_step`). (5) stays open; so does Issue I-166.
+
 ## I-194. The studio read a test's releases in text order: 1.9.0 after 1.10.0
 
 **Issue.** A factory test carries no release of its own; each pack release publishes it again as `tests/<id>@<pack release>.yaml`, and the store keeps the one it reads last. The store read the branch in text order, so at the factory's 1.10.0 it read `@1.9.0` after `@1.10.0` and kept the older test; the same held for a bank's `packs/` and `configuration-sets/` files.
@@ -2108,6 +2112,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have a runtime's native host (one with `TH_BANK`) refuse an attempt that names a distribution for a payment with no pin, as `NotPinned`, and keep the present rule for a host that serves no runtime's bank.
 
+**Done (23 November 2026, R-09-143).** A runtime's native host (`TH_BANK`) refuses an attempt that names a distribution for a payment the store has no pin of, or that names no payment, as `native.NotPinned`, not retryable (`AttemptRouting.FromEnvironment`). Only an explicit mode, `TH_NATIVE_MODE` `dev` or `test`, serves it from the distribution it names; any other value of the setting stops the host at its start. A host that serves no runtime's bank (the studio's test runs) keeps the earlier rule. `AttemptRoutingTests.A_runtimes_native_host_refuses_an_attempt_for_a_payment_with_no_pin_unless_in_dev_or_test_mode`. The refusal is the dictionary's `native.NotPinned` (R-09-128).
+
 ## I-232. A worker set serves only the tasks it registers
 
 **Issue.** One set of workers now serves every distribution of a bank (R-09-133), but a worker holds one package's tasks, by name and release, with their script-behinds, maps and rules. A distribution whose other tasks are at releases the set does not register is refused at the worker (`NotOnThisQueue`). Only a native activity's build is chosen per attempt.
@@ -2115,6 +2121,42 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Until a worker can load a distribution's tasks as the native host loads its assemblies, an installation starts a worker set per package that differs in those tasks, and names each set's queues in the plan of the distributions it serves. Then have the worker load each distribution's tasks from the store by the distribution the attempt names, as the native host does.
 
 **Owner's decision (23 November 2026):** deferred; one worker set per distribution stays.
+
+## I-235. A scheme declares no reply that a message it sends waits for
+
+**Issue.** The service console's gauge of the oldest wait for a reply (`th.await.oldest`, R-05-47) named the WPS salary file and its acknowledgement in platform code (`RuntimeGauges.Default`). R-09-142 takes it out: the gauge watches what the installation names (`Service:Gauges:AwaitedReplies`; the laptop names WPS's). The scheme manifest says which message an exchange sends (`disposition.sentBy`) and which one is delivered to an awaiting run (`disposition.deliver`), but not that one answers the other, so the runtime cannot derive the pairs.
+
+**Recommendation.** Add to the scheme manifest's message an optional `repliesTo` (the message ids it answers), with a lint that each names a message of the same scheme sent `out`, in the next release of `uae.wps` (`uae.wps.ack` answers `uae.wps.sif-submission`), and have the gauge read the pairs from the schemes of the active distribution, the setting only adding to them.
+
+## I-236. The studio interpreter reads a rule's values as of the business date on a word the schema does not have
+
+**Issue.** R-04-10 and `common#parameter.lookupDate` name the two dates `step-time` and `payment-date`. The studio's rule service (`studio/src/rules/service.ts`, `paramFacts` and `runRules`) reads a parameter as of the business date only when its `lookupDate` is `business`, which the schema refuses, so a parameter that declares `payment-date` is read as of the step on the studio interpreter, while the runtime's engine host reads it as of the payment's acceptance (R-09-135). No factory rule declares `payment-date` yet (only the operations views' `tatLimit` does), so no test shows the difference.
+
+**Recommendation.** Make the rule service read `payment-date` as of the payment's business date (`opts.businessDate`), with a studio test of a rule whose parameter declares it; found by this change and not fixed, as it is the studio's.
+
+## I-237. The labour ministry's port is a scheme's, but its adapters are in the platform's ports library
+
+**Issue.** R-09-142 says platform code names no scheme. `TransactHub.Ports/EmployerRegister.cs` holds the adapters of `uae.wps.port.labour-ministry.v1`, and names that port, because the WPS native module reaches them through `TransactHub.Ports` (Issue I-220). Its default channel header (`WPS`) is gone: the channel is the bank's binding's setting (`channel`), set in each bank's binding. `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` lists this file as the one exception.
+
+**Recommendation.** Move the labour ministry's adapters into the WPS module (`TransactHub.Activities.Wps`) when the native contract gives a module what it needs to build a bound adapter (I-220), and drop the exception.
+
+## I-238. Other values of a UAE cluster in platform code
+
+**Issue.** R-09-142 is checked for a scheme's name. A cluster's values are still defaults in platform code: the currency `AED` where a payment, a binding or a reply names none (`PostingActivities`, `CanonicalMapper`, the core banking adapters' `currency` and `localCurrency`, `CoreBankingEnquiries`). The test bench's one-off run (`deploy/laptop/bin/run-pinned.mts`) also takes its values from the bank folder's configuration set, not from the configuration release in force, and the WPS salary file as its default message.
+
+**Recommendation.** Make a currency a binding's required setting or the payment's own, with no default, in a change of its own with the banks' bindings; have `run-pinned` read the values from the release API (`GET /values`) and name its message.
+
+## I-239. An activation that loses a race is refused, not tried again
+
+**Issue.** Two activations of one bank and environment at once cannot both win (R-09-137): the store's unique key on the activation's number refuses the second, as `distribution.ActivationRaced`, and nothing of it is recorded. The service console shows the refusal to the bank approver who consented, whose action then fails; the person must ask again. A workflow package's dated activations (`ReleaseRegistry.Activate`) are numbered again and tried up to five times instead, as they are not a switch-over.
+
+**Recommendation.** Keep the refusal: a switch-over the approver consented to was a switch-over from the distribution active then, and another may now be active. Have the service console's action say so and offer to ask again from the distribution active now. The refusal's code, `distribution.ActivationRaced`, has no entry in the platform's error dictionary yet: add one with its runbook in the next release of `p.errors.platform.v1`, and have `ErrorDictionaryTests` read the store's refusal codes too.
+
+## I-240. On Flowable a value read as of the payment's date is read as of the timer
+
+**Issue.** R-09-135 reads a parameter declared `payment-date` as of the payment's acceptance. The Flowable binding computes a timer's due date outside the run's state and does not have the payment's id where it reads the value, so it reads every value as of the timer's start, as of the step.
+
+**Recommendation.** Give the binding's timer the payment's id (the root's `header.paymentId`, which the binding holds for the instance) and pass it with the read, with a test on the engine host's Flowable supervisor.
 
 ## I-245. A seed after a lock file the studio published
 

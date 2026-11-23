@@ -33,8 +33,8 @@ builder.Services.AddSingleton(new Projector(store, ops, views, clock));
 builder.Services.AddSingleton<IEngineSignals>(new OutboxSignals(store, clock));
 // Resend (R-05-58): the file-transfer port the runtime sends a kept file on again, a folder the scheme's gateway collects from.
 // With the File API (Operations:FileApi:Url), the resend goes through its outbox and is delivered on the bank's binding (R-09-84).
-var resendFolder = builder.Configuration["Operations:FileTransfer:Folder"] ?? builder.Configuration["TH_FILE_TRANSFER_DIR"];
-var resendPort = FileApiPort.FromConfiguration(k => builder.Configuration[k], "Operations") ?? (resendFolder is { Length: > 0 } ? new FolderFileTransfer(resendFolder) : null);
+// A folder of its own only on a development host that says so (TH_FILES_DIRECT=dev, R-09-138).
+var resendPort = FileApiPort.ForResend(k => builder.Configuration[k], "Operations");
 builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.GetRequiredService<IEngineSignals>(), clock,
     resendPort is not null ? new FileResend(store, resendPort, clock) : null));
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));

@@ -216,8 +216,10 @@ public sealed partial class FlowableBinding
         if (storeOpts is not null)
         {
             await using var db = StoreDbContext.Open(storeOpts);
-            await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+            // Only where the installation lets a host migrate: on a runtime its migrate step did, as the owner (R-09-141).
+            if (StoreMigration.Allowed()) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
             StoreSignals.Install(storeOpts, StepFacts.Install(storeOpts));
+            StoreValues.Install(storeOpts);
         }
         claim = storeOpts is null ? new MemoryClaimCheck() : new DurableClaimCheck(storeOpts);
         // The binding's state as facts in the store (Issue I-89): a binding that restarts with the same run key goes on from them.
@@ -457,14 +459,14 @@ public sealed partial class FlowableBinding
         var calendar = meta?.GetValueOrDefault("calendar");
         // R-05-47: an await's wait a bank may set names its calendar as a parameter too, the policy giving the default.
         if (meta?.GetValueOrDefault("calendarParameter") is string calendarParameter)
-            calendar = ParamValue(calendarParameter, calendar ?? "elapsed", Duration.Today(vCreated));
+            calendar = ParamValue(calendarParameter, calendar ?? "elapsed", Duration.Today(vCreated), vCreated);
         var business = calendar == "business";
         var written = def?.DurationOf(element);
         if (meta?.GetValueOrDefault("parameter") is string parameter)
         {
             var id = J.S(timer, "id") ?? "";
             if (!timerValue.TryGetValue(id, out var value))
-                timerValue[id] = value = ParamValue(parameter, meta.GetValueOrDefault("default") ?? written ?? "PT0S", Duration.Today(vCreated));
+                timerValue[id] = value = ParamValue(parameter, meta.GetValueOrDefault("default") ?? written ?? "PT0S", Duration.Today(vCreated), vCreated);
             lastTimerValue[$"{J.S(timer, "processInstanceId")}|{element}"] = value;
             written = value;
         }
@@ -473,8 +475,19 @@ public sealed partial class FlowableBinding
     }
 
     /// <summary>A parameter's value in force on a date (the tenant's configuration), else its default (R-01-17).</summary>
-    string ParamValue(string parameter, string dflt, string date)
+    string ParamValue(string parameter, string dflt, string date, long? at = null)
     {
+        // On a runtime's engine host, the bank's value in force now, from the store (R-09-135): the binding reads it once per timer
+        // (timerValue) and journals it, so a value a later configuration release puts in force reaches the later timers only.
+        if (dep.Live)
+        {
+            var r = Deployment.ValuesOp(new JsonObject
+            {
+                ["op"] = "values", ["tenant"] = J.S(dep.Config, "tenant"), ["at"] = at ?? Wall(),
+                ["parameters"] = new JsonArray(new JsonObject { ["parameter"] = parameter, ["lookupDate"] = dep.LookupDateOf(parameter) }),
+            });
+            return J.S(J.P(r, "values"), parameter) ?? dflt;
+        }
         var inForce = J.A(dep.Config, "values").OfType<JsonObject>()
             .Where(x => J.S(x, "parameter") == parameter && string.CompareOrdinal(J.S(x, "validFrom") ?? "", date) <= 0
                         && (J.S(x, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0))

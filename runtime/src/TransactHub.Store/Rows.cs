@@ -220,6 +220,11 @@ public sealed class ActivationRow : IInsertOnly
     public DateTimeOffset EffectiveFrom { get; set; }
     public string Actor { get; set; } = "";
     public DateTimeOffset RecordedAt { get; set; }
+    /// <summary>
+    /// The activation's number in its environment and scope, 1, 2, 3...: one past the last the activating writer read. The store holds
+    /// it unique, so two activations that read the same last one cannot both be recorded (R-09-137).
+    /// </summary>
+    public long Sequence { get; set; }
 }
 
 /// <summary>A published version of a rule, a list or a configuration value, effective-dated.</summary>

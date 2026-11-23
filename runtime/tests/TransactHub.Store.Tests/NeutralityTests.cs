@@ -51,6 +51,39 @@ public sealed class NeutralityTests
         Assert.True(problems.Count == 0, string.Join('\n', problems));
     }
 
+    /// <summary>
+    /// R-09-142: platform and engine host code names no scheme. A scheme's values (its channel, its awaited replies, its waits) are the
+    /// scheme pack's declared values or the bank's configuration; only the scheme's own projects (TransactHub.Activities.Wps, TransactHub.Activities.Wps.Store)
+    /// and the generated migrations may name one. The one place left is listed with its issue.
+    /// </summary>
+    [Fact]
+    public void No_platform_or_engine_host_code_names_a_scheme()
+    {
+        var root = Root();
+        var allowed = new Dictionary<string, string>
+        {
+            // The labour ministry's port is WPS's, but its adapters are still in the platform's ports library (Issue I-237).
+            ["src/TransactHub.Ports/EmployerRegister.cs"] = "public const string Port = \"uae.wps.port.labour-ministry.v1\";",
+        };
+        var scheme = new Regex(@"""[^""]*(\buae\.wps\b|\bWPS\b)[^""]*""");
+        var problems = new List<string>();
+        foreach (var dir in new[] { "src", "tools/TransactHub.EngineHost", "tools/TransactHub.Migrate", "../studio/engines/shared" })
+            foreach (var f in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(root, f).Replace('\\', '/');
+                if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("src/TransactHub.Activities.Wps") || rel.Contains(".Migrations.")) continue;
+                var lines = File.ReadAllLines(f);
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i].Trim();
+                    if (line.StartsWith("//") || !scheme.IsMatch(line)) continue;
+                    if (allowed.TryGetValue(rel, out var ok) && line == ok) continue;
+                    problems.Add($"{rel}:{i + 1}: {line}");
+                }
+            }
+        Assert.True(problems.Count == 0, string.Join('\n', problems));
+    }
+
     [Fact]
     public void Only_the_store_and_its_migrations_reference_a_provider_package()
     {

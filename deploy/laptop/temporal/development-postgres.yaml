@@ -1,0 +1,110 @@
+# enable-template
+# The laptop stack's Temporal on PostgreSQL 16 (deploy/laptop/compose.postgres.yaml): persistence and visibility on Temporal's own
+# postgres12 plugin. The same server binary as the SQL Server variant (runtime/temporal-mssql, which loads every upstream plugin);
+# after config/development-postgres12.yaml of go.temporal.io/server v1.32.2, set up as runtime/temporal-mssql/config/development-sqlserver.yaml.
+#
+# Set by environment (defaults in brackets):
+#   TEMPORAL_POSTGRES_ADDR       host:port of PostgreSQL [127.0.0.1:5432]
+#   TEMPORAL_POSTGRES_USER       [postgres]
+#   TEMPORAL_POSTGRES_PASSWORD   (no default; required)
+#   TEMPORAL_POSTGRES_ATTRS      extra connection parameters, for example "sslmode=disable" [none]
+#   TEMPORAL_DB / TEMPORAL_VISIBILITY_DB  database names [temporal / temporal_visibility]
+#   TEMPORAL_PORT_OFFSET, TEMPORAL_BIND_IP, TEMPORAL_DYNAMIC_CONFIG  as the SQL Server variant
+log:
+  stdout: true
+  level: {{ env "TEMPORAL_LOG_LEVEL" | default "info" }}
+
+persistence:
+  defaultStore: postgres-default
+  visibilityStore: postgres-visibility
+  numHistoryShards: 4
+  datastores:
+    postgres-default:
+      sql:
+        pluginName: "postgres12"
+        databaseName: "{{ env "TEMPORAL_DB" | default "temporal" }}"
+        connectAddr: "{{ env "TEMPORAL_POSTGRES_ADDR" | default "127.0.0.1:5432" }}"
+        connectProtocol: "tcp"
+        user: "{{ env "TEMPORAL_POSTGRES_USER" | default "postgres" }}"
+        password: "{{ env "TEMPORAL_POSTGRES_PASSWORD" }}"
+        {{- with env "TEMPORAL_POSTGRES_ATTRS" }}
+        connectAttributes:
+          {{- range splitList "&" . }}
+          {{ (splitList "=" .) | first }}: "{{ (splitList "=" .) | last }}"
+          {{- end }}
+        {{- end }}
+        maxConns: 20
+        maxIdleConns: 20
+        maxConnLifetime: "1h"
+    postgres-visibility:
+      sql:
+        pluginName: "postgres12"
+        databaseName: "{{ env "TEMPORAL_VISIBILITY_DB" | default "temporal_visibility" }}"
+        connectAddr: "{{ env "TEMPORAL_POSTGRES_ADDR" | default "127.0.0.1:5432" }}"
+        connectProtocol: "tcp"
+        user: "{{ env "TEMPORAL_POSTGRES_USER" | default "postgres" }}"
+        password: "{{ env "TEMPORAL_POSTGRES_PASSWORD" }}"
+        {{- with env "TEMPORAL_POSTGRES_ATTRS" }}
+        connectAttributes:
+          {{- range splitList "&" . }}
+          {{ (splitList "=" .) | first }}: "{{ (splitList "=" .) | last }}"
+          {{- end }}
+        {{- end }}
+        maxConns: 10
+        maxIdleConns: 10
+        maxConnLifetime: "1h"
+
+global:
+  membership:
+    maxJoinDuration: 30s
+    broadcastAddress: "127.0.0.1"
+  metrics:
+    prometheus:
+      framework: "tally"
+      timerType: "histogram"
+      listenAddress: "127.0.0.1:{{ add 8000 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}"
+
+services:
+  frontend:
+    rpc:
+      grpcPort: {{ add 7233 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      membershipPort: {{ add 6933 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      bindOnIP: "{{ env "TEMPORAL_BIND_IP" | default "127.0.0.1" }}"
+      httpPort: {{ add 7243 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+
+  matching:
+    rpc:
+      grpcPort: {{ add 7235 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      membershipPort: {{ add 6935 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      bindOnLocalHost: true
+
+  history:
+    rpc:
+      grpcPort: {{ add 7234 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      membershipPort: {{ add 6934 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      bindOnLocalHost: true
+
+  worker:
+    rpc:
+      grpcPort: {{ add 7239 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      membershipPort: {{ add 6939 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}
+      bindOnLocalHost: true
+
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: "active"
+  currentClusterName: "active"
+  clusterInformation:
+    active:
+      enabled: true
+      initialFailoverVersion: 1
+      rpcName: "frontend"
+      rpcAddress: "127.0.0.1:{{ add 7233 (env "TEMPORAL_PORT_OFFSET" | default "0" | atoi) }}"
+
+dcRedirectionPolicy:
+  policy: "noop"
+
+dynamicConfigClient:
+  filepath: "{{ env "TEMPORAL_DYNAMIC_CONFIG" | default "config/dynamicconfig/development-sqlserver.yaml" }}"
+  pollInterval: "10s"

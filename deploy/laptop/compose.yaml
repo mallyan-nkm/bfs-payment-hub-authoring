@@ -4,6 +4,8 @@
 #   docker compose -f deploy/laptop/compose.yaml --profile dtfx --profile elsa up -d    and an engine host supervisor per engine
 #   docker compose -f deploy/laptop/compose.yaml --profile flowable up -d              and the Flowable REST server with its supervisor
 #   docker compose -f deploy/laptop/compose.yaml --profile observability up -d         and the OpenTelemetry collector and Prometheus
+#   docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.postgres.yaml up -d --wait
+#                                                    the store, the read model and Temporal on PostgreSQL 16 instead (R-09-140)
 #
 # One runtime serves one bank (TH_LAPTOP_BANK, R-09-76); the studio is multi-tenant. Every secret comes from the environment
 # (a password or a client secret, required below with :?) or a file in a volume (the keys keys-init makes on first start); no
@@ -115,17 +117,12 @@ services:
       TH_OWNER_STORE: "Server=sqlserver,1433;Database=th_store;User Id=sa;Password=${TH_LAPTOP_SA_PASSWORD};TrustServerCertificate=true"
       TH_OWNER_OPS: "Server=sqlserver,1433;Database=th_ops;User Id=sa;Password=${TH_LAPTOP_SA_PASSWORD};TrustServerCertificate=true"
       Operations__Views: /opt/th/content-configurations/artefacts
-    healthcheck: { disable: true }
-
-  temporal-schema:
-    image: th-laptop-temporal:${TH_LAPTOP_TAG:-dev}
-    restart: "no"
-    command: ["schema"]
-    depends_on: { sqlserver: { condition: service_healthy } }
-    environment:
-      TEMPORAL_SQLSERVER_ADDR: sqlserver:1433
-      TEMPORAL_SQLSERVER_USER: sa
-      TEMPORAL_SQLSERVER_PASSWORD: ${TH_LAPTOP_SA_PASSWORD}
+      # Temporal's two databases, brought to the server's schema by the same step, as the owner, once (R-09-141).
+      TH_TEMPORAL_SCHEMA_PLUGIN: sqlserver
+      TH_TEMPORAL_SCHEMA_ADDR: sqlserver:1433
+      TH_TEMPORAL_SCHEMA_USER: sa
+      TH_TEMPORAL_SCHEMA_PASSWORD_REF: env:TH_OWNER_PASSWORD
+      TH_OWNER_PASSWORD: ${TH_LAPTOP_SA_PASSWORD}
     healthcheck: { disable: true }
 
   db-grants:
@@ -133,7 +130,6 @@ services:
     restart: "no"
     depends_on:
       db-init: { condition: service_completed_successfully }
-      temporal-schema: { condition: service_completed_successfully }
     environment:
       TH_SA: ${TH_LAPTOP_SA_PASSWORD}
       RUNTIME_PASSWORD: ${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD}
@@ -150,6 +146,7 @@ services:
     command: ["server"]
     depends_on: { db-grants: { condition: service_completed_successfully } }
     environment:
+      TEMPORAL_DB_PLUGIN: sqlserver
       TEMPORAL_SQLSERVER_ADDR: sqlserver:1433
       TEMPORAL_SQLSERVER_USER: th_temporal
       TEMPORAL_SQLSERVER_PASSWORD: ${TH_LAPTOP_TEMPORAL_DB_PASSWORD}
@@ -263,6 +260,8 @@ services:
       Service__FileApi__Url: http://file-api:8080
       Service__FileApi__Folder: centralBank/upload/cb/wps/sif
       Service__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
+      # The replies the gauge watches are the installation's to name, not the platform's (R-09-142, Issue I-235).
+      Service__Gauges__AwaitedReplies: '[{"scheme":"uae.wps","sent":"uae.wps.sif","replies":["uae.wps.ack"]}]'
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro
@@ -326,6 +325,8 @@ services:
       TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET}
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      # The migrate step migrated the store as its owner; the runtime's login may not change the schema (R-09-141).
+      Store__Migrate: "false"
       TH_HEALTH_URL: http://127.0.0.1:8080/testbench/api/health
       HOME: /var/lib/transacthub/work
     ports: ["127.0.0.1:${TH_LAPTOP_TESTBENCH_PORT:-8484}:8080"]
@@ -424,6 +425,8 @@ services:
       TH_ENVIRONMENT: test
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      # The migrate step migrated the store as its owner; the runtime's login may not change the schema (R-09-141).
+      Store__Migrate: "false"
       TH_TEMPORAL_ADDRESS: temporal:7233
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/temporal
       # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
@@ -446,6 +449,8 @@ services:
       TH_ENVIRONMENT: test
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      # The migrate step migrated the store as its owner; the runtime's login may not change the schema (R-09-141).
+      Store__Migrate: "false"
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/dtfx
       # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
       # without the token is refused, so the health check only connects.
@@ -467,6 +472,8 @@ services:
       TH_ENVIRONMENT: test
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      # The migrate step migrated the store as its owner; the runtime's login may not change the schema (R-09-141).
+      Store__Migrate: "false"
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/elsa
       # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
       # without the token is refused, so the health check only connects.
@@ -491,6 +498,8 @@ services:
       TH_ENVIRONMENT: test
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      # The migrate step migrated the store as its owner; the runtime's login may not change the schema (R-09-141).
+      Store__Migrate: "false"
       TH_FLOWABLE_URL: http://flowable:8080/flowable-rest
       TH_FLOWABLE_USER: th-laptop
       TH_FLOWABLE_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}

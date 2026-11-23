@@ -27,7 +27,9 @@ public sealed class GaugesTests(Databases dbs)
             await new PaymentStore(db).KeepMessage(WpsRun.Tenant, "uae.wps", Direction.Outward, "uae.wps.sif", "OUT.SIF", "SCR,synthetic\n"u8.ToArray(), bulk);
         await new Projector(store, ops, Repo.Views()) { GapTimeout = TimeSpan.Zero }.CatchUp();
         var later = DateTimeOffset.UtcNow.AddHours(25);
-        var g = new RuntimeGauges(store, ops, clock: new Clock(later));
+        // The awaited reply is the installation's setting (R-09-142): with none named, the gauge watches nothing.
+        Assert.Empty(RuntimeGauges.Default);
+        var g = new RuntimeGauges(store, ops, RuntimeGauges.FromSetting("""[{ "scheme": "uae.wps", "sent": "uae.wps.sif", "replies": ["uae.wps.ack"] }]"""), clock: new Clock(later));
         await g.Refresh();
         var (_, awaitAge, holdAge) = g.Current;
         var wait = Assert.Single(awaitAge);

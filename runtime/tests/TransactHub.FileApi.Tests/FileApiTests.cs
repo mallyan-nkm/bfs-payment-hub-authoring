@@ -426,10 +426,28 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             Assert.Equal("sent", await port.Put(Bank, "P-9", "m-1", "000000000009.SIF.gpg", bytes));
             Assert.Equal(bytes, await File.ReadAllBytesAsync(at));
             // A workflow's send on a host whose files go through the File API: the port's put is the File API's outbox.
-            var outbox = new OutboxFileTransfer(new SimulatedFileTransfer(), Bank, http.BaseAddress!, "env:TOKEN", new SecretResolver([new EnvSecretProvider(k => k == "TOKEN" ? token : null)]), http);
+            var tokens = new SecretResolver([new EnvSecretProvider(k => k == "TOKEN" ? token : null)]);
+            var outbox = new OutboxFileTransfer("directory", Bank, http.BaseAddress!, "env:TOKEN", tokens, http);
             using (FileTransferOwner.Use(new FileTransferOwner("P-10", "leg-10", "p", "p.post.file-bulk", "p.post.accounting.v1")))
                 await outbox.Put("coreBanking/in", "BULK-000001.csv", Encoding.UTF8.GetBytes("synthetic,bulk\n"));
             Assert.True(File.Exists(Path.Combine(root, "coreBanking", "in", "BULK-000001.csv")));
+            // A read, a listing and a removal go through the File API as well (R-09-138): the host opens no folder of the bank's.
+            Assert.Equal(Encoding.UTF8.GetBytes("synthetic,bulk\n"), await outbox.Get("coreBanking/in", "BULK-000001.csv"));
+            Assert.Null(await outbox.Get("coreBanking/in", "BULK-000404.csv"));
+            Assert.Equal(["BULK-000001.csv"], await outbox.List("coreBanking/in"));
+            Assert.True(await outbox.Delete("coreBanking/in", "BULK-000001.csv"));
+            Assert.False(File.Exists(Path.Combine(root, "coreBanking", "in", "BULK-000001.csv")));
+            Assert.Empty(await outbox.List("coreBanking/in"));
+            // A host's port is the File API by default: with no File API and no development setting, a folder is refused.
+            var folderBinding = new PortBinding(Bank, FileTransferAdapters.Port, "directory", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), new Dictionary<string, string> { ["rootRef"] = "env:TH_TEST_CB_ROOT" });
+            Assert.IsType<OutboxFileTransfer>(FileTransferAdapters.Create(folderBinding, tokens, k => k switch { "TH_FILE_API_URL" => http.BaseAddress!.ToString(), "TH_FILE_API_TOKEN_REF" => "env:TOKEN", _ => null }));
+            Assert.Contains("only through the File API", Assert.Throws<PortBindingException>(() => FileTransferAdapters.Create(folderBinding, tokens, _ => null)).Message);
+            Assert.IsType<DirectoryFileTransfer>(FileTransferAdapters.Create(folderBinding, tokens, k => k == FileTransferAdapters.DirectSetting ? "dev" : null));
+            // So is a console's resend: the File API's outbox, or a folder of its own only on a development host (R-09-138).
+            Assert.IsType<TransactHub.Operations.FileApiTransferPort>(TransactHub.Operations.FileApiPort.ForResend(k => k switch { "Operations:FileApi:Url" => "http://file-api.test/", "Operations:FileApi:Folder" => "centralBank/sif", "Operations:FileApi:TokenRef" => "env:TOKEN", "Operations:FileTransfer:Folder" => root, _ => null }, "Operations"));
+            Assert.Contains("only through the File API", Assert.Throws<InvalidOperationException>(() => TransactHub.Operations.FileApiPort.ForResend(k => k == "Operations:FileTransfer:Folder" ? root : null, "Operations")).Message);
+            Assert.IsType<TransactHub.Operations.FolderFileTransfer>(TransactHub.Operations.FileApiPort.ForResend(k => k switch { "Operations:FileTransfer:Folder" => root, "TH_FILES_DIRECT" => "dev", _ => null }, "Operations"));
+            Assert.Null(TransactHub.Operations.FileApiPort.ForResend(_ => null, "Operations"));
             await using var db = StoreDbContext.Open(o);
             Assert.Equal(("P-10", "leg-10", "p.post.file-bulk"), (await db.StoredFiles.AsNoTracking().SingleAsync(x => x.SubjectId == "P-10")) is var b10 ? (b10.SubjectId, b10.Leg, b10.Kind) : default);
             var f = Assert.Single(await db.StoredFiles.AsNoTracking().Where(x => x.SubjectId == "P-9").ToListAsync());

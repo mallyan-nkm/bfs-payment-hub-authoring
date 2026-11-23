@@ -113,6 +113,8 @@ public sealed class Host
             case "fork": await Store.Fork(J.S(a, "from")!, J.S(a, "to")!); return new JsonObject { ["ok"] = true };
             case "copy": await Store.Copy(J.S(a, "from")!, J.S(a, "to")!, J.Strings(J.P(a, "paths"))); return new JsonObject { ["ok"] = true };
             case "count": return new JsonObject { ["count"] = Store.Count(J.S(a, "ref")!, J.S(a, "path")!) };
+            // The bank's values as of a step, from the runtime's store, on an engine host that reads them live (R-09-135).
+            case "values": return Deployment.ValuesOp(a);
             case "diff":
                 var x = Store.Full(J.P(a, "aState"), J.S(a, "aRef")!);
                 var y = Store.Full(J.P(a, "bState"), J.S(a, "bRef")!);

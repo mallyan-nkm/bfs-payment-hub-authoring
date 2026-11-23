@@ -130,6 +130,11 @@ COPY --from=dotnet-bits /out/opt/th/ /opt/th/
 COPY --chown=root:root deploy/laptop/bin/ /opt/th/deploy/laptop/bin/
 COPY --chown=root:root deploy/laptop/identity/ /opt/th/deploy/laptop/identity/
 COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/
+# The migrate step brings Temporal's schemas up to the server's version as the owner, once, at the stack's start (R-09-141): the
+# schema tool and its files, on SQL Server (runtime/temporal-mssql) and on PostgreSQL (Temporal's own, deploy/laptop/temporal/schema).
+COPY --from=temporal-bits /out/temporal-sql-tool /opt/th/temporal/bin/
+COPY --chown=root:root runtime/temporal-mssql/schema/ /opt/th/temporal/schema/
+COPY --chown=root:root deploy/laptop/temporal/schema/ /opt/th/temporal/schema/
 ENV TH_TESTBENCH_REPO=/opt/th TH_TESTBENCH_PREBUILT=1 ASPNETCORE_URLS=http://0.0.0.0:8080
 USER app
 EXPOSE 8080

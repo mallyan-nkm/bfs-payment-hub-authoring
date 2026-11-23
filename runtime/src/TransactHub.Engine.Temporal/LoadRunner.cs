@@ -50,7 +50,8 @@ public sealed class LoadRunner(JsonObject input)
         if (storeOpts is not null)
         {
             await using var db = StoreDbContext.Open(storeOpts);
-            await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
+            // Only where the installation lets a host migrate: on a runtime its migrate step did, as the owner (R-09-141).
+            if (StoreMigration.Allowed()) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database);
         }
         var host = new Host(party, dep, durable);
         var queues = (JsonObject)J.P(input, "queues")!;
