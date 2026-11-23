@@ -158,7 +158,8 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     return;
   }
   if (cmd === 'deploy') {
-    // studio deploy <package.zip|dir> --workflow <name> [--inbound <file>] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]
+    // studio deploy <package.zip|dir> --workflow <name> [--inbound <file>] [--context <context.json>] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--bench port=simulator:scenario ...]
+    // --context: the canonical context the intake starts from (an order a channel has already put in the canonical model).
     const { deploy } = await import('./deploy/deploy.js');
     const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
     need(args[0] && !args[0].startsWith('--'), 'deploy needs a package (a .zip or a directory)');
@@ -185,6 +186,7 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
       studioRoot: env.studioRoot,
       environment: { evaluationDate: date, tenant, bench, ...(values.length ? { values } : {}), configurationSet: opt('config') ? (await import('./core/yaml.js')).parseYaml((await import('node:fs')).readFileSync(opt('config')!, 'utf8')) : undefined },
       inbound: opt('inbound') ? { payload: (await import('node:fs')).readFileSync(opt('inbound')!, 'utf8'), ...(opt('message') ? { message: opt('message') } : {}) } : undefined,
+      ...(opt('context') ? { context: JSON.parse((await import('node:fs')).readFileSync(opt('context')!, 'utf8')) } : {}),
     });
     for (const l of r.log) console.log(l);
     for (const w of r.workers) console.log(`worker ${w.queue} (pid ${w.pid}) served ${JSON.stringify(w.served)}, refused ${w.refused}${w.valuesRead ? `, values read from the runtime ${w.valuesRead} time(s)` : ''}`);

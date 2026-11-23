@@ -218,6 +218,13 @@ export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfi
         break;
       case 'handler':
       case 'end-to-end':
+        // An order already past the front door (its context given, no inbound file): the platform workflow runs it, and the
+        // scheme named by its header fills its slots, as the front door would have chosen them.
+        if (!cfg.inbound && test.given?.context) {
+          result = await runWorkflow(cfg, test.target, ctx);
+          root = result.run.allInstances().find((i) => i.doc.name === test.target) ?? result.root;
+          break;
+        }
         result = await runInbound(cfg);
         // The target may be the platform workflow, a handler, or a leg the platform ran in its slot (a child instance).
         root = [...result.run.allInstances(), ...result.run.handlerRuns].find((i) => i.doc.name === test.target) ?? result.run.instances.find((i) => i.kind === 'platform') ?? result.root;

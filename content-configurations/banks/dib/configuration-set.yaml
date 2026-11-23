@@ -2,12 +2,12 @@
 # sets a parameter the factory declares, inside its bounds, from its validFrom. README.md gives the source of each.
 kind: configuration-set
 tenant: dib
-release: 1.5.0
+release: 1.6.0
 title: Bank configuration for WPS
 accepts:
-  - { scope: p, release: 1.4.0 }
-  - { scope: uae.p, release: 1.4.0 }
-  - { scope: uae.wps, release: 1.4.0 }
+  - { scope: p, release: 1.5.0 }
+  - { scope: uae.p, release: 1.5.0 }
+  - { scope: uae.wps, release: 1.5.0 }
 values:
   # The rails the bank is licensed for: WPS only (the source's LICENSE_RAILS=wps).
   - parameter: p.table.rail-choice.v1#enabledRails

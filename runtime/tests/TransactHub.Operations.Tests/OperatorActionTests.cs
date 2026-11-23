@@ -130,6 +130,54 @@ public sealed class OperatorActionTests(Databases dbs)
         var retry = await actions.Request(Operator("op-1", WpsRun.Tenant), id, "retry", "the gateway was down");
         Assert.Equal("done", (string?)retry["status"]);
     }
+
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_holds_decision_on_an_engine_is_its_steps_fact_and_an_action_names_the_workflows_it_applies_to(StoreProvider p)
+    {
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, hold: false);
+        var root = $"order-{Guid.NewGuid():N}"[..20];
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append($"{root}#ctx", "payload", new NewFact("payload", "accepted", new JsonObject { ["bulk"] = id }, Actor: "claim-check"));
+        // A refund order's steps name their platform workflow (R-05-60); its approval hold is decided on the engine (R-05-59).
+        var steps = new TransactHub.Engines.Durable.StepFacts(store);
+        var before = TransactHub.Engines.Interp.Decided;
+        TransactHub.Engines.Durable.StoreSignals.Install(store, steps);
+        try
+        {
+            var header = new JsonObject { ["scheme"] = "uae.wps", ["direction"] = "inward", ["kind"] = "refund", ["originalPaymentId"] = "000000000000000000000001" };
+            await steps.Record(new JsonObject { ["instance"] = root, ["workflow"] = "p.wf.refund.v1", ["step"] = "original", ["activity"] = "p.enrich.payment-record.v1", ["release"] = "1.0.0", ["call"] = 1, ["attempt"] = 1, ["ctx"] = new JsonObject { ["header"] = header.DeepClone() } },
+                new JsonObject { ["kind"] = "result", ["outcome"] = "found" });
+            var decision = new JsonObject { ["outcome"] = "approved", ["result"] = "approved", ["status"] = "approved", ["by"] = "operator:op-1", ["at"] = "2026-11-17T06:05:00.000Z" };
+            var req = new JsonObject { ["instance"] = root, ["workflow"] = "p.wf.refund.v1", ["step"] = "approval", ["activity"] = "p.hold.approval.v1", ["release"] = "1.0.0", ["call"] = 1, ["attempt"] = 0, ["ctx"] = new JsonObject { ["header"] = header.DeepClone() } };
+            var res = new JsonObject { ["kind"] = "result", ["outcome"] = "approved", ["writes"] = new JsonObject { ["facts.approval"] = decision } };
+            TransactHub.Engines.Interp.Decided!(req, res);
+            TransactHub.Engines.Interp.Decided!((JsonObject)req.DeepClone(), (JsonObject)res.DeepClone()); // a replay takes it again: one fact
+        }
+        finally { TransactHub.Engines.Interp.Decided = before; }
+        await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        await using (var o = OpsDbContext.Open(ops))
+        {
+            var f = JsonNode.Parse((await o.Subjects.AsNoTracking().SingleAsync(x => x.Id == id)).FieldsJson)!;
+            Assert.Equal("approved", (string?)f["approval"]);
+            Assert.Equal("operator:op-1", (string?)f["approvalBy"]);
+            Assert.Equal("2026-11-17T06:05:00.000Z", (string?)f["approvalAt"]);
+        }
+        await using (var db = StoreDbContext.Open(store))
+            Assert.Single(await db.Facts.AsNoTracking().Where(x => x.SubjectId == id && x.Kind == "step" && x.Code == "approved").ToListAsync());
+        // re-screen applies to the workflows that screen: not to a refund order, whose root steps name p.wf.refund.v1.
+        var actions = new OperatorActions(store, ops, Views, new OutboxSignals(store));
+        var offered = (await actions.Offers(id)).Select(x => x.Action).ToList();
+        Assert.DoesNotContain("re-screen", offered);
+        Assert.Contains("cancel", offered);
+        Assert.Equal(409, (await Assert.ThrowsAsync<ActionRefused>(() => actions.Request(Operator("op-1", WpsRun.Tenant), id, "re-screen", "lists updated"))).Status);
+        // A payment of p.wf.corporate.v1 is offered it.
+        var other = await WpsRun.Seed(store, fileId: "0000001234567261117083001", hold: false);
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append(other, "bulk", new NewFact("step", "pass", new JsonObject { ["instance"] = "corp-1", ["workflow"] = "p.wf.corporate.v1", ["step"] = "validate" }, Actor: "engine"));
+        await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        Assert.Contains(await actions.Offers(other), x => x.Action == "re-screen");
+    }
 }
 
 /// <summary>A clock a test moves.</summary>

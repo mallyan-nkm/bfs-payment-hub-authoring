@@ -1,6 +1,6 @@
 kind: scheme
 scope: uae.wps
-release: 1.2.0
+release: 1.3.0
 title: UAE Wages Protection System
 wire: file
 messages:
@@ -72,15 +72,18 @@ messages:
     confirmed: true
     disposition:
       sentBy: uae.wps.exchange.send-refund-request.v1
+  # Release 1.3.0 (R-12-24): the employer's refund order is an outward refund order on p.wf.refund-out.v1; WPS is its leg
+  # (uae.wps.wf.refund-out.v2) and the platform posts the employer's credit. The 1.2.0 route (a request on p.wf.request.v1 whose
+  # leg posted) stays for the requests started on it.
   - id: uae.wps.refund-order
     title: Refund order from the employer
     direction: in
     confirmed: false
     disposition:
       start:
-        kind: request
+        kind: refund
         direction: outward
-        leg: uae.wps.wf.refund-out.v1
+        leg: uae.wps.wf.refund-out.v2
         intakeMap: uae.wps.map.refund-order-in.v1
   - id: uae.wps.rri
     title: Refund request instruction to the agent, a request to refund lines of an earlier payment file (camt.056)
@@ -125,7 +128,7 @@ messages:
 legs:
   - uae.wps.wf.salary-file-out.v1
   - uae.wps.wf.agent-payment-in.v2
-  - uae.wps.wf.refund-out.v1
+  - uae.wps.wf.refund-out.v2
   - uae.wps.wf.return-in.v1
   - uae.wps.wf.inward-refuse.v1
   - uae.wps.wf.refund-request-in.v1
@@ -139,4 +142,4 @@ provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: File types come from a 2018 guide. Release 1.2.0 builds the agent's refund cycle (RRI, DCR, RRR) from the TransactHub source; the refund request instruction's message id replaces the planned uae.wps.rfr-in. No message is planned now; every scheme fact is still unconfirmed.
+  note: File types come from a 2018 guide. Release 1.2.0 builds the agent's refund cycle (RRI, DCR, RRR) from the TransactHub source; the refund request instruction's message id replaces the planned uae.wps.rfr-in. No message is planned now; every scheme fact is still unconfirmed. Release 1.3.0 moves the employer's refund order onto the platform's outward refund order (p.wf.refund-out.v1).

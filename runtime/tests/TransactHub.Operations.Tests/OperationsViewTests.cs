@@ -31,7 +31,7 @@ public sealed class OperationsViewTests
     {
         Assert.Equal(["p.view.operations.v1", "uae.wps.view.operations.v1"], Views.All.Select(v => v.Name));
         var wps = Views.SchemeView("uae.wps")!;
-        Assert.Equal(["uae.wps.wf.salary-file-out.v1", "uae.wps.wf.agent-payment-in.v2", "uae.wps.wf.return-in.v1", "uae.wps.wf.refund-out.v1", "uae.wps.wf.refund-request-in.v1", "uae.wps.wf.refund-request-refuse.v1", "uae.wps.wf.inward-refuse.v1"],
+        Assert.Equal(["uae.wps.wf.salary-file-out.v1", "uae.wps.wf.agent-payment-in.v2", "uae.wps.wf.return-in.v1", "uae.wps.wf.refund-out.v2", "uae.wps.wf.refund-request-in.v1", "uae.wps.wf.refund-request-refuse.v1", "uae.wps.wf.inward-refuse.v1"],
             wps.Legs.Select(l => (string)l["leg"]!));
         foreach (var v in Views.All)
             foreach (var f in Fields(v))

@@ -13,6 +13,12 @@ import { client, startServer, STUDIO, type Server } from './server.js';
 // posts; the WPS leg returns the funds (DCR) and answers (RRR). Each engine gives the trace the studio's interpreter gives. Then the
 // runtime's operations API projects the store into its read model, and the order is there through the operations views: the
 // platform view's FX and charges, the scheme view's refund leg, the lines with their own FX and charge. No refund screen.
+//
+// Release 1.1.0 of the order posts with p.post.accounting.v2 (R-12-23, Issue I-136): each line's converted amount, then its charge
+// and its VAT as entries of their own, exactly; and the approval hold's decision is the hold step's fact on the engine (R-05-59),
+// so the platform view shows the approval again. The employer's side is an outward refund order on p.wf.refund-out.v1 (R-12-24):
+// the WPS leg asks for the refund and reads its settlement, the platform then credits the employer with the charge and the VAT
+// as entries of their own.
 
 const TENANT = 'example-bank';
 const PLATFORM = 'p.wf.refund.v1';
@@ -29,6 +35,17 @@ const TEST_SERVER = path.join(TOOLS, 'temporal-test-server');
 const ENGINES = ['temporal', 'dtfx'] as const;
 const PASSWORD = 'Th-Test-Only-1234';
 const RUN_MS = 900000;
+// The employer's refund order as its channel gives it, already canonical: synthetic ids and account only.
+const OUTWARD = 'p.wf.refund-out.v1';
+const ORDER_OUT = {
+  header: { conversation: 'conv-1', paymentId: 'R-2', scheme: 'uae.wps', fileId: 'RFR-0000000002', endToEndId: 'RFR-0000000002', originalPaymentId: '000000000000000000000001' },
+  payment: { creditorAccount: { iban: 'AE070331234567890123456' }, instructedAmount: { value: 600, currency: 'AED' } },
+  batch: { id: 'RFR-0000000002', numberOfTransactions: 1, controlSum: 600, currency: 'AED' },
+};
+const BENCH_OUT = [
+  { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'refund-settled' },
+  ...['core-banking', 'payment-record', 'channel', 'facts-out', 'encryption'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
+];
 
 let server: Server;
 let api: ReturnType<typeof client>;
@@ -63,13 +80,16 @@ afterAll(() => {
 
 const connection = (db: string) => `Host=127.0.0.1;Port=${pgPort};Username=postgres;Password=${PASSWORD};Database=${db}`;
 
-async function deploy(engine: string, env: Record<string, string>) {
-  const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
+async function deploy(engine: string, env: Record<string, string>, order: { workflow: string; message: string; inbound: string; context?: any; bench: typeof BENCH } =
+  { workflow: PLATFORM, message: MESSAGE, inbound: path.join(STUDIO, 'fixtures', SAMPLE), bench: BENCH }) {
+  const z = await api.get(`/api/export/download?workflows=${order.workflow}&target=${engine}&withSimulators=true&tenant=${TENANT}`);
   expect(z.status).toBe(200);
-  const file = path.join(work, `refund-${engine}.zip`);
+  const file = path.join(work, `refund-${engine}-${order.workflow}.zip`);
   fs.writeFileSync(file, z.data);
-  const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', MESSAGE, '--inbound', path.join(STUDIO, 'fixtures', SAMPLE), '--tenant', TENANT,
-    ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
+  const context = order.context ? path.join(work, `context-${engine}.json`) : undefined;
+  if (context) fs.writeFileSync(context, JSON.stringify(order.context));
+  const args = ['src/cli.ts', 'deploy', file, '--workflow', order.workflow, '--message', order.message, '--inbound', order.inbound, '--tenant', TENANT,
+    ...(context ? ['--context', context] : []), ...order.bench.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
   const out = await new Promise<string>((resolve) => {
     let text = '';
     const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...env } });
@@ -141,9 +161,19 @@ describe('a refund order with WPS as its leg, on Temporal and DTFx, seen in the 
         expect(row, ops.log().slice(-2000)).toBeDefined();
         const detail = await ops.get(`/payments/${encodeURIComponent(row.id)}`);
         const f = detail.payment.fields;
-        // The platform view: the order, its earlier payment, its FX and its charges (p.view.operations.v1 1.2.0).
+        // The platform view: the order, its earlier payment, its FX, its charges and its approval (p.view.operations.v1 1.3.0): the
+        // hold's decision is the approval step's fact on the engine (R-05-59), with when it was taken.
         expect(f).toMatchObject({ originalPaymentId: '000000000000000000000001', originalFound: 'found', fx: 'converted', fxCurrency: 'AED',
-          refundCharges: 'priced', reservation: 'reserved', posting: 'posted' });
+          refundCharges: 'priced', approval: 'approved', reservation: 'reserved', posting: 'posted' });
+        expect(f.approvalAt).toMatch(/^2026-11-17T/);
+        // The posting reads FX and charges (p.post.accounting.v2, R-12-23): 600.00 from the lines' accounts, 10.60 charged and
+        // 0.54 VAT, 611.14 in all; each line's amount, charge and VAT an entry of its own, exactly.
+        expect(Number(f.postingTotal)).toBe(611.14);
+        expect(Number(f.chargeAmount)).toBe(10.6);
+        expect(Number(f.vatAmount)).toBe(0.54);
+        expect((f.postingLegs as any[]).map((e) => `${e.creditDebitIndicator} ${Number(e.amount)} ${e.transactionCode}`)).toEqual([
+          'DBIT 100 PAY', 'CRDT 100 PAY', 'DBIT 5.1 CHG', 'CRDT 5.1 CHG', 'DBIT 0.26 VAT', 'CRDT 0.26 VAT',
+          'DBIT 500 PAY', 'CRDT 500 PAY', 'DBIT 5.5 CHG', 'CRDT 5.5 CHG', 'DBIT 0.28 VAT', 'CRDT 0.28 VAT']);
         expect(Number(f.fxAmount)).toBe(600);
         expect(Number(f.refundCharge)).toBe(10.6);
         expect(Number(f.refundChargeTotal)).toBe(11.14);
@@ -154,6 +184,39 @@ describe('a refund order with WPS as its leg, on Temporal and DTFx, seen in the 
         // Each line carries its own FX and charge.
         expect(detail.lines.map((l: any) => Number(l.fields.refundCharge))).toEqual([5.1, 5.5]);
         expect(detail.lines.map((l: any) => l.fields.refundReason)).toEqual(['005', '003']);
+      } finally {
+        ops.stop();
+      }
+    }, RUN_MS);
+
+    it(`${engine}: the employer's refund is an outward refund order; WPS asks and settles, the platform credits the employer`, async () => {
+      const db = `th_refund_out_${engine}`;
+      const d = await deploy(engine, { TH_STORE_PROVIDER: 'PostgreSql', TH_STORE_CONNECTION: connection(db) },
+        { workflow: OUTWARD, message: 'uae.wps.refund-order', inbound: path.join(STUDIO, 'fixtures', SAMPLE), context: ORDER_OUT, bench: BENCH_OUT });
+      expect(d.outcome, d.out.slice(-3000)).toBe('settled');
+      expect(d.trace).toEqual(['original:found', 'leg:settled', 'fx:converted', 'charges:priced', 'post:posted', 'verify:verified', 'finally:notify', 'finally:publish', 'end:settled']);
+      expect(d.out).toContain('front door: workflow-select chose p.wf.refund-out.v1 for refund outward');
+      expect(d.out).toContain('front door: uae.wps.wf.refund-out.v2 fills scheme-leg');
+      const ops = await opsApi(db);
+      try {
+        let row: any;
+        for (let i = 0; i < 120 && !row?.legs?.length; i++) {
+          const list = await ops.get(`/payments?tenant=${TENANT}&scheme=uae.wps`);
+          row = (list.rows ?? [])[0];
+          if (!row?.legs?.length) await new Promise((r) => setTimeout(r, 500));
+        }
+        expect(row, ops.log().slice(-2000)).toBeDefined();
+        const detail = await ops.get(`/payments/${encodeURIComponent(row.id)}`);
+        const f = detail.payment.fields;
+        // The platform's: the credit to the employer, 600.00, less the charge 5.60 and its VAT 0.28, each an entry of its own.
+        expect(f).toMatchObject({ originalFound: 'found', fx: 'converted', refundCharges: 'priced', posting: 'posted', postingVerified: 'verified' });
+        expect(Number(f.postingTotal)).toBe(594.12);
+        expect((f.postingLegs as any[]).map((e) => `${e.creditDebitIndicator} ${Number(e.amount)} ${e.transactionCode}`)).toEqual([
+          'CRDT 600 PAY', 'DBIT 600 PAY', 'DBIT 5.6 CHG', 'CRDT 5.6 CHG', 'DBIT 0.28 VAT', 'CRDT 0.28 VAT']);
+        // The scheme's: the RFR and its settlement, and nothing posted in the leg (uae.wps.view.operations.v1 1.4.0).
+        const leg = detail.payment.legs.find((l: any) => l.leg === 'uae.wps.wf.refund-out.v2');
+        expect(leg, JSON.stringify(detail.payment.legs)).toBeDefined();
+        expect(leg.fields).toMatchObject({ rfrStatus: 'ack', settlement: 'settled' });
       } finally {
         ops.stop();
       }

@@ -1,6 +1,6 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.3.0
+release: 1.4.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
@@ -10,6 +10,8 @@ description: >-
   fields the owner's decision of 2026-11-22 gave an ISO 20022 home: the initiator, the channel, the labour ministry status,
   the allowances, the account type and bank name of a line, the encryption of the SIF and the NAK's per-line errors. Release
   1.3.0 adds the agent's refund legs of a refund order (RRI, DCR, RRR), which the platform's view shows with its FX and charges.
+  Release 1.4.0 shows the employer's refund request as the leg of an outward refund order (uae.wps.wf.refund-out.v2): the RFR and
+  the RSU are the leg's, the credit to the employer is the platform view's posting (R-12-24).
 scheme: uae.wps
 subject:
   title: WPS file
@@ -166,14 +168,16 @@ legs:
       - { id: employerCredit, label: Employer credited, source: "step:credit-employer.outcome", format: status, oldScreen: "WPS dashboard, RTC, Return Transaction Credit" }
       - { id: creditedAt, label: Credited at, source: "step:credit-employer.at", format: datetime }
     columns: [employerCredit]
-  - leg: uae.wps.wf.refund-out.v1
+  - leg: uae.wps.wf.refund-out.v2
     title: Refund request (RFR)
-    selectBy: { direction: outward, steps: [request] }
+    selectBy: { direction: outward, kind: refund, steps: [request] }
     fields:
       - { id: rfrStatus, label: RFR ACK or NAK, source: "step:request.read-ack.outcome", format: status, oldScreen: "WPS dashboard, RFR, Refund Request" }
+      - { id: rfrSentAt, label: RFR sent at, source: "step:request.send.at", format: datetime }
       - { id: settlement, label: Refund settlement (RSU), source: "step:request.read-settlement.outcome", format: status, oldScreen: "WPS dashboard, RSU, Return Status Update" }
-      - { id: employerCredit, label: Employer credited, source: "step:credit-employer.outcome", format: status }
     columns: [rfrStatus, settlement]
+    actions:
+      - { action: resend, label: Send the file again, role: Operator, secondApprover: Supervisor, remarks: required }
   # The agent's legs of a refund order (R-12-22): the order, its FX, charges, block, approval and posting are the platform's view.
   - leg: uae.wps.wf.refund-request-in.v1
     title: Refund request answered (DCR and RRR)

@@ -2,14 +2,17 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.agent-payment-in.v2
-release: 2.0.0
+release: 2.1.0
 dsl: 1.0.0
 title: WPS payment file, bank as the agent
 description: Waits for the supplementary file that pairs with the payment file, confirms receipt, waits for core
   banking's posting window, credits each employee and reports disbursement. Reports are exchanges that move no money.
   A credit whose outcome is unknown is asked about before the returns are decided. Credits that were refused go
   back to WPS in one returns file, after the disbursement file's ACK or its NAK; once WPS accepts it, the return
-  is recorded. A partial return ends settled, a whole-file return ends returned.
+  is recorded. A partial return ends settled, a whole-file return ends returned. Release 2.1.0 lets the steps that
+  may run again park for a business day when they fail, for an operator's retry, instead of ending the file (R-12-26,
+  Issue I-125). They are the file checks, the receipt and disbursement files, the returns decision and file, and
+  the return's posting.
 direction: inward
 implements:
   slot: scheme-leg
@@ -52,11 +55,15 @@ do:
         end: pending
   - id: file-checks
     call: uae.wps.validate.payment-file.v1
+    policy:
+      park: P1D
     handle:
       reject:
         end: pending
   - id: render-receipt
     call: uae.wps.map.prc-out.v2
+    policy:
+      park: P1D
     handle:
       unmappable:
         end: pending
@@ -144,6 +151,8 @@ do:
                     continue: true
   - id: render-disbursement
     call: uae.wps.map.dif-out.v2
+    policy:
+      park: P1D
     handle:
       unmappable:
         end: pending
@@ -186,6 +195,8 @@ do:
         end: pending
   - id: returns
     call: uae.wps.decide.returns.v2
+    policy:
+      park: P1D
     handle:
       unverified:
         - id: unverified-operations
@@ -199,6 +210,8 @@ do:
       returns:
         - id: render-returns
           call: uae.wps.map.rfa-out.v1
+          policy:
+            park: P1D
           handle:
             unmappable:
               end: pending
@@ -254,6 +267,8 @@ do:
               end: pending
         - id: record-return
           call: uae.wps.post.return.v1
+          policy:
+            park: P1D
           handle:
             rejected:
               - id: return-posting-operations
@@ -299,5 +314,5 @@ provenance:
     (D10). The supplementary file is held by reference; its map and the wait are to be confirmed.
 form: expanded
 expandedFrom:
-  release: 2.0.0
-  hash: sha256:4868c93f280110f4f74ab8bbf56998a0dc144edfef52832ed257b205d65c2f06
+  release: 2.1.0
+  hash: sha256:e08a84d4b165f7fe3e4159fc2dd54a1dc2f52e31d2d155f3c3632c1c4051f999

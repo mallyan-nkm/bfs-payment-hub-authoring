@@ -33,6 +33,13 @@ public sealed class StoreSignals(StoreOptions store, TimeProvider? clock = null)
             if (!seen.TryAdd($"{instance}|{step}|{call}", true)) return;
             facts.Record(new JsonObject { ["instance"] = instance, ["step"] = step, ["call"] = call }, new JsonObject { ["kind"] = "stuck" }).GetAwaiter().GetResult();
         };
+        // A hold's decision is the hold step's fact, as a worker's answer is any other step's (R-05-59): its outcome, who and when.
+        // Once per instance, step and call: an engine that replays its history takes the decision again on replay.
+        Interp.Decided = (req, res) =>
+        {
+            if (!seen.TryAdd($"decided|{J.S(req, "instance")}|{J.S(req, "step")}|{J.Num(req, "call")}", true)) return;
+            facts.Record(req, res).GetAwaiter().GetResult();
+        };
         return s;
     }
 

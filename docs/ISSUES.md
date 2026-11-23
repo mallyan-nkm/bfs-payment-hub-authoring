@@ -1352,7 +1352,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Decide per step of the factory's flows which may park (the WPS submit and the posting, with a park of a business day), and release them with `park` (a minor).
 
-**What is built.** The refund order's posting parks for a business day (`p.wf.refund.v1` step `post`, `policy.park: P1D`, I-133), and the platform view offers `retry` for it. The WPS steps of the payment flows do not park yet: each is a published release, so a park there is a new release of the leg, still to decide. Give the Flowable generator a variable maximum of attempts for the parked loop, so that `retry` is one attempt there too. If a bank asks to re-drive an instance that has ended, add Temporal's reset to the failed activity's workflow task as a host operation behind the same action, with a conformance scenario on the time-skipping server.
+**What is built.** The refund order's posting parks for a business day (`p.wf.refund.v1` step `post`, `policy.park: P1D`, I-133), and the platform view offers `retry` for it. The WPS steps of the payment flows do not park yet: each is a published release, so a park there is a new release of the leg, still to decide. The WPS payment flows park too (R-12-26): `uae.wps.wf.salary-file-out.v1` 1.2.0 (the business date, the employer's status, the file checks, the render), `uae.wps.wf.agent-payment-in.v2` 2.1.0 (the file checks, the receipt and disbursement files, the returns decision and file, the return's posting) and `uae.wps.wf.return-in.v1` 1.2.0 (the employer's credit), each for a business day (`studio/test/wps-park.test.ts`). Not parked: a composite step (the submit, the confirmation, the reports), whose failure is inside its subflow, and the item-level credit of a payment file, whose failure the leg already reports and returns; parking either is a decision for the owner (I-140). Give the Flowable generator a variable maximum of attempts for the parked loop, so that `retry` is one attempt there too. If a bank asks to re-drive an instance that has ended, add Temporal's reset to the failed activity's workflow task as a host operation behind the same action, with a conformance scenario on the time-skipping server.
 
 ## I-126. Codes the dictionary does not have yet, and the rest of I-103
 
@@ -1412,7 +1412,7 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 - A second scheme fills the same slots with no change to the platform workflow (`studio/test/refund-order.test.ts`).
 - Tests: P-FX-001 to P-FX-003, P-CHG-001, P-CHG-002, WPS-RRI-001 to WPS-RRI-007; `studio/test/refund-order.test.ts`; `studio/test/blackbox/e2e-refund-order.test.ts` (Temporal and DTFx, on the store, read back from the operations read model).
 
-**What remains.** I-134 (what the source and the scheme leave open), I-135 (the one platform view), I-136 (what core banking posts, and the runtime's code-behinds). The employer's side (`uae.wps.wf.refund-out.v1` on `p.wf.request.v1`, which still posts in its leg) is not moved onto `p.wf.refund.v1`: it needs the refund order layout (C25-S5) and a new major of the leg.
+**What remains.** I-134 (what the source and the scheme leave open). I-135 and I-136 are done. The employer's side is moved onto the platform: an outward refund order on `p.wf.refund-out.v1`, WPS its leg `uae.wps.wf.refund-out.v2` (R-12-24, I-139); its intake still has no layout of its own (C25-S5, I-140).
 
 ## I-134. What the source and the scheme leave open in the refund cycle
 
@@ -1433,6 +1433,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Let an action name the platform workflows it applies to (`when: { workflow: [...] }`, schema `operations-view`), checked by L38, and the console offer it only on those; then drop `re-screen` from `p.wf.refund.v1` in its next release.
 
+**Done (22 November 2026).** An action may name the platform workflows it applies to, `when.workflow` (schema `operations-view`, R-05-60): lint L38 holds each named workflow to the view's own and a signal action to the workflows named (mutations M67, M68); the runtime offers it only on a payment whose root steps name one of them (`OperatorActions.Offers`; each step fact now carries its `workflow`, from every engine). `p.view.operations.v1` 1.3.0 offers `re-screen` on `p.wf.corporate.v1` and `p.wf.inward.v1` only, and `p.wf.refund.v1` 1.1.0 no longer declares it. Evidence: `OperatorActionTests` (both databases).
+
 ## I-136. What core banking posts for a refund order, and the code-behinds the runtime lacks
 
 **Issue.** The charges and the converted amounts are facts of the order (`facts.charges`, `facts.fx`) that the operations console shows, but `p.post.accounting.v1` does not read them: its contract reads the payment, the route and the reservation, and on the runtime its native code-behind prices charges from its own `chargeSlabs`. A bank that sets both would price twice. FX and charges have script-behinds only, so on the runtime's native host they run in the studio's script sandbox through the deploy runner's workers, not as native code-behinds (R-08-16).
@@ -1440,6 +1442,30 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 On the engines, a hold's decision comes back to the instance as a message, not as a worker's answer, so the approval step leaves no step fact with its final outcome: the operations console shows a refund order's approval only through the hold facts the runtime's own operations queue writes (`StoreHold`), and none when a simulator answers the hold, as in the end-to-end test. The step facts also kept only some of the header's ids; `originalPaymentId` is now one of them (`StepFacts.HeaderKeys`), so the console names the earlier payment.
 
 **Recommendation.** Release `p.post.accounting.v2`, which reads `facts.fx` and `facts.charges` and posts the lines with their charge and VAT legs (camt.054), with no slabs of its own; move `p.wf.refund.v1` onto it. Record a hold's decided outcome as a step fact of the hold's step when the instance takes the decision. Add native code-behinds for `p.enrich.fx-rate.v1` and `p.enrich.charges.v1` on `decimal`, proved equal to the scripts by `native-dual.test.ts`.
+
+**Done (22 November 2026).**
+1. `p.post.accounting.v2` 2.0.0 (R-12-23), a new major line beside v1, which the payment flows keep: each line's converted amount (`facts.fx`), then its charge and its VAT (`facts.charges`) as entries of their own, debited from the line's account; a line with only a creditor account is credited. No slabs of its own. A script-behind on `rules.money` and a native code-behind on `decimal` (`PostAccountingV2`). `p.wf.refund.v1` 1.1.0 and `p.wf.refund-out.v1` post with it. Tests P-POST-001 to P-POST-004 give the exact amounts (610.89 debited for 599.75 with 10.60 charged and 0.54 VAT; 594.12 credited net for 600.00).
+2. Native code-behinds of `p.enrich.fx-rate.v1` and `p.enrich.charges.v1` 1.1.0 (`TransactHub.Activities.Platform/Native/OrderPricing.cs`, R-12-25). `PlatformNativeTests` runs every P-FX, P-CHG and P-POST test, the studio's own, on the native code with the same parameters and compares the writes as exact decimals.
+3. A hold's decision is the hold step's fact on all four engines (R-05-59): DTFx, Elsa and Temporal record it through `Interp.Decided` when the instance takes the decision, Flowable when it delivers the decision to the hold's catch; `StoreSignals.Install` records it once per instance, step and call (a replay records nothing again), with who decided (`by`) and when (`at`). `p.view.operations.v1` 1.3.0 shows the order's approval again (`approval`, `approvalBy`, `approvalAt`). Evidence: `OperatorActionTests`; `e2e-refund-order` on Temporal and DTFx.
+4. The studio interpreter writes a list inside a fact whole (a posting's entries and legs), so it stays a list in the context.
+
+## I-139. The employer's refund pair is retired by draining, not by a supersession
+
+**Issue.** The employer's refund was a request on `p.wf.request.v1` whose WPS leg, `uae.wps.wf.refund-out.v1` 1.0.0, posted the employer's credit itself. It is now an outward refund order on `p.wf.refund-out.v1` with `uae.wps.wf.refund-out.v2` as its leg (R-12-24), and `uae.wps` 1.3.0 starts the employer's refund order there. A supersession cannot retire the old pair: it replaces one release by a later release of the same major line (R-01-19, lint L27), and the leg that posts nothing is a new major (its exit writes and its slot changed). Nor should it: a request started on the old pair has no platform posting, so superseding its leg would leave the employer uncredited.
+
+**Recommendation.** Retire the old pair as the packaging model drains any release (PACKAGING-AND-DEPLOYMENT section 6): requests started on a distribution that holds `uae.wps` 1.2.0 finish on it; distributions built from 1.3.0 start none; once none is open, retire `uae.wps.wf.refund-out.v1` 1.0.0 through the studio's tracked retirement (R-11-18), which lists who still pins it and asks operations for the open count. The leg stays published on the content branch as a record; the factory no longer holds it.
+
+## I-140. What the order's posting and the outward refund order leave open
+
+**Issue.** Building `p.post.accounting.v2` and `p.wf.refund-out.v1` left these open:
+1. **One batch per order.** The posting sends the whole order to core banking as one batch (the reference is the order's), as the source's RRI bulk debit file did; a bank that posts line by line (I-132) gets one file for the order.
+2. **Who bears the charge on a credit.** On an outward refund order the charge and its VAT are debited from the account credited (the employer's). The source charged the refund cycle on the agent's side only; whether an employer's refund bears a charge is the bank's to say (its slabs are unset for DIB and ADIB, I-58).
+3. **The employer's account currency.** As for an inward order (I-134 (6)), the refund converts at one unless the account names its currency; no balance enquiry asks it.
+4. **The employer's refund order layout.** `uae.wps.map.refund-order-in.v1` has no script: the employer channel's layout is not in the source (C25-S5). The end-to-end test gives the order already canonical (`deploy --context`).
+5. **What may park.** A composite step (the WPS submit, the receipt confirmation, the reports) does not park: its failure is a failure inside its subflow, and a park there would resend a file. A payment file's item-level credit does not park either: a credit that fails is already reported and returned (I-125).
+6. **The posting's legs in the workflow state.** As v1 did, the legs keep the accounts so a reversal can post them back (`p.post.reverse.v1`); the entries show the last four characters only.
+
+**Recommendation.** Ask DIB and ADIB whether an employer's refund bears a charge and whether their core banking takes an order's lines in one batch; read the account's currency from a balance enquiry before FX (with I-134); take the employer channel's refund order layout from the bank (C25-S5) and give the map a script; decide with the owner whether a composite's send step parks inside its subflow (a new release of each subflow, `policy.park` on its send, idempotent by the file's id) and whether an item-level credit parks; move the reversal to a reference of the posting in core banking, so the state holds no account.
 
 ## Not done, and why
 

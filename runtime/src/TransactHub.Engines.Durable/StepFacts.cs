@@ -75,7 +75,8 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
             var kind = J.S(res, "kind") ?? "result";
             var data = new JsonObject
             {
-                ["instance"] = instance, ["step"] = J.S(req, "step"), ["activity"] = J.S(req, "activity"), ["release"] = J.S(req, "release"),
+                // The workflow the step ran in: the payment's platform workflow at its root (R-05-60, an action's when.workflow).
+                ["instance"] = instance, ["workflow"] = J.S(req, "workflow"), ["step"] = J.S(req, "step"), ["activity"] = J.S(req, "activity"), ["release"] = J.S(req, "release"),
                 ["call"] = J.Num(req, "call"), ["attempt"] = J.Num(req, "attempt"), ["level"] = J.S(req, "level"), ["header"] = header,
             };
             if (J.P(ctx, "status") is JsonNode status) data["status"] = J.Clone(status);

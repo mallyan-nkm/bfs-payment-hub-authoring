@@ -970,13 +970,21 @@ for path, d in docs:
             err("L38", at, "group %s is not declared" % g)
         for a in sec.get("actions") or []:
             name = a["action"]
+            # R-05-60 (Issue I-135): an action may name the platform workflows it applies to; each is one the view shows, and the
+            # checks below hold the action to those workflows only.
+            only = ((a.get("when") or {}).get("workflow")) or None
+            shown = flows if not scheme_scope else sorted({w for l in flows for w in ((by_name.get(l) or {}).get("implements") or {}).get("of") or []})
+            if only is not None:
+                for w in only:
+                    if w not in shown:
+                        err("L38", at, "action %s names %s, which is not a platform workflow this view shows" % (name, w))
             if name in OPS_HOLDS:
                 act, outcome = OPS_HOLDS[name]
                 hold = by_name.get(act) or {}
                 if outcome not in {o["name"] for o in hold.get("outcomes") or []} or not any(reached([w], act) for w in flows):
                     err("L38", at, "action %s decides %s, which no flow of this view reaches" % (name, act))
             elif name in ("cancel", "re-screen", "pause", "resume"):
-                hosts = flows if not scheme_scope else sorted({w for l in flows for w in ((by_name.get(l) or {}).get("implements") or {}).get("of") or []})
+                hosts = shown if only is None else [w for w in shown if w in only]
                 if not hosts or not all(name in (by_name.get(w) or {}).get("signals", []) for w in hosts):
                     err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":

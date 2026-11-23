@@ -45,10 +45,20 @@ export function packEntries(env: StudioEnv, scope: string, tenant?: string): Ent
     const m = /^(.*)\.v(\d+)$/.exec(e.name);
     if (m && e.status === 'published') majors.set(`${e.tenant}|${m[1]}`, Math.max(majors.get(`${e.tenant}|${m[1]}`) ?? 0, Number(m[2])));
   }
-  const replaced = (e: Entry) => {
+  const later = (e: Entry) => {
     const m = /^(.*)\.v(\d+)$/.exec(e.name);
     return !!m && (majors.get(`${e.tenant}|${m[1]}`) ?? 0) > Number(m[2]);
   };
+  // A later major replaces an earlier one only when nothing current still pins it: p.post.accounting.v2 (R-12-23) stands beside
+  // v1, which the payment flows still call, while uae.wps.map.prc-out.v1 went with the leg that called it.
+  const newest = new Map<string, Entry>();
+  for (const e of env.store.all()) {
+    const k = `${e.tenant}|${e.kind}:${e.name}`;
+    if (e.status === 'published' && !later(e) && (!newest.has(k) || compareReleases(e.release, newest.get(k)!.release) > 0)) newest.set(k, e);
+  }
+  const pinned = new Set<string>();
+  for (const e of newest.values()) for (const r of refsOf(e.doc)) if (r !== e.name) pinned.add(r);
+  const replaced = (e: Entry) => later(e) && !pinned.has(e.name);
   for (const e of env.store.all()) {
     if (e.status !== 'published' || ['pack', 'inventory', 'conformance-kit', 'engine-binding', 'configuration-set', 'supersession'].includes(e.kind)) continue;
     if (packScopeOf(e) !== scope || replaced(e)) continue;

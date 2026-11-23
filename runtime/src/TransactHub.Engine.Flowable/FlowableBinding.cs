@@ -727,7 +727,7 @@ public sealed class FlowableBinding
         var ctx = index is int ix && level == "item" ? claim.FullForItem(inst.State, inst.Ref, ix) : claim.Full(inst.State, inst.Ref);
         var req = new JsonObject
         {
-            ["op"] = "attempt", ["instance"] = PathOf(inst), ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
+            ["op"] = "attempt", ["instance"] = PathOf(inst), ["workflow"] = inst.Name, ["activity"] = activity, ["release"] = runRelease, ["step"] = step,
             ["call"] = call, ["attempt"] = attempt, ["now"] = now, ["ctx"] = ctx, ["level"] = index is not null && level == "item" ? "item" : null,
             ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null,
         };
@@ -1108,7 +1108,7 @@ public sealed class FlowableBinding
         var id = DedupeId(m);
         if (candidates.Any(c => c.Consumed.Contains(id)) || mailbox.Any(x => DedupeId(x) == id)) { duplicates++; return; }
         if (target.Ended) { unmatched++; return; }
-        if (await Waiting(target, m) is { } w) { await Deliver(target, m, J.S(w, "executionId")!); return; }
+        if (await Waiting(target, m) is { } w) { await Deliver(target, m, J.S(w, "executionId")!, w); return; }
         if (target.Expired.Contains(type)) { unmatched++; return; }
         // Early: the binding holds the message until a catch is waiting (R-09-16).
         receivedAt[m] = now;
@@ -1116,8 +1116,9 @@ public sealed class FlowableBinding
         earlyKept++;
     }
 
-    async Task Deliver(Inst target, JsonObject m, string executionId)
+    async Task Deliver(Inst target, JsonObject m, string executionId, JsonObject? subscription = null)
     {
+        if (J.S(m, "type") == Interp.DecisionMessage) Decided(target, m, subscription);
         target.Consumed.Add(DedupeId(m));
         if (J.P(target.State, "messages") is not JsonObject msgs) target.State["messages"] = msgs = new JsonObject();
         if (J.P(msgs, "received") is not JsonObject received) msgs["received"] = received = new JsonObject();
@@ -1128,6 +1129,40 @@ public sealed class FlowableBinding
         // The operator's decision carries its status to the hold's gateway (R-05-56).
         if (J.S(m, "type") == Interp.DecisionMessage) await rest.MessageReceived(executionId, J.S(m, "type")!, new Dictionary<string, string> { ["th_decision"] = J.S(m, "status") ?? "" });
         else await rest.MessageReceived(executionId, J.S(m, "type")!);
+    }
+
+    /// <summary>
+    /// A hold's decision taken by the instance (R-05-59): the hold step's fact, through the same path as the other engines
+    /// (<see cref="Interp.Decided"/>). The outcome is the one the hold's gateway takes: the decision when it names an outcome of the
+    /// hold other than <c>expired</c>, else the hold's primary outcome.
+    /// </summary>
+    void Decided(Inst target, JsonObject m, JsonObject? subscription)
+    {
+        try
+        {
+            if (Interp.Decided is not { } decided || subscription is null) return;
+            var ann = byDef.GetValueOrDefault(J.S(subscription, "processDefinitionId") ?? "")?.Ann(J.S(subscription, "activityId") ?? "", "await");
+            if (ann?.GetValueOrDefault("step") is not string step) return;
+            var activity = ann.GetValueOrDefault("activity");
+            var act = activity is null ? null : dep.AllDocs().Where(d => J.S(d, "name") == activity).OrderByDescending(d => J.S(d, "release"), StringComparer.Ordinal).FirstOrDefault();
+            var names = J.A(act, "outcomes").Select(o => J.S(o, "name")!).ToList();
+            var primary = J.A(act, "outcomes").FirstOrDefault(o => J.Truthy(J.P(o, "primary"))) is { } po ? J.S(po, "name")! : names.FirstOrDefault() ?? "";
+            var status = J.S(m, "status");
+            var outcome = status is not null && status != "expired" && names.Contains(status) ? status : primary;
+            var fact = new JsonObject { ["outcome"] = outcome, ["result"] = outcome };
+            if (status is not null) fact["status"] = status;
+            if (J.S(m, "hold") is string hold) fact["hold"] = hold;
+            if (J.S(m, "by") is string by) fact["by"] = by;
+            fact["at"] = DateTimeOffset.FromUnixTimeMilliseconds(now).ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
+            var writes = new JsonObject();
+            foreach (var p in J.Strings(J.P(act, "writes")).Where(p => p.StartsWith("facts", StringComparison.Ordinal))) writes[p] = fact.DeepClone();
+            decided(new JsonObject
+            {
+                ["instance"] = PathOf(target), ["workflow"] = target.Name, ["step"] = step, ["activity"] = activity, ["release"] = J.S(act, "release"),
+                ["call"] = target.Calls.GetValueOrDefault(step), ["attempt"] = 0, ["ctx"] = new JsonObject { ["header"] = J.Clone(J.P(target.State, "header")) },
+            }, new JsonObject { ["kind"] = "result", ["outcome"] = outcome, ["writes"] = writes });
+        }
+        catch (Exception) { /* a fact not recorded does not stop the engine */ }
     }
 
     async Task<bool> DeliverHeld()
@@ -1145,7 +1180,7 @@ public sealed class FlowableBinding
                     notes.Add($"a held {J.S(m, "type")} received before its step began is unmatched (R-05-43)");
                     return true;
                 }
-                await Deliver(i, m, J.S(w, "executionId")!);
+                await Deliver(i, m, J.S(w, "executionId")!, w);
                 return true;
             }
         }

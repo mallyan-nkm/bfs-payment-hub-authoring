@@ -46,7 +46,7 @@ Public bank guides disagree on whether the SCR is the first or the last line, an
 | --- | --- | --- | --- |
 | `uae.wps.wf.salary-file-out.v1` | Employer's bank | `scheme-leg` of `p.wf.corporate.v1` | Set the business date; file checks; per item, record checks and the cluster IBAN check; render SIF; submit (composite) |
 | `uae.wps.wf.agent-payment-in.v2` | Agent | `scheme-leg` of `p.wf.inward.v1` | Receive the PSI that pairs with the PIF (composite); file checks; render PRC; confirm receipt (composite); wait for core banking's posting window (`p.decide.await-posting-window.v1`); credit each employee, and ask about a credit whose outcome is unknown; render DIF; report disbursement (composite); after its ACK or its NAK, decide the returns; if any, render RFA, return them (composite), and on ACK record the return, on NAK hand to operations |
-| `uae.wps.wf.refund-out.v1` | Employer's bank | `scheme-leg` of `p.wf.request.v1` | Render RFR; request the refund (composite); credit the employer |
+| `uae.wps.wf.refund-out.v2` | Employer's bank | `scheme-leg` of `p.wf.refund-out.v1` | Render RFR; request the refund (composite: encrypt, send, read the ACK, wait for and read the RSU). The platform credits the employer (R-12-24); `uae.wps.wf.refund-out.v1`, which credited the employer in the leg on `p.wf.request.v1`, drains (I-139) |
 | `uae.wps.wf.return-in.v1` | Employer's bank | `scheme-leg` of `p.wf.inward.v1` | Wait for core banking's posting window; credit the employer's account, which the RTC map (`uae.wps.map.rtc-in.v2`) names at payment level |
 | `uae.wps.wf.inward-refuse.v1` | Agent | `scheme-refuse` of `p.wf.inward.v1` | Hand to operations; nothing is sent |
 
@@ -88,7 +88,7 @@ Each composite that awaits `uae.wps.ack` names the family of the file it waits o
 | `uae.wps.ack` | In | Deliver by file id and by the family of the file it answers: `sif`, `rfr`, `prc`, `dif`, `rfa`, `dcr`, `rrr` |
 | `uae.wps.pif`, `uae.wps.psi` | In | Start: inward payment, `agent-payment-in`; the PSI is delivered to it |
 | `uae.wps.prc`, `uae.wps.dif` | Out | Sent by the two report blocks |
-| `uae.wps.refund-order` | In, from the employer | Start: outward request, `refund-out` |
+| `uae.wps.refund-order` | In, from the employer | Start: an outward refund order on `p.wf.refund-out.v1`, `refund-out.v2` (scheme 1.3.0, R-12-24) |
 | `uae.wps.rfr` | Out | Sent by `send-refund-request` |
 | `uae.wps.rsu` | In | Deliver by refund request file id |
 | `uae.wps.rfa` | Out | Sent by `send-returns-file`, inside `return-credits`; its ACK or NAK is `uae.wps.ack` |
@@ -112,11 +112,11 @@ Generated from `factory/inventory.yaml`.
 | Table | 2 | `uae.wps.table.participant-names.v1`, `uae.wps.table.returns.v1` |
 | Port | 3 | `uae.wps.port.employer-channel.v1`, `uae.wps.port.labour-ministry.v1`, `uae.wps.port.wps.v1` |
 | Simulator | 5 | `uae.wps.sim.employer-channel.v1`, `uae.wps.sim.labour-ministry.v1`, `uae.wps.sim.wps-inward.v1`, `uae.wps.sim.wps-outward.v1`, `uae.wps.sim.wps-refunds.v1` |
-| Workflow | 15 | `uae.wps.sub.answer-refund.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.receive-supplement.v1`, `uae.wps.sub.report-disbursement.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.return-refund.v1`, `uae.wps.sub.submit-salary-file.v1`, `uae.wps.wf.agent-payment-in.v2`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v1`, `uae.wps.wf.refund-request-in.v1`, `uae.wps.wf.refund-request-refuse.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
+| Workflow | 15 | `uae.wps.sub.answer-refund.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.receive-supplement.v1`, `uae.wps.sub.report-disbursement.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.return-refund.v1`, `uae.wps.sub.submit-salary-file.v1`, `uae.wps.wf.agent-payment-in.v2`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v2`, `uae.wps.wf.refund-request-in.v1`, `uae.wps.wf.refund-request-refuse.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
 | Scheme | 1 | `uae.wps.scheme` |
 | Extension | 1 | `uae.wps.ext.salary.v1` |
-| Test | 35 | `WPS-ENR-001`, `WPS-ENR-002`, `WPS-EXC-001`, `WPS-EXC-002`, `WPS-EXC-003`, `WPS-IN-001`, `WPS-IN-002`, `WPS-IN-003`, `WPS-IN-004`, `WPS-IN-005`, `WPS-IN-006`, `WPS-IN-007`, `WPS-IN-008`, `WPS-IN-009`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-MAP-003`, `WPS-MAP-004`, `WPS-MAP-005`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005`, `WPS-OUT-006`, `WPS-OUT-007`, `WPS-OUT-008`, `WPS-RRI-001`, `WPS-RRI-002`, `WPS-RRI-003`, `WPS-RRI-004`, `WPS-RRI-005`, `WPS-RRI-006`, `WPS-RRI-007`, `WPS-RTC-001` |
-| Total | 115 | |
+| Test | 38 | `WPS-ENR-001`, `WPS-ENR-002`, `WPS-EXC-001`, `WPS-EXC-002`, `WPS-EXC-003`, `WPS-IN-001`, `WPS-IN-002`, `WPS-IN-003`, `WPS-IN-004`, `WPS-IN-005`, `WPS-IN-006`, `WPS-IN-007`, `WPS-IN-008`, `WPS-IN-009`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-MAP-003`, `WPS-MAP-004`, `WPS-MAP-005`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005`, `WPS-OUT-006`, `WPS-OUT-007`, `WPS-OUT-008`, `WPS-RFR-001`, `WPS-RFR-002`, `WPS-RFR-003`, `WPS-RRI-001`, `WPS-RRI-002`, `WPS-RRI-003`, `WPS-RRI-004`, `WPS-RRI-005`, `WPS-RRI-006`, `WPS-RRI-007`, `WPS-RTC-001` |
+| Total | 118 | |
 <!-- /INVENTORY:uae.wps -->
 
 ## A.7 Open points
