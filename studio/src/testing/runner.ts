@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import { durationMs } from '../core/duration.js';
 import { clone } from '../core/canonical.js';
 import { getPath } from '../core/paths.js';
-import type { Store } from '../core/store.js';
+import { OWNER_TENANT, ownKey, type Store } from '../core/store.js';
+import { runTenant, scopeOf, scopedEnv } from '../core/scope.js';
 import { runRuleSet } from '../rules/service.js';
 import { buildFacts } from '../interp/facts.js';
 import { attachIntake, routeOf, Instance, Run, runActivity, runComposite, runInbound, runWorkflow, startInstance, type RunConfig, type RunResult } from '../interp/interpreter.js';
@@ -149,9 +150,13 @@ export function loadSample(env: RunnerEnv, ref: string): { payload: string; name
     const f = path.join(d, name);
     if (fs.existsSync(f)) return { payload: fs.readFileSync(f, 'utf8'), name };
   }
-  // A designer's samples and a bank's own are files on the content branch, in memory (R-11-24).
-  const mem = env.store.sampleFiles?.get(name);
+  // A designer's samples and a bank's own are files on the content branch, in memory (R-11-24): the run's tenant's own first,
+  // then the shared ones; a sample saved into one of its change sets too (R-11-48, R-11-49). Never another bank's.
+  const tenant = scopeOf(env) ?? OWNER_TENANT;
+  const mem = env.store.sampleFiles?.get(ownKey(tenant, name)) ?? env.store.sampleFiles?.get(name);
   if (mem !== undefined) return { payload: mem, name };
+  const draft = env.store.draftSamples?.get(ownKey(tenant, name));
+  if (draft !== undefined && draft.tenant === tenant) return { payload: draft.content, name };
   throw new Error(`Sample ${ref} does not exist`);
 }
 
@@ -159,7 +164,8 @@ export function loadSample(env: RunnerEnv, ref: string): { payload: string; name
 export function sampleNames(env: RunnerEnv): string[] {
   const out = new Set<string>(Object.keys(env.sampleOverlay ?? {}));
   for (const d of env.samplesDirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d)) if (!f.endsWith('.md')) out.add(f);
-  for (const k of env.store.sampleFiles?.keys() ?? []) out.add(k);
+  const tenant = scopeOf(env);
+  for (const k of env.store.sampleFiles?.keys() ?? []) out.add(tenant && k.startsWith(`${tenant}/`) ? k.slice(tenant.length + 1) : k);
   return [...out].sort();
 }
 
@@ -192,6 +198,8 @@ export function baseConfig(env: RunnerEnv, test: any, extra: Partial<RunConfig> 
 }
 
 export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfig> = {}): Promise<TestRunReport> {
+  // A run reads its tenant's view only: shared content and that tenant's own (R-11-48). A test with no tenant runs on shared content.
+  env = scopedEnv(env, runTenant(test));
   const report: TestRunReport = { id: test.id, title: test.title, target: test.target, level: test.level, passed: false, checks: [], trace: [], detail: [], releaseTrace: [], elapsed: 'PT0S', warnings: [] };
   try {
     const cfg = baseConfig(env, test, extra);

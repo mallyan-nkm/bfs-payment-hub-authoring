@@ -248,10 +248,18 @@ export class ScriptRegistry {
     return undefined;
   }
 
+  /** The same folders over other scripts in memory: one tenant's (R-11-48). */
+  over(memory: () => Iterable<InMemoryScript>): ScriptRegistry {
+    return new ScriptRegistry(this.dirs, memory);
+  }
+
   /** The same registry, with more scripts searched first: an import's, before it saves them. */
   withFirst(scripts: InMemoryScript[]): ScriptRegistry {
     const outer = this;
     return new (class extends ScriptRegistry {
+      over(memory: () => Iterable<InMemoryScript>) {
+        return outer.over(memory).withFirst(scripts);
+      }
       find(name: string, release?: string) {
         const s = (release && scripts.find((x) => x.name === `${name}@${release}`)) || scripts.find((x) => x.name === name);
         return s ? { file: s.file, source: s.source, language: s.language } : outer.find(name, release);

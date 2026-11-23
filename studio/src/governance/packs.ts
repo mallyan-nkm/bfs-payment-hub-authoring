@@ -6,6 +6,7 @@ import { refsOf, checkAll } from '../checks/checks.js';
 import { zip } from '../export/zip.js';
 import { OWNER_TENANT, type Entry } from '../core/store.js';
 import type { StudioEnv } from '../env.js';
+import { scopedEnv } from '../core/scope.js';
 
 // Packs (Part 11; C05-S2, C19-S1). A pack is all artefacts of one scope with a manifest that lists
 // name, kind, release, hash and path, and the packs it depends on. A pack that holds a simulator
@@ -108,7 +109,7 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string, opt
   const dependsOn = [...deps].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map((s) => ({ scope: s, release: sharedRelease(env, s) }));
   const pack: any = {
     kind: 'pack', scope, release: scope === 'b' ? opts.release ?? (own?.release || '1.0.0') : sharedRelease(env, scope),
-    title: scope === 'b' ? own?.doc.title ?? 'Example bank pack' : `Factory pack for ${scope}`,
+    title: scope === 'b' ? own?.doc.title ?? (tenant && tenant !== 'example-bank' ? `Bank pack of ${tenant}` : 'Example bank pack') : `Factory pack for ${scope}`,
     packType: scope === 'b' ? 'bank' : 'shared',
     origin: scope === 'b' ? 'authored' : 'factory',
   };
@@ -152,6 +153,8 @@ export interface PackBuild { manifest: any; files: Record<string, string>; refus
  * never promotable. The build is refused while any check is red.
  */
 export function buildPack(env: StudioEnv, scope: string, kind: 'shared' | 'bank' | 'test', tenant?: string): PackBuild {
+  // A pack holds shared content and, for a bank's, that bank's own only (R-11-48).
+  env = scopedEnv(env, tenant ?? 'owner');
   const errors = checkAll(env).filter((i) => i.severity === 'error' && (scopeOfName(i.key) === scope || i.key === scope));
   const all = packEntries(env, scope, tenant);
   const entries = kind === 'test' ? all.filter((e) => e.kind === 'test' || e.kind === 'simulator') : all.filter((e) => e.kind !== 'test' && e.kind !== 'simulator');

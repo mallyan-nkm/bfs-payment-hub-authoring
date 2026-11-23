@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { OWNER_TENANT, StoreError } from '../core/store.js';
+import { OWNER_TENANT, StoreError, ownKey } from '../core/store.js';
+import { samplePath } from '../content/layout.js';
 import { parseName } from '../core/names.js';
 import { lintScript } from '../interp/sandbox.js';
 import type { StudioEnv } from '../env.js';
@@ -37,11 +38,16 @@ export function saveScript(env: StudioEnv, inp: { tenant: string; actor: string;
 const SAMPLE_NAME = /^[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
 
 /** A synthetic sample file for tests. The designer vouches it holds no personal data. */
-export function saveSample(env: StudioEnv, inp: { tenant: string; actor: string; name: string; content: string }) {
+export function saveSample(env: StudioEnv, inp: { tenant: string; actor: string; name: string; content: string; inChangeSet?: boolean }) {
   enforce(env, inp.actor, inp.tenant, 'author', `sample:${inp.name}`, { kind: 'sample', scope: inp.tenant === OWNER_TENANT ? 'p' : 'b' });
   if (!SAMPLE_NAME.test(inp.name ?? '')) throw new StoreError('C12', 'A sample name is lower case, digits and hyphens, with an extension, for example demo-file-valid.csv');
   if (typeof inp.content !== 'string' || !inp.content.length || inp.content.length > 1_000_000) throw new StoreError('C12', 'A sample is text of at most 1 MB');
   if (env.store.factorySamples.has(inp.name)) throw new StoreError('R-01-10', `samples/${inp.name} is factory content; choose another name`);
-  if (env.store.sampleFiles.get(inp.name) !== inp.content) env.store.saveSampleFile(inp.tenant, inp.actor, inp.name, inp.content);
-  return { sample: `samples/${inp.name}` };
+  // Saved into the tenant's open change set (the assistant's samples, R-11-49): published only with that change set's approval.
+  if (inp.inChangeSet) {
+    const d = env.store.saveSampleDraft(inp.tenant, inp.actor, inp.name, inp.content);
+    return { sample: `samples/${inp.name}`, path: d.path, changeSet: d.changeSet, published: false };
+  }
+  if (env.store.sampleFiles.get(ownKey(inp.tenant, inp.name)) !== inp.content) env.store.saveSampleFile(inp.tenant, inp.actor, inp.name, inp.content);
+  return { sample: `samples/${inp.name}`, path: samplePath(inp.name, inp.tenant), published: true };
 }

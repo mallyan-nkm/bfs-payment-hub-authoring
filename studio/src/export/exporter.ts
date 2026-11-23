@@ -51,6 +51,8 @@ export function artefactsBlock(env: StudioEnv, checker: Checker, doc: any) {
 }
 
 export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage {
+  // An export holds shared content and the tenant's own only (R-11-48): never another bank's artefact, script or extension.
+  env = scopedEnv(env, req.tenant ?? 'owner');
   const checker = Checker.fromEnv(env);
   const files: Record<string, string> = {};
   const issues: Issue[] = [];
@@ -270,6 +272,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import ts from 'typescript';
+import { scopedEnv } from '../core/scope.js';
 function sha(s: string) {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }

@@ -42,8 +42,8 @@ function scopeOfTest(doc: any): string {
 export const scriptPath = (tenant: string, activity: string, language: 'typescript' | 'python') =>
   `${tenant && tenant !== OWNER_TENANT ? `banks/${safe(tenant)}/` : ''}scripts/${safe(activity)}.${language === 'python' ? 'py' : 'ts'}`;
 
-/** A synthetic sample a designer added for tests. */
-export const samplePath = (name: string) => `samples/${safe(name)}`;
+/** A synthetic sample a designer added for tests: the owner's in `samples/`, a bank's in its own folder (R-11-48). */
+export const samplePath = (name: string, tenant?: string) => `${tenant && tenant !== OWNER_TENANT ? `banks/${safe(tenant)}/` : ''}samples/${safe(name)}`;
 
 export const changeSetPath = (id: string) => `change-sets/${safe(id)}.yaml`;
 /** The audit of a change set: every event of it, from the first draft to the publish (R-11-23). */
