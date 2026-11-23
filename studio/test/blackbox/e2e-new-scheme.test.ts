@@ -126,9 +126,9 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(undirected.data.issues.some((i: any) => i.code === 'L00' && /direction/.test(i.message))).toBe(true);
     await publishSet([SCHEME, SUBMIT, SUBFLOW, LEG]);
     // Published, the leg fills a slot of p.wf.corporate.v1: a release of the scheme that routed the
-    // file as an inward payment would send it to p.wf.inward.v1, and L33 says so.
+    // file as an inward payment would send it to p.wf.inward.v2, and L33 says so.
     const misrouted = await api.post('/api/check', { doc: { ...SCHEME, release: '1.0.1', messages: [{ ...SCHEME.messages[0], disposition: { start: { ...start, direction: 'inward', segment: undefined } } }, ...SCHEME.messages.slice(1)] } });
-    expect(misrouted.data.issues.find((i: any) => i.code === 'L33')?.message).toContain(`routes to p.wf.inward.v1, but its leg ${LEG.name} fills a slot of p.wf.corporate.v1`);
+    expect(misrouted.data.issues.find((i: any) => i.code === 'L33')?.message).toContain(`routes to p.wf.inward.v2, but its leg ${LEG.name} fills a slot of p.wf.corporate.v1`);
     const x = await api.get(`/api/expanded/${LEG.name}`);
     expect(JSON.stringify(x.data.doc)).toContain('submit.await-ack');
     const scheme = (await api.get(`/api/schemes/${S}`)).data.scheme;

@@ -1364,9 +1364,10 @@ for path, d in docs:
 # L43 (R-11-38) a leg fills the slot contract <slot>@<major> of a platform workflow: the workflow it names is a platform
 # workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions,
 # and writes (its exit) nothing beyond the slot's writes and its scheme's own extensions (Issue I-112). A distribution is
-# built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts). One write is known to be beyond its
-# slot and waits for the owner's decision (Issue I-141): it is reported, as a warning, until the content is released again.
-SLOT_WRITE_OPEN = {("uae.wps.wf.agent-payment-in.v2", "p.wf.inward.v1", "facts.returns"): "I-141"}
+# built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts). A write the owner has still to decide
+# would be listed here and reported as a warning; none is open since the WPS returns went into p.wf.inward.v2's scheme-leg@2
+# (owner's decision of 23 November 2026, Issue I-141, R-09-87).
+SLOT_WRITE_OPEN = {}
 def beyond(paths, allowed, own):
     out = []
     for x in paths or []:

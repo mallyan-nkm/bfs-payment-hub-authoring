@@ -145,7 +145,7 @@ describe('the WPS salary file on DTFx, Elsa and Flowable, kept in the store', ()
 // Plan P2: the WPS payment file with the bank as the agent, in the source's layout, on Flowable as on DTFx, Elsa (e2e-wps-parity)
 // and Temporal (e2e-wps-temporal): a refused credit returned, WPS refusing the returns file, the file handed to operations.
 const INWARD = {
-  platform: 'p.wf.inward.v1', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
+  platform: 'p.wf.inward.v2', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
   bench: [
     { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-refused' },
     { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'reject-first-then-accept' },

@@ -113,6 +113,13 @@ RELEASES = {
     # Owner's decision of 2026-11-23 (R-12-27, Issue I-149): the salary file's employer is looked up in the bank's party register by
     # its establishment id, carried as the debtor's organisation id (Dbtr/Id/OrgId/Othr). A field written under batch, a minor.
     "uae.wps.map.sif-in.v1": ("1.3.0", "the employer's establishment id as the debtor's organisation id (R-12-27)"),
+    # Owner's decision of 2026-11-23 (Issue I-141, R-09-87): the WPS returns stay. Inward payments run p.wf.inward.v2 (a new major
+    # line, hand-written), whose slot contract scheme-leg@2 lets the leg write facts.returns; the WPS inward legs fill it.
+    "p.table.workflow-select.v1": ("1.3.0", "inward payments and returns run p.wf.inward.v2"),
+    # Owner's decision of 2026-11-23 (Issue I-127, R-09-88): a hold's expiry counts business days of the bank's business calendar.
+    # A parameter added with a default, a minor.
+    "p.hold.repair.v1": ("1.1.0", "expiryCalendar: the expiry counted on the bank's business calendar"),
+    "p.hold.approval.v1": ("1.1.0", "expiryCalendar: the expiry counted on the bank's business calendar"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
@@ -121,8 +128,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
 # 1.6.0: the order's posting that reads FX and charges, the outward refund order, the WPS parks (R-12-23 to R-12-26, I-136).
 # 1.7.0: reference tables (R-01-25), the party register lookup and its WPS step (R-12-27; owner's decisions of 2026-11-23).
-PACK_RELEASES = {"p": "1.7.0", "uae.p": "1.7.0", "uae.wps": "1.7.0", "b": "1.7.0"}
-FACTORY_RELEASE = "1.7.0"
+# 1.8.0: p.wf.inward.v2 and the WPS inward legs in its scheme-leg@2 (Issue I-141, R-09-87); the holds' expiry on the business
+# calendar (Issue I-127, R-09-88).
+PACK_RELEASES = {"p": "1.8.0", "uae.p": "1.8.0", "uae.wps": "1.8.0", "b": "1.8.0"}
+FACTORY_RELEASE = "1.8.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -313,10 +322,14 @@ act("p.notify.publish-fact.v1", "Publish a fact outward", ["header", "status"], 
     "write", ports=["p.port.facts-out.v1"], policy=STD)
 act("p.hold.repair.v1", "Park for repair", ["header", "facts.validation"], ["facts.repair", "payment", "batch"],
     ["released", "rejected", "expired"], "write", ports=["p.port.operations-queue.v1"], service="operations",
-    params={"expiry": {"type": "duration", "default": "P2D", "description": "How long a repair item may wait."}})
+    params={"expiry": {"type": "duration", "default": "P2D", "description": "How long a repair item may wait, counted on expiryCalendar."},
+            "expiryCalendar": {"type": "code", "default": "business", "bounds": {"allowed": ["business", "elapsed"]},
+                               "description": "How the expiry is counted: business days of the bank's business calendar (the reference table of domain business-calendar), or elapsed time."}})
 act("p.hold.approval.v1", "Park for approval", ["header", "facts.screening"], ["facts.approval"],
     ["approved", "declined", "expired"], "write", ports=["p.port.operations-queue.v1"], service="operations",
-    params={"expiry": {"type": "duration", "default": "P1D", "description": "How long an approval may wait."}})
+    params={"expiry": {"type": "duration", "default": "P1D", "description": "How long an approval may wait, counted on expiryCalendar."},
+            "expiryCalendar": {"type": "code", "default": "business", "bounds": {"allowed": ["business", "elapsed"]},
+                               "description": "How the expiry is counted: business days of the bank's business calendar (the reference table of domain business-calendar), or elapsed time."}})
 act("p.reconcile.scheme-report.v1", "Match a scheme report to the record", ["header", "status", "messages"],
     ["facts.reconciliation"], ["matched", "unmatched"], "read", ports=["p.port.payment-record.v1"], invoked_by="schedule")
 
@@ -746,15 +759,16 @@ def table(name, title, hit, inputs, outputs, rows, examples, params=None, p=None
 table("p.table.workflow-select.v1", "Which platform workflow runs a payment", "unique",
       [("kind", "header.kind"), ("direction", "header.direction"), ("segment", "header.segment")], ["workflow"],
       [{"when": {"kind": "request"}, "then": {"workflow": "p.wf.request.v1"}, "reason": "Requests and exceptions move no money through the lifecycle"},
-       {"when": {"kind": "payment", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward payment"},
-       {"when": {"kind": "return", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward return"},
+       # 1.3.0 (R-09-87, Issue I-141): inward payments and returns run p.wf.inward.v2, whose leg may hand back its returns
+       {"when": {"kind": "payment", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v2"}, "reason": "Every inward payment"},
+       {"when": {"kind": "return", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v2"}, "reason": "Every inward return"},
        # 1.1.0 (R-12-19): a refund of an earlier payment is an order of its own, on the refund lifecycle
        {"when": {"kind": "refund", "direction": "inward"}, "then": {"workflow": "p.wf.refund.v1"}, "reason": "A refund of an earlier payment is a new order on the refund lifecycle"},
        # 1.2.0 (R-12-24): the bank asks for a refund for its customer (the employer's side), and credits it when the scheme settles
        {"when": {"kind": "refund", "direction": "outward"}, "then": {"workflow": "p.wf.refund-out.v1"}, "reason": "A refund the bank asks for is an order on the outward refund lifecycle"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "corporate"}, "then": {"workflow": "p.wf.corporate.v1"}, "reason": "File and high-value rails"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "commercial"}, "then": {"workflow": "p.wf.commercial.v1"}, "reason": "Instant rails"}],
-      [{"name": "inward payment", "given": {"Header": {"kind": "payment", "direction": "inward", "segment": "commercial"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.inward.v1"}]}},
+      [{"name": "inward payment", "given": {"Header": {"kind": "payment", "direction": "inward", "segment": "commercial"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.inward.v2"}]}},
        {"name": "outward corporate", "given": {"Header": {"kind": "payment", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.corporate.v1"}]}},
        {"name": "request", "given": {"Header": {"kind": "request", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.request.v1"}]}},
        {"name": "refund", "given": {"Header": {"kind": "refund", "direction": "inward"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.refund.v1"}]}},
@@ -1217,7 +1231,7 @@ test("P-REG-003", "An inactive registration is not registered", "p.enrich.party-
      bench_=bench((REG, REGSIM, "inactive")))
 test("P-REG-004", "A registration whose details differ from what was supplied is a mismatch", "p.enrich.party-register.v1", "activity", REG_CTX,
      {"outcome": "mismatch", "reasonCode": "BE01", "writes": {"facts.partyRegister.found": True}}, bench_=bench((REG, REGSIM, "mismatch")))
-test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement reported", "p.wf.inward.v1", "end-to-end",
+test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement reported", "p.wf.inward.v2", "end-to-end",
      {"inbound": "samples/wps-pif-valid.pif"},
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
                                          {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},
@@ -1290,7 +1304,7 @@ test("WPS-IN-007", "After a refused disbursement file the refused credits are st
      bench_=returns_bench("payment-file-disbursement-refused-returns-accepted"), tenant="example-bank")
 # Plan P2: the source's PIF layout (EDR, EVP, PCR), mapped by the 1.1.0 map, and by the runtime's native code-behind when the
 # run gives it to the runtime (R-08-16, e2e-wps-inward-native). The same file as WPS-IN-001 otherwise.
-test("WPS-IN-008", "A payment file in the source's layout is confirmed, credited and reported", "p.wf.inward.v1", "end-to-end",
+test("WPS-IN-008", "A payment file in the source's layout is confirmed, credited and reported", "p.wf.inward.v2", "end-to-end",
      {"inbound": "samples/wps-pif-ssm.pif"},
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},
                                          {"port": WPS, "message": "uae.wps.rfa", "count": 0}]},

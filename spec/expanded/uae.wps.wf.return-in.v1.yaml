@@ -2,17 +2,18 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.return-in.v1
-release: 1.2.0
+release: 1.3.0
 dsl: 1.0.0
 title: WPS return, bank as the employer's bank
 description: A return file has arrived. Wait for core banking's posting window, then credit the employer's account,
   which the return map names. Release 1.2.0 parks a failed credit for a business day, for an operator's retry (R-12-26,
-  Issue I-125).
+  Issue I-125). Release 1.3.0 fills its slot in p.wf.inward.v2 (scheme-leg@2), the inward lifecycle that takes the
+  returns (owner's decision of 23 November 2026, Issue I-141, R-09-87).
 direction: inward
 implements:
   slot: scheme-leg
   of:
-    - p.wf.inward.v1
+    - p.wf.inward.v2
 entry:
   reads:
     - header
@@ -75,5 +76,5 @@ provenance:
   note: From public sources. Confirm against the current CBUAE WPS rulebook.
 form: expanded
 expandedFrom:
-  release: 1.2.0
-  hash: sha256:b7a8cea88e4c8a8586e6149ea7689e193ff78fe88617ae90daacafc20ccaf61e
+  release: 1.3.0
+  hash: sha256:3432b5c4fb3cc42676391fd1a777a9d1e47470c57e86d6407e1218e41a807640

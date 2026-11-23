@@ -82,11 +82,12 @@ describe('a distribution', () => {
   it('is refused when a scheme does not fit the slot contract of its platform', () => {
     const platform = env.store.byKind('workflow').map((e) => e.doc).filter((d) => d.wfKind === 'platform');
     expect(slotContracts(platform).map((s) => s.id)).toContain('scheme-leg@1');
-    const legs = env.store.byKind('workflow').map((e) => e.doc).filter((d) => d.wfKind === 'leg' && d.name.startsWith('uae.wps.'));
+    // The latest release of each leg, the one a build takes: earlier releases stay on the branch as published.
+    const legs = [...new Set(env.store.byKind('workflow').map((e) => e.doc).filter((d) => d.wfKind === 'leg' && d.name.startsWith('uae.wps.')).map((d) => d.name))].map((n) => env.store.latest(n)!.doc);
     expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: legs }]).problems).toEqual([]);
     const wrongMajor = clone(legs[0]);
-    wrongMajor.implements.of = wrongMajor.implements.of.map((o: string) => o.replace(/\.v1$/, '.v2'));
-    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [wrongMajor] }]).problems[0]).toMatch(/fills scheme-.*@2 of p\.wf\..*\.v2, but the platform offers scheme-.*@1/);
+    wrongMajor.implements.of = wrongMajor.implements.of.map((o: string) => o.replace(/\.v\d+$/, '.v3'));
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [wrongMajor] }]).problems[0]).toMatch(/fills scheme-.*@3 of p\.wf\..*\.v3, but the platform offers scheme-.*@[12]/);
     // The leg's latest release, the one a build takes (1.1.0 since the labour ministry lookup, Issue I-88).
     const extraWrite = clone(env.store.latest('uae.wps.wf.salary-file-out.v1')!.doc);
     extraWrite.entry.reads = [...extraWrite.entry.reads, 'facts.posting'];
@@ -94,10 +95,13 @@ describe('a distribution', () => {
     // A write the slot does not let it make (Issue I-112): refused like a read; the one write still open (I-141) is let through.
     const extra = clone(env.store.latest('uae.wps.wf.return-in.v1')!.doc);
     extra.exit.writes = [...extra.exit.writes, 'facts.reservation'];
-    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [extra] }]).problems[0]).toMatch(/does not fit the slot contract scheme-leg@1 of p\.wf\.inward\.v1: write facts\.reservation/);
-    const open = legs.filter((l) => l.name === 'uae.wps.wf.agent-payment-in.v2');
-    expect(open[0].exit.writes).toContain('facts.returns');
-    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: open }]).problems).toEqual([]);
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [extra] }]).problems[0]).toMatch(/does not fit the slot contract scheme-leg@2 of p\.wf\.inward\.v2: write facts\.reservation/);
+    // The WPS returns (Issue I-141, R-09-87): scheme-leg@2 of p.wf.inward.v2 lets the leg write them; scheme-leg@1 of v1 does not.
+    const returning = legs.filter((l) => l.name === 'uae.wps.wf.agent-payment-in.v2');
+    expect(returning[0].exit.writes).toContain('facts.returns');
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: returning }]).fills).toEqual([expect.objectContaining({ contract: 'scheme-leg@2', workflow: 'p.wf.inward.v2' })]);
+    const onV1 = { ...clone(returning[0]), implements: { slot: 'scheme-leg', of: ['p.wf.inward.v1'] } };
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [onV1] }]).problems[0]).toMatch(/scheme-leg@1 of p\.wf\.inward\.v1: write facts\.returns/);
     // In the build: the scheme's leg in the store no longer fits, and the build is refused.
     const e = freshEnv();
     const leg = e.store.all().find((x) => x.name === 'uae.wps.wf.salary-file-out.v1' && x.status === 'published' && x.release === extraWrite.release)!;

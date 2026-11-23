@@ -1,0 +1,23 @@
+kind: audit
+changeSet: CS-2026-11-23-003
+events:
+  - at: 2026-11-23T08:18:50.817Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: seed-content
+    key: CS-2026-11-23-003
+    detail: 72 file(s) from spec/examples/bank, spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.p, spec/factory/uae.wps
+    changeSet: CS-2026-11-23-003
+    prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    hash: sha256:705760201d6a823451d7bb465087cacaabc9c168e09423679a035e35b3252052
+  - at: 2026-11-23T08:18:50.825Z
+    outcome: done
+    tenant: owner
+    actor: service.operations
+    action: publish-change-set
+    key: CS-2026-11-23-003
+    detail: 72 members, listed in change-sets/CS-2026-11-23-003.yaml
+    changeSet: CS-2026-11-23-003
+    prevHash: sha256:705760201d6a823451d7bb465087cacaabc9c168e09423679a035e35b3252052
+    hash: sha256:fc134aa75a6e57e343c4aad1e4ef3993a1be2dea438806be2d362fff463c4bee

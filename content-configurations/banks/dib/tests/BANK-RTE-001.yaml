@@ -3,7 +3,7 @@
 kind: test
 id: BANK-RTE-001
 title: A salary payment file addressed to the bank's routing code is taken and its employees credited
-target: p.wf.inward.v1
+target: p.wf.inward.v2
 level: end-to-end
 evaluationDate: "2026-11-24"
 tenant: dib

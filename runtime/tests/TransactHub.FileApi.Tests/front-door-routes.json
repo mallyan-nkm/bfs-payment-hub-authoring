@@ -8,7 +8,7 @@
         "kind": "payment",
         "direction": "inward"
       },
-      "workflow": "p.wf.inward.v1",
+      "workflow": "p.wf.inward.v2",
       "legs": {
         "scheme-leg": "uae.wps.wf.agent-payment-in.v2",
         "scheme-refuse": "uae.wps.wf.inward-refuse.v1"
@@ -46,7 +46,7 @@
         "kind": "return",
         "direction": "inward"
       },
-      "workflow": "p.wf.inward.v1",
+      "workflow": "p.wf.inward.v2",
       "legs": {
         "scheme-leg": "uae.wps.wf.return-in.v1",
         "scheme-refuse": "uae.wps.wf.inward-refuse.v1"

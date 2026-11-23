@@ -1,14 +1,14 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.inward-refuse.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: WPS inward file refused
-description: WPS has no message by which an agent refuses a file, so a refused inward file goes to operations. This shows that a refuse leg need not send anything.
+description: WPS has no message by which an agent refuses a file, so a refused inward file goes to operations. This shows that a refuse leg need not send anything. Release 1.1.0 fills its slot in p.wf.inward.v2 (scheme-leg@2), the inward lifecycle that takes the returns (owner's decision of 23 November 2026, Issue I-141, R-09-87).
 direction: inward
 implements:
   slot: scheme-refuse
-  of: [p.wf.inward.v1]
+  of: [p.wf.inward.v2]
 entry:
   reads: [header, batch, facts.disposition, facts.validation]
 exit:

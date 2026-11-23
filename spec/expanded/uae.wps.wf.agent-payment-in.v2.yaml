@@ -2,7 +2,7 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.agent-payment-in.v2
-release: 2.1.0
+release: 2.2.0
 dsl: 1.0.0
 title: WPS payment file, bank as the agent
 description: Waits for the supplementary file that pairs with the payment file, confirms receipt, waits for core
@@ -12,12 +12,13 @@ description: Waits for the supplementary file that pairs with the payment file, 
   is recorded. A partial return ends settled, a whole-file return ends returned. Release 2.1.0 lets the steps that
   may run again park for a business day when they fail, for an operator's retry, instead of ending the file (R-12-26,
   Issue I-125). They are the file checks, the receipt and disbursement files, the returns decision and file, and
-  the return's posting.
+  the return's posting. Release 2.2.0 fills its slot in p.wf.inward.v2 (scheme-leg@2), the inward lifecycle that
+  takes the returns (owner's decision of 23 November 2026, Issue I-141, R-09-87).
 direction: inward
 implements:
   slot: scheme-leg
   of:
-    - p.wf.inward.v1
+    - p.wf.inward.v2
 entry:
   reads:
     - header
@@ -314,5 +315,5 @@ provenance:
     (D10). The supplementary file is held by reference; its map and the wait are to be confirmed.
 form: expanded
 expandedFrom:
-  release: 2.1.0
-  hash: sha256:e08a84d4b165f7fe3e4159fc2dd54a1dc2f52e31d2d155f3c3632c1c4051f999
+  release: 2.2.0
+  hash: sha256:23bc25ea85742c9c1c14699af25468d92a5260b31669afd5909229778ddf4544

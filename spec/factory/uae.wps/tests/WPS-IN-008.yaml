@@ -2,7 +2,7 @@
 kind: test
 id: WPS-IN-008
 title: A payment file in the source's layout is confirmed, credited and reported
-target: p.wf.inward.v1
+target: p.wf.inward.v2
 level: end-to-end
 evaluationDate: '2026-11-17'
 tenant: example-bank

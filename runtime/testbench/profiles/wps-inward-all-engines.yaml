@@ -2,8 +2,8 @@
 # the environment, so a user sends only data: testbench run --profile <name> --file <data>.
 kind: testbench-profile
 name: wps-inward-all-engines
-title: WPS inward payment file (PIF) through the front door and p.wf.inward.v1 on the four engines, the store on PostgreSQL, against the interpreter
-workflow: p.wf.inward.v1
+title: WPS inward payment file (PIF) through the front door and p.wf.inward.v2 on the four engines, the store on PostgreSQL, against the interpreter
+workflow: p.wf.inward.v2
 message: uae.wps.pif
 tenant: example-bank
 engines: [temporal, dtfx, elsa, flowable]

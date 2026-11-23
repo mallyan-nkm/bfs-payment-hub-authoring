@@ -1131,9 +1131,7 @@ export function portBindingProblems(d: any, isPort: (name: string) => boolean): 
  * warning, and let into a distribution, until the content is released again (Issue I-141). tools/validate.py holds the same.
  */
 export const SLOT_WRITE_OPEN: Record<string, string> = {
-  'uae.wps.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
-  // The import training bundle's copy of WPS as uae.wpsx (src/import/sample.ts) carries the same leg, so the same open write.
-  'uae.wpsx.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
+  // None open: the WPS returns (Issue I-141) are written into p.wf.inward.v2's scheme-leg@2 (owner's decision, R-09-87).
 };
 
 export function checkDocument(env: StudioEnv, doc: any, tenant?: string, alongside: any[] = []): Issue[] {

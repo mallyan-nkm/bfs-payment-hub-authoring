@@ -41,7 +41,7 @@ public sealed class FrontDoorRouteTests
     public void Workflow_select_refuses_what_it_cannot_read_and_a_message_that_is_not_a_start()
     {
         var d = Content();
-        Assert.Equal("p.wf.inward.v1", d.Select(new JsonObject { ["kind"] = "payment", ["direction"] = "inward" }, On));
+        Assert.Equal("p.wf.inward.v2", d.Select(new JsonObject { ["kind"] = "payment", ["direction"] = "inward" }, On));
         Assert.Null(d.Select(new JsonObject { ["kind"] = "nothing" }, On));
         Assert.Equal("frontdoor.NotAStart", Assert.Throws<FrontDoorRefused>(() => d.Route("uae.wps.psi", On)).Code);
         Assert.Equal("frontdoor.UnknownMessage", Assert.Throws<FrontDoorRefused>(() => d.Route("uae.wps.none", On)).Code);

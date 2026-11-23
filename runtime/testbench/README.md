@@ -56,7 +56,7 @@ On the command line: `--profile`, `--file|--sample|--text`, `--bench`, `--port` 
 | `wps-all-engines` | the four | PostgreSQL | WPS SIF, outward, through the front door and `p.wf.corporate.v1` |
 | `wps-all-engines-sqlserver` | the four | SQL Server | the same |
 | `wps-all-engines-both-databases` | the four | both, in turn | the same |
-| `wps-inward-all-engines` | the four | PostgreSQL | WPS PIF, inward, through the front door and `p.wf.inward.v1` (the leg `uae.wps.wf.agent-payment-in.v2` in its slot) |
+| `wps-inward-all-engines` | the four | PostgreSQL | WPS PIF, inward, through the front door and `p.wf.inward.v2` (the leg `uae.wps.wf.agent-payment-in.v2` in its slot) |
 | `wps-inward-all-engines-sqlserver` | the four | SQL Server | the same |
 | `wps-reference`, `wps-inward-reference` | none | none | the interpreter only, in seconds |
 | `wps-quick-dtfx` | DTFx | none | a quick check while working |
@@ -89,7 +89,7 @@ A case is a request and what it is expected to give (kind `testbench-case`). Sav
 
 A case may carry `knownIssue: { id, engines, note }`: those engines are known to differ (an Issue in `docs/ISSUES.md`). The case still fails on anything else, and it fails when a named engine starts to agree, so the mark comes off when the issue is fixed.
 
-The shipped suite (`suite/`, 20 cases) runs in CI on PostgreSQL and on SQL Server (`.github/workflows/testbench.yml`): the WPS outward cases on the four engines; each builder injection, run on the four engines with the outcome it is meant to give; DIB's file built with its routing code, on the day its configuration is in force; the WPS inward cases through the front door and `p.wf.inward.v1` (two known to differ on every engine, I-162); and the platform's ISO 20022 and JSON cases (I-95 for pacs.008).
+The shipped suite (`suite/`, 20 cases) runs in CI on PostgreSQL and on SQL Server (`.github/workflows/testbench.yml`): the WPS outward cases on the four engines; each builder injection, run on the four engines with the outcome it is meant to give; DIB's file built with its routing code, on the day its configuration is in force; the WPS inward cases through the front door and `p.wf.inward.v2` (two known to differ on every engine, I-162); and the platform's ISO 20022 and JSON cases (I-95 for pacs.008).
 
 Temporal on the time-skipping test server with the store runs its claim checks as regular activities (`TH_LOCAL_CLAIMCHECK=0`): as local activities the server lets time pass while they write to the store, and the first attempt times out. On a loaded machine an attempt can still time out before a busy worker answers; a Temporal run on the test server whose outcome is not the interpreter's is run once more on a fresh database, and the result and report say so (Issue I-93). A real difference shows on both runs and still fails. The bench does this for that combination only, and retries nothing else.
 

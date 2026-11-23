@@ -54,7 +54,7 @@ afterAll(() => {
 });
 
 const run = (s: Server, core: string) => client(s.url).post('/api/bench/run', {
-  target: 'p.wf.inward.v1', tenant: TENANT, inbound: 'samples/wps-pif-ssm.pif', message: 'uae.wps.pif', bench: BENCH(core), evaluationDate: '2026-11-17',
+  target: 'p.wf.inward.v2', tenant: TENANT, inbound: 'samples/wps-pif-ssm.pif', message: 'uae.wps.pif', bench: BENCH(core), evaluationDate: '2026-11-17',
 });
 
 describe('the WPS inward flows on the runtime (plan P2)', () => {

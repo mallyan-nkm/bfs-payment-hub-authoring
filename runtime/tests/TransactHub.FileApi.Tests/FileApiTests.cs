@@ -78,7 +78,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             foreach (var dir in new[] { "uae.wps/scheme", "p/p.table.workflow-select.v1", "uae.wps/uae.wps.wf.agent-payment-in.v2", "uae.wps/uae.wps.wf.salary-file-out.v1", "uae.wps/uae.wps.wf.inward-refuse.v1" })
                 foreach (var f in Directory.EnumerateFiles(Path.Combine(art, dir), "*.yaml"))
                 {
-                    var e = z.CreateEntry($"engine/p.wf.inward.v1/{dir}/{Path.GetFileName(f)}");
+                    var e = z.CreateEntry($"engine/p.wf.inward.v2/{dir}/{Path.GetFileName(f)}");
                     await using var s = e.Open();
                     await s.WriteAsync(await File.ReadAllBytesAsync(f));
                 }
@@ -122,7 +122,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         Assert.True(got.Accepted, got.Detail);
         var (payment, dist, route, ctx) = Assert.Single(r.Engines.Started);
         Assert.Equal(r.Distribution, dist);
-        Assert.Equal("p.wf.inward.v1", route.Workflow);
+        Assert.Equal("p.wf.inward.v2", route.Workflow);
         Assert.Equal("uae.wps.wf.agent-payment-in.v2", route.Legs["scheme-leg"]);
         Assert.Equal("uae.wps.wf.inward-refuse.v1", route.Legs["scheme-refuse"]);
         Assert.Equal("uae.wps.map.pif-in.v1", Assert.Single(r.Map.Calls).Map);

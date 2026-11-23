@@ -3,7 +3,7 @@
 kind: testbench-profile
 name: wps-inward-all-engines-sqlserver
 title: WPS inward payment file (PIF) on the four engines, the store on SQL Server, against the interpreter
-workflow: p.wf.inward.v1
+workflow: p.wf.inward.v2
 message: uae.wps.pif
 tenant: example-bank
 engines: [temporal, dtfx, elsa, flowable]

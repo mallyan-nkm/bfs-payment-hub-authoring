@@ -75,7 +75,7 @@ const NAMES: Record<string, string> = { dtfx: 'DTFx', elsa: 'Elsa' };
 // Plan P2: the WPS payment file with the bank as the agent, in the source's layout: confirmed, credited (one credit refused),
 // reported, the refused credit returned in a returns file and the return recorded, each way the studio's interpreter gives it.
 const INWARD = {
-  platform: 'p.wf.inward.v1', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
+  platform: 'p.wf.inward.v2', message: 'uae.wps.pif', sample: 'samples/wps-pif-ssm.pif',
   bench: [
     { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-inward.v1', scenario: 'payment-file-returns-accepted' },
     { port: 'p.port.core-banking.v1', simulator: 'p.sim.core-banking.v1', scenario: 'reject-first-then-accept' },

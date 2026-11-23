@@ -42,7 +42,7 @@ afterAll(() => {
 });
 
 const run = (evaluationDate: string) =>
-  api.post('/api/bench/run', { target: 'p.wf.inward.v1', tenant: TENANT, inbound: 'samples/wps-pif-valid.pif', message: 'uae.wps.pif', bench: BENCH, evaluationDate });
+  api.post('/api/bench/run', { target: 'p.wf.inward.v2', tenant: TENANT, inbound: 'samples/wps-pif-valid.pif', message: 'uae.wps.pif', bench: BENCH, evaluationDate });
 const postings = async () => ((await (await fetch(`${nativeUrl}/postings`)).json()) as any[]).filter((p) => p.tenant === TENANT);
 
 describe('the payment file credits post through the bank\'s core-banking binding', () => {
