@@ -5,6 +5,7 @@ import { Store } from '../core/store.js';
 import { parseYaml } from '../core/yaml.js';
 import { ScriptRegistry } from '../interp/sandbox.js';
 import { PartyService, type AttemptRequest } from '../conformance/party.js';
+import { FolderSequences, SimulatorInstance } from '../sim/runtime.js';
 import { attrs, contextFrom, inSpan, initTelemetry, log, meters, shutdownTelemetry, SpanKind } from '../telemetry/telemetry.js';
 import { resolveSecret } from '../secrets/secrets.js';
 
@@ -44,6 +45,9 @@ initTelemetry(process.env.OTEL_SERVICE_NAME ?? `transacthub-worker-${manifest.qu
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.once(sig, () => { void shutdownTelemetry().finally(() => process.exit(0)); });
 
 const dirs = [path.join(dir, 'artefacts'), path.join(dir, 'simulators')].filter((d) => fs.existsSync(d));
+// A simulator's scenario is a sequence over the payment, whichever worker plays it (Issue I-162, R-09-89): the deploy runner names
+// one place for every worker of a deployment, and each scenario's place is kept there per conversation.
+if (process.env.TH_SIM_SHARED_DIR && dirs.length > 1) SimulatorInstance.shared = new FolderSequences(process.env.TH_SIM_SHARED_DIR);
 const store = Store.fromDirs(dirs);
 if (environment.configurationSet) {
   const cs = typeof environment.configurationSet === 'string' ? parseYaml(environment.configurationSet) : environment.configurationSet;

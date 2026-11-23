@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { addDuration } from '../core/duration.js';
 import type { VirtualClock } from '../interp/clock.js';
 
@@ -45,7 +48,53 @@ interface Conversation {
   pendingSteps?: any[];
 }
 
+/**
+ * Where a scenario's place is kept when several processes play the same simulator (Issue I-162, R-09-89): a deployment's workers,
+ * one per task queue, each hold a copy of every simulator its tasks reach, and a scenario is a sequence over the whole payment.
+ * Each move of the scenario's cursor is made under a lock on the shared place, keyed by simulator, scenario and conversation.
+ */
+export interface SharedSequences {
+  /** Runs `fn` with the cursor kept for `key`, and keeps the cursor it leaves; one caller at a time per key, across processes. */
+  withCursor<T>(key: string, cursor: number, fn: (cursor: number) => { result: T; cursor: number }): T;
+}
+
+/** Shared sequences in a folder every worker of a deployment can write (the deploy runner's work folder): a file per key, a lock directory. */
+export class FolderSequences implements SharedSequences {
+  constructor(readonly dir: string) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  private file(key: string) {
+    return path.join(this.dir, `${createHash('sha256').update(key).digest('hex').slice(0, 32)}.seq`);
+  }
+
+  withCursor<T>(key: string, _cursor: number, fn: (cursor: number) => { result: T; cursor: number }): T {
+    const f = this.file(key);
+    const lock = `${f}.lock`;
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    for (let i = 0; ; i++) {
+      try { fs.mkdirSync(lock); break; } catch (e: any) {
+        if (e?.code !== 'EEXIST') throw e;
+        // A lock left by a process that died holding it is taken after ten seconds.
+        try { if (Date.now() - fs.statSync(lock).mtimeMs > 10000) fs.rmSync(lock, { recursive: true, force: true }); } catch { /* gone */ }
+        Atomics.wait(pause, 0, 0, Math.min(20, 1 + i));
+      }
+    }
+    try {
+      const now = fs.existsSync(f) ? Number(fs.readFileSync(f, 'utf8')) || 0 : 0;
+      const out = fn(now);
+      fs.writeFileSync(`${f}.tmp`, String(out.cursor));
+      fs.renameSync(`${f}.tmp`, f);
+      return out.result;
+    } finally {
+      fs.rmSync(lock, { recursive: true, force: true });
+    }
+  }
+}
+
 export class SimulatorInstance {
+  /** Set by a deployed worker when the deploy runner names a shared place (TH_SIM_SHARED_DIR); else each process keeps its own place. */
+  static shared: SharedSequences | undefined;
   cursor = 0;
   readonly received: Message[] = [];
   readonly emitted: Message[] = [];
@@ -72,13 +121,27 @@ export class SimulatorInstance {
   /** Inward simulators begin by sending; play the leading send steps (R-07 kinds: inward). */
   start(conversation: string) {
     if (this.sim.direction !== 'inward') return;
-    let first = true;
-    while (this.cursor < this.steps.length && this.steps[this.cursor].send) {
-      const st = this.steps[this.cursor++];
-      const payload = first ? this.inbound?.payload : undefined;
-      this.emit(st, { correlation: {}, conversation }, undefined, payload);
-      first = false;
-    }
+    // Shared: the first worker to start the conversation plays the leading sends; the others find them played.
+    this.inSequence(conversation, () => {
+      let first = true;
+      while (this.cursor < this.steps.length && this.steps[this.cursor].send) {
+        const st = this.steps[this.cursor++];
+        const payload = first ? this.inbound?.payload : undefined;
+        this.emit(st, { correlation: {}, conversation }, undefined, payload);
+        first = false;
+      }
+    });
+  }
+
+  /** A move of the scenario's cursor: under the shared place's lock when the deployment shares one (Issue I-162). */
+  private inSequence<T>(conversation: string | undefined, fn: () => T): T {
+    const s = SimulatorInstance.shared;
+    if (!s) return fn();
+    return s.withCursor(`${this.sim.name}|${this.scenarioName}|${conversation ?? ''}`, this.cursor, (c) => {
+      this.cursor = c;
+      const result = fn();
+      return { result, cursor: this.cursor };
+    });
   }
 
   /** A message from the platform arrives at this simulator's port. */
@@ -98,6 +161,11 @@ export class SimulatorInstance {
       }
       return conv.response ?? { kind: 'no-reply' };
     }
+    return this.inSequence(m.conversation, () => this.receiveNew(m, expectsSyncReply));
+  }
+
+  /** A message not seen before takes the scenario's next expect, and its reply steps. */
+  private receiveNew(m: Message, expectsSyncReply: boolean): SimResponse {
     // A simulator that keys its state (by message id, say) holds one conversation per key: a new
     // key after the scenario has played out starts the scenario again.
     if (this.cursor >= this.steps.length && this.sim.state?.keyedBy && this.steps.some((x: any) => x.expect)) this.cursor = this.steps.findIndex((x: any) => x.expect);
