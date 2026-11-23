@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createPrivateKey } from 'node:crypto';
+import { afterAll } from 'vitest';
 import { generateSigningKey, signFiles, trustedSignersJson } from '../../src/export/signing.js';
 import { syntheticAssembly } from './synthetic-assembly.js';
 
@@ -42,14 +43,20 @@ export function writeModuleFolder(dir: string, scope: string, assembly: string, 
 }
 
 export function syntheticModules(content = 'synthetic WPS native assembly for the studio tests', opts: { sign?: boolean; wpsRefs?: { name: string; version?: string }[] } = {}): string {
-  // One folder per content and options, the same for every test file of the run.
-  const tag = createHash('sha256').update(JSON.stringify([content, opts, MODULE_KEY_ID])).digest('hex').slice(0, 16);
-  const dir = path.join(os.tmpdir(), `th-test-native-${tag}`);
+  // One folder per content and options in this test file, removed when the file's tests end.
+  const tag = createHash('sha256').update(JSON.stringify([content, opts])).digest('hex').slice(0, 16);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `th-test-native-${tag}-`));
+  made.push(dir);
   writeModuleFolder(path.join(dir, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, opts.wpsRefs ?? [CONTRACT, { name: 'System.Runtime', version: '10.0.0' }], content), opts.sign ?? true);
   writeModuleFolder(path.join(dir, 'p'), 'p', SYNTHETIC_PLATFORM_ASSEMBLY, syntheticAssembly(SYNTHETIC_PLATFORM_ASSEMBLY, [CONTRACT, { name: 'System.Runtime', version: '10.0.0' }], 'synthetic platform native assembly'), opts.sign ?? true);
-  process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 
-process.env.TH_NATIVE_MODULE_SIGNERS ??= MODULE_SIGNERS;
-process.env.TH_NATIVE_MODULES ??= syntheticModules();
+const made: string[] = [];
+afterAll(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+
+// Each test file gets its own folder (the one before it is removed with its file); a folder the caller named is kept.
+const outer = process.env.TH_TEST_NATIVE_MODULES_OUTER ?? (process.env.TH_NATIVE_MODULES ? '1' : '0');
+process.env.TH_TEST_NATIVE_MODULES_OUTER = outer;
+process.env.TH_NATIVE_MODULE_SIGNERS = MODULE_SIGNERS;
+if (outer === '0') process.env.TH_NATIVE_MODULES = syntheticModules();
