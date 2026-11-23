@@ -39,6 +39,25 @@ describe('sign-in (R-11-32, R-11-33)', () => {
     }
   });
 
+  it('checks a session with the identity provider at its heartbeat, and ends it once the provider ended it (R-11-50)', async () => {
+    const beat = await startServer({ TH_SESSION_HEARTBEAT_MINUTES: '0.01' });
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    try {
+      const s = await signIn(beat.url, 'example.maker');
+      await wait(700);
+      const renewed = await fetch(`${beat.url}/api/me`, { headers: { cookie: s.cookie } });
+      expect(renewed.status).toBe(200);
+      const cookie = renewed.headers.getSetCookie().map((c) => c.split(';')[0]).find((c) => c.startsWith('th_session=')) ?? s.cookie;
+      // The page's own heartbeat answers too, without counting as use.
+      expect((await fetch(`${beat.url}/auth/me`, { headers: { cookie, 'x-th-heartbeat': '1' } })).status).toBe(200);
+      expect((await fetch(`${beat.url}/auth/dev/end-session`, { method: 'POST', body: new URLSearchParams({ sub: 'example.maker' }) })).status).toBe(200);
+      await wait(700);
+      expect((await fetch(`${beat.url}/api/me`, { headers: { cookie } })).status).toBe(401);
+    } finally {
+      beat.stop();
+    }
+  });
+
   it('answers 401 to a call with no session, and the sign-in starts an authorization code flow with PKCE', async () => {
     expect((await raw('/api/catalogue')).status).toBe(401);
     expect((await raw('/auth/me')).status).toBe(401);

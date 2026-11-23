@@ -210,6 +210,21 @@ CASES = [
     ("M72", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-out.v2.yaml",
      "  - end: settled\n", "  - id: credit-employer\n    call: p.post.accounting.v2\n    handle:\n      rejected: { end: pending }\n      unknown: { end: pending }\n  - end: settled\n",
      "the employer's WPS leg posts the credit the outward refund order owns"),
+    # L49 (R-01-25): a reference table's rows fit its columns, and a column that references another table holds its keys
+    ("M73", "ERROR L49", "factory/uae.p/reference/uae.p.ref.participant-directory.v1.yaml",
+     "routingCode: '802420101'", "routingCode: '80242010'", "a participant's routing code is not nine digits"),
+    ("M74", "ERROR L49", "factory/uae.p/reference/uae.p.ref.participant-directory.v1.yaml",
+     "        headOffice: AE-AJ\n", "        headOffice: AE-XX\n", "a head office names no emirate of the emirates table"),
+    ("M75", "ERROR L49", "factory/uae.p/reference/uae.p.ref.emirates.v1.yaml",
+     "      - code: AE-DU\n", "      - code: AE-AZ\n", "an edition repeats a key"),
+    # L50 (R-11-51): a value read from a reference table names a published table and its columns
+    ("M76", "ERROR L50", "examples/bank/configuration-set.yaml",
+     "    value:\n      - { routingCode: \"203320101\", name: Example Bank One }\n      - { routingCode: \"302620122\", name: Example Bank Two }\n",
+     "    fromReference: { table: uae.p.ref.participant-directory.v1, columns: { routingCode: routingCode, name: bankName } }\n",
+     "a participant list reads a column the participant directory does not have"),
+    # L09 (R-01-25): a shared reference table's own words name no bank, whatever its public rows hold
+    ("M77", "ERROR L09", "factory/uae.p/reference/uae.p.ref.participant-directory.v1.yaml",
+     "title: The licensed banks of the UAE", "title: The licensed banks of the UAE for dib", "a shared reference table's title names a tenant"),
 ]
 
 

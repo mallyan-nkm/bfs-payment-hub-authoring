@@ -3,15 +3,32 @@ using System.Security.Claims;
 namespace TransactHub.Operations;
 
 /// <summary>
-/// The operator roles (R-06-24). A supervisor may do what an operator may, and is the second approver of a payment's action.
-/// A bank approver consents to a change of the system another person asked for (R-09-77); it is not an operator's role.
+/// The people's roles of the operations console (R-06-24, R-06-29). A supervisor may do what an operator may, and is the second
+/// approver of a payment action. A register maker drafts changes to the bank's registers; the bank approver consents to them, and
+/// a change takes effect only then (owner's decision of 23 November 2026: any action that updates the system needs the bank
+/// approver's consent, a maker plus a different approver). Each may read the registers.
 /// </summary>
 public static class OperatorRoles
 {
     public const string Operator = "Operator";
     public const string Supervisor = "Supervisor";
+    public const string RegisterMaker = "RegisterMaker";
     public const string BankApprover = "BankApprover";
-    public static readonly string[] All = [Operator, Supervisor, BankApprover];
+    public static readonly string[] All = [Operator, Supervisor, RegisterMaker, BankApprover];
+    /// <summary>Who may read the registers.</summary>
+    public static readonly string[] RegisterReaders = [Operator, Supervisor, RegisterMaker, BankApprover];
+}
+
+/// <summary>
+/// The machine callers' roles (R-09-73, R-09-74): system clients of the bank's identity provider, by the client credentials
+/// grant, given these roles per tenant by the bank's role map. <c>register-client</c>: core banking's register API and bulk sync
+/// (its changes are drafts that need the bank approver's consent). <c>channel-enquiry</c>: a channel's status and search enquiries.
+/// </summary>
+public static class SystemRoles
+{
+    public const string RegisterClient = "register-client";
+    public const string ChannelEnquiry = "channel-enquiry";
+    public static readonly string[] All = [RegisterClient, ChannelEnquiry];
 }
 
 /// <summary>

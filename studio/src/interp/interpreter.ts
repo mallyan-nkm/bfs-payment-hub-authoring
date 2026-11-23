@@ -1,3 +1,4 @@
+import { resolveReferenceValues } from '../core/reference.js';
 import { addDuration, durationMs, DEFAULT_CALENDAR, isDuration } from '../core/duration.js';
 import { clone } from '../core/canonical.js';
 import { coveredByAny, getPath, pick, setPath, type DeltaEntry } from '../core/paths.js';
@@ -15,7 +16,7 @@ import { ContractViolation, runScript, ScriptError, type ScriptRegistry } from '
 import { callsComposite, expandSubflow, expandWorkflow, isComposite } from '../core/expand.js';
 import { runPythonScript } from './pysandbox.js';
 import { attrs, inSpan, meters, SpanKind, SpanStatusCode, traceHeaders, tracer } from '../telemetry/telemetry.js';
-import { resolveSecret } from '../secrets/secrets.js';
+import { forgetNativeToken, nativeAuthHeaders, nativeFetch } from './native-auth.js';
 
 // The studio interpreter (C09). It runs the workflow DSL on the virtual clock and is the
 // reference for every engine. It never evaluates rules, reads values or calls ports inline:
@@ -363,7 +364,9 @@ export class Run {
     // A deployed worker on a runtime (TH_RUNTIME_URL): the bank's values as the runtime holds them at the attempt's time,
     // published there after the package was built (plan P6). They take the place of the package's configuration set.
     if (this.cfg.liveValues && key in this.cfg.liveValues) return this.cfg.liveValues[key];
-    const values = [...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key);
+    // A value read from a reference table (R-11-51) is read here, edition by edition, from the table the store holds.
+    const values = resolveReferenceValues([...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key),
+      (n) => this.resolveDoc(n));
     const inForce = values.filter((v: any) => v.validFrom <= date && (!v.validTo || v.validTo >= date));
     inForce.sort((a: any, b: any) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
     if (inForce.length) return inForce[inForce.length - 1].value;
@@ -991,7 +994,8 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
         clock: { now: () => run.clock.iso(), today: () => run.clock.today() },
         ids: { next: (p = 'id') => `${p}-${inst.id}-${id}-${callNo}` },
         log: { info: () => {} },
-      }),
+        // One tenant's scripts run in workers of that tenant only (R-08-20).
+      }, undefined, run.cfg.tenant ?? 'owner', run.clock.hold()),
       scope.never(),
     ]);
     // Leaf changes merge into the context; the item list is written whole.
@@ -1049,12 +1053,17 @@ export async function runNative(act: any, view: any, params: Record<string, any>
   const portAttrs = attrs({ 'th.port': 'native-host', 'th.activity': act.name });
   try {
     res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
-      // The native host takes the bank's machine callers only (R-08-17): the worker's token, by reference, TH_NATIVE_TOKEN.
-      const auth: Record<string, string> = process.env.TH_NATIVE_TOKEN ? { authorization: `Bearer ${(await resolveSecret(process.env.TH_NATIVE_TOKEN)).reveal()}` } : {};
-      const r = await fetch(`${host.replace(/\/$/, '')}/native`, {
-        method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...auth },
-        body: JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) }),
-      });
+      // The native host takes the bank's machine callers only (R-08-17, R-08-21): the worker's own client-credentials token,
+      // kept fresh, or a token by reference, and over mutual TLS where it is configured (native-auth.ts).
+      const body = JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) });
+      const call = async () => nativeFetch(`${host.replace(/\/$/, '')}/native`, { method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...(await nativeAuthHeaders()) }, body });
+      let r = await call();
+      // A token the host no longer takes is fetched again once.
+      if (r.status === 401 && process.env.TH_NATIVE_TOKEN_URL) {
+        forgetNativeToken();
+        r = await call();
+      }
+      if (r.status === 401) return { kind: 'error', name: 'NotAuthenticated', retryable: false, message: 'The native host did not take the worker\'s credentials (R-08-17)' };
       return r.json();
     }, { kind: SpanKind.CLIENT });
   } catch (e: any) {

@@ -8,7 +8,10 @@ import { packEntries } from '../governance/packs.js';
 import { exportPackage, signPackage, type Target } from './exporter.js';
 import { bindingOf } from './bindings.js';
 import { signFiles, type ReleaseClaims } from './signing.js';
+import { resolveReferenceValues } from '../core/reference.js';
+import { compareReleases } from '../core/names.js';
 import type { StudioEnv } from '../env.js';
+import { scopedEnv } from '../core/scope.js';
 
 // A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-48 to R-09-52,
 // R-11-37 to R-11-40). A distribution is the complete, signed copy of everything one bank runs on one engine: the platform
@@ -188,6 +191,8 @@ export interface BuiltBundle {
  */
 export function buildDistribution(env: StudioEnv, req: { bank: string; engine: Target; id?: string; changeSets?: string[]; date?: string; withSimulators?: boolean }): BuiltBundle {
   const { bank, engine } = req;
+  // A bank's distribution holds shared content and that bank's own only (R-11-48).
+  env = scopedEnv(env, bank);
   const schemes = licensedSchemes(env, bank);
   const schemeDocs = env.store.byKind('scheme').map((e) => e.doc);
   for (const s of schemes) if (!schemeDocs.some((d) => d.scope === s)) throw new DistributionRefused(`${bank} licenses ${s}, which the studio has no scheme pack for`);
@@ -196,7 +201,8 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
   const platformDocs = [...(byScope.get('p') ?? []), ...platformScopes(schemes).slice(1).flatMap((s) => byScope.get(s) ?? [])].map((e) => e.doc);
   const slot = checkSlotContracts(platformDocs, schemes.map((s) => ({ scope: s, docs: (byScope.get(s) ?? []).map((e) => e.doc) })));
   if (slot.problems.length) throw new DistributionRefused(`The distribution of ${bank} is refused: ${slot.problems.join('; ')}`);
-  const all = [...byScope.values()].flat();
+  // Reference tables are values: they travel in the configuration release, never in a distribution (R-01-25).
+  const all = [...byScope.values()].flat().filter((e) => e.kind !== 'reference-table');
   const params = parameterContract(all.map((e) => e.doc));
   if (params.problems.length) throw new DistributionRefused(`The parameter contract of ${bank}'s distribution has problems: ${params.problems.join('; ')}`);
   // The engine binding at its exact release, pinned in the bill of materials (Issue I-83).
@@ -266,8 +272,11 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
  */
 export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; release?: string; changeSet?: string; against: { releaseId: string; parameterContract: any }[]; bindings?: any[]; calendars?: any[]; set?: any }): BuiltBundle {
   const { bank } = req;
+  env = scopedEnv(env, bank);
   const set = clone(req.set ?? env.store.configurationSet(bank));
   if (!set) throw new DistributionRefused(`${bank} has no configuration set`);
+  // A value read from a reference table goes out as the values it reads, one per edition (R-11-51).
+  set.values = resolveReferenceValues(set.values ?? [], (n) => env.store.doc(n, undefined, bank));
   // The bank's port bindings go out in its configuration release (R-11-47): those given, else the ones the studio last released.
   // A release of the bindings names the configuration release with build metadata, so that one with the same values and
   // other bindings is a release of its own: <configuration set release>+bindings.<port bindings release>.
@@ -298,9 +307,12 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   files['configuration/configuration-set.yaml'] = toYaml(set);
   if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, ...(released?.release ? { release: released.release } : {}), bindings: req.bindings });
   for (const c of req.calendars ?? []) files[`calendars/${c.name}.yaml`] = toYaml(c);
+  // The reference tables the bank sees, each at its latest release with every edition (R-01-25): the runtime serves them by
+  // date under GET /lookups/{domain}.
+  for (const t of referenceTablesFor(env, bank)) files[`reference/${t.name}.yaml`] = toYaml(t);
   const requiresContract = req.against.map((d) => ({ distribution: d.releaseId, sha256: sha(canonicalJson(d.parameterContract)) })).sort((a, b) => a.distribution.localeCompare(b.distribution));
   const billOfMaterials = { artefacts: Object.entries(files).map(([p, t]) => ({ path: p, sha256: sha(t) })).sort((a, b) => a.path.localeCompare(b.path)) };
-  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length, ...(released?.release ? { portBindings: released.release } : {}) };
+  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length, referenceTables: Object.keys(files).filter((f) => f.startsWith('reference/')).length, ...(released?.release ? { portBindings: released.release } : {}) };
   files['manifest.yaml'] = toYaml(manifest);
   const releaseId = `config/${bank}@${release}`;
   const signed = signFiles(files, { kind: 'configuration', releaseId, workflow: '', release, target: '', tenant: bank, changeSet: req.changeSet ?? null, extra: { billOfMaterials } }) as Record<string, string>;
@@ -308,6 +320,17 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
     kind: 'configuration', bank, id: release, releaseId, folder: configFolder(bank, release), files: signed, manifest,
     tag: { name: configTag(bank, release), message: [`Configuration release ${releaseId}`, '', `Folder: ${configFolder(bank, release)}/`, `Checked against: ${requiresContract.map((r) => r.distribution).join(', ')}`].join('\n') },
   };
+}
+
+/** The reference tables a bank sees: shared ones and its own, the latest published release of each name. */
+export function referenceTablesFor(env: StudioEnv, bank: string): any[] {
+  const latest = new Map<string, Entry>();
+  for (const e of env.store.byKind('reference-table')) {
+    if (e.tenant !== OWNER_TENANT && e.tenant !== bank) continue;
+    const have = latest.get(e.name);
+    if (!have || compareReleases(e.release, have.release) > 0) latest.set(e.name, e);
+  }
+  return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name)).map((e) => e.doc);
 }
 
 /** The distributions of a bank the content branch holds, with their manifests: what a configuration release is checked against. */

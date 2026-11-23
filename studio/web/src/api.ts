@@ -66,12 +66,18 @@ export function downloadUrl(path: string, _tenant?: string) {
 }
 
 /** Who is signed in (GET /auth/me): the user, its tenant and roles, the surfaces to show and where to land. */
-export interface Me { signedIn: boolean; provider: string; identity?: string; user?: string; tenant?: string; roles: string[]; surfaces: string[]; landing?: string; csrfToken?: string }
+export interface Me { signedIn: boolean; provider: string; identity?: string; user?: string; tenant?: string; roles: string[]; surfaces: string[]; landing?: string; csrfToken?: string; heartbeatSeconds?: number }
 
 export async function me(): Promise<Me> {
   const r = await fetch('/auth/me', { credentials: 'same-origin' });
   const body = await r.json().catch(() => ({ signedIn: false, roles: [], surfaces: [] }));
   return { roles: [], surfaces: [], ...body };
+}
+
+/** The session's heartbeat (R-11-50): whether the session still holds. It does not count as use: the idle time runs on. */
+export async function heartbeat(): Promise<boolean> {
+  const r = await fetch('/auth/me', { credentials: 'same-origin', headers: { 'x-th-heartbeat': '1' } });
+  return r.status === 200;
 }
 
 export async function signOut() {

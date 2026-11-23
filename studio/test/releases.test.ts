@@ -48,7 +48,7 @@ describe('every changed factory artefact is a new release; the earlier stays as 
   it('moves the banks\' configuration sets and pins to the new pack releases', () => {
     const env = freshEnv({ banks: ['dib'] } as any);
     for (const t of ['example-bank', 'dib']) {
-      expect(env.store.configurationSet(t).accepts, t).toEqual([{ scope: 'p', release: '1.6.0' }, { scope: 'uae.p', release: '1.6.0' }, { scope: 'uae.wps', release: '1.6.0' }]);
+      expect(env.store.configurationSet(t).accepts, t).toEqual([{ scope: 'p', release: '1.7.0' }, { scope: 'uae.p', release: '1.7.0' }, { scope: 'uae.wps', release: '1.7.0' }]);
     }
     // The example bank's first configuration set and lock file stay as they were published.
     expect(body(disk('banks/example-bank/configuration-set.yaml')).release).toBe('1.0.0');
@@ -62,7 +62,9 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.3.0.yaml')).release).toBe('1.3.0');
     expect(body(disk('banks/example-bank/configuration-sets/1.6.0.yaml')).release).toBe('1.6.0');
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).release).toBe('1.5.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.6.0');
+    expect(body(disk('banks/example-bank/configuration-sets/1.7.0.yaml')).release).toBe('1.7.0');
+    expect(body(disk('banks/example-bank/packs/1.6.0.yaml')).release).toBe('1.6.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.7.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);

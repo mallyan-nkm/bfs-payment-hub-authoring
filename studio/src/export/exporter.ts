@@ -51,6 +51,8 @@ export function artefactsBlock(env: StudioEnv, checker: Checker, doc: any) {
 }
 
 export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage {
+  // An export holds shared content and the tenant's own only (R-11-48): never another bank's artefact, script or extension.
+  env = scopedEnv(env, req.tenant ?? 'owner');
   const checker = Checker.fromEnv(env);
   const files: Record<string, string> = {};
   const issues: Issue[] = [];
@@ -270,6 +272,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
 import ts from 'typescript';
+import { scopedEnv } from '../core/scope.js';
 function sha(s: string) {
   return createHash('sha256').update(s, 'utf8').digest('hex');
 }
@@ -346,6 +349,7 @@ function workerFiles(env: StudioEnv, checker: Checker, binding: any, blocks: Map
   }
   const bundle = workerBundle();
   const pyHarness = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'interp', 'py_harness.py');
+  const scriptWorker = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'interp', 'script-worker.cjs');
   for (const [q, acts] of [...byQueue].sort(([a], [b]) => a.localeCompare(b))) {
     const base = `workers/${q}/`;
     const docs = new Map<string, any>();
@@ -385,6 +389,8 @@ function workerFiles(env: StudioEnv, checker: Checker, binding: any, blocks: Map
       }
     }
     if (needsPython && fs.existsSync(pyHarness)) files[`${base}py_harness.py`] = fs.readFileSync(pyHarness, 'utf8');
+    // A TypeScript script runs in a worker process of its own beside the worker (R-08-20).
+    if (acts.some((a) => env.scripts.find(a.name, a.release)?.language === 'typescript')) files[`${base}script-worker.cjs`] = fs.readFileSync(scriptWorker, 'utf8');
     void checker;
   }
   return files;

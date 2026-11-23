@@ -134,6 +134,21 @@ export class VirtualClock {
   get busyOutside() {
     return this.outside > 0;
   }
+  /**
+   * A script worker's own time (R-08-20): while the worker computes, business time does not move; while it waits on a port
+   * call of its own, it may. Returns the hold, which is entered and left as the worker goes.
+   */
+  hold(): { enter(): void; leave(): void } {
+    let held = false;
+    return {
+      enter: () => {
+        if (!held) (held = true), this.outside++;
+      },
+      leave: () => {
+        if (held) (held = false), this.outside--;
+      },
+    };
+  }
   async external<T>(work: () => Promise<T>): Promise<T> {
     this.outside++;
     try {

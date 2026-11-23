@@ -191,8 +191,6 @@ services:
       Releases__TestEnvironments: test
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
-      # A distribution with its engine packages is larger than Kestrel's default 30 MB body (Issue I-156).
-      Kestrel__Limits__MaxRequestBodySize: "268435456"
     ports: ["127.0.0.1:8481:8080"]
 
   service-api:

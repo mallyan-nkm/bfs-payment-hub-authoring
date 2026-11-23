@@ -17,6 +17,7 @@ The source contradicts itself on whether ADIB runs WPS (Issue I-86): its custome
 | `core-banking.yaml` | port-bindings | `p.port.core-banking.v1` bound to the `gateway-rest` adapter: a placeholder host and the credential by reference, nothing else (Issue I-85). | The runtime (`PortBindings`, `CoreBankingResolver`) |
 | `file-transfer.yaml` | port-bindings | `p.port.file-transfer.v1` bound to an `sftp` adapter: the folders the bank's WPS plugin uses, `.invalid` hosts, the credential by reference. | The runtime (`PortBindings`) |
 | `labour-ministry.yaml` | port-bindings | `uae.wps.port.labour-ministry.v1` bound to the `gateway-rest` adapter: a placeholder host and the credential by reference, nothing else (Issue I-118). | The runtime (`PortBindings`, `RestEmployerRegister`) |
+| `party-register.yaml` | port-bindings | `p.port.party-register.v1` bound to the runtime's own register (adapter `register`, R-12-27): the corporate registration the bank keeps in the operations console (R-05-62). No customer data is here. | The runtime (`PortBindings`, `StorePartyRegister`) |
 | `encryption.yaml` | port-bindings | `p.port.encryption.v1` bound to the `openpgp` adapter: the Central Bank's WPS public key by reference (Issue I-87). | The runtime (`PortBindings`, `OpenPgpEncryption`) |
 | `hooks/` | hook | The employer AML check (not bound) and the labour ministry notification (bound), from the bank's WPS fork. | The studio |
 | `activities/`, `ports/`, `simulators/` | activity, port, simulator | What the hooks call, and the test doubles for their ports. | The studio |

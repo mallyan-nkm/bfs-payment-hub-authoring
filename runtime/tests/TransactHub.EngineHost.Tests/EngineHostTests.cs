@@ -126,6 +126,8 @@ sealed class Worker : IDisposable
 public class EngineHostTests(Servers servers)
 {
     const string Environment = "test";
+    /// <summary>A synthetic token for this test run's supervisor (R-08-22).</summary>
+    static readonly string HostToken = $"synthetic-host-token-{Guid.NewGuid():N}";
     static readonly string Runtime = RuntimeDir();
 
     static string RuntimeDir()
@@ -303,6 +305,7 @@ public class EngineHostTests(Servers servers)
         {
             using var h = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
             using var req = new HttpRequestMessage(new HttpMethod(method), $"{Url}{path}");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", HostToken);
             if (body is not null) req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
             using var res = await h.SendAsync(req);
             var text = await res.Content.ReadAsStringAsync();
@@ -332,6 +335,9 @@ public class EngineHostTests(Servers servers)
         psi.Environment["TH_HOST_POLL"] = "PT0.5S";
         psi.Environment["TH_HOST_UNREGISTER_WAIT"] = "PT7M";
         psi.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        // The supervisor and its hosts take their callers' token (R-08-22), here by reference to a variable.
+        psi.Environment["TH_ENGINE_HOST_TOKEN"] = "env:TH_TEST_ENGINE_HOST_TOKEN";
+        psi.Environment["TH_TEST_ENGINE_HOST_TOKEN"] = HostToken;
         var p = Process.Start(psi)!;
         var ready = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var log = new StringBuilder();

@@ -1,0 +1,166 @@
+# The files change set CS-2026-11-23-002 published, each with the SHA-256 of its text as published (R-11-36). Written once; never edited.
+kind: release-ledger
+changeSet: CS-2026-11-23-002
+files:
+  - path: artefacts/inventory/1.7.0.yaml
+    sha256: 9a58d61bbc1cec3a9c979fe237290711440291881793c5cc0a7e6523b88d4b7c
+  - path: artefacts/p/p.enrich.party-register.v1/1.0.0.yaml
+    sha256: 602ee498fea22263ab6831cf616be84c9c01cf196c60567056e057afc4219d7f
+  - path: artefacts/p/p.port.party-register.v1/1.0.0.yaml
+    sha256: eb233247cb07510dd20987e189f707648241e423076cdd4eb41b93d4ea3b0fe7
+  - path: artefacts/p/p.ref.purpose-codes.v1/1.0.0.yaml
+    sha256: 88f33b36b5dc0bc0162d4402defff4440ddc932f4dbd68da534f0721f5236b0b
+  - path: artefacts/p/p.sim.party-register.v1/1.0.0.yaml
+    sha256: d087e7a3ad8b500c11e96efe27c40ed855a63f7a53439ecb1efbf107d09ff5ea
+  - path: artefacts/p/pack/1.7.0.yaml
+    sha256: 11e29d25c2a9f6a7faa6b66871be57c38b03c8905e4494015e14df777d460012
+  - path: artefacts/p/tests/P-CHG-001@1.7.0.yaml
+    sha256: c025d6ce42156acfb16a115d4df86d9cc94c20eadcb9c38166ab233525dd4fee
+  - path: artefacts/p/tests/P-CHG-002@1.7.0.yaml
+    sha256: 8da22151364cb1089de786785471213a76ef7685c6f1925c0e26f45738ddc158
+  - path: artefacts/p/tests/P-DEC-001@1.7.0.yaml
+    sha256: 135a539c47c4eb10d12445033f74a99bf63b197ce3f5e870545f79d6ac6cd37d
+  - path: artefacts/p/tests/P-DEC-002@1.7.0.yaml
+    sha256: 46fea7d1947523d2ea5ff6f8e645aa4d044089bffa60cf9ef38c21dff6a79c84
+  - path: artefacts/p/tests/P-ENC-001@1.7.0.yaml
+    sha256: d3c013e01727488d6a82c34276ccd806015213d28bf8394bcfda20188819fa4c
+  - path: artefacts/p/tests/P-ENC-002@1.7.0.yaml
+    sha256: 2829f5f38f8be32556c49034a1d49a536f81443164d08638ec1728e6a14ec786
+  - path: artefacts/p/tests/P-FX-001@1.7.0.yaml
+    sha256: 198a7ffb99de0b2bf46297782661f309e87410110204b898c6f66a20c74dece3
+  - path: artefacts/p/tests/P-FX-002@1.7.0.yaml
+    sha256: ef0ef08c804142814f45cf382fbb2d47ff78df1722f60e314ca01dc7783ab7d3
+  - path: artefacts/p/tests/P-FX-003@1.7.0.yaml
+    sha256: 7aa1b3b264725919ac0186179e9c8b67966921e0d937814cebcc28f640089d44
+  - path: artefacts/p/tests/P-POST-001@1.7.0.yaml
+    sha256: 607f98aaf81c34e91d51405921c73d617ff7a60800a8a545390de9b38a072f11
+  - path: artefacts/p/tests/P-POST-002@1.7.0.yaml
+    sha256: 7cc4458ea7404fbaa7b2bd9e600c1b665d3d9a0cdc13268be727d3d14104dabe
+  - path: artefacts/p/tests/P-POST-003@1.7.0.yaml
+    sha256: fb8d1077a1114fb69235757cba8d6c318cef6512ac62a2eaaced7e6044edb42e
+  - path: artefacts/p/tests/P-POST-004@1.7.0.yaml
+    sha256: 747bfe9eb1a99f496956e5bcb371d25e6ce4b07359743115a4ed01b866cdcc6d
+  - path: artefacts/p/tests/P-REG-001@1.7.0.yaml
+    sha256: 5eb1b6deabce4b909aaaf4c21e82c7bb5776121e2812a1656067c910dfa395c2
+  - path: artefacts/p/tests/P-REG-002@1.7.0.yaml
+    sha256: 6a42958faaac7e18e5e96a080ddfacfb7634e8fa131ea073676fd721908da0fa
+  - path: artefacts/p/tests/P-REG-003@1.7.0.yaml
+    sha256: 508ce96fbc86f67dbae5e9ea20430c9c3ea0650a7cb0fcabe67fd20c58afd4f9
+  - path: artefacts/p/tests/P-REG-004@1.7.0.yaml
+    sha256: 708a362f2de3d7a05529314fb91c16d494c6696cdeda2a5980d1ebc7cc3fc993
+  - path: artefacts/p/tests/P-RES-001@1.7.0.yaml
+    sha256: 43e61e187abd77c21476af54f4ac880b01a40d5ecb05c8e3f25624f943ef8269
+  - path: artefacts/p/tests/P-RES-002@1.7.0.yaml
+    sha256: d023fcc8f12d25ff9ba48613f7834a9d51aad67abb630dcc1f4c0fd340955246
+  - path: artefacts/uae.p/pack/1.7.0.yaml
+    sha256: 9955b45231a3303d33aa4647ccd2f7501fef316658b1a39ec1e8ce44145a16ea
+  - path: artefacts/uae.p/uae.p.ref.business-calendar.v1/1.0.0.yaml
+    sha256: 587eb75bb70658204d577dbba901e0212072dbc512c1934da4ec9a8af6b00553
+  - path: artefacts/uae.p/uae.p.ref.emirates.v1/1.0.0.yaml
+    sha256: e507a78d005f2529119b98f48bc951916427d64ce22f65d0980da3e26cc8f29b
+  - path: artefacts/uae.p/uae.p.ref.free-zones.v1/1.0.0.yaml
+    sha256: 87337f41c05209327e0d29c4d2c132340810ed06e4437cafb5d6b0aa5294962e
+  - path: artefacts/uae.p/uae.p.ref.participant-directory.v1/1.0.0.yaml
+    sha256: 2e2ead3c2bf22ad0f0687d0fa98b698532f31e6f598a9f09bb928034a92eb0bd
+  - path: artefacts/uae.wps/pack/1.7.0.yaml
+    sha256: a696412c8c22ca2cc77efb2ed00db8d1887548059834d5ac2bb6b8c173b0e0fa
+  - path: artefacts/uae.wps/tests/WPS-ENR-001@1.7.0.yaml
+    sha256: 07d8e3fbf456c496c1642a4f60d56a6023104e66bf581b849bd17060999330e1
+  - path: artefacts/uae.wps/tests/WPS-ENR-002@1.7.0.yaml
+    sha256: 45892a037dd50dc3358a2edf878929265a5e723c74529755720ee7f48a2e2877
+  - path: artefacts/uae.wps/tests/WPS-EXC-001@1.7.0.yaml
+    sha256: 4f5f640db13b9554231ceeee8d7f0b527851a1e9a28aa7c441cdbbb58d3bfd2a
+  - path: artefacts/uae.wps/tests/WPS-EXC-002@1.7.0.yaml
+    sha256: cbbda9db21df4b45483ecfa9ce60cc874255e3af75eceb29bb4d8c74096ed25a
+  - path: artefacts/uae.wps/tests/WPS-EXC-003@1.7.0.yaml
+    sha256: 7cd0b04bbfd69e98ec4fccc518e6e0a7057fe5806e084b20d12164935b0cf8d5
+  - path: artefacts/uae.wps/tests/WPS-IN-001@1.7.0.yaml
+    sha256: b276386b45261213314d6aa2a23a5bc76be6c87426d915ffd12b36e700dd3406
+  - path: artefacts/uae.wps/tests/WPS-IN-002@1.7.0.yaml
+    sha256: a4da7868037395c7e6e18cd6491ea0ff3fd02f15e2981937480cc5f86ff3e254
+  - path: artefacts/uae.wps/tests/WPS-IN-003@1.7.0.yaml
+    sha256: 606e54591ad106f6b38d67fa4e93037464890fe1833211db4e3d3fc33040e0cb
+  - path: artefacts/uae.wps/tests/WPS-IN-004@1.7.0.yaml
+    sha256: 0774ea1d9f456c1d57711ec0164b0fb7c6d87e65670e9492e26313161e932230
+  - path: artefacts/uae.wps/tests/WPS-IN-005@1.7.0.yaml
+    sha256: 9d953f67d1d12a2257e0e331f0b7daaf227893ddabb0215b08c2424a28fa88a8
+  - path: artefacts/uae.wps/tests/WPS-IN-006@1.7.0.yaml
+    sha256: 7234ceafdd07b3a3d6b33ac50a2d27dfcb63a1be972afed14384f5d6acd28e98
+  - path: artefacts/uae.wps/tests/WPS-IN-007@1.7.0.yaml
+    sha256: fabcbb04629db76f730f642d453a17ee7fa825c3263b7213f8556af078e82f0d
+  - path: artefacts/uae.wps/tests/WPS-IN-008@1.7.0.yaml
+    sha256: d068b416a08b863e5d637d85227c647d47730633d88abc1587cbbcbb8f9e6812
+  - path: artefacts/uae.wps/tests/WPS-IN-009@1.7.0.yaml
+    sha256: 628d1f9b9aad97cdb5c372b3bb3800f51bb226b40e51e4e84a5e8baccf1cc985
+  - path: artefacts/uae.wps/tests/WPS-MAP-001@1.7.0.yaml
+    sha256: a89db653bcf26ef655ea4a3194c8bbefc406b764fce142c1580949fc80705dbb
+  - path: artefacts/uae.wps/tests/WPS-MAP-002@1.7.0.yaml
+    sha256: e30b3ab67047f7e97aaf74fa90594cbf7ed9f4dfb9e6605e6dc25fefddf6cbbd
+  - path: artefacts/uae.wps/tests/WPS-MAP-003@1.7.0.yaml
+    sha256: 72c74f8e4495e38092e7d961aecd0f8ad3f8a69ae26dd257fc61d7f0c01d79aa
+  - path: artefacts/uae.wps/tests/WPS-MAP-004@1.7.0.yaml
+    sha256: 31a6658a58c163a8dcf7d20fb02293a963a4e360fc3fcea37c61b3442730a946
+  - path: artefacts/uae.wps/tests/WPS-MAP-005@1.7.0.yaml
+    sha256: c7b1dca2edf2077b20d0b82172538c5fcfa461b3a85ad95299efdb0ae0c43eb5
+  - path: artefacts/uae.wps/tests/WPS-OUT-001@1.7.0.yaml
+    sha256: f57f2471084d1d3ee0e7c0494f241a3eb43b642191f4bbd82bcd8a53e4cbcae6
+  - path: artefacts/uae.wps/tests/WPS-OUT-002@1.7.0.yaml
+    sha256: 9b21d3436adad8b8866395670e1bb78894ed93ebbb10ade55f9b701e723903b5
+  - path: artefacts/uae.wps/tests/WPS-OUT-003@1.7.0.yaml
+    sha256: 7e4264809d62a915a7987a84876244acce8e72dc9ac451fbf3f0ea385c24cb2d
+  - path: artefacts/uae.wps/tests/WPS-OUT-004@1.7.0.yaml
+    sha256: 5f8165cd6a9137bee513bbe21505054966ae637d5016c756d180bfdbbc4f7943
+  - path: artefacts/uae.wps/tests/WPS-OUT-005@1.7.0.yaml
+    sha256: 093dc361aa9adee9fcee76202398359116d5b8ca4edd8f838d0d329a3ab6de78
+  - path: artefacts/uae.wps/tests/WPS-OUT-006@1.7.0.yaml
+    sha256: 6a872cff2ab2de34bf578ad11fc2f26f546e5b2b72a89d86503209b2cf4d0d69
+  - path: artefacts/uae.wps/tests/WPS-OUT-007@1.7.0.yaml
+    sha256: 29437163b22ce6feccb4e6908de651818c34197a6faa11907ad1a21924afdfe3
+  - path: artefacts/uae.wps/tests/WPS-OUT-008@1.7.0.yaml
+    sha256: f62a168ce1fe81087c6eb6d1bd91261f29566aca6a902b77daf066565564f342
+  - path: artefacts/uae.wps/tests/WPS-OUT-009@1.7.0.yaml
+    sha256: 89d097e58c862421ab74d9296330409a29fbf9c47d32ded027a116a84942219b
+  - path: artefacts/uae.wps/tests/WPS-OUT-010@1.7.0.yaml
+    sha256: b0fea60b59fb705e578b3d17cd6de7d5a903975c88f47ee16d38cefe8ff70b2a
+  - path: artefacts/uae.wps/tests/WPS-RFR-001@1.7.0.yaml
+    sha256: fde3d0a36a40d40c6d85c03e5fc402ee2698ef12acfb913001bb47eb57344d91
+  - path: artefacts/uae.wps/tests/WPS-RFR-002@1.7.0.yaml
+    sha256: 0b431d67c04335a1b0b46854e6e4120cbc6a900ed4fb66ce580f508e46b43af0
+  - path: artefacts/uae.wps/tests/WPS-RFR-003@1.7.0.yaml
+    sha256: 08728ef86eb3cdb7bdff9b9cf0b5091efb605270004bf82b18e8d3d399a074a5
+  - path: artefacts/uae.wps/tests/WPS-RRI-001@1.7.0.yaml
+    sha256: 223f90e32a984880be40021e07cfbfb131e1cf5d05e6cc4399d33bc1528b12a5
+  - path: artefacts/uae.wps/tests/WPS-RRI-002@1.7.0.yaml
+    sha256: d2b3b11d6afdd06ad52dcf36a998c39ee1ee8c106317f1d9be09a4f8eac276c2
+  - path: artefacts/uae.wps/tests/WPS-RRI-003@1.7.0.yaml
+    sha256: 5d26128f98b4d4cd4cc314775c18f949c5253a206822707f0e7753f83a105653
+  - path: artefacts/uae.wps/tests/WPS-RRI-004@1.7.0.yaml
+    sha256: 1bf7d3d112b96e71d3d66a6ffac898c7e80c66226fd4a77523ea24f8b0d90b46
+  - path: artefacts/uae.wps/tests/WPS-RRI-005@1.7.0.yaml
+    sha256: a99ac741714a6070026f429cacb46ae913c23b605d68aca13017bb1bcec06480
+  - path: artefacts/uae.wps/tests/WPS-RRI-006@1.7.0.yaml
+    sha256: 167e119b00c2fb2cbedd9b60c22ca1939352c7e738d0a1cae6f35e0911fc88eb
+  - path: artefacts/uae.wps/tests/WPS-RRI-007@1.7.0.yaml
+    sha256: bdaeeae475b6a992e58b29a795cc96b795241b95f8b038344fd0e3295ccf7a70
+  - path: artefacts/uae.wps/tests/WPS-RTC-001@1.7.0.yaml
+    sha256: 1298d1a8891923a2a94dd7e7ca39777660caeb14accf6f728963fff1e055fc4c
+  - path: artefacts/uae.wps/uae.wps.map.sif-in.v1/1.3.0.yaml
+    sha256: c054f6460759807147c707614746509e90d60ade20d5505b9290859995aebfff
+  - path: artefacts/uae.wps/uae.wps.wf.salary-file-out.v1/1.3.0.yaml
+    sha256: ff8b8180d9402af6d6efcf52e35158404cba98725cad4a33149529d92d27ebee
+  - path: banks/example-bank/configuration-sets/1.7.0.yaml
+    sha256: 7bcb753d7b645e1289023982482676a3f07dc8d66c6a1882b21a1e1779ce3276
+  - path: banks/example-bank/pack.yaml
+    sha256: 18c086529a226249f51aaba24b7959d982428038e09eec74699b6840942ce733
+  - path: banks/example-bank/packs/1.6.0.yaml
+    sha256: 3f7f2b08adb7a4718ab6d0c2abf4e80287dccb4328b7da66bd8b3591b8f539f3
+  - path: banks/example-bank/reference/b.ref.branches.v1.yaml
+    sha256: 904bbae9a27fa535653dce1609367586d9d0987bdc049d885a3e6e7e49179193
+  - path: scripts/p.enrich.party-register.v1.ts
+    sha256: b55ef9c5efcb84120f7bf3f7f5cbd7eb00affa6f565277bf8f0e1b33d64b8d76
+  - path: scripts/uae.wps.map.sif-in.v1@1.3.0.ts
+    sha256: 2f59d2709df272b4658dc642d121c91b7a9df0a593d40e133e2d5107168221c3
+replaced:
+  - path: banks/example-bank/pack.yaml
+    sha256: 3f7f2b08adb7a4718ab6d0c2abf4e80287dccb4328b7da66bd8b3591b8f539f3
+    keptAt: banks/example-bank/packs/1.6.0.yaml

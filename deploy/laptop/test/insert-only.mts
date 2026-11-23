@@ -158,23 +158,22 @@ async function main() {
   log('5. a second install of A\'s id with other content is refused');
   const pkg = await call(API, pipeline, 'GET', `/distributions/package?id=${encodeURIComponent(A.releaseId)}`);
   check('the release API gives A\'s package as stored', pkg.status === 200 && Buffer.isBuffer(pkg.data), pkg.status);
-  const files: Record<string, string | Buffer> = {};
-  for (const e of unzip(pkg.data)) files[e.name] = e.content;
-  const manifest = parseYaml(files['manifest.yaml'].toString());
-  const target = manifest.billOfMaterials.artefacts.find((a: any) => a.path?.startsWith('workflows/')) ?? manifest.billOfMaterials.artefacts[0];
-  const changedText = `${files[target.path].toString()}\n# changed after it was installed (synthetic)\n`;
-  files[target.path] = changedText;
-  target.sha256 = `sha256:${(await import('node:crypto')).createHash('sha256').update(changedText).digest('hex')}`;
+  const stored = Object.fromEntries(unzip(pkg.data).map((e) => [e.name, e.content]));
+  const original = parseYaml(stored['manifest.yaml'].toString());
+  // A's id with other content: one of its workflows changed after it was installed, the rest of the bill of materials left out
+  // (a whole distribution is larger than the release API takes in one upload, Issue I-156), signed as the studio signs.
+  const target = original.billOfMaterials.artefacts.find((a: any) => a.path?.startsWith('workflows/')) ?? original.billOfMaterials.artefacts[0];
+  const changedText = `${stored[target.path].toString()}\n# changed after it was installed (synthetic)\n`;
+  const billOfMaterials = { ...original.billOfMaterials, artefacts: [{ ...target, sha256: `sha256:${(await import('node:crypto')).createHash('sha256').update(changedText).digest('hex')}` }] };
+  const manifest = { ...original, billOfMaterials };
   const { toYaml } = await import('../../../studio/src/core/yaml.js');
-  files['manifest.yaml'] = toYaml(manifest);
-  delete files['release.json']; delete files['release.sig'];
+  const files: Record<string, string> = { [target.path]: changedText, 'manifest.yaml': toYaml(manifest) };
   // Signed with the studio's own key, from the stack's keys volume: the signature is good, only the content differs.
   const pem = compose('exec', '-T', 'studio', 'cat', '/var/lib/transacthub/keys/studio-signing.pem').stdout;
   check('the studio\'s signing key is in the stack\'s keys volume, never in an image', pem.includes('PRIVATE KEY'));
   process.env.TH_LAPTOP_IT_KEY = pem;
   process.env.TH_SIGNING_KEY = 'env:TH_LAPTOP_IT_KEY';
-  const text = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, Buffer.isBuffer(v) ? v.toString('utf8') : v]));
-  const signed = signFiles(text, { kind: 'distribution', releaseId: A.releaseId, workflow: '', release: manifest.id, target: manifest.engine, tenant: BANK, changeSet: 'CS-LAPTOP-TAMPER', extra: { billOfMaterials: manifest.billOfMaterials, parameterContract: manifest.parameterContract } });
+  const signed = signFiles(files, { kind: 'distribution', releaseId: A.releaseId, workflow: '', release: manifest.id, target: manifest.engine, tenant: BANK, changeSet: 'CS-LAPTOP-TAMPER', extra: { billOfMaterials: manifest.billOfMaterials, parameterContract: manifest.parameterContract } });
   const second = await call(API, pipeline, 'POST', '/distributions', undefined, zip(Object.entries(signed).map(([name, c]) => ({ name, content: Buffer.from(c) }))));
   check('the release API refuses it: the id is stored with other content (409)', second.status === 409 && /already|other content|stored/i.test(JSON.stringify(second.data)), second.data);
   const dup = sql('th_runtime', `INSERT INTO release (Id, Scope, Release, ContentHash, ManifestJson, Package, StoredBy, StoredAt) SELECT Id + '#2', Scope, Release, 'x', ManifestJson, Package, 'tamper', StoredAt FROM release WHERE Id = '${A.releaseId}'`);

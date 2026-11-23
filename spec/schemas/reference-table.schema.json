@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:th:schema:reference-table",
+  "title": "Reference table",
+  "description": "Market, scheme or bank reference data as an effective-dated table (R-01-25, owner's decision of 23 November 2026): a participant directory, the emirates, free zones, purpose codes, business-day calendars, a bank's branches. Values, not logic: a table is looked up by date, never pinned, and travels to the runtime in a bank's configuration release. Its columns are its interface (a change is a new major); a new edition of its rows is a new minor release. It holds no personal data and no bank customer data: those live in the runtime's registers.",
+  "type": "object",
+  "required": ["kind", "name", "release", "title", "domain", "key", "columns", "editions"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "reference-table" },
+    "name": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+    "release": { "$ref": "urn:th:schema:common#/$defs/release" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "domain": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$", "description": "The name the runtime serves it under: GET /lookups/{domain}." },
+    "key": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "The columns that identify a row within an edition." },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+          "type": { "enum": ["code", "text", "date", "boolean", "number", "list"] },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "required": { "type": "boolean" },
+          "pattern": { "type": "string" },
+          "allowed": { "type": "array", "items": { "type": ["string", "number", "boolean"] } },
+          "references": { "$ref": "urn:th:schema:common#/$defs/artefactName", "description": "Another reference table whose key this column's values are." },
+          "maintainedBy": { "type": "string", "description": "Who fills this column when the source does not, for example the platform vendor." }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publisher", "title"],
+      "properties": {
+        "publisher": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "public": { "type": "boolean", "description": "The source is published reference data, not personal data: it may live in shared scope." },
+        "retrieved": { "$ref": "urn:th:schema:common#/$defs/date" },
+        "note": { "type": "string" }
+      }
+    },
+    "editions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["validFrom", "rows"],
+        "additionalProperties": false,
+        "properties": {
+          "validFrom": { "$ref": "urn:th:schema:common#/$defs/date" },
+          "note": { "type": "string" },
+          "rows": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    },
+    "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
+  }
+}

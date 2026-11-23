@@ -75,20 +75,33 @@ public static class RuntimeAuth
     /// the role) and a fallback policy that needs an authenticated caller. Throws, so the host does not start, when the
     /// issuer, the audience or the role map is missing, or the map names a role the host does not know.
     /// </summary>
-    public static async Task<RoleMap> AddRuntimeAuth(this IServiceCollection services, IConfiguration cfg, ISecretResolver secrets, IReadOnlyCollection<string> roles)
+    public static async Task<RoleMap> AddRuntimeAuth(this IServiceCollection services, IConfiguration cfg, ISecretResolver secrets, IReadOnlyCollection<string> roles, RuntimeTls? tls = null)
     {
         var issuer = cfg["Auth:Oidc:Issuer"];
         var audience = cfg["Auth:Oidc:Audience"];
-        if (string.IsNullOrEmpty(issuer) || string.IsNullOrEmpty(audience))
+        // With a client CA, a caller may present a client certificate in place of a token (R-08-21); without the bank's issuer
+        // it is the only way in.
+        var certificates = tls?.ClientCa is not null;
+        var bearer = !string.IsNullOrEmpty(issuer) || !certificates;
+        if (bearer && (string.IsNullOrEmpty(issuer) || string.IsNullOrEmpty(audience)))
             throw new InvalidOperationException("The runtime authenticates callers with the bank's identity provider: set Auth:Oidc:Issuer and Auth:Oidc:Audience (spec R-09-27)");
         var mapSetting = cfg["Auth:RoleMap"] ?? throw new InvalidOperationException("Set Auth:RoleMap: the role map from the bank's claims and groups to the runtime's roles (spec R-09-27)");
         var map = RoleMap.Parse(await Resolve(mapSetting, secrets), roles);
         IList<SecurityKey>? keys = null;
-        if (cfg["Auth:Oidc:SigningKeys"] is { Length: > 0 } jwks) keys = new JsonWebKeySet(await Resolve(jwks, secrets)).GetSigningKeys();
+        if (bearer && cfg["Auth:Oidc:SigningKeys"] is { Length: > 0 } jwks) keys = new JsonWebKeySet(await Resolve(jwks, secrets)).GetSigningKeys();
         var skew = TimeSpan.FromSeconds(double.Parse(cfg["Auth:Oidc:ClockSkewSeconds"] ?? "60", CultureInfo.InvariantCulture));
 
         services.AddSingleton(map);
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+        var schemes = new List<string>();
+        var authentication = services.AddAuthentication(bearer ? JwtBearerDefaults.AuthenticationScheme : RuntimeTls.Scheme);
+        if (certificates)
+        {
+            services.AddSingleton(tls!);
+            authentication.AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ClientCertificateHandler>(RuntimeTls.Scheme, _ => { });
+            schemes.Add(RuntimeTls.Scheme);
+        }
+        if (bearer) schemes.Add(JwtBearerDefaults.AuthenticationScheme);
+        if (bearer) authentication.AddJwtBearer(o =>
         {
             o.MapInboundClaims = false;
             if (keys is null) o.Authority = cfg["Auth:Oidc:Authority"] ?? issuer;
@@ -114,8 +127,9 @@ public static class RuntimeAuth
             };
         });
         var auth = services.AddAuthorizationBuilder();
-        foreach (var r in roles) auth.AddPolicy(r, p => p.RequireAuthenticatedUser().RequireRole(r));
-        auth.SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        var by = schemes.ToArray();
+        foreach (var r in roles) auth.AddPolicy(r, p => p.AddAuthenticationSchemes(by).RequireAuthenticatedUser().RequireRole(r));
+        auth.SetFallbackPolicy(new AuthorizationPolicyBuilder(by).RequireAuthenticatedUser().Build());
         return map;
     }
 

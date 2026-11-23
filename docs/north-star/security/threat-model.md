@@ -29,12 +29,12 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | A runtime or bank token is replayed against the studio | The studio accepts no bearer token, only ID tokens for its own client from its one issuer, and shares no session with the runtime (R-11-34) | Proved: `studio/test/auth.test.ts` |
 | A page elsewhere makes a signed-in designer's browser change something | CSRF token on every state-changing call, origin check (the public origin only, F-19), same-site cookie (R-11-33); no frame may hold a page (R-11-43, R-09-60) | Proved: `studio/test/blackbox/auth.test.ts`, `security.test.ts`, `SecurityHeadersTests` |
 | Someone calls the release API | A bearer JWT from the bank's identity provider on every call; roles from the bank's role map; the actor is the verified caller (R-09-27, R-09-29) | Proved: `ApiAuthTests` |
-| Someone calls the native host and posts to a bank's core banking | The bank's machine callers only, role `native-caller` in the attempt's tenant; loopback only without an identity provider (R-08-17, F-03) | Proved: `NativeHostAuthTests`. The worker host's own token and mutual TLS: [I-121](../../ISSUES.md#i-121-callers-of-the-native-host-the-harnesses-and-mutual-tls) |
+| Someone calls the native host and posts to a bank's core banking | The bank's machine callers only, role `native-caller` in the attempt's tenant; loopback only without an identity provider (R-08-17, F-03) | Proved: `NativeHostAuthTests`; the worker's own client-credentials token and mutual TLS with the bank's CA as an option (R-08-21): `native-auth.test.ts`, `NativeHostMutualTlsTests`; the engine hosts take their callers' token (R-08-22): `HostTokenTests` |
 | A role a person holds in one bank is used in another | Each grant of the role map gives its roles in its own tenants; every host asks for the role in the tenant (R-06-28, F-04, F-06) | Proved: `ApiAuthTests`, `OperatorApiTests` |
 | Sign-in is flooded, or a session left open is used | Rate limits on sign-in, a bounded number of sign-ins in progress, an idle timeout, security events (R-11-41, R-11-42, F-11, F-20, F-21) | Proved: `studio/test/security.test.ts` |
 | A package is forged, or signed by a stolen key | Every package is signed by the studio's key; the runtime and the deploy runner trust only the keys the bank lists, and refuse a revoked one even for a release stored before (R-09-23 to R-09-26) | Proved: `ReleaseApiTests`, `SigningTests`, `signing.test.ts`; the key in the studio's process is accepted ([I-74](../../ISSUES.md#i-74-the-studios-signing-key-is-held-in-its-process), decided 2026-11-22) |
 | A forged file arrives as a scheme's | The dispatch table and intake map accept only a declared message; duplicate files are known by content | Partly: `StoreTests.A_file_seen_before_is_known_by_its_content`; transport security is per port binding |
-| A tenant claims another tenant's content | A bank tenant writes only scope `b` (R-06-03) and sees only its own content (R-06-01); a test run takes no tenant, store or scripts from the request (R-11-44, F-05) | Proved: tenant isolation suite, `security.test.ts`. Summaries still across tenants: [I-120](../../ISSUES.md#i-120-reads-that-are-not-yet-scoped-to-a-tenant) |
+| A tenant claims another tenant's content | A bank tenant writes only scope `b` (R-06-03) and sees only its own content (R-06-01); a test run takes no tenant, store or scripts from the request (R-11-44, F-05) | Proved: every read of a bank's user is answered from the bank's view (R-11-48): `tenant-isolation.test.ts`, `security.test.ts`. The runtime's `release-reader` per tenant: [I-120](../../ISSUES.md#i-120-reads-that-are-not-yet-scoped-to-a-tenant) |
 
 ### Tampering
 
@@ -68,7 +68,7 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | An error answer shows internals | Problem responses with a message, never a stack trace or an exception's text (R-11-43, F-17) | Proved for the studio: `security.test.ts`; review for the runtime |
 | Another bank's names in the studio's listings | Checks, data browser, simulators, stubs, counts and usages filtered by tenant (F-13) | Proved: `security.test.ts` |
 | A console's token is read by script injected into its page | A content security policy with no inline script, connecting only to the host and the bank's identity provider (R-09-60, R-11-43, F-12) | Proved: `SecurityHeadersTests`, `security.test.ts` |
-| Content sent to the Claude API steers the assistant | The system prompt says content is data; writes ask the designer; nothing is published without a checker (F-29) | In part: [I-124](../../ISSUES.md#i-124-instructions-written-into-content-and-the-assistants-allow-always) |
+| Content sent to the Claude API steers the assistant | The system prompt says content is data; writes ask the designer; nothing is published without a checker (F-29) | Proved: a sample is asked about every time and goes into a change set for its checker; an instruction in a tool result is shown in the panel (R-11-49): `assistant-injection.test.ts` |
 
 ### Denial of service
 
@@ -86,7 +86,7 @@ The studio and the runtime share no connection: the studio never reaches a runni
 | --- | --- | --- |
 | A bank designer changes shared content | Scope rules (R-06-03) | Proved |
 | A designer publishes without a checker | Maker-checker (R-06-04, R-11-19) | Proved |
-| A script-behind escapes its sandbox | Only the injected interface; no host realm object in the TypeScript context and every slice timed; an audit hook in Python (R-08-18, F-01, F-02) | Proved against the known escapes: `sandbox.test.ts`, `python.test.ts`. Still not a boundary against hostile code (D14): [I-119](../../ISSUES.md#i-119-a-script-behind-still-runs-inside-the-studios-process) |
+| A script-behind escapes its sandbox | Only the injected interface; no host realm object in the TypeScript context and every slice timed; an audit hook in Python (R-08-18, F-01, F-02) | Proved: each script runs in a worker process with no environment, file or network and memory and time limits (R-08-20): `script-isolation.test.ts`, `sandbox.test.ts`, `python.test.ts`. A platform without namespaces or Landlock: [I-147](../../ISSUES.md#i-147-script-isolation-where-the-platform-has-no-namespaces-or-landlock) |
 | A test run or an override acts with another bank's configuration | The run's tenant, store and scripts are the server's (R-11-44, F-05) | Proved: `security.test.ts` |
 | SQL injection | No raw SQL anywhere in the runtime; the Temporal plugin writes every visibility value as one T-SQL literal | Proved: `NeutralityTests`, `TestQueryConverterKeepsEveryValueInsideOneLiteral` |
 | A vulnerable dependency | `npm audit`, `dotnet list package --vulnerable`, govulncheck on every push (R-09-28, R-09-61, F-15) | Proved: CI job `security` |
@@ -94,3 +94,4 @@ The studio and the runtime share no connection: the studio never reaches a runni
 ## The source's findings
 
 The source's own audit findings and its failing security tests (N15 in the plan) are about its services. They are raised with the source's owners (`docs/runtime/BASELINE.md`) and not carried here.
+| A session goes on after the provider ended it, or on another instance after sign-out | A heartbeat with the provider every 5 minutes; 8 hours, 30 minutes idle, 1 hour for the command line (R-11-50) | Proved: `sessions.test.ts`. Rotation across instances: [I-148](../../ISSUES.md#i-148-a-refresh-token-rotated-on-one-instance-while-another-still-holds-the-older-one) |

@@ -39,6 +39,7 @@ import { samplesFor, messagesWithSamples } from '../samples/samples.js';
 import { compareBindings } from '../export/bindings.js';
 import * as pathmod from 'node:path';
 import type { StudioEnv } from '../env.js';
+import { scopedEnv } from '../core/scope.js';
 import { ROLES, effectiveRoles, landingOf, permissionRows, surfacesOf, type Action } from '../governance/permissions.js';
 
 // The studio's HTTP API. Every call acts as the signed-in user (R-11-32): the server sets `user` from
@@ -98,8 +99,11 @@ export async function dispatch(env: StudioEnv, req: Req): Promise<{ status: numb
     if (!who) return { status: 403, body: { error: `${req.user} is not a user of the studio`, code: 'R-11-32' } };
     userTenant.set(req.user, who.tenant);
     if (params.tenant !== undefined && params.tenant !== who.tenant) return { status: 403, body: { error: `${req.user} works for tenant ${who.tenant}, not ${params.tenant} (R-06-01)`, code: 'R-06-01' } };
+    // A bank's user works on the bank's view of the studio: shared content and the bank's own, never another bank's
+    // (R-11-48, Issue I-120). Every route below, and the assistant's tools, which call these routes, read only that view.
+    const scoped = who.tenant === OWNER_TENANT ? env : scopedEnv(env, who.tenant);
     try {
-      const body = await r.handler(env, req, params);
+      const body = await r.handler(scoped, req, params);
       // A change is on the branch before the answer goes back (R-11-21): wait for its commits.
       if (req.method !== 'GET') await env.store.flush();
       if (body && body.__binary) return { status: 200, body: body.data, contentType: body.contentType, filename: body.filename };
@@ -431,7 +435,10 @@ route('GET', '/api/change-set', (env, req) => {
   if (!req.query.key) throw new HttpError(400, 'Name the draft: ?key=...');
   if (env.store.entries.get(req.query.key)?.tenant !== tenant) throw new HttpError(404, `No draft ${req.query.key}`);
   const keys = gov.changeSetFor(env, tenant, req.query.key);
-  return { key: req.query.key, members: keys.map((k) => summary(env.store.entries.get(k)!)) };
+  const branches = [...new Set(keys.map((k) => env.store.entries.get(k)?.changeSet).filter(Boolean) as string[])];
+  // The samples saved into it publish with it: the checker sees each (R-11-49).
+  const samples = env.store.draftSamplesOf(branches).filter((d) => d.tenant === tenant).map((d) => ({ path: d.path, changeSet: d.changeSet, bytes: d.content.length, content: d.content.slice(0, 4000) }));
+  return { key: req.query.key, members: keys.map((k) => summary(env.store.entries.get(k)!)), samples };
 });
 
 route('GET', '/api/change-sets', (env, req) => (env.store.extra.changeSets ?? []).filter((c: any) => c.tenant === tenantOf(req) || (tenantOf(req) === OWNER_TENANT && !req.query.tenant)));
@@ -561,7 +568,8 @@ async function benchRun(env: StudioEnv, req: Req, debug: boolean) {
 route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => (s.tenant === OWNER_TENANT || s.tenant === tenantOf(req)) && (!req.query.port || s.doc.port === req.query.port)).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
 
 route('POST', '/api/scripts', (env, req) => authoring.saveScript(env, { tenant: tenantOf(req), actor: actorOf(req), activity: req.body?.activity, language: req.body?.language, source: String(req.body?.source ?? '') }));
-route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: actorOf(req), name: req.body?.name, content: req.body?.content }));
+// A sample the assistant writes goes into the change set of the draft that uses it, for its checker (R-11-49, Issue I-124).
+route('POST', '/api/samples', (env, req) => authoring.saveSample(env, { tenant: tenantOf(req), actor: actorOf(req), name: req.body?.name, content: req.body?.content, inChangeSet: req.body?.inChangeSet === true }));
 route('GET', '/api/samples', (env) => sampleNames(env).map((f) => `samples/${f}`));
 
 import * as nodefs from 'node:fs';
@@ -870,7 +878,7 @@ route('POST', '/api/supersessions/evidence', async (env, req) => {
   return gov.testSupersession(env, supersessionDoc(req));
 });
 route('POST', '/api/supersessions/hand-over', (env, req) => gov.handOverSupersession(env, supersessionDoc(req), actorOf(req)));
-route('GET', '/api/supersessions/handed-over', (env) => env.store.extra.supersessions ?? []);
+route('GET', '/api/supersessions/handed-over', (env, req) => (env.store.extra.supersessions ?? []).filter((x: any) => tenantOf(req) === OWNER_TENANT || !x?.tenant || x.tenant === OWNER_TENANT || x.tenant === tenantOf(req)));
 
 // ------------------------------------------------- tenants and configuration (C18)
 
@@ -909,7 +917,7 @@ route('GET', '/api/coverage/:scope', (env, _req, { scope }) => reasonCodeCoverag
 // ------------------------------------------------------------------ tests (C11-S5)
 
 route('GET', '/api/test-coverage', (env) => testCoverageReport(env));
-route('GET', '/api/test-coverage/:name', (env, _req, { name }) => untestedOutcomes(env, name));
+route('GET', '/api/test-coverage/:name', (env, _req, { name }) => untestedOutcomes(env, name) ?? (() => { throw new HttpError(404, `No ${name}`); })());
 
 // ----------------------------------------------------------------- samples (F-05)
 

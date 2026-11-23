@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { get, me as whoAmI, onUnauthorized, setApiTenant, setCsrf, signOut, type Me, type Meta, type User } from './api';
+import { get, heartbeat, me as whoAmI, onUnauthorized, setApiTenant, setCsrf, signOut, type Me, type Meta, type User } from './api';
 import { Studio, ErrorBox } from './ui';
 import { Catalogue } from './views/Catalogue';
 import { ArtefactPage } from './views/Artefact';
@@ -87,6 +87,16 @@ export function App() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   const signedIn = !!who?.user;
+  // The heartbeat (R-11-50): every few minutes the studio checks the session with the identity provider. The page asks for it
+  // without counting as use, so the idle time still runs; a session the provider ended shows the sign-in page.
+  useEffect(() => {
+    if (!signedIn) return;
+    const every = Math.max(1, Number(who?.heartbeatSeconds ?? 300)) * 1000;
+    const t = window.setInterval(() => {
+      heartbeat().then((alive) => { if (!alive) setWho((w) => (w?.signedIn ? { signedIn: false, provider: w.provider, roles: [], surfaces: [] } : w)); }, () => undefined);
+    }, every);
+    return () => window.clearInterval(t);
+  }, [signedIn, who]);
   useEffect(() => {
     if (!signedIn) return;
     get<Meta>('/api/meta').then(setMeta, (e) => setMetaError(String(e.message ?? e)));

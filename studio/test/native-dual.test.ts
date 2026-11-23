@@ -38,7 +38,8 @@ describe('a script-behind or builtin the native host implements too (R-08-16)', 
     const native = env.store.current().filter((e) => e.kind === 'activity' && e.doc.implementation?.native).map((e) => e.name).sort();
     // The encryption and decryption blocks and the labour ministry lookup too (Issues I-117, I-118).
     // FX, charges and the posting that reads them too (R-12-25, Issue I-136).
-    expect(native).toEqual(['p.decide.posting-window.v1', 'p.enrich.charges.v1', 'p.enrich.fx-rate.v1', 'p.post.accounting.v2', 'p.protect.decrypt-file.v1', 'p.protect.encrypt-file.v1', 'uae.wps.enrich.employer-status.v1', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2']);
+    // The party register lookup too (R-12-27): the runtime reads its own register.
+    expect(native).toEqual(['p.decide.posting-window.v1', 'p.enrich.charges.v1', 'p.enrich.fx-rate.v1', 'p.enrich.party-register.v1', 'p.post.accounting.v2', 'p.protect.decrypt-file.v1', 'p.protect.encrypt-file.v1', 'uae.wps.enrich.employer-status.v1', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2']);
   });
 
   it('runs the script or the builtin unless the run gives the activity to the runtime', async () => {

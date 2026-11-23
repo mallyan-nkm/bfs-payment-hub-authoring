@@ -153,6 +153,68 @@ def _audit(event, args):
         raise RuntimeError("%s is outside the injected interface" % event)
 
 
+def _landlock():
+    """Refuse every file and every TCP connection to this process from now on, by the kernel (Linux Landlock; R-08-20).
+
+    The ruleset handles every file access and, from ABI 4, TCP bind and connect, and grants none; from ABI 6 it also scopes
+    abstract sockets and signals to this process. Files already open (stdin, stdout, stderr) stay usable. Returns the ABI, or
+    0 where the kernel has no Landlock; the audit hook still refuses then.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        syscall = libc.syscall
+        syscall.restype = ctypes.c_long
+        abi = syscall(444, None, ctypes.c_size_t(0), ctypes.c_uint32(1))  # landlock_create_ruleset(NULL, 0, VERSION)
+        if abi < 1:
+            return 0
+        fs_bits = (1 << 13) - 1
+        if abi >= 2:
+            fs_bits |= 1 << 13
+        if abi >= 3:
+            fs_bits |= 1 << 14
+        if abi >= 5:
+            fs_bits |= 1 << 15
+        fields = [("fs", ctypes.c_uint64)]
+        if abi >= 4:
+            fields.append(("net", ctypes.c_uint64))
+        if abi >= 6:
+            fields.append(("scoped", ctypes.c_uint64))
+
+        class Attr(ctypes.Structure):
+            _fields_ = fields
+
+        attr = Attr()
+        attr.fs = fs_bits
+        if abi >= 4:
+            attr.net = 3  # bind and connect over TCP
+        if abi >= 6:
+            attr.scoped = 3  # abstract unix sockets and signals
+        fd = syscall(444, ctypes.byref(attr), ctypes.c_size_t(ctypes.sizeof(attr)), ctypes.c_uint32(0))
+        if fd < 0:
+            return 0
+        if libc.prctl(38, 1, 0, 0, 0) != 0:  # PR_SET_NO_NEW_PRIVS
+            return 0
+        if syscall(446, ctypes.c_int(fd), ctypes.c_uint32(0)) != 0:  # landlock_restrict_self
+            return 0
+        return abi
+    except Exception:  # noqa: BLE001 - no Landlock here: the audit hook still refuses
+        return 0
+
+
+def _confine(memory_mb):
+    """The process limits a script runs under (R-08-20): memory, no file it may write, no core file, and Landlock."""
+    try:
+        import resource
+        lim = int(memory_mb) * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (lim, lim))
+        resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except Exception:  # noqa: BLE001 - a platform without these limits keeps the others
+        pass
+    return _landlock()
+
+
 class GuardedCtx(dict):
     """The context view. Reading a part that is not declared fails the run (R-03-07)."""
 
@@ -176,6 +238,10 @@ class Api:
 
 
 def main():
+    memory = 256
+    if "--memory-mb" in sys.argv:
+        memory = int(sys.argv[sys.argv.index("--memory-mb") + 1])
+    _confine(memory)
     first = json.loads(_in.readline())
     roots = set(first["roots"])
     ctx = GuardedCtx(first["view"], roots)

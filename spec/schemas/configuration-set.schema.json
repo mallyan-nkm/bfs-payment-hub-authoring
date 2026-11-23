@@ -28,7 +28,8 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["parameter", "value", "validFrom"],
+        "required": ["parameter", "validFrom"],
+        "oneOf": [{ "required": ["value"] }, { "required": ["fromReference"] }],
         "additionalProperties": false,
         "properties": {
           "parameter": {
@@ -37,6 +38,16 @@
             "pattern": "^[a-z0-9.\\-]+\\.v[1-9][0-9]*#[a-z][A-Za-z0-9]*$"
           },
           "value": {},
+          "fromReference": {
+            "description": "A list value read from a reference table (R-11-51, lint L50): one item per row of each edition in force, each item's fields taken from the columns named; a row with an empty column named is left out. Each edition's validFrom starts its own value.",
+            "type": "object",
+            "required": ["table", "columns"],
+            "additionalProperties": false,
+            "properties": {
+              "table": { "$ref": "urn:th:schema:common#/$defs/artefactName" },
+              "columns": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string" }, "description": "The item's field, then the table's column it is read from." }
+            }
+          },
           "validFrom": { "$ref": "urn:th:schema:common#/$defs/date" },
           "validTo": { "$ref": "urn:th:schema:common#/$defs/date" }
         }

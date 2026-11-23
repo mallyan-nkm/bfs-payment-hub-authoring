@@ -2,14 +2,16 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.salary-file-out.v1
-release: 1.2.0
+release: 1.3.0
 dsl: 1.0.0
 title: WPS salary file, bank as the employer's bank
 description: Sets the business date, asks the labour ministry for the employer's status, validates the file and
   each record, and submits the file to WPS. The submit step is a composite. It sends, waits for the acknowledgement
   and reads it. Release 1.2.0 lets the steps that may run again park for a business day when they fail, for an operator's
   retry, instead of ending the file (R-12-26, Issue I-125). They are the business date, the employer's status, the
-  file checks and the render.
+  file checks and the render. Release 1.3.0 first looks the employer up in the bank's party register, as the source's
+  pre-check did, and refuses a file whose employer the bank has not registered, or registered with other details
+  than the channel supplied (R-12-27).
 direction: outward
 implements:
   slot: scheme-leg
@@ -36,6 +38,15 @@ do:
     call: uae.p.enrich.business-date.v1
     policy:
       park: P1D
+  - id: corporate
+    call: p.enrich.party-register.v1
+    policy:
+      park: P1D
+    handle:
+      not-registered:
+        end: rejected
+      mismatch:
+        end: rejected
   - id: employer-status
     call: uae.wps.enrich.employer-status.v1
     policy:
@@ -123,5 +134,5 @@ provenance:
   note: From public sources. Confirm against the current CBUAE WPS rulebook.
 form: expanded
 expandedFrom:
-  release: 1.2.0
-  hash: sha256:09a766af5ce54ef107f31d20a413b5830f5deb777bb31d9df7179d6cba123a3a
+  release: 1.3.0
+  hash: sha256:81976c013ae7f0be546a57a24524daa15b746b552e3e5ffeff1671516e0d9eba

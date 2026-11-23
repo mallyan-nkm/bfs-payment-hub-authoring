@@ -11,6 +11,8 @@ import { serviceClient } from './service/api';
 import { ServiceSection } from './service/Service';
 import { benchClient } from './testbench/api';
 import { TestBenchSection } from './testbench/TestBench';
+import { registersClient } from './registers/api';
+import { RegistersSection } from './registers/Registers';
 import './styles.css';
 
 function LagBadge({ api }: { api: Client }) {
@@ -84,6 +86,8 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
     { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
+    // The bank's registers (R-05-62): makers propose, a different bank approver consents.
+    { id: 'registers', title: 'Registers', render: (path, ctx) => <RegistersSection api={registersClient(auth)} path={path} go={ctx.go} /> },
   );
   if (hosts.service) sections.push({ id: 'service', title: 'Service', render: (path) => <ServiceGate auth={auth} path={path} /> });
   if (hosts.testbench) sections.push({ id: 'testbench', title: 'Test bench', render: (path, ctx) => <TestBenchGate auth={auth} path={path} go={ctx.go} /> });

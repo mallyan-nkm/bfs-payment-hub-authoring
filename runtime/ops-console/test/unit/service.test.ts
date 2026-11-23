@@ -52,7 +52,7 @@ describe('the service console', () => {
 
   it('signs in synthetic service engineers only, in dev mode', () => {
     const svc = DEV_USERS.filter((u) => u.roles.some((r) => r.endsWith(':ServiceEngineer') || r.endsWith(':BankApprover')));
-    expect(svc.map((u) => u.sub)).toEqual(['svc.engineer', 'bank.approver']);
+    expect(svc.map((u) => u.sub)).toEqual(['reg.approver', 'svc.engineer']);
     for (const u of svc) expect(u.name).toMatch(/^Example /);
   });
 });

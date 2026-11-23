@@ -12,6 +12,11 @@
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
+  <!-- The register kinds the runtime ships (R-05-62): each a register-kind declaration. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Registers\*.register.json" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

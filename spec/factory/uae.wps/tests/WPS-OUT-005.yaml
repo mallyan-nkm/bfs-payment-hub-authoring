@@ -18,6 +18,9 @@ bench:
   - port: uae.wps.port.labour-ministry.v1
     simulator: uae.wps.sim.labour-ministry.v1
     scenario: accept
+  - port: p.port.party-register.v1
+    simulator: p.sim.party-register.v1
+    scenario: accept
 given:
   inbound: samples/wps-sif-bad-iban.sif
 expect:
@@ -29,6 +32,7 @@ expect:
       count: 0
   trace:
     - business-date:set
+    - corporate:registered
     - employer-status:found
     - file-checks:pass
     - record-checks:pass

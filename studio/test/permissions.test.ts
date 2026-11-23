@@ -7,9 +7,11 @@ import { freshEnv } from './helpers.js';
 // class. The expected table is written out here, from the owner's decision of 2026-11-22, and not
 // read from the code: a cell the code grants that is not here, or misses, fails.
 
-const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'simulator', 'test', 'sample'];
+// A reference table (R-01-25, owner's decision of 2026-11-23): the bank's own (its branches) by the Bank Configurator, the shared ones
+// (participant directory, emirates, free zones, purpose codes, calendars) by the platform vendor's developers.
+const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'reference-table', 'simulator', 'test', 'sample'];
 const DESIGN: Kind[] = ['workflow', 'scheme', 'operations-view', 'test', 'sample'];
-const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'test', 'sample'];
+const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'reference-table', 'test', 'sample'];
 const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP])];
 
 type Cell = `${ScopeClass}|${Kind}|${Action}`;

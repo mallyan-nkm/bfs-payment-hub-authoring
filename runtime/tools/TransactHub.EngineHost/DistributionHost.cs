@@ -37,7 +37,9 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
     {
         await Open(ct);
         using var both = CancellationTokenSource.CreateLinkedTokenSource(ct, exit.Token);
-        using var http = new Http(Route);
+        // A host takes only its supervisor's token (R-08-22): without one it does not start.
+        var token = await TransactHub.Security.HostToken.FromEnvironment() ?? throw new InvalidOperationException($"The host of {Distribution} takes its callers' token: set {TransactHub.Security.HostToken.Setting} (the supervisor does, R-08-22)");
+        using var http = new Http(Route, token);
         http.Start(urls);
         var serving = http.Serve(both.Token);
         Console.Out.WriteLine($"LISTENING {http.Url}");

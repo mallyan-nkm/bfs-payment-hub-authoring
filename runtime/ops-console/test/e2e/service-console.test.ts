@@ -320,9 +320,9 @@ describe('the service console', () => {
     const codes = audit.map((f: any) => f.code);
     expect(codes).toEqual(expect.arrayContaining(['install', 'action.requested', 'action.done']));
     // Installed on the bank approver's consent; asked for by the engineer.
-    expect(audit.filter((f: any) => f.code === 'install').every((f: any) => f.actor === 'service:bank.approver' && f.data.why)).toBe(true);
+    expect(audit.filter((f: any) => f.code === 'install').every((f: any) => f.actor === 'service:reg.approver' && f.data.why)).toBe(true);
     expect(audit.filter((f: any) => f.code === 'action.requested' && f.data.name === 'install').every((f: any) => f.actor === 'service:svc.engineer')).toBe(true);
-    expect(audit.filter((f: any) => f.code === 'action.approved').every((f: any) => f.actor === 'service:bank.approver' && f.data.requestedBy === 'service:svc.engineer')).toBe(true);
+    expect(audit.filter((f: any) => f.code === 'action.approved').every((f: any) => f.actor === 'service:reg.approver' && f.data.requestedBy === 'service:svc.engineer')).toBe(true);
     expect(problems).toEqual([]);
     await page.close();
   });

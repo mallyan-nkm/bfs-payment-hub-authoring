@@ -1,0 +1,80 @@
+# Written by hand (spec/CLAUDE.md, "Generated files"): reference data, effective-dated (R-01-25). A new edition is a new minor release.
+kind: reference-table
+name: p.ref.purpose-codes.v1
+release: 1.0.0
+title: ISO 20022 purpose and category purpose codes
+description: The external purpose (ExternalPurpose1Code) and category purpose (ExternalCategoryPurpose1Code) codes a channel
+  may choose from.
+domain: purpose-codes
+key:
+  - code
+  - list
+columns:
+  - id: code
+    type: code
+    title: Code
+    required: true
+    pattern: ^[A-Z]{4}$
+  - id: list
+    type: code
+    title: Code list
+    required: true
+    allowed:
+      - purpose
+      - category-purpose
+  - id: name
+    type: text
+    title: Name
+    required: true
+source:
+  publisher: ISO 20022 Registration Authority
+  title: External code sets
+  public: true
+editions:
+  - validFrom: '2026-10-01'
+    rows:
+      - code: SALA
+        list: purpose
+        name: Salary payment
+      - code: PENS
+        list: purpose
+        name: Pension payment
+      - code: BONU
+        list: purpose
+        name: Bonus payment
+      - code: SUPP
+        list: purpose
+        name: Supplier payment
+      - code: TAXS
+        list: purpose
+        name: Tax payment
+      - code: GDDS
+        list: purpose
+        name: Purchase sale of goods
+      - code: SCVE
+        list: purpose
+        name: Purchase sale of services
+      - code: OTHR
+        list: purpose
+        name: Other
+      - code: SALA
+        list: category-purpose
+        name: Salary payment
+      - code: PENS
+        list: category-purpose
+        name: Pension payment
+      - code: SUPP
+        list: category-purpose
+        name: Supplier payment
+      - code: INTC
+        list: category-purpose
+        name: Intra-company payment
+      - code: CASH
+        list: category-purpose
+        name: Cash management transfer
+      - code: TRAD
+        list: category-purpose
+        name: Trade services
+provenance:
+  origin: factory
+  status: confirmed

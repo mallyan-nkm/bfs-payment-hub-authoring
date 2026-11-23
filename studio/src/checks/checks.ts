@@ -1,3 +1,4 @@
+import { referenceTableProblems, referenceValueProblems } from '../core/reference.js';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -14,6 +15,7 @@ import { flowablePortable } from '../export/bpmn.js';
 import { literalSecretsInText } from '../secrets/scan.js';
 import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
+import { scopeOf as viewOf } from '../core/scope.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
 // one document as it is edited and on the whole store, and names the step each issue concerns.
@@ -74,6 +76,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
   L47: 'A leg of a platform workflow that blocks or posts money calls no reserve or post activity itself',
   L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
+  L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
+  L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
 };
 
 // ---------------------------------------------------------------- walking
@@ -131,6 +135,8 @@ export function refsOf(d: any): Set<string> {
       for (const k of ['handler', 'sentBy']) if (disp[k]) out.add(disp[k]);
     }
   }
+  // A reference table's column that holds another table's keys (R-01-25).
+  if (kind === 'reference-table') for (const c of d.columns ?? []) if (c.references) out.add(c.references);
   if (kind === 'test') {
     out.add(d.target);
     for (const b of d.bench ?? []) {
@@ -257,13 +263,14 @@ export class Checker {
     if (kind === 'table') this.checkTable(d, err, warn);
     if (kind === 'activity') this.checkActivity(d, err, warn);
     if (kind === 'configuration-set') this.checkConfigurationSet(d, err);
+    if (kind === 'reference-table') for (const m of referenceTableProblems(d, new Map(this.docs.filter((x) => x.kind === 'reference-table').map((x) => [x.name, x])))) err('L49', m);
     if (kind === 'port-bindings') for (const m of portBindingProblems(d, (n) => this.byName.get(n)?.kind === 'port')) err('L48', m);
     if (kind === 'test') this.checkTest(d, err, warn);
     if (kind === 'port' && !this.docs.some((x) => x.kind === 'simulator' && x.port === d.name)) err('L22', `${d.name} has no simulator`);
     if (kind === 'supersession') this.checkSupersession(d, err);
 
     // L09: shared content does not name a bank or vendor.
-    if (['activity', 'rule', 'ruleset', 'table', 'workflow', 'simulator', 'port', 'extension'].includes(kind) && name && scopeOf(name) !== 'b') {
+    if (['activity', 'rule', 'ruleset', 'table', 'workflow', 'simulator', 'port', 'extension', 'reference-table'].includes(kind) && name && scopeOf(name) !== 'b') {
       const text = JSON.stringify({ name: d.name, title: d.title, description: d.description, party: d.party, standsFor: d.standsFor }).toLowerCase();
       for (const t of this.denyNames) if (t && text.includes(t)) err('L09', `Shared content names a bank or vendor: ${t}`);
     }
@@ -695,6 +702,10 @@ export class Checker {
         continue;
       }
       const b = p.bounds ?? {};
+      if (v.fromReference) {
+        for (const m of referenceValueProblems(v, p, this.byName.get(v.fromReference.table))) err('L50', m);
+        continue;
+      }
       if (!withinBounds(p, v.value)) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
     }
     for (const b of d.bindings ?? []) {
@@ -1050,7 +1061,9 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
   const files = env.store.content?.files;
   if (!files) return out;
   const isPort = (n: string) => env.store.all().some((e) => e.kind === 'port' && e.name === n && e.status !== 'draft');
-  for (const folder of [...new Set(env.store.bankPacks.values())].sort()) {
+  // A bank's view checks its own folder only (R-11-48).
+  const tenant = viewOf(env);
+  for (const folder of [...new Set([...env.store.bankPacks].filter(([t]) => !tenant || t === tenant).map(([, f]) => f))].sort()) {
     for (const [p, text] of [...files].filter(([p]) => p.startsWith(`banks/${folder}/`) && p.split('/').length === 3 && /\.ya?ml$/.test(p)).sort(([a], [b]) => a.localeCompare(b))) {
       let docs: any[] = [];
       try {
@@ -1071,8 +1084,12 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
 export function literalSecretIssues(env: StudioEnv): Issue[] {
   const out: Issue[] = [];
   const files = env.store.content?.files;
+  // A bank's view reads the shared files and its own folder, never another bank's (R-11-48).
+  const tenant = viewOf(env);
+  const own = tenant ? `banks/${env.store.bankPacks.get(tenant) ?? tenant}/` : '';
+  const mine = (p: string) => !tenant || !p.startsWith('banks/') || p.startsWith(own);
   if (files) {
-    for (const [p, text] of [...files].sort(([a], [b]) => a.localeCompare(b)))
+    for (const [p, text] of [...files].filter(([p]) => mine(p)).sort(([a], [b]) => a.localeCompare(b)))
       for (const s of literalSecretsInText(text, p)) out.push({ code: 'L37', severity: 'error', key: p, step: s.at || undefined, message: `${p}${s.at ? ' at ' + s.at : ''} ${s.why}`, file: p });
   } else {
     for (const e of env.store.all())

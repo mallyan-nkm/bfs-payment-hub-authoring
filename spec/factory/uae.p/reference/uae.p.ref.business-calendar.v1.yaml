@@ -1,0 +1,56 @@
+# Written by hand (spec/CLAUDE.md, "Generated files"): reference data, effective-dated (R-01-25). A new edition is a new minor release.
+kind: reference-table
+name: uae.p.ref.business-calendar.v1
+release: 1.0.0
+title: The UAE's non-business days
+description: The weekend and the public holidays fixed by date, from which a business date is worked out. Holidays that follow
+  the moon are announced each year and are added as an edition when announced (Issue I-151).
+domain: business-calendar
+key:
+  - day
+columns:
+  - id: day
+    type: code
+    title: Weekday or date
+    required: true
+    pattern: ^(monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{4}-\d{2}-\d{2})$
+  - id: kind
+    type: code
+    title: Kind
+    required: true
+    allowed:
+      - weekend
+      - holiday
+  - id: name
+    type: text
+    title: Name
+    required: true
+source:
+  publisher: UAE Government
+  title: Federal working week from 2022 and public holidays
+  public: true
+editions:
+  - validFrom: '2026-10-01'
+    rows:
+      - day: saturday
+        kind: weekend
+        name: Saturday
+      - day: sunday
+        kind: weekend
+        name: Sunday
+      - day: '2026-12-01'
+        kind: holiday
+        name: Commemoration Day
+      - day: '2026-12-02'
+        kind: holiday
+        name: National Day
+      - day: '2026-12-03'
+        kind: holiday
+        name: National Day
+      - day: '2027-01-01'
+        kind: holiday
+        name: New Year's Day
+provenance:
+  origin: factory
+  status: provisional
+  note: Fixed-date holidays only; confirm each year's list with the bank (Issue I-151).

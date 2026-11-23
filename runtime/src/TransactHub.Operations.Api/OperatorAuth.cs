@@ -40,7 +40,7 @@ public static class OperatorAuth
         var studio = b.Configuration["TH_STUDIO_ISSUER"];
         if (issuer is { Length: > 0 } && studio is { Length: > 0 } && string.Equals(issuer.TrimEnd('/'), studio.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Auth:Oidc:Issuer is the studio's issuer: operators sign in at the bank's identity provider, never the studio's.");
-        await b.Services.AddRuntimeAuth(b.Configuration, SecretResolver.FromEnvironment(k => b.Configuration[k]), OperatorRoles.All);
+        await b.Services.AddRuntimeAuth(b.Configuration, SecretResolver.FromEnvironment(k => b.Configuration[k]), [.. OperatorRoles.All, .. SystemRoles.All]);
         return new ClientConfig("oidc", b.Configuration["Auth:Oidc:Authority"] ?? issuer, b.Configuration["Auth:Oidc:ClientId"],
             b.Configuration["Auth:Oidc:Scopes"] ?? "openid profile", b.Configuration["Auth:Oidc:Audience"]);
     }

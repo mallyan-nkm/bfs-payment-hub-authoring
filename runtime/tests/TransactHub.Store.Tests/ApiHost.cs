@@ -120,6 +120,7 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
         ["reader"] = "TransactHub.Reader",
         ["bank-worker"] = "TransactHub.Worker",
         ["bank-operations"] = "TransactHub.BankOperations",
+        ["channel"] = "TransactHub.Channel",
     };
 
     /// <summary>The bank's role map: app roles and a group to the runtime's roles; a tenant claim in the token gives tenants.</summary>
@@ -131,6 +132,7 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
           { "claim": "roles", "value": "TransactHub.Worker", "roles": ["values-reader"], "tenants": ["example-bank"] },
           { "claim": "roles", "value": "TransactHub.BankOperations", "roles": ["release-activator", "payment-intake"], "tenants": ["example-bank"] },
           { "claim": "roles", "value": "TransactHub.BankOperations", "roles": ["values-reader"], "tenants": ["other-bank"] },
+          { "claim": "roles", "value": "TransactHub.Channel", "roles": ["lookup-reader"], "tenants": ["example-bank"] },
           { "claim": "groups", "value": "grp-runtime-operations", "roles": ["release-importer", "release-activator", "release-reader"] },
           { "claim": "groups", "value": "grp-bank-analysts", "roles": ["release-reader", "values-reader"] } ] }
         """;
