@@ -285,7 +285,7 @@ public sealed class RestBulkUploadGateway(PortBinding b, HttpClient http, ISecre
     public async Task<UploadReply> Submit(string folder, string fileName, string idempotencyKey, CancellationToken ct = default)
     {
         var body = new JsonObject { ["functionId"] = b.Required("uploadFunctionId"), ["userId"] = b.Required("uploadUser"), ["branch"] = b.Required("uploadBranch"), ["fileName"] = fileName };
-        using var res = await http.SendAsync(await Request("uploadPath", "uploadFunctionId", idempotencyKey, body, ct), ct);
+        using var res = await GuardedHttp.Send(http, b, await Request("uploadPath", "uploadFunctionId", idempotencyKey, body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         var code = (string?)j["code"] ?? "";
@@ -296,7 +296,7 @@ public sealed class RestBulkUploadGateway(PortBinding b, HttpClient http, ISecre
 
     public async Task<UploadStatus> Status(string fileName, CancellationToken ct = default)
     {
-        using var res = await http.SendAsync(await Request("statusPath", "statusFunctionId", fileName, new JsonObject { ["fileName"] = fileName }, ct), ct);
+        using var res = await GuardedHttp.Send(http, b, await Request("statusPath", "statusFunctionId", fileName, new JsonObject { ["fileName"] = fileName }, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         return Read(await res.Content.ReadFromJsonAsync<JsonObject>(ct));
     }

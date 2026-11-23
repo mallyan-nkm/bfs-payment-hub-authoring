@@ -63,6 +63,61 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                     b.ToTable("release_activation", (string)null);
                 });
 
+            modelBuilder.Entity("TransactHub.Store.BreakerChangeRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Adapter")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Failures")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.Property<string>("Port")
+                        .IsRequired()
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.Property<string>("Tenant")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Why")
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Tenant", "Port", "Adapter", "Target", "Id");
+
+                    b.ToTable("breaker_change", (string)null);
+                });
+
             modelBuilder.Entity("TransactHub.Store.BulkRow", b =>
                 {
                     b.Property<string>("Id")
@@ -848,6 +903,35 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                     b.HasIndex("Tenant", "SubjectId");
 
                     b.ToTable("stored_file", (string)null);
+                });
+
+            modelBuilder.Entity("TransactHub.Store.StreamPositionRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Events")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Stream")
+                        .IsRequired()
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)");
+
+                    b.Property<long>("Through")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Stream", "Through");
+
+                    b.ToTable("stream_position", (string)null);
                 });
 
             modelBuilder.Entity("TransactHub.Store.VersionedValueRow", b =>

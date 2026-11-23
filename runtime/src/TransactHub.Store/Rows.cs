@@ -247,3 +247,35 @@ public sealed class OutboxRow : IInsertOnly
     public string PayloadJson { get; set; } = "{}";
     public DateTimeOffset At { get; set; }
 }
+
+/// <summary>
+/// How far an event stream has published the outbox (R-09-153): one row per published batch, never changed. The stream resumes
+/// after the highest <see cref="Through"/> of its name, so a restart sends nothing twice that it had recorded, and skips nothing.
+/// </summary>
+public sealed class StreamPositionRow : IInsertOnly
+{
+    public long Id { get; set; }
+    /// <summary>The stream: the port and the binding's topic it published to.</summary>
+    public string Stream { get; set; } = "";
+    /// <summary>The last outbox row the stream has published, with every row before it.</summary>
+    public long Through { get; set; }
+    public int Events { get; set; }
+    public DateTimeOffset At { get; set; }
+}
+
+/// <summary>A circuit breaker of a production adapter that moved (R-09-156): its port, adapter and target, its new state. Never changed.</summary>
+public sealed class BreakerChangeRow : IInsertOnly
+{
+    public long Id { get; set; }
+    public string Tenant { get; set; } = "";
+    public string Port { get; set; } = "";
+    public string Adapter { get; set; } = "";
+    public string Target { get; set; } = "";
+    /// <summary><c>closed</c>, <c>open</c> or <c>half-open</c>.</summary>
+    public string State { get; set; } = "";
+    public int Failures { get; set; }
+    public string? Why { get; set; }
+    /// <summary>The host that saw it (its machine and process name).</summary>
+    public string Host { get; set; } = "";
+    public DateTimeOffset At { get; set; }
+}

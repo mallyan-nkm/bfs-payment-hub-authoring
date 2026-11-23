@@ -65,6 +65,24 @@ sh deploy/laptop/prune-cache.sh                                             # th
 
 On a real Temporal server a WPS payment waits in real time for the simulator's acknowledgement, so each payment takes about ten minutes (Issue I-156 (5)).
 
+## Alerts and payment events (optional)
+
+The profile `events` adds an MQTT broker (`mosquitto`, eclipse-mosquitto pinned by digest, anonymous logins refused) for the operators' alerts (`p.port.notification.v1`, the turnaround breaches among them, R-05-80, R-09-150) and a one-node Kafka broker (`kafka`, apache/kafka-native in KRaft mode, pinned by digest) for the payment events out of the store's outbox (`p.port.event-stream.v1`, R-09-152 to R-09-154). Neither starts by default; both are in `compose.events.yaml`, beside the main file, which stays as it is.
+
+```
+export TH_LAPTOP_BROKER_PASSWORD=...                                        # the broker's login th-alerts, in your shell only
+docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.events.yaml --profile events up -d --wait
+docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.events.yaml exec mosquitto \
+  mosquitto_sub -u th-alerts -P "$TH_LAPTOP_BROKER_PASSWORD" -t 'transacthub/#' -v            # watch the alerts
+kcat -b 127.0.0.1:19094 -t transacthub.payment-events -C -K ' '                                # the events, with any Kafka client
+docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.events.yaml --profile events down -v
+```
+
+- **Bind them.** The bank's folder binds both ports to placeholder hosts (`content-configurations/banks/<bank>/platform-adapters.yaml`), so until the laptop's bindings are in force an alert is recorded as `alert-failed` and the events wait, keeping their position. `banks/<bank>/events.yaml` binds them to these two services: build the bank's configuration release with it and put it in force with a bank approver's consent, as for `file-transfer.yaml` (R-09-110 to R-09-112).
+- **What goes out.** An alert carries ids, codes and periods only. An event is a fact's reference: its subject (the message key), its number on the subject's chain, its kind, code and time, never its data. Delivery is at least once and in order per payment; the stream's position is a row per batch in `stream_position`, insert-only, so a restart resumes and nothing is skipped.
+- **Ports**: `TH_LAPTOP_MQTT_PORT` (default 11883) and `TH_LAPTOP_KAFKA_PORT` (default 19094), on 127.0.0.1. The laptop's Kafka is plaintext; a bank's cluster takes SASL over TLS (`securityProtocol: sasl_ssl`).
+- **Circuit breakers.** Every production adapter that calls an outside system stops calling it after `breakerFailures` failures in a row (default 5) for `breakerOpenSeconds` (default 30), then tries one call (R-09-155). Stop the broker to see the service console's health show the open breaker (`circuit-breakers`, R-09-156).
+
 ## What is not here
 
 - A bank's installation (TLS, the bank's identity provider, its secret stores, high availability, the `sftp` binding to the bank's partners): this is a laptop. What the laptop chose that an installation decides is Issue I-156.

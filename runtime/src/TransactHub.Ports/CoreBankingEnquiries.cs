@@ -71,7 +71,7 @@ public sealed class GatewayRestCoreBankingEnquiries(PortBinding b, GatewayRestCo
     public async Task<IReadOnlyList<AccountSummary>> Accounts(string customer, CancellationToken ct = default)
     {
         var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["customer"] = customer };
-        using var res = await core.Http.SendAsync(await core.Request("accountsPath", "accountsFunctionId", $"{b.Setting("referencePrefix", "")}{customer}", body, ct), ct);
+        using var res = await GuardedHttp.Send(core.Http, b, await core.Request("accountsPath", "accountsFunctionId", $"{b.Setting("referencePrefix", "")}{customer}", body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         return (j["accounts"] as JsonArray ?? []).OfType<JsonObject>().Select(a => new AccountSummary((string)a["account"]!, (string?)a["currency"] ?? "", (string?)a["type"] ?? "", (string?)a["status"] ?? "", (string?)a["branch"])).ToList();
@@ -80,7 +80,7 @@ public sealed class GatewayRestCoreBankingEnquiries(PortBinding b, GatewayRestCo
     public async Task<ChargeQuote> Charges(string customer, string scheme, string messageKind, int records, decimal amount, string currency, CancellationToken ct = default)
     {
         var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["customer"] = customer, ["scheme"] = scheme, ["messageKind"] = messageKind, ["records"] = records, ["amount"] = amount, ["currency"] = currency };
-        using var res = await core.Http.SendAsync(await core.Request("chargesPath", "chargesFunctionId", $"{b.Setting("referencePrefix", "")}{customer}", body, ct), ct);
+        using var res = await GuardedHttp.Send(core.Http, b, await core.Request("chargesPath", "chargesFunctionId", $"{b.Setting("referencePrefix", "")}{customer}", body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         return new ChargeQuote(scheme, messageKind, records, amount, currency, (decimal)j["charge"]!, (decimal?)j["vat"] ?? 0m, (string?)j["currency"] ?? currency, b.Adapter);

@@ -42,7 +42,7 @@ public sealed class PlatformOnlyBankFolderTests
         Assert.All(bindings.All, x => Assert.Equal(tenant, x.Tenant));
         // Core banking is the only port bound: the bank's file transfer and decryption are WPS's, which it does not run.
         // ... beside the platform's production adapters, whose bindings are shapes only (R-09-90).
-        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port];
+        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port, NotificationAdapters.Port, EventStreamAdapters.Port];
         Assert.Equal([Port], bindings.All.Select(x => x.Port).Where(p => !platform.Contains(p)).Distinct());
     }
 

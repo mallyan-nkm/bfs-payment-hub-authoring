@@ -138,8 +138,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # (uae.wps.wf.salary-file-out.v1 1.4.0), and the WPS operations view 1.6.0 that shows it (R-05-72), both written by hand.
 # 1.12.0: the platform's error dictionary 1.3.0: a native module that references the runtime image beyond the native contract has
 # its own code, package.NativeImageReference (R-09-125, Issue I-220), and each refusal of the native host its native. code (R-09-128, I-230).
-PACK_RELEASES = {"p": "1.12.0", "uae.p": "1.12.0", "uae.wps": "1.12.0", "b": "1.12.0"}
-FACTORY_RELEASE = "1.12.0"
+# 1.15.0 (change set CS-2026-11-23-010; 1.13.0 and 1.14.0 are other changes'): the platform's notification port
+# p.port.notification.v1 and event-streaming port p.port.event-stream.v1, each with its simulator (R-11-85; owner's decisions of
+# 23 November 2026, Issue I-182, docs/OWNER-ACTIONS.md A5), and p.view.operations.v1 1.6.0, written by hand: the turnaround limit
+# counted in business days of the bank's calendar (R-05-81).
+PACK_RELEASES = {"p": "1.15.0", "uae.p": "1.15.0", "uae.wps": "1.15.0", "b": "1.15.0"}
+FACTORY_RELEASE = "1.15.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -898,6 +902,10 @@ port("p.port.sanctions.v1", "Sanctions screening", "sanctions screening engine",
 port("p.port.fraud.v1", "Fraud screening", "fraud engine", [("score", RR)])
 port("p.port.channel.v1", "Originating channel", "initiating channel", [("notify", SEND)])
 port("p.port.facts-out.v1", "Outward facts", "downstream consumers of published facts", [("publish", SEND)])
+# Owner's decisions of 23 November 2026 (Issue I-182, R-09-150, R-09-152): where operator alerts go, and the payment events the
+# store's outbox streams out. Each bank binds them in its configuration release like any port.
+port("p.port.notification.v1", "Operator notification", "the bank's alerting service for operators", [("alert", SEND)])
+port("p.port.event-stream.v1", "Payment event stream", "the bank's event streaming platform", [("publish", SEND)])
 port("p.port.payment-record.v1", "Payment record", "payment record store", [("read", RR), ("find-duplicate", RR)])
 port("p.port.operations-queue.v1", "Operations queue", "operations console", [("create-item", SEND), ("decision", RECV)])
 port("p.port.liquidity.v1", "Liquidity position", "liquidity service", [("position", RR)])
@@ -981,6 +989,10 @@ sim("p.sim.channel.v1", "Channel simulator", "outward", "p.port.channel.v1", "in
     outward_set("p.channel.notify", "p.channel.ack", "NARR"))
 sim("p.sim.facts-out.v1", "Fact consumer simulator", "outward", "p.port.facts-out.v1", "downstream consumers of payment facts",
     outward_set("p.facts.publish", "p.facts.ack", "NARR"))
+sim("p.sim.notification.v1", "Operator notification simulator", "outward", "p.port.notification.v1", "the bank's alerting service for operators",
+    outward_set("p.notification.alert", "p.notification.ack", "NARR"))
+sim("p.sim.event-stream.v1", "Payment event stream simulator", "outward", "p.port.event-stream.v1", "the bank's event streaming platform",
+    outward_set("p.events.publish", "p.events.ack", "NARR"))
 sim("p.sim.operations.v1", "Operator simulator", "inward", "p.port.operations-queue.v1", "operations console user",
     [sc("release", {"expect": "p.ops.item"}, {"send": "p.ops.decision", "status": "released", "after": "PT5M"}),
      sc("reject", {"expect": "p.ops.item"}, {"send": "p.ops.decision", "status": "rejected", "after": "PT5M"}),

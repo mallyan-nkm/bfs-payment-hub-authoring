@@ -1,0 +1,63 @@
+# Optional: an MQTT broker for the operators' alerts (p.port.notification.v1, R-09-150, R-09-151) and a Kafka broker for the
+# payment events (p.port.event-stream.v1, R-09-152 to R-09-154), under the profile `events`: not started by default. Given beside
+# the main file, so that the main file is unchanged (deploy/laptop/README.md, "Alerts and payment events"):
+#
+#   docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.events.yaml --profile events up -d --wait
+#
+# The broker's password comes from the environment (TH_LAPTOP_BROKER_PASSWORD), never a file; the broker refuses anonymous logins.
+# The laptop's Kafka is one KRaft node, plaintext on the stack's network and on 127.0.0.1: a bank's cluster takes SASL over TLS.
+# Images pinned by digest. Ports on 127.0.0.1 only.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20@sha256:21421af7b32bf9ce508e9090c8eb13bb81f410ca778dc205506180a6f862d0eb
+    profiles: [events]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TH_BROKER_PASSWORD: ${TH_LAPTOP_BROKER_PASSWORD:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -n "$$TH_BROKER_PASSWORD" || { echo 'set TH_LAPTOP_BROKER_PASSWORD'; exit 1; };
+        printf 'listener 1883\nallow_anonymous false\npassword_file /tmp/pw\n' > /tmp/m.conf &&
+        mosquitto_passwd -b -c /tmp/pw th-alerts "$$TH_BROKER_PASSWORD" && chown mosquitto:mosquitto /tmp/pw && chmod 0700 /tmp/pw &&
+        exec mosquitto -c /tmp/m.conf
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1883"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports: ["127.0.0.1:${TH_LAPTOP_MQTT_PORT:-11883}:1883"]
+
+  kafka:
+    image: apache/kafka-native:3.9.0@sha256:c20b97f0a3990771f52bf7855ccb9ae82ac683a357a101482ba349dfb2ae0cdb
+    profiles: [events]
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://127.0.0.1:${TH_LAPTOP_KAFKA_PORT:-19094}
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_NUM_PARTITIONS: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9092"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    ports: ["127.0.0.1:${TH_LAPTOP_KAFKA_PORT:-19094}:9094"]
+
+  # The operations console sends the alerts and streams the events (R-05-80, R-09-153): its broker login, by reference from the
+  # laptop's binding (deploy/laptop/banks/<bank>/events.yaml), is made here from the environment.
+  ops-api:
+    environment:
+      TH_LAPTOP_BROKER_LOGIN: th-alerts:${TH_LAPTOP_BROKER_PASSWORD:-}

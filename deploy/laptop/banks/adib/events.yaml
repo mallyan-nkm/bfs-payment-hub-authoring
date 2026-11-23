@@ -1,0 +1,27 @@
+# The laptop's alerts and payment events for ADIB (deploy/laptop, R-09-150 to R-09-154), for the optional profile `events`
+# (compose.events.yaml). Like file-transfer.yaml it reaches the runtime only inside the bank's signed configuration release
+# (R-09-110 to R-09-112): build the bank's release with it and put it in force with a bank approver's consent; no host reads a folder
+# of bindings (R-09-113). Its validFrom is after the bank folder's placeholders, so the release that carries it binds both ports.
+# The broker's login is a reference, made by compose.events.yaml from the environment. Synthetic: no host of the bank's.
+kind: port-bindings
+tenant: adib
+bindings:
+  - port: p.port.notification.v1
+    adapter: mqtt
+    validFrom: 2026-11-23T12:00:00Z
+    settings:
+      host: mosquitto
+      port: "1883"
+      tls: "false"
+      qos: "1"
+      topic: transacthub/{tenant}/alerts/{kind}
+      secretRef: env:TH_LAPTOP_BROKER_LOGIN
+  - port: p.port.event-stream.v1
+    adapter: kafka
+    validFrom: 2026-11-23T12:00:00Z
+    settings:
+      bootstrapServers: kafka:9092
+      topic: transacthub.payment-events
+      acks: all
+      idempotent: "true"
+      securityProtocol: plaintext

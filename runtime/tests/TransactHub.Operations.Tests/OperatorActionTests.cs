@@ -193,4 +193,5 @@ sealed class ManualClock(DateTimeOffset start) : TimeProvider
     DateTimeOffset now = start;
     public override DateTimeOffset GetUtcNow() => now;
     public void Advance(TimeSpan by) => now += by;
+    public void Set(DateTimeOffset at) => now = at;
 }

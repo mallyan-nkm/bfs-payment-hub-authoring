@@ -32,7 +32,7 @@ static class Rest
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(double.Parse(b.Setting("timeoutSeconds", "10"), CultureInfo.InvariantCulture)));
-        var res = await http.SendAsync(m, timeout.Token);
+        var res = await GuardedHttp.Send(http, b, m, timeout.Token, ct);
         // 5xx and 429 are the service's own trouble: the caller retries (TransientError); any other failure is a refusal.
         if ((int)res.StatusCode >= 500 || res.StatusCode == HttpStatusCode.TooManyRequests) throw new HttpRequestException($"{b.Port}: the service answered {(int)res.StatusCode}");
         return res;
@@ -434,7 +434,7 @@ public sealed class WebhookFactsOut(PortBinding b, HttpClient http, ISecretResol
         if (b.Setting("secretRef", "") is { Length: > 0 } r) m.Headers.Authorization = new("Bearer", (await secrets.Resolve(r, ct)).Reveal());
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(double.Parse(b.Setting("timeoutSeconds", "10"), CultureInfo.InvariantCulture)));
-        using var res = await http.SendAsync(m, timeout.Token);
+        using var res = await GuardedHttp.Send(http, b, m, timeout.Token, ct);
         if ((int)res.StatusCode >= 500 || res.StatusCode == HttpStatusCode.TooManyRequests) throw new HttpRequestException($"{b.Port}: the endpoint answered {(int)res.StatusCode}");
         if (res.StatusCode == HttpStatusCode.Conflict) return key;
         res.EnsureSuccessStatusCode();

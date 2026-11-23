@@ -185,6 +185,18 @@ public sealed class SftpFileTransfer : IFileTransfer, IFileTransferListing, IDis
     /// </summary>
     async Task<T> Use<T>(SftpPartner p, CancellationToken ct, Func<SftpClient, T> op)
     {
+        // The partner's circuit breaker (R-09-155): a run of failed connections stops the calls for a while, then one is tried.
+        var breaker = CircuitBreakers.Shared.For(Binding, $"{p.Host}:{p.Port}");
+        try { return await breaker.Run(() => Pooled(p, ct, op), counts: e => Unreachable(e) && !ct.IsCancellationRequested, ct: ct); }
+        catch (CircuitOpenException e) { throw new FileTransferException($"SFTP to {p.Name} ({p.Host}:{p.Port}) is not tried: {e.Message}", e); }
+    }
+
+    /// <summary>A failure of the partner's server or of the way to it, not of the binding or of a file.</summary>
+    static bool Unreachable(Exception e) =>
+        (e is FileTransferException f ? f.InnerException : e) is SshException or SocketException or TimeoutException or IOException and not FileNotFoundException;
+
+    async Task<T> Pooled<T>(SftpPartner p, CancellationToken ct, Func<SftpClient, T> op)
+    {
         var pool = pools.GetOrAdd(p.Name, _ => new Pool(Sessions.Max));
         if (!await pool.Slots.WaitAsync(Sessions.Acquire, ct))
             throw new FileTransferException($"No SFTP session to {p.Name} ({p.Host}) within {Sessions.Acquire.TotalSeconds:0} s: all {Sessions.Max} are in use");
