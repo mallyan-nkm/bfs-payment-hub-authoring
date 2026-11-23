@@ -131,7 +131,8 @@ describe('the registers area: a maker proposes, a different bank approver consen
 
     // In force: the list and the record, masked as the operations views mask.
     await page.goto(`${apiUrl}/#/registers/corporate`);
-    await until('the corporate in force', async () => { await page.reload(); return (await page.getByTestId('record-row').count()) === 1; }, 20000);
+    // The list loads after the page: wait for its row on each reload, not only at the instant of it.
+    await until('the corporate in force', async () => { await page.reload(); await page.getByTestId('record-row').first().waitFor({ timeout: 5000 }); return (await page.getByTestId('record-row').count()) === 1; }, 30000);
     await page.getByTestId('record-row').first().click();
     const record = page.getByTestId('record');
     await record.waitFor();
