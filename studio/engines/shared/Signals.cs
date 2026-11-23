@@ -67,7 +67,9 @@ public static class LiveSignals
             var m = (JsonObject)J.Clone(msg)!;
             if (J.S(m, "id") is null) m["id"] = $"delivered-{id}";
             if (J.S(m, "conversation") is null && J.S(header, "conversation") is string conv) m["conversation"] = conv;
-            if (J.P(m, "correlation") is null) m["correlation"] = new JsonObject { ["paymentId"] = J.S(header, "paymentId") };
+            // The payment's id as a key, beside any key the sender gave (R-09-161): the host was told whose message it is.
+            if (J.P(m, "correlation") is not JsonObject c) m["correlation"] = new JsonObject { ["paymentId"] = J.S(header, "paymentId") };
+            else if (J.S(c, "paymentId") is null && J.S(header, "paymentId") is string pid) c["paymentId"] = pid;
             return ("message", m);
         }
         var data = new JsonObject { ["signal"] = signal, ["id"] = $"row-{id}" };

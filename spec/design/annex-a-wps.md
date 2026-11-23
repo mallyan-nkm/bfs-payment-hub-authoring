@@ -115,8 +115,8 @@ Generated from `factory/inventory.yaml`.
 | Workflow | 15 | `uae.wps.sub.answer-refund.v1`, `uae.wps.sub.confirm-receipt.v1`, `uae.wps.sub.receive-supplement.v1`, `uae.wps.sub.report-disbursement.v1`, `uae.wps.sub.request-refund.v1`, `uae.wps.sub.return-credits.v1`, `uae.wps.sub.return-refund.v1`, `uae.wps.sub.submit-salary-file.v1`, `uae.wps.wf.agent-payment-in.v2`, `uae.wps.wf.inward-refuse.v1`, `uae.wps.wf.refund-out.v2`, `uae.wps.wf.refund-request-in.v1`, `uae.wps.wf.refund-request-refuse.v1`, `uae.wps.wf.return-in.v1`, `uae.wps.wf.salary-file-out.v1` |
 | Scheme | 1 | `uae.wps.scheme` |
 | Extension | 1 | `uae.wps.ext.salary.v1` |
-| Test | 40 | `WPS-ENR-001`, `WPS-ENR-002`, `WPS-EXC-001`, `WPS-EXC-002`, `WPS-EXC-003`, `WPS-IN-001`, `WPS-IN-002`, `WPS-IN-003`, `WPS-IN-004`, `WPS-IN-005`, `WPS-IN-006`, `WPS-IN-007`, `WPS-IN-008`, `WPS-IN-009`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-MAP-003`, `WPS-MAP-004`, `WPS-MAP-005`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005`, `WPS-OUT-006`, `WPS-OUT-007`, `WPS-OUT-008`, `WPS-OUT-009`, `WPS-OUT-010`, `WPS-RFR-001`, `WPS-RFR-002`, `WPS-RFR-003`, `WPS-RRI-001`, `WPS-RRI-002`, `WPS-RRI-003`, `WPS-RRI-004`, `WPS-RRI-005`, `WPS-RRI-006`, `WPS-RRI-007`, `WPS-RTC-001` |
-| Total | 120 | |
+| Test | 42 | `WPS-ENR-001`, `WPS-ENR-002`, `WPS-EXC-001`, `WPS-EXC-002`, `WPS-EXC-003`, `WPS-IN-001`, `WPS-IN-002`, `WPS-IN-003`, `WPS-IN-004`, `WPS-IN-005`, `WPS-IN-006`, `WPS-IN-007`, `WPS-IN-008`, `WPS-IN-009`, `WPS-MAP-001`, `WPS-MAP-002`, `WPS-MAP-003`, `WPS-MAP-004`, `WPS-MAP-005`, `WPS-MAP-006`, `WPS-MAP-007`, `WPS-OUT-001`, `WPS-OUT-002`, `WPS-OUT-003`, `WPS-OUT-004`, `WPS-OUT-005`, `WPS-OUT-006`, `WPS-OUT-007`, `WPS-OUT-008`, `WPS-OUT-009`, `WPS-OUT-010`, `WPS-RFR-001`, `WPS-RFR-002`, `WPS-RFR-003`, `WPS-RRI-001`, `WPS-RRI-002`, `WPS-RRI-003`, `WPS-RRI-004`, `WPS-RRI-005`, `WPS-RRI-006`, `WPS-RRI-007`, `WPS-RTC-001` |
+| Total | 122 | |
 <!-- /INVENTORY:uae.wps -->
 
 ## A.7 Open points

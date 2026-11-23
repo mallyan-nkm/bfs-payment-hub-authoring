@@ -146,6 +146,7 @@ export class PartyService {
     this.run.clock.now = req.now;
     // Messages the context refers to by claim-check, handed over with the request (a deployed worker holds no payloads).
     for (const m of req.messages ?? []) if (!this.run.messages.some((x) => x.id === m.id)) this.run.messages.push({ port: '', from: 'simulator', at: req.now, correlation: {}, ...m } as Message);
+    await this.receivedFiles(req);
     // An item's attempt on a deployed worker runs on an instance of its own: the items of one payment run side by side
     // (R-09-45), and one item's context must not become another's.
     let inst = req.level === 'item' && owners.getStore() ? new Instance(this.run, { kind: 'workflow', name: req.instance, release: '0.0.0' }, req.ctx, 'engine') : this.instances.get(req.instance);
@@ -210,6 +211,32 @@ export class PartyService {
     for (const [k, v] of Object.entries(r.writes ?? {})) if (coveredByAny(act.writes ?? [], k.replace(/\[\d+\]/g, '[]'))) writes[k] = v;
     const latencyMs = this.latency[`step:${req.step}`] ?? this.latency[req.activity];
     return { kind: 'result', outcome: r.outcome, reasonCode: r.reasonCode, writes, decisions: r.decisions, ...(r.ruleTrace ? { ruleTrace: { worst: r.ruleTrace.worst, findings: r.ruleTrace.findings, trace: r.ruleTrace.trace } } : {}), ...(latencyMs ? { latencyMs } : {}) };
+  }
+
+  /**
+   * A message the runtime's front door delivered from a file the File API received (`in-<file id>`, R-09-162) is carried by the engine
+   * by reference only. A map that reads it (an acknowledgement read after its await) gets its content from the File API, which kept
+   * the file: `GET /files/<id>/content` at `TH_FILE_API_URL`, with the token by reference in `TH_FILE_API_TOKEN`. Without a File API
+   * the message stays a reference, as before.
+   */
+  private async receivedFiles(req: AttemptRequest) {
+    const api = process.env.TH_FILE_API_URL;
+    if (!api) return;
+    const refs = [req.ctx?.messages?.lastReceived, ...Object.values(req.ctx?.messages?.received ?? {})].filter((r: any) => typeof r?.id === 'string' && r.id.startsWith('in-'));
+    for (const ref of refs as any[]) {
+      if (this.run.messages.some((x) => x.id === ref.id && x.payload !== undefined)) continue;
+      const { resolveSecret } = await import('../secrets/secrets.js');
+      const headers: Record<string, string> = process.env.TH_FILE_API_TOKEN ? { authorization: `Bearer ${(await resolveSecret(process.env.TH_FILE_API_TOKEN)).reveal()}` } : {};
+      const base = api.replace(/\/$/, '');
+      const id = encodeURIComponent(ref.id.slice(3));
+      const [meta, content] = await Promise.all([fetch(`${base}/files/${id}`, { headers }), fetch(`${base}/files/${id}/content`, { headers })]);
+      if (!content.ok) continue;
+      const fileName = meta.ok ? ((await meta.json()) as any)?.fileName : undefined;
+      const known = this.run.messages.find((x) => x.id === ref.id);
+      const payload = Buffer.from(await content.arrayBuffer()).toString('utf8');
+      if (known) Object.assign(known, { payload, ...(fileName ? { fileName } : {}) });
+      else this.run.messages.push({ id: ref.id, type: ref.type, port: '', from: 'simulator', at: req.now, correlation: {}, payload, ...(fileName ? { fileName } : {}) } as Message);
+    }
   }
 
   /** Messages the platform sent, for the comparison of messages and ids. */

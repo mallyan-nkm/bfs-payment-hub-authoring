@@ -59,6 +59,8 @@ public static class ServiceEndpoints
         api.MapGet("/content/versions", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Versions(http.RequestAborted)); }));
         api.MapGet("/content/releases", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Releases(http.RequestAborted)); }));
         api.MapGet("/content/open-payments", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.OpenPayments(http.RequestAborted)); }));
+        // The pins with no payment, each with the action that ends it (Issue I-206, R-09-165).
+        api.MapGet("/content/stuck-pins", (string? olderThan, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.StuckPins(DistributionRegistry.Duration(olderThan), http.RequestAborted)); }));
         api.MapGet("/content/diff", (string tag, string? environment, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Diff(tag, environment, http.RequestAborted)); }));
         api.MapPost("/content/verify", (TagAsk b, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.Verify(b.Tag, Who(http), b.Reason, http.RequestAborted))));
         // Installing changes the system: verified now, carried out once a bank approver consents (R-09-77).

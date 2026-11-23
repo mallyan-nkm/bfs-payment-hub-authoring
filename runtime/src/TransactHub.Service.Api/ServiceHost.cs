@@ -78,7 +78,7 @@ public sealed class ServiceHost
         s.AddSingleton(logBuffer);
         s.AddSingleton<TimeProvider>(clock);
         s.AddSingleton(bank);
-        s.AddSingleton(new ContentSettings(trust, secrets, testEnvs, environment, bank));
+        s.AddSingleton(new ContentSettings(trust, secrets, testEnvs, environment, bank, cfg["Service:StuckPinAfter"]));
         s.AddSingleton(sp => ErrorDictionary.FromFolder(errorsDir));
         s.AddSingleton(sp => ViewCatalog.FromFolder(viewsDir ?? "content-configurations/artefacts"));
         s.AddSingleton(sp => new Projector(store, ops, sp.GetRequiredService<ViewCatalog>(), clock));
@@ -139,6 +139,7 @@ public sealed class ServiceHost
             book.Run("rollback", (who, a, ct) => content.Rollback(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));
             book.Run("remove", (who, a, ct) => content.Remove(a.Target!, who, a.Reason!, ct, (string?)a.Parameters?["environment"]));
             book.Run("drain", (who, a, ct) => content.Drain(a.Target!, (string?)a.Parameters?["environment"], who, a.Reason!, ct));
+            book.Run("end-pin", (who, a, ct) => content.EndPin(a.Target!, who, a.Reason!, ct));
             book.Run("rebuild-read-model", async (_, _, ct) => { await projector.Rebuild(ct); var l = await projector.Lag(ct); return new JsonObject { ["rebuilt"] = true, ["behind"] = l.Behind, ["applied"] = l.Applied }; });
             book.Run("replay-read-model", async (_, _, ct) => { var before = await projector.Lag(ct); await projector.CatchUp(ct); var l = await projector.Lag(ct); return new JsonObject { ["from"] = before.Through, ["through"] = l.Through, ["behind"] = l.Behind }; });
             book.Run("release-hold", ActionBook.ReleaseHold(store, clock, sp.GetRequiredService<IEngineSignals>()));

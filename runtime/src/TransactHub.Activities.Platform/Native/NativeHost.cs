@@ -63,7 +63,7 @@ public sealed class FileProtectionPort(PortBindings bindings, TransactHub.Securi
 /// The bank's ports as a native module asks them (native contract 1.1.0, R-09-125): each by the image's adapter of the binding in force
 /// for the attempt's tenant at its time. The ports and operations it answers are the contract's (<see cref="INativePorts"/>).
 /// </summary>
-public sealed class NativePorts(PortBindings bindings, INativeFiles files, RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null) : INativePorts
+public sealed class NativePorts(PortBindings bindings, INativeFiles files, RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null, Func<PortBinding, IFileTransfer>? transferOf = null) : INativePorts
 {
     readonly FileProtectionPort protection = new(bindings, secrets);
     readonly BoundAdapters<IPartyRegister> parties = new(bindings, PartyRegisterAdapters.Port, b => PartyRegisterAdapters.Create(b, registers));
@@ -107,7 +107,40 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
                 return new(adapter, new JsonObject { ["sha256"] = sha, ["cipherSha256"] = received, ["bytes"] = bytes });
             }
             default:
+            {
+                // A port the bank binds to the File API (adapter file-transfer, R-09-160): the file the host kept is sent through the
+                // bank's file-transfer binding, which on a runtime host is the File API's outbox (R-09-138).
+                if (!string.IsNullOrEmpty(a.Tenant) && Bound(a.Tenant, port, a.Now) is { Adapter: PortFileTransfer.Name })
+                    return SendFile(a, port, operation, request);
                 throw new NativeFailure("PortNotBound", $"The runtime image answers no {operation} of {port} for a native module", false);
+            }
+        }
+    }
+
+    PortBinding? Bound(string tenant, string port, DateTimeOffset at)
+    {
+        try { return bindings.InForce(tenant, port, at); }
+        catch (PortBindingException) { return null; }
+    }
+
+    /// <summary>A file the host kept (<c>sha256</c>), sent as <c>fileName</c> on a port bound to <c>file-transfer</c>, for the request's payment.</summary>
+    NativePortAnswer SendFile(NativeAttempt a, string port, string operation, JsonObject request)
+    {
+        string S(string k) => (string?)request[k] ?? "";
+        var content = files.Get(S("sha256")) ?? throw new NativePortRefused(port, $"The host holds no file {S("sha256")} to send");
+        var name = S("fileName").Length > 0 ? S("fileName") : throw new NativePortRefused(port, "The request names no fileName");
+        var file = new PortFile(name, content, S("paymentId") is { Length: > 0 } p ? p : null, S("leg") is { Length: > 0 } l ? l : null,
+            S("scheme") is { Length: > 0 } sc ? sc : string.Join('.', port.Split('.').Take(2)), a.Activity);
+        try
+        {
+            var sent = PortFileTransfer.Send(bindings, a.Tenant!, port, operation, file, a.Now, transferOf, secrets).GetAwaiter().GetResult();
+            return new(PortFileTransfer.Name, new JsonObject { ["sent"] = true, ["via"] = sent.Adapter, ["folder"] = sent.Folder, ["fileName"] = sent.FileName, ["kind"] = sent.Kind, ["bytes"] = content.Length });
+        }
+        catch (PortBindingException e) { throw new NativePortRefused(port, e.Message); }
+        catch (TransactHub.Security.SecretUnavailable e) { throw new NativeFailure("SecretUnavailable", e.Message, false); }
+        catch (Exception e) when (e is FileTransferException or HttpRequestException or IOException or TaskCanceledException)
+        {
+            throw new NativeFailure("TransientError", $"{port} {operation}: the file was not taken: {e.Message}", true);
         }
     }
 }

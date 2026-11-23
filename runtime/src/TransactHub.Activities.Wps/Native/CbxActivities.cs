@@ -88,9 +88,12 @@ public sealed class ValidateCbxFile : INativeActivity
 /// The Central Bank SIF of the TransactHub source (CbxSifWriter), written from the canonical context. The file is
 /// kept by the host; the context keeps a reference: its name, hash and totals.
 /// </summary>
-public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null) : INativeActivity
+public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null, string name = RenderCbSif.CbName) : INativeActivity
 {
-    public string Name => "uae.wps.map.cb-sif-out.v1";
+    public const string CbName = "uae.wps.map.cb-sif-out.v1";
+    /// <summary>The factory's render step of the outward salary file, whose 1.1.0 is this code-behind (R-09-162, Issue I-192).</summary>
+    public const string FactoryName = "uae.wps.map.sif-out.v1";
+    public string Name => name;
 
     public NativeResult Run(NativeAttempt a)
     {
@@ -105,13 +108,17 @@ public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null) : I
         }
         // The source's SCR carries the salary month as MMYYYY.
         // Studio parameters are camelCase (bankRoutingCode); the source's name is accepted too.
-        var routing = Ctx.Param(a.Params, "bankRoutingCode") is { Length: > 0 } r ? r : Ctx.Param(a.Params, CbxScrRules.BankRoutingCodeParam);
+        // The factory's render has no parameter: the employer's bank is the batch's debtor agent, as the channel's file named it.
+        var routing = Ctx.Param(a.Params, "bankRoutingCode") is { Length: > 0 } r ? r : Ctx.Param(a.Params, CbxScrRules.BankRoutingCodeParam) is { Length: > 0 } src ? src
+            : name == FactoryName ? Ctx.S(a.View, "batch.debtorAgent.clearingMemberId") : "";
         var control = new CbxSifControl(Ctx.S(a.View, "ext.uae.wps.employerId"), routing, Ctx.Business(a.Now),
             Ctx.S(a.View, "ext.uae.wps.salaryMonth"), Ctx.S(a.View, "batch.currency") is { Length: > 0 } c ? c : "AED", Ctx.S(a.View, "ext.uae.wps.employerReference"));
         var (doc, failure) = CbxSifWriter.Build(employees, [], control);
         if (doc is null)
             return new NativeResult("unmappable", "FF01", new JsonObject { ["messages.rendered"] = new JsonObject { ["by"] = Name, ["error"] = $"{failure!.ErrorCode}: {failure.Message}" } });
-        var fileName = CbxSifWriter.FileNameFor(Ctx.S(a.View, "header.fileId") + SifFiles.SifSuffix);
+        // The file's id: the header's where the step reads it, else the batch's (the factory's render reads batch, items and ext).
+        var fileId = Ctx.S(a.View, "header.fileId") is { Length: > 0 } h ? h : Ctx.S(a.View, "batch.id");
+        var fileName = CbxSifWriter.FileNameFor(fileId + SifFiles.SifSuffix);
         keep?.Invoke(doc.Sha256, fileName, CbxSifWriter.Encode(doc.Content));
         return new NativeResult("mapped", null, new JsonObject
         {
@@ -124,4 +131,49 @@ public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null) : I
     }
 
     static DateOnly Date(string s) => DateOnly.TryParse(s, CultureInfo.InvariantCulture, out var d) ? d : default;
+}
+
+/// <summary>
+/// <c>uae.wps.exchange.send-salary-file.v1</c> 1.1.0 on the runtime (R-09-162, Issue I-192): the salary file the render step kept
+/// (<c>messages.rendered</c>, by its SHA-256) is sent on the bank's binding of the WPS port. A bank that binds the port to the File API
+/// (adapter <c>file-transfer</c>) sends it through the File API's outbox to the Central Bank's folder, where it is kept, delivered,
+/// audited and resent on an operator's action; the acknowledgement comes back on the File API's inbox and is awaited by the next step.
+/// The file is taken: <c>accepted</c>. A request the port refuses is <c>rejected</c>; a binding that cannot be reached now is a
+/// retryable <c>TransientError</c>.
+/// </summary>
+public sealed class SendSalaryFile(INativePorts ports) : INativeActivity
+{
+    public const string Port = "uae.wps.port.wps.v1";
+    public const string Operation = "submit-file";
+    public string Name => "uae.wps.exchange.send-salary-file.v1";
+
+    public NativeResult Run(NativeAttempt a)
+    {
+        var rendered = NativeContext.Node(a.View, "messages.rendered");
+        var sha = NativeContext.S(rendered, "sha256");
+        var name = NativeContext.S(rendered, "fileName");
+        if (sha.Length == 0 || name.Length == 0)
+            return new NativeResult("rejected", "FF01", new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = "FF01", ["additionalInformation"] = "No salary file was rendered to send" } });
+        NativePortAnswer answer;
+        try
+        {
+            answer = ports.Ask(a, Port, Operation, new JsonObject
+            {
+                ["sha256"] = sha, ["fileName"] = name, ["paymentId"] = Ctx.S(a.View, "header.paymentId"), ["scheme"] = "uae.wps", ["leg"] = "scheme-leg",
+            });
+        }
+        catch (NativePortRefused e)
+        {
+            return new NativeResult("rejected", "NARR", new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = "NARR", ["additionalInformation"] = e.Message } });
+        }
+        return new NativeResult("accepted", null, new JsonObject
+        {
+            ["status"] = new JsonObject { ["code"] = "ACCP" },
+            ["messages.sent"] = new JsonObject
+            {
+                ["by"] = Name, ["at"] = a.Now.ToString("O", CultureInfo.InvariantCulture), ["fileName"] = name, ["sha256"] = sha, ["via"] = answer.Adapter,
+                ["folder"] = answer.Body["folder"]?.DeepClone(),
+            },
+        });
+    }
 }

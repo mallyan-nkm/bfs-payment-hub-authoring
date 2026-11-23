@@ -135,4 +135,72 @@ public sealed class DistributionContentTests(Databases dbs)
         Assert.Contains("removed", codes);
         Assert.Contains("drain", codes);
     }
+
+    /// <summary>
+    /// Issue I-206, R-09-164, R-09-165: a payment the front door pinned whose start never reached an engine keeps its distribution
+    /// open. The service console lists it, a service engineer asks to end it, a bank approver consents, and it ends abandoned; the
+    /// distribution then drains and is removed. A pin whose payment runs is not offered, and the one who asked may not consent.
+    /// </summary>
+    [Fact]
+    public async Task A_pin_with_no_payment_is_listed_ended_with_consent_and_its_distribution_drains_and_is_removed()
+    {
+        using var s = new Signers();
+        var gh = new FakeGitHub();
+        gh.Publish($"dist/{Bank}/2026.11.23-1", Folder("2026.11.23-1"), Distribution(s.Key, "2026.11.23-1"));
+        gh.Publish($"dist/{Bank}/2026.11.23-2", Folder("2026.11.23-2"), Distribution(s.Key, "2026.11.23-2", activityRelease: "1.0.1"));
+        await using var api = new ServiceApi(dbs.Fresh(), s, gh, extra: new Dictionary<string, string?> { ["Service:StuckPinAfter"] = "PT0S" });
+        var se = api.Engineer;
+        var sa = api.Approver;
+        async Task<JsonNode> Approved(string action, string target, object? parameters = null)
+        {
+            var ask = await J.Of(await Post(se, "/service/api/actions", new { action, target, reason = $"CR: {action}", parameters = parameters ?? new { environment = "production" } }));
+            Assert.Equal("pending-approval", (string?)ask["status"]);
+            return await J.Of(await Post(sa, $"/service/api/actions/{(string)ask["action"]!}/decision", new { approve = true, reason = "four eyes" }));
+        }
+        const string D1 = "dist/example-bank@2026.11.23-1", D2 = "dist/example-bank@2026.11.23-2";
+        Assert.Equal(HttpStatusCode.Created, (await api.Consented(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.23-1", reason = "CR-1" })).StatusCode);
+        Assert.Equal("done", (string?)(await Approved("activate", D1))["status"]);
+
+        // Two payments pinned to D1: one the front door pinned and whose start then failed before any engine took it, and one an
+        // engine's run accepted (its payload's create fact names it).
+        await using (var db = StoreDbContext.Open(api.Store))
+        {
+            var reg = new DistributionRegistry(db);
+            await reg.Pin("PAY-STUCK", Bank, "production", "front-door");
+            await reg.Pin("PAY-RUNS", Bank, "production", "front-door");
+            await new FactLog(db).Append("payload-PAY-RUNS", "payload", new NewFact("payload", "create", new JsonObject { ["paymentId"] = "PAY-RUNS" }, D1, "engine:temporal"));
+        }
+        var stuck = (await J.Of(await se.GetAsync("/service/api/content/stuck-pins"))).AsArray();
+        Assert.Equal(["PAY-STUCK"], stuck.Select(p => (string)p!["paymentId"]!));
+        Assert.Equal(D1, (string?)stuck[0]!["distribution"]);
+        Assert.Equal("end-pin", (string?)stuck[0]!["action"]);
+
+        Assert.Equal(HttpStatusCode.Created, (await api.Consented(se, "/service/api/content/install", new { tag = $"dist/{Bank}/2026.11.23-2", reason = "CR-2" })).StatusCode);
+        Assert.Equal("done", (string?)(await Approved("activate", D2))["status"]);
+        Assert.Equal(2, (int)(await J.Of(await se.GetAsync("/service/api/content/open-payments")))[D1]!);
+
+        // A pin whose payment runs is not a stuck pin: refused, and nothing ends.
+        var notStuck = await Approved("end-pin", "PAY-RUNS");
+        Assert.Equal("refused", (string?)notStuck["status"]);
+        // The one who asked may not consent.
+        var ask = await J.Of(await Post(se, "/service/api/actions", new { action = "end-pin", target = "PAY-STUCK", reason = "CR-3: the start failed (synthetic)" }));
+        Assert.Equal(HttpStatusCode.Forbidden, (await Post(se, $"/service/api/actions/{(string)ask["action"]!}/decision", new { approve = true, reason = "mine" })).StatusCode);
+        var ended = await J.Of(await Post(sa, $"/service/api/actions/{(string)ask["action"]!}/decision", new { approve = true, reason = "four eyes" }));
+        Assert.Equal("done", (string?)ended["status"]);
+        Assert.Equal("abandoned", (string?)ended["result"]!["ended"]);
+        Assert.Empty((await J.Of(await se.GetAsync("/service/api/content/stuck-pins"))).AsArray());
+
+        await using (var db = StoreDbContext.Open(api.Store))
+        {
+            var end = await db.Facts.AsNoTracking().SingleAsync(f => f.SubjectId == "PAY-STUCK" && f.Kind == DistributionRegistry.EndKind);
+            Assert.Equal("abandoned", end.Code);
+            Assert.Contains("the start failed", end.DataJson);
+            Assert.Equal(D1, end.ReleaseId);
+            // The running payment ends as payments do; D1 then has no open payment.
+            await new DistributionRegistry(db).End("PAY-RUNS", "settled", "engine:temporal");
+        }
+        var rel = (await J.Of(await se.GetAsync("/service/api/content/releases"))).AsArray().Where(r => (string?)r!["kind"] == "distribution").ToDictionary(r => (string)r!["releaseId"]!);
+        Assert.Equal("drained", (string?)rel[D1]!["state"]);
+        Assert.Equal("done", (string?)(await Approved("remove", D1))["status"]);
+    }
 }

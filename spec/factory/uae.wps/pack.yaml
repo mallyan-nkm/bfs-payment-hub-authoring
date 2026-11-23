@@ -88,8 +88,8 @@ artefacts:
     path: activities/uae.wps.exchange.send-returns-file.v1.yaml
   - name: uae.wps.exchange.send-salary-file.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:6a86d488dc89573663ad75fc37f4d3eafa690a091d50d70f2635fbd65ce152e5
+    release: 1.1.0
+    hash: sha256:9d86a2dce6534c021ac10d0498323a7e9af77a7882318ed038e26e716b7bb5e3
     path: activities/uae.wps.exchange.send-salary-file.v1.yaml
   - name: uae.wps.exchange.submit-salary-file.v1
     kind: activity
@@ -168,8 +168,8 @@ artefacts:
     path: activities/uae.wps.map.sif-in.v1.yaml
   - name: uae.wps.map.sif-out.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:1318736c87bd2739a5ff2dab56cf1bda8380ca8cbb09278a137f1665768e55aa
+    release: 1.1.0
+    hash: sha256:449af7fc3a927a2294f5f588b87ae64014a9a2f2f486efcff8ec156a146e58a4
     path: activities/uae.wps.map.sif-out.v1.yaml
   - name: uae.wps.post.return.v1
     kind: activity

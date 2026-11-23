@@ -10,7 +10,7 @@ namespace TransactHub.Service;
 
 /// <summary>How the service console reaches the content it installs, and what it trusts.</summary>
 /// <param name="Bank">The one bank this runtime serves (R-09-76): another bank's version is refused at verify, install and activate.</param>
-public sealed record ContentSettings(string TrustSetting, ISecretResolver Secrets, IReadOnlySet<string> TestEnvironments, string Environment, RuntimeBank? Bank = null);
+public sealed record ContentSettings(string TrustSetting, ISecretResolver Secrets, IReadOnlySet<string> TestEnvironments, string Environment, RuntimeBank? Bank = null, string? StuckPinAfter = null);
 
 /// <summary>
 /// Content install, update and upgrade (spec R-09-40, docs/runtime/PACKAGING-AND-DEPLOYMENT.md). GitHub is the artefact
@@ -449,6 +449,41 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         // A distribution's open payments, exactly: pinned at acceptance, with no end fact (R-09-54).
         foreach (var (d, n) in await new DistributionRegistry(db, clock).OpenPayments(ct)) counts[d] = n;
         return counts;
+    }
+
+    /// <summary>How long a pin with no payment waits before the console lists it as stuck (<c>Service:StuckPinAfter</c>, default PT15M).</summary>
+    public TimeSpan StuckPinAfter => DistributionRegistry.Duration(settings.StuckPinAfter) ?? TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// The pins with no payment (Issue I-206, R-09-165): payments the front door pinned whose start never reached an engine, each
+    /// counted as an open payment of its distribution until it is ended. Each names the troubleshooting action that ends it.
+    /// </summary>
+    public async Task<JsonArray> StuckPins(TimeSpan? olderThan = null, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var pins = await new DistributionRegistry(db, clock).Unstarted(olderThan ?? StuckPinAfter, ct);
+        return new JsonArray(pins.Select(p => (JsonNode)new JsonObject
+        {
+            ["paymentId"] = p.PaymentId, ["distribution"] = p.Distribution, ["bank"] = p.Bank, ["environment"] = p.Environment,
+            ["pinnedAt"] = p.PinnedAt.ToString("O"), ["lastFact"] = p.LastFact, ["action"] = "end-pin",
+        }).ToArray());
+    }
+
+    /// <summary>
+    /// Ends a pin with no payment, on a bank approver's consent (the action <c>end-pin</c>, R-09-165): the payment ends
+    /// <c>abandoned</c> with the reason given, so its distribution can drain and be removed. A pin that is not stuck (its payment
+    /// runs, has ended, or is younger than the console's wait) is refused.
+    /// </summary>
+    public async Task<JsonObject> EndPin(string paymentId, ServiceIdentity who, string why, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var reg = new DistributionRegistry(db, clock);
+        var stuck = (await reg.Unstarted(StuckPinAfter, ct)).FirstOrDefault(p => p.PaymentId == paymentId)
+            ?? throw new ServiceRefused(409, ErrorCodes.ActionNotOffered, $"{paymentId} is not a pin with no payment: it runs, it has ended, or it was pinned less than {System.Xml.XmlConvert.ToString(StuckPinAfter)} ago");
+        if (!who.Sees(stuck.Bank)) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"No tenant {stuck.Bank} for {who.DisplayName}");
+        await reg.Abandon(paymentId, why, who.Actor, "service.PinEnded", ct);
+        await audit.Record("pin-ended", who, why, new JsonObject { ["payment"] = paymentId, ["distribution"] = stuck.Distribution }, release: stuck.Distribution, ct: ct);
+        return new JsonObject { ["paymentId"] = paymentId, ["distribution"] = stuck.Distribution, ["ended"] = DistributionRegistry.Abandoned };
     }
 
     /// <summary>The state of every installed release in the console's environment (section 9.12 of Part 9).</summary>

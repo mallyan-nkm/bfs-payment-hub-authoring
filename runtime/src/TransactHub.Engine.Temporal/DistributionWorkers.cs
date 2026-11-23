@@ -167,7 +167,29 @@ public sealed class DistributionWorkers : IAsyncDisposable
         input["distribution"] = Distribution;
         if (J.P(payment, "legs") is JsonObject legs) built["legs"] = J.Clone(legs);
         var paymentId = J.S(payment, "id");
-        return await new ScenarioRunner(input) { OnFrontDoor = fd => { if (paymentId is not null) FrontDoors[paymentId] = fd; } }.Run(new WorkflowEnvironment(client), this);
+        if (paymentId is not null && J.P(J.P(payment, "context"), "header") is JsonObject header) Headers[paymentId] = (JsonObject)J.Clone(header)!;
+        try { return await new ScenarioRunner(input) { OnFrontDoor = fd => { if (paymentId is not null) FrontDoors[paymentId] = fd; } }.Run(new WorkflowEnvironment(client), this); }
+        finally { if (paymentId is not null) Headers.TryRemove(paymentId, out _); }
+    }
+
+    /// <summary>The header each payment this host runs started with: what a message handed to it is correlated by.</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, JsonObject> Headers = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// A message for a payment, as its front door workflow correlates it (R-09-161): the host was told whose message it is, so it
+    /// carries the payment's conversation and its id as a key, as the live path of the other engines gives them
+    /// (<c>LiveSignals.EventOf</c>). Without them a message the sender gave no key, or no key of the run's, was counted unmatched by
+    /// the payment's front door workflow and never reached the run that awaited it.
+    /// </summary>
+    public JsonObject ForPayment(string paymentId, JsonObject message)
+    {
+        var m = (JsonObject)J.Clone(message)!;
+        var header = Headers.GetValueOrDefault(paymentId);
+        if (J.S(m, "id") is null) m["id"] = $"delivered-{Guid.NewGuid():N}";
+        if (J.S(m, "conversation") is null && J.S(header, "conversation") is string conv) m["conversation"] = conv;
+        if (J.P(m, "correlation") is not JsonObject c) m["correlation"] = c = new JsonObject();
+        if (J.S(c, "paymentId") is null) c["paymentId"] = J.S(header, "paymentId") ?? paymentId;
+        return m;
     }
 
     /// <summary>The front door workflow of each payment this host runs, by the payment's id.</summary>
@@ -180,7 +202,7 @@ public sealed class DistributionWorkers : IAsyncDisposable
     public async Task<bool> DeliverAsync(string paymentId, JsonObject message)
     {
         if (!FrontDoors.TryGetValue(paymentId, out var fd)) return false;
-        var d = new JsonObject { ["deliveries"] = new JsonArray(new JsonObject { ["at"] = 0, ["message"] = J.Clone(message) }) };
+        var d = new JsonObject { ["deliveries"] = new JsonArray(new JsonObject { ["at"] = 0, ["message"] = ForPayment(paymentId, message) }) };
         await client.GetWorkflowHandle(fd).SignalAsync(FrontDoorWorkflow.Deliver, new object?[] { J.Str(d) });
         return true;
     }

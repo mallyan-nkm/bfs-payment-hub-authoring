@@ -123,6 +123,10 @@ RELEASES = {
     # Owner's decision of 2026-11-23 (Issue I-195, R-05-85): the salary file's name from the inbound message's fileName, the name the
     # File API received it under, when the file carries no `# file:` line. The script reads more of the same message, a minor.
     "uae.wps.map.sif-in.v1": ("1.4.0", "the file's name from the inbound message's fileName when the file carries no # file: line (Issue I-195)"),
+    # Owner's decision of 2026-11-23 (Issue I-192, R-09-162): the File API as a port that sends data out. The salary file is rendered
+    # by the source's SIF writer and sent on the bank's binding of the WPS port by native code-behinds; a code-behind added, a minor.
+    "uae.wps.map.sif-out.v1": ("1.1.0", "native code-behind: the source's SIF writer, the file kept by the host (Issue I-192)"),
+    "uae.wps.exchange.send-salary-file.v1": ("1.1.0", "native code-behind: the kept file sent on the bank's binding of the WPS port (Issue I-192)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
@@ -143,7 +147,8 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # its own code, package.NativeImageReference (R-09-125, Issue I-220), and each refusal of the native host its native. code (R-09-128, I-230).
 # 1.16.0 (change set CS-2026-11-23-011; 1.13.0 to 1.15.0 are other changes'): the platform's error dictionary 1.6.0, hand-written
 # in factory/p/errors, with distribution.ActivationRaced (Issue I-239); the salary file's intake map 1.4.0, which takes the file's
-# name from the File API (Issue I-195, R-05-85).
+# name from the File API (Issue I-195, R-05-85); native code-behinds of the salary file's render and send, whose send goes out on the
+# bank's binding of the WPS port, the File API's outbox where the bank binds it so (Issue I-192, R-09-162).
 PACK_RELEASES = {"p": "1.16.0", "uae.p": "1.16.0", "uae.wps": "1.16.0", "b": "1.16.0"}
 FACTORY_RELEASE = "1.16.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
@@ -432,7 +437,7 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              {"from": "SCR.employerId", "to": "batch.debtor.organisationId.id"},
              {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
-     ["batch", "items[]", W], ["messages"])
+     ["batch", "items[]", W], ["messages"], native=True)
 wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
      outcomes=("ack", "nak"), native=True,
      # 1.2.0 (Issue I-100): a NAK's per-line errors as pain.002 TxInfAndSts, one per DER record
@@ -486,8 +491,11 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
                       ("send-returns-file", "Send the returns file to WPS", "send"),
                       ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
                       ("send-refund-response", "Send the refund request response to WPS", "send")]:
+    # The salary file's send has a native code-behind from 1.1.0 (R-09-162, Issue I-192): the file the render kept goes out on the
+    # bank's binding of the WPS port, which a bank may bind to the File API (adapter file-transfer).
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
-        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
+        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP,
+        native=nm == "send-salary-file")
 
 # The employer's status at the labour ministry (Issue I-88, R-12-14): a lookup behind a port, written to the scheme's extension,
 # so the salary file checks can refuse an employer the ministry has suspended. The source's bank forks each read the status

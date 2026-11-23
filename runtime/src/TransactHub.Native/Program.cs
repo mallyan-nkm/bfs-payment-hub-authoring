@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Claims;
@@ -245,5 +246,16 @@ sealed class HostFiles(TransactHub.Store.StoreOptions? store, ECDsa key) : INati
         return sha;
     }
 
-    public byte[]? Get(string sha256) => All.TryGetValue(sha256, out var k) ? k.Content : null;
+    /// <summary>
+    /// A file by its SHA-256: from memory, else the bytes the store kept (a step that sends the file a step before rendered may run
+    /// after this host started again, R-09-162).
+    /// </summary>
+    public byte[]? Get(string sha256)
+    {
+        if (All.TryGetValue(sha256, out var k)) return k.Content;
+        if (store is null || sha256.Length == 0) return null;
+        using var db = TransactHub.Store.StoreDbContext.Open(store);
+        var hash = sha256.ToLowerInvariant();
+        return db.FileContents.AsNoTracking().Where(x => x.ContentHash == hash).Select(x => x.Content).FirstOrDefault();
+    }
 }

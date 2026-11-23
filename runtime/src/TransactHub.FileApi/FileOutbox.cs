@@ -53,6 +53,15 @@ public sealed class FileOutbox(StoreOptions store, System.Security.Cryptography.
             {
                 ["folder"] = o.Folder, ["fileName"] = o.FileName, ["payment"] = o.PaymentId, ["leg"] = o.Leg, ["sha256"] = row.ContentHash,
             }, Actor: o.Actor), ct);
+        // A file a payment sends names it by its stem (R-09-162): the partner's answer, named after the file it answers, is correlated
+        // to the payment though the file was named otherwise than the one that started it (I-160 (2)).
+        if (o.PaymentId is { Length: > 0 } pid && await new DistributionRegistry(db, clock).PinOf(pid, ct) is { } dist)
+        {
+            var code = RuntimeFrontDoor.KeyCode(o.Tenant, "fileStem", RuntimeFrontDoor.Stem(o.FileName));
+            if (!await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == pid && f.Kind == RuntimeFrontDoor.CorrelationKind && f.Code == code, ct))
+                await new FactLog(db, clock).Append(pid, "payment", new NewFact(RuntimeFrontDoor.CorrelationKind, code,
+                    new JsonObject { ["key"] = "fileStem", ["value"] = RuntimeFrontDoor.Stem(o.FileName), ["sent"] = row.Id }, dist, o.Actor), ct);
+        }
         return row;
     }
 

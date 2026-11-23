@@ -218,6 +218,50 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         r.Map.Outcome = "unmappable";
         Assert.Equal("frontdoor.IntakeRefused", (await r.Intake.Receive(A("uae.wps.pif", "000000000008.PIF", Pif("i")))).Code);
         Assert.Empty(r.Engines.Started);
+        // The payment was pinned before the map refused it: its pin ends abandoned with the refusal, so it keeps no distribution open
+        // (Issue I-206, R-09-164). The paused intake refused before any pin.
+        await using (var db = StoreDbContext.Open(r.Store))
+        {
+            var reg = new DistributionRegistry(db);
+            var pins = await db.Facts.AsNoTracking().Where(f => f.Kind == DistributionRegistry.PinKind).Select(f => f.SubjectId).ToListAsync();
+            var pinned = Assert.Single(pins);
+            var end = await db.Facts.AsNoTracking().SingleAsync(f => f.SubjectId == pinned && f.Kind == DistributionRegistry.EndKind);
+            Assert.Equal(DistributionRegistry.Abandoned, end.Code);
+            Assert.Equal("frontdoor.IntakeRefused", (string?)JsonNode.Parse(end.DataJson)!["code"]);
+            Assert.Contains("answered unmappable", (string?)JsonNode.Parse(end.DataJson)!["reason"]);
+            Assert.Equal(0, (await reg.OpenPayments()).GetValueOrDefault(r.Distribution));
+            Assert.Empty(await reg.Unstarted(TimeSpan.Zero));
+        }
+    }
+
+    /// <summary>An engine host that refuses every start, as one with no host for the distribution does.</summary>
+    sealed class RefusingEngines : IEngineHost
+    {
+        public Task Start(string paymentId, string distribution, StartRoute route, JsonObject context, CancellationToken ct = default) =>
+            throw new FrontDoorRefused("frontdoor.EngineRefused", "The engine host answered 409: no host serves the distribution (synthetic)");
+        public Task<string> Deliver(string paymentId, string distribution, JsonObject message, CancellationToken ct = default) => Task.FromResult("delivered");
+    }
+
+    [Fact]
+    public async Task A_payment_whose_start_the_engine_host_refuses_ends_abandoned_and_its_distribution_can_be_removed()
+    {
+        // Issue I-206, R-09-164: pinned, mapped, its keys recorded, and then the engine host refused it. Before, the pin stayed open
+        // and its distribution could never be removed after it drained.
+        var o = await pg.Fresh();
+        var dist = await ActiveDistribution(o);
+        var intake = new FileIntake(o, Key, Config(), new Decryptor(new PortBindings(), new SecretResolver([new EnvSecretProvider(_ => null)])), new RuntimeFrontDoor(o, new FakeIntake(), new RefusingEngines()));
+        var got = await intake.Receive(A("uae.wps.pif", "000000000021.PIF", Pif("refused-start")));
+        Assert.Equal("frontdoor.EngineRefused", got.Code);
+        await using var db = StoreDbContext.Open(o);
+        var reg = new DistributionRegistry(db);
+        var paymentId = await db.Facts.AsNoTracking().Where(f => f.Kind == DistributionRegistry.PinKind).Select(f => f.SubjectId).SingleAsync();
+        var facts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == paymentId).OrderBy(f => f.Seq).Select(f => f.Kind + ":" + f.Code).ToListAsync();
+        Assert.Equal("payment.end:abandoned", facts[^1]);
+        Assert.Contains(facts, f => f.StartsWith("frontdoor.started:"));
+        Assert.Equal(0, (await reg.OpenPayments()).GetValueOrDefault(dist));
+        await reg.Drain(dist, Env, "test", "test");
+        await reg.Remove(dist, Env, "test", "test");
+        Assert.Equal("removed", await reg.StateIn(dist, Env));
     }
 
     [Fact]
@@ -251,6 +295,46 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         var wrong = await r.Intake.Receive(A("uae.wps.pif", "000000000010.PIF.gpg", OpenPgp.Encrypt(Pif("x"), OpenPgp.EncryptionKeyOf(other), "000000000010.PIF", false)));
         Assert.Equal("file.NotDecrypted", wrong.Code);
         Assert.Single(r.Engines.Started);
+    }
+
+    /// <summary>
+    /// R-09-162, I-160 (2): a payment's outward file names the payment by its stem, and an answer the partner names after it, with a
+    /// file id of its own (an ACK: the SIF's stem and twelve characters), is correlated to the payment by the inbox's <c>stemDrop</c>.
+    /// </summary>
+    [Fact]
+    public async Task An_answer_named_after_the_file_a_payment_sent_reaches_that_payment()
+    {
+        var r = await Make();
+        Assert.True((await r.Intake.Receive(A("uae.wps.pif", "000000000031.PIF", Pif("ack")))).Accepted);
+        var payment = r.Engines.Started.Single().Payment;
+        var outbox = new FileOutbox(r.Store, Key, new BoundTransfers(new PortBindings()));
+        await outbox.Queue(new Outbound(Bank, "uae.wps", "uae.wps.sif-out", "centralBank/upload/cb/wps/sif", "0000001234567261117083100.SIF", "EDR,synthetic\r\n"u8.ToArray(), payment, "scheme-leg", "uae.wps.exchange.send-salary-file.v1", "native-host"));
+        var bindings = new PortBindings();
+        bindings.Add($"""
+            kind: port-bindings
+            tenant: {Bank}
+            bindings:
+              - port: p.port.file-transfer.v1
+                adapter: sftp
+                validFrom: 2026-11-23T00:00:00Z
+                settings:
+                  centralBank.host: sftp
+                  centralBank.inbox.ack.folder: upload/cb/wps/ack
+                  centralBank.inbox.ack.message: uae.wps.ack
+                  centralBank.inbox.ack.stemDrop: "12"
+            """);
+        var box = Assert.Single(Inbox.Of(bindings.InForce(Bank, "p.port.file-transfer.v1", DateTimeOffset.UtcNow)));
+        Assert.Equal(("centralBank/upload/cb/wps/ack", 12), (box.Folder, box.StemDrop));
+        const string ackName = "0000001234567261117083100S26000000001.ACK";
+        Assert.Equal("0000001234567261117083100", box.KeysOf(ackName)!["fileStem"]);
+        var ack = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", ackName, "AHR,ACCEPTED,0000001234567261117083100.SIF\nATR,ACCEPTED,2\n"u8.ToArray(), "inbox", "inbox:centralBank/upload/cb/wps/ack", box.KeysOf(ackName)));
+        Assert.True(ack.Accepted, ack.Detail);
+        var (to, _, msg) = Assert.Single(r.Engines.Delivered);
+        Assert.Equal((payment, "uae.wps.ack", ackName), (to, (string?)msg["type"], (string?)msg["fileName"]));
+        Assert.StartsWith("AHR,ACCEPTED", (string?)msg["payload"]);
+        // Without the binding's stemDrop the answer's own stem names no payment: it is refused, not guessed.
+        var plain = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", "0000001234567261117083100S26000000002.ACK", "AHR,ACCEPTED,x\n"u8.ToArray(), "inbox", "inbox:test", null));
+        Assert.Equal("frontdoor.Unmatched", plain.Code);
     }
 
     [Fact]

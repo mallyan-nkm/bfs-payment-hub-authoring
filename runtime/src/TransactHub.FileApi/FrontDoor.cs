@@ -306,39 +306,61 @@ public sealed class RuntimeFrontDoor(StoreOptions store, IIntakeRunner intake, I
                 throw new FrontDoorRefused("ops.IntakePaused", new IntakePaused(f.Tenant, scheme).Message);
             dist = await new DistributionRegistry(db, clock).Pin(paymentId, f.Tenant, f.Environment, "front-door", ct);
         }
-        var conversation = $"conv-{paymentId}";
-        var header = new JsonObject
+        // Pinned, and not yet a payment: a start that fails from here on ends the pin abandoned, with its reason, so the pin does not
+        // keep its distribution open (Issue I-206, R-09-164).
+        try
         {
-            ["conversation"] = conversation, ["paymentId"] = paymentId, ["scheme"] = route.Scheme, ["direction"] = route.InboundDirection,
-            ["receivedAt"] = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
-        };
-        foreach (var (k, v) in route.Route) header[k] = v?.DeepClone();
-        var msg = new JsonObject
-        {
-            ["id"] = $"in-{f.FileId}", ["type"] = f.Message, ["fileName"] = f.FileName, ["fileId"] = f.FileId, ["sha256"] = f.Sha256,
-            ["payload"] = Encoding.UTF8.GetString(f.Content),
-        };
-        var ctx = new JsonObject { ["header"] = header, ["messages"] = new JsonObject { ["inbound"] = new JsonObject { ["id"] = msg["id"]!.DeepClone(), ["type"] = f.Message } } };
-        var (outcome, writes) = await intake.Map(dist, route.IntakeMap, ctx, msg, now, ct);
-        if (outcome != "mapped") throw new FrontDoorRefused("frontdoor.IntakeRefused", $"The intake map {route.IntakeMap} answered {outcome}");
-        foreach (var (p, v) in writes) SetPath(ctx, p, v?.DeepClone());
-        // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
-        var h = (JsonObject)ctx["header"]!;
-        foreach (var (k, v) in route.Route) h[k] = v?.DeepClone();
-        h["scheme"] = route.Scheme;
-        h["paymentId"] = paymentId;
-        var keys = new Dictionary<string, string>(StringComparer.Ordinal) { ["conversation"] = conversation, ["paymentId"] = paymentId, ["fileStem"] = Stem(f.FileName) };
-        foreach (var k in new[] { "endToEndId", "fileId" }) if (Dispatch.Str(h, k) is { Length: > 0 } v) keys[k] = v;
-        await using (var db = StoreDbContext.Open(store))
-        {
-            var log = new FactLog(db, clock);
-            await log.AppendMany(paymentId, "payment", [
-                .. keys.Select(k => new NewFact(CorrelationKind, KeyCode(f.Tenant, k.Key, k.Value), new JsonObject { ["key"] = k.Key, ["value"] = k.Value }, dist, "front-door")),
-                new NewFact(StartedKind, route.Workflow, new JsonObject { ["message"] = f.Message, ["file"] = f.FileId, ["legs"] = new JsonObject(route.Legs.Select(l => KeyValuePair.Create(l.Key, (JsonNode?)l.Value))) }, dist, "front-door"),
-            ], ct);
+            var conversation = $"conv-{paymentId}";
+            var header = new JsonObject
+            {
+                ["conversation"] = conversation, ["paymentId"] = paymentId, ["scheme"] = route.Scheme, ["direction"] = route.InboundDirection,
+                ["receivedAt"] = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+            };
+            foreach (var (k, v) in route.Route) header[k] = v?.DeepClone();
+            var msg = new JsonObject
+            {
+                ["id"] = $"in-{f.FileId}", ["type"] = f.Message, ["fileName"] = f.FileName, ["fileId"] = f.FileId, ["sha256"] = f.Sha256,
+                ["payload"] = Encoding.UTF8.GetString(f.Content),
+            };
+            var ctx = new JsonObject { ["header"] = header, ["messages"] = new JsonObject { ["inbound"] = new JsonObject { ["id"] = msg["id"]!.DeepClone(), ["type"] = f.Message } } };
+            var (outcome, writes) = await intake.Map(dist, route.IntakeMap, ctx, msg, now, ct);
+            if (outcome != "mapped") throw new FrontDoorRefused("frontdoor.IntakeRefused", $"The intake map {route.IntakeMap} answered {outcome}");
+            foreach (var (p, v) in writes) SetPath(ctx, p, v?.DeepClone());
+            // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
+            var h = (JsonObject)ctx["header"]!;
+            foreach (var (k, v) in route.Route) h[k] = v?.DeepClone();
+            h["scheme"] = route.Scheme;
+            h["paymentId"] = paymentId;
+            var keys = new Dictionary<string, string>(StringComparer.Ordinal) { ["conversation"] = conversation, ["paymentId"] = paymentId, ["fileStem"] = Stem(f.FileName) };
+            foreach (var k in new[] { "endToEndId", "fileId" }) if (Dispatch.Str(h, k) is { Length: > 0 } v) keys[k] = v;
+            await using (var db = StoreDbContext.Open(store))
+            {
+                var log = new FactLog(db, clock);
+                await log.AppendMany(paymentId, "payment", [
+                    .. keys.Select(k => new NewFact(CorrelationKind, KeyCode(f.Tenant, k.Key, k.Value), new JsonObject { ["key"] = k.Key, ["value"] = k.Value }, dist, "front-door")),
+                    new NewFact(StartedKind, route.Workflow, new JsonObject { ["message"] = f.Message, ["file"] = f.FileId, ["legs"] = new JsonObject(route.Legs.Select(l => KeyValuePair.Create(l.Key, (JsonNode?)l.Value))) }, dist, "front-door"),
+                ], ct);
+            }
+            await engines.Start(paymentId, dist, route, ctx, ct);
         }
-        await engines.Start(paymentId, dist, route, ctx, ct);
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await AbandonAfterFailedStart(paymentId, e, ct);
+            throw;
+        }
         return new FrontDoorResult("started", paymentId, dist, route.Workflow, $"{route.Workflow} with {string.Join(", ", route.Legs.Values)}");
+    }
+
+    /// <summary>The front door's start failed after the pin: the pin ends abandoned with the failure's code and words (R-09-164).</summary>
+    async Task AbandonAfterFailedStart(string paymentId, Exception e, CancellationToken ct)
+    {
+        var code = e is FrontDoorRefused r ? r.Code : "frontdoor.StartFailed";
+        try
+        {
+            await using var db = StoreDbContext.Open(store);
+            await new DistributionRegistry(db, clock).Abandon(paymentId, e.Message, "front-door", code, CancellationToken.None);
+        }
+        catch (Exception x) when (x is not OperationCanceledException) { Console.Error.WriteLine($"{paymentId}: the abandoned start was not recorded: {x.Message}"); }
     }
 
     /// <summary>Hands a message for a running payment to the engine host of the distribution the payment is pinned to.</summary>

@@ -18,9 +18,13 @@
 //     database's unique key;
 //  6. refuses a distribution of DIB, published by the same studio and signed by the same key, in the ADIB runtime: at verify
 //     and at install in the service console, and at the release API;
-//  7. drops salary file 2 on the SFTP server (P2) and posts salary file 3 to the File API's POST /files as the channel (P3): both
-//     are pinned to B; P1 finishes on A, P2 and P3 on B; the taken files are moved out of the inbox; a file sent goes out through
-//     the File API's outbox onto the SFTP server, and the consoles' resend through it sends the same bytes again;
+//  7. drops salary file 2 on the SFTP server (P2), posts salary file 3 to the File API's POST /files as the channel (P3) and
+//     uploads salary file 4 on POST /files/ui as an operator (P4, Issue I-200): all three are pinned to B and started on B's
+//     workers. No file carries a `# file:` line: the intake map takes the name from the File API (Issue I-195). Each payment's
+//     outward salary file leaves through the File API's outbox onto the SFTP server's Central Bank folder (the WPS port bound to
+//     the File API in ADIB's configuration release, R-09-162, Issue I-192), and the test, as the Central Bank, answers each with
+//     an ACK (P3 with a NAK) in the Central Bank's ACK folder, which the File API reads and correlates to the payment by the SIF's
+//     stem. P1 settles on A, P2 and P4 on B, P3 is refused on B; the consoles' resend of P1's outward file sends the same bytes again;
 //  8. checks at the database that no row of a distribution, its definitions, its activations or the fact log was updated or
 //     deleted: every row seen after step 2 is unchanged at the end, and the runtime's login is refused an UPDATE, a DELETE and
 //     a TRUNCATE on each of those tables by the database itself.
@@ -138,15 +142,30 @@ const ls = (dir: string) => compose('exec', '-T', 'sftp', 'sh', '-c', `ls -1 ${d
 const cat = (file: string) => compose('exec', '-T', 'sftp', 'cat', file).stdout;
 
 /**
- * A synthetic salary file of ADIB's employer, its own by its creation time and reference (the File API refuses a duplicate). It
- * keeps the samples' `# file:` first line: the intake map reads the file's name from it, not from the File API (Issue I-195).
+ * A synthetic salary file of ADIB's employer, its own by its creation time and reference (the File API refuses a duplicate). It has
+ * no `# file:` line, as a bank's channel sends it: the intake map takes the file's name from the File API (Issue I-195, R-05-85).
  */
-function salaryFile(n: number): { name: string; text: string } {
-  const sample = fs.readFileSync(path.resolve(LAPTOP, '../../studio/fixtures/samples/wps-sif-valid.sif'), 'utf8');
+function salaryFile(n: number): { name: string; stem: string; text: string } {
+  const sample = fs.readFileSync(path.resolve(LAPTOP, '../../studio/fixtures/samples/wps-sif-no-file-line.sif'), 'utf8');
   const time = `083${n}`;
-  const name = `0000001234567261117${time}00.sif`;
-  const text = sample.split('\n').map((l) => (l.startsWith('# file:') ? `# file: ${name}` : l)).join('\n').replace(',0830,', `,${time},`).replace('REF-0001', `REF-000${n}`);
-  return { name, text };
+  const stem = `0000001234567261117${time}00`;
+  const text = sample.replace(',0830,', `,${time},`).replace('REF-0001', `REF-000${n}`);
+  check(`salary file ${n} carries no file line`, !/^#\s*file:/m.test(text));
+  return { name: `${stem}.sif`, stem, text };
+}
+
+// The Central Bank's folders on the SFTP server: where the bank's salary files arrive, and where its acknowledgements are left.
+const CB_SIF = `${SFTP_HOME}/cb/wps/sif`;
+const CB_ACK = `${SFTP_HOME}/cb/wps/ack`;
+/** The Central Bank answers a salary file: an ACK (or a NAK with one line's error) named after the SIF, with a file id of its own. */
+function acknowledge(sifName: string, accepted: boolean, seq: number) {
+  const stem = sifName.replace(/\.SIF$/i, '');
+  const name = `${stem}S26${String(seq).padStart(9, '0')}.${accepted ? 'ACK' : 'NAK'}`;
+  const text = accepted ? `AHR,ACCEPTED,${sifName}\nATR,ACCEPTED,2\n` : `AHR,REJECTED,${sifName}\nDER,1,E0042,Synthetic error for the laptop test\nATR,REJECTED,3\n`;
+  const r = spawnSync('docker', ['compose', '-p', PROJECT, ...FILES_ARGS, 'exec', '-T', '-u', '1001', 'sftp', 'sh', '-c',
+    `mkdir -p ${CB_ACK} ${SFTP_HOME}/cb/wps/writing && cat > ${SFTP_HOME}/cb/wps/writing/${name} && mv ${SFTP_HOME}/cb/wps/writing/${name} ${CB_ACK}/${name}`], { env, input: text, encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`acknowledge ${name}: ${r.stderr}`);
+  return name;
 }
 
 /** Waits until the File API has kept a file of this name and its front door started a payment from it: the payment's id. */
@@ -225,7 +244,10 @@ async function main() {
   // The bank's values (its rail, its WPS values, its cut-offs if it has any) reach the workers from its installed configuration
   // release, checked against A's parameter contract (R-12-28), and with them the laptop's binding of its file transfer, the stack's
   // SFTP server (R-09-105, R-09-110 to R-09-112): the studio builds the release, the runtime puts it in force with consent.
-  const laptopBindings = parseYaml(fs.readFileSync(path.join(LAPTOP, 'banks', BANK, 'file-transfer.yaml'), 'utf8')).bindings;
+  // With them its alert and event bindings, the optional profile `events`' brokers (Issue I-258, R-09-168).
+  const laptopBindings = ['file-transfer.yaml', 'events.yaml'].map((f) => path.join(LAPTOP, 'banks', BANK, f)).filter((f) => fs.existsSync(f))
+    .flatMap((f) => parseYaml(fs.readFileSync(f, 'utf8')).bindings);
+  check('ADIB\'s laptop bindings bind the WPS port to the File API', laptopBindings.some((b: any) => b.port === 'uae.wps.port.wps.v1' && b.adapter === 'file-transfer'), laptopBindings.map((b: any) => b.port));
   const cr = await studio.post('/api/configuration-releases', { actor: `${BANK}.checker`, tenant: BANK, bank: BANK, bindings: laptopBindings });
   check('the studio publishes ADIB\'s configuration release', cr.status === 200, cr.data);
   const ic = await install(cr.data.tag);
@@ -293,7 +315,7 @@ async function main() {
   const none = sql('sa', `SELECT COUNT(*) FROM release WHERE ${c('Scope')} = 'dist/${OTHER}'`);
   check('nothing of DIB is in the ADIB runtime\'s store', none.ok && lastLine(none.out) === '0', none.out);
 
-  log(`7. P2 by SFTP and P3 by POST /files, both on B; P1 runs on A, P2 and P3 on B (Temporal on ${DB_NAME})`);
+  log(`7. P2 by SFTP, P3 by POST /files and P4 by POST /files/ui, all on B; P1 runs on A, the others on B (Temporal on ${DB_NAME})`);
   drop(f2.name, f2.text);
   const up3 = await call(FILES, channel, 'POST', '/files', { tenant: BANK, message: 'uae.wps.sif', fileName: f3.name, contentBase64: Buffer.from(f3.text).toString('base64') });
   check('the channel\'s POST /files is taken and started (202)', up3.status === 202 && up3.data.disposition === 'started' && !!up3.data.payment, up3.data);
@@ -304,33 +326,66 @@ async function main() {
   check('P1 stays pinned to A', (await pinOf(P1)).distribution === A.releaseId);
   const again1 = await call(FILES, channel, 'POST', '/files', { tenant: BANK, message: 'uae.wps.sif', fileName: `copy-${f3.name}`, contentBase64: Buffer.from(f3.text).toString('base64') });
   check('the same file again is refused as a duplicate (409), and nothing starts', again1.status === 409, again1.data);
-  // Each waits in real time for the simulator's acknowledgement (Issue I-156 (5)), on the engine host, each on its distribution's own workers.
+  // An operator's upload from the bank's own screen (Issue I-200, R-09-163): the File API's front door runs the intake map on B's
+  // workers (the `workers` service) and starts the payment.
+  const f4 = salaryFile(4);
+  const operator = await person('ops.operator');
+  const form = new FormData();
+  form.set('tenant', BANK);
+  form.set('message', 'uae.wps.sif');
+  form.set('file', new Blob([f4.text], { type: 'text/plain' }), f4.name);
+  const up4r = await fetch(`${FILES}/files/ui`, { method: 'POST', headers: { authorization: `Bearer ${operator}` }, body: form });
+  const up4 = { status: up4r.status, data: await up4r.json().catch(() => ({})) as any };
+  check('an operator\'s upload on POST /files/ui is taken and started on the workers (202)', up4.status === 202 && up4.data.disposition === 'started' && !!up4.data.payment, up4.data);
+  const P4 = up4.data.payment as string;
+  check('P4 is pinned to B at acceptance', (await pinOf(P4)).distribution === B.releaseId, await pinOf(P4));
+  // Each payment's salary file leaves through the File API's outbox for the Central Bank's folder; the test answers each, as the
+  // Central Bank, in its ACK folder, and the File API takes the answer to the payment that awaits it (R-09-162, I-160 (2)). Each runs
+  // on the engine host, on its distribution's own workers, in real time.
+  const pays = [[P1, f1, true], [P2, f2, true], [P3, f3, false], [P4, f4, true]] as const;
+  const answered = new Map<string, string>();
   const ends: Record<string, any> = {};
   const until = Date.now() + 40 * 60000;
-  while (Object.keys(ends).length < 3 && Date.now() < until) {
-    for (const p of [P1, P2, P3]) if (!ends[p]) { const x = await pinOf(p); if (x?.ended) ends[p] = x; }
-    if (Object.keys(ends).length < 3) await sleep(15000);
+  let seq = 0;
+  while (Object.keys(ends).length < pays.length && Date.now() < until) {
+    const arrived = ls(CB_SIF);
+    for (const [, f, accepted] of pays) {
+      const sif = arrived.find((n) => n.toUpperCase() === `${f.stem}.SIF`);
+      if (sif && !answered.has(f.stem)) answered.set(f.stem, acknowledge(sif, accepted, ++seq));
+    }
+    for (const [p] of pays) if (!ends[p]) { const x = await pinOf(p); if (x?.ended) ends[p] = x; }
+    if (Object.keys(ends).length < pays.length) await sleep(5000);
   }
-  for (const [p, name] of [[P1, 'P1'], [P2, 'P2'], [P3, 'P3']] as const) check(`${name} runs to its end on the engine host (${ends[p]?.ended ?? 'not ended'}), not failed`, !!ends[p]?.ended && ends[p].ended !== 'failed', `${JSON.stringify(await pinOf(p)).slice(0, 1500)}\n${compose('logs', '--tail', '40', 'enginehost').stdout.slice(-3000)}\n${compose('logs', '--tail', '40', 'workers').stdout.slice(-3000)}`);
+  check(`every payment's salary file reached the Central Bank's folder on the SFTP server through the File API (${answered.size})`, answered.size === pays.length, { sif: ls(CB_SIF), answered: [...answered.values()] });
+  for (const [p, name] of [[P1, 'P1'], [P2, 'P2'], [P3, 'P3'], [P4, 'P4']] as const) check(`${name} runs to its end on the engine host (${ends[p]?.ended ?? 'not ended'}), not failed`, !!ends[p]?.ended && ends[p].ended !== 'failed', `${JSON.stringify(await pinOf(p)).slice(0, 1500)}\n${compose('logs', '--tail', '40', 'enginehost').stdout.slice(-3000)}\n${compose('logs', '--tail', '40', 'workers').stdout.slice(-3000)}\n${compose('logs', '--tail', '40', 'native').stdout.slice(-3000)}`);
+  for (const [p, name] of [[P1, 'P1'], [P2, 'P2'], [P4, 'P4']] as const) check(`${name}'s ACK, read back through the File API, settles it (${ends[p].ended})`, ends[p].ended === 'settled', ends[p]);
+  check(`P3's NAK, read back through the File API, refuses it (${ends[P3].ended})`, ends[P3].ended !== 'settled', ends[P3]);
+  check('the taken acknowledgements are moved out of the Central Bank\'s ACK folder', [...answered.values()].every((n) => !ls(CB_ACK).includes(n)), { ack: ls(CB_ACK), done: ls(`${CB_ACK}/done`) });
   const ranOn = (x: any) => [...new Set((x.facts ?? []).map((f: any) => f.releaseId).filter((r: any) => typeof r === 'string' && r.startsWith('dist/')))];
   check(`P1 finished on A (${ends[P1].ended}): every fact of its run names A`, JSON.stringify(ranOn(ends[P1])) === JSON.stringify([A.releaseId]), ranOn(ends[P1]));
-  check(`P2 and P3 finished on B (${ends[P2].ended}, ${ends[P3].ended})`, [P2, P3].every((p) => JSON.stringify(ranOn(ends[p])) === JSON.stringify([B.releaseId])), [ranOn(ends[P2]), ranOn(ends[P3])]);
+  check(`P2, P3 and P4 finished on B (${ends[P2].ended}, ${ends[P3].ended}, ${ends[P4].ended})`, [P2, P3, P4].every((p) => JSON.stringify(ranOn(ends[p])) === JSON.stringify([B.releaseId])), [ranOn(ends[P2]), ranOn(ends[P3]), ranOn(ends[P4])]);
   const states = await call(SVC, se, 'GET', '/content/releases');
   const st = Object.fromEntries((states.data as any[]).filter((x) => x.kind === 'distribution').map((x) => [x.releaseId, x.state]));
   check('A is drained once P1 ended; B is active', ['drained', 'draining'].includes(st[A.releaseId]) && st[B.releaseId] === 'active', st);
   const kept = await call(FILES, channel, 'GET', `/files?tenant=${BANK}&paymentId=${encodeURIComponent(P1)}`);
   check('P1\'s file is kept once, with its signature, linked to the payment', kept.status === 200 && kept.data.some((f: any) => f.fileName === f1.name && f.direction === 'in' && f.verified === true), kept.data);
 
-  log('7b. outbound: a file sent goes out through the File API\'s outbox onto the SFTP server, and the consoles\' resend sends it again');
-  const out = await call(FILES, frontDoor, 'POST', '/outbox', { tenant: BANK, scheme: 'uae.wps', kind: 'uae.wps.sif-submission', folder: 'centralBank/upload/cb/wps/sif', fileName: f1.name.replace(/\.sif$/, '.SIF'), contentBase64: Buffer.from(f1.text).toString('base64'), paymentId: P1, leg: 'scheme-leg', activity: 'laptop-insert-only-test' });
-  check(`the outbox keeps the file and delivers it on the bank's binding (${out.data.adapter}, ${out.data.delivery})`, out.status === 201 && out.data.delivery === 'delivered' && out.data.adapter === 'sftp', out.data);
-  const sent = `${SFTP_HOME}/cb/wps/sif/${f1.name.replace(/\.sif$/, '.SIF')}`;
-  check('the file is on the SFTP server, byte for byte', cat(sent) === f1.text, cat(sent).slice(0, 200));
+  log('7b. outbound: P1\'s salary file went out through the File API\'s outbox onto the SFTP server, and the consoles\' resend sends it again');
+  const sentFiles = (kept.data as any[]).filter((f: any) => f.direction === 'out' && f.kind === 'uae.wps.sif-out');
+  const out = sentFiles[0];
+  check(`the File API kept P1's outward salary file once, signed, linked to the payment (${out?.fileName})`, sentFiles.length === 1 && out.verified === true && out.fileName.toUpperCase() === `${f1.stem}.SIF`, kept.data);
+  const hist = await call(FILES, channel, 'GET', `/files/${encodeURIComponent(out.id)}`);
+  check('its delivery on the bank\'s SFTP binding is recorded on the file\'s chain', hist.status === 200 && (hist.data.facts as any[]).some((f: any) => f.kind === 'file.delivered'), hist.data);
+  const bytes = await call(FILES, channel, 'GET', `/files/${encodeURIComponent(out.id)}/content`);
+  const sent = `${CB_SIF}/${out.fileName}`;
+  const body = Buffer.isBuffer(bytes.data) ? bytes.data.toString('utf8') : JSON.stringify(bytes.data);
+  check('the file on the SFTP server is the kept file, byte for byte', cat(sent) === body && body.includes('SCR,'), cat(sent).slice(0, 80));
   compose('exec', '-T', '-u', '1001', 'sftp', 'rm', '-f', sent);
-  const resend = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.data.file)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
-  check('the consoles\' client resends it through the File API: the same bytes again', resend.status === 200 && resend.data.result === 'resent' && cat(sent) === f1.text, resend.data);
-  const once = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.data.file)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
+  const resend = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.id)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
+  check('the consoles\' client resends it through the File API: the same bytes again', resend.status === 200 && resend.data.result === 'resent' && cat(sent) === body, resend.data);
+  const once = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.id)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
   check('the same action resends once', once.status === 200 && /already/.test(once.data.result), once.data);
+  void frontDoor;
 
   log('8. at the database: nothing inserted was updated or deleted');
   const after = snapshot();

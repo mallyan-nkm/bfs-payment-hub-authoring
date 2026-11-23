@@ -17,8 +17,18 @@ namespace TransactHub.FileApi;
 // installation may add inboxes in its settings (`FileApi:Inboxes:<n>:Tenant|Folder|Message|DoneFolder|ErrorFolder|MinimumAgeSeconds`).
 
 /// <summary>One inbox: whose, where on the binding, which message its files are, where taken files go, and how old a file must be.</summary>
-public sealed record Inbox(string Tenant, string Folder, string Message, string? DoneFolder, string? ErrorFolder, TimeSpan MinimumAge)
+/// <param name="StemDrop">How many characters the partner adds to the end of the stem of the file a received one answers (<c>stemDrop</c>,
+/// I-160 (2), R-09-162): the received file's stem without them is the key it is correlated by, before its own stem.</param>
+public sealed record Inbox(string Tenant, string Folder, string Message, string? DoneFolder, string? ErrorFolder, TimeSpan MinimumAge, int StemDrop = 0)
 {
+    /// <summary>The correlation keys of a received file the inbox's binding names: the stem of the file it answers (R-09-162).</summary>
+    public IReadOnlyDictionary<string, string>? KeysOf(string fileName)
+    {
+        if (StemDrop <= 0) return null;
+        var stem = RuntimeFrontDoor.Stem(fileName);
+        return stem.Length > StemDrop ? new Dictionary<string, string>(StringComparer.Ordinal) { ["fileStem"] = stem[..^StemDrop] } : null;
+    }
+
     /// <summary>The inboxes a binding names: every partner with a folder and the message its files are.</summary>
     public static IEnumerable<Inbox> Of(PortBinding b)
     {
@@ -27,7 +37,7 @@ public sealed record Inbox(string Tenant, string Folder, string Message, string?
         {
             var parts = k.Split('.');
             string? group = null, key = null;
-            if (parts.Length == 2 && parts[1] is "folder" or "message" or "doneFolder" or "errorFolder" or "minimumAgeSeconds") (group, key) = (parts[0], parts[1]);
+            if (parts.Length == 2 && parts[1] is "folder" or "message" or "doneFolder" or "errorFolder" or "minimumAgeSeconds" or "stemDrop") (group, key) = (parts[0], parts[1]);
             else if (parts.Length == 4 && parts[1] == "inbox") (group, key) = ($"{parts[0]}.inbox.{parts[2]}", parts[3]);
             if (group is null) continue;
             if (!groups.TryGetValue(group, out var g)) groups[group] = g = new(StringComparer.Ordinal);
@@ -41,7 +51,8 @@ public sealed record Inbox(string Tenant, string Folder, string Message, string?
             string At(string f) => b.Adapter == SftpFileTransfer.Name ? $"{partner}/{f.TrimStart('/')}" : f;
             string? Rel(string? f) => f is { Length: > 0 } ? f.Contains('/') ? At(f) : $"{At(folder).TrimEnd('/')}/{f}" : null;
             var age = g.TryGetValue("minimumAgeSeconds", out var s) && int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? TimeSpan.FromSeconds(n) : TimeSpan.Zero;
-            yield return new Inbox(b.Tenant, At(folder), message, Rel(g.GetValueOrDefault("doneFolder")), Rel(g.GetValueOrDefault("errorFolder")), age);
+            var drop = g.TryGetValue("stemDrop", out var sd) && int.TryParse(sd, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dn) && dn > 0 ? dn : 0;
+            yield return new Inbox(b.Tenant, At(folder), message, Rel(g.GetValueOrDefault("doneFolder")), Rel(g.GetValueOrDefault("errorFolder")), age, drop);
         }
     }
 
@@ -93,7 +104,7 @@ public sealed class InboxPoller(ITransferPorts ports, FileIntake intake, string 
                 if (f.Modified is { } m && clock.GetUtcNow() - m < box.MinimumAge) continue;
                 var content = await t.Get(box.Folder, f.Name, ct);
                 if (content is null) continue;
-                var r = await intake.Receive(new Arrival(box.Tenant, environment, box.Message, f.Name, content, "inbox", $"inbox:{box.Folder}"), ct);
+                var r = await intake.Receive(new Arrival(box.Tenant, environment, box.Message, f.Name, content, "inbox", $"inbox:{box.Folder}", box.KeysOf(f.Name)), ct);
                 taken.Add(r);
                 var to = r.Accepted ? box.DoneFolder : box.ErrorFolder ?? box.DoneFolder;
                 // Out of the inbox, so it is read once: to its done or error folder when the inbox names one, else removed (it is kept in the store).

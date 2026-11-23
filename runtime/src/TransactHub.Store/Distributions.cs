@@ -187,6 +187,49 @@ public sealed class DistributionRegistry(StoreDbContext db, TimeProvider? clock 
         return true;
     }
 
+    /// <summary>The outcome of a payment pinned but never started (Issue I-206, R-09-164).</summary>
+    public const string Abandoned = "abandoned";
+
+    /// <summary>
+    /// A payment pinned but never started ends <c>abandoned</c>, with its reason (Issue I-206, R-09-164): the front door's start failed
+    /// after the pin (no route, no worker, the engine refused), or a bank approver ended a stuck pin. Recorded once; a payment that
+    /// has an end keeps it.
+    /// </summary>
+    public async Task<bool> Abandon(string paymentId, string reason, string actor, string? code = null, CancellationToken ct = default)
+    {
+        var dist = await PinOf(paymentId, ct) ?? throw new DistributionRefused($"{paymentId} is not pinned to a distribution");
+        if (await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == paymentId && f.Kind == EndKind, ct)) return false;
+        var data = new JsonObject { ["outcome"] = Abandoned, ["reason"] = reason };
+        if (code is not null) data["code"] = code;
+        await new FactLog(db, clock).Append(paymentId, "payment", new NewFact(EndKind, Abandoned, data, dist, actor), ct);
+        return true;
+    }
+
+    /// <summary>A pin with no payment: pinned at least as long ago as asked, with no end, and no run of any engine accepted it.</summary>
+    public sealed record StuckPin(string PaymentId, string Distribution, string Bank, string Environment, DateTimeOffset PinnedAt, string? LastFact);
+
+    /// <summary>
+    /// The pins with no payment (Issue I-206, R-09-165): pinned at least <paramref name="olderThan"/> ago, with no end, and with no
+    /// payload an engine's run created for the payment (the claim check's <c>create</c> fact names the payment's id when a run
+    /// accepts it). Such a pin counts as an open payment of its distribution until it is ended.
+    /// </summary>
+    public async Task<List<StuckPin>> Unstarted(TimeSpan olderThan, CancellationToken ct = default)
+    {
+        var before = clock.GetUtcNow() - olderThan;
+        var pins = await db.Facts.AsNoTracking().Where(f => f.Kind == PinKind).Select(f => new { f.SubjectId, f.Code, f.At, f.DataJson }).ToListAsync(ct);
+        var ended = (await db.Facts.AsNoTracking().Where(f => f.Kind == EndKind).Select(f => f.SubjectId).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+        var stuck = new List<StuckPin>();
+        foreach (var p in pins.Where(p => !ended.Contains(p.SubjectId) && p.At <= before).OrderBy(p => p.At))
+        {
+            var id = p.SubjectId;
+            if (await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectKind == "payload" && f.Code == "create" && f.DataJson.Contains(id), ct)) continue;
+            var last = await db.Facts.AsNoTracking().Where(f => f.SubjectId == id).OrderByDescending(f => f.Seq).Select(f => f.Kind).FirstOrDefaultAsync(ct);
+            var d = JsonNode.Parse(p.DataJson);
+            stuck.Add(new StuckPin(id, p.Code!, (string?)d?["bank"] ?? "", (string?)d?["environment"] ?? "", p.At, last));
+        }
+        return stuck;
+    }
+
     /// <summary>The open payments per distribution: pinned, with no end.</summary>
     public async Task<Dictionary<string, int>> OpenPayments(CancellationToken ct = default)
     {

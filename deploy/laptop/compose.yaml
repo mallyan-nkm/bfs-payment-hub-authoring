@@ -386,6 +386,7 @@ services:
     command: ["workers"]
     depends_on:
       runtime-api: { condition: service_healthy }
+      native: { condition: service_healthy }
       bank-idp: { condition: service_healthy }
       machine-auth: { condition: service_healthy }
     volumes:
@@ -403,7 +404,17 @@ services:
       # The bank's values from its installed configuration release, read by each worker at each attempt's time (R-12-28).
       TH_RUNTIME_URL: http://runtime-api:8080
       TH_RUNTIME_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
-      TH_WORKERS_BENCH: ${TH_LAPTOP_WORKERS_BENCH:-[{"port":"p.port.core-banking.v1","simulator":"p.sim.core-banking.v1","scenario":"accept"},{"port":"p.port.sanctions.v1","simulator":"p.sim.sanctions.v1","scenario":"accept"},{"port":"p.port.fraud.v1","simulator":"p.sim.fraud.v1","scenario":"accept"},{"port":"p.port.channel.v1","simulator":"p.sim.channel.v1","scenario":"accept"},{"port":"p.port.payment-record.v1","simulator":"p.sim.payment-record.v1","scenario":"accept"},{"port":"p.port.facts-out.v1","simulator":"p.sim.facts-out.v1","scenario":"accept"},{"port":"p.port.party-register.v1","simulator":"p.sim.party-register.v1","scenario":"accept"},{"port":"p.port.operations-queue.v1","simulator":"p.sim.operations.v1","scenario":"release"},{"port":"p.port.encryption.v1","simulator":"p.sim.encryption.v1","scenario":"accept"},{"port":"uae.wps.port.wps.v1","simulator":"uae.wps.sim.wps-outward.v1","scenario":"accept"},{"port":"uae.wps.port.labour-ministry.v1","simulator":"uae.wps.sim.labour-ministry.v1","scenario":"accept"},{"port":"uae.p.port.calendar.v1","simulator":"uae.p.sim.calendar.v1","scenario":"accept"},{"port":"b.port.aml-screening.v1","simulator":"b.sim.aml-screening.v1","scenario":"accept"},{"port":"b.port.labour-ministry.v1","simulator":"b.sim.labour-ministry.v1","scenario":"accept"}]}
+      # The salary file's render, send and acknowledgement run in the native host (R-09-162, Issue I-192): the SIF is written by the
+      # source's writer and kept, and leaves on the bank's binding of the WPS port, the File API's outbox to the Central Bank's folder.
+      TH_NATIVE_HOST: http://native:7300
+      TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.map.ack-in.v1
+      TH_NATIVE_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
+      # The Central Bank's ACK or NAK the File API received and its front door delivered: the map that reads it gets its content
+      # from the File API, which kept it (R-09-162).
+      TH_FILE_API_URL: http://file-api:8080
+      TH_FILE_API_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
+      # The WPS port is the runtime's (the bank's binding, the File API); the rest are the test distribution's simulators.
+      TH_WORKERS_BENCH: ${TH_LAPTOP_WORKERS_BENCH:-[{"port":"p.port.core-banking.v1","simulator":"p.sim.core-banking.v1","scenario":"accept"},{"port":"p.port.sanctions.v1","simulator":"p.sim.sanctions.v1","scenario":"accept"},{"port":"p.port.fraud.v1","simulator":"p.sim.fraud.v1","scenario":"accept"},{"port":"p.port.channel.v1","simulator":"p.sim.channel.v1","scenario":"accept"},{"port":"p.port.payment-record.v1","simulator":"p.sim.payment-record.v1","scenario":"accept"},{"port":"p.port.facts-out.v1","simulator":"p.sim.facts-out.v1","scenario":"accept"},{"port":"p.port.party-register.v1","simulator":"p.sim.party-register.v1","scenario":"accept"},{"port":"p.port.operations-queue.v1","simulator":"p.sim.operations.v1","scenario":"release"},{"port":"p.port.encryption.v1","simulator":"p.sim.encryption.v1","scenario":"accept"},{"port":"uae.wps.port.wps.v1","simulator":"runtime"},{"port":"uae.wps.port.labour-ministry.v1","simulator":"uae.wps.sim.labour-ministry.v1","scenario":"accept"},{"port":"uae.p.port.calendar.v1","simulator":"uae.p.sim.calendar.v1","scenario":"accept"},{"port":"b.port.aml-screening.v1","simulator":"b.sim.aml-screening.v1","scenario":"accept"},{"port":"b.port.labour-ministry.v1","simulator":"b.sim.labour-ministry.v1","scenario":"accept"}]}
       TH_HEALTH_URL: http://127.0.0.1:7700/health
       HOME: /var/lib/transacthub/work
 
