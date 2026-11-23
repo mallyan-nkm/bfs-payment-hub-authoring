@@ -20,7 +20,7 @@ public interface IFileTransferPort
 }
 
 /// <summary>
-/// The file-transfer port through the File API (R-09-78, Issue I-129): the file goes to its outbox for the payment, and the File API
+/// The file-transfer port through the File API (R-09-84, Issue I-129): the file goes to its outbox for the payment, and the File API
 /// delivers it on the bank's binding of p.port.file-transfer.v1 (the SFTP gateway, a directory), recording each delivery; a file it
 /// delivered before is sent again by its resend. Settings: the File API's URL, the folder of the binding to put the file in, and the
 /// host's client-credentials token by reference.

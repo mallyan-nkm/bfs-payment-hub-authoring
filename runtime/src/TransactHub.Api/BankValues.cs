@@ -18,7 +18,8 @@ public static class BankValues
     public const string Kind = "config";
 
     /// <summary>Imports the configuration sets under <paramref name="banksDir"/>; a version identical to one stored is not stored again.</summary>
-    public static async Task<int> Import(StoreDbContext db, TimeProvider clock, string banksDir, string actor, CancellationToken ct = default)
+    /// <param name="onlyBank">The runtime's one bank (R-09-76): a configuration set of another tenant is skipped and named in <paramref name="skipped"/>.</param>
+    public static async Task<int> Import(StoreDbContext db, TimeProvider clock, string banksDir, string actor, CancellationToken ct = default, string? onlyBank = null, List<string>? skipped = null)
     {
         if (!Directory.Exists(banksDir)) return 0;
         var store = new VersionedValues(db, clock);
@@ -29,7 +30,10 @@ public static class BankValues
                 Directory.Exists(Path.Combine(bank, "configuration-sets")) ? Directory.EnumerateFiles(Path.Combine(bank, "configuration-sets"), "*.yaml") : []);
             // Older releases first, so a later release's value is the newer version.
             foreach (var (release, root) in files.Select(f => Read(File.ReadAllText(f))).Where(x => x.root is not null).OrderBy(x => x.release, Comparer<string>.Create(CompareReleases)))
+            {
+                if (onlyBank is not null && S(root!, "tenant") is { } t && t != onlyBank) { skipped?.Add($"{Path.GetFileName(bank)}: the configuration set of {t} is not this runtime's bank ({onlyBank}), not imported (R-09-76)"); continue; }
                 added += await ImportSet(db, store, release, root!, actor, ct);
+            }
         }
         return added;
     }

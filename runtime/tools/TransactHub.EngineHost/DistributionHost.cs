@@ -30,7 +30,7 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
     protected abstract Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs);
 
     /// <summary>
-    /// Hands a message the runtime's front door correlated to a running payment of this host (R-09-79). A host that runs each payment
+    /// Hands a message the runtime's front door correlated to a running payment of this host (R-09-85). A host that runs each payment
     /// to its end in one harness run takes none once the run has started (Issue I-134): it is refused, and the front door says so.
     /// </summary>
     protected virtual Task<(int, JsonNode?)> Deliver(string paymentId, JsonObject message) =>
@@ -110,7 +110,7 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                 // A payment runs only on the distribution it is pinned to (R-09-53).
                 if (pinned != Distribution) return (409, new JsonObject { ["error"] = $"{id} is pinned to {pinned ?? "no distribution"}, not {Distribution}" });
                 var ctx = (JsonObject)J.Clone(J.P(body, "context") ?? J.P(J.P(Plan, "built"), "context"))!;
-                // The runtime's front door names the workflow it routed the payment to and the legs in its slots (R-09-79).
+                // The runtime's front door names the workflow it routed the payment to and the legs in its slots (R-09-85).
                 if (J.S(body, "workflow") is string wf && wf != J.S(J.P(Plan, "built"), "workflow"))
                     return (409, new JsonObject { ["error"] = $"{Distribution}'s host runs {J.S(J.P(Plan, "built"), "workflow")}, not {wf}" });
                 var legs = J.P(body, "legs") is JsonObject l ? (JsonObject)J.Clone(l)! : null;

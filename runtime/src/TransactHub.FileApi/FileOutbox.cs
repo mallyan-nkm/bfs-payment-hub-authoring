@@ -5,7 +5,7 @@ using TransactHub.Store;
 
 namespace TransactHub.FileApi;
 
-// The File API's outbox (R-09-78): every file a workflow sends is written here first, kept once with its signed SHA-256 and linked to
+// The File API's outbox (R-09-84): every file a workflow sends is written here first, kept once with its signed SHA-256 and linked to
 // its payment and leg, and then delivered by the bank's binding of p.port.file-transfer.v1 (the SFTP gateway's `sftp` adapter, a
 // `directory`, or the `simulator`). Each delivery is a fact on the file's chain: `file.queued`, then `file.delivered` with the adapter,
 // the folder, the name and the attempt, or `file.delivery-failed` with the reason. A resend (the operations console's `resend`, the

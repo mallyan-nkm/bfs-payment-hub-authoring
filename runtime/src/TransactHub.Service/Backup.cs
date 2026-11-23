@@ -150,6 +150,17 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         var test = contentSettings.TestEnvironments.Contains(contentSettings.Environment);
         var problems = new JsonArray();
         if (!empty && !test) problems.Add($"This runtime ({contentSettings.Environment}) is not empty and not a test environment: a restore goes only into one that is");
+        // A backup of another bank's runtime is never restored here (R-09-76): every release, value and binding is this bank's.
+        if (contentSettings.Bank is { } own)
+        {
+            static string? BankOf(JsonObject r) => (string?)r["scope"] is { } sc && (sc.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || sc.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal))
+                ? sc[(sc.IndexOf('/') + 1)..] : (string?)r["tenant"];
+            var others = (doc["releases"] as JsonArray ?? []).OfType<JsonObject>().Select(BankOf)
+                .Concat((doc["values"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
+                .Concat((doc["bindings"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
+                .Where(b => b is { Length: > 0 } && !own.Serves(b)).Distinct().Order(StringComparer.Ordinal).ToList();
+            if (others.Count > 0) problems.Add($"The backup holds content of {string.Join(", ", others)}, but this runtime serves {own.Id} only (TH_BANK): it is not restored (R-09-76)");
+        }
         var versions = (await content.Versions(ct)).OfType<JsonObject>().ToList();
         var plan = new JsonArray();
         foreach (var r in (doc["releases"] as JsonArray ?? []).OfType<JsonObject>())
@@ -218,6 +229,28 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         await audit.Record("restore", who, why, new JsonObject { ["backup"] = (string?)result["backup"], ["releases"] = plan.Count, ["activations"] = acts.Count, ["values"] = values.Count }, ct: ct);
         result["restored"] = true;
         return result;
+    }
+
+    /// <summary>Keeps a backup's bytes in the store, insert-only by their hash, while a restore waits for a bank approver's consent (R-09-77).</summary>
+    public async Task<string> Keep(byte[] zip, CancellationToken ct = default)
+    {
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(zip));
+        await using var db = StoreDbContext.Open(store);
+        if (!await db.FileContents.AsNoTracking().AnyAsync(x => x.ContentHash == hash, ct))
+        {
+            db.FileContents.Add(new FileContentRow { ContentHash = hash, Content = zip, At = StoreTime.Of(clock.GetUtcNow()) });
+            await db.SaveChangesAsync(ct);
+        }
+        return hash;
+    }
+
+    /// <summary>The bytes of a backup kept by <see cref="Keep"/>, checked against their hash.</summary>
+    public async Task<byte[]> Kept(string hash, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var row = await db.FileContents.AsNoTracking().FirstOrDefaultAsync(x => x.ContentHash == hash, ct) ?? throw new ServiceRefused(404, ErrorCodes.BackupInvalid, $"No backup {hash} is kept");
+        if (Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(row.Content)) != hash) throw new ServiceRefused(409, ErrorCodes.BackupInvalid, $"The backup kept as {hash} does not match its hash");
+        return row.Content;
     }
 
     static byte[] ZipEntry(byte[] zip, string name)

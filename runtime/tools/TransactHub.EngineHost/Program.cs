@@ -31,6 +31,19 @@ if (args.Length == 0 || args[0] is not ("supervise" or "serve"))
     return 2;
 }
 var opts = Options(args);
+// Temporal is the default engine (owner's decision of 23 November 2026, R-09-79): on the Temporal SQL Server plugin in a
+// deployment. DTFx, Elsa and Flowable are started by naming them. The bank defaults to the runtime's one bank (TH_BANK, R-09-76),
+// and a supervisor for another bank is refused.
+opts.TryAdd("engine", "temporal");
+if (Environment.GetEnvironmentVariable("TH_BANK") is { Length: > 0 } runtimeBank)
+{
+    if (opts.TryGetValue("bank", out var asked) && asked != runtimeBank)
+    {
+        Console.Error.WriteLine($"engine host: this runtime serves {runtimeBank} only (TH_BANK); a host for {asked} is refused (R-09-76)");
+        return 2;
+    }
+    opts["bank"] = runtimeBank;
+}
 var store = HostStore.FromEnvironment() ?? throw new InvalidOperationException("The engine host keeps its state in the store: set TH_STORE_PROVIDER and TH_STORE_CONNECTION");
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };

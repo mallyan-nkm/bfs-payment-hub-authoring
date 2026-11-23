@@ -64,6 +64,11 @@ public sealed class Plan
 public sealed class Catalogue(Home home)
 {
     public static readonly string[] AllEngines = ["temporal", "dtfx", "elsa", "flowable"];
+    /// <summary>
+    /// The default engine (owner's decision of 23 November 2026, R-09-79): Temporal, on the Temporal SQL Server plugin in a
+    /// deployment. A run whose profile and request name no engines runs on it; a tester may still start DTFx, Elsa or Flowable.
+    /// </summary>
+    public static readonly string[] DefaultEngines = ["temporal"];
     public static readonly string[] AllDatabases = ["PostgreSql", "SqlServer", "none"];
     public Home Home => home;
 
@@ -122,7 +127,7 @@ public sealed class Catalogue(Home home)
         var bench = Bench(benchName);
         foreach (var p in J.Strings(profile["ports"]).Concat(J.Strings(libEntry?["ports"])).Concat(J.Strings(request["ports"]))) bench = Override(bench, BenchPort.Parse(p));
 
-        var engines = (node("engines") is { } en ? J.Strings(en) : AllEngines).Select(e => e.ToLowerInvariant()).ToArray();
+        var engines = (node("engines") is { } en ? J.Strings(en) : DefaultEngines).Select(e => e.ToLowerInvariant()).ToArray();
         foreach (var e in engines) if (!AllEngines.Contains(e)) throw new BenchError($"No engine {e}: the engines are {string.Join(", ", AllEngines)} (and the studio interpreter as the reference)");
         var dbs = (request["databases"] ?? request["database"] ?? profile["databases"] ?? profile["database"]) is { } dn ? J.Strings(dn).ToArray() : ["PostgreSql"];
         dbs = dbs.Select(d => AllDatabases.FirstOrDefault(x => string.Equals(x, d, StringComparison.OrdinalIgnoreCase)) ?? throw new BenchError($"No database {d}: PostgreSql, SqlServer or none")).ToArray();

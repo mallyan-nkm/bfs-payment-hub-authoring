@@ -9,7 +9,7 @@ using YamlDotNet.RepresentationModel;
 
 namespace TransactHub.FileApi;
 
-// The runtime's front door (R-09-79; docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 5; owner's decision of 23 November 2026). It
+// The runtime's front door (R-09-85; docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 5; owner's decision of 23 November 2026). It
 // runs in the File API's process, behind its intake: every file that reaches the runtime passes the intake's checks and is kept
 // once, and then the front door decides what it is by the scheme's dispatch table in the distribution active for the bank:
 //
@@ -213,7 +213,7 @@ public sealed record FrontDoorFile(string Tenant, string Environment, string Mes
 /// <summary>What the front door did with a file.</summary>
 public sealed record FrontDoorResult(string Disposition, string? PaymentId, string? Distribution, string? Workflow, string Detail);
 
-/// <summary>The runtime's front door (R-09-79): start a payment, or correlate a message to a running one.</summary>
+/// <summary>The runtime's front door (R-09-85): start a payment, or correlate a message to a running one.</summary>
 public sealed class RuntimeFrontDoor(StoreOptions store, IIntakeRunner intake, IEngineHost engines, TimeProvider? clock = null)
 {
     public const string CorrelationKind = "frontdoor.correlation";

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- The File API (R-09-76 to R-09-80): one runtime service every file passes through, with the runtime's front door behind its
+  <!-- The File API (R-09-82 to R-09-86): one runtime service every file passes through, with the runtime's front door behind its
        intake. Its own process and container image. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

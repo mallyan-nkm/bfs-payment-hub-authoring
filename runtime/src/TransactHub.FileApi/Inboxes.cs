@@ -6,7 +6,7 @@ using TransactHub.Ports;
 
 namespace TransactHub.FileApi;
 
-// The inboxes the File API polls (R-09-76, R-09-80): a folder of a bank's partner on its binding of p.port.file-transfer.v1, read
+// The inboxes the File API polls (R-09-82, R-09-86): a folder of a bank's partner on its binding of p.port.file-transfer.v1, read
 // through the same adapter that delivers the outbox. On a laptop the binding is `directory` and the inbox is a folder; at a bank it is
 // `sftp` and the inbox is a folder of the Central Bank, the labour ministry or core banking's file interface. A file younger than the
 // inbox's minimum age is left for the next poll (it may still be arriving); a file taken is moved to the inbox's done folder when the
@@ -35,7 +35,7 @@ public sealed record Inbox(string Tenant, string Folder, string Message, string?
         }
         foreach (var (group, g) in groups.OrderBy(x => x.Key, StringComparer.Ordinal))
         {
-            // A folder whose files are no message the bank names is not an inbox the File API reads (Issue I-156).
+            // A folder whose files are no message the bank names is not an inbox the File API reads (Issue I-160).
             if (!g.TryGetValue("folder", out var folder) || folder.Length == 0 || !g.TryGetValue("message", out var message) || message.Length == 0) continue;
             var partner = group.Split('.')[0];
             string At(string f) => b.Adapter == SftpFileTransfer.Name ? $"{partner}/{f.TrimStart('/')}" : f;

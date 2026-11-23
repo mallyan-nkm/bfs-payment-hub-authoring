@@ -272,7 +272,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
       if (endToEnd) Object.assign(ctx.header, routeOf(entry.disposition.start), { scheme: scheme.scope });
       if (endToEnd) {
-        // The same route the runtime's front door works out (route.ts, R-09-79).
+        // The same route the runtime's front door works out (route.ts, R-09-85).
         const byName = (nm: string) => Object.values<any>(documents).find((d) => d.name === nm);
         const chosen = selectWorkflow(byName, ctx.header, req.environment.evaluationDate);
         if (n === 1) log.push(`front door: workflow-select chose ${chosen ?? 'nothing'} for ${ctx.header.kind} ${ctx.header.direction} ${ctx.header.segment ?? ''}`.trimEnd());

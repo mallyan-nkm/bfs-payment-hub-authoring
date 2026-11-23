@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { startRoute } from '../src/deploy/route.js';
 import { freshEnv } from './helpers.js';
 
-// The deploy runner's front door routes every start message as the runtime's front door does (R-09-79): both are held to the same
+// The deploy runner's front door routes every start message as the runtime's front door does (R-09-85): both are held to the same
 // fixture, which runtime/tests/TransactHub.FileApi.Tests/FrontDoorRouteTests.cs reads too.
 
 const FIXTURE = path.resolve(__dirname, '..', '..', 'runtime', 'tests', 'TransactHub.FileApi.Tests', 'front-door-routes.json');
 
-describe('the front door route of a start message (R-09-79)', () => {
+describe('the front door route of a start message (R-09-85)', () => {
   it('is the runtime front door\'s, for every start message of the content branch', () => {
     const env = freshEnv();
     const schemes = env.store.byKind('scheme').map((e) => e.doc).filter((s: any) => s.release === env.store.scheme(s.scope).release);

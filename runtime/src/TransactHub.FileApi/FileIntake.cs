@@ -11,7 +11,7 @@ using TransactHub.Store;
 
 namespace TransactHub.FileApi;
 
-// The File API's intake (R-09-76, R-09-77): every file the runtime receives comes in here, whether a channel or a corporate uploads
+// The File API's intake (R-09-82, R-09-83): every file the runtime receives comes in here, whether a channel or a corporate uploads
 // it over HTTPS, a laptop drops it in an inbox folder, or the SFTP gateway picks it up from a partner. On arrival it is checked (size,
 // type, duplicates by hash and by name), decrypted with the bank's decryption binding when it is encrypted
 // (p.protect.decrypt-file.v1, on its native code-behind), kept once in the store with its signed SHA-256 (stored_file, file_content;
@@ -32,7 +32,7 @@ public sealed record Received(string Status, string FileId, string Sha256, strin
 /// <summary>
 /// The checks of one message's files, from the File API's settings (<c>FileApi:Messages:&lt;message&gt;:*</c>), over the defaults
 /// (<c>FileApi:MaxBytes</c>): the largest file, the extensions it may have (an encrypted file may add <c>.gpg</c> or <c>.pgp</c>), the
-/// pattern its name must match, and whether a name may come twice. The scheme declares none of these yet (Issue I-155): they are the
+/// pattern its name must match, and whether a name may come twice. The scheme declares none of these yet (Issue I-159): they are the
 /// installation's, and a bank may set them per message.
 /// </summary>
 public sealed record FileRules(long MaxBytes, IReadOnlyList<string> Extensions, Regex? NamePattern, bool UniqueName)

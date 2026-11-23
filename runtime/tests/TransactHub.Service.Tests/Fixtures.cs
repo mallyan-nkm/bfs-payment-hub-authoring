@@ -212,7 +212,7 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
         var settings = new Dictionary<string, string?>
         {
             ["Store:Provider"] = store.Provider.ToString(), ["Store:Connection"] = store.ConnectionString, ["TH_TRUSTED_SIGNERS"] = $"file:{signers.TrustFile}",
-            ["TH_SECRET_FILE_ROOTS"] = signers.Dir, ["TH_AUTH_DEV"] = "1", ["Service:Environment"] = "production",
+            ["TH_SECRET_FILE_ROOTS"] = signers.Dir, ["TH_AUTH_DEV"] = "1", ["Service:Environment"] = "production", ["TH_BANK"] = Seed.Tenant,
             ["PackageSource:GitHub:Repository"] = "bank/content", ["PackageSource:GitHub:Api"] = "https://api.github.test/",
             ["Service:Errors"] = Path.Combine(Repo.Root(), "content-configurations", "artefacts"), ["Service:Docs"] = Path.Combine(Repo.Root(), "docs", "north-star"),
             ["Service:Console"] = Path.Combine(Repo.Root(), "runtime", "ops-console", "dist-absent"), ["Service:Health:EverySeconds"] = "3600",
@@ -239,6 +239,33 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
 
     public HttpClient Engineer => As("se-1", "*:ServiceEngineer");
     public HttpClient Approver => As("sa-1", "*:ServiceApprover");
+    /// <summary>The bank approver who consents to a change of the system another person asked for (R-09-77).</summary>
+    public HttpClient BankApprover => As("ba-1", "*:BankApprover");
+
+    /// <summary>An action asked for by <paramref name="maker"/>; when it waits for consent, the bank approver consents. The final answer.</summary>
+    public async Task<JsonNode> Act(HttpClient maker, object body)
+    {
+        var r = await J.Of(await maker.PostAsJsonAsync("/service/api/actions", body));
+        if ((string?)r["status"] != "pending-approval") return r;
+        return await J.Of(await BankApprover.PostAsJsonAsync($"/service/api/actions/{(string)r["action"]!}/decision", new { approve = true, reason = "consented (synthetic)" }));
+    }
+
+    /// <summary>
+    /// A change asked for at <paramref name="path"/> (an install, a restore) and consented to by the bank approver (R-09-77), answered
+    /// as the route answered before it waited for consent: 201 for an install that stored, 200 otherwise, a refusal with its status.
+    /// </summary>
+    public async Task<HttpResponseMessage> Consented(HttpClient maker, string path, object? body = null, HttpContent? content = null)
+    {
+        var r = content is null ? await maker.PostAsJsonAsync(path, body) : await maker.PostAsync(path, content);
+        if (r.StatusCode != HttpStatusCode.Accepted) return r;
+        var ask = await J.Of(r);
+        var d = await J.Of(await BankApprover.PostAsJsonAsync($"/service/api/actions/{(string)ask["action"]!}/decision", new { approve = true, reason = "consented (synthetic)" }));
+        var result = d["result"]?.DeepClone() ?? new JsonObject();
+        if ((string?)d["status"] == "done")
+            return new HttpResponseMessage(result["stored"] is JsonValue st && st.GetValue<bool>() ? HttpStatusCode.Created : HttpStatusCode.OK) { Content = JsonContent.Create(result) };
+        var refused = new JsonObject { ["error"] = (string?)result["message"], ["code"] = (string?)d["code"], ["runbook"] = (string?)d["runbook"] };
+        return new HttpResponseMessage((HttpStatusCode)((int?)d["httpStatus"] ?? 409)) { Content = JsonContent.Create(refused) };
+    }
 
     public async Task CatchUp()
     {

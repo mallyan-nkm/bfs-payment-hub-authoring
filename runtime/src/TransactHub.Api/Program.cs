@@ -35,6 +35,12 @@ var trustSetting = builder.Configuration["Signing:TrustedSigners"] ?? builder.Co
     ?? throw new InvalidOperationException("Set TH_TRUSTED_SIGNERS (or Signing:TrustedSigners): the signers whose packages this runtime accepts (spec R-09-25)");
 // Read once now, so a broken list stops the start; then again at each verification, so a key added, retired or revoked needs no restart.
 _ = await TrustedSigners.Load(trustSetting, secrets);
+// The one bank this runtime serves, set at install (R-09-76): another bank's content is refused here, whatever the caller may do.
+var runtimeBank = RuntimeBank.FromConfiguration(builder.Configuration);
+// Where a machine caller (the pipeline) may change which distribution runs (R-09-78): by default the test environments only.
+// Elsewhere a distribution's state changes only through the service console, with a bank approver's consent (R-09-77).
+var machineActivation = (builder.Configuration["Releases:MachineActivationEnvironments"] is { Length: > 0 } machineEnvs ? machineEnvs : string.Join(",", testEnvironments))
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
 // The key this host signs the files it keeps with (Issue I-97): by reference, or one made for the host's lifetime.
 var fileKey = builder.Configuration["TH_FILE_SIGNING_KEY_REF"] is { Length: > 0 } fileKeyRef
@@ -77,6 +83,8 @@ async Task<Verification> Verify(StoreDbContext db, TimeProvider clock, Package p
 
 async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package p, string actor, string purpose)
 {
+    // A package exported for a tenant is that bank's: another bank's is refused (R-09-76). Shared content names no tenant.
+    if (p.Tenant is { Length: > 0 } tenant && runtimeBank.Refusal(tenant, p.ReleaseId) is { } wrongBank) return Outcome.Refused(422, wrongBank);
     Verification v;
     try { v = await Verify(db, clock, p, purpose, actor, record: false); }
     catch (SignatureRejected e) { return Outcome.Refused(422, $"{p.ReleaseId} is refused: {e.Message}"); }
@@ -94,6 +102,7 @@ async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package 
 /// <summary>An activation: the stored package is verified again against the signers trusted now, so a key revoked since it was stored stops it.</summary>
 async Task<Outcome> Activate(StoreDbContext db, TimeProvider clock, string environment, string scope, string release, DateTimeOffset effectiveFrom, string actor)
 {
+    if (MachineRefusal(environment, $"activate {scope}@{release}") is { } consent) return Outcome.Refused(403, consent);
     var reg = new ReleaseRegistry(db, clock);
     var r = await reg.Get(scope, release);
     if (r is null) return Outcome.Refused(404, $"{scope}@{release} is not stored; store it before activating it");
@@ -223,7 +232,9 @@ app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, Store
         }
     }
     // The banks' configuration sets: each value an effective-dated version (plan P6).
-    var values = await BankValues.Import(db, clock, Path.Combine(b.Path, "banks"), actor);
+    var skipped = new List<string>();
+    var values = await BankValues.Import(db, clock, Path.Combine(b.Path, "banks"), actor, onlyBank: runtimeBank.Id, skipped: skipped);
+    problems.AddRange(skipped);
     return Results.Ok(new { stored, activated, values, problems });
 }).RequireAuthorization(ApiAuth.Importer);
 
@@ -293,7 +304,12 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
 }).RequireAuthorization(ApiAuth.Importer);
 
 // A bank's distributions and configuration releases (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, R-09-48 to R-09-57).
-DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct), testEnvironments);
+DistributionService Distributions(StoreDbContext db, TimeProvider clock) => new(db, clock, ct => TrustedSigners.Load(trustSetting, secrets, ct), testEnvironments, runtimeBank);
+
+// A change of which distribution runs, asked by a machine caller outside the environments it may change (R-09-78).
+string? MachineRefusal(string environment, string what) => machineActivation.Contains(environment) ? null
+    : $"The release API may not {what} in {environment}: outside {string.Join(", ", machineActivation.Order())} a change to the system is asked for in the service console and carried out once a bank approver consents (R-09-77)";
+IResult? NeedsConsent(string environment, string what) => MachineRefusal(environment, what) is { } m ? Problem(403, m) : null;
 
 async Task<IResult> Refusable(Func<Task<IResult>> f)
 {
@@ -340,16 +356,16 @@ static string? BankOfDistribution(string? dist)
     catch (DistributionRefused) { return null; }
 }
 
-app.MapPost("/distributions/activate", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "activate a distribution") ?? await Refusable(async () =>
+app.MapPost("/distributions/activate", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "activate a distribution") ?? NeedsConsent(a.Environment, $"activate {a.Id}") ?? await Refusable(async () =>
     Results.Json(await Distributions(db, clock).Activate(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "activate", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/drain", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "drain a distribution") ?? await Refusable(async () =>
+app.MapPost("/distributions/drain", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "drain a distribution") ?? NeedsConsent(a.Environment, $"drain {a.Id}") ?? await Refusable(async () =>
     Results.Ok(await Distributions(db, clock).Drain(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "drain", ct)))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "remove a distribution") ?? await Refusable(async () =>
+app.MapPost("/distributions/remove", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, BankOfDistribution(a.Id), "remove a distribution") ?? NeedsConsent(a.Environment, $"remove {a.Id}") ?? await Refusable(async () =>
     Results.Ok(await Distributions(db, clock).Remove(a.Id ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "remove", ct)))).RequireAuthorization(ApiAuth.Activator);
 
-app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, a.Bank, "roll back a distribution") ?? await Refusable(async () =>
+app.MapPost("/distributions/rollback", async (DistributionAction a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => NotForBank(user, ApiAuth.Activator, a.Bank, "roll back a distribution") ?? NeedsConsent(a.Environment, $"roll back {a.Bank}") ?? await Refusable(async () =>
     Results.Json(await Distributions(db, clock).Rollback(a.Bank ?? "", a.Environment, ApiAuth.Actor(user), a.Why ?? "rollback", ct), statusCode: 201))).RequireAuthorization(ApiAuth.Activator);
 
 // The front door: a payment is pinned at acceptance to the distribution active for its bank and environment (R-09-53),
@@ -378,6 +394,7 @@ app.MapPost("/payments/end", async (PaymentEnd p, ClaimsPrincipal user, StoreDbC
 app.MapPost("/payments/files", async (FileKeep f, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
 {
     if (!ApiAuth.Has(user, ApiAuth.Intake, f.Tenant)) return Problem(403, $"{ApiAuth.Actor(user)} may not keep files of {f.Tenant}");
+    if (runtimeBank.Refusal(f.Tenant, $"A file of {f.Tenant}") is { } wrongBank) return Problem(422, wrongBank);
     if (f.Direction is not ("in" or "out")) return Problem(400, "A file's direction is in or out");
     byte[] content;
     try { content = Convert.FromBase64String(f.ContentBase64); }

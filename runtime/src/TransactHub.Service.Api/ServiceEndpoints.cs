@@ -61,11 +61,11 @@ public static class ServiceEndpoints
         api.MapGet("/content/open-payments", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.OpenPayments(http.RequestAborted)); }));
         api.MapGet("/content/diff", (string tag, string? environment, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Diff(tag, environment, http.RequestAborted)); }));
         api.MapPost("/content/verify", (TagAsk b, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.Verify(b.Tag, Who(http), b.Reason, http.RequestAborted))));
-        api.MapPost("/content/install", (TagAsk b, HttpContext http, ContentService c) => Guard(async () =>
+        // Installing changes the system: verified now, carried out once a bank approver consents (R-09-77).
+        api.MapPost("/content/install", (TagAsk b, HttpContext http, ActionBook book) => Guard(async () =>
         {
-            var who = Who(http);
-            var r = await c.Install(b.Tag, who, Need(b.Reason, "Installing"), http.RequestAborted);
-            return Results.Json(r, statusCode: r["stored"]!.GetValue<bool>() ? 201 : 200);
+            var r = await book.Request(Who(http), new ActionAsk("install", b.Tag, Need(b.Reason, "Installing"), null), http.RequestAborted);
+            return Results.Json(r, statusCode: (string?)r["status"] == "pending-approval" ? 202 : 200);
         }));
 
         // Backup and restore (R-09-41).
@@ -77,8 +77,21 @@ public static class ServiceEndpoints
             var (doc, v) = await s.Verify(await Body(http), http.RequestAborted);
             return Results.Ok(new { verified = true, signedBy = v.KeyId, signedAt = v.SignedAt, releases = (doc["releases"] as JsonArray)?.Count, activations = (doc["activations"] as JsonArray)?.Count, values = (doc["values"] as JsonArray)?.Count, bindings = (doc["bindings"] as JsonArray)?.Count });
         }));
-        api.MapPost("/restore", (bool? dryRun, string? reason, HttpContext http, BackupService s) => Guard(async () =>
-            Results.Ok(await s.Restore(await Body(http), dryRun != false, Who(http), Need(reason, "A restore"), http.RequestAborted))));
+        // A dry run changes nothing and answers at once. A restore is planned now (a backup that does not verify, or one that may
+        // not go into this runtime, is refused at once), kept by its hash, and carried out once a bank approver consents (R-09-77, I-122).
+        api.MapPost("/restore", (bool? dryRun, string? reason, HttpContext http, BackupService s, ActionBook book) => Guard(async () =>
+        {
+            var who = Who(http);
+            var why = Need(reason, "A restore");
+            var bytes = await Body(http);
+            var plan = await s.Restore(bytes, dryRun: true, who, why, http.RequestAborted);
+            if (dryRun != false) return Results.Ok(plan);
+            if (plan["problems"] is JsonArray { Count: > 0 } problems) throw new ServiceRefused(409, ErrorCodes.RestoreRefused, string.Join("; ", problems.Select(p => (string?)p)));
+            var hash = await s.Keep(bytes, http.RequestAborted);
+            var r = await book.Request(who, new ActionAsk("restore", hash, why, new JsonObject { ["backup"] = (string?)plan["backup"] }), http.RequestAborted);
+            r["plan"] = plan.DeepClone();
+            return Results.Json(r, statusCode: 202);
+        }));
 
         // Error and event logs (R-09-42), a payment's trace, and the console's own audit.
         api.MapGet("/logs", (HttpContext http, EventLog l) => Guard(async () =>
@@ -122,7 +135,7 @@ public static class ServiceEndpoints
             return Results.Json(r, statusCode: (string?)r["status"] == "pending-approval" ? 202 : 200);
         }));
         api.MapPost("/actions/{id}/decision", (string id, Decision body, HttpContext http, ActionBook b) => Guard(async () =>
-            Results.Ok(await b.Decide(Who(http, ServiceRoles.Approver), id, body.Approve, body.Reason, http.RequestAborted))));
+            Results.Ok(await b.Decide(Who(http, ServiceRoles.BankApprover), id, body.Approve, body.Reason, http.RequestAborted))));
 
         // The assistant (R-09-44).
         api.MapGet("/assistant", (HttpContext http, AssistantService a) => Guard(() => { Who(http); return Task.FromResult(Results.Ok(new { enabled = a.Enabled, model = AssistantService.ModelId })); }));

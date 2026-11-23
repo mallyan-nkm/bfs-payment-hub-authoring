@@ -9,7 +9,8 @@ using TransactHub.Store;
 namespace TransactHub.Service;
 
 /// <summary>How the service console reaches the content it installs, and what it trusts.</summary>
-public sealed record ContentSettings(string TrustSetting, ISecretResolver Secrets, IReadOnlySet<string> TestEnvironments, string Environment);
+/// <param name="Bank">The one bank this runtime serves (R-09-76): another bank's version is refused at verify, install and activate.</param>
+public sealed record ContentSettings(string TrustSetting, ISecretResolver Secrets, IReadOnlySet<string> TestEnvironments, string Environment, RuntimeBank? Bank = null);
 
 /// <summary>
 /// Content install, update and upgrade (spec R-09-40, docs/runtime/PACKAGING-AND-DEPLOYMENT.md). GitHub is the artefact
@@ -49,12 +50,21 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             {
                 ["tag"] = v.Tag, ["kind"] = v.Kind, ["workflow"] = v.Workflow, ["release"] = v.Release, ["target"] = v.Target, ["commit"] = v.Commit,
                 ["bank"] = v.Kind == ReleaseSignature.WorkflowPackage ? null : v.Workflow,
-                ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered", ["installable"] = true,
+                ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered",
+                // Another bank's distribution or configuration release is listed, never installable here (R-09-76).
+                ["installable"] = v.Kind == ReleaseSignature.WorkflowPackage || settings.Bank?.Serves(v.Workflow) != false,
+                ["notInstallable"] = v.Kind != ReleaseSignature.WorkflowPackage && settings.Bank is { } own && !own.Serves(v.Workflow) ? $"{v.Workflow}'s: this runtime serves {own.Id} only" : null,
             };
         }).ToArray());
     }
 
-    DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct), settings.TestEnvironments);
+    DistributionService Distributions(StoreDbContext db) => new(db, clock, ct => TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct), settings.TestEnvironments, settings.Bank);
+
+    /// <summary>Refuses a version whose signed manifest names another bank than this runtime's (R-09-76).</summary>
+    void OwnBank(string? bank, string what)
+    {
+        if (settings.Bank?.Refusal(bank, what) is { } why) throw new ServiceRefused(422, ErrorCodes.PackageRejected, why);
+    }
 
     static bool IsBundle(string id) => id.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || id.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal);
 
@@ -79,6 +89,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         try { b = Bundle.FromFiles(files, v.Kind); }
         catch (PackageRejected e) { throw new ServiceRefused(422, e.Message.Contains("does not match") || e.Message.Contains("but not in the bundle") ? ErrorCodes.Tampered : ErrorCodes.PackageRejected, $"{tag}: {e.Message}"); }
         if (b.ReleaseId != v.ReleaseId) throw new ServiceRefused(422, ErrorCodes.WrongRelease, $"{tag} names {v.ReleaseId}, but its bundle is {b.ReleaseId}");
+        OwnBank(b.Bank, b.ReleaseId);
         try { return (b, b.Verify(await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct)), v); }
         catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.Of(e), $"{b.ReleaseId} is refused: {e.Message}"); }
     }
@@ -102,6 +113,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             throw new ServiceRefused(422, changed ? ErrorCodes.Tampered : ErrorCodes.PackageRejected, $"{tag}: {e.Message}");
         }
         if (p.ReleaseId != v.ReleaseId) throw new ServiceRefused(422, ErrorCodes.WrongRelease, $"{tag} names {v.ReleaseId}, but its package is {p.ReleaseId}");
+        if (p.Tenant is { Length: > 0 } tenant) OwnBank(tenant, p.ReleaseId);
         try { return (p, p.VerifySignature(await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct)), v); }
         catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.Of(e), $"{p.ReleaseId} is refused: {e.Message}"); }
     }
@@ -274,6 +286,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         var row = await reg.Get(scope, release, ct) ?? throw new ServiceRefused(404, ErrorCodes.UnknownVersion, $"{releaseId} is not installed; install it first");
         if (await Removed(db, releaseId, ct)) throw new ServiceRefused(409, ErrorCodes.RemovalRefused, $"{releaseId} was removed; install it again before activating it");
         var p = Package.FromZip(row.Package);
+        if (p.Tenant is { Length: > 0 } tenant) OwnBank(tenant, releaseId);
         if (!p.Promotable && !settings.TestEnvironments.Contains(env))
             throw new ServiceRefused(409, ErrorCodes.NotPromotable, $"{releaseId} is not promotable (it carries simulators or has errors): it may be activated only in {string.Join(", ", settings.TestEnvironments)}");
         Verification v;

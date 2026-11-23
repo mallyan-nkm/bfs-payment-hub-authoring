@@ -48,6 +48,9 @@ public sealed record OperatorIdentity(string Subject, string DisplayName, IReadO
 
     public bool AllTenants => RolesByTenant.ContainsKey(AnyTenant);
 
+    /// <summary>Whether this person may consent to a change of the system (R-09-77): a bank approver of any tenant the runtime serves.</summary>
+    public bool MayConsent => RolesByTenant.Values.Any(r => r.Contains(OperatorRoles.BankApprover));
+
     /// <summary>What the facts record as the actor: the identity provider's subject, never a display name alone.</summary>
     public string Actor => $"operator:{Subject}";
 }

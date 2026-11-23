@@ -90,13 +90,13 @@ Rules: [guidelines/versioning-and-releases.md](guidelines/versioning-and-release
 
 ## Files: one way in and out (the File API)
 
-Owner's decision of 23 November 2026 (I-154). Built.
+Owner's decision of 23 November 2026 (I-158). Built.
 
 - Every file the runtime receives or sends passes through one runtime service, the File API (`runtime/src/TransactHub.FileApi`, its own process and image). Nothing else reads a partner's folder or writes to one.
 - **In.** A channel's or a corporate's HTTPS upload (`POST /files`, system clients of the bank's identity provider), a person's upload (`POST /files/ui`), a file the SFTP gateway hands in, and the inboxes it polls on the bank's binding of `p.port.file-transfer.v1` (a folder on a laptop, a partner's SFTP folder at a bank).
-- **On arrival.** The message must be one the active distribution receives; size, type and name checks; a duplicate by hash or by name is refused; an encrypted file is decrypted by `p.protect.decrypt-file.v1` with the bank's key; the file is kept once in the store with its signed SHA-256, linked to its payment, each step a fact (R-09-76, R-09-77).
-- **The front door** runs in the same process, behind the intake (R-09-79): a start message pins the payment to the bank's active distribution, runs the scheme's intake map on its worker, routes it by the dispatch table and `p.table.workflow-select.v1`, and starts it on the bank's engine host; a message for a running payment (an ACK or NAK, a PSI, an answer) is correlated to its payment and handed to the host of the distribution the payment is pinned to. The studio's deploy runner routes a start message the same way (`studio/src/deploy/route.ts`, one fixture for both).
-- **Out.** A workflow's file goes to the File API's outbox (`POST /outbox`, or any put on `p.port.file-transfer.v1` on a host that names `TH_FILE_API_URL`), is kept with its payment and leg, and is delivered by the bank's binding: `sftp` (the Central Bank, the labour ministry, core banking; host keys pinned by reference, R-09-80), `directory` or `simulator`. Each delivery is a fact; a resend from the operations or service console sends the kept bytes again (R-09-78).
+- **On arrival.** The message must be one the active distribution receives; size, type and name checks; a duplicate by hash or by name is refused; an encrypted file is decrypted by `p.protect.decrypt-file.v1` with the bank's key; the file is kept once in the store with its signed SHA-256, linked to its payment, each step a fact (R-09-82, R-09-83).
+- **The front door** runs in the same process, behind the intake (R-09-85): a start message pins the payment to the bank's active distribution, runs the scheme's intake map on its worker, routes it by the dispatch table and `p.table.workflow-select.v1`, and starts it on the bank's engine host; a message for a running payment (an ACK or NAK, a PSI, an answer) is correlated to its payment and handed to the host of the distribution the payment is pinned to. The studio's deploy runner routes a start message the same way (`studio/src/deploy/route.ts`, one fixture for both).
+- **Out.** A workflow's file goes to the File API's outbox (`POST /outbox`, or any put on `p.port.file-transfer.v1` on a host that names `TH_FILE_API_URL`), is kept with its payment and leg, and is delivered by the bank's binding: `sftp` (the Central Bank, the labour ministry, core banking; host keys pinned by reference, R-09-86), `directory` or `simulator`. Each delivery is a fact; a resend from the operations or service console sends the kept bytes again (R-09-84).
 
 ```
 channel / corporate --HTTPS--+
@@ -120,7 +120,7 @@ laptop inbox folder ---------+        +-- outbox <-- workflows' file sends, cons
 | Where operators act on a running payment, and who they are | [I-65](../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) |
 | Traces, metrics, logs and health | [I-66](../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio) |
 | Secrets, keys and file decryption | [I-67](../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment) |
-| What the File API and the front door leave open: messages after a harness run started, file rules, inbox messages, host keys | [I-154](../ISSUES.md#i-154-the-file-api-and-the-runtimes-front-door) to [I-157](../ISSUES.md#i-157-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form) |
+| What the File API and the front door leave open: messages after a harness run started, file rules, inbox messages, host keys | [I-158](../ISSUES.md#i-158-the-file-api-and-the-runtimes-front-door) to [I-161](../ISSUES.md#i-161-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form) |
 | Performance targets, deployment sizes, reports | [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) |
 | Who keeps the SQL Server plugin on each Temporal release | [I-42](../ISSUES.md#i-42-who-keeps-the-sql-server-plugin-for-temporal-and-how-an-upgrade-is-proved) |
 | Where scripts run (D14), whether NRules is the evaluator (D13) | `docs/adr/0001-studio-stack.md` |

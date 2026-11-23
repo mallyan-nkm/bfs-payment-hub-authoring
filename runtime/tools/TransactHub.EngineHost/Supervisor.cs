@@ -181,7 +181,7 @@ public sealed class Supervisor(StoreOptions store, string engine, string bank, s
             res["distribution"] = dist;
             return (status, res);
         }
-        // A message the runtime's front door correlated to a running payment goes to the host of the distribution it is pinned to (R-09-79).
+        // A message the runtime's front door correlated to a running payment goes to the host of the distribution it is pinned to (R-09-85).
         if (method == "POST" && path.StartsWith("/payments/") && path.EndsWith("/messages"))
         {
             var id = Uri.UnescapeDataString(path["/payments/".Length..^"/messages".Length]);

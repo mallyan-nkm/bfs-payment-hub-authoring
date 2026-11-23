@@ -31,7 +31,7 @@ public sealed class DistributionApiTests(Databases dbs)
     };
 
     /// <summary>A distribution as the studio builds it: its files, a manifest with the bill of materials and the parameter contract, signed.</summary>
-    static byte[] Distribution(ECDsa key, string id, string body = "kind: workflow\nname: p.wf.corporate.v1\n", string longestWait = "P30D", JsonObject? contract = null, string kind = "distribution")
+    static byte[] Distribution(ECDsa key, string id, string body = "kind: workflow\nname: p.wf.corporate.v1\n", string longestWait = "P30D", JsonObject? contract = null, string kind = "distribution", string bank = Bank)
     {
         var files = new Dictionary<string, string> { ["workflows/p.wf.corporate.v1@1.0.0.yaml"] = body, ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n" };
         var bom = new JsonObject
@@ -40,27 +40,89 @@ public sealed class DistributionApiTests(Databases dbs)
             ["artefacts"] = new JsonArray(files.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => (JsonNode)new JsonObject { ["path"] = f.Key, ["sha256"] = Sha(f.Value) }).ToArray()),
         };
         var pc = contract ?? Contract();
-        var manifest = new JsonObject { ["kind"] = "distribution", ["id"] = id, ["bank"] = Bank, ["engine"] = "temporal", ["longestWait"] = longestWait, ["billOfMaterials"] = bom.DeepClone(), ["parameterContract"] = pc.DeepClone() };
+        var manifest = new JsonObject { ["kind"] = "distribution", ["id"] = id, ["bank"] = bank, ["engine"] = "temporal", ["longestWait"] = longestWait, ["billOfMaterials"] = bom.DeepClone(), ["parameterContract"] = pc.DeepClone() };
         files["manifest.yaml"] = manifest.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
-        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"dist/{Bank}@{id}", "", id, "temporal", Bank, "CS-TEST-001", kind, new JsonObject { ["billOfMaterials"] = bom, ["parameterContract"] = pc }), key, DateTimeOffset.UtcNow);
+        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"dist/{bank}@{id}", "", id, "temporal", bank, "CS-TEST-001", kind, new JsonObject { ["billOfMaterials"] = bom, ["parameterContract"] = pc }), key, DateTimeOffset.UtcNow);
         bytes[ReleaseSignature.StatementFile] = st;
         bytes[ReleaseSignature.SignatureFile] = sig;
         return TestSigners.Zip(bytes);
     }
 
-    static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null, Dictionary<string, string>? extra = null)
+    static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null, Dictionary<string, string>? extra = null, string bank = Bank)
     {
-        var files = new Dictionary<string, string> { ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {Bank}\nrelease: {release}\nvalues:\n{values}bindings: []\n" };
+        var files = new Dictionary<string, string> { ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {bank}\nrelease: {release}\nvalues:\n{values}bindings: []\n" };
         if (bindings is not null) files["bindings/port-bindings.yaml"] = bindings;
         foreach (var (k, v) in extra ?? []) files[k] = v;
         var bom = new JsonObject { ["artefacts"] = new JsonArray(files.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => (JsonNode)new JsonObject { ["path"] = f.Key, ["sha256"] = Sha(f.Value) }).ToArray()) };
-        files["manifest.yaml"] = new JsonObject { ["kind"] = "configuration-release", ["bank"] = Bank, ["release"] = release, ["billOfMaterials"] = bom.DeepClone() }.ToJsonString();
+        files["manifest.yaml"] = new JsonObject { ["kind"] = "configuration-release", ["bank"] = bank, ["release"] = release, ["billOfMaterials"] = bom.DeepClone() }.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
-        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"config/{Bank}@{release}", "", release, "", Bank, "CS-TEST-002", ReleaseSignature.ConfigurationRelease, new JsonObject { ["billOfMaterials"] = bom }), key, DateTimeOffset.UtcNow);
+        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"config/{bank}@{release}", "", release, "", bank, "CS-TEST-002", ReleaseSignature.ConfigurationRelease, new JsonObject { ["billOfMaterials"] = bom }), key, DateTimeOffset.UtcNow);
         bytes[ReleaseSignature.StatementFile] = st;
         bytes[ReleaseSignature.SignatureFile] = sig;
         return TestSigners.Zip(bytes);
+    }
+
+    /// <summary>
+    /// The runtime serves one bank (R-09-76): a distribution or configuration release signed for another bank, by a key the
+    /// runtime trusts and with every role the caller could hold, is refused at install; one of another bank already in the
+    /// store (put there before the runtime had its bank) is refused at activation; a payment of another bank is not pinned.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task Another_banks_distribution_configuration_and_payment_are_refused_whatever_the_callers_roles(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        var o = dbs.Fresh(p);
+        await using var host = new ApiHost(o, s);
+        var c = host.Client();
+        var other = await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.23-1", bank: "dib")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, other.StatusCode);
+        Assert.Contains("names bank dib, but this runtime serves example-bank only", (string?)(await J(other))["error"]);
+        var cfg = await c.PostAsync("/configuration-releases", new ByteArrayContent(Configuration(s.Key, "2026.11.23", "", bank: "dib")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, cfg.StatusCode);
+        Assert.Contains("serves example-bank only", (string?)(await J(cfg))["error"]);
+        // A distribution of another bank in the store (as an older runtime could have stored it) is never activated or drained.
+        await using (var db = StoreDbContext.Open(o))
+        {
+            var zip = Distribution(s.Key, "2026.11.23-2", bank: "dib");
+            await new DistributionRegistry(db).Store("dib", "2026.11.23-2", zip, new JsonObject { ["id"] = "2026.11.23-2", ["bank"] = "dib" }, Convert.ToHexStringLower(SHA256.HashData(zip)), "test", "older runtime");
+        }
+        var act = await Act(c, "activate", new { id = "dist/dib@2026.11.23-2", environment = "test", why = "x" });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, act.StatusCode);
+        Assert.Contains("serves example-bank only", (string?)(await J(act))["error"]);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await Act(c, "rollback", new { bank = "dib", environment = "test", why = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await c.PostAsJsonAsync("/payments/pin", new { paymentId = "PAY-DIB-1", bank = "dib", environment = "test" })).StatusCode);
+        // The runtime's own bank is installed as before.
+        Assert.Equal(HttpStatusCode.Created, (await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.23-1")))).StatusCode);
+    }
+
+    /// <summary>
+    /// The release API's machine caller may change which distribution runs only in the environments it is given, by default the
+    /// test environments (R-09-78): elsewhere a change of the system goes through the service console with a bank approver's consent.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task Outside_a_test_environment_the_pipeline_may_not_change_which_distribution_runs(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        await using var host = new ApiHost(dbs.Fresh(p), s, b => b.UseSetting("Releases:MachineActivationEnvironments", null));
+        var c = host.Client();
+        Assert.Equal(HttpStatusCode.Created, (await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.23-1")))).StatusCode);
+        foreach (var (what, body) in new (string, object)[] { ("activate", new { id = "dist/example-bank@2026.11.23-1", environment = "production", why = "x" }), ("drain", new { id = "dist/example-bank@2026.11.23-1", environment = "production", why = "x" }), ("remove", new { id = "dist/example-bank@2026.11.23-1", environment = "production", why = "x" }), ("rollback", new { bank = Bank, environment = "production", why = "x" }) })
+        {
+            var r = await Act(c, what, body);
+            Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+            Assert.Contains("bank approver consents", (string?)(await J(r))["error"]);
+        }
+        Assert.Equal(HttpStatusCode.Created, (await Act(c, "activate", new { id = "dist/example-bank@2026.11.23-1", environment = "test", why = "kit" })).StatusCode);
+    }
+
+    /// <summary>A runtime without its bank does not start (R-09-76).</summary>
+    [Fact]
+    public async Task A_runtime_without_its_bank_does_not_start()
+    {
+        using var s = new TestSigners();
+        await using var host = new ApiHost(dbs.Fresh(StoreProvider.PostgreSql), s, b => b.UseSetting("TH_BANK", ""));
+        Assert.Contains("Set TH_BANK", Assert.ThrowsAny<Exception>(() => host.Client()).ToString());
     }
 
     static Task<HttpResponseMessage> Act(HttpClient c, string what, object body) => c.PostAsJsonAsync($"/distributions/{what}", body);

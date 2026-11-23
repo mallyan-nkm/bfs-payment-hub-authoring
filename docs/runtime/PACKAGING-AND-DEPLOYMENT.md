@@ -82,6 +82,9 @@ A distribution moves through these states. Each change is an insert-only activat
 - **Switch-over:** activating a new distribution moves the old one to Draining in the same step. From that instant, new payments take the new one.
 - **Removal** is refused while any payment pinned to the distribution is open, or before its longest declared wait (for example the 30-day returns wait) has passed. The service console shows the open count per distribution.
 - **Rollback:** activate the previous distribution again. If it was removed, reinstall it from GitHub first. Payments that started on the newer one finish on it.
+- **One bank per runtime** (owner's decision of 23 November 2026, R-09-76): a runtime is configured with its bank at install (`TH_BANK`) and refuses a distribution or configuration release whose signed manifest names another bank, at verify, install and activate. The studio builds distributions for every bank; each bank's runtime takes only its own.
+- **Consent** (owner's decision of 23 November 2026, R-09-77): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-78).
+- **Insert-only, at the database too** (R-09-81): a deployment runs the hosts as a login that may insert and read the store, never update or delete it. `deploy/laptop/test/insert-only.mts` shows a switch-over end to end on the laptop stack and that no row of a distribution, its activations or the fact log changed.
 
 ## 7. The dependency tree
 
@@ -137,7 +140,7 @@ Runtime software (NEST images, store schema)
 
 ## 11. The File API: how files reach and leave a runtime
 
-Owner's decision of 23 November 2026 (R-09-76 to R-09-80, I-154).
+Owner's decision of 23 November 2026 (R-09-82 to R-09-86, I-158).
 
 | Part | Runtime software | Its settings at an installation |
 | --- | --- | --- |
@@ -146,6 +149,6 @@ Owner's decision of 23 November 2026 (R-09-76 to R-09-80, I-154).
 | SFTP gateway | The `sftp` adapter in the File API (`TransactHub.Ports`), polling each partner's inbox and pushing the outbox | The bank's binding of `p.port.file-transfer.v1` (a configuration release): partners, host keys and login by reference, `sessions.*` |
 
 - A file is routed by the distribution active for the bank: its dispatch table says whether the file starts a payment or answers one. A file for a payment pinned to a draining distribution is handed to that distribution's host, never the new one.
-- The bank's file rules (name, extension, size) and its inboxes are settings of the installation until the scheme declares them (I-155, I-156).
+- The bank's file rules (name, extension, size) and its inboxes are settings of the installation until the scheme declares them (I-159, I-160).
 - On a laptop the binding is `directory`: the inbox and the outbox are folders the compose set-up mounts. At a bank it is `sftp`.
-- The engine host on Temporal takes a correlated message at any time; on DTFx, Elsa and Flowable a payment's run takes none after it started (I-154).
+- The engine host on Temporal takes a correlated message at any time; on DTFx, Elsa and Flowable a payment's run takes none after it started (I-158).

@@ -1,7 +1,7 @@
 namespace TransactHub.FileApi;
 
 /// <summary>
-/// The File API's roles (R-09-76), per tenant, from the bank's role map (R-06-28). Its callers are system clients of the bank's
+/// The File API's roles (R-09-82), per tenant, from the bank's role map (R-06-28). Its callers are system clients of the bank's
 /// identity provider (client credentials), but for <see cref="Uploader"/>, a person at the bank's own upload screen.
 /// <list type="table">
 /// <item><term>file-sender</term><description>a channel or a corporate system: <c>POST /files</c></description></item>

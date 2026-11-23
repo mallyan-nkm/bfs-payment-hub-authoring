@@ -1,0 +1,14 @@
+# A test bench profile (runtime/testbench/README.md): it fixes the engines, the database, the tenant, the bench and
+# the environment, so a user sends only data: testbench run --profile <name> --file <data>.
+# It names no engines: the run takes the default engine, Temporal (R-09-79), on the Temporal SQL Server plugin where the bench
+# is given one (TH_TEMPORAL_ADDRESS, as in deploy/laptop), with the store on SQL Server. A tester may tick DTFx, Elsa or Flowable.
+kind: testbench-profile
+name: wps-default-engine
+title: WPS outward on the default engine (Temporal, on SQL Server in a deployment) against the interpreter
+workflow: p.wf.corporate.v1
+message: uae.wps.sif
+tenant: example-bank
+reference: true
+databases: [SqlServer]
+bench: wps-happy
+clock: { date: '2026-11-17' }

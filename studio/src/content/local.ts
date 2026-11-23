@@ -12,10 +12,10 @@ const CONTENT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 export const LOCAL_REPO = { owner: 'local', repo: 'content', branch: 'main' };
 
-export async function startLocalContent(opts: { token?: string; dir?: string; unref?: boolean; port?: number } = {}) {
+export async function startLocalContent(opts: { token?: string; dir?: string; unref?: boolean; port?: number; host?: string } = {}) {
   const token = opts.token ?? 'local-development-token';
   const fake = new FakeGitHub(token);
-  const url = await fake.start({ unref: opts.unref, port: opts.port });
+  const url = await fake.start({ unref: opts.unref, port: opts.port, host: opts.host });
   fake.seedFromDir(`${LOCAL_REPO.owner}/${LOCAL_REPO.repo}`, LOCAL_REPO.branch, opts.dir ?? CONTENT_DIR, 'content-configurations');
   const connection: ContentConnection = { api: url, owner: LOCAL_REPO.owner, repo: LOCAL_REPO.repo, branch: LOCAL_REPO.branch, root: 'content-configurations', token: () => token };
   return { fake, url, token, connection, stop: () => fake.stop() };

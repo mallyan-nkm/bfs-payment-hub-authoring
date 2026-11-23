@@ -8,7 +8,7 @@ using TransactHub.Store;
 namespace TransactHub.Service.Tests;
 
 /// <summary>
-/// Troubleshooting actions (R-09-43): each needs a reason; a risky one waits for a ServiceApprover who is another person;
+/// Troubleshooting actions (R-09-43): each needs a reason; one that changes the system waits for a bank approver who is another person (R-09-77);
 /// each runs end to end (a hold released or expired, the operator's controls on the outbox for the engine's host, a file resent,
 /// a posting reconciled, intake paused and resumed, a worker drained and restarted, a dead-letter job requeued, a key rotated, the
 /// read model rebuilt), Issue I-101. Every step is a fact.
@@ -60,12 +60,12 @@ public sealed class ActionTests(Databases dbs)
         }
 
         // The operator's controls reach the engine's host through the outbox (R-05-55, R-05-57): only a parked step takes them.
-        var retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
+        var retry = await api.Act(se, new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" });
         Assert.Equal("refused", (string?)retry["status"]);
         Assert.Equal("ops.NoParkedStep", (string?)retry["code"]);
         await using (var db = StoreDbContext.Open(api.Store))
             await new FactLog(db).Append(bulk, "bulk", new NewFact("step", "stuck", new JsonObject { ["instance"] = "root/leg3", ["step"] = "submit" }, Actor: "engine"));
-        retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
+        retry = await api.Act(se, new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" });
         Assert.True((string?)retry["status"] == "done", retry.ToJsonString());
         foreach (var a in new[] { "redrive-workflow", "reset-activity" })
         {
@@ -80,7 +80,7 @@ public sealed class ActionTests(Databases dbs)
         var ex = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "expire-hold", target = bulk, reason = "the employer withdrew" }));
         Assert.Equal("done", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)ex["action"]!}/decision", new { approve = true, reason = "checked" })))["status"]);
         // Re-screen is delivered by the engine's host (R-05-57).
-        var rs = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "re-screen", target = bulk, reason = "lists updated" }));
+        var rs = await api.Act(se, new { action = "re-screen", target = bulk, reason = "lists updated" });
         Assert.Equal("done", (string?)rs["status"]);
         Assert.True((bool)rs["result"]!["queued"]!);
         await using (var db = StoreDbContext.Open(api.Store))
@@ -96,7 +96,7 @@ public sealed class ActionTests(Databases dbs)
         var pause = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "pause-intake", target = "uae.wps", reason = "the Central Bank's window is closed", parameters = new { tenant = Seed.Tenant } }));
         Assert.Equal("done", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)pause["action"]!}/decision", new { approve = true, reason = "agreed" })))["status"]);
         await using (var db = StoreDbContext.Open(api.Store)) Assert.True(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
-        Assert.Equal("done", (string?)(await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "resume-intake", target = "uae.wps", reason = "open again", parameters = new { tenant = Seed.Tenant } })))["status"]);
+        Assert.Equal("done", (string?)(await api.Act(se, new { action = "resume-intake", target = "uae.wps", reason = "open again", parameters = new { tenant = Seed.Tenant } }))["status"]);
         await using (var db = StoreDbContext.Open(api.Store)) Assert.False(await IntakeSwitch.Paused(db, Seed.Tenant, "uae.wps"));
 
         // Drain and restart a worker through its own control (R-09-63); one that does not answer is refused with the code.
@@ -209,10 +209,10 @@ public sealed class ActionTests(Databases dbs)
             ["Service:TrustWritable"] = "true",
         }, flowable: flowable);
         var se = api.Engineer;
-        var r = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "requeue-dead-letter", target = "job-1", reason = "core banking back" }));
+        var r = await api.Act(se, new { action = "requeue-dead-letter", target = "job-1", reason = "core banking back" });
         Assert.Equal("done", (string?)r["status"]);
         Assert.Equal("POST /flowable-rest/service/management/deadletter-jobs/job-1 {\"action\":\"move\"} Basic", flowable.Calls.Single());
-        var missing = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "requeue-dead-letter", target = "job-9", reason = "x" }));
+        var missing = await api.Act(se, new { action = "requeue-dead-letter", target = "job-9", reason = "x" });
         Assert.Equal("flowable.DeadLetterJob", (string?)missing["code"]);
 
         using var next = ECDsa.Create(ECCurve.NamedCurves.nistP256);

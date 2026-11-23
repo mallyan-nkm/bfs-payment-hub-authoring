@@ -165,7 +165,7 @@ public sealed class DistributionWorkers : IAsyncDisposable
 
     /// <summary>
     /// Hands a message for a running payment to its front door workflow, which routes it by correlation to the run that awaits it
-    /// (R-09-79). Answers false when this host runs no such payment.
+    /// (R-09-85). Answers false when this host runs no such payment.
     /// </summary>
     public async Task<bool> DeliverAsync(string paymentId, JsonObject message)
     {

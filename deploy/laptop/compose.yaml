@@ -1,0 +1,406 @@
+# The TransactHub studio and one bank's runtime on a laptop, as separate services (deploy/laptop/README.md, spec R-09-80).
+#
+#   docker compose -f deploy/laptop/compose.yaml up -d --wait                       studio, runtime, Temporal on SQL Server
+#   docker compose -f deploy/laptop/compose.yaml --profile dtfx --profile elsa up -d    and an engine host supervisor per engine
+#   docker compose -f deploy/laptop/compose.yaml --profile flowable up -d              and the Flowable REST server with its supervisor
+#   docker compose -f deploy/laptop/compose.yaml --profile observability up -d         and the OpenTelemetry collector and Prometheus
+#
+# One runtime serves one bank (TH_LAPTOP_BANK, R-09-76); the studio is multi-tenant. Every secret comes from the environment
+# (a password or a client secret, required below with :?) or a file in a volume (the keys keys-init makes on first start); no
+# image holds one. Ports are published on 127.0.0.1 only.
+
+name: th-laptop
+
+x-runtime: &runtime
+  image: th-laptop-runtime:${TH_LAPTOP_TAG:-dev}
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  volumes:
+    - keys:/var/lib/transacthub/keys:ro
+    - jwks:/var/lib/transacthub/jwks:ro
+
+x-store: &store
+  Store__Provider: SqlServer
+  Store__Connection: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+  Operations__Connection: "Server=sqlserver,1433;Database=th_ops;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+  Store__Migrate: "false"
+  TH_BANK: ${TH_LAPTOP_BANK:-adib}
+  TH_TRUSTED_SIGNERS: file:/var/lib/transacthub/keys/trusted-signers.json
+  Operations__Views: /opt/th/content-configurations/artefacts
+  ASPNETCORE_ENVIRONMENT: Development
+  OTEL_SERVICE_NAMESPACE: th-laptop
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${TH_LAPTOP_OTLP:-}
+
+x-auth: &auth
+  # Files a host reads by reference: the keys and JWKS volumes, and the role maps in the image.
+  TH_SECRET_FILE_ROOTS: /var/lib/transacthub:/opt/th/deploy/laptop/identity
+  Auth__Oidc__Issuer: ${TH_LAPTOP_IDP_URL:-http://localhost:8480}
+  Auth__Oidc__Authority: ${TH_LAPTOP_IDP_URL:-http://localhost:8480}
+  Auth__Oidc__Audience: transacthub-runtime
+  Auth__Oidc__SigningKeys: file:/var/lib/transacthub/jwks/jwks.json
+  Auth__Oidc__RequireHttpsMetadata: "false"
+  Auth__Oidc__ClientId: transacthub-runtime-ui
+  TH_STUDIO_ISSUER: ${TH_LAPTOP_STUDIO_URL:-http://localhost:4317}/auth/dev
+
+x-github: &github
+  # The studio's content branch, read only: its in-memory fake GitHub by default, the real one when TH_CONTENT_REPO is set.
+  PackageSource__GitHub__Repository: ${TH_CONTENT_REPO:-local/content}
+  PackageSource__GitHub__Api: ${TH_LAPTOP_GITHUB_API:-http://studio:4318/}
+  PackageSource__GitHub__TokenRef: env:TH_LAPTOP_GITHUB_READ_TOKEN
+  TH_LAPTOP_GITHUB_READ_TOKEN: ${TH_LAPTOP_GITHUB_READ_TOKEN:-local-development-token}
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${TH_LAPTOP_SA_PASSWORD:?set TH_LAPTOP_SA_PASSWORD}
+      MSSQL_MEMORY_LIMIT_MB: "2048"
+      TH_SA: ${TH_LAPTOP_SA_PASSWORD:?set TH_LAPTOP_SA_PASSWORD}
+    volumes: [sql:/var/opt/mssql]
+    ports: ["127.0.0.1:${TH_LAPTOP_SQL_PORT:-14330}:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$TH_SA\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  keys-init:
+    <<: *runtime
+    restart: "no"
+    command: ["keys"]
+    volumes: [keys:/var/lib/transacthub/keys]
+    healthcheck: { disable: true }
+
+  db-init:
+    <<: *runtime
+    restart: "no"
+    command: ["migrate"]
+    depends_on: { sqlserver: { condition: service_healthy } }
+    environment:
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION_REF: env:TH_OWNER_STORE
+      TH_OPS_CONNECTION_REF: env:TH_OWNER_OPS
+      TH_OWNER_STORE: "Server=sqlserver,1433;Database=th_store;User Id=sa;Password=${TH_LAPTOP_SA_PASSWORD};TrustServerCertificate=true"
+      TH_OWNER_OPS: "Server=sqlserver,1433;Database=th_ops;User Id=sa;Password=${TH_LAPTOP_SA_PASSWORD};TrustServerCertificate=true"
+      Operations__Views: /opt/th/content-configurations/artefacts
+    healthcheck: { disable: true }
+
+  temporal-schema:
+    image: th-laptop-temporal:${TH_LAPTOP_TAG:-dev}
+    restart: "no"
+    command: ["schema"]
+    depends_on: { sqlserver: { condition: service_healthy } }
+    environment:
+      TEMPORAL_SQLSERVER_ADDR: sqlserver:1433
+      TEMPORAL_SQLSERVER_USER: sa
+      TEMPORAL_SQLSERVER_PASSWORD: ${TH_LAPTOP_SA_PASSWORD}
+    healthcheck: { disable: true }
+
+  db-grants:
+    image: mcr.microsoft.com/mssql/server:2022-latest@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+    restart: "no"
+    depends_on:
+      db-init: { condition: service_completed_successfully }
+      temporal-schema: { condition: service_completed_successfully }
+    environment:
+      TH_SA: ${TH_LAPTOP_SA_PASSWORD}
+      RUNTIME_PASSWORD: ${TH_LAPTOP_RUNTIME_DB_PASSWORD:?set TH_LAPTOP_RUNTIME_DB_PASSWORD}
+      TESTBENCH_PASSWORD: ${TH_LAPTOP_TESTBENCH_DB_PASSWORD:?set TH_LAPTOP_TESTBENCH_DB_PASSWORD}
+      TEMPORAL_PASSWORD: ${TH_LAPTOP_TEMPORAL_DB_PASSWORD:?set TH_LAPTOP_TEMPORAL_DB_PASSWORD}
+    volumes: ["./sql:/grants:ro"]
+    entrypoint: ["/bin/sh", "-c", "/opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P \"$$TH_SA\" -b -i /grants/grants.sql"]
+    healthcheck: { disable: true }
+
+  temporal:
+    image: th-laptop-temporal:${TH_LAPTOP_TAG:-dev}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    command: ["server"]
+    depends_on: { db-grants: { condition: service_completed_successfully } }
+    environment:
+      TEMPORAL_SQLSERVER_ADDR: sqlserver:1433
+      TEMPORAL_SQLSERVER_USER: th_temporal
+      TEMPORAL_SQLSERVER_PASSWORD: ${TH_LAPTOP_TEMPORAL_DB_PASSWORD}
+    ports: ["127.0.0.1:${TH_LAPTOP_TEMPORAL_PORT:-17233}:7233"]
+
+  temporal-namespace:
+    image: temporalio/temporal:1.5.1@sha256:597a5dbbcc6e7716b326dde4a51622d5ea0879eb0cf06ff8a94381361d0a987d
+    restart: "no"
+    depends_on: { temporal: { condition: service_healthy } }
+    entrypoint: ["/bin/sh", "-c", "temporal operator namespace describe --namespace default --address temporal:7233 >/dev/null 2>&1 || temporal operator namespace create --namespace default --retention 72h --address temporal:7233"]
+
+  bank-idp:
+    <<: *runtime
+    command: ["idp"]
+    depends_on: { keys-init: { condition: service_completed_successfully } }
+    volumes: [idp:/var/lib/transacthub/idp, jwks:/var/lib/transacthub/jwks]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DevIdp__Issuer: ${TH_LAPTOP_IDP_URL:-http://localhost:8480}
+      DevIdp__Audience: transacthub-runtime
+      DevIdp__Bank: ${TH_LAPTOP_BANK:-adib}
+      DevIdp__Directory: /opt/th/deploy/laptop/identity/directory.json
+      DevIdp__KeyFile: /var/lib/transacthub/idp/signing-key.pem
+      DevIdp__JwksOut: /var/lib/transacthub/jwks/jwks.json
+      DevIdp__UserPasswordRef: env:TH_LAPTOP_USER_PASSWORD
+      DevIdp__CorsOrigins: http://localhost:8482,http://localhost:8483,http://localhost:8484
+      TH_LAPTOP_USER_PASSWORD: ${TH_LAPTOP_USER_PASSWORD:?set TH_LAPTOP_USER_PASSWORD}
+      TH_LAPTOP_PIPELINE_SECRET: ${TH_LAPTOP_PIPELINE_SECRET:?set TH_LAPTOP_PIPELINE_SECRET}
+      TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET:?set TH_LAPTOP_FRONTDOOR_SECRET}
+      TH_HEALTH_URL: http://127.0.0.1:8080/health
+    ports: ["127.0.0.1:8480:8080"]
+
+  studio:
+    image: th-laptop-studio:${TH_LAPTOP_TAG:-dev}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    depends_on: { keys-init: { condition: service_completed_successfully } }
+    volumes: ["keys:/var/lib/transacthub/keys:ro"]
+    environment:
+      PORT: "4317"
+      NODE_ENV: development
+      TH_PUBLIC_URL: ${TH_LAPTOP_STUDIO_URL:-http://localhost:4317}
+      # The studio's sign-in: its built-in development provider (the platform vendor's identity provider on a laptop), or
+      # TH_OIDC_ISSUER and TH_OIDC_CLIENT_ID for the vendor's real one (R-11-29).
+      TH_AUTH_DEV: ${TH_LAPTOP_STUDIO_AUTH_DEV:-1}
+      TH_OIDC_ISSUER: ${TH_OIDC_ISSUER:-}
+      TH_OIDC_CLIENT_ID: ${TH_OIDC_CLIENT_ID:-}
+      TH_BANKS: ${TH_LAPTOP_STUDIO_BANKS:-adib,dib}
+      TH_CONTENT_REPO: ${TH_CONTENT_REPO:-}
+      TH_CONTENT_BRANCH: ${TH_CONTENT_BRANCH:-main}
+      TH_GITHUB_TOKEN: ${TH_GITHUB_TOKEN:-}
+      TH_FAKE_GITHUB_PORT: "4318"
+      TH_FAKE_GITHUB_HOST: 0.0.0.0
+      TH_SIGNING_KEY: file:/var/lib/transacthub/keys/studio-signing.pem
+      TH_TRUSTED_SIGNERS: file:/var/lib/transacthub/keys/trusted-signers.json
+      TH_SECRET_FILE_ROOTS: /var/lib/transacthub/keys
+    ports: ["127.0.0.1:4317:4317"]
+
+  runtime-api:
+    <<: *runtime
+    command: ["api"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+      studio: { condition: service_healthy }
+    environment:
+      <<: [*store, *auth, *github]
+      Releases__TestEnvironments: test
+      TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
+    ports: ["127.0.0.1:8481:8080"]
+
+  service-api:
+    <<: *runtime
+    command: ["service"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+      studio: { condition: service_healthy }
+    environment:
+      <<: [*store, *auth, *github]
+      Service__Environment: test
+      Releases__TestEnvironments: test
+      Service__Project: "false"
+      Service__Console: /opt/th/runtime/ops-console/dist
+      Service__Errors: /opt/th/content-configurations/artefacts
+      Service__Docs: /opt/th/docs/north-star
+      Service__Banks: /opt/th/content-configurations/banks
+      Service__Installation: laptop-${TH_LAPTOP_BANK:-adib}
+      TH_BACKUP_SIGNING_KEY: file:/var/lib/transacthub/keys/backup-signing.pem
+      TH_TEMPORAL_ADDRESS: temporal:7233
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-service.json
+    ports: ["127.0.0.1:8482:8080"]
+
+  ops-api:
+    <<: *runtime
+    command: ["ops"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+    environment:
+      <<: [*store, *auth]
+      Operations__Console: /opt/th/runtime/ops-console/dist
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-ops.json
+      TH_HEALTH_URL: http://127.0.0.1:8080/ops/api/health
+    ports: ["127.0.0.1:8483:8080"]
+
+  testbench:
+    <<: *runtime
+    command: ["testbench"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+      temporal-namespace: { condition: service_completed_successfully }
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - jwks:/var/lib/transacthub/jwks:ro
+      - work:/var/lib/transacthub/work
+    environment:
+      <<: [*auth]
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-testbench.json
+      TH_SECRET_FILE_ROOTS: /var/lib/transacthub:/opt/th/deploy/laptop/identity
+      # Temporal is the default engine, on the SQL Server plugin (R-09-79); DTFx and Elsa run in the bench's harnesses, Flowable
+      # on its REST server with the flowable profile.
+      TH_TEMPORAL_ADDRESS: temporal:7233
+      TH_FLOWABLE_URL: ${TH_LAPTOP_FLOWABLE_URL:-http://flowable:8080/flowable-rest}
+      TH_FLOWABLE_USER: th-laptop
+      TH_FLOWABLE_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}
+      TH_TESTBENCH_SQLSERVER: "Server=sqlserver,1433;User Id=th_testbench;Password=${TH_LAPTOP_TESTBENCH_DB_PASSWORD};TrustServerCertificate=true"
+      TH_TESTBENCH_LOCAL: /var/lib/transacthub/work/testbench
+      TH_TRUSTED_SIGNERS: file:/var/lib/transacthub/keys/trusted-signers.json
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      # The front door's one-off runs (run-pinned) in this container reach the release API and the bank's provider.
+      TH_RUNTIME_API: http://runtime-api:8080
+      TH_IDP_TOKEN_URL: http://bank-idp:8080/token
+      TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET}
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      TH_HEALTH_URL: http://127.0.0.1:8080/testbench/api/health
+      HOME: /var/lib/transacthub/work
+    ports: ["127.0.0.1:8484:8080"]
+
+  native:
+    <<: *runtime
+    command: ["native"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+    environment:
+      <<: [*store, *auth]
+      TH_NATIVE_URLS: http://0.0.0.0:7300
+      TH_BANKS_DIR: /opt/th/content-configurations/banks
+      TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-native.json
+      TH_HEALTH_URL: http://127.0.0.1:7300/health
+
+  # The File API (R-09-82 to R-09-86, I-158): every file the runtime receives or sends, the front door behind its intake. On a laptop
+  # the bank's file-transfer binding is a folder: the inbox and the outbox are the `files` volume (TH_LAPTOP_FILES_ROOT inside it).
+  file-api:
+    <<: *runtime
+    command: ["file-api"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      bank-idp: { condition: service_healthy }
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - jwks:/var/lib/transacthub/jwks:ro
+      - files:/var/lib/transacthub/files
+    environment:
+      <<: [*store, *auth]
+      FileApi__Environment: test
+      TH_BANKS_DIR: /opt/th/content-configurations/banks
+      TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
+      Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-file-api.json
+    ports: ["127.0.0.1:8485:8080"]
+
+  # The long-running engine host: a supervisor per engine for the runtime's bank, Temporal by default (R-09-66, R-09-79).
+  enginehost: &enginehost
+    <<: *runtime
+    command: ["enginehost"]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      temporal-namespace: { condition: service_completed_successfully }
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - work:/var/lib/transacthub/work
+    environment:
+      TH_ENGINE: temporal
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      TH_ENVIRONMENT: test
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      TH_TEMPORAL_ADDRESS: temporal:7233
+      TH_HOST_PLANS: /var/lib/transacthub/work/plans/temporal
+      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      HOME: /var/lib/transacthub/work
+
+  enginehost-dtfx:
+    <<: *enginehost
+    profiles: [dtfx]
+    environment:
+      TH_ENGINE: dtfx
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      TH_ENVIRONMENT: test
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      TH_HOST_PLANS: /var/lib/transacthub/work/plans/dtfx
+      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      HOME: /var/lib/transacthub/work
+
+  enginehost-elsa:
+    <<: *enginehost
+    profiles: [elsa]
+    environment:
+      TH_ENGINE: elsa
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      TH_ENVIRONMENT: test
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      TH_HOST_PLANS: /var/lib/transacthub/work/plans/elsa
+      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      HOME: /var/lib/transacthub/work
+
+  enginehost-flowable:
+    <<: *enginehost
+    profiles: [flowable]
+    depends_on:
+      db-grants: { condition: service_completed_successfully }
+      flowable: { condition: service_healthy }
+    environment:
+      TH_ENGINE: flowable
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      TH_ENVIRONMENT: test
+      TH_STORE_PROVIDER: SqlServer
+      TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
+      TH_FLOWABLE_URL: http://flowable:8080/flowable-rest
+      TH_FLOWABLE_USER: th-laptop
+      TH_FLOWABLE_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}
+      TH_HOST_PLANS: /var/lib/transacthub/work/plans/flowable
+      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      HOME: /var/lib/transacthub/work
+
+  flowable:
+    image: flowable/flowable-rest:7.1.0@sha256:b7ae287502cd5c243b577a0ca2894172e1c18cd75aea4fd67dc7d58f1b40db44
+    profiles: [flowable]
+    restart: unless-stopped
+    environment:
+      FLOWABLE_REST_APP_CREATE_DEMO_DEFINITIONS: "false"
+      FLOWABLE_REST_APP_ADMIN_USER_ID: th-laptop
+      FLOWABLE_REST_APP_ADMIN_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}
+      FLOWABLE_ASYNC_EXECUTOR_ACTIVATE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/flowable-rest/actuator/health || curl -fs http://127.0.0.1:8080/flowable-rest/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+    profiles: [observability]
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["../../runtime/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["127.0.0.1:4318:4318"]
+
+  prometheus:
+    image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
+    profiles: [observability]
+    restart: unless-stopped
+    volumes:
+      - "../../runtime/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "../../runtime/observability/alerts:/etc/prometheus/alerts:ro"
+    ports: ["127.0.0.1:9090:9090"]
+
+volumes:
+  sql:
+  keys:
+  idp:
+  jwks:
+  files:
+  work:

@@ -6,7 +6,7 @@ namespace TransactHub.Ports;
 
 /// <summary>
 /// Whose a file is that an activity puts on the file-transfer port: the payment, the leg, the scheme and what the file is. The File
-/// API keeps an outbox file under them, so it is shown in the payment's documents tab (R-09-64, R-09-78). Set around the put.
+/// API keeps an outbox file under them, so it is shown in the payment's documents tab (R-09-64, R-09-84). Set around the put.
 /// </summary>
 public sealed record FileTransferOwner(string? PaymentId, string? Leg, string Scheme, string Kind, string? Activity)
 {
@@ -27,7 +27,7 @@ public sealed record FileTransferOwner(string? PaymentId, string? Leg, string Sc
 }
 
 /// <summary>
-/// The file-transfer port on a host whose files go through the File API (R-09-78): a put is a write to the File API's outbox
+/// The file-transfer port on a host whose files go through the File API (R-09-84): a put is a write to the File API's outbox
 /// (<c>POST /outbox</c>), which keeps the file and delivers it on the bank's binding; a file the File API could not deliver yet stays in
 /// its outbox and is tried again there. Reads, lists and removals are the binding's adapter's.
 /// </summary>

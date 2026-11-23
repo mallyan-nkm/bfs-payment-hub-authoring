@@ -6,8 +6,8 @@ namespace TransactHub.Ports;
 // The file-transfer port (p.port.file-transfer.v1, R-12-12) on the runtime: a file put in a folder of the bank's counterpart,
 // read back, listed and removed. Which transport carries it is the bank's binding. This runtime builds three adapters: `simulator`,
 // an in-memory folder tree for tests and the example bank; `directory`, a folder on the host's file system (a mounted share, or a
-// laptop's inbox and outbox); and `sftp`, the bank's SFTP partners (Sftp.cs, Issue I-129, R-09-80). Every file the runtime sends
-// or receives goes through the File API (runtime/src/TransactHub.FileApi, R-09-76), which uses these adapters.
+// laptop's inbox and outbox); and `sftp`, the bank's SFTP partners (Sftp.cs, Issue I-129, R-09-86). Every file the runtime sends
+// or receives goes through the File API (runtime/src/TransactHub.FileApi, R-09-82), which uses these adapters.
 
 /// <summary>A file in or out, by folder and name.</summary>
 public interface IFileTransfer
@@ -26,7 +26,7 @@ public static class FileTransferAdapters
     /// <summary>
     /// The adapter a binding names. On a host whose files go through the File API (<c>TH_FILE_API_URL</c>, with its token by reference in
     /// <c>TH_FILE_API_TOKEN_REF</c>), a file put is written to the File API's outbox, which delivers it on the same binding and records
-    /// the delivery (R-09-78); reads stay on the adapter. The File API itself builds the adapter direct.
+    /// the delivery (R-09-84); reads stay on the adapter. The File API itself builds the adapter direct.
     /// </summary>
     public static IFileTransfer Create(PortBinding b, ISecretResolver? secrets = null) =>
         Environment.GetEnvironmentVariable("TH_FILE_API_URL") is { Length: > 0 } api

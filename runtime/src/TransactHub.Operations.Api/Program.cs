@@ -30,13 +30,15 @@ builder.Services.AddSingleton(views);
 builder.Services.AddSingleton(new Projector(store, ops, views, clock));
 builder.Services.AddSingleton<IEngineSignals>(new OutboxSignals(store, clock));
 // Resend (R-05-58): the file-transfer port the runtime sends a kept file on again, a folder the scheme's gateway collects from.
-// With the File API (Operations:FileApi:Url), the resend goes through its outbox and is delivered on the bank's binding (R-09-78).
+// With the File API (Operations:FileApi:Url), the resend goes through its outbox and is delivered on the bank's binding (R-09-84).
 var resendFolder = builder.Configuration["Operations:FileTransfer:Folder"] ?? builder.Configuration["TH_FILE_TRANSFER_DIR"];
 var resendPort = FileApiPort.FromConfiguration(k => builder.Configuration[k], "Operations") ?? (resendFolder is { Length: > 0 } ? new FolderFileTransfer(resendFolder) : null);
 builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.GetRequiredService<IEngineSignals>(), clock,
     resendPort is not null ? new FileResend(store, resendPort, clock) : null));
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
 builder.Services.AddSingleton(new Reports(ops, views));
+// The console's own chain (R-09-77, R-05-65): its exports, and the changes of the system it waits for a bank approver's consent to.
+builder.Services.AddSingleton(new ConsoleRecord(store, clock));
 // The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
 builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
 builder.Services.AddHostedService<ProjectionService>();
@@ -207,7 +209,7 @@ api.MapGet("/reports/dashboard", async (HttpContext http, Reports reports) =>
     var (tenants, f, refused) = await ReportScope(http, o);
     return refused ?? Results.Ok(await reports.Dashboard(tenants!, f, http.RequestAborted));
 });
-api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILoggerFactory logs) =>
+api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILoggerFactory logs, ConsoleRecord record) =>
 {
     await using var o = OpsDbContext.Open(ops);
     var (tenants, f, refused) = await ReportScope(http, o);
@@ -215,6 +217,11 @@ api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILog
     var (csv, rows, cut) = await reports.Csv(tenants!, f, http.RequestAborted);
     // Who exported what is logged with ids only (R-09-35).
     logs.CreateLogger("TransactHub.Operations.Export").LogWarning("Export of {Rows} payment(s) for {Tenants} by {Subject}", rows, string.Join(",", tenants!), Who(http)!.Subject);
+    // Every export is an audit fact on the console's chain: who, when, the filter and the row count (R-05-65, Issue I-144).
+    var filter = new JsonObject();
+    foreach (var (k, v) in http.Request.Query.OrderBy(q => q.Key, StringComparer.Ordinal)) filter[k] = v.ToString();
+    var fact = await record.Exported(Who(http)!, "csv", tenants!, filter, rows, cut, http.RequestAborted);
+    http.Response.Headers["x-th-export-fact"] = fact.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture);
     http.Response.Headers["x-th-rows"] = rows.ToString(System.Globalization.CultureInfo.InvariantCulture);
     if (cut) http.Response.Headers["x-th-cut"] = "true";
     return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", $"payments-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.csv");
@@ -276,14 +283,34 @@ api.MapGet("/actions/pending", async (HttpContext http) =>
     return Results.Ok(rows.Where(a => a.SecondApprover is null || who.Has(a.Tenant, a.SecondApprover)));
 });
 
-// Throw the read model away and replay every fact: a supervisor of any tenant (it changes nothing in the store).
-api.MapPost("/rebuild", async (HttpContext http, Projector p) =>
+// Throw the read model away and replay every fact: a supervisor asks (it changes nothing in the store, but it changes the
+// system operators read), and it is carried out once a bank approver, another person, consents (R-09-77).
+api.MapPost("/rebuild", async (Reasoned? body, HttpContext http, ConsoleRecord record) =>
 {
     if (Who(http) is not { } who) return Problem(401, "Sign in");
     if (!who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor))) return Problem(403, "Rebuilding needs a supervisor");
-    await p.Rebuild();
-    return Results.Ok(new { lag = await p.Lag() });
+    try { return Results.Json(await record.Request(who, "rebuild-read-model", body?.Remarks), statusCode: 202); }
+    catch (ActionRefused e) { return Problem(e.Status, e.Message); }
 });
+api.MapGet("/system-actions/pending", async (HttpContext http, ConsoleRecord record) =>
+    Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "No role for the console's system actions") : Results.Ok(await record.Pending()));
+api.MapPost("/system-actions/{id}/decision", async (string id, DecisionRequest body, HttpContext http, ConsoleRecord record, Projector p) =>
+{
+    if (Who(http) is not { } who) return Problem(401, "Sign in");
+    try
+    {
+        return Results.Ok(await record.Decide(who, id, body.Approve, body.Remarks, async (name, ct) =>
+        {
+            await p.Rebuild(ct);
+            var lag = await p.Lag(ct);
+            return new JsonObject { ["rebuilt"] = true, ["behind"] = lag.Behind, ["applied"] = lag.Applied };
+        }));
+    }
+    catch (ActionRefused e) { return Problem(e.Status, e.Message); }
+});
+api.MapGet("/audit", async (HttpContext http, ConsoleRecord record) =>
+    Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "The console's audit is for supervisors and bank approvers")
+    : Results.Ok(new { exports = await record.Recent(ConsoleRecord.ExportKind), consents = await record.Recent(ConsoleRecord.ConsentKind) }));
 
 // The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74).
 app.MapRegisters();
@@ -328,6 +355,7 @@ static string? Find(string rel)
 
 public sealed record ActionRequest(string Action, string? Remarks);
 public sealed record DecisionRequest(bool Approve, string? Remarks);
+public sealed record Reasoned(string? Remarks);
 
 /// <summary>Keeps the read model up with the outbox: a poll every Operations:PollMilliseconds (default 500).</summary>
 sealed class ProjectionService(Projector p, HoldExpiry expiry, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService

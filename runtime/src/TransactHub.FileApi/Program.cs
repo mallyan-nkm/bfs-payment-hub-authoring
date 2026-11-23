@@ -8,7 +8,7 @@ using TransactHub.Security;
 using TransactHub.Store;
 using TransactHub.Telemetry;
 
-// The File API (R-09-76 to R-09-80; owner's decision of 23 November 2026): the one runtime service every file passes through.
+// The File API (R-09-82 to R-09-86; owner's decision of 23 November 2026): the one runtime service every file passes through.
 //
 //   POST /files                 a channel's or a corporate's upload (system clients of the bank's identity provider, role file-sender),
 //                               or a file the SFTP gateway hands in (role file-gateway): JSON { tenant, message, fileName,
@@ -41,6 +41,8 @@ var ports = new BoundTransfers(bindings, secrets);
 var hostToken = cfg["FileApi:EngineHostTokenRef"] is { Length: > 0 } tr ? (await secrets.Resolve(tr)).Reveal() : null;
 var engineHosts = cfg.GetSection("FileApi:EngineHosts").GetChildren().ToDictionary(c => c.Key, c => c.Value ?? "", StringComparer.Ordinal);
 var workers = cfg.GetSection("FileApi:Workers").GetChildren().ToDictionary(c => c.Key, c => c.Value ?? "", StringComparer.Ordinal);
+// One runtime serves one bank (R-09-76): FileApi:EngineHost names its supervisor.
+if (cfg["FileApi:EngineHost"] is { Length: > 0 } oneHost && cfg["TH_BANK"] is { Length: > 0 } oneBank) engineHosts[oneBank] = oneHost;
 var frontDoor = engineHosts.Count == 0 ? null : new RuntimeFrontDoor(store,
     new WorkerIntake((_, scope) => workers.GetValueOrDefault(scope) ?? workers.GetValueOrDefault("*")),
     new HttpEngineHost(bank => engineHosts.GetValueOrDefault(bank), hostToken));
@@ -112,6 +114,8 @@ async Task<(Arrival? Arrival, IResult? Error)> Read(HttpRequest req, ClaimsPrinc
         if ((string?)body?["channel"] is { Length: > 0 } ch) channel = ch;
     }
     if (string.IsNullOrEmpty(tenant) || string.IsNullOrEmpty(message) || string.IsNullOrEmpty(name)) return (null, Problem(400, "Name the tenant, the message and the file's name"));
+    // One runtime serves one bank (R-09-76): another bank's file is refused, whatever the caller's roles.
+    if (cfg["TH_BANK"] is { Length: > 0 } bank && tenant != bank) return (null, Problem(403, $"This runtime serves {bank}, not {tenant}"));
     try { FileTransferAdapters.Relative("in", Path.GetFileName(name)); }
     catch (PortBindingException e) { return (null, Problem(400, e.Message)); }
     return (new Arrival(tenant, environment, message, Path.GetFileName(name), content, channel, RuntimeAuth.Actor(user), correlation), null);

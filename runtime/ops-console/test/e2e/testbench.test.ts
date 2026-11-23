@@ -85,6 +85,27 @@ describe('the Test bench section of the runtime web app', () => {
     expect(errors).toEqual([]);
   });
 
+  it('Temporal is the default engine, and a tester starts another engine for a run by ticking it (R-09-79)', async () => {
+    const { page, errors } = await signIn(/Sign in as Example tester/);
+    await page.getByRole('link', { name: 'Test bench' }).waitFor();
+    // The default engine is marked: Temporal (on the Temporal SQL Server plugin in a deployment).
+    await page.getByTestId('profile').selectOption('wps-default-engine');
+    await page.getByTestId('default-engine').first().waitFor();
+    expect(await page.getByTestId('engine-temporal').isChecked()).toBe(true);
+    expect(await page.locator('label', { has: page.getByTestId('default-engine') }).innerText()).toMatch(/temporal\s+default/);
+    // A profile with no engine of its own, and DTFx ticked for this run: it runs on DTFx beside the interpreter.
+    await page.getByTestId('profile').selectOption('wps-reference');
+    expect(await page.getByTestId('engine-dtfx').isChecked()).toBe(false);
+    await page.getByTestId('engine-dtfx').check();
+    await page.getByTestId('sample').selectOption('wps-sif-happy');
+    await page.getByTestId('run').click();
+    await page.getByTestId('result').waitFor();
+    await page.getByTestId('status').filter({ hasText: /passed|failed/ }).waitFor({ timeout: 540000 });
+    expect(await page.getByTestId('status').innerText(), await page.getByTestId('result').innerText()).toBe('passed');
+    expect(await page.getByTestId('row-dtfx').innerText()).toMatch(/settled\s+yes/);
+    expect(errors).toEqual([]);
+  });
+
   it('the builder makes a valid file for the bank, and an injected error is found before running', async () => {
     const { page } = await signIn(/Sign in as Example tester/, true);
     await page.getByTestId('nav-data').click();

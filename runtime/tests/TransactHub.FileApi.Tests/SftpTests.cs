@@ -184,7 +184,7 @@ public sealed class SftpTests(SftpServer server) : IClassFixture<SftpServer>
             Assert.Equal(["centralBank", "pickup"], t.Partners.Keys.Order(StringComparer.Ordinal));
             Assert.Equal("centralBank", t.DefaultPartner);
             Assert.All(t.Partners.Values, p => Assert.Equal(22, p.Port));
-            // The login is the gateway's, by reference; neither bank pins a host key yet (Issue I-157), so no session would open.
+            // The login is the gateway's, by reference; neither bank pins a host key yet (Issue I-161), so no session would open.
             Assert.All(t.Partners.Values, p => Assert.StartsWith("env:", p.CredentialRef));
             Assert.All(t.Partners.Values, p => Assert.Null(p.HostKeyRef));
             if (bank == "dib") Assert.Equal(new SftpSessions(5, true, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60), 3), t.Sessions);

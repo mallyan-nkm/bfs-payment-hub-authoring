@@ -7,7 +7,7 @@ using TransactHub.Security;
 
 namespace TransactHub.Ports;
 
-// The `sftp` adapter of p.port.file-transfer.v1 (Issue I-129, R-09-80): the bank's SFTP partners (the Central Bank, the
+// The `sftp` adapter of p.port.file-transfer.v1 (Issue I-129, R-09-86): the bank's SFTP partners (the Central Bank, the
 // labour ministry, core banking's file interface, the corporate channel's pick-up) through SSH.NET, pinned in TransactHub.Ports.csproj.
 // The source reached them through its SFTP gateway service (services/platform/SftpGateway), one named profile per endpoint; here
 // each partner is a prefix of the binding's settings, so one binding names every partner of the bank:

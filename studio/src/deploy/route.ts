@@ -1,7 +1,7 @@
 import { routeOf } from '../interp/interpreter.js';
 import { runTable } from '../rules/service.js';
 
-// The front door's route of a start message (R-05-08, R-05-42, R-09-79): the dispatch table's route on the header, the platform
+// The front door's route of a start message (R-05-08, R-05-42, R-09-85): the dispatch table's route on the header, the platform
 // workflow p.table.workflow-select.v1 chooses for it, and the leg (and refuse leg) in their slots. The deploy runner's front door
 // (deploy.ts) and the runtime's (runtime/src/TransactHub.FileApi/FrontDoor.cs) work it out alike; one fixture holds both to it
 // (runtime/tests/TransactHub.FileApi.Tests/front-door-routes.json, read by studio/test/front-door-route.test.ts).

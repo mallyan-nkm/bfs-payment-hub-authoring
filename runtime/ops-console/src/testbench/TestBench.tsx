@@ -40,6 +40,9 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
   const benches = useLoad<Record<string, any>>(() => api.call('/benches'));
   const library = useLoad<any[]>(() => api.call('/data/library'));
   const templates = useLoad<any>(() => api.call('/data/templates'));
+  // The default engine (R-09-79): Temporal, on the Temporal SQL Server plugin in a deployment; the others a tester may start.
+  const health = useLoad<any>(() => fetch('/testbench/api/health').then((r) => r.json()));
+  const defaults: string[] = health?.defaultEngines ?? ['temporal'];
   const [profile, setProfile] = useState('');
   const [engines, setEngines] = useState<string[]>();
   const [dbs, setDbs] = useState<string[]>();
@@ -66,7 +69,8 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
     return () => { stop = true; };
   }, [shown]);
 
-  const eff = { engines: engines ?? p?.engines ?? [], dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench };
+  // A profile that names no engines runs on the default engine (R-09-79), as the service resolves it.
+  const eff = { engines: engines ?? p?.engines ?? defaults, dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench };
   const toggle = (list: string[], x: string) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   const run = async () => {
     setErr(undefined);
@@ -92,7 +96,7 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
         </select>
         <p className="muted">{p?.title}</p>
         <div className="filters">
-          <fieldset><legend>Engines</legend>{ENGINES.map((e) => <label key={e}><input type="checkbox" checked={eff.engines.includes(e)} onChange={() => setEngines(toggle(eff.engines, e))} /> {e}</label>)}<label><input type="checkbox" checked disabled /> interpreter (reference)</label></fieldset>
+          <fieldset><legend>Engines</legend>{ENGINES.map((e) => <label key={e}><input type="checkbox" data-testid={`engine-${e}`} checked={eff.engines.includes(e)} onChange={() => setEngines(toggle(eff.engines, e))} /> {e}{defaults.includes(e) && <span className="badge" data-testid="default-engine"> default{e === 'temporal' && health?.temporal && health.temporal !== 'test-server' ? ` (${health.temporal})` : ''}</span>}</label>)}<label><input type="checkbox" checked disabled /> interpreter (reference)</label></fieldset>
           <fieldset><legend>Database</legend>{DATABASES.map((d) => <label key={d}><input type="checkbox" checked={eff.dbs.includes(d)} onChange={() => setDbs(toggle(eff.dbs, d))} /> {d}</label>)}</fieldset>
           <fieldset><legend>Tenant</legend><select value={eff.tenant} onChange={(e) => setTenant(e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant}>{t.tenant}</option>)}</select></fieldset>
           <fieldset><legend>Simulators</legend><select data-testid="bench" value={eff.bench} onChange={(e) => setBench(e.target.value)}>{benches && Object.keys(benches).map((b) => <option key={b}>{b}</option>)}</select>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Applies the store's and the read model's migrations once, as the database's owner, and exits (deploy/laptop, R-09-81): the
+       runtime's hosts then run with Store:Migrate=false as a user that may not change or delete what the store holds. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Operations.Migrations.SqlServer\TransactHub.Operations.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Operations.Migrations.PostgreSql\TransactHub.Operations.Migrations.PostgreSql.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
