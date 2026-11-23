@@ -192,7 +192,8 @@ export function baseConfig(env: RunnerEnv, test: any, extra: Partial<RunConfig> 
   };
   if (test.given?.inbound) {
     const s = loadSample(env, test.given.inbound);
-    cfg.inbound = { payload: s.payload, ...(test.given.message ? { message: test.given.message } : {}) };
+    // The name the File API received the file under, beside its content (R-05-85, Issue I-195).
+    cfg.inbound = { payload: s.payload, ...(test.given.message ? { message: test.given.message } : {}), ...(test.given.fileName ? { fileName: test.given.fileName } : {}) };
   }
   return cfg;
 }
@@ -266,7 +267,7 @@ export async function runTest(env: RunnerEnv, test: any, extra: Partial<RunConfi
 function prepareInbound(ctx: any, cfg: RunConfig) {
   ctx.messages ??= {};
   ctx.messages.inbound = { id: 'inbound-1', type: 'inbound' };
-  (cfg as any).__inboundMessage = { id: 'inbound-1', type: 'inbound', port: '', from: 'simulator', at: 0, correlation: {}, payload: cfg.inbound?.payload };
+  (cfg as any).__inboundMessage = { id: 'inbound-1', type: 'inbound', port: '', from: 'simulator', at: 0, correlation: {}, payload: cfg.inbound?.payload, ...(cfg.inbound?.fileName ? { fileName: cfg.inbound.fileName } : {}) };
 }
 
 async function runActivityTest(cfg: RunConfig, name: string, ctx: any, stepId: string): Promise<RunResult> {
@@ -310,7 +311,7 @@ async function runLegFromInbound(env: RunnerEnv, cfg: RunConfig, leg: string): P
   const scheme = found?.scheme;
   const entry = found?.entry;
   if (!entry) throw new Error(`No start message in a dispatch table names leg ${leg}`);
-  const inbound = { id: run.newId('in'), type: entry.id, port: '', from: 'simulator' as const, at: run.clock.now, correlation: {}, payload: cfg.inbound?.payload, conversation: 'conv-1' };
+  const inbound = { id: run.newId('in'), type: entry.id, port: '', from: 'simulator' as const, at: run.clock.now, correlation: {}, payload: cfg.inbound?.payload, conversation: 'conv-1', ...(cfg.inbound?.fileName ? { fileName: cfg.inbound.fileName } : {}) };
   run.messages.push(inbound);
   const ctx: any = { header: { conversation: 'conv-1', scheme: scheme.scope, direction: 'outward', receivedAt: run.clock.iso(), ...routeOf(entry.disposition.start) }, messages: { inbound: { id: inbound.id, type: inbound.type } } };
   let root: Instance | undefined;

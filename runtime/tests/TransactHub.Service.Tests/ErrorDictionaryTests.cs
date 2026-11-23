@@ -51,6 +51,24 @@ public sealed class ErrorDictionaryTests
         Assert.DoesNotContain(codes, c => Dict.Find(c) is null);
     }
 
+    /// <summary>
+    /// The store's refusals carry their codes (<c>public string Code =&gt; "..."</c>): each has an entry, so the service console shows
+    /// its runbook (Issue I-239: an activation that lost the race, <c>distribution.ActivationRaced</c>, had none).
+    /// </summary>
+    [Fact]
+    public void Every_code_a_refusal_of_the_store_carries_has_an_entry()
+    {
+        var root = Repo.Root();
+        var codes = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(root, "runtime", "src", "TransactHub.Store"), "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains("/bin/") && !f.Contains("/obj/")))
+            foreach (Match m in Regex.Matches(File.ReadAllText(f), @"public string Code => ""([A-Za-z.:-]+)""")) codes.Add(m.Groups[1].Value);
+        Assert.Contains("distribution.ActivationRaced", codes);
+        Assert.Contains("store.ReleaseConflict", codes);
+        Assert.DoesNotContain(codes, c => Dict.Find(c) is null);
+        Assert.Equal("distribution.ActivationRaced", new TransactHub.Store.ActivationRaced("lost", new InvalidOperationException()).Code);
+        Assert.NotEmpty(Dict.Find("distribution.ActivationRaced")!.Doc["runbook"]!["safeActions"]!.AsArray());
+    }
+
     [Fact]
     public void A_signatures_refusals_and_a_packages_have_their_own_codes()
     {

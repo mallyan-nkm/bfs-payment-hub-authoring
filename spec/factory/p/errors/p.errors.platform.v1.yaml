@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.3.0
+release: 1.6.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -374,6 +374,27 @@ entries:
         - Do nothing to the store. Record a new fact instead.
       escalation: Escalate to the bank's security officer and the runtime's service team. Do not install or activate anything
         until it is explained.
+  - code: distribution.ActivationRaced
+    title: Another activation of the bank was recorded first
+    category: technical
+    retryable: false
+    raisedBy:
+      - store
+      - service-console
+    meaning: Two activations of one bank in one environment were asked for at once. The store's unique key on the activation's
+      number let the first one in and refused the second (R-09-137). Nothing of the second was recorded, so no distribution was
+      drained for it.
+    causes:
+      - Two bank approvers consented to activations of the same bank at the same moment.
+      - The pipeline and the service console activated the same bank in the same environment together.
+    runbook:
+      checks:
+        - Read the distribution active now on the Content page, and the activation that was recorded first.
+        - Check whether the activation that was refused is still wanted, now that another distribution is active.
+      safeActions:
+        - Do not retry the refused action as it was. Ask again for the activation from the distribution active now, and have a
+          bank approver consent again.
+      escalation: Escalate to the runtime's service team with both activations' times and who asked for them.
   - code: store.ChainBroken
     title: A subject's fact chain does not verify
     category: technical

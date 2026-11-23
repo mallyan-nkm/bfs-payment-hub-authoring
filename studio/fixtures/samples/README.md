@@ -23,6 +23,7 @@ metadata, not part of the message, and the intake maps read it as the `SourceFil
 | `wps-sif-upload-evp.sif` | WPS SIF with an EVP record, and the channel's upload declared before the records (`# channel:`, `# initiated-by:`, `# debtor-name:`, `# debtor-account:`) | WPS-MAP-003 (Issue I-100) |
 | `wps-sif-large-total.sif` | WPS SIF whose total has sixteen significant digits | WPS-MAP-004 (Issue I-109) |
 | `wps-sif-upload-account-type.sif` | WPS SIF whose channel declared the lines' account type at upload (`# account-type:`), two lines at two routing codes | WPS-MAP-005 (Issue I-115) |
+| `wps-sif-no-file-line.sif` | WPS SIF with no `# file:` line, as a bank's channel drops it or posts it to the File API: its name comes from the File API (`fileName`) | WPS-MAP-006, WPS-MAP-007 (Issue I-195), the laptop test |
 
 Format of a SIF line, comma separated:
 

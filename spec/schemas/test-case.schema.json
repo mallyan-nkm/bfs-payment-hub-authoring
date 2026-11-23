@@ -90,6 +90,11 @@
           "type": "string",
           "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
         },
+        "fileName": {
+          "description": "The name the File API received the inbound file under, which the front door hands the intake map beside the file's content as the inbound message's fileName (R-05-85).",
+          "type": "string",
+          "minLength": 1
+        },
         "parameters": {
           "type": "object"
         },

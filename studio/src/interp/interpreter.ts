@@ -63,7 +63,7 @@ export interface RunConfig {
   values?: { parameter: string; value: any; validFrom: string; validTo?: string }[];
   documents?: Record<string, any>; // extra documents by name@release or name (kit content, drafts under test)
   /** The inbound payload; with `message`, the front door receives it as that catalogue message, as from the bank's own channel. */
-  inbound?: { payload?: any; malformed?: boolean; message?: string };
+  inbound?: { payload?: any; malformed?: boolean; message?: string; fileName?: string };
   limit?: string;
   bindings?: any[]; // hook bindings, in place of the tenant's configuration set
   availableFrom?: Record<string, string>; // name@release -> virtual time it is published
@@ -1146,8 +1146,9 @@ function viewFor(frame: Frame, act: any): any {
     const resolve = (ref: any) => {
       if (!ref?.id) return ref;
       const m = run.messages.find((x) => x.id === ref.id);
-      // The scheme's status, reason and family go with it, so a native code-behind reads a reply as the reference does (R-08-16).
-      return m ? { ...ref, payload: m.payload, malformed: m.malformed, ...(m.status ? { status: m.status } : {}), ...(m.reasonCode ? { reasonCode: m.reasonCode } : {}), ...((m as any).family ? { family: (m as any).family } : {}) } : ref;
+      // The scheme's status, reason and family go with it, so a native code-behind reads a reply as the reference does (R-08-16),
+      // and the name the File API received the file under, which it hands beside the content (R-05-85, Issue I-195).
+      return m ? { ...ref, payload: m.payload, malformed: m.malformed, ...(m.status ? { status: m.status } : {}), ...(m.reasonCode ? { reasonCode: m.reasonCode } : {}), ...((m as any).family ? { family: (m as any).family } : {}), ...(typeof (m as any).fileName === 'string' ? { fileName: (m as any).fileName } : {}) } : ref;
     };
     if (view.messages?.inbound) view.messages.inbound = resolve(view.messages.inbound);
     if (view.messages?.lastReceived) view.messages.lastReceived = resolve(view.messages.lastReceived);
@@ -1695,7 +1696,7 @@ export async function runInbound(cfg: RunConfig, opts: { stopAfterFirst?: boolea
   // A file from the bank's customer (an employer's salary file) reaches the front door directly.
   if (cfg.inbound?.message) {
     if (!run.catalogueEntry(cfg.inbound.message)?.disposition?.start) throw new Error(`${cfg.inbound.message} is not a start message in any dispatch table (R-07-14)`);
-    const m: Message = { id: run.newId('in'), type: cfg.inbound.message, port: '', from: 'simulator', at: run.clock.now, correlation: {}, payload: cfg.inbound.payload, conversation: `conv-${++conv}`, ...(cfg.inbound.malformed ? { malformed: true } : {}) } as Message;
+    const m: Message = { id: run.newId('in'), type: cfg.inbound.message, port: '', from: 'simulator', at: run.clock.now, correlation: {}, payload: cfg.inbound.payload, conversation: `conv-${++conv}`, ...(cfg.inbound.malformed ? { malformed: true } : {}), ...(cfg.inbound.fileName ? { fileName: cfg.inbound.fileName } : {}) } as Message;
     run.clock.at(run.clock.now, () => run.frontDoor(m), `channel sends ${m.type}`);
   }
   const status = await run.drive(() => {

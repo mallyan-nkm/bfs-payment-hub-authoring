@@ -120,6 +120,9 @@ RELEASES = {
     # A parameter added with a default, a minor.
     "p.hold.repair.v1": ("1.1.0", "expiryCalendar: the expiry counted on the bank's business calendar"),
     "p.hold.approval.v1": ("1.1.0", "expiryCalendar: the expiry counted on the bank's business calendar"),
+    # Owner's decision of 2026-11-23 (Issue I-195, R-05-85): the salary file's name from the inbound message's fileName, the name the
+    # File API received it under, when the file carries no `# file:` line. The script reads more of the same message, a minor.
+    "uae.wps.map.sif-in.v1": ("1.4.0", "the file's name from the inbound message's fileName when the file carries no # file: line (Issue I-195)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
@@ -138,8 +141,11 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # (uae.wps.wf.salary-file-out.v1 1.4.0), and the WPS operations view 1.6.0 that shows it (R-05-72), both written by hand.
 # 1.12.0: the platform's error dictionary 1.3.0: a native module that references the runtime image beyond the native contract has
 # its own code, package.NativeImageReference (R-09-125, Issue I-220), and each refusal of the native host its native. code (R-09-128, I-230).
-PACK_RELEASES = {"p": "1.12.0", "uae.p": "1.12.0", "uae.wps": "1.12.0", "b": "1.12.0"}
-FACTORY_RELEASE = "1.12.0"
+# 1.16.0 (change set CS-2026-11-23-011; 1.13.0 to 1.15.0 are other changes'): the platform's error dictionary 1.6.0, hand-written
+# in factory/p/errors, with distribution.ActivationRaced (Issue I-239); the salary file's intake map 1.4.0, which takes the file's
+# name from the File API (Issue I-195, R-05-85).
+PACK_RELEASES = {"p": "1.16.0", "uae.p": "1.16.0", "uae.wps": "1.16.0", "b": "1.16.0"}
+FACTORY_RELEASE = "1.16.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -1240,6 +1246,14 @@ test("WPS-MAP-005", "Each line's account type comes from the channel's upload an
      {"outcome": "mapped", "writes": {"items.0.payment.creditorAccount.type": "CACC", "items.0.payment.creditorAgent.name": "Example Bank One",
                                       "items.1.payment.creditorAccount.type": "CACC", "items.1.payment.creditorAgent.name": "Example Bank Two"}},
      tenant="example-bank")
+# Issue I-195 (R-05-85): a file with no `# file:` line, as a bank's channel drops it on the SFTP server or posts it to the File API,
+# takes its name from the inbound message's fileName; with neither, the edge rule refuses it as before.
+test("WPS-MAP-006", "A salary file with no file line takes its name from the File API", "uae.wps.map.sif-in.v1", "activity",
+     {"inbound": "samples/wps-sif-no-file-line.sif", "fileName": "0000001234567261117083000.sif"},
+     {"outcome": "mapped", "writes": {"header.fileId": "0000001234567261117083000", "batch.id": "0000001234567261117083000",
+                                      "batch.controlSum": "1500.00"}})
+test("WPS-MAP-007", "A salary file with no file line and no name from the File API is unmappable", "uae.wps.map.sif-in.v1", "activity",
+     {"inbound": "samples/wps-sif-no-file-line.sif"}, {"outcome": "unmappable", "reasonCode": "FF01"})
 test("WPS-ENR-001", "The labour ministry knows the employer: its status is written", "uae.wps.enrich.employer-status.v1", "activity",
      {"context": {"header": {"paymentId": "P-1", "scheme": "uae.wps"}, "ext": {"uae": {"wps": {"employerId": "0000001234567"}}}}},
      {"outcome": "found", "writes": {"ext.uae.wps.employerStatus": "suspended"}}, bench_=bench((LM, LMSIM, "suspended")))
