@@ -17,7 +17,7 @@
   },
   "$defs": {
     "action": {
-      "description": "A troubleshooting action of the service console (design/05 section 5.11). Each needs a person's confirmation; some need a second person, a ServiceApprover.",
+      "description": "A troubleshooting action of the service console (design/05 section 5.11). Each needs a person's confirmation; one that changes the system needs the consent of a second person, a bank approver (BankApprover).",
       "enum": [
         "retry-attempt", "redrive-workflow", "requeue-dead-letter", "reset-activity", "resend-file", "re-screen",
         "release-hold", "expire-hold", "reconcile-posting", "pause-intake", "resume-intake", "drain-worker", "restart-worker",

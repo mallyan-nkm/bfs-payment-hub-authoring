@@ -1485,6 +1485,18 @@ for path, d in docs:
         for m in reference_table_problems(d, ref_tables):
             err("L49", path, m)
 
+# L51 (R-09-118, Issue I-190) the conformance kit's size is stated in one place, conformance/kit.yaml: a design text that
+# counts its scenarios ("holds N scenarios", "N of N scenarios", "N kit scenarios") names the number the kit holds.
+kit_size = sum(len(d.get("scenarios") or []) for _, d in docs if d.get("kind") == "conformance-kit")
+COUNTED = re.compile(r"\b(?:holds|has|of|all)\s+(\d+)\s+(?:conformance\s+|kit\s+)?scenarios\b|\b(\d+)\s+(?:conformance|kit)\s+scenarios\b", re.I)
+if kit_size and (ROOT / "design").is_dir():
+    for f in sorted((ROOT / "design").glob("*.md")):
+        for n, line in enumerate(f.read_text().splitlines(), 1):
+            for m in COUNTED.finditer(line):
+                said = int(m.group(1) or m.group(2))
+                if said != kit_size:
+                    err("L51", "%s:%d" % (f.relative_to(ROOT), n), "counts %d conformance scenarios, but conformance/kit.yaml holds %d: say \"every scenario of conformance/kit.yaml\"" % (said, kit_size))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

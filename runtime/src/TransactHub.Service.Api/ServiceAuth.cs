@@ -12,7 +12,7 @@ namespace TransactHub.Service.Api;
 /// <summary>
 /// Who may call the service console (spec R-06-25): bearer JWTs of the bank's one OIDC issuer through the runtime's
 /// authentication library (<see cref="RuntimeAuth.AddRuntimeAuth"/>), the bank's role map giving ServiceEngineer and
-/// ServiceApprover; the console signs in with the authorisation code flow and PKCE, as the operations console does. The
+/// BankApprover (R-09-115); the console signs in with the authorisation code flow and PKCE, as the operations console does. The
 /// studio's issuer is refused. Dev mode (TH_AUTH_DEV=1) takes a synthetic identity from the same header as the operations
 /// console's dev sign-in, and is refused when the host runs in Production.
 /// </summary>

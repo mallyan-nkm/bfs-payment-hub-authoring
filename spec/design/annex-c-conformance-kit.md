@@ -21,20 +21,20 @@ The kit proves that the DSL means the same thing everywhere. It is a set of smal
 
 ## C.3 Scenarios
 
-The machine-readable list is `conformance/kit.yaml`. It holds 55 scenarios in draft 0.2.
+The machine-readable list is `conformance/kit.yaml`, and it is the one place that counts the scenarios: a text that names their number names the number the kit holds (R-09-118, lint L51, Issue I-190). The groups below cover every scenario of the kit.
 
 | Group | Scenarios | Proves |
 | --- | --- | --- |
 | Flow | CK-SEQ-01, CK-HANDLE-01 to 03, CK-SWITCH-01 and 02 | Order, outcome handling, branching |
-| Concurrency | CK-PAR-01, CK-FOREACH-01 and 02 | Parallel join, per-item outcomes, chunking |
+| Concurrency | CK-PAR-01, CK-FOREACH-01 to 04 | Parallel join, per-item outcomes, chunking; items side by side keep their order, and a stop leaves no later item in the trace |
 | Business retry | CK-LOOP-01 and 02, CK-UNKNOWN-01 | Bounded loops; inquiry after an unknown send |
-| Technical retry and timeouts | CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 | Retry with idempotency; attempt and total timeouts; policy resolution |
+| Technical retry and timeouts | CK-RETRY-01 and 02, CK-TIMEOUT-01 to 03, CK-POLICY-01 | Retry with idempotency; attempt and total timeouts, an attempt timeout measuring the attempt's own execution; policy resolution |
 | Waiting | CK-AWAIT-01 to 07, CK-WAIT-01, CK-DEADLINE-01 | Messages, timers, business calendar, deadlines; early, late and duplicate messages; a stale reply to an earlier exchange (R-05-43); the family of a reply (R-05-44) |
 | Undo and close | CK-COMP-01, CK-FINALLY-01 | Compensation in reverse; finally on every end |
 | Composition | CK-SLOT-01 and 02, CK-HANDLER-01 | Slots and legs; handlers without durable state |
 | Composite steps | CK-BLOCK-01 to 03 | Blocks and returns; the reply time of the calling step; the business trace and the detail |
 | Signals | CK-SIGNAL-01 to 03 | Pause, resume, cancel, re-screen |
-| Operator waits | CK-HOLD-01 and 02, CK-PARK-01 and 02 | A hold as an engine await on the operator's decision, two days long, and its expiry (R-05-56); a failed step parked, retried by an operator, and failing at the end of its park (R-05-55) |
+| Operator waits | CK-HOLD-01 and 02, CK-PARK-01 to 03 | A hold as an engine await on the operator's decision, two days long, and its expiry (R-05-56); a failed step parked, retried by an operator, and failing at the end of its park (R-05-55); a step whose attempts are spent, requeued by an operator (R-09-91) |
 | Hooks | CK-HOOK-01 to 04 | Halt, transform, notify, unbound |
 | Versions | CK-PIN-01 and 02, CK-LOOKUP-01, CK-SUP-01 | Exact pins, lookup by date, supersession |
 | Record | CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 | Claim-check, deltas, rule trace |

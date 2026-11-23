@@ -88,7 +88,7 @@ sequenceDiagram
   Note over D: Payments that ask as of acceptance keep the old answer. Payments that ask as of the step see the new one from its date.
 ```
 
-The store's side is proved by `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update`. A bank's values reach the store as a signed configuration release the service console installs with a bank approver's consent, or through `POST /import-branch`, which stores the bank's own configuration set as effective-dated versions (`BankValues`, `e2e-p6-hot-update.test.ts`). The runtime reads a bank's port bindings from its folder (`BankFolderConfigurationTests`).
+The store's side is proved by `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update`. A bank's values reach the store only as a signed configuration release, checked against every distribution's parameter contract and put in force with a bank approver's consent, or by the pipeline in a test environment (R-09-110, R-09-111; `e2e-p6-hot-update.test.ts`). The runtime's hosts read a bank's port bindings from its configuration release in force, at each attempt (R-09-112).
 
 ## 5. A bank changes its core banking
 

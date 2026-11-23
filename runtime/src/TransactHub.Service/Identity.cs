@@ -6,15 +6,14 @@ namespace TransactHub.Service;
 /// <summary>
 /// The service console's roles (spec R-06-25), from the bank's role map like every runtime host's. A service engineer asks;
 /// a bank approver, another person, consents to every action that changes the system (owner's decision of 23 November 2026,
-/// R-09-77). <see cref="Approver"/> (ServiceApprover) is the name an earlier role map gave the same consent, kept so such a map
-/// still starts (Issue I-155).
+/// R-09-77). The earlier name of the bank approver's role, ServiceApprover, gives nothing since the runtime release that dropped it
+/// (Issue I-155, R-09-115): a role map names BankApprover.
 /// </summary>
 public static class ServiceRoles
 {
     public const string Engineer = "ServiceEngineer";
     public const string BankApprover = "BankApprover";
-    public const string Approver = "ServiceApprover";
-    public static readonly string[] All = [Engineer, BankApprover, Approver];
+    public static readonly string[] All = [Engineer, BankApprover];
 }
 
 /// <summary>
@@ -26,10 +25,10 @@ public sealed record ServiceIdentity(string Subject, string DisplayName, IReadOn
     public const string AnyTenant = "*";
 
     /// <summary>A bank approver may see what a service engineer may (to judge what it consents to).</summary>
-    public bool Has(string role) => Roles.Contains(role) || (role == ServiceRoles.Engineer && MayConsent) || (role == ServiceRoles.BankApprover && Roles.Contains(ServiceRoles.Approver));
+    public bool Has(string role) => Roles.Contains(role) || (role == ServiceRoles.Engineer && MayConsent);
 
     /// <summary>Whether this person may consent to a change of the system another person asked for (R-09-77).</summary>
-    public bool MayConsent => Roles.Contains(ServiceRoles.BankApprover) || Roles.Contains(ServiceRoles.Approver);
+    public bool MayConsent => Roles.Contains(ServiceRoles.BankApprover);
 
     public bool Sees(string tenant) => Tenants.Contains(AnyTenant) || Tenants.Contains(tenant);
 

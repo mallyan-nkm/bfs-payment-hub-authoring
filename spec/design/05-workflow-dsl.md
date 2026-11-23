@@ -257,6 +257,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L48 | A bank's port bindings (R-11-47) have the port-bindings shape, name their folder's tenant, bind each port to an adapter from a `validFrom`, bind only a published port of the factory or of the bank's pack, never bind one port twice from one `validFrom` in one document, and hold a credential as a `secretRef` only; a studio release sits at `port-bindings/<release>.yaml` | Yes |
 | L49 | A reference table (R-01-25) names its key among its columns; its editions run in strictly increasing `validFrom`; every row has its key and required columns, each value of its column's type, pattern and allowed values, and no column it does not declare; a key is not repeated within an edition; a column that `references` another reference table holds that table's keys | Yes |
 | L50 | A configuration value read from a reference table (`fromReference`, R-11-51) names a published reference table and only its columns, for a parameter of type list | Yes |
+| L51 | A design text that counts the conformance kit's scenarios ("holds N scenarios", "N of N scenarios") names the number `conformance/kit.yaml` holds: the kit is the one place that counts them (R-09-118, Issue I-190) | Yes |
 
 ## 5.8 Examples
 
