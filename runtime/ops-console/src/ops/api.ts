@@ -42,6 +42,16 @@ export interface Dashboard {
 }
 export interface Lag { behind: number; oldestSeconds: number; through: number; applied: number; lastFactAt?: string; projectedAt?: string; rebuiltAt?: string }
 
+export interface WorkRow {
+  item: string; itemKind: 'payment' | 'action'; tenant: string; scheme?: string; payment: string; what: string; amount?: number; currency?: string;
+  waitingSince: string; assignee?: string | null; assigneeName?: string | null; escalated: boolean; level: number; assignedAt?: string | null;
+  action?: string; requestedBy?: string;
+}
+export interface WorkQueue { filter: string; total: number; counts: Record<string, number>; rows: WorkRow[]; cursor: number }
+export interface BulkResult { done: number; refused: number; results: { item?: string; payment?: string; ok: boolean; status?: number; error?: string }[] }
+export interface SavedFilter { id: string; name: string; query: Record<string, string>; savedAt: string }
+export interface FixedReport { view: string; release: string; scheme?: string; id: string; title: string; rows: string; document?: string; oldScreen?: string; columns: { key: string; label: string }[] }
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
@@ -69,6 +79,29 @@ export function client(auth: SignIn) {
     summary: (q: Record<string, string>) => call<{ groups: ReportGroup[]; payments: number }>('GET', `/reports/summary?${new URLSearchParams(q)}`),
     dashboard: (q: Record<string, string>) => call<Dashboard>('GET', `/reports/dashboard?${new URLSearchParams(q)}`),
     documentUrl: (id: string, doc: string) => `/ops/api/payments/${encodeURIComponent(id)}/documents/${encodeURIComponent(doc)}`,
+    // Work management (R-05-71): the queue, a change of one item or many, the live queue's long poll, bulk actions.
+    queue: (filter: string) => call<WorkQueue>('GET', `/work/queue?filter=${encodeURIComponent(filter)}`),
+    changes: (after: number, wait = 20) => call<{ cursor: number; changed: boolean }>('GET', `/work/changes?after=${after}&wait=${wait}`),
+    work: (op: string, kind: string, id: string, remarks?: string, assignee?: string) => call<any>('POST', '/work', { op, kind, id, remarks, assignee }),
+    workBulk: (op: string, items: { kind: string; id: string }[], remarks?: string, assignee?: string) => call<BulkResult>('POST', '/work/bulk', { op, items, remarks, assignee }),
+    bulkActions: (ids: string[], action: string, remarks?: string) => call<BulkResult>('POST', '/payments/bulk-actions', { ids, action, remarks }),
+    filters: () => call<SavedFilter[]>('GET', '/filters'),
+    saveFilter: (name: string, query: Record<string, string>) => call<SavedFilter>('POST', '/filters', { name, query }),
+    removeFilter: (id: string) => call<any>('POST', `/filters/${encodeURIComponent(id)}/remove`),
+    // Unmasking on a bank approver's consent (R-05-69), and the console's changes of the system that wait for consent (R-09-77).
+    unmask: (subject: string, field: string, remarks: string, line?: number) => call<any>('POST', '/unmask', { subject, field, line, remarks }),
+    unmasked: (id: string) => call<{ value: any; until: string; label?: string }>('GET', `/unmask/${encodeURIComponent(id)}`),
+    systemPending: () => call<any[]>('GET', '/system-actions/pending'),
+    systemDecide: (id: string, approve: boolean, remarks: string) => call<any>('POST', `/system-actions/${encodeURIComponent(id)}/decision`, { approve, remarks }),
+    // Turnaround (R-05-68), retention and erasure (R-05-70), fixed reports (R-05-67).
+    breaches: (open = false) => call<{ total: number; rows: any[] }>('GET', `/tat/breaches${open ? '?open=true' : ''}`),
+    due: () => call<{ total: number; rows: any[]; periods: Record<string, any> }>('GET', '/retention/due'),
+    erase: (subject: string, remarks: string) => call<any>('POST', '/erasures', { subject, remarks }),
+    legalHolds: (subject?: string) => call<any[]>('GET', `/legal-holds${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
+    placeHold: (subject: string, remarks: string) => call<any>('POST', '/legal-holds', { subject, remarks }),
+    releaseHold: (id: string, remarks: string) => call<any>('POST', `/legal-holds/${encodeURIComponent(id)}/release`, { remarks }),
+    fixedReports: () => call<FixedReport[]>('GET', '/reports/fixed'),
+    fixedReportUrl: (view: string, id: string) => `/ops/api/reports/fixed/${encodeURIComponent(view)}/${encodeURIComponent(id)}.csv`,
     headers: () => auth.headers(),
   };
 }

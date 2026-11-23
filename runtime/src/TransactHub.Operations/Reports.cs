@@ -156,7 +156,7 @@ public sealed class Reports(StoreOptions ops, ViewCatalog views)
         return (sb.ToString(), rows.Count, cut);
     }
 
-    static string Cell(string? v)
+    public static string Cell(string? v)
     {
         v ??= "";
         if (v.Length > 0 && "=+-@\t\r".Contains(v[0]) && !decimal.TryParse(v, NumberStyles.Number, CultureInfo.InvariantCulture, out _)) v = "'" + v;

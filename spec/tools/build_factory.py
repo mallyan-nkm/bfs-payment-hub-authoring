@@ -121,8 +121,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
 # 1.6.0: the order's posting that reads FX and charges, the outward refund order, the WPS parks (R-12-23 to R-12-26, I-136).
 # 1.7.0: reference tables (R-01-25), the party register lookup and its WPS step (R-12-27; owner's decisions of 2026-11-23).
-PACK_RELEASES = {"p": "1.7.0", "uae.p": "1.7.0", "uae.wps": "1.7.0", "b": "1.7.0"}
-FACTORY_RELEASE = "1.7.0"
+# 1.8.0: the operations views' dials (turnaround, unmask window, retention) and the WPS fixed reports (R-05-66 to R-05-70):
+# p.view.operations.v1 1.4.0 and uae.wps.view.operations.v1 1.5.0, written by hand; the example bank's calendar and cut-offs (R-11-52).
+PACK_RELEASES = {"p": "1.8.0", "uae.p": "1.8.0", "uae.wps": "1.8.0", "b": "1.8.0"}
+FACTORY_RELEASE = "1.8.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 

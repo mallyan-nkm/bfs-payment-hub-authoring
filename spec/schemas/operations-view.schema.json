@@ -40,9 +40,25 @@
         ]
       }
     },
+    "parameters": { "description": "The operations console's dials that read this view (R-05-66 to R-05-70): each a parameter with a type, a default and bounds, as every artefact's (R-04-08). A bank sets them in its configuration release as `<view>#<parameter>`; the console reads the value in force by date. The platform's view declares tatLimit, unmaskWindow and retentionPeriod; a scheme's view MAY declare tatLimit and retentionPeriod for its own payments, which then win.", "$ref": "urn:th:schema:common#/$defs/parameters" },
     "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
   },
   "$defs": {
+    "report": {
+      "description": "A fixed report (R-05-67, Issue I-144): a CSV of declared fields, one row per payment (rows subject), per line (lines) or per kept document of a kind the view declares (documents). A column names a field of the subject (<id>), a line field (line.<id>) or a document's attribute (document.fileName, at, size, source, direction, signed).",
+      "type": "object",
+      "required": ["id", "title", "rows", "columns"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "rows": { "enum": ["subject", "lines", "documents"] },
+        "document": { "description": "For rows documents: the document kind the report lists, one the view declares.", "type": "string" },
+        "columns": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^((line|document)\\.)?[a-z][A-Za-z0-9]*$" } },
+        "oldScreen": { "type": "string" }
+      }
+    },
     "fieldId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
     "field": {
       "type": "object",
@@ -125,6 +141,7 @@
           }
         },
         "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "reports": { "type": "array", "items": { "$ref": "#/$defs/report" } },
         "leg": true,
         "selectBy": true
       },

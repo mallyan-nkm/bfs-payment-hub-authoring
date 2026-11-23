@@ -6,6 +6,8 @@ import { client, type Client, type Lag, type View } from './ops/api';
 import { Payments } from './ops/Payments';
 import { Detail } from './ops/Detail';
 import { Reports } from './ops/Reports';
+import { Work } from './ops/Work';
+import { Consents, Retention, Turnaround } from './ops/Controls';
 import { show } from './ops/format';
 import { serviceClient } from './service/api';
 import { ServiceSection } from './service/Service';
@@ -84,8 +86,14 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
       id: 'payments', title: 'Payments',
       render: (path, ctx) => !views ? <p className="muted">Loading…</p> : path[0] ? <Detail api={api} views={views} id={path[0]} go={ctx.go} /> : <Payments api={api} views={views} go={ctx.go} />,
     },
+    // Work management (R-05-71): the queue, taken, escalated and given out, live.
+    { id: 'work', title: 'Work queue', render: (_p, ctx) => <Work api={api} go={ctx.go} /> },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
     { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
+    { id: 'turnaround', title: 'Turnaround', render: (_p, ctx) => <Turnaround api={api} go={ctx.go} /> },
+    { id: 'retention', title: 'Retention', render: () => <Retention api={api} /> },
+    // The changes of the system that wait for a bank approver (R-09-77): unmasks, erasures, legal holds' releases, rebuilds.
+    { id: 'consents', title: 'Consents', render: () => <Consents api={api} /> },
     // The bank's registers (R-05-62): makers propose, a different bank approver consents.
     { id: 'registers', title: 'Registers', render: (path, ctx) => <RegistersSection api={registersClient(auth)} path={path} go={ctx.go} /> },
   );

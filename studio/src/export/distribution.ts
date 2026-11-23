@@ -366,8 +366,11 @@ export function remember(env: StudioEnv, b: BuiltBundle) {
 
 /** Is a change set's member a bank's own artefact (not its values)? Shared platform or scheme content? Its values? */
 export function classify(members: { kind: string; name: string }[], tenant: string) {
-  const values = members.some((m) => m.kind === 'configuration-set' || m.kind === 'port-bindings');
-  const bankPack = tenant !== OWNER_TENANT && members.some((m) => m.kind !== 'configuration-set' && m.kind !== 'port-bindings');
+  // A bank's own reference table (its calendar, its cut-offs, its branches) is values: it goes out in the bank's configuration
+  // release, never in a distribution (R-01-25, R-11-52), so approving one builds a configuration release and no distribution.
+  const isValues = (m: { kind: string }) => m.kind === 'configuration-set' || m.kind === 'port-bindings' || (tenant !== OWNER_TENANT && m.kind === 'reference-table');
+  const values = members.some(isValues);
+  const bankPack = tenant !== OWNER_TENANT && members.some((m) => !isValues(m));
   const shared = tenant === OWNER_TENANT ? [...new Set(members.map((m) => scopeOfName(m.name)).filter((s) => s !== 'b'))] : [];
   return { values, bankPack, shared };
 }

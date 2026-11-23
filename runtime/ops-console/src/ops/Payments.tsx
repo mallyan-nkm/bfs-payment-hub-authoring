@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Client, Facets, PaymentRow, View } from './api';
+import type { Client, Facets, PaymentRow, SavedFilter, View } from './api';
+import { queryToSave } from './work';
 import { columnsFor, filtersFor, show, tone } from './format';
 
 // The list: filters every payment has (tenant, scheme, leg, direction, status, outcome, hold, dates, amounts, ids and file
@@ -32,7 +33,9 @@ export function Payments({ api, views, go }: { api: Client; views: View[]; go(h:
   const [q, setQ] = useState<Record<string, string>>(readQuery);
   const [data, setData] = useState<{ total: number; rows: PaymentRow[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { api.facets().then(setFacets).catch((e) => setError(e.message)); }, []);
+  const [saved, setSaved] = useState<SavedFilter[]>([]);
+  const loadSaved = () => api.filters().then(setSaved).catch(() => setSaved([]));
+  useEffect(() => { api.facets().then(setFacets).catch((e) => setError(e.message)); loadSaved(); }, []);
   useEffect(() => {
     let live = true;
     const load = () => api.payments({ ...q, pageSize: '50' }).then((d) => live && setData(d)).catch((e) => live && setError(e.message));
@@ -83,6 +86,21 @@ export function Payments({ api, views, go }: { api: Client; views: View[]; go(h:
         )}
         <button type="button" className="link" onClick={() => { setQ({}); history.replaceState(null, '', '#/payments'); }}>Clear</button>
       </form>
+      {/* Saved filters (R-05-71): each person's own, kept as facts. */}
+      <div className="filters" aria-label="Saved filters">
+        <label><span>Saved filters</span>
+          <select name="saved-filter" value="" onChange={(e) => { const f = saved.find((x) => x.id === e.target.value); if (f) { setQ(f.query); history.replaceState(null, '', `#/payments?${new URLSearchParams(f.query)}`); } }}>
+            <option value="">Apply a saved filter…</option>
+            {saved.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={async () => {
+          const name = window.prompt('Name this filter') ?? '';
+          if (!name.trim()) return;
+          try { await api.saveFilter(name.trim(), queryToSave(q)); await loadSaved(); } catch (e: any) { setError(e.message); }
+        }}>Save this filter</button>
+        {saved.map((f) => <button key={f.id} type="button" className="link" aria-label={`Remove saved filter ${f.name}`} onClick={() => api.removeFilter(f.id).then(loadSaved)}>✕ {f.name}</button>)}
+      </div>
       {error && <p className="error">{error}</p>}
       <p className="muted" data-testid="total">{data ? `${data.total} payment(s) and bulk(s)` : 'Loading…'}</p>
       <div className="table-wrap">

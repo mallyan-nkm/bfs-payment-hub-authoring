@@ -1,6 +1,6 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.3.0
+release: 1.4.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
@@ -11,8 +11,18 @@ description: >-
   payment it refers to, its FX and its charges, from the platform's own steps; its approval shows in the hold fields (R-12-22).
   Release 1.3.0 adds the outward refund order (p.wf.refund-out.v1) and brings back the order's approval: on every engine a hold's
   decision is now a step fact of the hold's step, with who decided and when (R-05-60, Issue I-136). Its actions say which platform
-  workflows they apply to: re-screen only where the payment is screened (R-05-61, Issue I-135).
+  workflows they apply to: re-screen only where the payment is screened (R-05-61, Issue I-135). Release 1.4.0 declares the
+  console's dials a bank sets in its configuration release: the turnaround limit of a payment, how long an unmasked value is
+  shown once a bank approver consented, and how long an ended payment is kept before it is due for erasure (R-05-66 to R-05-70).
+  Each default switches its mechanism off, so no period is the runtime's own.
 platform: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.refund.v1, p.wf.refund-out.v1]
+parameters:
+  # R-05-68: a payment open, or that ended, longer than this after its acceptance is in breach. P0D: no limit. A scheme's view may set its own.
+  tatLimit: { type: duration, default: P0D, bounds: { min: P0D, max: P30D }, lookupDate: payment-date, description: "The turnaround limit, from acceptance to the payment's end. P0D sets no limit." }
+  # R-05-69: how long the person who asked sees an unmasked value after a bank approver consented. P0D: unmasking is off.
+  unmaskWindow: { type: duration, default: P0D, bounds: { min: P0D, max: PT4H }, lookupDate: step-time, description: "How long an unmasked value is shown to the person who asked, from the bank approver's consent. P0D turns unmasking off." }
+  # R-05-70: how long a payment is kept after its end before it is due for erasure. P0D: nothing is ever due.
+  retentionPeriod: { type: duration, default: P0D, bounds: { min: P0D, max: P36600D }, lookupDate: step-time, description: "How long an ended payment is kept before it is due for erasure. P0D keeps every payment." }
 subject:
   title: Payment
   groups:

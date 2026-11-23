@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Client, ReportGroup, Dashboard } from './api';
+import type { Client, ReportGroup, Dashboard, FixedReport } from './api';
 
 // Reports, the dashboard and the CSV export (R-05-59, Issue I-68). Everything here comes from the read model and the
 // operations views: the totals, by scheme, status and day; for each scheme the measures and filters its view declares; a
@@ -103,6 +103,43 @@ export function Reports({ api }: { api: Client }) {
         </label>
         {summary && <Groups title={`By ${by}`} groups={summary.groups} />}
       </div>
+      <FixedReports api={api} q={q} onError={setError} />
     </section>
+  );
+}
+
+/** The fixed reports the views declare (R-05-67): each a CSV of declared fields, masked; every download is an audit fact (R-05-65). */
+function FixedReports({ api, q, onError }: { api: Client; q(): Record<string, string>; onError(e: string): void }) {
+  const [list, setList] = useState<FixedReport[] | null>(null);
+  const [last, setLast] = useState<string>('');
+  useEffect(() => { api.fixedReports().then(setList).catch((e) => onError(e.message)); }, []);
+  const download = async (r: FixedReport) => {
+    const query = Object.fromEntries(Object.entries(q()).filter(([k]) => k !== 'scheme'));
+    const res = await fetch(`${api.fixedReportUrl(r.view, r.id)}?${new URLSearchParams(query)}`, { headers: api.headers() });
+    if (!res.ok) { onError(`The report was refused (${res.status})`); return; }
+    setLast(`${r.title}: ${res.headers.get('x-th-rows') ?? '?'} row(s), audit fact ${res.headers.get('x-th-export-fact') ?? '?'}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.headers.get('content-disposition')?.match(/filename="?([^";]+)/)?.[1] ?? `${r.id}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  if (!list?.length) return null;
+  return (
+    <div className="card">
+      <h2>Fixed reports</h2>
+      <table className="grid" aria-label="Fixed reports">
+        <thead><tr><th>Report</th><th>Scheme</th><th>One row per</th><th>Columns</th><th /></tr></thead>
+        <tbody>{list.map((r) => (
+          <tr key={`${r.view}/${r.id}`}>
+            <td>{r.title}</td><td>{r.scheme ?? 'all'}</td><td>{r.rows === 'subject' ? 'file' : r.rows === 'lines' ? 'line' : 'upload'}</td>
+            <td className="small">{r.columns.map((c) => c.label).join(', ')}</td>
+            <td><button onClick={() => download(r)} aria-label={`Download ${r.title}`}>CSV</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {last && <p className="muted" data-testid="fixed-report-note">{last}</p>}
+    </div>
   );
 }

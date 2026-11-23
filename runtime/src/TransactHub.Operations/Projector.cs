@@ -165,6 +165,17 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
         return cp;
     }
 
+    /// <summary>
+    /// A declared source of a payment (or one of its lines) evaluated on what the store holds, with no mask (R-05-69): only for an
+    /// unmask a bank approver consented to. It writes nothing to the read model.
+    /// </summary>
+    public async Task<JsonNode?> Unmasked(string subjectId, string source, int? lineNo, CancellationToken ct = default)
+    {
+        await using var s = StoreDbContext.Open(store);
+        await using var o = OpsDbContext.Open(ops);
+        return await new Run(s, o, views, clock).Raw(subjectId, source, lineNo, ct);
+    }
+
     /// <summary>How far behind the read model is: outbox rows not yet through the checkpoint, and the age of the oldest.</summary>
     public async Task<Lag> Lag(CancellationToken ct = default)
     {
@@ -480,18 +491,32 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             await o.SaveChangesAsync(ct);
         }
 
+        /// <summary>A declared source of a payment or one of its lines, as the store holds it: unmasked (R-05-69).</summary>
+        public async Task<JsonNode?> Raw(string id, string source, int? lineNo, CancellationToken ct)
+        {
+            var subj = await o.Subjects.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (subj is null) return null;
+            var c = await Context(subj, ct);
+            if (lineNo is null) return Sources.Eval(source, c)?.DeepClone();
+            var line = c.Lines.FirstOrDefault(l => (int?)l["lineNo"] == lineNo);
+            return line is null ? null : Sources.Eval(source, c, line)?.DeepClone();
+        }
+
         async Task Derive(string id, CancellationToken ct)
         {
             var subj = await o.Subjects.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (subj is null) return;
             var c = await Context(subj, ct);
+            // An erasure (R-05-70): the tombstone fact on the payment's chain; from it every field that declares a mask reads "[erased]".
+            var erased = await o.Timeline.AsNoTracking().AnyAsync(x => x.SubjectId == id && x.Kind == Erasure.FactKind, ct)
+                || o.Timeline.Local.Any(x => x.SubjectId == id && x.Kind == Erasure.FactKind);
             var (pview, sview) = (views.All.FirstOrDefault(v => v.Scheme is null), views.SchemeView(subj.Scheme));
             subj.View = string.Join(",", new[] { pview?.Key, sview?.Key }.OfType<string>());
             var fields = new JsonObject();
             var values = new List<(string field, JsonNode? v)>();
             foreach (var v in new[] { pview, sview }.OfType<OperationsView>())
             {
-                var f = ViewEval.Fields(v.Subject?["fields"] as JsonArray, c);
+                var f = ViewEval.Fields(v.Subject?["fields"] as JsonArray, c, erased: erased);
                 foreach (var (k, val) in f) { fields[k] = val?.DeepClone(); values.Add(($"{v.Name}:subject:{k}", val)); }
             }
             subj.FieldsJson = CanonicalJson.Of(fields);
@@ -515,7 +540,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 leg.LastOutcome = (string?)last["outcome"] ?? (string?)last["code"];
                 leg.UpdatedAt = DateTimeOffset.Parse((string)last["at"]!);
                 var lc = new SourceContext { Subject = c.Subject, Bulk = c.Bulk, Payment = c.Payment, Ext = c.Ext, Steps = c.Steps, Hold = c.Hold, Documents = c.Documents, Lines = c.Lines, Instance = group.Key };
-                var lf = ViewEval.Fields(decl["fields"] as JsonArray, lc);
+                var lf = ViewEval.Fields(decl["fields"] as JsonArray, lc, erased: erased);
                 leg.FieldsJson = CanonicalJson.Of(lf);
                 foreach (var (k, val) in lf) values.Add(($"{sview!.Name}:{leg.Leg}:{k}", val));
             }
@@ -526,7 +551,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             {
                 var lines = await o.Lines.Where(x => x.BulkId == id).OrderBy(x => x.LineNo).ToListAsync(ct);
                 for (var i = 0; i < lines.Count && i < c.Lines.Count; i++)
-                    lines[i].FieldsJson = CanonicalJson.Of(ViewEval.Fields(lineFields, c, c.Lines[i]));
+                    lines[i].FieldsJson = CanonicalJson.Of(ViewEval.Fields(lineFields, c, c.Lines[i], erased));
             }
 
             // The values filters search: replaced whole for the payment.

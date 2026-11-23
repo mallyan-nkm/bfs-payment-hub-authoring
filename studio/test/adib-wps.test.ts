@@ -62,7 +62,7 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
     const cs = e.store.configurationSet(TENANT);
     expect(gov.checkConfiguration(e, TENANT, cs).filter((i) => i.severity === 'error')).toEqual([]);
     for (const v of cs.values) expect(e.store.doc(v.parameter.split('#')[0])?.parameters?.[v.parameter.split('#')[1]], v.parameter).toBeDefined();
-    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.7.0' }, { scope: 'uae.p', release: '1.7.0' }, { scope: 'uae.wps', release: '1.7.0' }]);
+    expect(cs.accepts).toEqual([{ scope: 'p', release: '1.8.0' }, { scope: 'uae.p', release: '1.8.0' }, { scope: 'uae.wps', release: '1.8.0' }]);
     // The participant list is read from the participant directory (R-11-51, Issue I-130), not set as a value.
     expect(cs.values.find((v: any) => v.parameter === 'uae.wps.table.participant-names.v1#participants').fromReference.table).toBe('uae.p.ref.participant-directory.v1');
     expect(Object.fromEntries(cs.values.filter((v: any) => !v.fromReference).map((v: any) => [v.parameter, v.value]))).toEqual({

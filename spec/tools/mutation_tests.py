@@ -225,6 +225,12 @@ CASES = [
     # L09 (R-01-25): a shared reference table's own words name no bank, whatever its public rows hold
     ("M77", "ERROR L09", "factory/uae.p/reference/uae.p.ref.participant-directory.v1.yaml",
      "title: The licensed banks of the UAE", "title: The licensed banks of the UAE for dib", "a shared reference table's title names a tenant"),
+    ("M78", "ERROR L38", "factory/uae.wps/views/uae.wps.view.operations.v1.yaml",
+     "line.totalSalary, line.lineStatus]", "line.totalSalary, line.netSalary]", "a fixed report's column is not a declared line field"),
+    ("M79", "ERROR L38", "factory/uae.wps/views/uae.wps.view.operations.v1.yaml",
+     "      document: uae.wps.sif\n", "      document: uae.wps.payroll\n", "a report of documents lists a kind the view does not declare"),
+    ("M80", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
+     "  unmaskWindow: { type: duration,", "  unmaskWindows: { type: duration,", "a view declares a dial the operations console does not read"),
 ]
 
 
