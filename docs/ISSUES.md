@@ -1919,6 +1919,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Give the WPS port a `file-transfer` adapter in the runtime (the SIF to `centralBank.sifFolder`, the ACK and NAK read from `centralBank.ackFolder`, correlated as I-160 (2) says), so that a bank's outward file leaves through the File API's outbox. Until then the laptop test shows the outbox the way every host uses it: a file posted to `POST /outbox` with the front door's client is delivered on the laptop's SFTP binding, and the consoles' client resends the same bytes through `POST /files/{id}/resend`, once per action (R-09-105). Every host that could put a file names the File API (`TH_FILE_API_URL`).
 
+**Done (23 November 2026, owner's decision A7, R-09-160 to R-09-162).** The File API is a port that sends data out: a port may be bound to adapter `file-transfer` (`runtime/src/TransactHub.Ports/PortFileTransfer.cs`), whose send puts the file on the bank's binding of `p.port.file-transfer.v1`, the File API's outbox on a runtime host, at the folder the port's binding names (`<operation>.folder`, here `centralBank.sifFolder`), kept as the payment's file (`<operation>.kind`), delivered, audited and resent there. The image answers it for a native module (`NativePorts`). The salary file is rendered by the source's writer (`uae.wps.map.sif-out.v1` 1.1.0, native) and sent (`uae.wps.exchange.send-salary-file.v1` 1.1.0, native) on the bank's binding of the WPS port. The ACK or NAK the Central Bank leaves in its inbox comes back through the File API: the sent file's stem is recorded as the payment's key, the inbox's `stemDrop` strips the Central Bank's file id (I-160 (2), Issue I-267), and the worker reads the file the File API kept (Issue I-265). ADIB's laptop configuration release binds the WPS port so (`deploy/laptop/banks/adib/file-transfer.yaml`); the laptop's bench gives the port to the runtime and its workers give the render, the send and the ACK's reading to the native host. A test distribution keeps the port's simulator, and any other bench may name it. Factory 1.16.0, change set CS-2026-11-23-011. Tests: `PortFileTransferTests`, `FileApiTests.An_answer_named_after_the_file_a_payment_sent_reaches_that_payment`, and `deploy/laptop/test/insert-only.mts` step 7 (each payment's SIF on the SFTP server through the outbox, the test answering as the Central Bank with an ACK and one NAK, P1's file resent). What remains: Issues I-266 (the encrypted file) and I-268 (the scheme's other sends).
+
 ## I-193. The laptop's workers, and the tokens its hosts give the File API
 
 **Issue.** The File API's front door runs the intake map on a worker of the payment's distribution, and the engine host's plans name the workers of each queue; the laptop ran no worker services (I-158 (3)), so its front door was off for intake and its engine host had no workers. A host that puts a file through the File API, and the consoles' resend, take a bearer token by reference, which a laptop's development identity provider issues for an hour only.
@@ -1941,6 +1943,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** A minor release of the map (its script at `scripts/uae.wps.map.sif-in.v1@<release>.ts`) that takes the name from the inbound message's `fileName` when the file carries no `# file:` line, with a test that maps a file without it; then the laptop test drops the line.
 
+**Done (23 November 2026, R-05-85).** `uae.wps.map.sif-in.v1` 1.4.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.4.0.ts`) takes the file's name from the inbound message's `fileName` when the file carries no `# file:` line; the interpreter hands a map the message's `fileName`, and a test may give it (`given.fileName`, `test-case.schema.json`). Tests: WPS-MAP-006 (a file with no line maps by the File API's name), WPS-MAP-007 (with neither it is unmappable, as before), and `studio/test/sif-file-name.test.ts` (the worker's attempt as the front door asks it; release 1.3.0, pinned in flight, still reads the line only). The laptop test's files carry no `# file:` line (sample `wps-sif-no-file-line.sif`). Factory 1.16.0.
+
 ## I-200. On the laptop stack the File API keeps a file but cannot start its payment
 
 **Issue.** Recording the runtime videos (`studio/demo/full-run.ts`) on the laptop stack, a salary file and a demo credit file uploaded to the File API (`POST /files/ui`, as the operator) were checked and kept, and then refused with `frontdoor.NoWorker`: "No worker of dist/adib@… serves uae.wps for uae.wps.map.sif-in.v1". The front door runs a scheme's intake map on a worker of the distribution (`FileApi:Workers:<scope>`, R-09-85), and `deploy/laptop/compose.yaml` names none, so no file that reaches the laptop's File API starts a payment. The laptop's own test runs its payments with the front door's one-off runner (`deploy/laptop/bin/run-pinned.mts`) for this reason, and its README lists it under "What is not here", but nothing says that an upload is refused.
@@ -1948,6 +1952,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **What the video does.** It shows the upload and the refusal, then pins the payment at the release API and runs it with `run-pinned`, as an operator would, and says so.
 
 **Recommendation.** Give the laptop's File API the workers of the bank's distributions (`FileApi__Workers__*`), served by the engine host's per-distribution host or by a worker service of the runtime image, and extend `deploy/laptop/test/insert-only.mts` to upload a file and see its payment start and end on the distribution it is pinned to.
+
+**Done (23 November 2026, R-09-163).** The laptop's File API names the `workers` service for each scope's intake maps (`FileApi__Workers__*`, by the distribution the payment is pinned to), and the engine host's plans name the same workers. `deploy/laptop/test/insert-only.mts` starts P1 and P2 by the SFTP pick-up folder, P3 by `POST /files` and P4 by `POST /files/ui` as an operator (`ops.operator`, multipart), each run to its end on the engine host.
 
 ## I-201. No console has a screen to upload a file to the File API
 
@@ -2000,6 +2006,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
 
 **Owner's decision (23 November 2026):** build it as recommended.
+
+**Done (23 November 2026, R-09-164, R-09-165).** Of the two, recording the end was the cleaner: the front door pins before the intake because the map runs on the pinned distribution's workers. A start that fails after the pin (the map refuses it, no worker or route, the engine host refuses it) ends the payment `abandoned`, with the failure's code and words (`DistributionRegistry.Abandon`, `RuntimeFrontDoor.Start`). The service console lists the pins with no payment (no end, no payload an engine's run created, pinned at least `Service:StuckPinAfter` ago, default PT15M) at `GET /service/api/content/stuck-pins`, and its troubleshooting action `end-pin` ends one `abandoned` with its reason on a bank approver's consent; a pin whose payment runs is refused. Tests: `StuckPinTests` (SQL Server and PostgreSQL), `FileApiTests` (a map that refuses, an engine host that refuses: the distribution then drains and is removed), `DistributionContentTests.A_pin_with_no_payment_is_listed_ended_with_consent_and_its_distribution_drains_and_is_removed`.
 
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
@@ -2156,6 +2164,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Keep the refusal: a switch-over the approver consented to was a switch-over from the distribution active then, and another may now be active. Have the service console's action say so and offer to ask again from the distribution active now. The refusal's code, `distribution.ActivationRaced`, has no entry in the platform's error dictionary yet: add one with its runbook in the next release of `p.errors.platform.v1`, and have `ErrorDictionaryTests` read the store's refusal codes too.
 
+**Done in part (23 November 2026).** `distribution.ActivationRaced` has its entry and runbook in `p.errors.platform.v1` 1.6.0 (factory 1.16.0): ask again from the distribution active now, with a new consent. `ErrorDictionaryTests.Every_code_a_refusal_of_the_store_carries_has_an_entry` reads every code the store's refusals carry. The service console's own "ask again" button is not built.
+
 ## I-240. On Flowable a value read as of the payment's date is read as of the timer
 
 **Issue.** R-09-135 reads a parameter declared `payment-date` as of the payment's acceptance. The Flowable binding computes a timer's due date outside the run's state and does not have the payment's id where it reads the value, so it reads every value as of the timer's start, as of the step.
@@ -2180,6 +2190,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** In `runtime/src/TransactHub.FileApi/Program.cs` and `runtime/tools/TransactHub.EngineHost`, once the other change has landed, set `CircuitBreakers.Shared.Journal = new StoreBreakerJournal(store, "<machine>/file-api")` (and `/engine-host`) where the store is opened, and extend `BreakerHealthTests` with an SFTP partner that does not answer.
 
+**Done (23 November 2026).** The File API's and the engine host's `Program.cs` set `CircuitBreakers.Shared.Journal = new StoreBreakerJournal(store, "<machine>/file-api")` (and `/engine-host`); both projects reference `TransactHub.Operations` for the journal. `BreakerHealthTests` with an SFTP partner that does not answer is not added.
+
 ## I-256. Where a payment-event stream starts, and one position per bank
 
 **Issue.** The relay keeps one position per bank for `p.port.event-stream.v1` (R-09-153), whatever the binding: when the port is first bound it starts at the first row of the outbox, so every fact the store holds goes out; a binding with a new topic or cluster goes on from the position, so the new topic has no history. The spec does not say where a new stream starts, nor whether a change of topic is a new stream.
@@ -2198,11 +2210,43 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** When the profile is on, have the laptop build the bank's configuration release with `events.yaml` as it does with `file-transfer.yaml`, and add a check that a turnaround breach reaches the broker and a payment's events reach the topic.
 
+**Done (23 November 2026).** `deploy/laptop/test/insert-only.mts` builds ADIB's configuration release with the bindings of `deploy/laptop/banks/adib/events.yaml` beside `file-transfer.yaml`. The check that a turnaround breach reaches the broker and a payment's events the topic is not added: the test runs without the profile `events`.
+
 ## I-259. A refusal by an open circuit breaker has no error code of its own
 
 **Issue.** A call an open breaker refuses fails as a transport failure (`CircuitOpenException`, an `HttpRequestException`), so a step retries it as it retries a system that does not answer, and the service console's probe `circuit-breakers` uses `service.ProbeFailed`. There is no entry in the platform's error dictionary that says a breaker is open and what to do (`p.errors.platform.v1` 1.4.0 is another change's, so this change added none).
 
 **Recommendation.** In `p.errors.platform.v1` 1.5.0 add `port.CircuitOpen` with a runbook (find the failing system in the probe's detail, mend it or its binding, and wait for the trial call), raise it from the probe and from a step's refusal, and have `ErrorDictionaryTests` read it.
+
+**Done (23 November 2026).** `port.CircuitOpen` is in `p.errors.platform.v1` 1.6.0 (1.4.0 and 1.5.0 were never used) with its runbook. The service console's probe `circuit-breakers` fails with it, and a step a breaker refused fails with it, retryable (`PlatformPorts.Call`, `NativePorts` for a port's file); the code is `CircuitBreakers.OpenCode`. `ErrorDictionaryTests` reads it; `BreakerHealthTests` expects it.
+
+## I-265. A message a payment received is carried by reference only, so a map that reads it on the runtime saw no content
+
+**Issue.** The engines keep a message the front door delivered to a running payment by its id and type (`messages.lastReceived`, `messages.received`), never its content, and a deployed worker holds no payloads. On the runtime the Central Bank's ACK or NAK the File API received therefore reached `uae.wps.map.ack-in.v1` as a reference with no file: the reference behaviour and the native code-behind both read it as an ACK, so a NAK could not refuse the file. Found building the outward file through the File API (Issue I-192).
+
+**Done (23 November 2026, R-09-162).** A message the runtime's front door delivered from a kept file is named `in-<file id>`; a worker that names the File API (`TH_FILE_API_URL`, its token by reference in `TH_FILE_API_TOKEN`) reads such a message's content and name from the File API (`GET /files/{id}`, `GET /files/{id}/content`) before the attempt, so the map's view holds the file (`studio/src/conformance/party.ts`). The laptop's `workers` service names the File API.
+
+**Recommendation.** Have each engine hand the attempt the message's claim-check reference, as it does the context's payload, so that a worker with no File API reads the message too; until then a worker that reads a received file names the File API.
+
+## I-266. The salary file's send reads no encryption fact, so an encrypted file is not what goes out
+
+**Issue.** `uae.wps.exchange.send-salary-file.v1` reads `header` and `messages`. Its native code-behind (1.1.0, R-09-162) sends the file the render kept (`messages.rendered`). The encryption step before it (`p.protect.encrypt-file.v1`) writes the encrypted file's name and hash to `facts.encryption`, which the send cannot read; reading it is a read added, a new major line (check L26). On the laptop the encryption port is the test distribution's simulator, so nothing is lost there; at a bank that encrypts for WPS the plain file would go out.
+
+**Recommendation.** Either release `p.protect.encrypt-file.v1` in a minor that also writes the encrypted file as `messages.rendered` (a write added to `messages`, which it does not write yet: check whether L26 calls that a major), or add `uae.wps.exchange.send-salary-file.v2` that reads `facts.encryption` and sends the encrypted file when there is one. Until one is decided, a bank that binds the WPS port to the File API must not also bind `p.port.encryption.v1` to a real key.
+
+## I-267. An acknowledgement is correlated by a stem the bank's binding trims, not by a correlation map
+
+**Issue.** The Central Bank names an ACK or NAK after the SIF it answers with its twelve-character WPS file id before the extension (the source's `WpsAckNakFile`). The front door correlates a received file by the keys the sender gives, else the stem of its name (I-160 (2)), which matches no payment for such a name. The scheme does not say this naming; it is the source's reading of the SSM.
+
+**What is built (R-09-162).** A file a payment sends records its stem as the payment's key (`frontdoor.correlation`, `fileStem`); an inbox of the bank's file-transfer binding may say how many characters the partner adds to that stem (`<partner>.inbox.<name>.stemDrop`), and a file taken from it is correlated by its stem without them. ADIB's laptop binding sets `centralBank.inbox.ack.stemDrop: "12"`. No platform code names the scheme.
+
+**Recommendation.** Have the scheme declare a correlation map for each `deliver` disposition, as I-160 (2) recommends, and replace `stemDrop` by it once the Central Bank confirms its naming; until then each bank's binding sets `stemDrop` for its Central Bank inbox.
+
+## I-268. On the laptop the WPS port is the runtime's, so the scheme's other exchanges have no simulator there
+
+**Issue.** The laptop's bench gives `uae.wps.port.wps.v1` to the runtime (`TH_WORKERS_BENCH`), so the salary file leaves through the File API (R-09-162). The scheme's other sends on that port (the inward receipt confirmation, the returns and refund files) have no native code-behind that puts their file on the port, and on the laptop they find no simulator in the bench: the interpreter falls back to the port's first simulator with a warning. The laptop test runs outward salary files only.
+
+**Recommendation.** Give each WPS send its native code-behind on the port, as for the salary file, in minor releases, and a check that every activity of a port the bench gives to the runtime has one; until then a laptop test of an inward or refund flow names the port's simulator in its bench.
 
 ## Not done, and why
 

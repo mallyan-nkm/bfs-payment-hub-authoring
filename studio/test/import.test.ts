@@ -34,8 +34,9 @@ describe('import: the training bundle', () => {
     // The agent's refund cycle (I-133): six activities, four workflows, a simulator, the RRI map's script, a sample and seven tests.
     // The employer's refund leg on the outward refund order replaces the one that posted (I-136): three tests (WPS-RFR-001 to 003).
     // The party register lookup's two WPS tests (WPS-OUT-009 and 010; R-12-27): the lookup itself is the platform's.
-    expect(r.summary).toMatchObject({ documents: 80, activities: 36, rules: 12, workflows: 15, schemes: 1, configurationSets: 1, tests: 40, scripts: 5, samples: 13, new: 121, testsPassed: 40, testsFailed: 0 });
-    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 139, excluded: 1, missing: [] });
+    // The salary file's name from the File API (I-195, R-05-85): a sample and two tests (WPS-MAP-006 and 007).
+    expect(r.summary).toMatchObject({ documents: 80, activities: 36, rules: 12, workflows: 15, schemes: 1, configurationSets: 1, tests: 42, scripts: 5, samples: 14, new: 123, testsPassed: 42, testsFailed: 0 });
+    expect(r.inventory.sourceFiles).toMatchObject({ inventoried: 142, excluded: 1, missing: [] });
     // Nothing was saved by a preview.
     expect(env.store.drafts('owner')).toEqual([]);
   });

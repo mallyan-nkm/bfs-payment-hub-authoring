@@ -16,7 +16,7 @@ describe('export (C05, C20, C22)', () => {
   });
   it('registers tasks as name@release on the queue of their scope (R-09-04, R-09-05)', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'dtfx' });
-    const t = pkg.manifest.tasks.find((x: any) => x.task === 'uae.wps.exchange.send-salary-file.v1@1.0.0');
+    const t = pkg.manifest.tasks.find((x: any) => x.task === 'uae.wps.exchange.send-salary-file.v1@1.1.0');
     expect(t.queue).toBe('th-uae-wps');
   });
   it('serves a handler on the interop endpoint (R-09-05)', () => {
@@ -40,7 +40,7 @@ describe('export (C05, C20, C22)', () => {
   it('generates BPMN with external worker tasks, timer boundaries and an event-based await (R-09-12)', () => {
     const pkg = exportPackage(env, { workflows: ['p.wf.commercial.v1', 'p.wf.corporate.v1'], target: 'flowable' });
     const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.4.0.bpmn20.xml'];
-    expect(x).toMatch(/flowable:type="external-worker" flowable:topic="th-uae-wps:uae.wps.exchange.send-salary-file.v1@1.0.0"/);
+    expect(x).toMatch(/flowable:type="external-worker" flowable:topic="th-uae-wps:uae.wps.exchange.send-salary-file.v1@1.1.0"/);
     expect(x).toMatch(/<eventBasedGateway/);
     expect((x.match(/<process /g) ?? []).length).toBe(1);
     const com = pkg.files['bpmn/p.wf.commercial.v1@1.0.0.bpmn20.xml'];
