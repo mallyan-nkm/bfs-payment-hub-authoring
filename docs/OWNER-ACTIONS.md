@@ -1,6 +1,9 @@
 # What is needed from the owner, and from others
 
-Status: 23 November 2026. Each item says what it is in plain words, why it matters, what I recommend, and the issue in `docs/ISSUES.md` that holds the detail. Nothing here blocks the laptop stack or the tests; these items block a real bank going live.
+Status: 23 November 2026.
+
+**Owner's decisions of 23 November 2026:** every recommendation in part A is accepted, except A4 (crypto-shredding), which is deferred. In addition, the owner asked for a notification port with an MQTT adapter and an event-streaming port with a Kafka adapter (A5). Building is under way.
+ Each item says what it is in plain words, why it matters, what I recommend, and the issue in `docs/ISSUES.md` that holds the detail. Nothing here blocks the laptop stack or the tests; these items block a real bank going live.
 
 ## A. Decisions only the owner can make
 
@@ -41,12 +44,14 @@ The original had these; nothing in the new design covers them yet.
 ### A4. Erasure that removes the bytes (I-180)
 **What it is.** An erased payment now shows `[erased]` everywhere, but the original values are still inside the database rows, kept files and backups, because the store never deletes.
 
-**Recommendation.** Before the first bank goes live, add "crypto-shredding": each payment's personal data is encrypted with its own key in the bank's key vault, and erasing destroys the key. This needs each bank to provide a key vault.
+**Decided: deferred.** **Recommendation (kept for later).** Before the first bank goes live, add "crypto-shredding": each payment's personal data is encrypted with its own key in the bank's key vault, and erasing destroys the key. This needs each bank to provide a key vault.
 
 ### A5. A platform notification port (I-182)
 **What it is.** Turnaround alerts go out through the operations console's own small adapter (a log or a webhook), not through a platform port the bank binds like any other.
 
 **Recommendation.** Add `p.port.notification.v1` to the platform, so each bank decides where alerts go in its configuration.
+
+**Decided:** add `p.port.notification.v1` with an MQTT adapter, and an event-streaming port (payment events out, for example to Kafka) with a Kafka adapter.
 
 Also decide whether turnaround limits count business days or clock time. I recommend business days, as for hold expiry.
 
