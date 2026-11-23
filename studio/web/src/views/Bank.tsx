@@ -2,6 +2,7 @@ import { get, type Summary } from '../api';
 import { ArtefactLink, Badge, ErrorBox, Loading, Section, useLoad, useStudio } from '../ui';
 import { PortBindings } from './PortBindings';
 import { ReferenceTables } from './ReferenceTables';
+import { Licensing } from './Licensing';
 
 // The bank workspace (R-10-11): where a Bank Configurator lands. Its own hooks, rules, dials,
 // simulators and hook bindings in scope b, and the test bench for every workflow the bank can
@@ -72,6 +73,9 @@ export function Bank() {
           </Section>
           <Section title="Calendar, cut-offs and branches">
             <ReferenceTables />
+          </Section>
+          <Section title="Schemes licensed">
+            <Licensing />
           </Section>
         </div>
         <div className="col side">

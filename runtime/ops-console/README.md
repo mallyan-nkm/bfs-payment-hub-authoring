@@ -87,7 +87,8 @@ npm run test:e2e     # Playwright: a WPS file on the runtime's DTFx build, its h
 | `GET /ops/api/reports/fixed`, `/reports/fixed/{view}/{id}.csv` | The fixed reports a view declares (WPS: SIF summary, SIF detail, upload history), CSV only (R-05-67, I-183) |
 | `GET /ops/api/breaks`, `POST /ops/api/breaks/{id}/resolution`, `/breaks/{id}/consent` | The reconciliation break queue: an explanation at once, adopting the scheme's status on a bank approver's consent (R-09-92, I-168) |
 | `GET /ops/api/system-actions/pending`, `POST /ops/api/system-actions/{id}/decision` | The changes of the system waiting for a bank approver: unmasks, erasures, a legal hold's release, a rebuild (R-09-77) |
-| `GET /ops/api/audit` | The console's own chain: exports and system actions, for a supervisor or a bank approver |
+| `GET /ops/api/audit` | The console's own chain: exports and system actions, for a supervisor or a bank approver; `rows` for the Audit page, newest first, filtered by `person`, `action`, `from`, `to`, each with its hash, and `chain`, whether it verifies (R-05-75) |
+| `GET /ops/api/upload`, `POST /ops/api/upload` | The Upload page (R-05-73, R-05-74): the runtime's bank and the messages the distribution active in `Operations:Environment` receives; a person's file (a form: tenant, message, file) posted to the File API's `POST /files/ui` (`Operations:FileApi:Url`) with the person's own token, answered kept, refused or started, a refusal's code linked to its runbook (`Operations:ServiceConsole`) |
 | `GET /ops/api/health` | The read model's lag and the views loaded |
 | `POST /ops/api/rebuild` | A supervisor asks for the read model to be rebuilt from the facts; a bank approver consents (R-09-77) |
 

@@ -8,6 +8,8 @@ import { Detail } from './ops/Detail';
 import { Reports } from './ops/Reports';
 import { Breaks } from './ops/Breaks';
 import { Work } from './ops/Work';
+import { Upload } from './ops/Upload';
+import { AuditTrail } from './shell/AuditTrail';
 import { Consents, Retention, Turnaround } from './ops/Controls';
 import { show } from './ops/format';
 import { serviceClient } from './service/api';
@@ -97,6 +99,9 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     { id: 'retention', title: 'Retention', render: () => <Retention api={api} /> },
     // The changes of the system that wait for a bank approver (R-09-77): unmasks, erasures, legal holds' releases, rebuilds.
     { id: 'consents', title: 'Consents', render: () => <Consents api={api} /> },
+    // A person's upload to the File API (R-05-73), and the console's own audit trail for supervisors and bank approvers (R-05-75).
+    { id: 'upload', title: 'Upload', render: (_p, ctx) => <Upload api={api} go={ctx.go} /> },
+    { id: 'audit', title: 'Audit', render: () => <AuditTrail title="Operations audit" load={(q) => api.audit(q)} /> },
     // The bank's registers (R-05-62): makers propose, a different bank approver consents.
     { id: 'registers', title: 'Registers', render: (path, ctx) => <RegistersSection api={registersClient(auth)} path={path} go={ctx.go} /> },
   );

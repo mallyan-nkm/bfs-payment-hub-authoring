@@ -105,7 +105,14 @@ public static class ServiceEndpoints
         }));
         api.MapGet("/payments/{id}/trace", (string id, HttpContext http, EventLog l) => Guard(async () =>
             await l.Trace(Who(http), id, http.RequestAborted) is { } t ? Results.Ok(t) : throw new ServiceRefused(404, ErrorCodes.ActionNotOffered, $"No payment {id} for your tenants")));
-        api.MapGet("/audit", (HttpContext http, ServiceAudit a) => Guard(async () => { Who(http); return Results.Ok(await a.Recent(200, http.RequestAborted)); }));
+        // The audit page (R-05-76): newest first, filtered by person, action and date, each row with its hash; and whether the chains verify.
+        api.MapGet("/audit", (HttpContext http, ServiceAudit a) => Guard(async () =>
+        {
+            Who(http);
+            var f = AuditFilter.Of(k => http.Request.Query[k].ToString());
+            return Results.Ok(f == new AuditFilter() ? await a.Recent(200, http.RequestAborted) : await a.Recent(f, ct: http.RequestAborted));
+        }));
+        api.MapGet("/audit/chain", (HttpContext http, ServiceAudit a) => Guard(async () => { Who(http); return Results.Ok(await a.Verify(http.RequestAborted)); }));
 
         // The error dictionary and its runbooks (R-05-52).
         api.MapGet("/errors", (string? q, HttpContext http, ErrorDictionary d) => Guard(() =>

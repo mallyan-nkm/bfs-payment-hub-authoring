@@ -94,7 +94,10 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string, opt
   const entries = packEntries(env, scope, tenant);
   entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const own = scope === 'b' ? bankPack(env, tenant) : undefined;
-  const folder = scope === 'b' ? (own ? path.dirname(own.path) : path.join('examples', 'bank')) : path.join('factory', scope);
+  // The pack's folder is the one of the lock file it was seeded with (pack.yaml); a later release the studio published sits at a
+  // path of its own on the branch (R-11-76) and does not move the folder its artefacts' paths are relative to.
+  const home = scope === 'b' ? latestPack(env, (e) => e.doc.scope === 'b' && (e.doc.tenant ?? 'example-bank') === (tenant ?? 'example-bank') && e.source === 'spec') ?? own : undefined;
+  const folder = scope === 'b' ? (home ? path.dirname(home.path) : path.join('examples', 'bank')) : path.join('factory', scope);
   const arts = entries.map((e) => ({
     name: e.kind === 'scheme' ? `${scope}.scheme` : e.name,
     kind: e.kind,

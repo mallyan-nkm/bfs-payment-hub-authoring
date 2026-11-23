@@ -9,7 +9,9 @@ import { freshEnv } from './helpers.js';
 
 // A reference table (R-01-25, owner's decision of 2026-11-23): the bank's own (its branches) by the Bank Configurator, the shared ones
 // (participant directory, emirates, free zones, purpose codes, calendars) by the platform vendor's developers.
-const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'reference-table', 'simulator', 'test', 'sample'];
+// A bank's lock file (`pack`, scope b, owner's decision of 2026-11-23, Issue I-205): the Bank Configurator proposes a licence, the
+// Bank Approver approves it (R-11-75, R-11-76).
+const BANK: Kind[] = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'reference-table', 'simulator', 'test', 'sample', 'pack'];
 const DESIGN: Kind[] = ['workflow', 'scheme', 'operations-view', 'test', 'sample'];
 const DEVELOP: Kind[] = ['activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table', 'simulator', 'extension', 'error-dictionary', 'reference-table', 'test', 'sample'];
 const SHARED: Kind[] = [...new Set([...DESIGN, ...DEVELOP])];

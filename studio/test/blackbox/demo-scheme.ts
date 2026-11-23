@@ -151,3 +151,6 @@ export const TESTS = {
   e2e: [T('DEMO-E2E-001', 'A demo file from the channel is paid end to end', 'p.wf.corporate.v1', 'end-to-end', { inbound: 'samples/demo-credit-file-valid.csv', message: `${S}.credit-file` }, { outcome: 'settled', messages: [{ port: PORT.name, message: `${S}.file-submission`, count: 1 }] }, bench('accept', true), BANK)],
 };
 
+
+/** The next minor of a release, as demo/build.ts makes the next configuration set (I-187, I-204): 1.8.0 gives 1.9.0. */
+export const nextMinor = (release: string) => release.replace(/^(\d+)\.(\d+)\..*/, (_: string, M: string, m: string) => `${M}.${Number(m) + 1}.0`);

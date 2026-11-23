@@ -207,6 +207,29 @@ export class Director {
     }
     throw new Error('No approval answered');
   }
+  /**
+   * A scheme licensed to the example bank in its workspace (R-11-75, Issue I-205): the bank configurator proposes the bank's next
+   * lock file with it, the bank approver approves it, and the approval builds the bank's next distribution, which carries it.
+   */
+  async licenseScheme(scope: string) {
+    const maker = this.user;
+    await this.as('example-bank', 'example.maker');
+    await this.go('bank');
+    const box = this.page.locator('[aria-label="Schemes licensed"]');
+    await this.click(box.locator('tr', { hasText: scope }).getByRole('button', { name: `License ${scope}` }));
+    await this.page.waitForTimeout(800);
+    await this.as('example-bank', 'example.checker');
+    await this.go('bank');
+    await this.click(box.getByRole('button', { name: 'Approve the licence' }));
+    for (let i = 0; i < 240; i++) {
+      const t = (await box.locator('[role="status"], .error').allTextContents()).join(' ');
+      if (/approved in change set/.test(t)) break;
+      if (/Refused/.test(t)) throw new Error(t);
+      if (i === 239) throw new Error('No approval of the licence answered');
+      await this.page.waitForTimeout(250);
+    }
+    if (maker) await this.as('example-bank', maker);
+  }
   /** The bank approver makes the bank configurator's configuration set the version. */
   async approveConfiguration() {
     const maker = this.user;

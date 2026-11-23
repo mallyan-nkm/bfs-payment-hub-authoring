@@ -166,7 +166,13 @@ export function scenes(d: Director): Scene[] {
       },
     },
     {
-      say: 'Now we act as the example bank. A bank chooses which rails it runs. Until it accepts the new scheme and enables its rail, a payment in it is rejected at the route. So we release a new configuration set.',
+      say: 'Now we act as the example bank. First it licenses the new scheme: its configurator proposes the next lock file of the bank pack, and its approver, another person, approves it. That builds the bank\'s next distribution, which carries the scheme.',
+      do: async () => {
+        await d.licenseScheme('uae.demo');
+      },
+    },
+    {
+      say: 'A bank chooses which rails it runs. Until it accepts the new scheme and enables its rail, a payment in it is rejected at the route. So we release a new configuration set.',
       do: async () => {
         await d.go('tenant');
         await d.as('example-bank', 'example.maker');

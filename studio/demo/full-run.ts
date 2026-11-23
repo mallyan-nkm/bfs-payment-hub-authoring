@@ -275,6 +275,9 @@ export function scenes(d: Director): Scene[] {
     {
       say: 'First the bank takes the new scheme: it accepts U A E demo and enables its rail, in its configuration set. The checks run as we type. The bank\'s approver, another person, approves it. That builds a configuration release: values, never code.',
       do: async () => {
+        // The scheme is licensed to the bank first (I-205): a configuration that binds a scheme the bank does not license is refused.
+        const lic = (await d.api().get(`/api/tenants/${BANK}/licensing`)).data;
+        if (!lic.licensedSchemes.includes('uae.demo')) { await d.licenseScheme('uae.demo'); await d.as('', MAKER); }
         await configuration((c) => {
           if (!c.accepts.some((a: any) => a.scope === 'uae.demo')) c.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
           const rails = c.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails');

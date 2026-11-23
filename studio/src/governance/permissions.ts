@@ -40,6 +40,8 @@ export const ROLE_TENANT: Record<Role, 'bank' | 'owner' | 'either'> = {
 export const ARTEFACT_KINDS = [
   'workflow', 'scheme', 'activity', 'script', 'engine-binding', 'port', 'rule', 'ruleset', 'table',
   'simulator', 'extension', 'hook', 'configuration-set', 'port-bindings', 'test', 'sample', 'supersession', 'operations-view', 'error-dictionary', 'reference-table',
+  // A bank pack's lock file, which names the schemes the bank licenses (R-11-37, R-11-75).
+  'pack',
 ] as const;
 export const STUDIO_KINDS = ['bench', 'import', 'export', 'deploy', 'waiver', 'settings', 'release', 'in-flight', 'users', 'assistant', 'distribution', 'configuration-release'] as const;
 export type Kind = (typeof ARTEFACT_KINDS)[number] | (typeof STUDIO_KINDS)[number];
@@ -60,7 +62,8 @@ export type ScopeClass = 'bank' | 'shared' | 'studio';
 
 export interface Grant { role: Role; scope: ScopeClass; kinds: readonly Kind[]; actions: readonly Action[] }
 
-const BANK_KINDS = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'reference-table', 'simulator', 'test', 'sample'] as const;
+// A bank's lock file (`pack`, scope b): the configurator proposes a licence, the approver approves it (R-11-75).
+const BANK_KINDS = ['hook', 'activity', 'script', 'rule', 'ruleset', 'table', 'configuration-set', 'port-bindings', 'reference-table', 'simulator', 'test', 'sample', 'pack'] as const;
 // An operations view (R-05-48) declares a workflow's operator actions; it is designed with the workflow (I-69).
 const DESIGNER_KINDS = ['workflow', 'scheme', 'operations-view', 'test', 'sample'] as const;
 // An error dictionary (R-05-51) documents the errors and codes the blocks raise; it is built with them (I-69).

@@ -2,6 +2,7 @@ import { OWNER_TENANT, StoreError, identifiers, mentions, type Entry } from '../
 import { USERS_PATH, handedOverPath, inFlightPath } from '../content/layout.js';
 import { commitMessage, filesFor } from '../export/git.js';
 import { buildPlanned, planOnApproval, type Plan } from './distributions.js';
+import { lockFileOf, lockFileProblems, unlicensed } from './licensing.js';
 import { compareReleases, isShared, parseName } from '../core/names.js';
 import { toYaml, parseYaml } from '../core/yaml.js';
 import { Checker, checkDocument, interfaceDiff, pinnable, proposeRelease, refsOf } from '../checks/checks.js';
@@ -183,6 +184,16 @@ export async function approveChangeSet(env: StudioEnv, tenant: string, checker: 
   });
   const docs = set.map((x) => x.e.doc);
   const problems = set.flatMap(({ e }) => checkDocument(env, e.doc, tenant, docs).filter((i) => i.severity === 'error').map((i) => `${e.name}: ${i.code} ${i.message}`));
+  // A bank pack's lock file in the change set is the one the studio writes for the bank now (R-11-76), and every scheme the
+  // bank's configuration binds is one it licenses, with the change set's lock file and configuration set in place (R-11-77).
+  if (tenant !== OWNER_TENANT) {
+    const lock = docs.find((d) => d.kind === 'pack');
+    if (lock) problems.push(...lockFileProblems(env, tenant, lock).map((m) => `pack:b:${tenant}@${lock.release}: R-11-76 ${m}`));
+    const cfg = docs.find((d) => d.kind === 'configuration-set') ?? env.store.configurationSet(tenant);
+    const licensed: string[] = lock?.licensedSchemes ?? lockFileOf(env, tenant)?.doc.licensedSchemes ?? [];
+    const missing = lockFileOf(env, tenant) || lock ? unlicensed(env, cfg, licensed) : [];
+    if (missing.length) problems.push(`config:${tenant}: R-11-77 the configuration of ${tenant} binds ${missing.join(', ')}, which the bank pack does not license: license ${missing.length > 1 ? 'them' : 'it'} first (Bank workspace, Schemes licensed)`);
+  }
   if (problems.length) {
     env.store.record({ tenant, actor: checker, action: 'publish', key: keys.join(','), outcome: 'refused', detail: problems.join('; ') });
     throw new StoreError('checks', `The change set has errors: ${problems.join('; ')}`);
