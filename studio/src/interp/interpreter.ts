@@ -991,7 +991,8 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
         clock: { now: () => run.clock.iso(), today: () => run.clock.today() },
         ids: { next: (p = 'id') => `${p}-${inst.id}-${id}-${callNo}` },
         log: { info: () => {} },
-      }),
+        // One tenant's scripts run in workers of that tenant only (R-08-20).
+      }, undefined, run.cfg.tenant ?? 'owner', run.clock.hold()),
       scope.never(),
     ]);
     // Leaf changes merge into the context; the item list is written whole.

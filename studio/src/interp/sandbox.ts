@@ -1,20 +1,20 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as vm from 'node:vm';
 import { createRequire } from 'node:module';
 
 // TypeScript is loaded only to transpile a .ts script; a deployed worker runs precompiled JavaScript.
 const req: NodeRequire = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
 import { coveredByAny, diff } from '../core/paths.js';
+import { acquireWorker, scriptWallMs } from './isolation.js';
 
 // The TypeScript script sandbox (Part 8; C07). A script-behind sees only the injected
 // interface: ctx, ports, rules, params, clock, ids, log. No network, file system, system
 // clock, randomness or environment. It reads and writes only its declared paths.
 //
-// The context holds only its own realm's objects (R-08-18): the interface is rebuilt inside it from JSON, and the host is
-// reached through one function that takes and gives text. A script cannot reach the host's Function, process or require
-// through a constructor chain, and every slice of it, after an await too, runs under the timeout. It is still not a
-// security boundary against hostile code (D14, Issue I-119): a shared installation runs bank scripts in a worker of their own.
+// A script runs in a worker process of its own (R-08-20, Issue I-119, `script-worker.cjs`, `isolation.ts`): an empty
+// environment, no file, no network, a heap limit, JSON over stdio. Inside it the context holds only its own realm's objects
+// (R-08-18): the interface is rebuilt inside it from JSON, and the worker is reached through one function that takes and gives
+// text. Every slice of the script, after an await too, runs under the timeout.
 
 export class ContractViolation extends Error {
   constructor(public code: string, message: string) {
@@ -46,21 +46,22 @@ export interface ScriptResult {
   logs: { msg: string; data?: any }[];
 }
 
-const compiled = new Map<string, vm.Script>();
+const transpiled = new Map<string, string>();
 
-export function compileScript(source: string, file = 'script.ts'): vm.Script {
+/** A script as the worker runs it: TypeScript transpiled to CommonJS here, in the studio, so the worker needs no compiler. */
+export function transpileScript(source: string, file = 'script.ts'): string {
   const key = file + '\n' + source;
-  let s = compiled.get(key);
-  if (!s) {
-    let js = source;
+  let js = transpiled.get(key);
+  if (js === undefined) {
+    js = source;
     if (!file.endsWith('.js') && !file.endsWith('.cjs')) {
       const ts = req('typescript');
-      js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, strict: false }, fileName: file }).outputText;
+      js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, strict: false }, fileName: file }).outputText as string;
     }
-    s = new vm.Script(`(function (exports, module) { ${js}\n })`, { filename: file });
-    compiled.set(key, s);
+    if (transpiled.size > 2000) transpiled.clear();
+    transpiled.set(key, js);
   }
-  return s;
+  return js;
 }
 
 const FORBIDDEN = ['require', 'process', 'fetch', 'XMLHttpRequest', 'WebSocket', 'setTimeout', 'setInterval', 'setImmediate', 'queueMicrotask', 'Buffer', 'globalThis.process'];
@@ -74,100 +75,6 @@ export function lintScript(source: string): string[] {
     if (re.test(bare)) out.push(`Script uses ${f.replace('(', '')}, which is outside the injected interface`);
   }
   return out;
-}
-
-/**
- * The code that runs inside a script's context, before the script: it builds the injected interface out of the context's own
- * objects (R-08-18). Nothing of the host's realm reaches the script: not an object, a function, a promise or an error, so
- * `x.constructor.constructor` never gives the host's Function. The host is reached through `call`, which takes and gives
- * JSON text only and never throws, and the run ends through `done`, which takes JSON text. Both live in this closure only.
- */
-const BRIDGE = `(function (call, done, shapeJson, viewJson, rootsJson, nowIso) {
-  'use strict';
-  const J = JSON, O = Object, P = Promise, E = Error, A = Array, R = Reflect;
-  const then = P.prototype.then;
-  const decode = (s) => (s === undefined || s === 'undefined' ? undefined : J.parse(s));
-  function raise(err) {
-    const e = new E(String(err.message));
-    e.name = String(err.name || 'Error');
-    if (err.code !== undefined) e.code = err.code;
-    if (err.hostError !== undefined) O.defineProperty(e, '__hostError', { value: err.hostError });
-    throw e;
-  }
-  function answer(text) {
-    const r = decode(text);
-    if (r && r.error) raise(r.error);
-    return r ? r.value : undefined;
-  }
-  function invoke(path, args) {
-    if (path === 'rules.money.sum' && typeof args[1] === 'function') args = [A.isArray(args[0]) ? args[0].map(args[1]) : []];
-    // An answer that comes later is handed back through \`reply\`, a function of this context: the script awaits a promise
-    // of its own realm, never the host's.
-    let resolve;
-    const later = new P((res) => { resolve = res; });
-    const r = call(path, J.stringify(args, (k, v) => (typeof v === 'function' ? undefined : v)), (text) => resolve(text));
-    if (typeof r === 'string') return answer(r);
-    return R.apply(then, later, [answer]);
-  }
-  function build(shape, path) {
-    if (shape && typeof shape === 'object' && !A.isArray(shape)) {
-      if (shape.__fn === true) return (...args) => invoke(path, args);
-      const o = {};
-      for (const k of O.keys(shape)) o[k] = build(shape[k], path ? path + '.' + k : k);
-      return O.freeze(o);
-    }
-    return shape;
-  }
-  // A deterministic Date and no randomness (C07-S3).
-  const D = Date, now = D.parse(nowIso);
-  class VDate extends D { constructor(...a) { if (a.length) super(...a); else super(now); } static now() { return now; } }
-  globalThis.Date = VDate;
-  globalThis.Math = O.create(Math, { random: { value: () => { const e = new E('Math.random is not available to a script'); e.name = 'ContractViolation'; e.code = 'L28'; throw e; } } });
-  const logs = [];
-  globalThis.console = { log: (...a) => { logs.push({ msg: a.map(String).join(' ') }); } };
-  // Reading a part of the context that is not declared fails the run (R-03-07).
-  const roots = new Set(decode(rootsJson));
-  const view = decode(viewJson);
-  const guarded = new Proxy(view, {
-    get(target, prop, recv) {
-      if (typeof prop === 'string' && !roots.has(prop) && !(prop in O.prototype) && prop !== 'toJSON' && prop !== 'then') {
-        const e = new E('The script read ctx.' + prop + ', which is not in its declared reads');
-        e.name = 'ContractViolation'; e.code = 'R-03-07'; throw e;
-      }
-      return R.get(target, prop, recv);
-    },
-  });
-  const api = build(decode(shapeJson), '');
-  const finish = (r) => done(J.stringify(r));
-  const failure = (e) => {
-    let f;
-    try { f = { name: String(e && e.name), message: String(e && e.message !== undefined ? e.message : e), code: e && e.code !== undefined ? String(e.code) : undefined, hostError: e && e.__hostError }; }
-    catch (x) { f = { name: 'ScriptError', message: 'The script threw a value that cannot be read' }; }
-    finish({ failure: f });
-  };
-  return (moduleFn) => {
-    const m = { exports: {} };
-    try { moduleFn(m.exports, m); } catch (e) { return failure(e); }
-    const entry = m.exports.run || m.exports.default;
-    if (typeof entry !== 'function') return finish({ failure: { name: 'ScriptShape', message: 'exports no run function' } });
-    let p;
-    try { p = P.resolve(entry({ ...api, ctx: guarded, log: { info: (msg, data) => { logs.push({ msg: String(msg), data: data === undefined ? undefined : J.parse(J.stringify(data)) }); } } })); }
-    catch (e) { return failure(e); }
-    R.apply(then, p, [(result) => {
-      try {
-        const outcome = typeof result === 'string' ? result : result && result.outcome;
-        const reasonCode = result && typeof result === 'object' ? result.reasonCode : undefined;
-        finish({ outcome: outcome === undefined ? undefined : String(outcome), reasonCode: reasonCode === undefined ? undefined : String(reasonCode), ctx: view, logs });
-      } catch (e) { failure(e); }
-    }, failure]);
-  };
-})`;
-
-const bridges = new Map<string, vm.Script>();
-function bridgeScript(): vm.Script {
-  let s = bridges.get('b');
-  if (!s) bridges.set('b', (s = new vm.Script(BRIDGE, { filename: 'th-script-bridge.js' })));
-  return s;
 }
 
 /** The shape of the injected interface: its data as it is, each function as a marker the context turns into a call. */
@@ -187,6 +94,11 @@ function lookup(api: any, path: string): any {
   return { fn: cur, self };
 }
 
+/**
+ * Run a TypeScript script-behind in a worker process of its own (R-08-20, Issue I-119): nothing of the studio is in that
+ * process. The injected interface stays here; the script reaches it through JSON messages only. `partition` is the tenant the
+ * run is for: a worker serves one tenant only.
+ */
 export async function runScript(
   source: string,
   file: string,
@@ -195,9 +107,17 @@ export async function runScript(
   writes: string[],
   api: Omit<ScriptApi, 'ctx'>,
   timeoutMs = 1000,
+  partition = 'owner',
+  hold: { enter(): void; leave(): void } = { enter() {}, leave() {} },
 ): Promise<ScriptResult> {
   const before = JSON.parse(JSON.stringify(view));
   const roots = [...new Set([...reads, ...writes].map((r) => r.replace('[]', '').split('.')[0]))];
+  let js: string;
+  try {
+    js = transpileScript(source, file);
+  } catch (e: any) {
+    throw new ScriptError('ScriptError', `${file}: ${String(e?.message ?? e)}`);
+  }
   // Errors the host's interface threw, kept here by number: the script gets their message, the run gets them back as they were.
   const thrown: unknown[] = [];
   const asError = (e: any) => {
@@ -215,56 +135,74 @@ export async function runScript(
       return asError(e);
     }
   };
-  let drain: () => void = () => {};
-  /** The one door from the script to the host: JSON text in, JSON text (or a promise of it) out; it never throws. */
-  const call = (path: string, argsJson: string, reply: (text: string) => void): string | undefined => {
-    try {
-      const { fn, self } = lookup(api, path);
-      if (typeof fn !== 'function') return JSON.stringify({ error: { name: 'TypeError', message: `${path} is not a function of the injected interface` } });
-      const value = fn.apply(self, JSON.parse(argsJson));
-      if (value && typeof (value as any).then === 'function') {
-        // Answered with text only, through the context's own function, and the context's microtasks run at once under the
-        // timeout: the script continues in the same turn of the event loop, as an await on the host would.
-        void Promise.resolve(value).then(
-          (v) => { reply(answer(v)); drain(); },
-          (e) => { reply(asError(e)); drain(); },
-        );
-        return undefined;
-      }
-      return answer(value);
-    } catch (e) {
-      return asError(e);
-    }
-  };
-  let settle!: (text: string) => void;
-  const finished = new Promise<string>((r) => (settle = r));
-  // A fresh context with its own intrinsics; strings and WebAssembly cannot be compiled to code in it. Its microtasks run
-  // inside each evaluation, so the timeout bounds every slice of the script, the ones after an await too.
-  const ctxVm = vm.createContext({}, { codeGeneration: { strings: false, wasm: false }, microtaskMode: 'afterEvaluate' });
-  const timeout = { timeout: timeoutMs };
-  drain = () => {
-    try {
-      vm.runInContext('0', ctxVm, timeout);
-    } catch {
-      settle(JSON.stringify({ failure: { name: 'Timeout', message: `The script ran past ${timeoutMs} ms without returning to its interface` } }));
-    }
-  };
-  try {
-    const start = bridgeScript().runInContext(ctxVm, timeout)(call, (t: string) => settle(String(t)), JSON.stringify(shapeOf(api)), JSON.stringify(view), JSON.stringify(roots), api.clock.now());
-    (ctxVm as any).__th_start = start;
-    (ctxVm as any).__th_module = compileScript(source, file).runInContext(ctxVm, timeout);
-    // The script's top level and its run start inside one timed evaluation; the two names are gone before it runs.
-    vm.runInContext('(() => { const s = __th_start, f = __th_module; delete globalThis.__th_start; delete globalThis.__th_module; s(f); })()', ctxVm, timeout);
-  } catch (e: any) {
-    if (/Script execution timed out/.test(String(e?.message))) throw new ScriptError('Timeout', `${file} ran past ${timeoutMs} ms`);
-    throw new ScriptError('ScriptError', `${file}: ${String(e?.message ?? e)}`);
-  }
-  const r = JSON.parse(await finished);
+  // Business time does not move while the script waits for a worker or computes in one.
+  hold.enter();
+  const worker = await acquireWorker(partition);
+  let retire = false;
+  const text = await new Promise<string>((resolve, reject) => {
+      let open = true;
+      let pending = 0;
+      let settles = 0;
+      const wall = setTimeout(() => {
+        open = false;
+        worker.discard();
+        reject(new ScriptError('Timeout', `${file} ran past ${scriptWallMs()} ms, its port calls included; its worker was stopped`));
+      }, scriptWallMs());
+      const end = (f: () => void) => {
+        if (!open) return;
+        open = false;
+        clearTimeout(wall);
+        hold.leave();
+        f();
+      };
+      worker.onExit((why) => end(() => reject(new ScriptError(/memory/.test(why) ? 'ResourceLimit' : 'ScriptError', `${file}: ${why}`))));
+      worker.onLine((line) => {
+        if (!open) return;
+        let m: any;
+        try {
+          m = JSON.parse(line);
+        } catch {
+          return end(() => {
+            worker.discard();
+            reject(new ScriptError('ScriptError', `${file}: the script worker wrote something that is not its protocol`));
+          });
+        }
+        if (m.t === 'done') return end(() => ((retire = m.retire === true), resolve(String(m.text))));
+        // The worker waits on its ports only, and has taken every answer sent: business time may move.
+        if (m.t === 'wait') return void (m.consumed === settles && hold.leave());
+        if (m.t !== 'call') return;
+        // The one door from the script to the studio: JSON text in, JSON text (or a promise of it) out; it never throws.
+        let value: any;
+        try {
+          const { fn, self } = lookup(api, String(m.path));
+          if (typeof fn !== 'function') return worker.send({ t: 'sync', text: JSON.stringify({ error: { name: 'TypeError', message: `${m.path} is not a function of the injected interface` } }) });
+          value = fn.apply(self, JSON.parse(String(m.args)));
+        } catch (e) {
+          return worker.send({ t: 'sync', text: asError(e) });
+        }
+        if (value && typeof value.then === 'function') {
+          const id = ++pending;
+          worker.send({ t: 'pending', id });
+          Promise.resolve(value).then(
+            (v) => open && (hold.enter(), settles++, worker.send({ t: 'settle', id, text: answer(v) })),
+            (e) => open && (hold.enter(), settles++, worker.send({ t: 'settle', id, text: asError(e) })),
+          );
+          return;
+        }
+        worker.send({ t: 'sync', text: answer(value) });
+      });
+      worker.send({ t: 'run', js, file, shape: JSON.stringify(shapeOf(api)), view: JSON.stringify(view), roots: JSON.stringify(roots), now: api.clock.now(), timeoutMs });
+  });
+  // A worker whose run was stopped by its timeout takes no other run.
+  if (retire) worker.discard();
+  else worker.release();
+  const r = JSON.parse(text);
   if (r.failure) {
     const f = r.failure;
     if (typeof f.hostError === 'number' && f.hostError >= 0 && f.hostError < thrown.length) throw thrown[f.hostError];
     if (f.name === 'ScriptShape') throw new ScriptError('ScriptShape', `${file} ${f.message}`);
     if (f.name === 'Timeout') throw new ScriptError('Timeout', f.message);
+    if (f.name === 'CompileError') throw new ScriptError('ScriptError', `${file}: ${f.message}`);
     if (f.name === 'ContractViolation') throw new ContractViolation(f.code ?? 'R-03-07', f.message);
     const e = new Error(f.message);
     e.name = f.name;
