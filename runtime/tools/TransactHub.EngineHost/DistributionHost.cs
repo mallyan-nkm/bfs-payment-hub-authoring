@@ -60,7 +60,16 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
         {
             var obs = await RunPayment(paymentId, context);
             var outcome = Outcome(obs);
-            await using (var db = StoreDbContext.Open(Store)) await new DistributionRegistry(db).End(paymentId, outcome, $"engine:{Engine}");
+            await using (var db = StoreDbContext.Open(Store))
+            {
+                // The engine failed the payment: a fact with the dictionary's code, beside engine started (R-09-70, Issue I-103).
+                if (outcome == "failed")
+                {
+                    var root = J.A(obs, "instances").FirstOrDefault();
+                    await EngineFailures.Record(db, paymentId, Engine, J.S(root, "id") ?? J.S(root, "instance"), J.S(root, "failed"), distribution: Distribution);
+                }
+                await new DistributionRegistry(db).End(paymentId, outcome, $"engine:{Engine}");
+            }
             rec["observation"] = obs;
             rec["outcome"] = outcome;
             rec["status"] = "ended";
@@ -70,6 +79,12 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
             rec["status"] = "failed";
             rec["error"] = e.Message;
             Console.Error.WriteLine($"{paymentId}: {e}");
+            try
+            {
+                await using var db = StoreDbContext.Open(Store);
+                await EngineFailures.Record(db, paymentId, Engine, null, e.Message, distribution: Distribution);
+            }
+            catch (Exception r) { Console.Error.WriteLine($"{paymentId}: the engine's failure was not recorded: {r.Message}"); }
         }
         rec["endedAt"] = DateTimeOffset.UtcNow.ToString("O");
     }

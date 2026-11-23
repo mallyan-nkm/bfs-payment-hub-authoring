@@ -71,6 +71,17 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
             f.Kind, f.Code ?? "", f.DataJson, f.At.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture),
             f.ReleaseId ?? "", f.Actor))));
 
+    /// <summary>
+    /// The trace and span the fact is written in, from the current activity (R-09-69, Issue I-80): every host's spans come from
+    /// TransactHub.Telemetry's sources, so the fact names the trace of the request, attempt or step that wrote it. Not hashed.
+    /// </summary>
+    static void Correlate(FactRow row)
+    {
+        if (System.Diagnostics.Activity.Current is not { } a || a.TraceId == default) return;
+        row.TraceId = a.TraceId.ToHexString();
+        row.SpanId = a.SpanId.ToHexString();
+    }
+
     public async Task<FactRow> Append(string subjectId, string subjectKind, NewFact fact, CancellationToken ct = default)
     {
         for (var attempt = 0; ; attempt++)
@@ -90,6 +101,7 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
                 Actor = fact.Actor,
                 PrevHash = head?.Hash ?? Genesis,
             };
+            Correlate(row);
             row.Hash = HashOf(row);
             db.Facts.Add(row);
             // The transactional outbox (plan W2): every fact is announced in the same save, so a reader that
@@ -135,6 +147,7 @@ public sealed class FactLog(StoreDbContext db, TimeProvider? clock = null)
                     SubjectId = subjectId, SubjectKind = subjectKind, Seq = ++seq, Kind = fact.Kind, Code = fact.Code,
                     DataJson = CanonicalJson.Of(fact.Data ?? new JsonObject()), At = at, ReleaseId = fact.ReleaseId, Actor = fact.Actor, PrevHash = prev,
                 };
+                Correlate(row);
                 row.Hash = HashOf(row);
                 prev = row.Hash;
                 rows.Add(row);
@@ -214,4 +227,17 @@ public static class Outbox
         Topic = MessageTopic, Key = m.Id, At = m.At,
         PayloadJson = CanonicalJson.Of(new JsonObject { ["message"] = m.Id, ["subject"] = m.SubjectId, ["kind"] = m.Kind }),
     };
+}
+
+/// <summary>
+/// Where a console links a trace id (R-09-69, Issue I-80): the installation's trace view, by the URL template TH_TRACE_URL with
+/// <c>{traceId}</c> in it (for example a Tempo or Jaeger search). No template, no link: the id is still shown.
+/// </summary>
+public static class TraceLinks
+{
+    public static string? Template { get; set; } = System.Environment.GetEnvironmentVariable("TH_TRACE_URL");
+
+    public static string? Of(string? traceId) =>
+        string.IsNullOrEmpty(traceId) || string.IsNullOrEmpty(Template) || !System.Text.RegularExpressions.Regex.IsMatch(traceId, "^[0-9a-f]{32}$")
+            ? null : Template.Replace("{traceId}", traceId, StringComparison.Ordinal);
 }

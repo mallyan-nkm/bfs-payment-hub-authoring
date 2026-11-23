@@ -60,7 +60,7 @@ public sealed class ActionRefused(int status, string message, string code = OpsC
 public static class OpsCodes
 {
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",
-        AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", Forbidden = "auth.Forbidden", NotFound = ActionNotOffered, NoFileKept = ActionNotOffered;
+        AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", Forbidden = "auth.Forbidden", NotFound = "ops.UnknownPayment", NoFileKept = "ops.NoFileKept";
 }
 
 /// <summary>
@@ -165,7 +165,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         await using var db = StoreDbContext.Open(store);
         var facts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "operator").OrderBy(f => f.Seq).ToListAsync(ct);
         var mine = facts.Where(f => (string?)JsonNode.Parse(f.DataJson)?["action"] == actionId).ToList();
-        var req = mine.FirstOrDefault(f => f.Code == "requested") ?? throw new ActionRefused(404, $"No action {actionId}", OpsCodes.NotFound);
+        var req = mine.FirstOrDefault(f => f.Code == "requested") ?? throw new ActionRefused(404, $"No action {actionId}", OpsCodes.ActionNotOffered);
         if (mine.Count > 1) throw new ActionRefused(409, $"Action {actionId} is already {mine[^1].Code}", OpsCodes.AlreadyDecided);
         var d = (JsonObject)JsonNode.Parse(req.DataJson)!;
         var role = (string?)d["secondApprover"] ?? throw new ActionRefused(409, "This action needs no second approver");

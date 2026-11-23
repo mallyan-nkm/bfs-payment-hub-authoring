@@ -126,6 +126,13 @@ public sealed class FactRow : IInsertOnly
     public string Actor { get; set; } = "";
     public string PrevHash { get; set; } = "";
     public string Hash { get; set; } = "";
+    /// <summary>
+    /// The OpenTelemetry trace and span the fact was written in (R-09-69, Issue I-80), from the writer's current activity, so a
+    /// console links the fact to its trace. A correlation reference only: outside the hashed data (<see cref="FactLog.HashOf"/>),
+    /// and empty on a fact written outside a trace or before the store's TraceIds migration (expand-then-contract).
+    /// </summary>
+    public string? TraceId { get; set; }
+    public string? SpanId { get; set; }
 }
 
 /// <summary>A message or file in or out, kept as received or sent, with its hash.</summary>

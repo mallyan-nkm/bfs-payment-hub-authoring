@@ -149,7 +149,8 @@ function ContentPage({ api }: { api: ServiceClient }) {
 
 function LogsPage({ api }: { api: ServiceClient }) {
   const init = hashQuery(location.hash);
-  const [f, setF] = useState<Record<string, string>>({ code: init.code ?? '', leg: '', scheme: '', tenant: '', payment: init.payment ?? '', from: '', to: '' });
+  // trace: a fact's, this host's and the other hosts' logs of one trace (R-09-69, R-09-71); the back end is asked by trace or time.
+  const [f, setF] = useState<Record<string, string>>({ code: init.code ?? '', leg: '', scheme: '', tenant: '', payment: init.payment ?? '', trace: init.trace ?? '', from: '', to: '' });
   const [items, setItems] = useState<LogItem[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const load = () => api.logs(logQuery(f)).then((r) => setItems(r.items)).catch(setErr);
@@ -171,7 +172,8 @@ function LogsPage({ api }: { api: ServiceClient }) {
             <tr key={n} data-testid="log-row" className={i.level === 'Error' ? 'error-row' : ''}>
               <td className="mono">{when(i.at)}</td><td><Badge s={i.level === 'Error' ? 'fail' : 'ok'} /></td>
               <td>{i.payment ? <a href={i.payment} title="Open in the operations console">{i.subject}</a> : <span className="mono">{i.subject ?? i.category}</span>} {i.tenant && <span className="muted">{i.tenant}</span>} {i.scheme && <span className="muted">{i.scheme}</span>}</td>
-              <td>{i.source === 'fact' ? <><span className="mono">{i.kind}:{i.code}</span> {i.step && <span className="muted">{i.step} ({i.activity})</span>} <span className="muted">{i.actor}</span></> : i.message}</td>
+              <td>{i.source === 'fact' ? <><span className="mono">{i.kind}:{i.code}</span> {i.step && <span className="muted">{i.step} ({i.activity})</span>} <span className="muted">{i.actor}</span></> : <>{i.source === 'backend' && <span className="badge">{i.category}</span>} {i.message}</>}
+                {i.traceId && <>{' '}{i.trace ? <a className="mono" href={i.trace} target="_blank" rel="noreferrer">trace {i.traceId.slice(0, 8)}</a> : <a className="mono" href={`#/service/logs?trace=${i.traceId}`}>trace {i.traceId.slice(0, 8)}</a>}</>}</td>
               <td><Errors errors={i.errors} /></td>
             </tr>
           ))}</tbody>

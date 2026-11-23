@@ -88,7 +88,7 @@ public static class ServiceEndpoints
             string? S(string k) => q.TryGetValue(k, out var v) && v.ToString().Length > 0 ? v.ToString() : null;
             DateTimeOffset? T(string k) => S(k) is { } x && DateTimeOffset.TryParse(x, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var t) ? t : null;
             if (S("tenant") is { } tenant && !who.Sees(tenant)) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"No tenant {tenant} for {who.DisplayName}");
-            return Results.Ok(await l.Query(who, new LogFilter(S("code"), S("leg"), S("scheme"), S("tenant"), S("payment"), T("from"), T("to"), S("source"), int.TryParse(S("take"), out var n) ? n : 200), http.RequestAborted));
+            return Results.Ok(await l.Query(who, new LogFilter(S("code"), S("leg"), S("scheme"), S("tenant"), S("payment"), T("from"), T("to"), S("source"), int.TryParse(S("take"), out var n) ? n : 200, S("trace")), http.RequestAborted));
         }));
         api.MapGet("/payments/{id}/trace", (string id, HttpContext http, EventLog l) => Guard(async () =>
             await l.Trace(Who(http), id, http.RequestAborted) is { } t ? Results.Ok(t) : throw new ServiceRefused(404, ErrorCodes.ActionNotOffered, $"No payment {id} for your tenants")));

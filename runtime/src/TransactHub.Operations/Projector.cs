@@ -273,6 +273,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             {
                 SubjectId = subj.Id, StreamId = f.SubjectId, Seq = f.Seq, At = f.At, Kind = f.Kind, Code = f.Code, Actor = f.Actor,
                 Instance = (string?)data["instance"], Step = (string?)data["step"], Activity = (string?)data["activity"], DataJson = CanonicalJson.Of(data),
+                TraceId = f.TraceId,
             });
             switch (f.Kind)
             {

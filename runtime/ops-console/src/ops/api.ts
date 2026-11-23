@@ -27,7 +27,7 @@ export interface Offer { action: string; label: string; role: string; secondAppr
 export interface Detail {
   payment: PaymentRow;
   lines: { id: string; lineNo: number; amount: number; currency: string; fields: Record<string, any> }[];
-  timeline: { seq: number; at: string; kind: string; code?: string; instance?: string; step?: string; activity?: string; actor: string; data: any }[];
+  timeline: { seq: number; at: string; kind: string; code?: string; instance?: string; step?: string; activity?: string; actor: string; data: any; traceId?: string | null; trace?: string | null }[];
   documents: { id: string; kind: string; direction: string; fileName?: string; size: number; contentHash: string; at: string; source?: string; leg?: string | null; signed?: boolean; signingKeyId?: string | null }[];
   holds: { id: string; kind: string; activity: string; reason?: string; status: string; decision?: string; openedAt: string; decidedAt?: string; decidedBy?: string }[];
   actions: { id: string; action: string; status: string; requestedBy: string; requestedAt: string; remarks?: string; secondApprover?: string; approvedBy?: string; approvedAt?: string; result?: string }[];

@@ -25,10 +25,11 @@ public static class ErrorCodes
     public const string Unauthenticated = "auth.Unauthenticated", Forbidden = "auth.Forbidden", StudioIssuer = "auth.StudioIssuer", DevRefused = "auth.DevRefused", RoleMapInvalid = "auth.RoleMapInvalid";
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",
         AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", NoEnginePath = "ops.NoEnginePath";
-    // The refusals of an action that does not apply to the payment now (no parked step, no kept file, no posting reference) are
-    // ops.ActionNotOffered; a worker that does not answer its control is service.ProbeFailed. New codes wait for the dictionary's
-    // next release (Issue I-126).
-    public const string NoParkedStep = ActionNotOffered, NoFileKept = ActionNotOffered, PostingUnknown = ActionNotOffered, NotFound = ActionNotOffered, WorkerUnreachable = ProbeFailed;
+    // The refusals of an action that does not apply to the payment now, each with its own code since the dictionary's 1.1.0
+    // (Issue I-126): no parked step, no kept file, no posting reference, no such payment; a worker that does not answer its
+    // control; a paused intake; the installation's log back end that does not answer (I-103).
+    public const string NoParkedStep = "ops.NoParkedStep", NoFileKept = "ops.NoFileKept", PostingUnknown = "ops.NoPostingReference", NotFound = "ops.UnknownPayment",
+        WorkerUnreachable = "ops.WorkerUnreachable", IntakePaused = "ops.IntakePaused", LogSourceUnreachable = "service.LogSourceUnreachable";
     public const string ApproverRequired = "service.ApproverRequired", RemovalRefused = "service.RemovalRefused", RestoreRefused = "service.RestoreRefused",
         BackupInvalid = "service.BackupInvalid", ProbeFailed = "service.ProbeFailed", CertificateExpiring = "service.CertificateExpiring", DiskLow = "service.DiskLow";
     public const string AssistantDisabled = "assistant.Disabled", AssistantUnavailable = "assistant.Unavailable";

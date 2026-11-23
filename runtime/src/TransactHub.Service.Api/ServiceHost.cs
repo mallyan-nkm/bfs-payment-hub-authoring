@@ -24,6 +24,7 @@ namespace TransactHub.Service.Api;
 /// <item><c>TH_BACKUP_SIGNING_KEY</c> (a reference), <c>Service:Backup:TrustedSigners</c>, <c>Service:RestoreDir</c>: backups.</item>
 /// <item><c>TH_FLOWABLE_URL</c>, <c>TH_FLOWABLE_USER</c>, <c>Service:Flowable:PasswordRef</c>: the Flowable engine; <c>Service:TrustWritable</c>.</item>
 /// <item><c>TH_ASSISTANT_ENABLED</c> (true to switch on), <c>TH_ANTHROPIC_API_KEY</c>: the assistant.</item>
+/// <item><c>Service:LogSource:Kind|Url|Selector|TokenRef</c>: the installation's log back end, read only (Loki).</item>
 /// <item><c>Auth:*</c> as every runtime host (TransactHub.Auth), <c>TH_AUTH_DEV=1</c> outside production only.</item>
 /// </list>
 /// </summary>
@@ -82,7 +83,13 @@ public sealed class ServiceHost
         s.AddSingleton(sp => new BackupService(store, sp.GetRequiredService<ContentService>(), sp.GetRequiredService<ContentSettings>(),
             new BackupSettings(cfg["Service:Installation"] ?? environment, cfg["TH_BACKUP_SIGNING_KEY"], cfg["Service:Backup:TrustedSigners"] ?? trust, cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"], cfg["Auth:RoleMap"], cfg["Service:RestoreDir"]),
             secrets, sp.GetRequiredService<ServiceAudit>(), clock));
-        s.AddSingleton(sp => new EventLog(store, ops, logBuffer, sp.GetRequiredService<ErrorDictionary>()));
+        // The other hosts' logs, read only from the installation's back end, configured like a probe (R-09-71, Issue I-103).
+        if (cfg["Service:LogSource:Url"] is { Length: > 0 } logUrl && (cfg["Service:LogSource:Kind"] ?? "loki") == "loki")
+            s.AddSingleton<ILogSource>(sp => new LokiLogSource(
+                sp.GetService<LogSourceHandler>() is { } lh ? new HttpClient(lh.Handler) : new HttpClient(), new Uri(logUrl.EndsWith('/') ? logUrl : logUrl + "/"),
+                cfg["Service:LogSource:Selector"] ?? "{service_name=~\".+\"}",
+                cfg["Service:LogSource:TokenRef"] is { Length: > 0 } tr ? async ct => (await secrets.Resolve(tr, ct)).Reveal() : null));
+        s.AddSingleton(sp => new EventLog(store, ops, logBuffer, sp.GetRequiredService<ErrorDictionary>(), sp.GetService<ILogSource>()));
         s.AddSingleton<HttpClient>();
         s.AddSingleton(sp =>
         {
@@ -183,6 +190,9 @@ public sealed record AssistantModel(IAssistantModel? Model);
 
 /// <summary>A test's or an installation's own handler for the Flowable REST server (the default is a plain client).</summary>
 public sealed record FlowableHandler(HttpMessageHandler Handler);
+
+/// <summary>For tests: the handler the log source's client sends through.</summary>
+public sealed record LogSourceHandler(HttpMessageHandler Handler);
 
 /// <summary>Keeps the read model up with the outbox when this host is the installation's projecting process (Service:Project=true).</summary>
 sealed class ProjectionLoop(Projector p, IConfiguration cfg, ILogger<ProjectionLoop> log) : BackgroundService

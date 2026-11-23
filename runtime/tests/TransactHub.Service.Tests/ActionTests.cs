@@ -62,7 +62,7 @@ public sealed class ActionTests(Databases dbs)
         // The operator's controls reach the engine's host through the outbox (R-05-55, R-05-57): only a parked step takes them.
         var retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
         Assert.Equal("refused", (string?)retry["status"]);
-        Assert.Equal("ops.ActionNotOffered", (string?)retry["code"]);
+        Assert.Equal("ops.NoParkedStep", (string?)retry["code"]);
         await using (var db = StoreDbContext.Open(api.Store))
             await new FactLog(db).Append(bulk, "bulk", new NewFact("step", "stuck", new JsonObject { ["instance"] = "root/leg3", ["step"] = "submit" }, Actor: "engine"));
         retry = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "retry-attempt", target = bulk, reason = "TransientError on submit" }));
@@ -109,7 +109,7 @@ public sealed class ActionTests(Databases dbs)
         }
         Assert.Equal(["/drain", "/restart"], worker.Calls);
         var gone = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "drain-worker", target = "http://127.0.0.1:9", reason = "test" }));
-        Assert.Equal("service.ProbeFailed", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)gone["action"]!}/decision", new { approve = true, reason = "test" })))["code"]);
+        Assert.Equal("ops.WorkerUnreachable", (string?)(await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{(string)gone["action"]!}/decision", new { approve = true, reason = "test" })))["code"]);
     }
 
     /// <summary>A worker's control endpoints, as the worker answers them (POST /drain, POST /restart).</summary>

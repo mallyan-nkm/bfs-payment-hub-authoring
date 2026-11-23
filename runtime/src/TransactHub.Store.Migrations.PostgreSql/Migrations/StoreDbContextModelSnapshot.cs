@@ -223,6 +223,10 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                     b.Property<int>("Seq")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SpanId")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("SubjectId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -233,7 +237,13 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TraceId");
 
                     b.HasIndex("Kind", "Code");
 

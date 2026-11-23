@@ -558,6 +558,10 @@ namespace TransactHub.Operations.Migrations.PostgreSql.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("StreamId", "Seq")

@@ -162,7 +162,7 @@ api.MapGet("/payments/{id}", async (string id, HttpContext http, OperatorActions
     {
         payment = Row(s, legs),
         lines = lines.Select(l => new { l.Id, l.LineNo, l.Amount, l.Currency, fields = JsonNode.Parse(l.FieldsJson) }),
-        timeline = timeline.Select(t => new { t.Seq, t.At, t.Kind, t.Code, t.Instance, t.Step, t.Activity, t.Actor, data = JsonNode.Parse(t.DataJson) }),
+        timeline = timeline.Select(t => new { t.Seq, t.At, t.Kind, t.Code, t.Instance, t.Step, t.Activity, t.Actor, data = JsonNode.Parse(t.DataJson), t.TraceId, trace = TraceLinks.Of(t.TraceId) }),
         documents = docs.Select(d => new { d.Id, d.Kind, d.Direction, d.FileName, d.Size, d.ContentHash, d.At, d.Source, d.Leg, signed = d.SigningKeyId is not null, d.SigningKeyId }),
         holds, actions = acts, offers = await actions.Offers(id),
     });
