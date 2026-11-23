@@ -169,6 +169,11 @@ CASES = [
     ("M59", "ERROR L43", SAL,
      '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation]', '  reads: [header, batch, "items[]", ext.uae.wps, facts.reservation, facts.posting]',
      "a leg reads what its slot contract does not give it"),
+    ("M69", "ERROR L35", "../content-configurations/banks/dib/pack.yaml",
+     "licensedSchemes:\n  - uae.wps\n", "", "a bank pack names no scheme it licenses"),
+    ("M68", "ERROR L43", "factory/uae.wps/workflows/uae.wps.wf.return-in.v1.yaml",
+     "  writes: [status, facts.posting]", "  writes: [status, facts.posting, facts.reservation]",
+     "a leg writes what its slot contract does not let it write"),
     ("M60", "ERROR L44", "factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml",
      "    default: P1D\n", "    default: P9D\n", "a dial's default is outside its own bounds"),
     ("M61", "ERROR L41", "../content-configurations/artefacts/bindings/p.binding.temporal.v1/1.1.0.yaml",
@@ -192,15 +197,17 @@ CASES = [
     ("M66", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-request-in.v1.yaml",
      "  - id: render-answer\n", "  - id: debit-employee\n    call: p.post.accounting.v1\n    handle:\n      rejected: { end: pending }\n      unknown: { end: pending }\n  - id: render-answer\n",
      "the WPS leg posts the refund the platform workflow owns"),
-    # L38 (R-05-60, Issue I-135): an action that names its platform workflows is held to those, and they are the view's own
-    ("M67", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
+    ("M67", "ERROR L48", "../content-configurations/banks/dib/core-banking.yaml",
+     "  - port: p.port.core-banking.v1", "  - port: p.port.core-ledger.v1", "a bank binds a port that no pack holds"),
+    # L38 (R-05-61, Issue I-135): an action that names its platform workflows is held to those, and they are the view's own
+    ("M70", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
      "when: { workflow: [p.wf.corporate.v1, p.wf.inward.v1] }", "when: { workflow: [p.wf.corporate.v1, p.wf.refund.v1] }",
      "re-screen is offered on the refund order, which takes no re-screen"),
-    ("M68", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
+    ("M71", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
      "when: { workflow: [p.wf.corporate.v1, p.wf.inward.v1] }", "when: { workflow: [p.wf.corporate.v1, p.wf.request.v1] }",
      "an action names a platform workflow the view does not show"),
     # L47 (R-12-24): the outward refund order's posting is the platform's too; the employer's WPS leg posts nothing
-    ("M69", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-out.v2.yaml",
+    ("M72", "ERROR L47", "factory/uae.wps/workflows/uae.wps.wf.refund-out.v2.yaml",
      "  - end: settled\n", "  - id: credit-employer\n    call: p.post.accounting.v2\n    handle:\n      rejected: { end: pending }\n      unknown: { end: pending }\n  - end: settled\n",
      "the employer's WPS leg posts the credit the outward refund order owns"),
 ]

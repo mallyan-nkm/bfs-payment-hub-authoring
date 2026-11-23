@@ -15,6 +15,30 @@ const bump = (r: string, part: 0 | 1 | 2 = 2) => r.split('.').map((x, i) => (i =
 const raw = (p: string, init: RequestInit = {}) => fetch(server.url + p, { redirect: 'manual', ...init });
 
 describe('sign-in (R-11-32, R-11-33)', () => {
+  it('runs as several instances: each reads the sessions the others sealed, and a restart signs nobody out (R-11-45)', async () => {
+    const key = { TH_SESSION_KEY_REF: 'env:TH_BB_SESSION_KEY', TH_BB_SESSION_KEY: 'synthetic-black-box-session-key-0123456789' };
+    const a = await startServer(key);
+    const b = await startServer(key, { repo: a.repo });
+    try {
+      const s = await signIn(a.url, 'example.maker');
+      expect((await fetch(`${b.url}/api/me`, { headers: { cookie: s.cookie } })).status).toBe(200);
+      // A change on the other instance, with the CSRF token the first one gave.
+      const r = await fetch(`${b.url}/api/review`, { method: 'POST', body: JSON.stringify({ key: 'nothing' }), headers: { cookie: s.cookie, 'x-csrf-token': s.csrf, 'content-type': 'application/json' } });
+      expect(r.status).not.toBe(401);
+      expect(r.status).not.toBe(403);
+      a.stop();
+      const again = await startServer(key, { repo: a.repo });
+      try {
+        expect((await fetch(`${again.url}/api/me`, { headers: { cookie: s.cookie } })).status).toBe(200);
+      } finally {
+        again.stop();
+      }
+    } finally {
+      a.stop();
+      b.stop();
+    }
+  });
+
   it('answers 401 to a call with no session, and the sign-in starts an authorization code flow with PKCE', async () => {
     expect((await raw('/api/catalogue')).status).toBe(401);
     expect((await raw('/auth/me')).status).toBe(401);

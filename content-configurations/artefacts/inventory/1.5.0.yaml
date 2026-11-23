@@ -7,17 +7,17 @@ packs:
   - scope: p
     packType: shared
     counts:
-      activity: 26
+      activity: 25
       error-dictionary: 1
       port: 11
       rule: 7
       ruleset: 2
       table: 3
       simulator: 11
-      test: 15
+      test: 11
       operations-view: 1
-      workflow: 8
-    total: 85
+      workflow: 7
+    total: 79
     artefacts:
       - name: p.decide.await-posting-window.v1
         kind: activity
@@ -44,8 +44,6 @@ packs:
       - name: p.notify.publish-fact.v1
         kind: activity
       - name: p.post.accounting.v1
-        kind: activity
-      - name: p.post.accounting.v2
         kind: activity
       - name: p.post.reverse.v1
         kind: activity
@@ -159,14 +157,6 @@ packs:
         kind: test
       - name: P-FX-003
         kind: test
-      - name: P-POST-001
-        kind: test
-      - name: P-POST-002
-        kind: test
-      - name: P-POST-003
-        kind: test
-      - name: P-POST-004
-        kind: test
       - name: P-RES-001
         kind: test
       - name: P-RES-002
@@ -182,8 +172,6 @@ packs:
       - name: p.wf.corporate.v1
         kind: workflow
       - name: p.wf.inward.v1
-        kind: workflow
-      - name: p.wf.refund-out.v1
         kind: workflow
       - name: p.wf.refund.v1
         kind: workflow
@@ -240,10 +228,10 @@ packs:
       table: 2
       scheme: 1
       simulator: 5
-      test: 38
+      test: 35
       operations-view: 1
       workflow: 15
-    total: 118
+    total: 115
     artefacts:
       - name: uae.wps.decide.returns.v2
         kind: activity
@@ -427,12 +415,6 @@ packs:
         kind: test
       - name: WPS-OUT-008
         kind: test
-      - name: WPS-RFR-001
-        kind: test
-      - name: WPS-RFR-002
-        kind: test
-      - name: WPS-RFR-003
-        kind: test
       - name: WPS-RRI-001
         kind: test
       - name: WPS-RRI-002
@@ -471,7 +453,7 @@ packs:
         kind: workflow
       - name: uae.wps.wf.inward-refuse.v1
         kind: workflow
-      - name: uae.wps.wf.refund-out.v2
+      - name: uae.wps.wf.refund-out.v1
         kind: workflow
       - name: uae.wps.wf.refund-request-in.v1
         kind: workflow

@@ -27,6 +27,18 @@ beforeAll(() => {
 }, 120000);
 
 describe('a distribution', () => {
+  it('needs the bank pack to name the schemes it licenses, each a scheme of the factory (R-11-37, Issue I-111)', () => {
+    const e = freshEnv();
+    const pack = e.store.all().filter((x) => x.kind === 'pack' && x.doc.scope === 'b' && x.doc.tenant === 'example-bank').sort((a, b) => b.release.localeCompare(a.release, undefined, { numeric: true }))[0];
+    expect(pack.doc.licensedSchemes).toEqual(['uae.wps']);
+    pack.doc = { ...pack.doc, licensedSchemes: ['uae.ipi'] };
+    expect(() => licensedSchemes(e, 'example-bank')).toThrow(/licenses uae\.ipi, which is no scheme of the factory/);
+    const { licensedSchemes: _gone, ...without } = pack.doc;
+    pack.doc = without;
+    expect(() => licensedSchemes(e, 'example-bank')).toThrow(/names no licensedSchemes/);
+    expect(() => buildDistribution(e, { bank: 'example-bank', engine: 'temporal', id: '2026.11.22-8' })).toThrow(/names no licensedSchemes/);
+  });
+
   it('holds the platform, the schemes the bank licenses, its bank pack and the engine binding, each artefact with its SHA-256', () => {
     expect(licensedSchemes(env, 'example-bank')).toEqual(['uae.wps']);
     const m = dist.manifest;
@@ -79,6 +91,13 @@ describe('a distribution', () => {
     const extraWrite = clone(env.store.latest('uae.wps.wf.salary-file-out.v1')!.doc);
     extraWrite.entry.reads = [...extraWrite.entry.reads, 'facts.posting'];
     expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [extraWrite] }]).problems[0]).toMatch(/does not fit the slot contract scheme-leg@1 of p\.wf\.corporate\.v1: read facts\.posting/);
+    // A write the slot does not let it make (Issue I-112): refused like a read; the one write still open (I-141) is let through.
+    const extra = clone(env.store.latest('uae.wps.wf.return-in.v1')!.doc);
+    extra.exit.writes = [...extra.exit.writes, 'facts.reservation'];
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: [extra] }]).problems[0]).toMatch(/does not fit the slot contract scheme-leg@1 of p\.wf\.inward\.v1: write facts\.reservation/);
+    const open = legs.filter((l) => l.name === 'uae.wps.wf.agent-payment-in.v2');
+    expect(open[0].exit.writes).toContain('facts.returns');
+    expect(checkSlotContracts(platform, [{ scope: 'uae.wps', docs: open }]).problems).toEqual([]);
     // In the build: the scheme's leg in the store no longer fits, and the build is refused.
     const e = freshEnv();
     const leg = e.store.all().find((x) => x.name === 'uae.wps.wf.salary-file-out.v1' && x.status === 'published' && x.release === extraWrite.release)!;

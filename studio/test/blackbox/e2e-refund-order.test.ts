@@ -15,7 +15,7 @@ import { client, startServer, STUDIO, type Server } from './server.js';
 // platform view's FX and charges, the scheme view's refund leg, the lines with their own FX and charge. No refund screen.
 //
 // Release 1.1.0 of the order posts with p.post.accounting.v2 (R-12-23, Issue I-136): each line's converted amount, then its charge
-// and its VAT as entries of their own, exactly; and the approval hold's decision is the hold step's fact on the engine (R-05-59),
+// and its VAT as entries of their own, exactly; and the approval hold's decision is the hold step's fact on the engine (R-05-60),
 // so the platform view shows the approval again. The employer's side is an outward refund order on p.wf.refund-out.v1 (R-12-24):
 // the WPS leg asks for the refund and reads its settlement, the platform then credits the employer with the charge and the VAT
 // as entries of their own.
@@ -162,7 +162,7 @@ describe('a refund order with WPS as its leg, on Temporal and DTFx, seen in the 
         const detail = await ops.get(`/payments/${encodeURIComponent(row.id)}`);
         const f = detail.payment.fields;
         // The platform view: the order, its earlier payment, its FX, its charges and its approval (p.view.operations.v1 1.3.0): the
-        // hold's decision is the approval step's fact on the engine (R-05-59), with when it was taken.
+        // hold's decision is the approval step's fact on the engine (R-05-60), with when it was taken.
         expect(f).toMatchObject({ originalPaymentId: '000000000000000000000001', originalFound: 'found', fx: 'converted', fxCurrency: 'AED',
           refundCharges: 'priced', approval: 'approved', reservation: 'reserved', posting: 'posted' });
         expect(f.approvalAt).toMatch(/^2026-11-17T/);

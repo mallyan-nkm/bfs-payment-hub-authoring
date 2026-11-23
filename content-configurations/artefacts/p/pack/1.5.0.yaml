@@ -34,13 +34,13 @@ artefacts:
     path: activities/p.decide.workflow.v1.yaml
   - name: p.enrich.charges.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:c70ad2fc595d0593858c81a65f061c2912f087c99c28a027d88041e92b157c42
+    release: 1.0.0
+    hash: sha256:6817be58a8910ae33e4713b141edc6765372a70c1be45bf9259dd1b7c9ee531f
     path: activities/p.enrich.charges.v1.yaml
   - name: p.enrich.fx-rate.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:21f6036b9e440d50cdc04a1b439a5d08b1cd6cb5468aa8a853970359aadcbc69
+    release: 1.0.0
+    hash: sha256:371cf2043984a3857769cdea7e2107910738dafc7b4bafb81ce374e27623c7f9
     path: activities/p.enrich.fx-rate.v1.yaml
   - name: p.enrich.payment-record.v1
     kind: activity
@@ -72,11 +72,6 @@ artefacts:
     release: 1.1.0
     hash: sha256:4b0b6ba3688612cab242c93751d03e85f5224b2eff9476a2248fa84d4afc1e4f
     path: activities/p.post.accounting.v1.yaml
-  - name: p.post.accounting.v2
-    kind: activity
-    release: 2.0.0
-    hash: sha256:e1640ec681906b5efd5f1281a17dd2a50a4a26835ad88204048559d119b75d89
-    path: activities/p.post.accounting.v2.yaml
   - name: p.post.reverse.v1
     kind: activity
     release: 1.0.0
@@ -139,8 +134,8 @@ artefacts:
     path: activities/p.validate.limits.v1.yaml
   - name: p.errors.platform.v1
     kind: error-dictionary
-    release: 1.0.0
-    hash: sha256:dee0c45c33468d24840f4025cc9bf5d519a3e515cd0b9544f95d06281161c48b
+    release: 1.1.0
+    hash: sha256:7c529ce56f674d767541f9224e3f218f6356b767d56114af3c1a0bf8e167bb2b
     path: errors/p.errors.platform.v1.yaml
   - name: p.port.channel.v1
     kind: port
@@ -254,8 +249,8 @@ artefacts:
     path: rules/p.table.rail-choice.v1.yaml
   - name: p.table.workflow-select.v1
     kind: table
-    release: 1.2.0
-    hash: sha256:231a7f26aa981c5c09dcbe45ea23255abd279ae65a4e040d4d722a668a325792
+    release: 1.1.0
+    hash: sha256:bc30b8a1c7a50490fbc2fef7743f78a9116c4db75b809f2482b610536bbffe49
     path: rules/p.table.workflow-select.v1.yaml
   - name: p.sim.channel.v1
     kind: simulator
@@ -357,26 +352,6 @@ artefacts:
     release: 1.0.0
     hash: sha256:f27cd118906f508acc0ce243bf48f5eb01fb2927d02418c14f9dcb9d0a769e5f
     path: tests/P-FX-003.yaml
-  - name: P-POST-001
-    kind: test
-    release: 1.0.0
-    hash: sha256:ec7225c5c8f3fa5551a127e4057f398a45f90e86c27f1f01915ef47d86c2d625
-    path: tests/P-POST-001.yaml
-  - name: P-POST-002
-    kind: test
-    release: 1.0.0
-    hash: sha256:650397cc8789b6fb13a328f8761dee3055271dd85281e602253e0c569dd9c595
-    path: tests/P-POST-002.yaml
-  - name: P-POST-003
-    kind: test
-    release: 1.0.0
-    hash: sha256:3d45ada85c50136d232a108cbc292d45050293ff73b1350f30fdb5ec8bf1ac4a
-    path: tests/P-POST-003.yaml
-  - name: P-POST-004
-    kind: test
-    release: 1.0.0
-    hash: sha256:d8812c26ba369117642740b21a242892d7e75fbb8eb1b3d1170b0654ccb83728
-    path: tests/P-POST-004.yaml
   - name: P-RES-001
     kind: test
     release: 1.0.0
@@ -389,8 +364,8 @@ artefacts:
     path: tests/P-RES-002.yaml
   - name: p.view.operations.v1
     kind: operations-view
-    release: 1.3.0
-    hash: sha256:b6aeed34057049b3e717bc4b23e8fce0a0c866b5e67a10256293c27b1ec06f8d
+    release: 1.2.0
+    hash: sha256:7c397b07e0640a53ad2e3d561c4dfada32a6f0fd9c3e04f96cd831c826f7b1e5
     path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow
@@ -417,15 +392,10 @@ artefacts:
     release: 1.0.0
     hash: sha256:ccfd6359604b7236fdaf7919b98c698808ce7f4df4827ccec66b1bb58a2bdf45
     path: workflows/p.wf.inward.v1.yaml
-  - name: p.wf.refund-out.v1
-    kind: workflow
-    release: 1.0.0
-    hash: sha256:c1ef8d3ee6505544e92d1178208cec1ed1d84bc32b0b66b151b7b6383e1efdb8
-    path: workflows/p.wf.refund-out.v1.yaml
   - name: p.wf.refund.v1
     kind: workflow
-    release: 1.1.0
-    hash: sha256:dc100514ef48ddda60268cf103e0c44544d164256d9cb1b287b118505bb74c53
+    release: 1.0.0
+    hash: sha256:44ab47f2fcd915b011f51f305054987f2a79c433ede91dc4865ad78bebf3e47f
     path: workflows/p.wf.refund.v1.yaml
   - name: p.wf.request.v1
     kind: workflow

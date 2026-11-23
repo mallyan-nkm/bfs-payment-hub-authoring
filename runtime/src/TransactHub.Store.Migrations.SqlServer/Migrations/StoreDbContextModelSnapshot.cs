@@ -223,6 +223,10 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                     b.Property<int>("Seq")
                         .HasColumnType("int");
 
+                    b.Property<string>("SpanId")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("SubjectId")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -233,7 +237,13 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TraceId");
 
                     b.HasIndex("Kind", "Code");
 

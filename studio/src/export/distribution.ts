@@ -3,7 +3,7 @@ import { canonicalJson, clone } from '../core/canonical.js';
 import { parseYaml, toYaml } from '../core/yaml.js';
 import { expandWorkflow } from '../core/expand.js';
 import { OWNER_TENANT, StoreError, type Entry } from '../core/store.js';
-import { withinBounds } from '../checks/checks.js';
+import { portBindingProblems, SLOT_WRITE_OPEN, withinBounds } from '../checks/checks.js';
 import { packEntries } from '../governance/packs.js';
 import { exportPackage, signPackage, type Target } from './exporter.js';
 import { bindingOf } from './bindings.js';
@@ -48,17 +48,17 @@ export function banks(env: StudioEnv): string[] {
 }
 
 /**
- * The schemes a bank licenses (R-11-37): the bank pack's `licensedSchemes`, or, in a lock file that has none yet, the scheme
- * scopes it depends on. A scheme is a scope `<cluster>.<scheme>` that is not a cluster platform.
+ * The schemes a bank licenses (R-11-37): the bank pack's `licensedSchemes`, each a scheme of the factory. A lock file without
+ * the list is refused (Issue I-111): a distribution carries the schemes the bank licenses and no other.
  */
 export function licensedSchemes(env: StudioEnv, bank: string): string[] {
   const pack = bankPackOf(env, bank)?.doc;
   if (!pack) throw new DistributionRefused(`${bank} has no bank pack`);
-  if (Array.isArray(pack.licensedSchemes)) return [...pack.licensedSchemes].sort();
-  // A lock file written before the list: the schemes it depends on and the schemes whose dials its configuration set sets (Issue I-111).
-  const isScheme = (s: string) => s.includes('.') && !s.endsWith('.p') && env.store.byKind('scheme').some((e) => e.doc.scope === s);
-  const fromSet = (env.store.configurationSet(bank)?.values ?? []).map((v: any) => scopeOfName(String(v.parameter).split('#')[0]));
-  return [...new Set([...(pack.dependsOn ?? []).map((d: any) => d.scope), ...fromSet])].filter(isScheme).sort();
+  // Required since Issue I-111: every bank's lock file names them (`npm run studio -- bank-pack <bank> --licensed <scheme>`).
+  if (!Array.isArray(pack.licensedSchemes) || !pack.licensedSchemes.length) throw new DistributionRefused(`The bank pack of ${bank} names no licensedSchemes: a distribution carries the schemes the bank licenses and no other (R-11-37)`);
+  const unknown = pack.licensedSchemes.filter((s: string) => !env.store.byKind('scheme').some((e) => e.doc.scope === s));
+  if (unknown.length) throw new DistributionRefused(`The bank pack of ${bank} licenses ${unknown.join(', ')}, which is no scheme of the factory`);
+  return [...pack.licensedSchemes].sort();
 }
 
 /** The scopes a distribution's platform is made of: `p` and the cluster platform of each licensed scheme. */
@@ -89,8 +89,8 @@ const within = (paths: string[] | undefined, allowed: string[], own: string) =>
 /**
  * The slot-contract check (R-11-38, lint L43): every leg of a licensed scheme fills a slot of a platform workflow of the
  * distribution, with that slot's contract: the workflow it names is in the distribution at the major it names, has the slot,
- * and the leg's outcomes and reads (beyond its scheme's own extensions) are within the slot's. Writes are not compared yet (Issue I-112). Returns what each
- * scheme fills, or the mismatches.
+ * and the leg's outcomes, reads and writes (beyond its scheme's own extensions) are within the slot's (Issue I-112; a write the
+ * owner has still to decide is let through and listed, I-141). Returns what each scheme fills, or the mismatches.
  */
 export function checkSlotContracts(platform: any[], schemes: { scope: string; docs: any[] }[]): { fills: any[]; problems: string[] } {
   const contracts = slotContracts(platform);
@@ -109,6 +109,7 @@ export function checkSlotContracts(platform: any[], schemes: { scope: string; do
         const bad = [
           ...(leg.exit?.outcomes ?? []).filter((o: string) => !(c.contract?.outcomes ?? []).includes(o)).map((o: string) => `outcome ${o}`),
           ...within(leg.entry?.reads, c.contract?.reads ?? [], s.scope).map((p) => `read ${p}`),
+          ...within(leg.exit?.writes, c.contract?.writes ?? [], s.scope).filter((p) => !SLOT_WRITE_OPEN[`${leg.name} ${of} ${p}`]).map((p) => `write ${p}`),
         ];
         if (bad.length) problems.push(`${leg.name} of ${s.scope} does not fit the slot contract ${c.id} of ${of}: ${bad.join(', ')}`);
         else fills.push({ scheme: s.scope, leg: leg.name, release: leg.release, contract: c.id, workflow: of, sha256: c.sha256 });
@@ -267,8 +268,13 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   const { bank } = req;
   const set = clone(req.set ?? env.store.configurationSet(bank));
   if (!set) throw new DistributionRefused(`${bank} has no configuration set`);
-  const release = req.release ?? set.release;
-  set.release = release;
+  // The bank's port bindings go out in its configuration release (R-11-47): those given, else the ones the studio last released.
+  // A release of the bindings names the configuration release with build metadata, so that one with the same values and
+  // other bindings is a release of its own: <configuration set release>+bindings.<port bindings release>.
+  const released = req.bindings === undefined ? env.store.portBindings(bank) : undefined;
+  if (req.bindings === undefined && released?.bindings?.length) req = { ...req, bindings: released.bindings };
+  const release = req.release ?? (released?.release ? `${set.release}+bindings.${released.release}` : set.release);
+  set.release = req.release ?? set.release;
   if (!req.against.length) throw new DistributionRefused(`A configuration release of ${bank} is checked against a distribution's parameter contract: build one first`);
   const problems: string[] = [];
   for (const v of set.values ?? []) {
@@ -280,6 +286,8 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
     }
     if (!v.validFrom) problems.push(`${v.parameter} has no validFrom`);
   }
+  const isPort = (n: string) => env.store.all().some((e) => e.kind === 'port' && e.name === n && e.status !== 'draft' && (e.tenant === OWNER_TENANT || e.tenant === bank));
+  if (req.bindings?.length) problems.push(...portBindingProblems({ bindings: req.bindings }, isPort));
   for (const b of req.bindings ?? []) {
     if (!b.validFrom) problems.push(`the binding of ${b.port} has no validFrom`);
     for (const [k, val] of Object.entries<any>(b.settings ?? {})) if (/(password|passphrase|secret|token|apikey|accesskey|privatekey|credential)$/i.test(k)) problems.push(`the binding of ${b.port} holds ${k} as a setting: give it as secretRef`);
@@ -288,11 +296,11 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   if (problems.length) throw new DistributionRefused(`The configuration release ${bank}@${release} is refused: ${problems.join('; ')}`);
   const files: Record<string, string> = {};
   files['configuration/configuration-set.yaml'] = toYaml(set);
-  if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, bindings: req.bindings });
+  if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, ...(released?.release ? { release: released.release } : {}), bindings: req.bindings });
   for (const c of req.calendars ?? []) files[`calendars/${c.name}.yaml`] = toYaml(c);
   const requiresContract = req.against.map((d) => ({ distribution: d.releaseId, sha256: sha(canonicalJson(d.parameterContract)) })).sort((a, b) => a.distribution.localeCompare(b.distribution));
   const billOfMaterials = { artefacts: Object.entries(files).map(([p, t]) => ({ path: p, sha256: sha(t) })).sort((a, b) => a.path.localeCompare(b.path)) };
-  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length };
+  const manifest = { kind: 'configuration-release', bank, release, tenant: bank, requiresContract, billOfMaterials, changeSet: req.changeSet ?? null, values: (set.values ?? []).length, bindings: (req.bindings ?? []).length, ...(released?.release ? { portBindings: released.release } : {}) };
   files['manifest.yaml'] = toYaml(manifest);
   const releaseId = `config/${bank}@${release}`;
   const signed = signFiles(files, { kind: 'configuration', releaseId, workflow: '', release, target: '', tenant: bank, changeSet: req.changeSet ?? null, extra: { billOfMaterials } }) as Record<string, string>;

@@ -110,6 +110,8 @@ public sealed class OpsTimelineEntry
     public string Actor { get; set; } = "";
     /// <summary>The fact's data, without any payload: a step's ids, outcome and state writes; a hold's or an action's.</summary>
     public string DataJson { get; set; } = "{}";
+    /// <summary>The OpenTelemetry trace the fact was written in (R-09-69, Issue I-80), for a link to it; empty when it has none.</summary>
+    public string? TraceId { get; set; }
 }
 
 /// <summary>A file or message in or out, by reference: its content stays in the store.</summary>
@@ -290,6 +292,7 @@ public sealed class OpsDbContext(DbContextOptions<OpsDbContext> options) : DbCon
             e.Property(x => x.Step).HasMaxLength(Short);
             e.Property(x => x.Activity).HasMaxLength(Short);
             e.Property(x => x.Actor).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.TraceId).HasMaxLength(32);
             e.HasIndex(x => new { x.StreamId, x.Seq }).IsUnique();
             e.HasIndex(x => new { x.SubjectId, x.At });
         });

@@ -60,7 +60,7 @@ public sealed class ActionRefused(int status, string message, string code = OpsC
 public static class OpsCodes
 {
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",
-        AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", Forbidden = "auth.Forbidden", NotFound = ActionNotOffered, NoFileKept = ActionNotOffered;
+        AlreadyDecided = "ops.AlreadyDecided", HoldClosed = "ops.HoldClosed", Forbidden = "auth.Forbidden", NotFound = "ops.UnknownPayment", NoFileKept = "ops.NoFileKept";
 }
 
 /// <summary>
@@ -94,7 +94,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 var when = a["when"] as JsonObject ?? new JsonObject();
                 if (ActionNames.HoldDecisions.TryGetValue(name, out var hd) && open?.kind != hd.hold) continue;
                 if ((string?)when["hold"] is string wantHold && open?.kind != wantHold) continue;
-                // An action for some platform workflows only (R-05-60): offered on a payment that runs one of them. A payment whose
+                // An action for some platform workflows only (R-05-61): offered on a payment that runs one of them. A payment whose
                 // steps name no workflow (recorded before they did) is offered it, as before.
                 if (when["workflow"] is JsonArray wf && platform is not null && !wf.Any(x => (string?)x == platform)) continue;
                 if (when["notStatus"] is JsonArray ns && ns.Any(x => (string?)x == subj.Status)) continue;
@@ -123,7 +123,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
     }
 
     /// <summary>
-    /// The platform workflow a payment runs (R-05-60): the workflow its root instance's steps name. The root is the instance with the
+    /// The platform workflow a payment runs (R-05-61): the workflow its root instance's steps name. The root is the instance with the
     /// shortest path; a leg's instance is under it. Null when no step names one.
     /// </summary>
     async Task<string?> PlatformWorkflow(string subjectId, CancellationToken ct)
@@ -181,7 +181,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         await using var db = StoreDbContext.Open(store);
         var facts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "operator").OrderBy(f => f.Seq).ToListAsync(ct);
         var mine = facts.Where(f => (string?)JsonNode.Parse(f.DataJson)?["action"] == actionId).ToList();
-        var req = mine.FirstOrDefault(f => f.Code == "requested") ?? throw new ActionRefused(404, $"No action {actionId}", OpsCodes.NotFound);
+        var req = mine.FirstOrDefault(f => f.Code == "requested") ?? throw new ActionRefused(404, $"No action {actionId}", OpsCodes.ActionNotOffered);
         if (mine.Count > 1) throw new ActionRefused(409, $"Action {actionId} is already {mine[^1].Code}", OpsCodes.AlreadyDecided);
         var d = (JsonObject)JsonNode.Parse(req.DataJson)!;
         var role = (string?)d["secondApprover"] ?? throw new ActionRefused(409, "This action needs no second approver");

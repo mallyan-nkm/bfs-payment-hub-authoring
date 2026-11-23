@@ -152,6 +152,10 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Actor).HasMaxLength(Short).IsRequired();
             e.Property(x => x.PrevHash).HasMaxLength(64).IsRequired();
             e.Property(x => x.Hash).HasMaxLength(64).IsRequired();
+            // Added nullable (expand): a host of an earlier release writes facts without them and reads past them (R-09-69).
+            e.Property(x => x.TraceId).HasMaxLength(32);
+            e.Property(x => x.SpanId).HasMaxLength(16);
+            e.HasIndex(x => x.TraceId);
             // One numbering per subject: two writers racing for the same number cannot both win.
             e.HasIndex(x => new { x.SubjectId, x.Seq }).IsUnique();
             e.HasIndex(x => new { x.Kind, x.Code });

@@ -9,7 +9,7 @@ description: >-
   The scheme side of an outward refund order (p.wf.refund-out.v1). Builds the refund request (RFR), and the request block encrypts
   it for WPS, sends it, reads its acknowledgement and waits for the refund settlement (RSU). The leg moves no money: the credit to
   the employer, its FX, charge and VAT are the platform's. It replaces uae.wps.wf.refund-out.v1, which posted the employer's credit
-  itself on p.wf.request.v1; that release stays published, and requests started on it finish on it (Issue I-139).
+  itself on p.wf.request.v1; that release stays published, and requests started on it finish on it (Issue I-145).
 direction: outward
 implements:
   slot: scheme-leg

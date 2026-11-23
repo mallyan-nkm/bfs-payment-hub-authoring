@@ -139,7 +139,7 @@ public sealed class OperatorActionTests(Databases dbs)
         var root = $"order-{Guid.NewGuid():N}"[..20];
         await using (var db = StoreDbContext.Open(store))
             await new FactLog(db).Append($"{root}#ctx", "payload", new NewFact("payload", "accepted", new JsonObject { ["bulk"] = id }, Actor: "claim-check"));
-        // A refund order's steps name their platform workflow (R-05-60); its approval hold is decided on the engine (R-05-59).
+        // A refund order's steps name their platform workflow (R-05-61); its approval hold is decided on the engine (R-05-60).
         var steps = new TransactHub.Engines.Durable.StepFacts(store);
         var before = TransactHub.Engines.Interp.Decided;
         TransactHub.Engines.Durable.StoreSignals.Install(store, steps);

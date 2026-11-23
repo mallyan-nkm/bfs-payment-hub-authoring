@@ -96,7 +96,8 @@ export async function planOnApproval(env: StudioEnv, tenant: string, checker: st
     // The values checked now, against the contracts the release will name, so a value no distribution declares, or one out of
     // its bounds, refuses the approval before anything is published. A distribution this approval builds is checked in place.
     const set = docs.find((d) => d.kind === 'configuration-set');
-    if (set && !plan.distributions.some((d) => d.bank === tenant)) buildConfigurationRelease(env, { bank: tenant, release: set.release, against, set });
+    const bindings = docs.find((d) => d.kind === 'port-bindings');
+    if ((set || bindings) && !plan.distributions.some((d) => d.bank === tenant)) buildConfigurationRelease(env, { bank: tenant, release: set?.release, against, set, bindings: bindings?.bindings });
     plan.configuration.push({ bank: tenant, against });
   }
   return plan;
@@ -122,9 +123,9 @@ export function buildPlanned(env: StudioEnv, plan: Plan, changeSet: any): { file
   const built: BuiltBundle[] = [];
   for (const d of plan.distributions) built.push(buildDistribution(env, { bank: d.bank, engine: env.store.settings.target as Target, id: d.id, changeSets: [changeSet.id], withSimulators: env.store.settings.testDistributions === true }));
   for (const c of plan.configuration) {
-    const set = env.store.configurationSet(c.bank);
     const against = [...c.against, ...built.filter((b) => b.bank === c.bank).map((b) => ({ releaseId: b.releaseId, parameterContract: b.manifest.parameterContract }))];
-    built.push(buildConfigurationRelease(env, { bank: c.bank, release: set?.release, changeSet: changeSet.id, against }));
+    // The configuration set and the port bindings the studio last released (R-11-47), with this change set's members published.
+    built.push(buildConfigurationRelease(env, { bank: c.bank, changeSet: changeSet.id, against }));
   }
   built.forEach((b) => remember(env, b));
   return { files: Object.assign({}, ...built.map(bundleFiles)), tags: built.map((b) => b.tag), built };

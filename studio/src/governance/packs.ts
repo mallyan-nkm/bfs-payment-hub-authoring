@@ -84,7 +84,12 @@ function bankPack(env: StudioEnv, tenant?: string): Entry | undefined {
 const sharedRelease = (env: StudioEnv, scope: string) => latestPack(env, (e) => e.doc.scope === scope && e.doc.packType !== 'bank')?.release || '1.0.0';
 
 /** The pack manifest of a scope, as tools/build_factory.py writes it (C05-S2). A bank pack's paths are relative to its own folder. */
-export function packManifest(env: StudioEnv, scope: string, tenant?: string): any {
+/**
+ * The lock file of a pack. A bank pack names the schemes the bank licenses (R-11-37, Issue I-111): `licensed` when given,
+ * else the list its lock file holds; a lock file written before the list gets the schemes it depends on and those its
+ * configuration set sets dials of, once, so that the list is written down from then on.
+ */
+export function packManifest(env: StudioEnv, scope: string, tenant?: string, opts: { licensed?: string[]; release?: string } = {}): any {
   const entries = packEntries(env, scope, tenant);
   entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const own = scope === 'b' ? bankPack(env, tenant) : undefined;
@@ -112,12 +117,20 @@ export function packManifest(env: StudioEnv, scope: string, tenant?: string): an
   const order = ['p', 'uae.p', 'uae.wps'];
   const dependsOn = [...deps].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map((s) => ({ scope: s, release: sharedRelease(env, s) }));
   const pack: any = {
-    kind: 'pack', scope, release: scope === 'b' ? own?.release || '1.0.0' : sharedRelease(env, scope),
+    kind: 'pack', scope, release: scope === 'b' ? opts.release ?? (own?.release || '1.0.0') : sharedRelease(env, scope),
     title: scope === 'b' ? own?.doc.title ?? 'Example bank pack' : `Factory pack for ${scope}`,
     packType: scope === 'b' ? 'bank' : 'shared',
     origin: scope === 'b' ? 'authored' : 'factory',
   };
   if (scope === 'b') pack.tenant = tenant ?? 'example-bank';
+  if (scope === 'b') {
+    const isScheme = (s: string) => env.store.byKind('scheme').some((e) => e.doc.scope === s);
+    const derived = () => {
+      const fromSet = (env.store.configurationSet(pack.tenant)?.values ?? []).map((v: any) => scopeOfName(String(v.parameter).split('#')[0]));
+      return [...new Set([...dependsOn.map((d) => d.scope), ...fromSet])].filter((s) => s.includes('.') && !s.endsWith('.p') && isScheme(s));
+    };
+    pack.licensedSchemes = [...new Set(opts.licensed ?? (Array.isArray(own?.doc.licensedSchemes) ? own!.doc.licensedSchemes : derived()))].sort();
+  }
   if (dependsOn.length) pack.dependsOn = dependsOn;
   pack.artefacts = arts;
   pack.containsSimulators = hasSim;

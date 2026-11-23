@@ -68,6 +68,14 @@ cd studio && npm run studio -- deploy <package.zip> --workflow p.wf.corporate.v1
 docker compose -f runtime/observability/docker-compose.yml down -v
 ```
 
+## Traces, facts and logs together
+
+Every fact names the trace and span it was written in (R-09-69). The operations console's timeline and the service console's log link a fact to the installation's trace view (`TH_TRACE_URL`, a template with `{traceId}`), and the service console's log, asked with `?trace=<id>`, shows that trace's facts, its own logs and the other hosts' lines from the installation's log back end (`Service:LogSource:*`, Loki, read only, R-09-71). An engine's failure of a payment is a fact with its runbook (R-09-70).
+
+## Alerts and service-level objectives
+
+The targets are written in `runtime/observability/slo/targets.yaml`, each with where it was agreed; `python3 runtime/observability/slo/build_rules.py` generates the Prometheus rules in `runtime/observability/alerts/`, which the local stack's Prometheus loads, and `python3 runtime/observability/slo/test_rules.py` shows that they parse and fire on synthetic data (R-09-72). Change a target there, never the rules. The gauges the rules read (`th.payments.open`, `th.await.oldest`, `th.holds.oldest`) are exported by the service console's host, refreshed with its health probes.
+
 ## What is not done
 
-See [I-80](../../ISSUES.md#i-80-what-the-telemetry-does-not-yet-do): the facts do not carry the trace id, span events are masked through a private field of `Activity`, and no alert rules or service-level objectives are written.
+See [I-80](../../ISSUES.md#i-80-what-the-telemetry-does-not-yet-do): span events are masked through a private field of `Activity`, and a name in free text has no pattern. The targets without a number are [I-143](../../ISSUES.md#i-143-the-service-level-targets-the-alert-rules-have-no-number-for).

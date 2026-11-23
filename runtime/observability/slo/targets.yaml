@@ -1,0 +1,33 @@
+# The service-level objectives the runtime's alert rules are generated from (R-09-72). Written by hand; the rules in
+# ../alerts/transacthub.rules.yaml are generated from this file by build_rules.py. Each target names where it was agreed.
+# A target the owner has not set has value null: its recording rule is generated, its alert is not (Issue I-143).
+throughput:
+  # I-108 (decided 22 November 2026): 50 lines a second sustained, each runtime node at four or more cores.
+  linesPerSecond: 50
+  cores: 4
+  window: 5m
+  for: 15m
+  agreed: I-108
+ackWait:
+  # R-05-47, I-116: the wait for a scheme's acknowledgement of a sent file is the bank's value of the activity's ackWait,
+  # by default P1D (uae.wps.exchange.submit-salary-file.v1#ackWait, bounds PT15M to P7D). The alert warns at 75% of it.
+  - scheme: uae.wps
+    message: uae.wps.sif
+    replies: [uae.wps.ack]
+    parameter: uae.wps.exchange.submit-salary-file.v1#ackWait
+    wait: P1D
+    warnAt: 0.75
+    agreed: R-05-47
+holdExpiry:
+  # p.hold.approval.v1#expiry (default P1D): a hold is decided before it expires. An expired hold is an alert; an open hold
+  # past 80% of its expiry is a warning.
+  parameter: p.hold.approval.v1#expiry
+  expiry: P1D
+  warnAt: 0.8
+  agreed: R-05-56
+openPayments:
+  # The open payments of a distribution (pinned, not ended), which removal waits for (docs/runtime/PACKAGING-AND-DEPLOYMENT.md
+  # section 6). No number is agreed for how many may be open at once: Issue I-143.
+  maxPerDistribution: null
+  for: 30m
+  agreed: null

@@ -11,8 +11,8 @@ description: >-
   duration, from its payment.end fact (Issues I-97, I-100). Release 1.2.0 adds the refund order (p.wf.refund.v1): the earlier
   payment it refers to, its FX and its charges, from the platform's own steps; its approval shows in the hold fields (R-12-22).
   Release 1.3.0 adds the outward refund order (p.wf.refund-out.v1) and brings back the order's approval: on every engine a hold's
-  decision is now a step fact of the hold's step, with who decided and when (R-05-59, Issue I-136). Its actions say which platform
-  workflows they apply to: re-screen only where the payment is screened (R-05-60, Issue I-135).
+  decision is now a step fact of the hold's step, with who decided and when (R-05-60, Issue I-136). Its actions say which platform
+  workflows they apply to: re-screen only where the payment is screened (R-05-61, Issue I-135).
 platform: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.refund.v1, p.wf.refund-out.v1]
 subject:
   title: Payment
@@ -78,7 +78,7 @@ subject:
     - { action: release, label: Release after repair, role: Operator, secondApprover: Supervisor, remarks: required, when: { hold: repair } }
     - { action: reject, label: Reject, role: Operator, remarks: required, when: { hold: repair } }
     - { action: cancel, label: Cancel, role: Operator, secondApprover: Supervisor, remarks: required }
-    # Only the workflows that screen take re-screen (R-05-60, Issue I-135); a refund order has no screening step.
+    # Only the workflows that screen take re-screen (R-05-61, Issue I-135); a refund order has no screening step.
     - { action: re-screen, label: Screen again, role: Operator, remarks: required, when: { workflow: [p.wf.corporate.v1, p.wf.inward.v1] } }
     # A step that parked (the refund order's posting, R-05-55) is tried once more on an operator's retry.
     - { action: retry, label: Retry the parked step, role: Operator, remarks: required }

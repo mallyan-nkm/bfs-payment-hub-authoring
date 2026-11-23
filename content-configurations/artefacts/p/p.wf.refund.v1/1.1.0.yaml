@@ -13,7 +13,7 @@ description: >-
   the scheme (pacs.004 PmtRtr and camt.029 RsltnOfInvstgtn); the refuse leg answers a refusal (camt.029). Neither leg posts.
   Release 1.1.0 posts with p.post.accounting.v2, which reads the order's FX and charges: each line's converted amount, then its
   charge and its VAT as entries of their own (R-12-23, Issue I-136); and it no longer declares re-screen, which a refund order has
-  no step for: the platform view offers re-screen only on the workflows that screen (R-05-60, Issue I-135).
+  no step for: the platform view offers re-screen only on the workflows that screen (R-05-61, Issue I-135).
 direction: inward
 entry:
   reads: [header, payment, batch, "items[]"]

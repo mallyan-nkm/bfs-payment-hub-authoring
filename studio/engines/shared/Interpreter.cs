@@ -259,7 +259,7 @@ public sealed partial class Interp
     /// <summary>Told when a step parks (instance as the workers know it, step, call): a runtime host records it as the payment's step fact <c>stuck</c>.</summary>
     public static Action<string, string, int>? Stuck;
     /// <summary>
-    /// Told when an instance takes a hold's decision (R-05-59): the hold's step as a worker's request names it (instance, workflow,
+    /// Told when an instance takes a hold's decision (R-05-60): the hold's step as a worker's request names it (instance, workflow,
     /// step, activity, release, call, header) and the step's result (its outcome and its writes: who decided, and when). A runtime
     /// host records it as the hold step's fact, so every engine leaves the same step fact for a hold as for any other step.
     /// </summary>
@@ -578,7 +578,7 @@ public sealed partial class Interp
             if (J.S(msg, "status") is string st) f["status"] = st;
             if (hold is not null) f["hold"] = hold;
             if (J.S(msg, "by") is string by) f["by"] = by;
-            // When the decision was taken, on the engine's business clock (R-05-59).
+            // When the decision was taken, on the engine's business clock (R-05-60).
             f["at"] = decidedAt;
             writes[p] = f;
         }

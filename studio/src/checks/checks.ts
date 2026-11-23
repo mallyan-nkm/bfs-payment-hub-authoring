@@ -69,10 +69,11 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
   L41: 'A published release never changes once seeded',
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
-  L43: 'A leg fills the slot contract of a platform workflow and reads only what it gives',
+  L43: 'A leg fills the slot contract of a platform workflow, reads only what it gives and writes only what it lets it write',
   L44: 'Every parameter declares its type and a default within its own bounds',
   L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
   L47: 'A leg of a platform workflow that blocks or posts money calls no reserve or post activity itself',
+  L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
 };
 
 // ---------------------------------------------------------------- walking
@@ -224,7 +225,7 @@ export class Checker {
     const name: string | undefined = d.name;
 
     // L02, L03, L04
-    if (!['pack', 'inventory', 'conformance-kit', 'engine-binding', 'supersession', 'configuration-set'].includes(kind)) {
+    if (!['pack', 'inventory', 'conformance-kit', 'engine-binding', 'supersession', 'configuration-set', 'port-bindings'].includes(kind)) {
       const own = name ? scopeOf(name) : kind === 'scheme' ? d.scope : undefined;
       for (const r of [...refsOf(d)].sort()) {
         if (!this.byName.has(r)) {
@@ -256,6 +257,7 @@ export class Checker {
     if (kind === 'table') this.checkTable(d, err, warn);
     if (kind === 'activity') this.checkActivity(d, err, warn);
     if (kind === 'configuration-set') this.checkConfigurationSet(d, err);
+    if (kind === 'port-bindings') for (const m of portBindingProblems(d, (n) => this.byName.get(n)?.kind === 'port')) err('L48', m);
     if (kind === 'test') this.checkTest(d, err, warn);
     if (kind === 'port' && !this.docs.some((x) => x.kind === 'simulator' && x.port === d.name)) err('L22', `${d.name} has no simulator`);
     if (kind === 'supersession') this.checkSupersession(d, err);
@@ -345,6 +347,11 @@ export class Checker {
           const own = `ext.${d.name.split('.').slice(0, 2).join('.')}`;
           for (const x of (d.entry?.reads ?? []).filter((p: string) => !p.startsWith(own) && !(contract.reads ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`))))
             err('L43', `reads ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not give it`);
+          // And writes only what it lets it write (Issue I-112); the one write still open is a warning until its release (I-141).
+          for (const x of (d.exit?.writes ?? []).filter((p: string) => !p.startsWith(own) && !(contract.writes ?? []).some((a: string) => p === a || p.startsWith(`${a}.`) || p.startsWith(`${a}[`)))) {
+            const open = SLOT_WRITE_OPEN[`${d.name} ${of} ${x}`];
+            (open ? warn : err)('L43', `writes ${x}, which the slot contract ${d.implements.slot}@${of.split('.v').pop()} of ${of} does not let it write${open ? ` (open: Issue ${open})` : ''}`);
+          }
         }
         // L47 (R-12-19, Issue I-133): a platform workflow that blocks or posts owns its order's money; its legs call neither.
         if (host?.wfKind === 'platform' && this.moneySteps(host).length)
@@ -1033,7 +1040,28 @@ export function checkAll(env: StudioEnv): Issue[] {
     for (const s of env.schemas.validate(e.doc)) issues.push({ code: 'L00', severity: 'error', key: e.name, message: s.message, file: e.path });
   }
   issues.push(...literalSecretIssues(env));
+  issues.push(...runtimeBindingIssues(env));
   return issues;
+}
+
+/** L48 over a loaded bank's runtime documents of kind port-bindings, beside its folders the studio writes (R-11-47). */
+export function runtimeBindingIssues(env: StudioEnv): Issue[] {
+  const out: Issue[] = [];
+  const files = env.store.content?.files;
+  if (!files) return out;
+  const isPort = (n: string) => env.store.all().some((e) => e.kind === 'port' && e.name === n && e.status !== 'draft');
+  for (const folder of [...new Set(env.store.bankPacks.values())].sort()) {
+    for (const [p, text] of [...files].filter(([p]) => p.startsWith(`banks/${folder}/`) && p.split('/').length === 3 && /\.ya?ml$/.test(p)).sort(([a], [b]) => a.localeCompare(b))) {
+      let docs: any[] = [];
+      try {
+        docs = parseYamlAll(text);
+      } catch {
+        continue;
+      }
+      for (const d of docs.filter((x) => x?.kind === 'port-bindings')) for (const m of portBindingProblems(d, isPort)) out.push({ code: 'L48', severity: 'error', key: p, message: `${p}: ${m}`, file: p });
+    }
+  }
+  return out;
 }
 
 /**
@@ -1057,6 +1085,40 @@ export function literalSecretIssues(env: StudioEnv): Issue[] {
  * Check one document. `alongside` are documents taken as present with it: the tenant's other drafts
  * while it is edited, or the rest of a change set at publish.
  */
+/**
+ * L48 (R-11-47, Issue I-70): what is wrong with a bank's port bindings, the studio's draft or a bank folder's runtime
+ * document. Each binding names a port `isPort` knows (a published port contract the bank sees), an adapter and a
+ * validFrom; no port is bound twice from one validFrom; a setting that names a credential, or holds a literal secret, is
+ * refused (it is a secretRef). tools/validate.py runs the same rule over content-configurations/banks/.
+ */
+export function portBindingProblems(d: any, isPort: (name: string) => boolean): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const b of Array.isArray(d?.bindings) ? d.bindings : []) {
+    const at = `the binding of ${b?.port ?? '?'}${b?.validFrom ? ` from ${b.validFrom}` : ''}`;
+    if (!b?.port || !isPort(String(b.port))) out.push(`${at} binds ${b?.port ?? 'no port'}, which is no port of the factory or of the bank's pack`);
+    if (!b?.adapter) out.push(`${at} names no adapter`);
+    if (!b?.validFrom) out.push(`${at} has no validFrom`);
+    else if (Number.isNaN(Date.parse(String(b.validFrom)))) out.push(`${at}: validFrom ${b.validFrom} is not a date or a time`);
+    const k = `${b?.port}@${b?.validFrom}`;
+    if (seen.has(k)) out.push(`${b?.port} is bound twice from ${b?.validFrom}`);
+    seen.add(k);
+    for (const s of literalSecretsInText(JSON.stringify({ settings: b?.settings ?? {}, secretRef: b?.secretRef }), 'binding.json')) out.push(`${at}${s.at ? ` at ${s.at}` : ''} ${s.why}`);
+  }
+  if (!Array.isArray(d?.bindings) || !d.bindings.length) out.push('The port bindings bind no port');
+  return out;
+}
+
+/**
+ * The writes beyond a slot contract that wait for the owner's decision, by `<leg> <platform workflow> <path>`: reported as a
+ * warning, and let into a distribution, until the content is released again (Issue I-141). tools/validate.py holds the same.
+ */
+export const SLOT_WRITE_OPEN: Record<string, string> = {
+  'uae.wps.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
+  // The import training bundle's copy of WPS as uae.wpsx (src/import/sample.ts) carries the same leg, so the same open write.
+  'uae.wpsx.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
+};
+
 export function checkDocument(env: StudioEnv, doc: any, tenant?: string, alongside: any[] = []): Issue[] {
   const issues: Issue[] = env.schemas.validate(doc).map((s) => ({ code: 'L00', severity: 'error' as const, key: doc?.name ?? doc?.id ?? '', message: s.message + (s.hint ? ` ${s.hint}` : ''), step: s.path }));
   try {

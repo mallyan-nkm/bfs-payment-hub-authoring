@@ -144,6 +144,10 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
               {t.data?.reason && <span>{t.data.reason}</span>}{' '}
               {t.data?.remarks && <span>“{t.data.remarks}”</span>}{' '}
               <span className="muted">by {t.actor}</span>
+              {/* The trace the fact was written in (R-09-69): a link to the installation's trace view, else the id. */}
+              {t.traceId && (t.trace
+                ? <>{' '}<a className="mono small" href={t.trace} target="_blank" rel="noreferrer" aria-label={`Trace of fact ${t.seq}`}>trace {t.traceId.slice(0, 8)}</a></>
+                : <>{' '}<span className="mono small muted" title={t.traceId}>trace {t.traceId.slice(0, 8)}</span></>)}
             </li>
           ))}
         </ol>

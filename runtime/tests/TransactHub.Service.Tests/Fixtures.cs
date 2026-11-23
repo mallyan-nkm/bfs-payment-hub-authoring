@@ -135,7 +135,7 @@ public static class Packages
     {
         var wf = $"workflows/{workflow}@{release}.yaml";
         var act = "activities/p.validate.limits.v1@1.0.0.yaml";
-        var errors = "errors/p.errors.platform.v1@1.0.0.yaml";
+        var errors = "errors/p.errors.platform.v1@1.1.0.yaml";
         var files = new Dictionary<string, string>
         {
             [wf] = $"kind: workflow\nname: {workflow}\nrelease: {release}\n",
@@ -201,7 +201,7 @@ public static class Seed
 }
 
 /// <summary>The service console's API on a fresh database, with the fake GitHub as its package source.</summary>
-public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub gh, Dictionary<string, string?>? extra = null, IAssistantModel? model = null, HttpMessageHandler? flowable = null, string environment = "Development")
+public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub gh, Dictionary<string, string?>? extra = null, IAssistantModel? model = null, HttpMessageHandler? flowable = null, string environment = "Development", HttpMessageHandler? logs = null)
     : WebApplicationFactory<ServiceHost>
 {
     public StoreOptions Store => store;
@@ -225,6 +225,7 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
             s.AddSingleton<IPackageSource>(new GitHubPackageSource(new HttpClient(gh), new Uri("https://api.github.test/"), "bank", "content", "content-configurations", null, SecretResolver.FromEnvironment(_ => null)));
             if (model is not null) s.AddSingleton(new AssistantModel(model));
             if (flowable is not null) s.AddSingleton(new FlowableHandler(flowable));
+            if (logs is not null) s.AddSingleton(new LogSourceHandler(logs));
         });
     }
 

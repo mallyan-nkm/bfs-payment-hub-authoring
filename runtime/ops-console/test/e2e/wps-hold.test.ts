@@ -224,4 +224,31 @@ describe(`the operations console on a WPS file run through the runtime on ${ENGI
     expect(problems).toEqual([]);
     await page.close();
   });
+
+  it('reports the file from the views and the read model, and exports it as CSV, masked (R-05-59)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 900 }, acceptDownloads: true });
+    const problems: string[] = [];
+    page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    await page.goto(apiUrl);
+    await page.getByRole('button', { name: /Sign in as Example operator/ }).click();
+    await page.goto(`${apiUrl}/#/reports`);
+    await page.getByRole('heading', { name: 'Reports' }).waitFor();
+    await until('the totals', async () => (await page.getByTestId('report-payments').textContent()) === '1', 20000);
+    // The WPS view's declared measures, no WPS screen: its list columns of counts and amounts.
+    const wps = page.getByRole('table', { name: 'Measures of uae.wps' });
+    expect(await wps.textContent()).toContain('Total records');
+    expect(await page.getByRole('table', { name: 'By scheme' }).textContent()).toContain('uae.wps');
+    // A summary by a view's field.
+    await page.getByLabel('Group by').selectOption('field:uae.wps.view.operations.v1:subject:salaryMonth');
+    await until('the summary by salary month', async () => ((await page.getByRole('table', { name: /By field:/ }).textContent()) ?? '').includes('102026'), 20000);
+    // The export: the list as CSV, with the declared columns, masked.
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export CSV' }).click()]);
+    const csv = fs.readFileSync(await download.path(), 'utf8');
+    expect(csv.split('\r\n')[0]).toContain('Id,Kind,Tenant,Scheme');
+    expect(csv).toContain('0000*****4567');
+    expect(csv).not.toContain('AE070331234567890123456');
+    expect(problems).toEqual([]);
+    await page.close();
+  });
 });

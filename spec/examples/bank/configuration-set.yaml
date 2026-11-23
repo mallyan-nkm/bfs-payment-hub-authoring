@@ -1,11 +1,11 @@
 kind: configuration-set
 tenant: example-bank
-release: 1.5.0
+release: 1.6.0
 title: Example bank configuration
 accepts:
-  - { scope: p, release: 1.5.0 }
-  - { scope: uae.p, release: 1.5.0 }
-  - { scope: uae.wps, release: 1.5.0 }
+  - { scope: p, release: 1.6.0 }
+  - { scope: uae.p, release: 1.6.0 }
+  - { scope: uae.wps, release: 1.6.0 }
 values:
   # A value, not a definition. The rule's bounds allow at most 1000000, so each value here tightens it.
   # The bank lowers its limit from 2027: a lookup by date (BANK-LIM-001 and BANK-LIM-002).

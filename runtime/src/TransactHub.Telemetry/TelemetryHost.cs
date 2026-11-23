@@ -21,7 +21,7 @@ public sealed class TelemetryHost : IDisposable
     /// <summary>Every source of spans the runtime has: the engine bindings, the store, the hosts, Temporal's interceptor.</summary>
     public static readonly string[] Sources = ["TransactHub.Engine", "TransactHub.Store", RuntimeTelemetry.SourceName, "Temporalio.Extensions.OpenTelemetry.*"];
     /// <summary>Every meter: the same, and Temporal's SDK metrics (through Temporalio.Extensions.DiagnosticSource).</summary>
-    public static readonly string[] Meters = ["TransactHub.Engine", "TransactHub.Store", RuntimeTelemetry.SourceName, RuntimeTelemetry.TemporalMeterName];
+    public static readonly string[] Meters = ["TransactHub.Engine", "TransactHub.Store", "TransactHub.Operations", RuntimeTelemetry.SourceName, RuntimeTelemetry.TemporalMeterName];
 
     readonly TracerProvider? tracer;
     readonly MeterProvider? meter;

@@ -99,6 +99,8 @@ public sealed class HoldExpiry(StoreOptions store, IEngineSignals signals, TimeP
         var tenant = await db.Bulks.AsNoTracking().Where(b => b.Id == subjectId).Select(b => b.Tenant).FirstOrDefaultAsync(ct)
             ?? await db.Payments.AsNoTracking().Where(p => p.Id == subjectId).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "";
         await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("hold", "expired", new JsonObject { ["hold"] = hold, ["by"] = actor, ["why"] = why, ["action"] = actionId }, Actor: actor), ct);
+        // A hold that reached its expiry undecided, for the alert rules (R-09-72); an operator's expire-hold is a decision.
+        if (actionId is null) RuntimeGauges.HoldsExpired.Add(1, new KeyValuePair<string, object?>("th.tenant", tenant));
         await signals.Send(tenant, subjectId, null, "decide", actionId ?? Guid.NewGuid().ToString("N"), ct, new JsonObject { ["hold"] = hold, ["decision"] = "expired", ["by"] = actor });
         return new JsonObject { ["hold"] = hold, ["decision"] = "expired" };
     }

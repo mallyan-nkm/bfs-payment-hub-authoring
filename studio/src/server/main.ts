@@ -48,4 +48,5 @@ server.listen(port, () => {
   const c = env.store.content!;
   console.log(`Content: ${c.repository} ${c.conn.branch} (${c.conn.root}/) at ${c.head.slice(0, 12)}, read into memory. ${env.store.all().length} documents, ${c.drafts.size} change set branch(es) in progress.`);
   console.log(`Signing: ${signing}`);
+  console.log(auth.sharedKey ? 'Sessions: sealed cookies under TH_SESSION_KEY_REF; every instance with that key reads them (R-11-45).' : 'Sessions: sealed cookies under a key of this process only; set TH_SESSION_KEY_REF to share them with other instances and keep them over a restart (R-11-45).');
 });

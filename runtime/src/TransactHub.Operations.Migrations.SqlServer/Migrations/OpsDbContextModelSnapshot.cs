@@ -558,6 +558,10 @@ namespace TransactHub.Operations.Migrations.SqlServer.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("StreamId", "Seq")

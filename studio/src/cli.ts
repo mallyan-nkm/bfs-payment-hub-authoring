@@ -1,6 +1,7 @@
 import { CONTENT_DIR, openReadEnv, type StudioEnv } from './env.js';
 import { runAllTests, runTest } from './testing/runner.js';
 import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry.js';
+import { api, CliAuthError, login, logout, serverOf } from './cli-auth.js';
 
 // Command line: `npm run studio -- test [ID...]`, `kit`, `check`, `export <workflow> <target>`.
 // `--bank <name>` (repeatable, any command) adds a bank pack from its folder on the branch (Issue I-43).
@@ -8,13 +9,18 @@ import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry.js';
 // Content (R-11-21): the connected branch when TH_CONTENT_REPO is set (with TH_CONTENT_BRANCH,
 // TH_GITHUB_TOKEN, TH_GITHUB_API); otherwise an in-memory fake GitHub seeded from this repository's
 // content-configurations/. Either way nothing is written to disk, and the command says which it read.
+//
+// Sign-in (R-11-46, Issue I-71): `login --server <url>` signs the command line in to a studio by device
+// authorization. With `--server` (or TH_STUDIO_URL), `import` and `whoami` call that studio's API as the
+// signed-in user, and the permission table decides as it does for the web app; `--actor` is refused
+// there. Applying an import to a connected branch without a studio is refused: nothing proves who typed it.
 
-const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | signing-key <dir> | import <bundle.zip|dir> [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--value parameter=value ...] [--bench port=simulator:scenario | port=runtime ...]';
+const USAGE = 'Usage: studio [--bank <name> ...] test [ID...] | kit [CK-ID...] | check | seed-content [--actor a] [--write-local] | bank-pack <name> [--licensed <scheme> ...] [--release <r>] [--write] | export <workflow> <target> | export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t] | signing-key <dir> | import <bundle.zip|dir> [--server <url>] [--tenant t] [--bank-tenant b] [--actor a] [--bank-actor x] [--apply] [--json] | import-sample <out.zip> | login --server <url> | logout [--server <url>] | whoami [--server <url>] | deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--date YYYY-MM-DD] [--tenant t] [--config configuration-set.yaml] [--value parameter=value ...] [--bench port=simulator:scenario | port=runtime ...]';
 
 /** A mistake in the command line: the usage and exit code 2. */
 class UsageError extends Error {}
 
-const COMMANDS = ['test', 'kit', 'check', 'seed-content', 'bank-pack', 'export', 'export-zip', 'import', 'import-sample', 'deploy', 'signing-key'];
+const COMMANDS = ['login', 'logout', 'whoami', 'test', 'kit', 'check', 'seed-content', 'bank-pack', 'export', 'export-zip', 'import', 'import-sample', 'deploy', 'signing-key'];
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -28,6 +34,21 @@ async function main() {
     console.error(`Unknown command ${cmd}`);
     console.log(USAGE);
     process.exitCode = 2;
+    return;
+  }
+  if (cmd === 'login' || cmd === 'logout' || cmd === 'whoami' || (cmd === 'import' && serverOf(args))) {
+    const server = serverOf(args);
+    if (!server) throw new UsageError(`${cmd} needs the studio: --server <url> or TH_STUDIO_URL`);
+    if (cmd === 'login') {
+      const t = await login(server);
+      console.log(`signed in to ${server} as ${t.user} (${t.tenant}): ${(t.roles ?? []).join(', ') || 'no roles'}; until ${t.expiresAt}`);
+    } else if (cmd === 'logout') {
+      await logout(server);
+      console.log(`signed out of ${server}`);
+    } else if (cmd === 'whoami') {
+      const m = await api(server, 'GET', '/api/me');
+      console.log(`${m.user} (${m.tenant}): ${m.roles.join(', ') || 'no roles'}`);
+    } else await remoteImport(server, args);
     return;
   }
   if (cmd === 'seed-content' && args.includes('--write-local')) {
@@ -91,7 +112,9 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     return;
   }
   if (cmd === 'bank-pack') {
-    // studio bank-pack <name> [--write]: the lock file of a bank pack, as tools/build_factory.py writes the example bank's.
+    // studio bank-pack <name> [--licensed <scheme> ...] [--release <r>] [--write]: the lock file of a bank pack, as
+    // tools/build_factory.py writes the example bank's. It names the schemes the bank licenses (R-11-37): --licensed, else the
+    // list the lock file holds. A new --release keeps the earlier lock file at packs/<release>.yaml, as a seed does (R-11-35).
     need(args[0] && !args[0].startsWith('--'), 'bank-pack needs a bank: a folder name under content-configurations/banks');
     const fs = await import('node:fs');
     const path = await import('node:path');
@@ -100,11 +123,29 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     const { SEED_HEADER } = await import('./core/store.js');
     const tenant = [...env.store.bankPacks].find(([, folder]) => folder === args[0])?.[0];
     if (!tenant) throw new Error(`No bank pack ${args[0]} is loaded: pass --bank ${args[0]}`);
-    const text = '# Generated by `npm run studio -- bank-pack`. The lock file of this pack.\n' + toYaml(packManifest(env, 'b', tenant));
+    const licensed = args.flatMap((a, i) => (args[i - 1] === '--licensed' ? [a] : []));
+    const { compareReleases } = await import('./core/names.js');
+    const release = opt(args, 'release');
+    const manifest = packManifest(env, 'b', tenant, { ...(licensed.length ? { licensed } : {}), ...(release ? { release } : {}) });
+    const unknown = manifest.licensedSchemes.filter((s: string) => !env.store.byKind('scheme').some((e) => e.doc.scope === s));
+    if (unknown.length) throw new UsageError(`--licensed ${unknown.join(', ')}: no such scheme in the factory`);
+    const text = '# Generated by `npm run studio -- bank-pack`. The lock file of this pack.\n' + toYaml(manifest);
     if (args.includes('--write')) {
       // A repository authoring step, like tools/build_factory.py: it writes this repository's folder, not the studio's store.
       const file = path.join(CONTENT_DIR, 'banks', args[0], 'pack.yaml');
-      if (SEED_HEADER.test(fs.readFileSync(file, 'utf8'))) throw new Error(`${file} is seeded from spec/: run tools/build_factory.py and seed again`);
+      const before = fs.readFileSync(file, 'utf8');
+      if (SEED_HEADER.test(before)) throw new Error(`${file} is seeded from spec/: run tools/build_factory.py and seed again`);
+      const { parseYaml } = await import('./core/yaml.js');
+      const old = parseYaml(before);
+      if (old?.release && old.release !== manifest.release) {
+        if (compareReleases(manifest.release, old.release) <= 0) throw new UsageError(`--release ${manifest.release} is not later than ${old.release}`);
+        const kept = path.join(CONTENT_DIR, 'banks', args[0], 'packs', `${old.release}.yaml`);
+        fs.mkdirSync(path.dirname(kept), { recursive: true });
+        if (!fs.existsSync(kept)) fs.writeFileSync(kept, before);
+        console.log(`${kept}: the earlier lock file, kept`);
+      } else if (before !== text && old?.release === manifest.release && !args.includes('--force')) {
+        throw new UsageError(`The lock file of ${args[0]} changes at release ${manifest.release}: give it a later --release (R-11-35), or --force for a lock file not yet published`);
+      }
       fs.writeFileSync(file, text);
       console.log(`${file}: written`);
     } else process.stdout.write(text);
@@ -164,6 +205,12 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
     need(args[0] && !args[0].startsWith('--'), 'deploy needs a package (a .zip or a directory)');
     need(opt('workflow'), 'deploy needs --workflow <name>');
+    // With a studio named, the signed-in user must hold the right to deploy (R-11-46): the table decides, not the command line.
+    const server = serverOf(args);
+    if (server) {
+      const p = await api(server, 'GET', `/api/permit?action=run&kind=deploy&scope=${opt('tenant') && opt('tenant') !== 'owner' ? 'b' : 'p'}`);
+      if (!p.allowed) throw new CliAuthError(`Not allowed to deploy: ${p.reason}`);
+    }
     const bench = args.flatMap((a, i) => (args[i - 1] === '--bench' ? [a] : [])).map((b) => {
       // port=runtime: the runtime's native host answers the port, through the bank's port binding (R-08-15).
       const r = /^([^=]+)=runtime$/.exec(b);
@@ -213,6 +260,8 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     // Applying saves drafts on their change set branches: on the connected branch's repository, or in memory only.
     const ienv = env;
     const base = { tenant: opt('tenant') ?? 'owner', bankTenant: opt('bank-tenant') };
+    // On a connected branch, an import is applied only through a studio, as a signed-in user (R-11-46).
+    if (args.includes('--apply') && !local) throw new UsageError(`Applying an import to ${where} needs a signed-in user: run \`login --server <url>\` and pass --server <url>`);
     const out: any = args.includes('--apply')
       ? await apply(ienv, bundle, { ...base, actor: opt('actor') ?? 'shared.designer', bankActor: opt('bank-actor'), force: args.includes('--force') })
       : { report: await analyse(ienv, bundle, base) };
@@ -254,9 +303,45 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
   console.log(USAGE);
 }
 
+/** `import --server`: the studio analyses or applies the bundle, as the signed-in user, under the permission table (R-11-46). */
+async function remoteImport(server: string, args: string[]) {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const opt = (k: string) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : undefined; };
+  if (opt('actor') || opt('bank-actor')) throw new UsageError('With --server the acting user is the signed-in one: --actor and --bank-actor are refused (R-11-46)');
+  const src = args.find((a, i) => !a.startsWith('--') && !['server', 'tenant', 'bank-tenant'].includes(args[i - 1]?.replace(/^--/, '')));
+  if (!src) throw new UsageError('import needs a bundle: a .zip or a directory');
+  let zipped: Buffer;
+  if (fs.statSync(src).isDirectory()) {
+    const { bundleZip } = await import('./import/sample.js');
+    const files: { name: string; content: string }[] = [];
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const f = path.join(d, e.name);
+        if (e.isDirectory()) walk(f);
+        else files.push({ name: path.relative(src, f).split(path.sep).join('/'), content: fs.readFileSync(f, 'utf8') });
+      }
+    };
+    walk(src);
+    zipped = bundleZip(files);
+  } else zipped = fs.readFileSync(src);
+  const body = { bundle: zipped.toString('base64'), ...(opt('bank-tenant') ? { bankTenant: opt('bank-tenant') } : {}), ...(args.includes('--force') ? { force: true } : {}) };
+  const out = await api(server, 'POST', args.includes('--apply') ? '/api/import/apply' : '/api/import/preview', body);
+  const r = out.report ?? out;
+  if (args.includes('--json')) console.log(JSON.stringify(out, null, 2));
+  else if (out.applied) console.log(`saved    ${out.saved.length} as drafts on ${server}; ${out.skipped.length} unchanged and reused\nNothing is published: a checker approves each change set in Governance.`);
+  else console.log(r.ok ? `The bundle may be imported${args.includes('--apply') ? '' : ': run again with --apply'}.` : 'The bundle has errors.');
+  process.exitCode = r.ok ? 0 : 1;
+}
+
 // Telemetry over OTLP when OTEL_* names an endpoint (R-10-07): a deploy is one trace across every process it starts.
 initTelemetry('transacthub-studio-cli');
 main().catch((e) => {
+  if (e instanceof CliAuthError) {
+    console.error(e.message);
+    process.exitCode = 1;
+    return;
+  }
   if (e instanceof UsageError) {
     console.error(e.message);
     console.error(USAGE);

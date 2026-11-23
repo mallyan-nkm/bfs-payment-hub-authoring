@@ -1208,7 +1208,7 @@ public sealed partial class FlowableBinding
     }
 
     /// <summary>
-    /// A hold's decision taken by the instance (R-05-59): the hold step's fact, through the same path as the other engines
+    /// A hold's decision taken by the instance (R-05-60): the hold step's fact, through the same path as the other engines
     /// (<see cref="Interp.Decided"/>). The outcome is the one the hold's gateway takes: the decision when it names an outcome of the
     /// hold other than <c>expired</c>, else the hold's primary outcome.
     /// </summary>

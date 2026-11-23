@@ -113,8 +113,13 @@ RELEASES = {
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
-PACK_RELEASES = {"p": "1.5.0", "uae.p": "1.5.0", "uae.wps": "1.5.0", "b": "1.5.0"}
-FACTORY_RELEASE = "1.5.0"
+# 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
+# packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
+# 1.6.0: the order's posting that reads FX and charges, the outward refund order, the WPS parks (R-12-23 to R-12-26, I-136).
+PACK_RELEASES = {"p": "1.6.0", "uae.p": "1.6.0", "uae.wps": "1.6.0", "b": "1.6.0"}
+FACTORY_RELEASE = "1.6.0"
+# The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
+LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
 
 def emit(doc, base=FACTORY):
@@ -1520,6 +1525,7 @@ def main():
                 "packType": ptype, "origin": "factory" if ptype == "shared" else "authored"}
         if ptype == "bank":
             pack["tenant"] = "example-bank"
+            pack["licensedSchemes"] = LICENSED_SCHEMES["example-bank"]
         deps = {"p": [], "uae.p": ["p"], "uae.wps": ["p", "uae.p"]}.get(scope)
         if scope == "b":
             # A bank pack depends on the scopes its artefacts, its tests among them, refer to, with their parents,

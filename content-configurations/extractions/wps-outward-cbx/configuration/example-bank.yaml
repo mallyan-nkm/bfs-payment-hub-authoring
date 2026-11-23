@@ -1,14 +1,14 @@
 kind: configuration-set
 tenant: example-bank
-release: 1.6.0
+release: 1.7.0
 title: Example bank configuration, with its routing code for the source's CBX checks
 accepts:
 - scope: p
-  release: 1.5.0
+  release: 1.6.0
 - scope: uae.p
-  release: 1.5.0
+  release: 1.6.0
 - scope: uae.wps
-  release: 1.5.0
+  release: 1.6.0
 values:
 - parameter: b.rule.internal-limit.v1#internalLimit
   value: 250000

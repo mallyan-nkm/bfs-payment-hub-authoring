@@ -6,6 +6,7 @@ Run:  python3 tools/validate.py
 This script is the reference for build spec C04 (static checks). It is not the product.
 """
 import hashlib
+import datetime
 import json
 import pathlib
 import re
@@ -673,7 +674,7 @@ for path, d in docs:
 BANKS = ROOT.parent / "content-configurations" / "banks"
 RUNTIME_KINDS = ("port-bindings", "configuration-values")
 # packs/ keeps a bank pack's earlier lock files, as published (R-11-35); L41 holds them to their hashes.
-STUDIO_FOLDERS = ("artefacts", "configuration-sets", "scripts", "packs")
+STUDIO_FOLDERS = ("artefacts", "configuration-sets", "port-bindings", "scripts", "packs")
 factory_names = set(by_name)
 for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
     where = "content-configurations/banks/%s" % bank.name
@@ -688,6 +689,13 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
         err("L35", where + "/pack.yaml", "is not a bank pack: it needs kind pack, packType bank, scope b and a tenant")
         continue
     tenant = pack["tenant"]
+    # R-11-37 (Issue I-111): a bank pack names the schemes the bank licenses, each a scheme of the factory.
+    lic = pack.get("licensedSchemes")
+    if not isinstance(lic, list) or not lic:
+        err("L35", where + "/pack.yaml", "names no licensedSchemes: a bank pack lists the schemes the bank licenses (R-11-37)")
+    for s_ in lic if isinstance(lic, list) else []:
+        if s_ not in schemes:
+            err("L35", where + "/pack.yaml", "licenses %s, which is no scheme of the factory" % s_)
     found, own = {}, {}
     for f in sorted(bank.rglob("*.yaml")):
         rel = f.relative_to(bank)
@@ -778,6 +786,58 @@ for top, label in [(ROOT / b, b) for b in ("factory", "examples", "conformance")
             found.append(("", "holds a private key"))
         for at, why in found:
             err("L37", where, "%s%s" % ("at %s " % at if at else "", why))
+# ------------------------------------------------------- port bindings
+# L48 a bank's port bindings (R-11-47, Issue I-70) are values the runtime reads: each document in a bank folder of
+# content-configurations/banks/ has the port-bindings shape, names its folder's tenant, and binds each port to an
+# adapter from a validFrom; every port it binds is a published port of the factory or the bank's own; no port is bound
+# twice from one validFrom in one document; a credential is a secretRef. The studio's releases sit in port-bindings/,
+# one file per release, named by it. The studio runs the same check on a draft (studio/src/checks/checks.ts).
+PORT_NAMES = {n for n, d in by_name.items() if d.get("kind") == "port"}
+
+
+def as_text(v):
+    if isinstance(v, (datetime.date, datetime.datetime)):
+        return v.isoformat().replace("+00:00", "Z")
+    if isinstance(v, dict):
+        return {k: as_text(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [as_text(x) for x in v]
+    return v
+
+
+for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
+    where = "content-configurations/banks/%s" % bank.name
+    pf = bank / "pack.yaml"
+    tenant = (yaml.safe_load(pf.read_text()) or {}).get("tenant") if pf.is_file() else None
+    own_ports, bound = set(), []
+    for f in sorted(bank.rglob("*.yaml")):
+        rel = f.relative_to(bank)
+        if rel.parts[0] == "packs":
+            continue
+        for d in yaml.safe_load_all(f.read_text()):
+            if isinstance(d, dict) and d.get("kind") == "port" and d.get("name"):
+                own_ports.add(d["name"])
+            elif isinstance(d, dict) and d.get("kind") == "port-bindings":
+                bound.append((rel, as_text(d)))
+    for rel, d in bound:
+        at = "%s/%s" % (where, rel)
+        for e in sorted(Draft202012Validator(schemas["urn:th:schema:port-bindings"], registry=registry).iter_errors(d), key=lambda e: list(e.path)):
+            err("L48", at, "%s at /%s" % (e.message[:160], "/".join(str(x) for x in e.path)))
+        if tenant and d.get("tenant") != tenant:
+            err("L48", at, "names tenant %s, but its folder is %s's" % (d.get("tenant"), tenant))
+        if rel.parts[0] == "port-bindings" and (not d.get("release") or rel.name != "%s.yaml" % d.get("release")):
+            err("L48", at, "a released set of port bindings is port-bindings/<release>.yaml and names that release")
+        seen = set()
+        for b in d.get("bindings") or []:
+            if not isinstance(b, dict):
+                continue
+            port = b.get("port")
+            if port not in PORT_NAMES and port not in own_ports:
+                err("L48", at, "binds %s, which is no port of the factory or of the bank's pack" % port)
+            if (port, b.get("validFrom")) in seen:
+                err("L48", at, "binds %s twice from %s" % (port, b.get("validFrom")))
+            seen.add((port, b.get("validFrom")))
+
 # ------------------------------------------------------- operations views
 # L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
 # apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
@@ -970,7 +1030,7 @@ for path, d in docs:
             err("L38", at, "group %s is not declared" % g)
         for a in sec.get("actions") or []:
             name = a["action"]
-            # R-05-60 (Issue I-135): an action may name the platform workflows it applies to; each is one the view shows, and the
+            # R-05-61 (Issue I-135): an action may name the platform workflows it applies to; each is one the view shows, and the
             # checks below hold the action to those workflows only.
             only = ((a.get("when") or {}).get("workflow")) or None
             shown = flows if not scheme_scope else sorted({w for l in flows for w in ((by_name.get(l) or {}).get("implements") or {}).get("of") or []})
@@ -1230,8 +1290,11 @@ for path, d in docs:
         for at, v in long_numbers({k: x for k, x in d.items() if k not in ("release", "dsl")}):
             err("L42", path, "%s = %r has more than 15 significant digits; write the amount as a decimal string" % (at, v))
 # L43 (R-11-38) a leg fills the slot contract <slot>@<major> of a platform workflow: the workflow it names is a platform
-# workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions.
-# A distribution is built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts).
+# workflow at that major with the slot, and the leg reads nothing beyond the slot's contract and its scheme's own extensions,
+# and writes (its exit) nothing beyond the slot's writes and its scheme's own extensions (Issue I-112). A distribution is
+# built only from legs that fit (studio/src/export/distribution.ts, checkSlotContracts). One write is known to be beyond its
+# slot and waits for the owner's decision (Issue I-141): it is reported, as a warning, until the content is released again.
+SLOT_WRITE_OPEN = {("uae.wps.wf.agent-payment-in.v2", "p.wf.inward.v1", "facts.returns"): "I-141"}
 def beyond(paths, allowed, own):
     out = []
     for x in paths or []:
@@ -1257,6 +1320,10 @@ for path, d in docs:
             continue
         for x in beyond((d.get("entry") or {}).get("reads"), contract.get("reads") or [], scope_of(d["name"])):
             err("L43", path, "reads %s, which the slot contract %s@%s of %s does not give it" % (x, imp.get("slot"), of.rsplit(".v", 1)[-1], of))
+        for x in beyond((d.get("exit") or {}).get("writes"), contract.get("writes") or [], scope_of(d["name"])):
+            issue = SLOT_WRITE_OPEN.get((d["name"], of, x))
+            (warn if issue else err)("L43", path, "writes %s, which the slot contract %s@%s of %s does not let it write%s" % (
+                x, imp.get("slot"), of.rsplit(".v", 1)[-1], of, " (open: Issue %s)" % issue if issue else ""))
 
 # L47 (R-12-19) a platform workflow that blocks or posts money owns its order's money: a leg that fills one of its slots calls no
 # reserve or post activity, directly, through a segment or through a composite's subflow. The platform's lifecycle is the order's,
