@@ -32,6 +32,7 @@ expect:
       count: 1
   trace:
     - business-date:set
+    - cut-off:taken
     - corporate:registered
     - employer-status:found
     - file-checks:pass

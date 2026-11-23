@@ -112,23 +112,23 @@ public sealed record HoldCalendar(int[] Weekend, HashSet<string> Holidays, strin
 
     public static async Task<HoldCalendar> Of(StoreDbContext db, string bank, DateTimeOffset at, CancellationToken ct = default)
     {
-        var row = await db.VersionedValues.AsNoTracking().Where(v => v.Kind == "reference" && v.Tenant == bank && v.Name == Domain).OrderByDescending(v => v.VersionNo).FirstOrDefaultAsync(ct);
-        if (row is null) return Default;
-        var t = JsonNode.Parse(row.BodyJson)?["table"];
-        var day = at.ToUniversalTime().ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-        var edition = (t?["editions"] as JsonArray ?? []).OfType<JsonObject>().Where(e => string.CompareOrdinal((string?)e["validFrom"], day) <= 0)
-            .OrderBy(e => (string?)e["validFrom"], StringComparer.Ordinal).LastOrDefault();
-        if (edition is null) return Default;
+        var (name, rows) = await ReferenceTables.RowsAt(db, bank, Domain, at, ct);
         var weekend = new List<int>();
         var holidays = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var r in edition["rows"] as JsonArray ?? [])
+        if (rows is null) weekend.AddRange(Default.Weekend);
+        foreach (var r in rows ?? [])
         {
             var d = (string?)r?["day"] ?? "";
             var w = Array.IndexOf(Days, d);
             if (w >= 0) weekend.Add(w);
             else if (System.Text.RegularExpressions.Regex.IsMatch(d, @"^\d{4}-\d{2}-\d{2}$")) holidays.Add(d);
         }
-        return new HoldCalendar(weekend.Order().ToArray(), holidays, (string?)t?["name"]);
+        // The bank's own closed days count as holidays too (domain bank-calendar, R-11-52, R-09-102).
+        var (bankTable, bankRows) = await ReferenceTables.RowsAt(db, bank, "bank-calendar", at, ct);
+        var closed = TransactHub.Ports.CalendarAdapters.ClosedDays(bankRows);
+        holidays.UnionWith(closed);
+        if (rows is null && closed.Count == 0) return Default;
+        return new HoldCalendar(weekend.Order().ToArray(), holidays, closed.Count > 0 ? string.Join('+', new[] { name, bankTable }.Where(x => x is not null)) : name);
     }
 
     public bool IsBusinessDay(DateTimeOffset t) =>

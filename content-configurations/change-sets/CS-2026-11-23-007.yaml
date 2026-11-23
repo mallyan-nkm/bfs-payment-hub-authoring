@@ -3,7 +3,7 @@ id: CS-2026-11-23-007
 tenant: owner
 origin: seed
 checker: service.operations
-publishedAt: 2026-11-23T15:39:50.145Z
+publishedAt: 2026-11-23T16:36:57.083Z
 makers:
   - tools/build_factory.py
 sources:

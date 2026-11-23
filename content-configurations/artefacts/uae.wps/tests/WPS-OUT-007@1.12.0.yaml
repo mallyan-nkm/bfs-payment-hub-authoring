@@ -28,6 +28,7 @@ expect:
   outcome: settled
   trace:
     - business-date:set
+    - cut-off:taken
     - corporate:registered
     - employer-status:not-found
     - file-checks:pass

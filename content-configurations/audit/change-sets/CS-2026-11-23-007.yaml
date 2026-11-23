@@ -1,7 +1,7 @@
 kind: audit
 changeSet: CS-2026-11-23-007
 events:
-  - at: 2026-11-23T15:39:50.155Z
+  - at: 2026-11-23T16:36:57.089Z
     outcome: done
     tenant: owner
     actor: service.operations
@@ -10,8 +10,8 @@ events:
     detail: 65 file(s) from spec/examples/bank, spec/factory/inventory.yaml, spec/factory/p, spec/factory/uae.p, spec/factory/uae.wps
     changeSet: CS-2026-11-23-007
     prevHash: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    hash: sha256:5475fdb666687ed0c27abbdb90ee99c3fdb245bd09fd2dba5c185aacb204a449
-  - at: 2026-11-23T15:39:50.160Z
+    hash: sha256:24996822ecf044896c7a9710eff3f68e40443e784eb184824f96f988af6c4aa2
+  - at: 2026-11-23T16:36:57.093Z
     outcome: done
     tenant: owner
     actor: service.operations
@@ -19,5 +19,5 @@ events:
     key: CS-2026-11-23-007
     detail: 65 members, listed in change-sets/CS-2026-11-23-007.yaml
     changeSet: CS-2026-11-23-007
-    prevHash: sha256:5475fdb666687ed0c27abbdb90ee99c3fdb245bd09fd2dba5c185aacb204a449
-    hash: sha256:ecfe803a28de5968172d1750d14d5d4070400b216728072d44c4e637283e3273
+    prevHash: sha256:24996822ecf044896c7a9710eff3f68e40443e784eb184824f96f988af6c4aa2
+    hash: sha256:4700fcef8ec312cc3f43f3d527ffae3ad7f6cc36e425dba543a732ebaaf6669f

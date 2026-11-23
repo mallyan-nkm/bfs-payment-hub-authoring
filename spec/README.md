@@ -23,9 +23,9 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | What | Count |
 | --- | --- |
 | Design parts and annexes | 12 and 3 |
-| Numbered requirements | 434 |
+| Numbered requirements | 440 |
 | Schemas | 18 |
-| Factory artefacts in `p`, `uae.p`, `uae.wps` | 231 |
+| Factory artefacts in `p`, `uae.p`, `uae.wps` | 232 |
 | Example bank artefacts | 20 |
 | Composite activities, each with a subflow | 9 |
 | Test cases in the packs | 63 |

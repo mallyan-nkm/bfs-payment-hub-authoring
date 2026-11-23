@@ -1,25 +1,30 @@
-// "Insert, never update" for workflows, proved in the laptop deployment (deploy/laptop, spec R-09-80, R-09-81, R-09-76, R-09-77).
+// "Insert, never update" for workflows, proved in the laptop deployment (deploy/laptop, spec R-09-80, R-09-81, R-09-76, R-09-77),
+// with every payment's file entering as a bank's would (R-09-105).
 //
 //   cd studio && node_modules/.bin/tsx ../deploy/laptop/test/insert-only.mts [--keep] [--no-up]
 //
-// It brings the compose stack up healthy (the images built by deploy/laptop/build.sh), with passwords and client secrets made for
-// this run and given to compose by its environment only, and then, end to end over the services' own APIs:
+// It brings the compose stack up healthy (the images built by deploy/laptop/build.sh, TH_LAPTOP_TAG), with passwords, client
+// secrets and the SFTP server's login made for this run and given to compose by its environment only, the SFTP server's host keys
+// read out of band and pinned by reference, and then, end to end over the services' own APIs:
 //  1. publishes distribution A of the runtime's bank (ADIB) from the studio;
 //  2. installs and activates A through the service console's API: a service engineer asks, a bank approver consents;
-//  3. pins payment P1 to A at the front door (the release API), and leaves it open;
-//  4. publishes B, installs it and activates it with consent: A drains;
+//  3. drops salary file 1 on the SFTP server's pick-up folder; the File API's inbox poller takes it, checks and keeps it, and its
+//     front door pins it to A, runs the intake map on A's workers, routes it and starts payment P1 on the engine host (Temporal);
+//  4. publishes B, installs it and activates it with consent: A drains, while P1 runs on;
 //  5. refuses a second install of A's id with other content (signed by the studio's own key), at the release API and at the
 //     database's unique key;
 //  6. refuses a distribution of DIB, published by the same studio and signed by the same key, in the ADIB runtime: at verify
 //     and at install in the service console, and at the release API;
-//  7. pins P2 to B; runs P1 and P2 from the distributions they are pinned to, on Temporal (the SQL Server plugin): P1 finishes
-//     on A, P2 on B;
+//  7. drops salary file 2 on the SFTP server (P2) and posts salary file 3 to the File API's POST /files as the channel (P3): both
+//     are pinned to B; P1 finishes on A, P2 and P3 on B; the taken files are moved out of the inbox; a file sent goes out through
+//     the File API's outbox onto the SFTP server, and the consoles' resend through it sends the same bytes again;
 //  8. checks at the database that no row of a distribution, its definitions, its activations or the fact log was updated or
 //     deleted: every row seen after step 2 is unchanged at the end, and the runtime's login is refused an UPDATE, a DELETE and
 //     a TRUNCATE on each of those tables by the database itself.
-// It removes its containers and volumes at the end unless --keep is given.
-import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+// The host ports are the stack's defaults unless TH_LAPTOP_IT_PORTS=<base> moves them (base, base+1, ...), so that the test can
+// run beside another laptop stack. It removes its containers and volumes at the end unless --keep is given.
+import { spawnSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -38,11 +43,20 @@ const ENV = 'test';
 const keep = process.argv.includes('--keep');
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-laptop-it-'));
 const secret = (prefix = '') => prefix + randomBytes(15).toString('base64url').replace(/[^A-Za-z0-9]/g, 'x');
+const base = Number(process.env.TH_LAPTOP_IT_PORTS ?? 0);
+const port = (n: number, d: number) => String(base ? base + n : d);
+const PORTS = {
+  TH_LAPTOP_STUDIO_PORT: port(0, 4317), TH_LAPTOP_IDP_PORT: port(1, 8480), TH_LAPTOP_API_PORT: port(2, 8481), TH_LAPTOP_SERVICE_PORT: port(3, 8482),
+  TH_LAPTOP_OPS_PORT: port(4, 8483), TH_LAPTOP_TESTBENCH_PORT: port(5, 8484), TH_LAPTOP_FILE_API_PORT: port(6, 8485), TH_LAPTOP_SQL_PORT: port(7, 14330),
+  TH_LAPTOP_TEMPORAL_PORT: port(8, 17233), TH_LAPTOP_SFTP_PORT: port(9, 12222),
+};
 const env: Record<string, string> = {
   ...process.env as Record<string, string>,
   TH_LAPTOP_SA_PASSWORD: secret('Sa1-'), TH_LAPTOP_RUNTIME_DB_PASSWORD: secret('Rt1-'), TH_LAPTOP_TESTBENCH_DB_PASSWORD: secret('Tb1-'),
   TH_LAPTOP_TEMPORAL_DB_PASSWORD: secret('Tp1-'), TH_LAPTOP_USER_PASSWORD: secret(), TH_LAPTOP_PIPELINE_SECRET: secret(), TH_LAPTOP_FRONTDOOR_SECRET: secret(), TH_LAPTOP_ENGINE_HOST_TOKEN: secret(),
-  TH_LAPTOP_BANK: BANK,
+  TH_LAPTOP_CHANNEL_SECRET: secret(), TH_LAPTOP_OPERATIONS_SECRET: secret(), TH_LAPTOP_SFTP_PASSWORD: secret('Sf1-'),
+  TH_LAPTOP_BANK: BANK, ...PORTS,
+  TH_LAPTOP_IDP_URL: `http://localhost:${PORTS.TH_LAPTOP_IDP_PORT}`, TH_LAPTOP_STUDIO_URL: `http://localhost:${PORTS.TH_LAPTOP_STUDIO_PORT}`,
 };
 const compose = (...a: string[]) => spawnSync('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), ...a], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const results: { step: string; ok: boolean; detail?: string }[] = [];
@@ -53,8 +67,11 @@ function check(step: string, ok: boolean, detail?: unknown) {
   if (!ok) { failed = true; throw new Error(step); }
 }
 const log = (s: string) => console.log(`---- ${s}`);
+const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
-const STUDIO = 'http://localhost:4317', API = 'http://localhost:8481', SVC = 'http://localhost:8482/service/api', IDP = 'http://localhost:8480';
+const STUDIO = `http://localhost:${PORTS.TH_LAPTOP_STUDIO_PORT}`, API = `http://localhost:${PORTS.TH_LAPTOP_API_PORT}`;
+const SVC = `http://localhost:${PORTS.TH_LAPTOP_SERVICE_PORT}/service/api`, IDP = `http://localhost:${PORTS.TH_LAPTOP_IDP_PORT}`;
+const FILES = `http://localhost:${PORTS.TH_LAPTOP_FILE_API_PORT}`;
 async function token(form: Record<string, string>): Promise<string> {
   const r = await fetch(`${IDP}/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form) });
   if (!r.ok) throw new Error(`token: ${r.status} ${await r.text()}`);
@@ -62,10 +79,10 @@ async function token(form: Record<string, string>): Promise<string> {
 }
 const person = (sub: string) => token({ grant_type: 'password', username: sub, password: env.TH_LAPTOP_USER_PASSWORD, client_id: 'transacthub-runtime-ui' });
 const machine = (id: string, s: string) => token({ grant_type: 'client_credentials', client_id: id, client_secret: s });
-async function call(base: string, bearer: string, method: string, p: string, body?: unknown, raw?: Buffer) {
-  const send = () => fetch(`${base}${p}`, { method, headers: { authorization: `Bearer ${bearer}`, ...(raw ? { 'content-type': 'application/zip' } : body ? { 'content-type': 'application/json' } : {}) }, body: raw ?? (body ? JSON.stringify(body) : undefined) });
+async function call(baseUrl: string, bearer: string, method: string, p: string, body?: unknown, raw?: Buffer) {
+  const send = () => fetch(`${baseUrl}${p}`, { method, headers: { authorization: `Bearer ${bearer}`, ...(raw ? { 'content-type': 'application/zip' } : body ? { 'content-type': 'application/json' } : {}) }, body: raw ?? (body ? JSON.stringify(body) : undefined) });
   // A pooled connection idle through a long payment may be closed by the time it is used again: sent once more on a fresh one.
-  const r = await send().catch(async () => { await new Promise((ok) => setTimeout(ok, 1000)); return send(); });
+  const r = await send().catch(async () => { await sleep(1000); return send(); });
   const t = Buffer.from(await r.arrayBuffer());
   let data: any = t;
   try { data = JSON.parse(t.toString('utf8')); } catch { /* binary */ }
@@ -78,6 +95,7 @@ function sql(login: 'sa' | 'th_runtime', query: string, db = 'th_store'): { ok: 
   const r = compose('exec', '-T', '-e', `SQLCMDPASSWORD=${pw}`, 'sqlserver', '/opt/mssql-tools18/bin/sqlcmd', '-C', '-S', 'localhost', '-U', login, '-d', db, '-h', '-1', '-W', '-s', '\t', '-b', '-Q', `SET NOCOUNT ON; ${query}`);
   return { ok: r.status === 0, out: `${r.stdout}${r.stderr}`.trim() };
 }
+const lastLine = (s: string) => s.trim().split('\n').pop()?.trim() ?? '';
 /** Every row of the insert-only tables, as one line each: its key and a hash of every column. */
 function snapshot(): Map<string, string> {
   const q = [
@@ -90,11 +108,55 @@ function snapshot(): Map<string, string> {
   return new Map(r.out.split('\n').filter((l) => l.includes('\t')).map((l) => l.split('\t') as [string, string]));
 }
 
+// The SFTP server as the bank's partners see it: the channel's pick-up folder, and where the bank's files go out.
+const SFTP_HOME = '/home/th/upload';
+const PICKUP = `${SFTP_HOME}/wps/inbound`;
+/** The channel drops a file on the SFTP server: written beside the folder, then moved in whole, as an SFTP client renames its upload. */
+function drop(name: string, content: string) {
+  const r = spawnSync('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), 'exec', '-T', '-u', '1001', 'sftp', 'sh', '-c',
+    `mkdir -p ${PICKUP} ${SFTP_HOME}/wps/uploading && cat > ${SFTP_HOME}/wps/uploading/${name} && mv ${SFTP_HOME}/wps/uploading/${name} ${PICKUP}/${name}`], { env, input: content, encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`drop ${name}: ${r.stderr}`);
+}
+const ls = (dir: string) => compose('exec', '-T', 'sftp', 'sh', '-c', `ls -1 ${dir} 2>/dev/null || true`).stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+const cat = (file: string) => compose('exec', '-T', 'sftp', 'cat', file).stdout;
+
+/**
+ * A synthetic salary file of ADIB's employer, its own by its creation time and reference (the File API refuses a duplicate). It
+ * keeps the samples' `# file:` first line: the intake map reads the file's name from it, not from the File API (Issue I-195).
+ */
+function salaryFile(n: number): { name: string; text: string } {
+  const sample = fs.readFileSync(path.resolve(LAPTOP, '../../studio/fixtures/samples/wps-sif-valid.sif'), 'utf8');
+  const time = `083${n}`;
+  const name = `0000001234567261117${time}00.sif`;
+  const text = sample.split('\n').map((l) => (l.startsWith('# file:') ? `# file: ${name}` : l)).join('\n').replace(',0830,', `,${time},`).replace('REF-0001', `REF-000${n}`);
+  return { name, text };
+}
+
+/** Waits until the File API has kept a file of this name and its front door started a payment from it: the payment's id. */
+async function startedFrom(fileName: string, ms = 180000): Promise<{ paymentId: string; fileId: string }> {
+  const until = Date.now() + ms;
+  for (;;) {
+    const r = sql('sa', `SELECT TOP 1 f.SubjectId + '|' + f.Id FROM stored_file f WHERE f.FileName = '${fileName}' AND f.Direction = 'in' AND EXISTS (SELECT 1 FROM payment_fact p WHERE p.SubjectId = f.SubjectId AND p.Kind = 'frontdoor.started')`);
+    const line = lastLine(r.out);
+    if (r.ok && line.includes('|')) {
+      const [paymentId, fileId] = line.split('|');
+      return { paymentId, fileId };
+    }
+    if (Date.now() > until) throw new Error(`No payment was started from ${fileName}: ${r.out}\n${compose('logs', '--tail', '60', 'file-api').stdout.slice(-4000)}`);
+    await sleep(2000);
+  }
+}
+
 async function main() {
   if (!process.argv.includes('--no-up')) {
-    log('docker compose config, then up --wait (healthy)');
+    log('docker compose config; the SFTP server first, its host keys read out of band and pinned; then up --wait (healthy)');
     const cfg = compose('config', '-q');
     check('docker compose config is valid', cfg.status === 0, cfg.stderr);
+    const s = compose('up', '-d', '--wait', '--wait-timeout', '180', 'sftp');
+    check('the SFTP server starts with a login made for this run', s.status === 0, `${s.stdout}\n${s.stderr}`);
+    const prints = ['ed25519', 'rsa', 'ecdsa'].map((k) => compose('exec', '-T', 'sftp', 'ssh-keygen', '-lf', `/etc/ssh/ssh_host_${k}_key.pub`)).filter((r) => r.status === 0).map((r) => r.stdout.split(' ')[1]);
+    check(`its host keys are read out of band (${prints.length}) and pinned by reference in the File API's binding`, prints.length > 0 && prints.every((x) => /^SHA256:/.test(x)), prints);
+    env.TH_LAPTOP_SFTP_HOST_KEY = prints.join(',');
     const t0 = Date.now();
     const up = compose('up', '-d', '--wait', '--wait-timeout', '600');
     check(`the stack starts healthy (${Math.round((Date.now() - t0) / 1000)} s)`, up.status === 0, `${up.stdout}\n${up.stderr}\n${compose('ps', '-a').stdout}`);
@@ -111,8 +173,8 @@ async function main() {
   check('the studio gets a bank approver for ADIB and one for DIB (proposed)', prop.status === 200, prop.data);
   const appr = await studio.post(`/api/users/proposals/${prop.data.changeSet}/approve`, { actor: 'users.approver' });
   check('... and approved by another administrator', appr.status === 200, appr.data);
-  const s = await studio.put('/api/git', { actor: 'shared.checker', target: 'temporal', distributions: true, testDistributions: true });
-  check('the studio builds distributions for the test environment, with simulators', s.status === 200, s.data);
+  const set = await studio.put('/api/git', { actor: 'shared.checker', target: 'temporal', distributions: true, testDistributions: true });
+  check('the studio builds distributions for the test environment, with simulators', set.status === 200, set.data);
   const publish = async (bank: string) => {
     const d = await studio.post('/api/distributions', { actor: `${bank}.checker`, tenant: bank, bank, engine: 'temporal', withSimulators: true });
     check(`the studio publishes a distribution of ${bank.toUpperCase()}`, d.status === 200, d.data);
@@ -123,6 +185,8 @@ async function main() {
   const ba = await person('bank.approver');
   const pipeline = await machine('th-pipeline', env.TH_LAPTOP_PIPELINE_SECRET);
   const frontDoor = await machine('th-front-door', env.TH_LAPTOP_FRONTDOOR_SECRET);
+  const channel = await machine('th-channel', env.TH_LAPTOP_CHANNEL_SECRET);
+  const operations = await machine('th-operations', env.TH_LAPTOP_OPERATIONS_SECRET);
   const consent = async (asked: { status: number; data: any }, what: string) => {
     check(`${what}: asked for, it waits for a bank approver (202)`, asked.status === 202 && asked.data.status === 'pending-approval', asked.data);
     const self = await call(SVC, se, 'POST', `/actions/${asked.data.action}/decision`, { approve: true, reason: 'mine' });
@@ -133,22 +197,36 @@ async function main() {
   };
   const install = async (tag: string) => consent(await call(SVC, se, 'POST', '/content/install', { tag, reason: `CR-LAPTOP: install ${tag} (synthetic)` }), `install ${tag}`);
   const activate = async (id: string) => consent(await call(SVC, se, 'POST', '/actions', { action: 'activate', target: id, reason: `CR-LAPTOP: activate ${id} (synthetic)`, parameters: { environment: ENV } }), `activate ${id}`);
+  const pinOf = async (paymentId: string) => (await call(API, pipeline, 'GET', `/payments/pin?paymentId=${encodeURIComponent(paymentId)}`)).data;
 
   log('1-2. distribution A: published, installed and activated with consent');
   const A = await publish(BANK);
   const ia = await install(A.tag);
   check('A is stored, verified by the studio\'s key', ia.stored === true && ia.state === 'installed', ia);
+  // The bank's values (its rail, its WPS values, its cut-offs if it has any) reach the workers from its installed configuration
+  // release, checked against A's parameter contract (R-12-28), and with them the laptop's binding of its file transfer, the stack's
+  // SFTP server (R-09-105, R-09-110 to R-09-112): the studio builds the release, the runtime puts it in force with consent.
+  const laptopBindings = parseYaml(fs.readFileSync(path.join(LAPTOP, 'banks', BANK, 'file-transfer.yaml'), 'utf8')).bindings;
+  const cr = await studio.post('/api/configuration-releases', { actor: `${BANK}.checker`, tenant: BANK, bank: BANK, bindings: laptopBindings });
+  check('the studio publishes ADIB\'s configuration release', cr.status === 200, cr.data);
+  const ic = await install(cr.data.tag);
+  check(`the configuration release is installed and in force (${ic.values} values, ${ic.bindings} binding)`, ic.stored === true && ic.values > 0 && ic.bindings === laptopBindings.length, ic);
   await activate(A.releaseId);
   const before = snapshot();
   check(`the store holds A, its activation and its facts (${before.size} rows)`, [...before.keys()].some((k) => k === `release|${A.releaseId}`), [...before.keys()].slice(0, 5));
 
-  log('3. P1 pinned to A at the front door');
-  const pin = async (paymentId: string) => call(API, frontDoor, 'POST', '/payments/pin', { paymentId, bank: BANK, environment: ENV, scheme: 'uae.wps' });
-  const P1 = `PAY-LAPTOP-${process.pid}-1`, P2 = `PAY-LAPTOP-${process.pid}-2`;
-  const p1 = await pin(P1);
-  check('P1 is pinned to A', p1.status === 200 && p1.data.distribution === A.releaseId, p1.data);
+  log('3. salary file 1 dropped on the SFTP server: the File API takes it, and its front door starts P1 on A');
+  const f1 = salaryFile(1), f2 = salaryFile(2), f3 = salaryFile(3);
+  drop(f1.name, f1.text);
+  const p1 = await startedFrom(f1.name);
+  const P1 = p1.paymentId;
+  check(`the File API's inbox poller took ${f1.name} from the SFTP server and kept it (${p1.fileId})`, !!P1);
+  check('the front door pinned P1 to A at acceptance', (await pinOf(P1)).distribution === A.releaseId, await pinOf(P1));
+  // The poller moves a file once the intake has answered: the payment may start a moment before the file leaves the inbox.
+  for (let i = 0; i < 30 && ls(PICKUP).includes(f1.name); i++) await sleep(1000);
+  check('the taken file is moved out of the pick-up folder to its done folder', !ls(PICKUP).includes(f1.name) && ls(`${PICKUP}/done`).includes(f1.name), { inbox: ls(PICKUP), done: ls(`${PICKUP}/done`) });
 
-  log('4. distribution B: published, installed, activated with consent; A drains');
+  log('4. distribution B: published, installed, activated with consent; A drains while P1 runs');
   const B = await publish(BANK);
   check('B is another distribution', B.releaseId !== A.releaseId, B);
   await install(B.tag);
@@ -164,8 +242,10 @@ async function main() {
   // (a whole distribution is larger than the release API takes in one upload, Issue I-156), signed as the studio signs.
   const target = original.billOfMaterials.artefacts.find((a: any) => a.path?.startsWith('workflows/')) ?? original.billOfMaterials.artefacts[0];
   const changedText = `${stored[target.path].toString()}\n# changed after it was installed (synthetic)\n`;
-  const billOfMaterials = { ...original.billOfMaterials, artefacts: [{ ...target, sha256: `sha256:${(await import('node:crypto')).createHash('sha256').update(changedText).digest('hex')}` }] };
-  const manifest = { ...original, billOfMaterials };
+  const billOfMaterials = { ...original.billOfMaterials, artefacts: [{ ...target, sha256: `sha256:${createHash('sha256').update(changedText).digest('hex')}` }] };
+  // The small bundle carries none of A's native assemblies (R-09-120): its manifest names none, so only the id is in question.
+  const { native: _native, ...rest } = original;
+  const manifest = { ...rest, billOfMaterials };
   const { toYaml } = await import('../../../studio/src/core/yaml.js');
   const files: Record<string, string> = { [target.path]: changedText, 'manifest.yaml': toYaml(manifest) };
   // Signed with the studio's own key, from the stack's keys volume: the signature is good, only the content differs.
@@ -187,46 +267,50 @@ async function main() {
   check('verify refuses it: the runtime serves ADIB only', v.status === 422 && /serves adib only/.test(v.data.error), v.data);
   const i = await call(SVC, se, 'POST', '/content/install', { tag: D.tag, reason: 'laptop test (synthetic)' });
   check('install refuses it before any consent', i.status === 422 && /serves adib only/.test(i.data.error), i.data);
-  const dpkg = await fetch(`http://localhost:4318/repos/local/content/git/matching-refs/tags/dist`).catch(() => undefined);
-  void dpkg;
   const listed = (await call(API, pipeline, 'GET', '/sources/versions')).data as any[];
   const viaApi = await call(API, pipeline, 'POST', '/sources/install', { tag: D.tag });
   check('the release API refuses it too', viaApi.status === 422 && /serves adib only/.test(JSON.stringify(viaApi.data)) && listed.some((x) => x.tag === D.tag), viaApi.data);
   const none = sql('sa', `SELECT COUNT(*) FROM release WHERE Scope = 'dist/${OTHER}'`);
-  check('nothing of DIB is in the ADIB runtime\'s store', none.ok && none.out.trim().split('\n').pop() === '0', none.out);
-  log('7. P2 pinned to B; P1 runs on A, P2 on B (Temporal on SQL Server)');
-  const p2 = await pin(P2);
-  check('P2 is pinned to B', p2.status === 200 && p2.data.distribution === B.releaseId, p2.data);
-  check('P1 stays pinned to A', (await pin(P1)).data.distribution === A.releaseId);
-  const bench = [
-    ...['core-banking', 'sanctions', 'fraud', 'channel', 'payment-record', 'facts-out'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
-    { port: 'p.port.operations-queue.v1', simulator: 'p.sim.operations.v1', scenario: 'release' },
-    { port: 'p.port.encryption.v1', simulator: 'p.sim.encryption.v1', scenario: 'accept' },
-    { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'accept' },
-    { port: 'uae.wps.port.labour-ministry.v1', simulator: 'uae.wps.sim.labour-ministry.v1', scenario: 'accept' },
-    { port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' },
-    { port: 'b.port.aml-screening.v1', simulator: 'b.sim.aml-screening.v1', scenario: 'accept' },
-    { port: 'b.port.labour-ministry.v1', simulator: 'b.sim.labour-ministry.v1', scenario: 'accept' },
-  ];
-  // Both run side by side (each waits in real time for the simulator's acknowledgement, Issue I-156 (5)), each from its own copy.
-  const run = (paymentId: string, distribution: string) => new Promise<{ status: number | null; out: any; err: string }>((resolve) => {
-    const c = spawn('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), 'exec', '-T', 'testbench', 'node', '/opt/th/deploy/laptop/bin/runtime.mjs', 'run-pinned',
-      JSON.stringify({ paymentId, distribution, bank: BANK, environment: ENV, date: '2026-11-24', bench })], { env });
-    let out = '', err = '';
-    c.stdout.on('data', (d) => (out += d));
-    c.stderr.on('data', (d) => (err += d));
-    c.on('close', (status) => {
-      const line = out.trim().split('\n').filter((l) => l.startsWith('{')).pop();
-      resolve({ status, out: line ? JSON.parse(line) : undefined, err: `${out.slice(-2000)}\n${err.slice(-3000)}` });
-    });
-  });
-  const [r1, r2] = await Promise.all([run(P1, A.releaseId), run(P2, B.releaseId)]);
-  check('P1 runs to its end', r1.status === 0 && !!r1.out?.outcome && r1.out.ended === true, r1.out ?? r1.err);
-  check(`P1 finished on A (${r1.out.outcome}, ${r1.out.ms} ms), its queues and build id A's`, r1.out.distribution?.id === A.releaseId && (r1.out.distribution?.taskQueues ?? []).every((q: string) => q.endsWith(`@${A.releaseId}`)), r1.out.distribution);
-  check(`P2 finished on B (${r2.out?.outcome})`, r2.status === 0 && r2.out?.distribution?.id === B.releaseId && r2.out.ended === true, r2.out ?? r2.err);
+  check('nothing of DIB is in the ADIB runtime\'s store', none.ok && lastLine(none.out) === '0', none.out);
+
+  log('7. P2 by SFTP and P3 by POST /files, both on B; P1 runs on A, P2 and P3 on B (Temporal on SQL Server)');
+  drop(f2.name, f2.text);
+  const up3 = await call(FILES, channel, 'POST', '/files', { tenant: BANK, message: 'uae.wps.sif', fileName: f3.name, contentBase64: Buffer.from(f3.text).toString('base64') });
+  check('the channel\'s POST /files is taken and started (202)', up3.status === 202 && up3.data.disposition === 'started' && !!up3.data.payment, up3.data);
+  const P3 = up3.data.payment as string;
+  check('P3 is pinned to B at acceptance', up3.data.distribution === B.releaseId && (await pinOf(P3)).distribution === B.releaseId, up3.data);
+  const P2 = (await startedFrom(f2.name)).paymentId;
+  check('P2, from the SFTP server, is pinned to B', (await pinOf(P2)).distribution === B.releaseId, await pinOf(P2));
+  check('P1 stays pinned to A', (await pinOf(P1)).distribution === A.releaseId);
+  const again1 = await call(FILES, channel, 'POST', '/files', { tenant: BANK, message: 'uae.wps.sif', fileName: `copy-${f3.name}`, contentBase64: Buffer.from(f3.text).toString('base64') });
+  check('the same file again is refused as a duplicate (409), and nothing starts', again1.status === 409, again1.data);
+  // Each waits in real time for the simulator's acknowledgement (Issue I-156 (5)), on the engine host, each on its distribution's own workers.
+  const ends: Record<string, any> = {};
+  const until = Date.now() + 40 * 60000;
+  while (Object.keys(ends).length < 3 && Date.now() < until) {
+    for (const p of [P1, P2, P3]) if (!ends[p]) { const x = await pinOf(p); if (x?.ended) ends[p] = x; }
+    if (Object.keys(ends).length < 3) await sleep(15000);
+  }
+  for (const [p, name] of [[P1, 'P1'], [P2, 'P2'], [P3, 'P3']] as const) check(`${name} runs to its end on the engine host (${ends[p]?.ended ?? 'not ended'}), not failed`, !!ends[p]?.ended && ends[p].ended !== 'failed', `${JSON.stringify(await pinOf(p)).slice(0, 1500)}\n${compose('logs', '--tail', '40', 'enginehost').stdout.slice(-3000)}\n${compose('logs', '--tail', '40', 'workers').stdout.slice(-3000)}`);
+  const ranOn = (x: any) => [...new Set((x.facts ?? []).map((f: any) => f.releaseId).filter((r: any) => typeof r === 'string' && r.startsWith('dist/')))];
+  check(`P1 finished on A (${ends[P1].ended}): every fact of its run names A`, JSON.stringify(ranOn(ends[P1])) === JSON.stringify([A.releaseId]), ranOn(ends[P1]));
+  check(`P2 and P3 finished on B (${ends[P2].ended}, ${ends[P3].ended})`, [P2, P3].every((p) => JSON.stringify(ranOn(ends[p])) === JSON.stringify([B.releaseId])), [ranOn(ends[P2]), ranOn(ends[P3])]);
   const states = await call(SVC, se, 'GET', '/content/releases');
   const st = Object.fromEntries((states.data as any[]).filter((x) => x.kind === 'distribution').map((x) => [x.releaseId, x.state]));
   check('A is drained once P1 ended; B is active', ['drained', 'draining'].includes(st[A.releaseId]) && st[B.releaseId] === 'active', st);
+  const kept = await call(FILES, channel, 'GET', `/files?tenant=${BANK}&paymentId=${encodeURIComponent(P1)}`);
+  check('P1\'s file is kept once, with its signature, linked to the payment', kept.status === 200 && kept.data.some((f: any) => f.fileName === f1.name && f.direction === 'in' && f.verified === true), kept.data);
+
+  log('7b. outbound: a file sent goes out through the File API\'s outbox onto the SFTP server, and the consoles\' resend sends it again');
+  const out = await call(FILES, frontDoor, 'POST', '/outbox', { tenant: BANK, scheme: 'uae.wps', kind: 'uae.wps.sif-submission', folder: 'centralBank/upload/cb/wps/sif', fileName: f1.name.replace(/\.sif$/, '.SIF'), contentBase64: Buffer.from(f1.text).toString('base64'), paymentId: P1, leg: 'scheme-leg', activity: 'laptop-insert-only-test' });
+  check(`the outbox keeps the file and delivers it on the bank's binding (${out.data.adapter}, ${out.data.delivery})`, out.status === 201 && out.data.delivery === 'delivered' && out.data.adapter === 'sftp', out.data);
+  const sent = `${SFTP_HOME}/cb/wps/sif/${f1.name.replace(/\.sif$/, '.SIF')}`;
+  check('the file is on the SFTP server, byte for byte', cat(sent) === f1.text, cat(sent).slice(0, 200));
+  compose('exec', '-T', '-u', '1001', 'sftp', 'rm', '-f', sent);
+  const resend = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.data.file)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
+  check('the consoles\' client resends it through the File API: the same bytes again', resend.status === 200 && resend.data.result === 'resent' && cat(sent) === f1.text, resend.data);
+  const once = await call(FILES, operations, 'POST', `/files/${encodeURIComponent(out.data.file)}/resend`, { actionId: `laptop-${process.pid}`, onBehalfOf: 'ops.operator' });
+  check('the same action resends once', once.status === 200 && /already/.test(once.data.result), once.data);
 
   log('8. at the database: nothing inserted was updated or deleted');
   const after = snapshot();
@@ -236,7 +320,7 @@ async function main() {
   check('A still verifies against the studio\'s key', verify.data.status === 'done', verify.data);
   for (const t of ['release', 'release_activation', 'payment_fact']) {
     const key = t === 'release' ? `Id = '${A.releaseId}'` : `Id = (SELECT MIN(Id) FROM ${t})`;
-    const col = t === 'release' ? 'StoredBy' : t === 'release_activation' ? 'Actor' : 'Actor';
+    const col = t === 'release' ? 'StoredBy' : 'Actor';
     const u = sql('th_runtime', `UPDATE ${t} SET ${col} = 'tampered' WHERE ${key}`);
     check(`the runtime's login may not UPDATE ${t}`, !u.ok && /permission was denied/i.test(u.out), u.out);
     const d = sql('th_runtime', `DELETE FROM ${t} WHERE ${key}`);
@@ -248,7 +332,6 @@ async function main() {
   check('the runtime\'s login holds SELECT and INSERT on the store, and neither UPDATE nor DELETE', perms.ok && /INSERT/.test(perms.out) && /SELECT/.test(perms.out) && !/UPDATE|DELETE/.test(perms.out), perms.out);
   const again = snapshot();
   check('the refused statements changed nothing', [...after].every(([k, h]) => again.get(k) === h), '');
-
 }
 
 let error: unknown;
@@ -256,7 +339,7 @@ try { await main(); } catch (e) { error = e; failed = true; }
 fs.writeFileSync(path.join(work, 'results.json'), JSON.stringify(results, null, 2));
 if (failed) {
   console.log(`\n${error instanceof Error && !results.some((r) => !r.ok) ? `error: ${error.stack}` : ''}`);
-  for (const svc of ['service-api', 'runtime-api', 'testbench', 'studio', 'temporal']) console.log(`--- ${svc}\n${compose('logs', '--tail', '40', svc).stdout.slice(-4000)}`);
+  for (const svc of ['file-api', 'workers', 'enginehost', 'service-api', 'runtime-api', 'studio', 'temporal']) console.log(`--- ${svc}\n${compose('logs', '--tail', '40', svc).stdout.slice(-4000)}`);
 }
 if (!keep) {
   const down = compose('down', '-v', '--remove-orphans');

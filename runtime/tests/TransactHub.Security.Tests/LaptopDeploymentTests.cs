@@ -33,6 +33,22 @@ public sealed class LaptopDeploymentTests
         Assert.All(bases, b => Assert.Matches(@"@sha256:[0-9a-f]{64}$", b));
     }
 
+    /// <summary>The .NET projects a build publishes: the words src/... and tools/... in its publish loop.</summary>
+    static string[] Published(string text) =>
+        Regex.Matches(text, @"(?<![\w/])((?:src|tools)/TransactHub\.[\w.]+)").Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
+
+    [Fact]
+    public void The_local_build_publishes_every_project_the_source_build_does()
+    {
+        // build.sh --local feeds the same final stages as the Dockerfile's source build; a project missing from it leaves its
+        // service with no program in the image (the File API's container restarted for want of its dll).
+        var source = Dockerfile[Dockerfile.IndexOf("AS dotnet-source\n", StringComparison.Ordinal)..Dockerfile.IndexOf("AS ops-console-source", StringComparison.Ordinal)];
+        var script = File.ReadAllText(Path.Combine(Laptop, "build.sh"));
+        var local = script[script.IndexOf("for p in", StringComparison.Ordinal)..script.IndexOf("done", script.IndexOf("for p in", StringComparison.Ordinal), StringComparison.Ordinal)];
+        Assert.Contains("src/TransactHub.FileApi", Published(source));
+        Assert.Equal(Published(source), Published(local));
+    }
+
     [Fact]
     public void Every_final_image_runs_as_an_unprivileged_user_with_a_health_check()
     {
@@ -82,6 +98,50 @@ public sealed class LaptopDeploymentTests
         var fileApi = Regex.Match(Compose, @"^  file-api:\n((?:    .*\n|\n)*?)(?=^  \S)", RegexOptions.Multiline).Groups[1].Value;
         Assert.Contains("FileApi__EngineHost: http://enginehost:7600", fileApi);
         Assert.Contains("FileApi__EngineHostTokenRef: env:TH_LAPTOP_ENGINE_HOST_TOKEN", fileApi);
+    }
+
+    static string Service(string name) => Regex.Match(Compose, $@"^  {Regex.Escape(name)}:(?: &\S+)?\n((?:    .*\n|\n)*?)(?=^  \S|^\S|\z)", RegexOptions.Multiline).Groups[1].Value;
+
+    [Fact]
+    public void Every_file_enters_and_leaves_through_the_File_API_on_the_laptop()
+    {
+        // R-09-105: the bank's partners are the stack's SFTP server, with its login from the environment and its host key pinned by
+        // reference; the File API polls its inboxes and runs the intake maps on the workers of the payment's distribution; every
+        // host that puts a file names the File API; the consoles resend through it; the engine hosts are served by the workers.
+        var sftp = Service("sftp");
+        Assert.Contains("atmoz/sftp:alpine@sha256:", sftp);
+        Assert.Contains("${TH_LAPTOP_SFTP_PASSWORD:?", sftp);
+        Assert.Contains("x-sftp: &sftp-refs\n  TH_LAPTOP_SFTP_LOGIN:", Compose);
+        // No host reads a folder of bindings (R-09-113): the laptop's binding arrives in the bank's configuration release.
+        Assert.DoesNotContain("TH_BANKS_DIR", Compose);
+        Assert.Matches(@"x-file-api: &file-api-client\n  TH_FILE_API_URL: http://file-api:8080\n  TH_FILE_API_TOKEN_REF: file:", Compose);
+        var fileApi = Service("file-api");
+        Assert.Contains("<<: [*store, *auth, *sftp-refs]", fileApi);
+        Assert.Contains("FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any", fileApi);
+        Assert.Contains("*file-api-client", Service("native"));
+        Assert.Contains("*sftp-refs", Service("native"));
+        foreach (var host in new[] { "enginehost", "enginehost-dtfx", "enginehost-elsa", "enginehost-flowable" })
+        {
+            Assert.Contains("<<: *file-api-client", Service(host));
+            Assert.Contains("TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}", Service(host));
+        }
+        Assert.Contains("Operations__FileApi__Url: http://file-api:8080", Service("ops-api"));
+        Assert.Contains("Operations__FileApi__TokenRef: file:", Service("ops-api"));
+        Assert.Contains("Service__FileApi__Url: http://file-api:8080", Service("service-api"));
+        Assert.Contains("command: [\"workers\"]", Service("workers"));
+        Assert.Contains("command: [\"tokens\"]", Service("machine-auth"));
+        // The laptop's own binding of each bank: every inbox names its message (I-160), the host key and the login by reference (I-161).
+        foreach (var bank in new[] { "adib", "dib" })
+        {
+            var b = File.ReadAllText(Path.Combine(Laptop, "banks", bank, "file-transfer.yaml"));
+            Assert.Contains($"tenant: {bank}", b);
+            Assert.Contains("hostKeyRef: env:TH_LAPTOP_SFTP_HOST_KEY", b);
+            Assert.Contains("secretRef: env:TH_LAPTOP_SFTP_LOGIN", b);
+            Assert.Contains("pickup.message: uae.wps.sif", b);
+            Assert.Contains("centralBank.inbox.ack.message: uae.wps.ack", b);
+            Assert.DoesNotMatch(@"(?i)password:|BEGIN .*PRIVATE KEY", b);
+        }
+        Assert.Contains("COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/", Dockerfile);
     }
 
     [Fact]

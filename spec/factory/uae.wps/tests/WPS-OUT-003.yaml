@@ -28,6 +28,7 @@ expect:
   virtualElapsed: P1D
   trace:
     - business-date:set
+    - cut-off:taken
     - corporate:registered
     - employer-status:found
     - file-checks:pass

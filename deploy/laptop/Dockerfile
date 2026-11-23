@@ -30,7 +30,7 @@ FROM ${NODE_IMAGE} AS node
 # ---- The one base of every target: ASP.NET Core 10 on Ubuntu, Node 22's binary, the folders the volumes mount on ------------
 FROM ${ASPNET_IMAGE} AS base
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
-RUN mkdir -p /opt/th /var/lib/transacthub/keys /var/lib/transacthub/idp /var/lib/transacthub/jwks /var/lib/transacthub/work \
+RUN mkdir -p /opt/th /var/lib/transacthub/keys /var/lib/transacthub/idp /var/lib/transacthub/jwks /var/lib/transacthub/work /var/lib/transacthub/files /var/lib/transacthub/tokens \
  && chown -R app:app /var/lib/transacthub
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 NODE_ENV=production TH_SECRET_FILE_ROOTS=/var/lib/transacthub:/run/secrets
 WORKDIR /opt/th
@@ -129,6 +129,7 @@ COPY --chown=root:root runtime/observability/ /opt/th/runtime/observability/
 COPY --from=dotnet-bits /out/opt/th/ /opt/th/
 COPY --chown=root:root deploy/laptop/bin/ /opt/th/deploy/laptop/bin/
 COPY --chown=root:root deploy/laptop/identity/ /opt/th/deploy/laptop/identity/
+COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/
 ENV TH_TESTBENCH_REPO=/opt/th TH_TESTBENCH_PREBUILT=1 ASPNETCORE_URLS=http://0.0.0.0:8080
 USER app
 EXPOSE 8080

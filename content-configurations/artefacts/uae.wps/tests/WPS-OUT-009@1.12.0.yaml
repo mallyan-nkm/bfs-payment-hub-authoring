@@ -33,5 +33,6 @@ expect:
       count: 0
   trace:
     - business-date:set
+    - cut-off:taken
     - corporate:not-registered
     - end:rejected

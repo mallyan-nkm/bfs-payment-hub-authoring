@@ -53,15 +53,30 @@ public sealed record Inbox(string Tenant, string Folder, string Message, string?
             s["DoneFolder"], s["ErrorFolder"], TimeSpan.FromSeconds(int.TryParse(s["MinimumAgeSeconds"], out var n) ? n : 0)));
 }
 
-/// <summary>Polls the inboxes once: each file old enough is taken, given to the intake, and moved out of the inbox.</summary>
-public sealed class InboxPoller(ITransferPorts ports, FileIntake intake, string environment, Func<IEnumerable<Inbox>> inboxes, TimeProvider? clock = null, ILogger? log = null)
+/// <summary>
+/// Polls the inboxes once: each file old enough is taken, given to the intake, and moved out of the inbox. One runtime serves one
+/// bank (R-09-76): with <paramref name="bank"/> (<c>TH_BANK</c>) an inbox of another bank is never read, whatever the bindings or
+/// the installation's settings name (R-09-104), so a file of another bank is neither taken nor moved.
+/// </summary>
+public sealed class InboxPoller(ITransferPorts ports, FileIntake intake, string environment, Func<IEnumerable<Inbox>> inboxes, TimeProvider? clock = null, ILogger? log = null, string? bank = null)
 {
     readonly TimeProvider clock = clock ?? TimeProvider.System;
+
+    readonly HashSet<string> told = new(StringComparer.Ordinal);
+
+    /// <summary>The inboxes this runtime reads: those of its bank only, when it names one. Another bank's is named in the log once.</summary>
+    public IEnumerable<Inbox> Inboxes() => inboxes().Where(box =>
+    {
+        if (bank is not { Length: > 0 } || box.Tenant == bank) return true;
+        lock (told)
+            if (told.Add($"{box.Tenant}|{box.Folder}")) log?.LogWarning("Inbox {Folder} of {Tenant} is not polled: this runtime serves {Bank} only", box.Folder, box.Tenant, bank);
+        return false;
+    });
 
     public async Task<List<Received>> PollOnce(CancellationToken ct = default)
     {
         var taken = new List<Received>();
-        foreach (var box in inboxes())
+        foreach (var box in Inboxes())
         {
             IFileTransfer t;
             try { t = ports.For(box.Tenant, clock.GetUtcNow()).Transfer; }
