@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
-import { ACK_IN, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, GARBAGE, LEG, PORT, RULE, RULESET, SCHEME, SEND, SIM, SUBFLOW, SUBMIT, USD, VALID, VALIDATE } from './demo-scheme.js';
+import { ACK_IN, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, GARBAGE, LEG, PORT, RULE, RULESET, SCHEME, SEND, SIM, SUBFLOW, SUBMIT, USD, VALID, VALIDATE, nextMinor } from './demo-scheme.js';
 import { client, signInPage, startServer, STUDIO, type Server } from './server.js';
 
 // Black box, in the browser: the walk-through of the user guide's "Build a full workflow", done only
@@ -190,24 +190,42 @@ describe('the guide: build a full workflow in the web app', () => {
     expect(text).toContain('submit:accepted');
   }, 90000);
 
-  it('step 8: as a bank, accept the scheme and enable its rail in a new configuration release', async () => {
+  let configRelease = '';
+  it('step 8: as a bank, license the scheme in the bank workspace, accept it and enable its rail in a new configuration release (I-205)', async () => {
+    // The bank configurator proposes the bank's next lock file with the scheme, in the bank workspace.
     await as('example-bank', 'example.maker');
+    await go('bank');
+    const licence = page.locator('[aria-label="Schemes licensed"]');
+    const row = licence.locator('tr', { hasText: 'uae.demo' });
+    await expect.poll(async () => (await row.textContent()) ?? '').toContain('not licensed');
+    await row.getByRole('button', { name: 'License uae.demo' }).click();
+    await expect.poll(async () => (await licence.locator('[role="status"]').textContent()) ?? '').toMatch(/Proposed lock file \d+\.\d+\.\d+ licensing uae\.demo/);
+    await expect.poll(async () => (await row.textContent()) ?? '').toContain('proposed');
+    // And a configuration set that accepts the scheme and enables its rail.
     await go('tenant');
     const cs = (await client(server.url, { as: 'example.maker' }).get('/api/tenants/example-bank/configuration')).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
-    next.release = '1.3.0';
+    // The next minor of the set the studio returns, whatever the factory ships (I-187, I-204).
+    next.release = nextMinor(cs.configurationSet.release);
+    configRelease = next.release;
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));
     await page.getByRole('button', { name: 'Save the configuration set' }).click();
-    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@1\.2\.0\S* as example\.maker, as a draft/);
-    // The bank approver, not the configurator, makes it the version.
+    await expect.poll(async () => (await page.locator('main').textContent()) ?? '').toMatch(/Saved \S*config:example-bank@\d+\.\d+\.\d+\S* as example\.maker, as a draft/);
+    // The bank approver, who is not their maker, approves the licence first: its approval builds the bank's next distribution,
+    // which carries the scheme. A configuration that binds a scheme the bank does not license is refused at approval.
     await as('example-bank', 'example.checker');
+    await go('bank');
+    await page.getByRole('button', { name: 'Approve the licence' }).click();
+    await expect.poll(async () => (await licence.locator('[role="status"]').textContent()) ?? '', { timeout: 60000 }).toMatch(/approved in change set .*distribution dist\/example-bank@\S+ carries .*uae\.demo/);
+    await expect.poll(async () => (await row.textContent()) ?? '').toMatch(/^uae\.demo.*licensed/);
+    // Then the configuration, which the bank approver, not the configurator, makes the version.
     await go('governance');
     await page.locator('tr', { hasText: 'config:example-bank' }).first().getByRole('button', { name: 'Approve as version' }).click();
     await expect.poll(async () => (await page.locator('[role="status"]').allTextContents()).join(' ')).toMatch(/approved as a version by example\.checker/);
     await as('example-bank', 'example.maker');
-  }, 90000);
+  }, 120000);
 
   it('step 9: a credit file from the bank\'s channel is paid end to end', async () => {
     const text = await benchRun('p.wf.corporate.v1', 'example-bank', [...PLATFORM_PORTS, ...DEMO_PORTS], 'samples/demo-credit-file-valid.csv', 'uae.demo.credit-file');
@@ -237,7 +255,7 @@ describe('the guide: build a full workflow in the web app', () => {
     const out = (r.stdout ?? '') + (r.stderr ?? '');
     expect(out, out.slice(-1500)).toMatch(/^outcome settled/m);
     expect(out).toContain('worker th-uae-demo');
-    expect(out).toContain('configuration example-bank@1.2.0 from the package');
+    expect(out).toContain(`configuration example-bank@${configRelease} from the package`);
   }, 300000);
 
   it('caused no script error and no server error along the way', () => {

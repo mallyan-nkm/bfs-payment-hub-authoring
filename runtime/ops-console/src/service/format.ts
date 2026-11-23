@@ -8,6 +8,8 @@ export const PAGES = [
   { id: 'actions', title: 'Actions' },
   { id: 'backup', title: 'Backup' },
   { id: 'assistant', title: 'Assistant' },
+  // The console's own audit trail (R-05-76, Issue I-202).
+  { id: 'audit', title: 'Audit' },
 ] as const;
 
 /** The tone of a probe's or a release's state, for its badge. */

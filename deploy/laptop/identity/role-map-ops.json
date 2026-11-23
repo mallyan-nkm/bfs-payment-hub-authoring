@@ -4,6 +4,7 @@
   "grants": [
     { "claim": "groups", "value": "th-operators", "roles": ["Operator"] },
     { "claim": "groups", "value": "th-supervisors", "roles": ["Supervisor"] },
-    { "claim": "groups", "value": "th-bank-approvers", "roles": ["BankApprover"] }
+    { "claim": "groups", "value": "th-bank-approvers", "roles": ["BankApprover"] },
+    { "claim": "groups", "value": "th-register-makers", "roles": ["RegisterMaker"] }
   ]
 }

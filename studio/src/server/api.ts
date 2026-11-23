@@ -31,6 +31,7 @@ import { expandWorkflow } from '../core/expand.js';
 import { buildPack, compareManifest, packManifest, packZip } from '../governance/packs.js';
 import * as gov from '../governance/governance.js';
 import * as distGov from '../governance/distributions.js';
+import * as licensing from '../governance/licensing.js';
 import { enforce, submitForReview } from '../governance/governance.js';
 import { reasonCodeCoverage } from '../sim/coverage.js';
 import { stubSource } from '../sim/stub.js';
@@ -608,6 +609,23 @@ route('POST', '/api/tenants/:tenant/configuration/check', (env, req, { tenant })
   if (cs.__parseError) return { issues: [{ code: 'L00', severity: 'error', message: cs.__parseError }] };
   if (cs.tenant !== tenant) return { issues: [{ code: 'R-01-07', severity: 'error', message: `The configuration set names tenant ${cs.tenant}, not ${tenant}` }] };
   return { issues: checkDocument(env, cs) };
+});
+
+// --------------------------------------------------------------- schemes licensed (R-11-75 to R-11-78, Issue I-205)
+
+/**
+ * The schemes a bank licenses: its lock file in force, every scheme of the factory with whether the bank licenses it and whether
+ * its configuration binds it, and the licence proposed and not yet approved.
+ */
+route('GET', '/api/tenants/:tenant/licensing', (env, _req, { tenant }) => licensing.licensing(env, tenant));
+
+/**
+ * A Bank Configurator proposes to license a further scheme: the bank's next lock file, saved as a draft (R-11-75). A Bank
+ * Approver who is not its maker approves it through /api/publish, which publishes it and builds the bank's next distribution.
+ */
+route('POST', '/api/tenants/:tenant/licensing', (env, req, { tenant }) => {
+  const e = licensing.proposeLicence(env, tenant, actorOf(req), String(req.body?.scheme ?? ''));
+  return { draft: summary(e), lock: e.doc, issues: checkDocument(env, e.doc, tenant, gov.draftSet(env, tenant)) };
 });
 
 // --------------------------------------------------------------- port bindings (R-11-47, Issue I-70)

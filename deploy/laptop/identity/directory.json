@@ -5,7 +5,8 @@
     { "sub": "bank.approver", "name": "Example bank approver", "groups": ["th-bank-approvers"] },
     { "sub": "ops.operator", "name": "Example operator", "groups": ["th-operators"] },
     { "sub": "ops.supervisor", "name": "Example supervisor", "groups": ["th-supervisors"] },
-    { "sub": "bench.tester", "name": "Example tester", "groups": ["th-testers"] }
+    { "sub": "bench.tester", "name": "Example tester", "groups": ["th-testers"] },
+    { "sub": "reg.maker", "name": "Example register maker", "groups": ["th-register-makers"] }
   ],
   "clients": [
     { "clientId": "th-pipeline", "name": "The bank's release pipeline", "secretRef": "env:TH_LAPTOP_PIPELINE_SECRET", "roles": ["TransactHub.Pipeline"] },

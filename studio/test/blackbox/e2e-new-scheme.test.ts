@@ -16,7 +16,7 @@ import { client, startServer, STUDIO, type Server } from './server.js';
 //
 // `uae.demo` is a synthetic scheme made up for this test. It stands for no real scheme.
 
-import { S, MAKER, CHECKER, BANK, PROV, HEADER, n, PORT, reply, SIM, RULE, RULESET, VALIDATE, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, ACK_IN, SEND, SUBMIT, SUBFLOW, LEG, SCHEME, VALID, USD, GARBAGE, bench, T, TESTS } from './demo-scheme.js';
+import { S, MAKER, CHECKER, BANK, PROV, HEADER, n, PORT, reply, SIM, RULE, RULESET, VALIDATE, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, ACK_IN, SEND, SUBMIT, SUBFLOW, LEG, SCHEME, VALID, USD, GARBAGE, bench, T, TESTS, nextMinor } from './demo-scheme.js';
 
 let server: Server;
 let api: ReturnType<typeof client>;
@@ -150,10 +150,29 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(r.data.outcome).toBe('rejected');
   });
 
+  it('licenses the scheme to the bank: its configurator proposes the next lock file, its approver approves it, and its next distribution carries the scheme (I-205)', async () => {
+    // Until it is licensed, a configuration that accepts it is refused at approval (R-11-77).
+    expect((await api.get(`/api/tenants/${BANK}/licensing`)).data.schemes.find((x: any) => x.scope === S).licensed).toBe(false);
+    const proposed = await api.post(`/api/tenants/${BANK}/licensing`, { actor: 'example.maker', scheme: S });
+    expect(proposed.status, JSON.stringify(proposed.data)).toBe(200);
+    expect(proposed.data.lock.licensedSchemes).toContain(S);
+    expect((await api.post('/api/publish', { tenant: BANK, key: proposed.data.draft.key, checker: 'example.maker' })).status).toBe(403);
+    const approved = await api.post('/api/publish', { tenant: BANK, key: proposed.data.draft.key, checker: 'example.checker' });
+    expect(approved.status, JSON.stringify(approved.data)).toBe(200);
+    const dist = approved.data.bundles.find((b: any) => b.kind === 'distribution');
+    expect(dist, JSON.stringify(approved.data.bundles)).toBeDefined();
+    const l = (await api.get(`/api/tenants/${BANK}/licensing`)).data;
+    expect(l.licensedSchemes).toContain(S);
+    expect(l.release).toBe(proposed.data.lock.release);
+  });
+
+  let configRelease = '';
   it('pays end to end once the bank accepts the scheme and enables its rail in a new configuration', async () => {
     const cs = (await api.get(`/api/tenants/${BANK}/configuration`)).data.configurationSet;
     const next = JSON.parse(JSON.stringify(cs));
-    next.release = '1.3.0';
+    // The next minor of the set the studio returns, whatever the factory ships (I-187, I-204).
+    next.release = nextMinor(cs.release);
+    configRelease = next.release;
     next.accepts.push({ scope: S, release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push(S);
     const check = await api.post(`/api/tenants/${BANK}/configuration/validate`, { doc: next });
@@ -182,7 +201,7 @@ describe('a new scheme built from scratch, connected to the payment workflow', (
     expect(parseYaml(files.get('binding.yaml')!).queues[S]).toBe('th-uae-demo'); // derived from the scope (R-09-05)
     expect(parseYaml(files.get(`schemes/${S}.yaml`)!).legs).toEqual([LEG.name]);
     expect(files.get(`workers/th-uae-demo/scripts/${FILE_IN.name}.js`)).toContain('mapped');
-    expect(parseYaml(files.get(`configuration/${BANK}.yaml`)!).release).toBe('1.3.0');
+    expect(parseYaml(files.get(`configuration/${BANK}.yaml`)!).release).toBe(configRelease);
     // The export lists the change sets its artefacts were published in (R-11-20).
     const listed = manifest.changeSets.map((c: any) => c.id);
     for (const id of changeSets) expect(listed).toContain(id);

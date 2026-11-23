@@ -105,7 +105,9 @@ export async function planOnApproval(env: StudioEnv, tenant: string, checker: st
 
 /** The slot and parameter contracts of a bank's next distribution, with the change set's documents in place of their published releases. */
 function precheck(env: StudioEnv, bank: string, docs: any[]) {
-  const schemes = licensedSchemes(env, bank);
+  // The change set's lock file in place of the one in force: a scheme it licenses is in the distribution it builds (R-11-76).
+  const lock = docs.find((d) => d.kind === 'pack' && d.scope === 'b' && d.tenant === bank);
+  const schemes = lock ? [...lock.licensedSchemes].sort() : licensedSchemes(env, bank);
   const scopeOf = (n: string) => (n.split('.')[0] === 'p' || n.split('.')[0] === 'b' ? n.split('.')[0] : n.split('.').slice(0, 2).join('.'));
   const overlay = (scope: string) => {
     const base = packEntries(env, scope, scope === 'b' ? bank : undefined).map((e) => e.doc).filter((d) => !docs.some((x) => x.kind === d.kind && x.name === d.name));
