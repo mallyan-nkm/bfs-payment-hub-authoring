@@ -68,7 +68,7 @@ public sealed class ScenarioRunner
         var dep = hosted?.Dep ?? new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         if (hosted is null) Deployment.Current = dep;
         using IParty? ownParty = hosted is not null ? null : J.P(input, "workers") is JsonObject workers
-            ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!)
+            ? new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!, J.S(input, "distribution"))
             : new PartyClient(J.S(input, "studioRoot")!);
         var party = hosted?.Party ?? ownParty!;
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });

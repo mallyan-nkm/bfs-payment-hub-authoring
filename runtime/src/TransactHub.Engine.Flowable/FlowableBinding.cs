@@ -238,7 +238,7 @@ public sealed partial class FlowableBinding
         }
         dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
-        using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!) : new PartyClient(J.S(input, "studioRoot")!);
+        using var p = given is not null ? null : J.P(input, "workers") is JsonObject workers ? (IParty)new WorkerRouter(workers, (JsonObject)J.P(input, "queues")!, J.S(input, "distribution")) : new PartyClient(J.S(input, "studioRoot")!);
         party = given ?? p!;
 
         // Deploy every process of the plan as one deployment, in a tenant of this run's own.

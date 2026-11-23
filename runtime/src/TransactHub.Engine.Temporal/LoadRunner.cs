@@ -44,7 +44,7 @@ public sealed class LoadRunner(JsonObject input)
         var start = DateTimeOffset.Parse($"{J.S(config, "evaluationDate")}T{J.S(config, "startTime") ?? "06:00:00"}Z").ToUnixTimeMilliseconds();
         var dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
-        using IParty party = new WorkerRouter((JsonObject)J.P(input, "workers")!, (JsonObject)J.P(input, "queues")!);
+        using IParty party = new WorkerRouter((JsonObject)J.P(input, "workers")!, (JsonObject)J.P(input, "queues")!, J.S(input, "distribution"));
         var storeOpts = ScenarioRunner.StoreFromEnvironment();
         var durable = storeOpts is null ? null : new DurableClaimCheck(storeOpts);
         if (storeOpts is not null)

@@ -187,7 +187,7 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
         TemporalEngine.RealServer = true;
         await using (var db = StoreDbContext.Open(Store)) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database, ct);
         StoreSignals.Install(Store, StepFacts.Install(Store));
-        workers = new DistributionWorkers(client, PlanFor(null), DeploymentName(Bank, Environment), IdPart, null, Store);
+        workers = new DistributionWorkers(client, PlanFor(null), DeploymentName(Bank, Environment), IdPart, null, Store, pinnedAs: Distribution);
         await workers.StartAsync();
     }
 

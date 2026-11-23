@@ -1888,7 +1888,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
-<<<<<<< HEAD
+**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
+
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
 **Issue.** The north-star review of 23 November 2026 found that `POST /import-branch` loaded every configuration set under a branch's `banks/` folder into the store as values in force: no signature, no check against any distribution's parameter contract, no consent. The spec asked for values to arrive in signed configuration releases checked against the parameter contracts (R-09-51, PACKAGING section 7), but did not say whether a test environment might keep a shorter path.
@@ -1922,7 +1923,6 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
->>>>>>> claude/cool-ptolemy-js3lcz
 
 ## I-220. A native module still reaches into the image beyond the contract
 
@@ -1942,13 +1942,31 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Put the distribution in every attempt request the engines send, from the payment's pin, and have the worker forward it to the native host before its own `TH_DISTRIBUTION`. Until then an installation runs one worker set per distribution, each with its `TH_DISTRIBUTION`, as the deploy runner does.
 
+**Done (23 November 2026, R-09-130 to R-09-133).** Every attempt an engine sends to a worker names its payment's distribution: the workers' router of the four engines (`WorkerRouter`, `studio/engines/shared/Deployment.cs`) adds the engine's `distribution` to each attempt, on Temporal (the deploy runner's runs and the long-running host's version workers), DTFx, Elsa and Flowable (and the studio's Flowable harness), and the File API's front door names the payment's pin for its intake map. The worker hands it to the native host before its own `TH_DISTRIBUTION`, which it sends beside it as `workerDistribution`. The native host serves the attempt from the distribution it names (`AttemptRouting`, `runtime/src/TransactHub.Native`), and refuses it when the worker runs another distribution (`WrongDistribution`) or when the payment is pinned to another (`NotPinned`). An attempt that names none is served as before. One worker set that names no distribution now serves every distribution whose tasks it registers: the engine host's workers (`TH_HOST_WORKERS`) needed nothing more, and the laptop stack has no worker service to change. The deploy runner takes an installation's workers (`DeployRequest.workers`, `startWorkers`), and `e2e-native-distributions` runs two builds of the WPS ACK mapping through one worker set on Temporal and DTFx. A set still serves only the tasks it registers (Issue I-232); the refusals' codes have no dictionary entry yet (Issue I-230).
+
 ## I-223. A module built ahead of time is trusted as the studio is
 
 **Issue.** The studio builds a distribution's native assemblies from the code-behind project at publish (`TH_NATIVE_MODULES=build`, R-09-120). A studio with no .NET SDK, such as the laptop image, takes the same build made ahead of time (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh` in the image's build stage). That folder is checked against its own SHA-256, but nothing signs it: it is trusted as the studio's own files are. The distribution's signature then covers whatever the folder held.
 
 **Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
-=======
-**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
+
+## I-230. The native host's refusals have no entry in the error dictionary
+
+**Issue.** The native host refuses an attempt with a name of its own: `NotNative`, `NotInDistribution`, `DistributionUnknown`, `DistributionRemoved`, `NativeModuleRefused` and, since R-09-131 and R-09-132, `WrongDistribution` and `NotPinned`. None has an entry in the platform's error dictionary (`p.errors.platform.v1`), so no runbook covers them, and `ErrorDictionaryTests` does not look for them: it reads only `NativeFailure`, `StepFailure` and `AttemptFailed` codes. The change that made the last two kept the factory unchanged, so it could not add them.
+
+**Recommendation.** In the next release of `p.errors.platform.v1` (1.3.0), add an entry with a runbook for each refusal of the native host, under a `native.` prefix as the runtime's other codes have one (`native.WrongDistribution`, `native.NotPinned`, and the others), raise them with those codes, and have `ErrorDictionaryTests` read `NativeRefusal` codes as well.
+
+## I-231. An attempt for a payment with no pin
+
+**Issue.** The native host refuses an attempt for a distribution its payment is not pinned to (R-09-132). A payment with no `distribution.pinned` fact in the host's store is served from the distribution the attempt names: the studio's test runs and the native host's own tests attempt for payments that the store never accepted. On a runtime every payment is pinned at acceptance (R-09-53), before its intake map, so an attempt for an unpinned payment there is a fault, but the spec does not say so.
+
+**Recommendation.** Have a runtime's native host (one with `TH_BANK`) refuse an attempt that names a distribution for a payment with no pin, as `NotPinned`, and keep the present rule for a host that serves no runtime's bank.
+
+## I-232. A worker set serves only the tasks it registers
+
+**Issue.** One set of workers now serves every distribution of a bank (R-09-133), but a worker holds one package's tasks, by name and release, with their script-behinds, maps and rules. A distribution whose other tasks are at releases the set does not register is refused at the worker (`NotOnThisQueue`). Only a native activity's build is chosen per attempt.
+
+**Recommendation.** Until a worker can load a distribution's tasks as the native host loads its assemblies, an installation starts a worker set per package that differs in those tasks, and names each set's queues in the plan of the distributions it serves. Then have the worker load each distribution's tasks from the store by the distribution the attempt names, as the native host does.
 
 ## Not done, and why
 
