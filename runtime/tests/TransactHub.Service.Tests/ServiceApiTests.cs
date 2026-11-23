@@ -51,7 +51,7 @@ public sealed class ServiceApiTests(Databases dbs)
             Assert.Equal("auth.Forbidden", (string?)j["code"]);
             Assert.Equal("#/service/errors/auth.Forbidden", (string?)j["runbook"]);
         }
-        // A decision needs a ServiceApprover, not an engineer.
+        // A decision needs a bank approver, not an engineer.
         var d = await api.Engineer.SendAsync(Req("POST", "/service/api/actions/none/decision", new { approve = true, reason = "ok" }));
         Assert.Equal(HttpStatusCode.Forbidden, d.StatusCode);
         var me = await J.Of(await api.Engineer.GetAsync("/service/api/me"));

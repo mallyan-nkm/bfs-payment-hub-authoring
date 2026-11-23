@@ -41,6 +41,11 @@ var runtimeBank = RuntimeBank.FromConfiguration(builder.Configuration);
 // Elsewhere a distribution's state changes only through the service console, with a bank approver's consent (R-09-77).
 var machineActivation = (builder.Configuration["Releases:MachineActivationEnvironments"] is { Length: > 0 } machineEnvs ? machineEnvs : string.Join(",", testEnvironments))
     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
+// The environment this runtime is (Releases:Environment, default production). A configuration release's values are the bank's,
+// not an environment's: the pipeline puts one in force by itself only where this runtime's own environment is one it may change
+// (R-09-78, R-09-111); elsewhere it is installed, checked and waits for a bank approver's consent in the service console.
+var runtimeEnvironment = builder.Configuration["Releases:Environment"] is { Length: > 0 } re ? re.Trim() : "production";
+var machinePutsInForce = machineActivation.Contains(runtimeEnvironment);
 builder.Services.AddScoped(_ => StoreDbContext.Open(options));
 // The key this host signs the files it keeps with (Issue I-97): by reference, or one made for the host's lifetime.
 var fileKey = builder.Configuration["TH_FILE_SIGNING_KEY_REF"] is { Length: > 0 } fileKeyRef
@@ -81,10 +86,16 @@ async Task<Verification> Verify(StoreDbContext db, TimeProvider clock, Package p
     return v;
 }
 
+/// <summary>Why a workflow package may not be stored or activated here: this runtime runs its bank's distributions (R-09-114).</summary>
+async Task<string?> RunsDistributions(StoreDbContext db, string what) =>
+    await WorkflowPackages.Refusal(db, runtimeBank.Id, what);
+
 async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package p, string actor, string purpose)
 {
     // A package exported for a tenant is that bank's: another bank's is refused (R-09-76). Shared content names no tenant.
     if (p.Tenant is { Length: > 0 } tenant && runtimeBank.Refusal(tenant, p.ReleaseId) is { } wrongBank) return Outcome.Refused(422, wrongBank);
+    // A workflow package is the earlier per-scope unit: never installed beside the bank's distributions (R-09-114, Issue I-212).
+    if (await RunsDistributions(db, p.ReleaseId) is { } beside) return Outcome.Refused(409, beside);
     Verification v;
     try { v = await Verify(db, clock, p, purpose, actor, record: false); }
     catch (SignatureRejected e) { return Outcome.Refused(422, $"{p.ReleaseId} is refused: {e.Message}"); }
@@ -103,6 +114,7 @@ async Task<Outcome> StorePackage(StoreDbContext db, TimeProvider clock, Package 
 async Task<Outcome> Activate(StoreDbContext db, TimeProvider clock, string environment, string scope, string release, DateTimeOffset effectiveFrom, string actor)
 {
     if (MachineRefusal(environment, $"activate {scope}@{release}") is { } consent) return Outcome.Refused(403, consent);
+    if (await RunsDistributions(db, $"{scope}@{release}") is { } beside) return Outcome.Refused(409, beside);
     var reg = new ReleaseRegistry(db, clock);
     var r = await reg.Get(scope, release);
     if (r is null) return Outcome.Refused(404, $"{scope}@{release} is not stored; store it before activating it");
@@ -172,9 +184,11 @@ app.MapGet("/activations/active", async (string environment, string scope, DateT
     return release is null ? Problem(404, $"No release of {scope} is active in {environment}") : Results.Ok(new { environment, scope, release });
 }).RequireAuthorization(ApiAuth.Reader);
 
-// The branch the studio exports to (plan W8): every package under releases/, every activation under
-// environments/<env>/activations/ and every bank's configuration values, stored and recorded. Running it again changes nothing.
-// A package that does not verify is a problem and is not stored; an activation needs the activator's role as well.
+// The branch the studio exports to (plan W8): every workflow package under releases/ and every activation under
+// environments/<env>/activations/, stored and recorded. Running it again changes nothing. A package that does not verify is a
+// problem and is not stored; an activation needs the activator's role as well. A bank's values never come from a branch's
+// folders: they arrive only in a signed configuration release, checked against the parameter contracts and put in force with
+// a bank approver's consent (POST /configuration-releases, POST /sources/install; R-09-110, R-09-111, Issue I-210).
 app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock) =>
 {
     // Only a folder under a configured import root, named without a link that leads out of it (R-09-58).
@@ -231,11 +245,7 @@ app.MapPost("/import-branch", async (BranchImport b, ClaimsPrincipal user, Store
             }
         }
     }
-    // The banks' configuration sets: each value an effective-dated version (plan P6).
-    var skipped = new List<string>();
-    var values = await BankValues.Import(db, clock, Path.Combine(b.Path, "banks"), actor, onlyBank: runtimeBank.Id, skipped: skipped);
-    problems.AddRange(skipped);
-    return Results.Ok(new { stored, activated, values, problems });
+    return Results.Ok(new { stored, activated, problems });
 }).RequireAuthorization(ApiAuth.Importer);
 
 string? ImportPath(string? given)
@@ -287,10 +297,8 @@ app.MapPost("/sources/install", async (SourceInstall s, IServiceProvider sp, Cla
         {
             var bundle = Bundle.FromFiles(files, v.Kind);
             if (bundle.ReleaseId != v.ReleaseId) return Problem(422, $"{s.Tag} names {v.ReleaseId}, but its bundle is {bundle.ReleaseId}");
-            var svc = Distributions(db, clock);
-            var res = v.Kind == ReleaseSignature.Distribution
-                ? await svc.InstallDistribution(bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct)
-                : await svc.InstallConfiguration(bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct);
+            if (v.Kind != ReleaseSignature.Distribution) return await InstallConfiguration(db, clock, bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct);
+            var res = await Distributions(db, clock).InstallDistribution(bundle, ApiAuth.Actor(user), $"package-source:{s.Tag}", ct);
             return Results.Json(res, statusCode: res["stored"]!.GetValue<bool>() ? 201 : 200);
         }
         catch (PackageRejected e) { return Problem(422, $"{s.Tag}: {e.Message}"); }
@@ -311,11 +319,29 @@ string? MachineRefusal(string environment, string what) => machineActivation.Con
     : $"The release API may not {what} in {environment}: outside {string.Join(", ", machineActivation.Order())} a change to the system is asked for in the service console and carried out once a bank approver consents (R-09-77)";
 IResult? NeedsConsent(string environment, string what) => MachineRefusal(environment, what) is { } m ? Problem(403, m) : null;
 
+// A configuration release from the pipeline (R-09-110, R-09-111): verified (signature, kind, bank) and checked against the parameter
+// contract of every distribution not removed, then stored. Where this runtime's environment is one the pipeline may change, it is
+// put in force at once; elsewhere it waits, installed and not in force, and a bank approver's consent is asked for in the service
+// console (202, with the action's id). The pipeline may not consent; nothing of it is in force until a bank approver does.
+async Task<IResult> InstallConfiguration(StoreDbContext db, TimeProvider clock, Bundle bundle, string actor, string purpose, CancellationToken ct)
+{
+    var svc = Distributions(db, clock);
+    var r = await svc.InstallConfiguration(bundle, actor, purpose, putInForce: machinePutsInForce, ct,
+        consent: machinePutsInForce ? new JsonObject { ["machine"] = actor, ["environment"] = runtimeEnvironment, ["rule"] = "R-09-78" } : null);
+    if (r["inForce"]!.GetValue<bool>()) return Results.Json(r, statusCode: r["stored"]!.GetValue<bool>() ? 201 : 200);
+    r["action"] = await ConsentRequests.Open(db, ConsentRequests.PutInForce, bundle.ReleaseId, ct)
+        ?? await ConsentRequests.Ask(db, clock, ConsentRequests.PutInForce, bundle.ReleaseId, $"{purpose}: {bundle.ReleaseId} installed by the release API in {runtimeEnvironment}", actor, ct);
+    r["needs"] = "BankApprover";
+    r["code"] = "service.ApproverRequired";
+    r["message"] = $"{bundle.ReleaseId} is installed and checked; it is put in force once a bank approver consents in the service console (R-09-77, R-09-111): outside {string.Join(", ", machineActivation.Order())} the pipeline does not change the system by itself";
+    return Results.Json(r, statusCode: 202);
+}
+
 async Task<IResult> Refusable(Func<Task<IResult>> f)
 {
     try { return await f(); }
     catch (PackageRejected e) { return Problem(422, e.Message); }
-    catch (BundleRefused e) { return Problem(e.Status, e.Message); }
+    catch (BundleRefused e) { return e.Code is { } code ? Results.Json(new { error = e.Message, code }, statusCode: e.Status) : Problem(e.Status, e.Message); }
 }
 
 async Task<byte[]> Body(HttpRequest req)
@@ -333,8 +359,7 @@ app.MapPost("/distributions", async (HttpRequest req, ClaimsPrincipal user, Stor
 
 app.MapPost("/configuration-releases", async (HttpRequest req, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) => await Refusable(async () =>
 {
-    var r = await Distributions(db, clock).InstallConfiguration(Bundle.FromZip(await Body(req), ReleaseSignature.ConfigurationRelease), ApiAuth.Actor(user), "upload", ct);
-    return Results.Json(r, statusCode: r["stored"]!.GetValue<bool>() ? 201 : 200);
+    return await InstallConfiguration(db, clock, Bundle.FromZip(await Body(req), ReleaseSignature.ConfigurationRelease), ApiAuth.Actor(user), "upload", ct);
 })).RequireAuthorization(ApiAuth.Importer);
 
 app.MapGet("/distributions", async (string? bank, string environment, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>

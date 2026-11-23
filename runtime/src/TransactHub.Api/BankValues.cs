@@ -8,37 +8,19 @@ using YamlDotNet.RepresentationModel;
 namespace TransactHub.Api;
 
 /// <summary>
-/// A bank's configuration values on the runtime (plan W4, P6): every value of every configuration set the studio wrote to the
-/// branch (<c>banks/&lt;tenant&gt;/configuration-set.yaml</c> and <c>banks/&lt;tenant&gt;/configuration-sets/&lt;release&gt;.yaml</c>) is an
-/// effective-dated version row, kind <c>config</c>, named by its parameter. A changed value is a new version, never an edit, and
+/// A bank's configuration values on the runtime (plan W4, P6): every value of the configuration set of a signed configuration
+/// release put in force (R-09-51, R-09-110, R-09-111) is an effective-dated version row, kind <c>config</c>, named by its
+/// parameter. Values never come from a folder (Issue I-210). A changed value is a new version, never an edit, and
 /// reaches the next lookup with no deployment. The value in force at a moment is the one the latest configuration set gives for it.
 /// </summary>
 public static class BankValues
 {
     public const string Kind = "config";
 
-    /// <summary>Imports the configuration sets under <paramref name="banksDir"/>; a version identical to one stored is not stored again.</summary>
-    /// <param name="onlyBank">The runtime's one bank (R-09-76): a configuration set of another tenant is skipped and named in <paramref name="skipped"/>.</param>
-    public static async Task<int> Import(StoreDbContext db, TimeProvider clock, string banksDir, string actor, CancellationToken ct = default, string? onlyBank = null, List<string>? skipped = null)
-    {
-        if (!Directory.Exists(banksDir)) return 0;
-        var store = new VersionedValues(db, clock);
-        var added = 0;
-        foreach (var bank in Directory.EnumerateDirectories(banksDir).Order(StringComparer.Ordinal))
-        {
-            var files = Directory.EnumerateFiles(bank, "configuration-set.yaml").Concat(
-                Directory.Exists(Path.Combine(bank, "configuration-sets")) ? Directory.EnumerateFiles(Path.Combine(bank, "configuration-sets"), "*.yaml") : []);
-            // Older releases first, so a later release's value is the newer version.
-            foreach (var (release, root) in files.Select(f => Read(File.ReadAllText(f))).Where(x => x.root is not null).OrderBy(x => x.release, Comparer<string>.Create(CompareReleases)))
-            {
-                if (onlyBank is not null && S(root!, "tenant") is { } t && t != onlyBank) { skipped?.Add($"{Path.GetFileName(bank)}: the configuration set of {t} is not this runtime's bank ({onlyBank}), not imported (R-09-76)"); continue; }
-                added += await ImportSet(db, store, release, root!, actor, ct);
-            }
-        }
-        return added;
-    }
-
-    /// <summary>A configuration set's text (a configuration release's set, R-09-51): each value an effective-dated version.</summary>
+    /// <summary>
+    /// A configuration set's text, of a configuration release being put in force (R-09-51, R-09-111): each value an
+    /// effective-dated version. Only <c>DistributionService</c> calls it, after the release's signature and bounds were checked.
+    /// </summary>
     public static async Task<int> ImportText(StoreDbContext db, TimeProvider clock, string yaml, string actor, CancellationToken ct = default)
     {
         var (release, root) = Read(yaml);

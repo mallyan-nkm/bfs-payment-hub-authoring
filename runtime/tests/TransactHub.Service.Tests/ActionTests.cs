@@ -42,13 +42,13 @@ public sealed class ActionTests(Databases dbs)
         var pending = (await J.Of(await se.GetAsync("/service/api/actions/pending"))).AsArray();
         Assert.Contains(pending, p => (string?)p!["data"]!["action"] == id);
         // The maker may not approve, even holding the approver's role.
-        var self = api.As("se-1", "*:ServiceApprover");
+        var self = api.As("se-1", "*:BankApprover");
         var mine = await self.PostAsJsonAsync($"/service/api/actions/{id}/decision", new { approve = true, reason = "mine" });
         Assert.Equal("ops.MakerApproves", (string?)(await J.Of(mine))["code"]);
         var ok = await J.Of(await api.Approver.PostAsJsonAsync($"/service/api/actions/{id}/decision", new { approve = true, reason = "four eyes" }));
         Assert.Equal("done", (string?)ok["status"]);
         Assert.Equal("approved", (string?)ok["result"]!["decision"]);
-        Assert.Equal("ops.AlreadyDecided", (string?)(await J.Of(await api.As("sa-2", "*:ServiceApprover").PostAsJsonAsync($"/service/api/actions/{id}/decision", new { approve = true, reason = "again" })))["code"]);
+        Assert.Equal("ops.AlreadyDecided", (string?)(await J.Of(await api.As("sa-2", "*:BankApprover").PostAsJsonAsync($"/service/api/actions/{id}/decision", new { approve = true, reason = "again" })))["code"]);
 
         // The hold is decided on the payment's chain, as the operations-queue port reads it; the request and its approval are there too.
         await using (var db = StoreDbContext.Open(api.Store))

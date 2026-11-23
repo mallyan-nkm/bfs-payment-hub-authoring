@@ -19,7 +19,7 @@ public sealed class ReleaseApiTests(Databases dbs)
     const string Scope = "p.wf.corporate.v1/temporal";
 
     /// <summary>A package as the studio exports it: files, and a manifest that lists each with its hash.</summary>
-    static Dictionary<string, string> PackageFiles(string release = "1.0.0", bool simulators = false, string workflowBody = "kind: workflow\nname: p.wf.corporate.v1\n")
+    internal static Dictionary<string, string> PackageFiles(string release = "1.0.0", bool simulators = false, string workflowBody = "kind: workflow\nname: p.wf.corporate.v1\n")
     {
         var files = new Dictionary<string, string>
         {
@@ -33,7 +33,7 @@ public sealed class ReleaseApiTests(Databases dbs)
         return files;
     }
 
-    static byte[] Zip(TestSigners s, Dictionary<string, string> files, string release = "1.0.0", bool reverse = false) =>
+    internal static byte[] Zip(TestSigners s, Dictionary<string, string> files, string release = "1.0.0", bool reverse = false) =>
         TestSigners.Zip(TestSigners.Sign(files, s.Key, $"{Scope}@{release}"), reverse);
 
     static Task<HttpResponseMessage> Post(HttpClient c, byte[] zip) => c.PostAsync("/releases", new ByteArrayContent(zip));
@@ -171,7 +171,7 @@ public sealed class ReleaseApiTests(Databases dbs)
                 }
     }
 
-    static string Branch(TestSigners s, Func<Dictionary<string, byte[]>, Dictionary<string, byte[]>>? change = null)
+    internal static string Branch(TestSigners s, Func<Dictionary<string, byte[]>, Dictionary<string, byte[]>>? change = null)
     {
         // The layout the studio writes (R-09-20): releases/<scope>/<name>/<release>/<target>/, signed, and activations.
         var branch = Directory.CreateTempSubdirectory("th-branch-").FullName;

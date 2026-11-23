@@ -29,6 +29,8 @@ if [ "$MODE" = local ]; then
     rm -rf "runtime/$p/bin/Release" "runtime/$p/obj/Release"
   done
   sh deploy/laptop/dedupe.sh "$OUT/opt/th/runtime"
+  # The scheme native modules for the studio image: a distribution carries them; the runtime image never does (R-09-120).
+  rm -rf "$OUT/native-modules" && sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps "$OUT/native-modules"
   # The runtime's web app, built.
   (cd runtime/ops-console && npm run build --silent)
   mkdir -p "$OUT/opt/th/runtime/ops-console" && cp -r runtime/ops-console/dist "$OUT/opt/th/runtime/ops-console/dist"

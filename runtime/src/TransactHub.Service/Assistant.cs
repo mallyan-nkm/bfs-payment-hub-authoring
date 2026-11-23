@@ -122,7 +122,7 @@ public sealed class AssistantService(IAssistantModel? model, bool enabled, Store
             ? string.Join("\n", Directory.EnumerateFiles(docsRoot, "*.md", SearchOption.AllDirectories).Order(StringComparer.Ordinal).Select(f => $"- doc:{Path.GetRelativePath(docsRoot, f).Replace('\\', '/')}"))
             : "(no documents)";
         var codes = string.Join("\n", dictionary.All.Select(e => $"- error:{e.Code} ({e.Scope}, {e.Category}{(e.Retryable ? ", retryable" : "")}): {e.Title}"));
-        var actions = string.Join("\n", ActionBook.Catalogue.Select(a => $"- {a.Id}: {a.Title}{(a.Risky ? " (needs a ServiceApprover)" : "")}{(a.Path == "missing" ? " (no engine path yet: recorded and refused)" : "")}"));
+        var actions = string.Join("\n", ActionBook.Catalogue.Select(a => $"- {a.Id}: {a.Title}{(a.Risky ? " (needs a bank approver's consent)" : "")}{(a.Path == "missing" ? " (no engine path yet: recorded and refused)" : "")}"));
         return string.Join("\n", [
             "You are the troubleshooting assistant of the TransactHub runtime's service console. You help a bank's service engineer find why a payment or a component is in trouble and what to do.",
             "Write British English, short sentences, plain words, no em-dashes.",

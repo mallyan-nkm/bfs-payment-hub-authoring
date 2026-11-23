@@ -132,8 +132,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # p.view.operations.v1 1.4.0 and uae.wps.view.operations.v1 1.5.0, written by hand; the example bank's calendar and cut-offs (R-11-52).
 # 1.9.0: p.wf.inward.v2 and the WPS inward legs in its scheme-leg@2 (Issue I-141, R-09-87); the holds' expiry on the business
 # calendar (Issue I-127, R-09-88); p.view.operations.v1 1.5.0 (R-09-91).
-PACK_RELEASES = {"p": "1.9.0", "uae.p": "1.9.0", "uae.wps": "1.9.0", "b": "1.9.0"}
-FACTORY_RELEASE = "1.9.0"
+# 1.10.0: the platform's error dictionary 1.2.0, hand-written in factory/p/errors: another bank's content has its own code,
+# package.WrongBank (Issue I-154), and service.ApproverRequired names the bank approver (Issue I-155, R-09-115).
+PACK_RELEASES = {"p": "1.10.0", "uae.p": "1.10.0", "uae.wps": "1.10.0", "b": "1.10.0"}
+FACTORY_RELEASE = "1.10.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 

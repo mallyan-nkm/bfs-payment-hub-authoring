@@ -27,7 +27,7 @@ The source ran one generic workflow and guarded each behaviour change with a nes
 4. A pipeline on the branch stores each new release in the runtime, through `POST /import-branch` or `POST /releases` (plan W8). The API is built; the pipeline is target.
 5. Someone records an activation (`POST /activations`): from that time new payments take the release. Payments already running finish on theirs.
 
-A rule or configuration value change follows steps 1 and 2 only, and approval builds the bank's signed configuration release. It reaches payments by its effective date, with no deployment, once the service console installs it with a bank approver's consent (or the pipeline imports the branch, `POST /import-branch`).
+A rule or configuration value change follows steps 1 and 2 only, and approval builds the bank's signed configuration release. It reaches payments by its effective date, with no deployment, once the service console installs it with a bank approver's consent, or once a bank approver consents to the release the pipeline installed (`POST /sources/install`; at once only in a test environment, R-09-111). A branch's folders bring no values (R-09-110).
 
 ## Running payments
 

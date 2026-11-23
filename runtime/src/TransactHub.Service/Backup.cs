@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TransactHub.Api;
-using TransactHub.Ports;
 using TransactHub.Security;
 using TransactHub.Store;
 
@@ -13,15 +12,17 @@ namespace TransactHub.Service;
 /// <summary>Where a backup's parts come from and how it is signed and trusted.</summary>
 /// <param name="SigningKeyRef">The backup signing key, by reference (TH_BACKUP_SIGNING_KEY): a P-256 private key in PEM.</param>
 /// <param name="TrustSetting">The keys whose backups this runtime restores (Service:Backup:TrustedSigners, default TH_TRUSTED_SIGNERS).</param>
-/// <param name="RestoreDir">Where a restore writes what lives outside the store: the bindings, the role map and the trusted signers.</param>
-public sealed record BackupSettings(string Installation, string? SigningKeyRef, string TrustSetting, string? BanksDir, string? RoleMapSetting, string? RestoreDir);
+/// <param name="RestoreDir">Where a restore writes what lives outside the store: the role map and the trusted signers.</param>
+public sealed record BackupSettings(string Installation, string? SigningKeyRef, string TrustSetting, string? RoleMapSetting, string? RestoreDir);
 
 /// <summary>
 /// A signed, verifiable configuration backup (spec R-09-41): the releases' ids (the packages stay in GitHub and are installed
 /// again from it on restore, verified), the activations, the configuration values, the bindings (a credential only as a
 /// <c>secretRef</c>, never a value), the role map and the trusted signers. It is signed as a package is (release.json and
 /// release.sig, kind <c>runtime-backup</c>). A restore verifies it, offers a dry run, and goes only into an empty runtime
-/// or a test environment.
+/// or a test environment. A backup holds the runtime's own bank only (R-09-76, R-09-116): its releases, its values and the
+/// bindings of its configuration releases in force, read from the store, never a folder of every bank's bindings; so a backup
+/// restores into its own runtime, and another bank's runtime refuses it.
 /// </summary>
 public sealed class BackupService(StoreOptions store, ContentService content, ContentSettings contentSettings, BackupSettings settings, ISecretResolver secrets, ServiceAudit audit, TimeProvider clock)
 {
@@ -57,18 +58,23 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
     public async Task<JsonObject> Snapshot(CancellationToken ct = default)
     {
         await using var db = StoreDbContext.Open(store);
-        var releases = await db.Releases.AsNoTracking().OrderBy(r => r.Id).Select(r => new { r.Id, r.Scope, r.Release, r.ContentHash, r.ManifestJson }).ToListAsync(ct);
+        var own = contentSettings.Bank;
+        // The runtime's own bank only (R-09-116): a release that names another bank, or a value of another tenant, is not taken.
+        var releases = (await db.Releases.AsNoTracking().OrderBy(r => r.Id).Select(r => new { r.Id, r.Scope, r.Release, r.ContentHash, r.ManifestJson }).ToListAsync(ct))
+            .Where(r => own is null || BankOfRelease(r.Scope, (string?)JsonNode.Parse(r.ManifestJson)?["tenant"]) is not { Length: > 0 } b || own.Serves(b)).ToList();
         var acts = await db.Activations.AsNoTracking().OrderBy(a => a.Id).ToListAsync(ct);
-        var values = await db.VersionedValues.AsNoTracking().OrderBy(v => v.Kind).ThenBy(v => v.Tenant).ThenBy(v => v.Name).ThenBy(v => v.VersionNo).ToListAsync(ct);
+        var ids = releases.Select(r => $"{r.Scope}@{r.Release}").ToHashSet(StringComparer.Ordinal);
+        acts = acts.Where(a => ids.Contains($"{a.Scope}@{a.Release}")).ToList();
+        var values = (await db.VersionedValues.AsNoTracking().OrderBy(v => v.Kind).ThenBy(v => v.Tenant).ThenBy(v => v.Name).ThenBy(v => v.VersionNo).ToListAsync(ct))
+            .Where(v => own is null || own.Serves(v.Tenant)).ToList();
+        // The bindings of the bank's configuration releases in force (R-09-112), as the store holds them: a credential only by reference.
         var bindings = new JsonArray();
-        if (settings.BanksDir is { } dir && Directory.Exists(dir))
-            foreach (var bank in Directory.EnumerateDirectories(dir).Order(StringComparer.Ordinal))
-                foreach (var b in PortBindings.FromDirectory(bank).All.OrderBy(x => x.Tenant).ThenBy(x => x.Port).ThenBy(x => x.ValidFrom))
-                    bindings.Add(new JsonObject
-                    {
-                        ["tenant"] = b.Tenant, ["port"] = b.Port, ["adapter"] = b.Adapter, ["validFrom"] = b.ValidFrom.ToString("O"),
-                        ["settings"] = new JsonObject(b.Settings.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)JsonValue.Create(kv.Value)))),
-                    });
+        foreach (var b in ConfigurationBindings.Load(store, own?.Id).OrderBy(x => x.Tenant).ThenBy(x => x.Port).ThenBy(x => x.ValidFrom))
+            bindings.Add(new JsonObject
+            {
+                ["tenant"] = b.Tenant, ["port"] = b.Port, ["adapter"] = b.Adapter, ["validFrom"] = b.ValidFrom.ToString("O"), ["configurationRelease"] = b.Release,
+                ["settings"] = new JsonObject(b.Settings.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)JsonValue.Create(kv.Value)))),
+            });
         var doc = new JsonObject
         {
             ["kind"] = Kind, ["format"] = 1, ["installation"] = settings.Installation, ["environment"] = contentSettings.Environment,
@@ -153,8 +159,7 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         // A backup of another bank's runtime is never restored here (R-09-76): every release, value and binding is this bank's.
         if (contentSettings.Bank is { } own)
         {
-            static string? BankOf(JsonObject r) => (string?)r["scope"] is { } sc && (sc.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || sc.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal))
-                ? sc[(sc.IndexOf('/') + 1)..] : (string?)r["tenant"];
+            static string? BankOf(JsonObject r) => BankOfRelease((string?)r["scope"], (string?)r["tenant"]);
             var others = (doc["releases"] as JsonArray ?? []).OfType<JsonObject>().Select(BankOf)
                 .Concat((doc["values"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
                 .Concat((doc["bindings"] as JsonArray ?? []).OfType<JsonObject>().Select(x => (string?)x["tenant"]))
@@ -191,7 +196,8 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
             if (!dryRun) throw new ServiceRefused(409, ErrorCodes.RestoreRefused, string.Join("; ", problems.Select(p => (string?)p)));
             return result;
         }
-        foreach (var p in plan.OfType<JsonObject>().Where(p => (string?)p["action"] == "install"))
+        // A configuration release is checked against the distributions installed: they go in first.
+        foreach (var p in plan.OfType<JsonObject>().Where(p => (string?)p["action"] == "install").OrderBy(p => ((string?)p["release"] ?? "").StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal) ? 1 : 0))
             await content.Install((string)p["tag"]!, who, $"restore: {why}", ct);
         var reg = new ReleaseRegistry(db, clock);
         foreach (var a in acts)
@@ -207,21 +213,11 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         foreach (var x in values)
             await vv.Publish((string)x["kind"]!, (string)x["tenant"]!, (string)x["name"]!, x["body"]!.DeepClone(), DateTimeOffset.Parse((string)x["effectiveFrom"]!, System.Globalization.CultureInfo.InvariantCulture),
                 (string?)x["effectiveTo"] is { } to ? DateTimeOffset.Parse(to, System.Globalization.CultureInfo.InvariantCulture) : null, (string?)x["publishedBy"] ?? who.Actor, ct);
-        // What lives outside the store is written for the deployment to take: never applied to the running host behind its back.
+        // The bindings are values of the store (kind binding), restored above with the rest. What lives outside the store is
+        // written for the deployment to take: never applied to the running host behind its back.
         if (settings.RestoreDir is { Length: > 0 } outDir)
         {
             Directory.CreateDirectory(outDir);
-            foreach (var g in (doc["bindings"] as JsonArray ?? []).OfType<JsonObject>().GroupBy(b => (string)b["tenant"]!))
-            {
-                var sb = new StringBuilder($"kind: port-bindings\ntenant: {g.Key}\nbindings:\n");
-                foreach (var b in g)
-                {
-                    sb.Append($"  - port: {(string)b["port"]!}\n    adapter: {(string)b["adapter"]!}\n    validFrom: '{(string)b["validFrom"]!}'\n    settings:\n");
-                    foreach (var (k, val) in (JsonObject)b["settings"]!) sb.Append($"      {k}: '{((string?)val ?? "").Replace("'", "''")}'\n");
-                }
-                Directory.CreateDirectory(Path.Combine(outDir, "banks", g.Key));
-                await System.IO.File.WriteAllTextAsync(Path.Combine(outDir, "banks", g.Key, "port-bindings.yaml"), sb.ToString(), ct);
-            }
             if (doc["roleMap"] is { } rm) await System.IO.File.WriteAllTextAsync(Path.Combine(outDir, "role-map.json"), rm.ToJsonString(), ct);
             if (doc["trustedSigners"] is { } ts) await System.IO.File.WriteAllTextAsync(Path.Combine(outDir, "trusted-signers.json"), ts.ToJsonString(), ct);
             result["written"] = outDir;
@@ -230,6 +226,10 @@ public sealed class BackupService(StoreOptions store, ContentService content, Co
         result["restored"] = true;
         return result;
     }
+
+    /// <summary>The bank a stored release is of: a distribution's or a configuration release's by its scope, a workflow package's by its tenant.</summary>
+    static string? BankOfRelease(string? scope, string? tenant) => scope is { } sc && (sc.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || sc.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal))
+        ? sc[(sc.IndexOf('/') + 1)..] : tenant;
 
     /// <summary>Keeps a backup's bytes in the store, insert-only by their hash, while a restore waits for a bank approver's consent (R-09-77).</summary>
     public async Task<string> Keep(byte[] zip, CancellationToken ct = default)

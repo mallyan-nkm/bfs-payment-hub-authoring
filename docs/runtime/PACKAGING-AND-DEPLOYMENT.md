@@ -13,8 +13,8 @@ Status: decided by the owner's direction of 22 November 2026. This document deci
 
 | Layer | What it is | Who changes it | How it reaches a runtime | Changes the code that runs? |
 | --- | --- | --- | --- | --- |
-| **Runtime software** | The engine hosts, workers, store, API, consoles. Container images built by NEST. | NEST | A software upgrade, by the bank's service engineers | Yes, the hosts. It declares the DSL and contract versions it supports. |
-| **Distribution** | A complete, self-contained, signed copy of everything one bank runs: the platform release, the scheme releases the bank licenses, the bank's own pack, the engine binding. | Built by the studio when a version is approved | Installed from GitHub through the service console | Yes. This is the only way new workflow code or activity code arrives. |
+| **Runtime software** | The engine hosts, workers, store, API, consoles, and the platform's own native activities, ports and adapters. Container images built by NEST. No scheme's or bank's native code. | NEST | A software upgrade, by the bank's service engineers | Yes, the hosts. It declares the DSL and contract versions it supports, the native contract among them (section 3.1). |
+| **Distribution** | A complete, self-contained, signed copy of everything one bank runs: the platform release, the scheme releases the bank licenses, the bank's own pack, the engine binding, and the native assemblies of the schemes' and the bank's native activities. | Built by the studio when a version is approved | Installed from GitHub through the service console | Yes. This is the only way new workflow code or activity code arrives. |
 | **Configuration release** | The bank's values: dials (parameters within bounds), rule values, port bindings (which core banking, which hosts), calendars. Effective-dated. | The bank configurator, approved by a bank approver | Installed from GitHub through the service console | No. It changes values only, never which code runs. |
 
 So the **authoring and versioning units** in the studio stay as they are: the platform pack (`p`, `uae.p`), each scheme pack (`uae.wps`, and later others), each bank pack (`b`). Each has its own semantic version.
@@ -30,14 +30,31 @@ A distribution is a signed directory published to the GitHub content repository 
 | `manifest.yaml` | The distribution id, the bank, the target engine, the DSL version, the runtime software range it needs, the bill of materials (every pack release and every artefact release with its SHA-256), the parameter contract (every dial with its type and bounds), and the change sets it came from. |
 | `manifest.sig` | The signature over the manifest, with NEST's key id. |
 | `workflows/` | Every platform and scheme workflow, with its slots already filled, in the expanded form (R-09-17), plus the engine's own form (BPMN for Flowable, definitions for Elsa). |
-| `activities/` | Every activity contract, and its implementation: scripts, and the native assemblies with their checksums. |
+| `activities/` | Every activity contract, and its implementation: scripts, and under `activities/native/<scope>/` the native assemblies of the schemes' and the bank's native activities, each with the SHA-256 of its bytes in the bill of materials (section 3.1). |
 | `rules/` | Every rule set and table, the logic only. Values come from the configuration release. |
 | `ports/` | Port contracts and the adapter code for each adapter the bank may bind (for example `simulator`, `gateway-rest`). |
 | `errors/` | The error dictionary entries and runbooks for every error code the distribution can raise. |
 | `ops/` | The operations console's leg views for each scheme in the distribution. |
 | `tests/` | The test pack and the conformance results the release passed. |
 
-Not in a distribution: simulators (except in a test environment), secrets, values, and anything from another bank.
+Not in a distribution: simulators (except in a test environment), secrets, values, anything from another bank, and the platform's own native activities, which are runtime software (Issue I-221).
+
+### 3.1 Native assemblies (R-09-120 to R-09-124)
+
+A scheme's or a bank's native activity (`implementation.binding: native`, or a script-behind the runtime also implements, `implementation.native: true`) is code in a code-behind project: for WPS, `runtime/src/TransactHub.Activities.Wps`. Its build travels in the distribution, so two distributions side by side run two builds, and a fix to it is scenario 4: a scheme patch release, then a new distribution.
+
+| Step | Who | What |
+| --- | --- | --- |
+| Build | The studio, when it builds the distribution | Each scope's module is built from its code-behind project (`TH_NATIVE_MODULES=build`: Release, deterministic, cached by the SHA-256 of the project's sources and the native contract), or taken from that same build made ahead of time on a machine with the .NET SDK (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh`, as the laptop image does). Only the module's own assembly is carried; the contract and the platform stay in the image. Without a module the distribution lists its scope in `native.notCarried`, and those activities run their script-behinds, never natively; a promotable distribution that needs the module of an activity with no script-behind (`implementation.binding: native`) is refused. |
+| Record | The studio | Each assembly as base64 text at `activities/native/<scope>/<name>.dll.base64`; in the bill of materials its path, the SHA-256 of the text and the SHA-256 of its bytes (`assemblySha256`); in the manifest's `native` section the contract version and, per module, its scope, assembly, the activities it serves at their releases (`name@release`) and its files. The bill of materials is signed with the manifest (R-09-49). |
+| Verify | The release API at install; the native host again at load | Every assembly is the one its signed SHA-256 names; no file under `activities/native/` is unlisted; none is an assembly the image keeps; the contract is one the runtime supports, and the module was compiled against the contract its manifest names. Otherwise the whole distribution is refused. |
+| Load | The native host | One collectible `AssemblyLoadContext` per distribution, loaded from the store the first time a payment pinned to it asks. The distribution's assemblies load in it from their checked bytes; the contract and the platform resolve in the image's own context, so the types are one. The module's entry point is named by `[assembly: NativeModule(typeof(...))]`. |
+| Dispatch | The native host | An attempt names its payment's distribution (the worker's `TH_DISTRIBUTION`); it is served from that distribution's table by activity and release. An activity at a release the distribution does not carry is refused, never served from another. The platform's activities in the table take what the distribution's modules contribute (WPS's match of a registered corporate). |
+| Unload | The native host | A distribution removed in every environment it has a state in is dropped and its context unloaded; `GET /modules` shows each loaded distribution's modules and hashes, and whether an unloaded context has been collected. |
+
+**The native contract** is `runtime/src/TransactHub.Activities.Contract`, versioned by its project's `Version` (`NativeContract.Version`, 1.0.0): `INativeActivity`, `NativeAttempt`, `NativeResult`, `NativeFailure`, `INativeModule`, `INativeServices` and `NativeModuleAttribute`. A type added is a new minor, one changed or removed a new major. The runtime takes the major it supports at a minor no later than its own. A module still uses some platform types beyond the contract (Issue I-220).
+
+**An attempt with no distribution** (the studio's interpreter, a test bench run on one machine) is served by the modules `TH_NATIVE_DEV_MODULES` names, if any; a payment pinned to a distribution never uses them.
 
 ## 4. What is in a configuration release
 
@@ -70,20 +87,20 @@ A distribution moves through these states. Each change is an insert-only activat
 | Active | Yes | Yes | Running |
 | Draining | No | Yes, to the end | Running |
 | Drained | No | None open | Running until the longest wait it declares has passed, for late messages |
-| Removed | No | None | Stopped and unregistered. The package stays in GitHub and in the store as a record. |
+| Removed | No | None | Stopped and unregistered; its native assemblies unloaded from the native host. The package stays in GitHub and in the store as a record. |
 
-- **Independent copies.** Each distribution has its own workflow definitions (`name@distribution`), its own task queues or worker build ids, and its own activity assemblies, loaded side by side (W4). Engine by engine:
+- **Independent copies.** Each distribution has its own workflow definitions (`name@distribution`), its own task queues or worker build ids, and its own native activity assemblies, loaded side by side in the native host, one collectible context per distribution (section 3.1, R-09-122). Engine by engine:
   - Temporal: worker versioning by build id, one per distribution.
   - DTFx: orchestration and activity names carry the distribution.
   - Elsa: a workflow definition version per distribution.
   - Flowable: one deployment per distribution.
 - **The long-running host** (`runtime/tools/TransactHub.EngineHost`, R-09-66 to R-09-68). A supervisor per engine, bank and environment reads the distributions' states from the store and runs a host per distribution that is Installed, Active, Draining or Drained, side by side. The Active one's host is current on the engine (on Temporal, the worker deployment's current version); each payment is pinned at acceptance and run by the host of its distribution; a Draining distribution is recorded Drained once none of its payments is open; a Removed one's host unregisters it from the engine (on Temporal, its workers stop and the version is deleted) and stops. A host refuses to stop while a payment it runs is open. An operator wait (a hold, a parked step) waits in the host for as long as its own expiry says, on the bank's business calendar (R-09-88); the per-payment harnesses and their patience are for tests. On DTFx and Elsa the host runs each payment's engine in a harness run of its own, in real time (R-09-93); such a run does not survive a restart of its host yet (Issue I-165). When no caller writes a host's plan, the supervisor builds it from the stored, verified package (R-09-94).
-- **Shared:** the runtime software, the engine servers and the store. Store schema changes follow expand-then-contract, so every installed distribution keeps working through a runtime upgrade.
+- **Shared:** the runtime software, the engine servers, the store, and the native contract with the platform's own native activities. Store schema changes follow expand-then-contract, and a runtime upgrade keeps the native contract's major, so every installed distribution keeps working through it.
 - **Switch-over:** activating a new distribution moves the old one to Draining in the same step. From that instant, new payments take the new one.
 - **Removal** is refused while any payment pinned to the distribution is open, or before its longest declared wait (for example the 30-day returns wait) has passed. The service console shows the open count per distribution.
 - **Rollback:** activate the previous distribution again. If it was removed, reinstall it from GitHub first. Payments that started on the newer one finish on it.
 - **One bank per runtime** (owner's decision of 23 November 2026, R-09-76): a runtime is configured with its bank at install (`TH_BANK`) and refuses a distribution or configuration release whose signed manifest names another bank, at verify, install and activate. The studio builds distributions for every bank; each bank's runtime takes only its own.
-- **Consent** (owner's decision of 23 November 2026, R-09-77): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-78).
+- **Consent** (owner's decision of 23 November 2026, R-09-77): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-78). A configuration release is installed and put in force in two steps: the pipeline's install outside a test environment (`Releases:Environment`) is checked and stored, and waits for a bank approver's consent in the service console before any of its values is in force (R-09-111, I-211).
 - **Insert-only, at the database too** (R-09-81): a deployment runs the hosts as a login that may insert and read the store, never update or delete it. `deploy/laptop/test/insert-only.mts` shows a switch-over end to end on the laptop stack and that no row of a distribution, its activations or the fact log changed.
 
 ## 7. The dependency tree
@@ -105,7 +122,8 @@ Runtime software (NEST images, store schema)
 ```
 
 - A scheme pack declares the platform slot contract it fills (for example `scheme-leg@1`). The studio refuses to build a distribution whose scheme does not fit its platform's slot contract.
-- A configuration release is refused at install if any value is unknown to, or outside the bounds of, a distribution that will read it (one that is Installed, Active, Draining or Drained). A value for a new dial is ignored by distributions that do not declare that dial.
+- A configuration release is refused at install if any value is unknown to, or outside the bounds of, a distribution that will read it (one that is Installed, Active, Draining or Drained), and checked again when it is put in force. A value for a new dial is ignored by distributions that do not declare that dial. Values reach the runtime in no other way: no folder brings them (R-09-110, I-210).
+- Port bindings are values too: every host of the runtime reads them from the configuration release in force, as of each attempt's time, so scenario 2 needs no restart (R-09-112, R-09-113, I-213).
 
 ## 8. Scenarios
 
@@ -114,13 +132,13 @@ Runtime software (NEST images, store schema)
 | 1 | A bank changes a dial or rule value (a limit, the ack wait) | Configuration release | Stores dated values; no deployment | Rules "as of acceptance" keep the old value; "as of the step" see the new one from its date |
 | 2 | A bank switches core banking from the simulator to its gateway | Configuration release (binding with a later `validFrom`) | Uses the new binding for attempts from that time | Attempts after the switch use the new adapter (its code is already in the distribution) |
 | 3 | A bank switches a hook on or off, or adds a bank rule or a bank activity | Bank pack release, then a new distribution | Install, activate; old drains | Finish on the old distribution, without the hook |
-| 4 | A fix to a WPS activity or subflow | Scheme pack patch release, then a new distribution per bank that runs WPS | Install, activate; old drains | Finish on the old code |
+| 4 | A fix to a WPS activity or subflow | Scheme pack patch release, then a new distribution per bank that runs WPS, with its native assemblies built from the fixed code-behind | Install (the assemblies' hashes and contract checked), activate; old drains. The native host loads the new build beside the old one | Finish on the old code, the old build of the native activity included |
 | 5 | A new version of a platform workflow | Platform pack release, then a new distribution per bank | Install, activate; old drains | Finish on the old platform workflow |
 | 6 | A new scheme (for example IPI) | New scheme pack (it fills the platform's slot contract; the dispatch table gains rows), then a new distribution for each bank that licenses it | Install, activate | Unaffected; the new scheme is reachable only from the new distribution |
 | 7 | A new dial that a bank should then set | Platform or scheme release that adds the parameter, a new distribution, then a configuration release with the value | Install the distribution, then the configuration | The old distribution ignores the new value |
 | 8 | Emergency rollback | Nothing new | Activate the previous distribution | New payments go to the previous one; the newer one's open payments finish on it |
 | 9 | Move a bank from one engine to another | A new distribution with the other engine binding | Install on the other engine, activate; old drains on its engine | Finish on the old engine |
-| 10 | A runtime software upgrade | Nothing in the studio | Upgrade the images (expand-then-contract schema) | Unaffected; every installed distribution keeps running |
+| 10 | A runtime software upgrade | Nothing in the studio | Upgrade the images (expand-then-contract schema, the same native contract major) | Unaffected; every installed distribution keeps running, with its own native assemblies |
 | 11 | A bank onboards | Bank pack, its first distribution and its first configuration release | Install both, activate | None yet |
 | 12 | A rule's logic changes (not its value) | Platform or scheme release, then a new distribution | As 4 | As 4 |
 
@@ -137,6 +155,7 @@ Runtime software (NEST images, store schema)
 3. Service console: list both kinds from GitHub, verify, show the difference with the active one, install, activate, drain, remove, roll back; the open-payment count per distribution.
 4. Spec: requirements for distributions, configuration releases, pinning and draining in Part 09 and Part 11, with checks.
 5. Tests: scenarios 1 to 12 as end-to-end tests, at least on Temporal, with 3, 4, 5, 8 and 9 on every engine.
+6. Native code in the distribution (built 23 November 2026, section 3.1): the studio builds and carries the native assemblies, the release API verifies them, the native host loads them side by side and unloads a removed distribution's (`studio/test/blackbox/e2e-native-distributions.test.ts` on Temporal and DTFx; `runtime/tests/TransactHub.Native.Tests`).
 
 ## 11. The File API: how files reach and leave a runtime
 
@@ -144,7 +163,7 @@ Owner's decision of 23 November 2026 (R-09-82 to R-09-86, I-158).
 
 | Part | Runtime software | Its settings at an installation |
 | --- | --- | --- |
-| File API (`runtime/src/TransactHub.FileApi`) | Its own process and container image, beside the release API, the engine host, the native host and the consoles | `Store:*`, `FileApi:Environment`, `TH_BANKS_DIR` (the port bindings), `FileApi:EngineHosts:<bank>`, `FileApi:Workers:<scope>`, `FileApi:Messages:*`, `FileApi:Inboxes:*`, `TH_FILE_SIGNING_KEY_REF`, `Auth:*` |
+| File API (`runtime/src/TransactHub.FileApi`) | Its own process and container image, beside the release API, the engine host, the native host and the consoles | `Store:*`, `FileApi:Environment`, `TH_BANK` (its bindings are the bank's configuration release in force, from the store, R-09-112), `FileApi:EngineHosts:<bank>`, `FileApi:Workers:<scope>`, `FileApi:Messages:*`, `FileApi:Inboxes:*`, `TH_FILE_SIGNING_KEY_REF`, `Auth:*` |
 | Front door | In the File API's process | The engine host's supervisor of each bank, the workers that run the intake maps |
 | SFTP gateway | The `sftp` adapter in the File API (`TransactHub.Ports`), polling each partner's inbox and pushing the outbox | The bank's binding of `p.port.file-transfer.v1` (a configuration release): partners, host keys and login by reference, `sessions.*` |
 

@@ -31,7 +31,7 @@ public sealed class DistributionApiTests(Databases dbs)
     };
 
     /// <summary>A distribution as the studio builds it: its files, a manifest with the bill of materials and the parameter contract, signed.</summary>
-    static byte[] Distribution(ECDsa key, string id, string body = "kind: workflow\nname: p.wf.corporate.v1\n", string longestWait = "P30D", JsonObject? contract = null, string kind = "distribution", string bank = Bank)
+    internal static byte[] Distribution(ECDsa key, string id, string body = "kind: workflow\nname: p.wf.corporate.v1\n", string longestWait = "P30D", JsonObject? contract = null, string kind = "distribution", string bank = Bank)
     {
         var files = new Dictionary<string, string> { ["workflows/p.wf.corporate.v1@1.0.0.yaml"] = body, ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n" };
         var bom = new JsonObject
@@ -49,7 +49,7 @@ public sealed class DistributionApiTests(Databases dbs)
         return TestSigners.Zip(bytes);
     }
 
-    static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null, Dictionary<string, string>? extra = null, string bank = Bank)
+    internal static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null, Dictionary<string, string>? extra = null, string bank = Bank)
     {
         var files = new Dictionary<string, string> { ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {bank}\nrelease: {release}\nvalues:\n{values}bindings: []\n" };
         if (bindings is not null) files["bindings/port-bindings.yaml"] = bindings;
@@ -78,6 +78,8 @@ public sealed class DistributionApiTests(Databases dbs)
         var other = await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.23-1", bank: "dib")));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, other.StatusCode);
         Assert.Contains("names bank dib, but this runtime serves example-bank only", (string?)(await J(other))["error"]);
+        // Its own code in the dictionary (R-09-117, Issue I-154).
+        Assert.Equal("package.WrongBank", (string?)(await J(other))["code"]);
         var cfg = await c.PostAsync("/configuration-releases", new ByteArrayContent(Configuration(s.Key, "2026.11.23", "", bank: "dib")));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, cfg.StatusCode);
         Assert.Contains("serves example-bank only", (string?)(await J(cfg))["error"]);

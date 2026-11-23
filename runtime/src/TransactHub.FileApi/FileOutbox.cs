@@ -24,7 +24,7 @@ public interface ITransferPorts
     (IFileTransfer Transfer, PortBinding Binding) For(string tenant, DateTimeOffset at);
 }
 
-/// <summary>The banks' bindings, read once; each adapter built once per binding.</summary>
+/// <summary>The bank's bindings in force (read live from its configuration release, R-09-112); each adapter built once per binding.</summary>
 public sealed class BoundTransfers(PortBindings bindings, TransactHub.Security.ISecretResolver? secrets = null) : ITransferPorts
 {
     readonly System.Collections.Concurrent.ConcurrentDictionary<PortBinding, IFileTransfer> built = new(ReferenceEqualityComparer.Instance);

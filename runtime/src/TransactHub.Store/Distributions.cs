@@ -24,6 +24,8 @@ public sealed class DistributionRegistry(StoreDbContext db, TimeProvider? clock 
     public const string PinKind = "distribution.pinned";
     public const string EndKind = "payment.end";
     public const string ConfigKind = "configuration.installed";
+    /// <summary>A configuration release's values, bindings, calendars and tables put in force, once, with the consent it had (R-09-111).</summary>
+    public const string InForceKind = "configuration.in-force";
     /// <summary>Installed in no particular environment: a stored distribution is installed everywhere until a state says otherwise.</summary>
     public const string AnyEnvironment = "*";
     public static readonly string[] States = ["installed", "active", "draining", "drained", "removed"];
