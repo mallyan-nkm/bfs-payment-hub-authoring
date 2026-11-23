@@ -142,6 +142,20 @@ public sealed class LaptopDeploymentTests
             Assert.DoesNotMatch(@"(?i)password:|BEGIN .*PRIVATE KEY", b);
         }
         Assert.Contains("COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/", Dockerfile);
+        // The outward salary file leaves through the File API (R-09-162): ADIB's release binds the WPS port to it, the bench gives the
+        // port to the runtime, and the workers give the render, the send and the ACK's reading to the native host and read a received
+        // file from the File API.
+        var adib = File.ReadAllText(Path.Combine(Laptop, "banks", "adib", "file-transfer.yaml"));
+        Assert.Matches(@"- port: uae\.wps\.port\.wps\.v1\n    adapter: file-transfer\n", adib);
+        Assert.Contains("submit-file.folder: centralBank.sifFolder", adib);
+        Assert.Contains("centralBank.inbox.ack.stemDrop: \"12\"", adib);
+        var workers = Service("workers");
+        Assert.Contains("{\"port\":\"uae.wps.port.wps.v1\",\"simulator\":\"runtime\"}", workers);
+        Assert.Contains("TH_NATIVE_HOST: http://native:7300", workers);
+        Assert.Contains("TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.map.ack-in.v1", workers);
+        Assert.Contains("TH_FILE_API_URL: http://file-api:8080", workers);
+        Assert.Matches(@"TH_NATIVE_TOKEN: file:\S+", workers);
+        Assert.Contains("'TH_NATIVE_TOKEN', 'TH_FILE_API_URL', 'TH_FILE_API_TOKEN'", File.ReadAllText(Path.Combine(Laptop, "bin", "workers.mts")));
     }
 
     static string ServicesOf(string text) => text[text.IndexOf("\nservices:\n", StringComparison.Ordinal)..];

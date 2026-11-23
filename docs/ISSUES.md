@@ -2248,6 +2248,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Give each WPS send its native code-behind on the port, as for the salary file, in minor releases, and a check that every activity of a port the bench gives to the runtime has one; until then a laptop test of an inward or refund flow names the port's simulator in its bench.
 
+## I-269. No test hands a Flowable payment a message after its run started on the engine host
+
+**Issue.** On the engine host a message for a running payment reached the run on DTFx and Elsa (tests since R-09-93) but not on Temporal: the host signalled the payment's front door workflow with the message as the sender gave it, and a message with no key of the run's was counted unmatched (found by the last change, fixed here: R-09-161, `DistributionWorkers.ForPayment` gives it the payment's conversation and id, and `LiveSignals.EventOf` adds the payment's id beside a sender's keys). The same test on Flowable cannot run on the stored package the test builds: Flowable runs the BPMN the studio exports, and a package without it is refused (`The plan has no BPMN`). Flowable takes the message on the same live path as DTFx and Elsa (`FlowableBinding`, `LiveSignals.EventOf`), so the fix applies, but no test shows it.
+
+**Recommendation.** Give `EngineHostTests.MessageAfterStart` a Flowable variant whose stored package carries the exported BPMN of `p.wf.ask.v1` (an event-based await, as the generator writes it for a REST binding), so that Flowable is held to R-09-161 as the other engines are.
+
 ## Not done, and why
 
 | Story | Why |
