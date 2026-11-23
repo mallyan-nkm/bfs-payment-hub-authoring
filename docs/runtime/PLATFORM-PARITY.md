@@ -51,7 +51,7 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | Channel enquiries of core banking: balance, accounts, charge preview | `/api/channel/accounts/balance`, `/accounts`, `/charges/preview` (R-09-100) | Waiting on others (the port contract's operations; the bank's GL accounts) | I-184 |
 | Register API for core banking | `/api/registers/{kind}`, role `register-client` (R-09-73, R-09-101) | Waiting on others (each bank's choice of masked reads) | I-181 |
 | Integration controls: dead letters | Requeue of a dead-lettered step from the console (R-09-91) | Built | I-167 |
-| Integration controls: circuit breakers, Kubernetes portal | Health probes per bound host; drain and restart of a worker | No decision | I-189 (5), I-128 |
+| Integration controls: circuit breakers, Kubernetes portal | A circuit breaker per outside system in every production adapter, an open one in the service console's health (R-09-155, R-09-156); health probes per bound host; drain and restart of a worker | Built for the breakers; the portal dropped | I-189 (5), I-255, I-128 |
 
 ## Operations
 
@@ -61,7 +61,7 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | Payment queue and approval queue | The work queue: assign, escalate, release, bulk actions, saved filters, live (R-05-71) | Built; no teams, no escalation by time | I-185 |
 | Exceptions: holds, repair, bulk resolve | Holds as engine awaits (R-05-56), parked steps and retry (R-05-55), bulk actions | Built | I-125 |
 | Masked personal data, and unmasking | Masks declared per field (L38); unmask on a bank approver's consent, for the bank's window (R-05-69) | Partly: a leg's and a register record's fields are not unmasked | I-181 |
-| Turnaround and service levels | Turnaround limit per view, breaches listed and alerted (R-05-68) | Built; alerts through the console's own adapter | I-182, I-143 |
+| Turnaround and service levels | Turnaround limit per view in business days, breaches listed and alerted through `p.port.notification.v1` (R-05-68, R-05-80, R-05-81) | Built | I-182, I-143 |
 | Reconciliation | Scheme reports reconciled on arrival, the break queue (R-09-92) | Partly | I-164, I-168 |
 | Dashboard, reports and self-service reporting | Reports, dashboard and CSV export from the read model (R-05-59, R-05-65) | Built | I-144 |
 | Fixed WPS reports (SIF summary, SIF detail, upload history) | Fixed reports the WPS view declares (R-05-67) | Partly | I-183 |

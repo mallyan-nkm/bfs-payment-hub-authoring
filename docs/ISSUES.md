@@ -1824,6 +1824,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add `p.port.notification.v1` to the platform pack (operations: `alert`, style send) with a simulator, so a bank binds where operator alerts go in its configuration release like any port, and move the console's adapters behind it; decide with each bank whether a turnaround is counted on the business calendar (today elapsed time) and whether a breach should also be a metric for the alert rules (I-143).
 
+**Done (23 November 2026, owner's decisions, R-05-80, R-05-81, R-09-150 to R-09-154, R-11-85, R-11-86).** The platform pack has `p.port.notification.v1` (operation `alert`, send) and `p.port.event-stream.v1` (operation `publish`, send), each with its simulator (factory 1.15.0, change set CS-2026-11-23-010). The runtime's notification adapters are `simulator`, `log`, `webhook` and `mqtt` (MQTTnet); its event-stream adapters `simulator` and `kafka` (Confluent.Kafka, an idempotent producer with acks all). The console's own adapter is gone: its turnaround alerts go through the bank's binding of the port in force, else its log, and `Operations:Notify:*` is no longer read. The payment events go out from the store's outbox, references only, at least once and in order per payment, the position insert-only. The turnaround limit counts business days of the bank's calendar, its closing days included (`p.view.operations.v1` 1.6.0). Each real bank binds both ports by placeholder (I-163). Whether a breach is also a metric for the alert rules stays open (I-143). What is left: I-255 to I-259.
+
 ## I-183. The fixed WPS reports: what the source's reports had that the read model does not
 
 **Issue.** I-144 left open which of the source's fixed reports a bank needs. The owner asked for the SIF summary, the SIF detail and the upload history as fixed reports, CSV only, every export audited.
@@ -1892,6 +1894,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 5. **Integration controls.** The original's integration console had circuit breakers per connection and a Kubernetes portal. The new runtime has health probes per bound host, the requeue of a dead letter (R-09-91) and the drain and restart of a worker (I-128), but no circuit breaker and no orchestrator view.
 
 **Recommendation.** Ask the owner, item by item, whether each is needed, deferred or dropped. For the exchange-rate feed, if it is needed: an `fx-rates` reference table or a rates port with a staleness limit (a dial with a default and bounds), so a payment refuses a rate older than the bank allows.
+
+**Done for the circuit breakers of (5) (23 November 2026, owner's decision, R-09-155, R-09-156).** Every production adapter that calls an outside system calls it through a breaker per target: core banking and the bank's other gateways, SFTP, MQTT, Kafka and the webhooks. After `breakerFailures` failures in a row (default 5, 1 to 100) it stops calling for `breakerOpenSeconds` (default 30, 1 to 3600), then tries one call; each move is a row of `breaker_change`, and the service console's health shows an open breaker (`circuit-breakers`). The Kubernetes portal is dropped and the customer 360 and the workspace deferred (docs/OWNER-ACTIONS.md A2); the exchange-rate feed and the fraud alert list are still to build. What is left of the breakers: I-255 and I-259.
 
 ## I-190. Annex C and Part 9 still count 55 conformance scenarios
 
@@ -2169,6 +2173,36 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The operations console's upload page passes the person's own bearer token to the File API's `POST /files/ui` (R-05-74). A console in dev sign-in (`TH_AUTH_DEV=1`) identifies its synthetic users by a header, not a token, and the File API has no dev sign-in, so the File API answers 401 and the page shows the refusal. On the laptop stack, where the console signs in at the bank's development provider, the upload works.
 
 **Recommendation.** Leave the File API without a dev sign-in (it is the runtime's one way in for files); say on the upload page, in dev mode, that uploads need the identity provider's sign-in. If a dev-mode upload is wanted, give the File API the same dev header, refused in Production, as the other hosts.
+
+## I-255. The File API and the engine host do not record their breakers' moves
+
+**Issue.** Each production adapter's circuit breaker works in every host (R-09-155), but a breaker's moves reach the service console's health only from a host that sets the breakers' journal (R-09-156): the native host and the operations console do. The File API (its SFTP partners) and the engine host do not, because the change that built the breakers left their `Program.cs` to another change in flight. An open SFTP breaker is therefore not seen in the service console's health; the File API still refuses, and retries, as before.
+
+**Recommendation.** In `runtime/src/TransactHub.FileApi/Program.cs` and `runtime/tools/TransactHub.EngineHost`, once the other change has landed, set `CircuitBreakers.Shared.Journal = new StoreBreakerJournal(store, "<machine>/file-api")` (and `/engine-host`) where the store is opened, and extend `BreakerHealthTests` with an SFTP partner that does not answer.
+
+## I-256. Where a payment-event stream starts, and one position per bank
+
+**Issue.** The relay keeps one position per bank for `p.port.event-stream.v1` (R-09-153), whatever the binding: when the port is first bound it starts at the first row of the outbox, so every fact the store holds goes out; a binding with a new topic or cluster goes on from the position, so the new topic has no history. The spec does not say where a new stream starts, nor whether a change of topic is a new stream.
+
+**Recommendation.** Add a binding setting `stream` (default the port's name) that names the position, so a bank that wants a replay to a new topic names a new stream, and `from` (`earliest`, the default, or `latest`), read only when the stream has no position yet. Both values with defaults and bounds, set in the configuration release.
+
+## I-257. A save slower than the gap timeout is passed over by the event stream
+
+**Issue.** The relay publishes only an unbroken run of outbox numbers and waits at a gap (a save in flight) until the row after it is ten seconds old, as the read model's projection does (R-05-49). A save that takes longer than that between taking its outbox number and committing is taken for one that was rolled back, and its event is never published, though at-least-once delivery is asked for.
+
+**Recommendation.** Make the gap timeout a dial of the operations console with a default and bounds, record each gap passed over as a fact on the console's chain so it can be looked for, and, when the store can give one, publish in commit order instead (a commit-ordered sequence or the database's change feed).
+
+## I-258. The laptop's configuration release does not carry its alert and event bindings
+
+**Issue.** The laptop's optional profile `events` starts an MQTT broker and a Kafka broker (`compose.events.yaml`), and `deploy/laptop/banks/<bank>/events.yaml` binds both ports to them. A binding reaches the runtime only inside the bank's signed configuration release (R-09-110), and the laptop's test that builds that release (`deploy/laptop/test/insert-only.mts`) was held by another change, so it does not add `events.yaml`. Until it does, the laptop's bank has the placeholder bindings of its folder: an alert is recorded as `alert-failed` and the events wait.
+
+**Recommendation.** When the profile is on, have the laptop build the bank's configuration release with `events.yaml` as it does with `file-transfer.yaml`, and add a check that a turnaround breach reaches the broker and a payment's events reach the topic.
+
+## I-259. A refusal by an open circuit breaker has no error code of its own
+
+**Issue.** A call an open breaker refuses fails as a transport failure (`CircuitOpenException`, an `HttpRequestException`), so a step retries it as it retries a system that does not answer, and the service console's probe `circuit-breakers` uses `service.ProbeFailed`. There is no entry in the platform's error dictionary that says a breaker is open and what to do (`p.errors.platform.v1` 1.4.0 is another change's, so this change added none).
+
+**Recommendation.** In `p.errors.platform.v1` 1.5.0 add `port.CircuitOpen` with a runbook (find the failing system in the probe's detail, mend it or its binding, and wait for the trial call), raise it from the probe and from a step's refusal, and have `ErrorDictionaryTests` read it.
 
 ## Not done, and why
 

@@ -12,6 +12,10 @@
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <!-- SSH for the sftp adapter of the file-transfer port (R-09-86, Issue I-129). Pinned. -->
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <!-- MQTT for the mqtt adapter of the notification port (R-09-151, Issue I-182). Pinned. -->
+    <PackageReference Include="MQTTnet" Version="5.0.1.1416" />
+    <!-- Kafka for the kafka adapter of the event-streaming port (R-09-154). Pinned; it carries librdkafka. -->
+    <PackageReference Include="Confluent.Kafka" Version="2.11.1" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 # The platform's production adapters as port bindings (R-09-90, owner's direction of 23 November 2026): sanctions screening, fraud,
-# the channel's notices, the outward facts, the business calendar and the participant directory. Read by
+# the channel's notices, the outward facts, the business calendar and the participant directory; and, from 23 November 2026,
+# the operators' alerts (p.port.notification.v1, R-09-150) and the payment events (p.port.event-stream.v1, R-09-152). Read by
 # runtime/src/TransactHub.Ports/PortBindings.cs and runtime/src/TransactHub.Ports/PlatformAdapters.cs.
 #
 # This is the bindings' shape only. The source names none of these services, so every host is a placeholder under .invalid and
@@ -47,3 +48,28 @@ bindings:
   - port: uae.p.port.participant-directory.v1
     adapter: reference
     validFrom: 2026-11-23T00:00:00Z
+  # The operators' alerts, the operations console's turnaround breaches among them (R-05-80), to the bank's MQTT broker: TLS,
+  # QoS 1, a login by reference. A placeholder broker until the bank names its own (Issue I-163).
+  - port: p.port.notification.v1
+    adapter: mqtt
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      host: alerts-broker.enbd.invalid
+      port: "8883"
+      tls: "true"
+      qos: "1"
+      topic: transacthub/{tenant}/alerts/{kind}
+      secretRef: env:TH_ENBD_ALERTS_BROKER_LOGIN
+  # The payment events from the store's outbox, to the bank's Kafka cluster: an idempotent producer with acks all, SASL over TLS,
+  # the login by reference. A placeholder cluster until the bank names its own (Issue I-163).
+  - port: p.port.event-stream.v1
+    adapter: kafka
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      bootstrapServers: events-kafka.enbd.invalid:9093
+      topic: transacthub.payment-events
+      acks: all
+      idempotent: "true"
+      securityProtocol: sasl_ssl
+      saslMechanism: SCRAM-SHA-512
+      secretRef: env:TH_ENBD_EVENTS_KAFKA_LOGIN

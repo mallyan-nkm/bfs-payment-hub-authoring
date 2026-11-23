@@ -32,7 +32,6 @@ public sealed class ConsoleWorkTests(Databases dbs)
             b.UseSetting("Operations:Views", Path.Combine(Repo.Root(), "content-configurations", "artefacts"));
             b.UseSetting("Operations:PollMilliseconds", "100");
             b.UseSetting("Operations:TatSweepSeconds", "3600");
-            b.UseSetting("Operations:Notify:Adapter", "simulator");
             b.UseSetting("TH_AUTH_DEV", "1");
             more?.Invoke(b);
         }
@@ -201,7 +200,10 @@ public sealed class ConsoleWorkTests(Databases dbs)
         var (store, ops) = await dbs.Pair(p);
         var open = await WpsRun.Seed(store, hold: false);
         await new Projector(store, ops, Repo.Views()) { GapTimeout = TimeSpan.Zero }.CatchUp();
-        await using var host = new Host(store);
+        // The bank binds the platform's notification port to its simulator, as a configuration release does (R-05-80, R-09-150).
+        var bindings = new TransactHub.Ports.PortBindings();
+        bindings.Add($"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.notification.v1\n    adapter: simulator\n    validFrom: 2026-01-01T00:00:00Z\n");
+        await using var host = new Host(store, b => b.ConfigureServices(s => s.AddSingleton(new OperatorAlerts(bindings, _ => { }))));
         var op = As(host, "op-1", $"{Bank}:Operator");
         // No limit by default.
         Assert.Equal(0, (int)(await Json(await op.GetAsync("/ops/api/tat/breaches")))["total"]!);
@@ -223,10 +225,12 @@ public sealed class ConsoleWorkTests(Databases dbs)
         var tat = host.Services.GetRequiredService<Turnaround>();
         Assert.Equal(1, await tat.Sweep());
         Assert.Equal(0, await tat.Sweep());
-        var sent = ((SimulatedNotifier)host.Services.GetRequiredService<IOpsNotifier>()).Sent;
-        Assert.Equal(open, Assert.Single(sent).SubjectId);
-        Assert.Equal("tat.breached", sent[0].Kind);
-        Assert.Single(await Facts(store, ConsoleRecord.Subject), f => f.Kind == ConsoleRecord.TatKind && f.Code == "breached");
+        var sent = Assert.Single(TransactHub.Ports.SimulatedNotification.SentFor(Bank), a => a.SubjectId == open);
+        Assert.Equal("tat.breached", sent.Kind);
+        Assert.Equal(open, (string?)sent.Data["subject"]);
+        var breached = Assert.Single(await Facts(store, ConsoleRecord.Subject), f => f.Kind == ConsoleRecord.TatKind && f.Code == "breached");
+        Assert.Equal("simulator", (string?)JsonNode.Parse(breached.DataJson)!["adapter"]);
+        Assert.Equal("p.port.notification.v1", (string?)JsonNode.Parse(breached.DataJson)!["port"]);
     }
 
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]

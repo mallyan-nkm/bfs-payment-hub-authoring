@@ -30,6 +30,8 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
     public DbSet<RegisterVersionRow> RegisterVersions => Set<RegisterVersionRow>();
     public DbSet<RegisterIndexRow> RegisterIndex => Set<RegisterIndexRow>();
     public DbSet<RegisterDecisionRow> RegisterDecisions => Set<RegisterDecisionRow>();
+    public DbSet<StreamPositionRow> StreamPositions => Set<StreamPositionRow>();
+    public DbSet<BreakerChangeRow> BreakerChanges => Set<BreakerChangeRow>();
 
     /// <summary>The only place a provider is named (the build check allows it here).</summary>
     public static DbContextOptions<StoreDbContext> Configure(StoreOptions o)
@@ -266,6 +268,31 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Id).ValueGeneratedOnAdd();
             e.Property(x => x.Topic).HasMaxLength(Code).IsRequired();
             e.Property(x => x.Key).HasMaxLength(Short).IsRequired();
+        });
+
+        // An event stream's position (R-09-153) and the breakers' moves (R-09-156): insert-only, like every table of the store.
+        m.Entity<StreamPositionRow>(e =>
+        {
+            e.ToTable("stream_position");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.Stream).HasMaxLength(Short).IsRequired();
+            e.HasIndex(x => new { x.Stream, x.Through });
+        });
+
+        m.Entity<BreakerChangeRow>(e =>
+        {
+            e.ToTable("breaker_change");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.Tenant).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Port).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.Adapter).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Target).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.State).HasMaxLength(16).IsRequired();
+            e.Property(x => x.Why).HasMaxLength(Short);
+            e.Property(x => x.Host).HasMaxLength(Short).IsRequired();
+            e.HasIndex(x => new { x.Tenant, x.Port, x.Adapter, x.Target, x.Id });
         });
 
         // The bank's registers (R-05-62): insert-only, effective-dated versions; a change takes effect on its approval.

@@ -78,7 +78,7 @@ public sealed class RestEmployerRegister(PortBinding b, HttpClient http, ISecret
             if (b.Setting("credentialHeader", "") is { Length: > 0 } h) m.Headers.Add(h, token);
             else m.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         }
-        using var res = await http.SendAsync(m, ct);
+        using var res = await GuardedHttp.Send(http, b, m, ct, ct);
         if (res.StatusCode == HttpStatusCode.NotFound) return new EmployerStatusAnswer(employerId, false, "unknown");
         res.EnsureSuccessStatusCode();
         var j = await res.Content.ReadFromJsonAsync<JsonObject>(ct);

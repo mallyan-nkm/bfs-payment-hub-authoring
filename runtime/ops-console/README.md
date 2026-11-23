@@ -29,8 +29,9 @@ Then open http://127.0.0.1:7400. Configuration:
 | `Operations:PollMilliseconds` | How often the projection reads the outbox (500) |
 | `Operations:HoldSweepSeconds` | How often holds whose expiry passed are expired (30); a hold's expiry counts the bank's business calendar (R-09-88) |
 | `Operations:FileApi:Url`, `:Folder`, `:TokenRef` | A resend goes through the File API's outbox onto the bank's binding (R-09-84); else `Operations:FileTransfer:Folder` (or `TH_FILE_TRANSFER_DIR`), a folder |
-| `Operations:Notify:Adapter`, `Operations:Notify:Url` | Where the console's alerts go: `log` (default, ids only), `simulator`, or `webhook` (I-182) |
-| `Operations:TatSweepSeconds` | How often turnaround breaches are looked for and alerted, each once (60, R-05-68) |
+| (no setting) | The console's alerts go through the bank's binding of `p.port.notification.v1` in its configuration release in force (`simulator`, `log`, `webhook` or `mqtt`), else to its log, ids only (R-05-80, R-09-150) |
+| `Operations:TatSweepSeconds` | How often turnaround breaches are looked for and alerted, each once (60, R-05-68); a limit counts business days of the bank's calendar (R-05-81) |
+| `Operations:EventStream:PollMilliseconds` | How often the store's outbox goes out as payment events on the bank's binding of `p.port.event-stream.v1` (1000; with `TH_BANK` only, R-09-152, R-09-153) |
 | (no bank folder) | The channel's core-banking enquiries use the core-banking binding of the bank's configuration release in force, read at each enquiry (R-09-100, R-09-112); the host does not start with `Operations:Banks` or `TH_BANKS_DIR` (R-09-113) |
 | `Operations:Registers`, `Operations:Registers:SystemReadsMasked` | Further register kinds; `true` makes the register API answer core banking masked (R-09-101, I-181) |
 | `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:Oidc:Authority`, `Auth:Oidc:SigningKeys` | The bank's identity provider, through the runtime's authentication library (`runtime/src/TransactHub.Auth`, `AddRuntimeAuth`): the API validates its bearer tokens |
