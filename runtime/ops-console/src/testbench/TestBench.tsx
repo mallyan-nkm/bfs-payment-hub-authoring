@@ -69,7 +69,8 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
     return () => { stop = true; };
   }, [shown]);
 
-  const eff = { engines: engines ?? p?.engines ?? [], dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench };
+  // A profile that names no engines runs on the default engine (R-09-79), as the service resolves it.
+  const eff = { engines: engines ?? p?.engines ?? defaults, dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench };
   const toggle = (list: string[], x: string) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   const run = async () => {
     setErr(undefined);
