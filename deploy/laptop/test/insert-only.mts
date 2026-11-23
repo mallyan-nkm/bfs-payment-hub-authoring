@@ -243,7 +243,9 @@ async function main() {
   const target = original.billOfMaterials.artefacts.find((a: any) => a.path?.startsWith('workflows/')) ?? original.billOfMaterials.artefacts[0];
   const changedText = `${stored[target.path].toString()}\n# changed after it was installed (synthetic)\n`;
   const billOfMaterials = { ...original.billOfMaterials, artefacts: [{ ...target, sha256: `sha256:${createHash('sha256').update(changedText).digest('hex')}` }] };
-  const manifest = { ...original, billOfMaterials };
+  // The small bundle carries none of A's native assemblies (R-09-120): its manifest names none, so only the id is in question.
+  const { native: _native, ...rest } = original;
+  const manifest = { ...rest, billOfMaterials };
   const { toYaml } = await import('../../../studio/src/core/yaml.js');
   const files: Record<string, string> = { [target.path]: changedText, 'manifest.yaml': toYaml(manifest) };
   // Signed with the studio's own key, from the stack's keys volume: the signature is good, only the content differs.
