@@ -34,6 +34,8 @@ var builder = WebApplication.CreateBuilder(args);
 var cfg = builder.Configuration;
 var provider = Enum.Parse<StoreProvider>(cfg["Store:Provider"] ?? "SqlServer", ignoreCase: true);
 var store = new StoreOptions(provider, cfg["Store:Connection"] ?? throw new InvalidOperationException("Set Store:Connection"));
+// Its breakers' moves (its SFTP partners') in the store, so the service console's health shows an open one (R-09-156, Issue I-255).
+CircuitBreakers.Shared.Journal = new TransactHub.Operations.StoreBreakerJournal(store, $"{Environment.MachineName}/file-api");
 var environment = cfg["FileApi:Environment"] ?? throw new InvalidOperationException("Set FileApi:Environment: the environment whose active distribution a file is routed by");
 var secrets = SecretResolver.FromEnvironment(k => cfg[k]);
 var fileKey = cfg["TH_FILE_SIGNING_KEY_REF"] is { Length: > 0 } fileKeyRef

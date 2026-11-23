@@ -138,6 +138,10 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
         }
         catch (PortBindingException e) { throw new NativePortRefused(port, e.Message); }
         catch (TransactHub.Security.SecretUnavailable e) { throw new NativeFailure("SecretUnavailable", e.Message, false); }
+        catch (Exception e) when (e is CircuitOpenException || e.InnerException is CircuitOpenException)
+        {
+            throw new NativeFailure(CircuitBreakers.OpenCode, $"{port} {operation}: the file was not sent: {e.Message}", true);
+        }
         catch (Exception e) when (e is FileTransferException or HttpRequestException or IOException or TaskCanceledException)
         {
             throw new NativeFailure("TransientError", $"{port} {operation}: the file was not taken: {e.Message}", true);

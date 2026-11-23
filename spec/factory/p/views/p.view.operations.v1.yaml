@@ -1,6 +1,6 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.5.0
+release: 1.6.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
@@ -16,11 +16,13 @@ description: >-
   shown once a bank approver consented, and how long an ended payment is kept before it is due for erasure (R-05-66 to R-05-70).
   Each default switches its mechanism off, so no period is the runtime's own. Release 1.5.0 shows the inward lifecycle
   p.wf.inward.v2 in place of v1, which WPS's inward legs fill from factory release 1.9.0 (Issue I-141), and offers requeue for a
-  dead-lettered step on every engine (R-09-91).
+  dead-lettered step on every engine (R-09-91). Release 1.6.0 counts the turnaround limit in business days of the bank's business
+  calendar, its own closing days included, as a hold's expiry is counted (owner's decision of 23 November 2026, R-05-81).
 platform: [p.wf.corporate.v1, p.wf.inward.v2, p.wf.refund.v1, p.wf.refund-out.v1]
 parameters:
-  # R-05-68: a payment open, or that ended, longer than this after its acceptance is in breach. P0D: no limit. A scheme's view may set its own.
-  tatLimit: { type: duration, default: P0D, bounds: { min: P0D, max: P30D }, lookupDate: payment-date, description: "The turnaround limit, from acceptance to the payment's end. P0D sets no limit." }
+  # R-05-68, R-05-81: a payment open, or that ended, longer than this after its acceptance is in breach; each whole day is a business
+  # day of the bank's calendar, its closing days included, and the time part elapsed time. P0D: no limit. A scheme's view may set its own.
+  tatLimit: { type: duration, default: P0D, bounds: { min: P0D, max: P30D }, lookupDate: payment-date, description: "The turnaround limit, from acceptance to the payment's end, each whole day a business day of the bank's calendar. P0D sets no limit." }
   # R-05-69: how long the person who asked sees an unmasked value after a bank approver consented. P0D: unmasking is off.
   unmaskWindow: { type: duration, default: P0D, bounds: { min: P0D, max: PT4H }, lookupDate: step-time, description: "How long an unmasked value is shown to the person who asked, from the bank approver's consent. P0D turns unmasking off." }
   # R-05-70: how long a payment is kept after its end before it is due for erasure. P0D: nothing is ever due.

@@ -265,14 +265,14 @@ public sealed class PlatformAdapterTests
         foreach (var bank in new[] { "dib", "adib", "enbd", "fab" })
         {
             var p = PortBindings.FromDirectory(Path.Combine(dir, bank));
-            var mine = p.All.Where(b => b.Port is ScreeningAdapters.Sanctions or ScreeningAdapters.Fraud or NoticeAdapters.Port or FactsOutAdapters.Port or CalendarAdapters.Port or ParticipantDirectoryAdapters.Port).ToList();
-            Assert.Equal(6, mine.Select(b => b.Port).Distinct().Count());
+            var mine = p.All.Where(b => b.Port is ScreeningAdapters.Sanctions or ScreeningAdapters.Fraud or NoticeAdapters.Port or FactsOutAdapters.Port or CalendarAdapters.Port or ParticipantDirectoryAdapters.Port or NotificationAdapters.Port or EventStreamAdapters.Port).ToList();
+            Assert.Equal(8, mine.Select(b => b.Port).Distinct().Count());
             foreach (var b in mine)
             {
                 foreach (var (k, v) in b.Settings)
                 {
                     if (k.EndsWith("Ref", StringComparison.Ordinal)) Assert.True(SecretRef.IsRef(v), $"{bank} {b.Port} {k}");
-                    if (k is "baseUrl" or "host") Assert.Contains(".invalid", v);
+                    if (k is "baseUrl" or "host" or "bootstrapServers") Assert.Contains(".invalid", v);
                     Assert.DoesNotContain(k, new[] { "password", "token", "apiKey", "key" });
                 }
             }

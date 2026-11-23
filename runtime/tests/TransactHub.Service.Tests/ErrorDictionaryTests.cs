@@ -48,6 +48,9 @@ public sealed class ErrorDictionaryTests
         Assert.Contains("native.NotPinned", codes);
         Assert.Contains("native.ModuleRefused", codes);
         Assert.Contains("RetriesExhausted", codes);
+        // A refusal by an open breaker (Issue I-259): raised as the breakers' own code.
+        foreach (Match m in Regex.Matches(File.ReadAllText(Path.Combine(root, "runtime", "src", "TransactHub.Ports", "CircuitBreaker.cs")), @"OpenCode = ""([A-Za-z.:-]+)""")) codes.Add(m.Groups[1].Value);
+        Assert.Contains("port.CircuitOpen", codes);
         Assert.DoesNotContain(codes, c => Dict.Find(c) is null);
     }
 

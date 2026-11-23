@@ -47,24 +47,32 @@ builder.Services.AddSingleton(new BreakQueue(store, clock));
 // The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
 builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
 // Work management, saved filters, the console's dials, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
-//   Operations:Notify:Adapter, Operations:Notify:Url   where the console's alerts go (log by default; simulator; webhook)
+//   (no setting: the console's alerts go through the bank's binding of p.port.notification.v1 in force, else to its log, R-05-80)
 //   Operations:TatSweepSeconds                          how often turnaround breaches are looked for and alerted (default 60)
+//   Operations:EventStream:PollMilliseconds             how often the outbox's new facts go out on p.port.event-stream.v1 (default
+//                                                       1000), with TH_BANK only, once the bank binds the port (R-09-152, R-09-153)
 //   (no bank folder: the channel's enquiries use the core-banking binding of the configuration release in force, R-09-112)
 //                                                       where no configuration release bound one (R-09-100)
 //   Operations:Registers:SystemReadsMasked              true: the register API answers core banking masked (Issue I-149, I-181)
 var dials = new OperationsDials(store, views);
-var notifier = OpsNotifiers.From(k => builder.Configuration[k], m => Console.Error.WriteLine($"operations alert: {m}"));
+// The bank's port bindings in force (R-09-112): where its alerts go (p.port.notification.v1) and where its payment events go
+// (p.port.event-stream.v1). Each production adapter's circuit breaker records its moves in the store (R-09-156).
+var runtimeBank = builder.Configuration["TH_BANK"] is { Length: > 0 } rb ? rb : null;
+var bankBindings = StoreBindings.Live(store, runtimeBank);
+TransactHub.Ports.CircuitBreakers.Shared.Journal = new StoreBreakerJournal(store, $"{Environment.MachineName}/operations");
 builder.Services.AddSingleton(dials);
-builder.Services.AddSingleton(notifier);
+builder.Services.AddSingleton(new OperatorAlerts(bankBindings, m => Console.Error.WriteLine($"operations alert: {m}")));
+if (runtimeBank is not null) builder.Services.AddSingleton(new EventStreamRelay(store, runtimeBank, bankBindings, clock: clock));
 builder.Services.AddSingleton(new WorkQueue(store, ops, clock));
 builder.Services.AddSingleton(new SavedFilters(store, clock));
 builder.Services.AddSingleton(new FixedReports(ops, views));
 builder.Services.AddSingleton(sp => new Erasure(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), clock));
 builder.Services.AddSingleton(sp => new Unmasking(ops, views, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<Projector>(), dials, sp.GetRequiredService<Erasure>(), clock));
-builder.Services.AddSingleton(sp => new Turnaround(ops, dials, sp.GetRequiredService<ConsoleRecord>(), notifier, clock));
+builder.Services.AddSingleton(sp => new Turnaround(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<OperatorAlerts>(), clock));
 // The upload page's File API (Operations:FileApi:Url) and the service console its refusals' runbooks are in (Operations:ServiceConsole).
 builder.Services.AddSingleton(FileApiUploads.FromConfiguration(builder.Configuration));
 builder.Services.AddHostedService<ProjectionService>();
+builder.Services.AddHostedService<EventStreamService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
 // Security headers and the console page's content security policy on every answer (R-09-60).
@@ -461,6 +469,33 @@ sealed class ProjectionService(Projector p, HoldExpiry expiry, Turnaround tat, I
                 try { await tat.Sweep(ct); }
                 catch (OperationCanceledException) { break; }
                 catch (Exception e) { log.LogWarning("turnaround: {Error}", e.Message); }
+            }
+            try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
+        }
+    }
+}
+
+/// <summary>
+/// Streams the payment events out (R-09-152, R-09-153): a pass of the relay every Operations:EventStream:PollMilliseconds (default
+/// 1000), on a runtime's host (TH_BANK) only. A pass that fails (the platform does not answer, its breaker is open) is tried again on
+/// the next beat from the same position.
+/// </summary>
+sealed class EventStreamService(IServiceProvider sp, IConfiguration cfg, ILogger<EventStreamService> log) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        if (sp.GetService<EventStreamRelay>() is not { } relay) return;
+        var every = TimeSpan.FromMilliseconds(int.TryParse(cfg["Operations:EventStream:PollMilliseconds"], out var ms) ? ms : 1000);
+        string? failing = null;
+        while (!ct.IsCancellationRequested)
+        {
+            try { await relay.CatchUp(ct); failing = null; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception e)
+            {
+                // Said once per kind of failure, not on every beat.
+                if (failing != e.GetType().Name) log.LogWarning("event stream: {Error}", e.GetType().Name);
+                failing = e.GetType().Name;
             }
             try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
         }

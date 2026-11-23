@@ -25,6 +25,8 @@ public static class PlatformPortActivities
     internal static T Call<T>(string port, Func<Task<T>> call)
     {
         try { return call().GetAwaiter().GetResult(); }
+        // An open breaker sent nothing (R-09-155): its own code, retried as a party that does not answer (Issue I-259).
+        catch (CircuitOpenException e) { throw new NativeFailure(CircuitBreakers.OpenCode, e.Message, true); }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or TimeoutException or System.Net.Mail.SmtpException)
         { throw new NativeFailure("TransientError", $"{port} did not answer: {e.GetType().Name}", true); }
         catch (PortBindingException e) { throw new NativeFailure("PortNotBound", e.Message, false); }

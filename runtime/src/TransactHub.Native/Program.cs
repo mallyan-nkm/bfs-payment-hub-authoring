@@ -90,6 +90,8 @@ if (runtimeBank is { Length: > 0 }) TransactHub.Operations.StoreBindings.RefuseF
 var bindings = runtimeBank is { Length: > 0 } ? TransactHub.Operations.StoreBindings.Live(store!, runtimeBank)
     : banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings();
 var coreBanking = new CoreBankingResolver(bindings);
+// The production adapters' circuit breakers record their moves in the store, for the service console's health (R-09-156).
+if (store is not null) CircuitBreakers.Shared.Journal = new TransactHub.Operations.StoreBreakerJournal(store, $"{Environment.MachineName}/native");
 INativeActivity[] holds = store is null ? [] : TransactHub.Operations.StoreHold.For(store);
 var signingRef = Environment.GetEnvironmentVariable("TH_FILE_SIGNING_KEY_REF");
 var signingKey = signingRef is { Length: > 0 }

@@ -175,6 +175,21 @@ public static class Probes
     });
 
     /// <summary>
+    /// The circuit breakers of the production adapters (R-09-155, R-09-156), as the hosts' journals in the store last recorded each:
+    /// an open breaker fails the probe, a half-open one warns, and the detail names each by port, adapter and target (hosts only,
+    /// never a credential). With none open the probe is ok.
+    /// </summary>
+    public static IProbe Breakers(StoreOptions store, string? tenant, string? dashboard) => new FuncProbe("circuit-breakers", "ports", dashboard, async ct =>
+    {
+        var all = await TransactHub.Operations.Breakers.Latest(store, tenant, ct);
+        var open = all.Where(b => b.State == "open").ToList();
+        var half = all.Where(b => b.State == "half-open").ToList();
+        string Name(TransactHub.Operations.Breakers.Seen b) => $"{b.Port} {b.Adapter} {b.Target} ({b.Tenant}) {b.State} since {b.At:yyyy-MM-dd HH:mm:ss}Z after {b.Failures} failure(s), seen by {b.Host}";
+        var detail = open.Count + half.Count == 0 ? $"{all.Count} breaker(s) known, none open" : string.Join("; ", open.Concat(half).Select(Name));
+        return open.Count > 0 ? ("fail", detail, TransactHub.Ports.CircuitBreakers.OpenCode, null) : half.Count > 0 ? ("warn", detail, ErrorCodes.ProbeFailed, null) : ("ok", detail, null, null);
+    });
+
+    /// <summary>
     /// The probes an installation configures, <c>Service:Probes:&lt;n&gt;:Name|Group|Kind|Target|Dashboard</c> (kind <c>http</c>,
     /// <c>tcp</c> or <c>worker</c>, which also reads the worker's version), and the ports the bank's configuration release in
     /// force binds (R-09-112), as the service console starts: each binding with a <c>baseUrl</c> is probed by a TCP connection to

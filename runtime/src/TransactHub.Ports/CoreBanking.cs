@@ -122,7 +122,7 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
     public async Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default)
     {
         var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["branch"] = branch, ["account"] = account };
-        using var res = await http.SendAsync(await Request("balancePath", "balanceFunctionId", $"{b.Setting("referencePrefix", "")}{account}", body, ct), ct);
+        using var res = await GuardedHttp.Send(http, b, await Request("balancePath", "balanceFunctionId", $"{b.Setting("referencePrefix", "")}{account}", body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         return new BalanceAnswer(account, (decimal)j["available"]!, (string?)j["currency"] ?? "AED", (string?)j["status"] ?? "");
@@ -143,7 +143,7 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
                 ["kind"] = l.Kind, ["branch"] = l.Branch, ["account"] = l.Account, ["amount"] = l.Amount, ["currency"] = l.Currency, ["txnCode"] = l.TxnCode, ["narration"] = l.Narration,
             }).ToArray()),
         };
-        using var res = await http.SendAsync(await Request("postingPath", "postingFunctionId", batch.Reference, body, ct), ct);
+        using var res = await GuardedHttp.Send(http, b, await Request("postingPath", "postingFunctionId", batch.Reference, body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
         var code = (string?)j["code"] ?? "";
@@ -157,7 +157,7 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
     public async Task<PostingInquiry> Inquire(string reference, CancellationToken ct = default)
     {
         var body = new JsonObject { ["serviceCode"] = b.Required("serviceCode"), ["reference"] = b.Setting("referencePrefix", "") + reference };
-        using var res = await http.SendAsync(await Request("inquiryPath", "inquiryFunctionId", reference, body, ct), ct);
+        using var res = await GuardedHttp.Send(http, b, await Request("inquiryPath", "inquiryFunctionId", reference, body, ct), ct, ct);
         if (res.StatusCode == System.Net.HttpStatusCode.NotFound) return new PostingInquiry(reference, true, false, null);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;

@@ -111,6 +111,8 @@ public sealed class ServiceHost
             var disks = cfg.GetSection("Service:Disks").GetChildren().Select(c => c.Value).OfType<string>().ToList();
             foreach (var d in disks.Count > 0 ? disks : [AppContext.BaseDirectory]) probes.Add(Probes.Disk(d));
             probes.AddRange(Probes.Configured(cfg, http, bindings));
+            // The production adapters' circuit breakers, as each host's journal last saw them (R-09-156).
+            probes.Add(Probes.Breakers(store, bank.Id, dash("Ports")));
             return new HealthMonitor(probes, clock);
         });
         // The replies the gauge watches are the installation's to name, never the platform's (R-09-142, Issue I-235).

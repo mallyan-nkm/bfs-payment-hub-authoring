@@ -45,6 +45,8 @@ if (Environment.GetEnvironmentVariable("TH_BANK") is { Length: > 0 } runtimeBank
     opts["bank"] = runtimeBank;
 }
 var store = HostStore.FromEnvironment() ?? throw new InvalidOperationException("The engine host keeps its state in the store: set TH_STORE_PROVIDER and TH_STORE_CONNECTION");
+// Its breakers' moves in the store, so the service console's health shows an open one (R-09-156, Issue I-255).
+TransactHub.Ports.CircuitBreakers.Shared.Journal = new TransactHub.Operations.StoreBreakerJournal(store, $"{Environment.MachineName}/engine-host");
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Cancel();

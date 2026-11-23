@@ -36,6 +36,8 @@ The original had these; nothing in the new design covers them yet.
 | Personal workspace and notification centre | Widgets and in-app notices. | **Defer.** |
 | Kubernetes portal | A view of the cluster inside the console. | **Drop.** Banks use their own cluster tools. |
 
+**Done for the circuit breakers (23 November 2026).** Core banking, the gateways, SFTP, MQTT, Kafka and the webhooks each stop calling a failing system for a while, then try one call; the thresholds are settings with defaults and bounds, and an open breaker shows in the service console's health (R-09-155, R-09-156). Left: the File API's and the engine host's breakers are not yet shown there (I-255).
+
 ### A3. "Associated accounts" (I-184)
 **What it is.** In the original, "associated accounts" meant the bank's own ledger accounts a WPS upload posts to (settlement, suspense, income, VAT). I built the corporate's own accounts from core banking.
 
@@ -54,6 +56,8 @@ The original had these; nothing in the new design covers them yet.
 **Decided:** add `p.port.notification.v1` with an MQTT adapter, and an event-streaming port (payment events out, for example to Kafka) with a Kafka adapter.
 
 Also decide whether turnaround limits count business days or clock time. I recommend business days, as for hold expiry.
+
+**Done (23 November 2026).** Factory 1.15.0 has both ports with simulators. Alerts go out by MQTT (or a webhook, or the log), the turnaround alerts among them; payment events go out to Kafka from the store's outbox, references only, at least once and in order per payment; turnaround limits count business days of the bank's calendar (R-05-80, R-05-81, R-09-150 to R-09-154). Each real bank's folder binds both by placeholder until it names its broker and cluster (B, I-163). The laptop has both brokers under the profile `events`. Left: I-256 to I-259.
 
 ### A6. Small clean-ups
 - **I-154:** give "this is another bank's package" an error code of its own. Today it reuses `package.Rejected`. Recommendation: yes.

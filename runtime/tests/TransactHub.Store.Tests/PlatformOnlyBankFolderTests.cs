@@ -42,7 +42,7 @@ public sealed class PlatformOnlyBankFolderTests
         Assert.All(bindings.All, x => Assert.Equal(tenant, x.Tenant));
         // Core banking is the only port bound: the bank's file transfer and decryption are WPS's, which it does not run.
         // ... beside the platform's production adapters, whose bindings are shapes only (R-09-90).
-        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port];
+        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port, NotificationAdapters.Port, EventStreamAdapters.Port];
         Assert.Equal([Port], bindings.All.Select(x => x.Port).Where(p => !platform.Contains(p)).Distinct());
     }
 
@@ -53,7 +53,8 @@ public sealed class PlatformOnlyBankFolderTests
         var b = PortBindings.FromDirectory(Folder(tenant)).InForce(tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
         Assert.EndsWith(".invalid/", b.Settings["baseUrl"]);
         Assert.Equal($"env:TH_{tenant.ToUpperInvariant()}_CORE_BANKING_TOKEN", b.Settings["secretRef"]);
-        Assert.Equal(["baseUrl", "secretRef"], b.Settings.Keys.Order(StringComparer.Ordinal));
+        // The channel the gateway knows the runtime by is the bank's value (R-09-142).
+        Assert.Equal(["baseUrl", "channel", "secretRef"], b.Settings.Keys.Order(StringComparer.Ordinal));
 
         var rec = new Recorder();
         var cb = CoreBankingAdapters.Create(b, new HttpClient(rec));

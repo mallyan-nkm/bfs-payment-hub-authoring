@@ -136,7 +136,7 @@ public sealed class AdibWpsBankFolderTests
     public void The_folder_binds_core_banking_file_transfer_encryption_and_the_labour_register_and_nothing_else()
     {
         // The platform's production adapters (R-09-90) are the shape of a binding only (platform-adapters.yaml, PlatformAdapterTests).
-        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port];
+        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port, NotificationAdapters.Port, EventStreamAdapters.Port];
         var all = PortBindings.FromDirectory(Folder());
         var bindings = new PortBindings();
         foreach (var x in all.All.Where(x => !platform.Contains(x.Port))) bindings.Add($"kind: port-bindings\ntenant: {x.Tenant}\nbindings:\n  - port: {x.Port}\n    adapter: {x.Adapter}\n    validFrom: {x.ValidFrom:O}\n");

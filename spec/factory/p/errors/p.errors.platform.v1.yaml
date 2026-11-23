@@ -395,6 +395,30 @@ entries:
         - Do not retry the refused action as it was. Ask again for the activation from the distribution active now, and have a
           bank approver consent again.
       escalation: Escalate to the runtime's service team with both activations' times and who asked for them.
+  - code: port.CircuitOpen
+    title: A circuit breaker is open; the call was not sent
+    category: technical
+    retryable: true
+    raisedBy:
+      - port
+      - native
+      - service-console
+    meaning: The production adapter's circuit breaker for one outside system (R-09-155) is open after failures in a row, so the call
+      was refused before anything was sent. The step is retried as a party that does not answer is; the breaker lets one trial call
+      through once its open period is over.
+    causes:
+      - The outside system behind the port (a gateway, a broker, an SFTP partner) is down or refuses every call.
+      - The bank's binding of the port names a host, a port or a credential that no longer works.
+    runbook:
+      checks:
+        - Find the failing system in the detail of the probe circuit-breakers on the service console's Health page (port, adapter and target).
+        - Check that system's own health, and the bank's binding of the port in force.
+      safeActions:
+        - Mend the outside system or the bank's binding, then wait for the breaker's trial call; it closes on the first call that succeeds.
+        - Do not change a payment. Its parked step is retried once the breaker lets calls through.
+      actions:
+        - retry-attempt
+      escalation: Escalate to the runtime's service team and the owner of the outside system with the probe's detail and the time it opened.
   - code: store.ChainBroken
     title: A subject's fact chain does not verify
     category: technical
