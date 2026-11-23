@@ -53,7 +53,7 @@ public sealed class NeutralityTests
 
     /// <summary>
     /// R-09-142: platform and engine host code names no scheme. A scheme's values (its channel, its awaited replies, its waits) are the
-    /// scheme pack's declared values or the bank's configuration; only the scheme's own native module (TransactHub.Activities.Wps)
+    /// scheme pack's declared values or the bank's configuration; only the scheme's own projects (TransactHub.Activities.Wps, TransactHub.Activities.Wps.Store)
     /// and the generated migrations may name one. The one place left is listed with its issue.
     /// </summary>
     [Fact]
@@ -71,7 +71,7 @@ public sealed class NeutralityTests
             foreach (var f in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
             {
                 var rel = Path.GetRelativePath(root, f).Replace('\\', '/');
-                if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("src/TransactHub.Activities.Wps/") || rel.Contains(".Migrations.")) continue;
+                if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("src/TransactHub.Activities.Wps") || rel.Contains(".Migrations.")) continue;
                 var lines = File.ReadAllLines(f);
                 for (var i = 0; i < lines.Length; i++)
                 {
