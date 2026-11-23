@@ -97,6 +97,14 @@ public sealed class ServiceHost
                 cfg["Service:LogSource:TokenRef"] is { Length: > 0 } tr ? async ct => (await secrets.Resolve(tr, ct)).Reveal() : null));
         s.AddSingleton(sp => new EventLog(store, ops, logBuffer, sp.GetRequiredService<ErrorDictionary>(), sp.GetService<ILogSource>()));
         s.AddSingleton<HttpClient>();
+        // The exchange-rate feed (R-09-177 to R-09-179): with the feed's signing key by reference (Service:FxRates:SigningKeyRef),
+        // whose public key the bank's trusted signers list; it runs once the bank binds p.port.fx-rates.v1.
+        if (cfg["Service:FxRates:SigningKeyRef"] is { Length: > 0 } fxKeyRef)
+        {
+            s.AddSingleton(sp => new FxRateFeed(store, bank.Id, bindings, async ct => ReleaseSignature.PrivateKeyFromPem(await secrets.Resolve(fxKeyRef, ct)),
+                db => new TransactHub.Api.DistributionService(db, clock, ct => TrustedSigners.Load(trust, secrets, ct), testEnvs, bank), clock, sp.GetRequiredService<HttpClient>(), secrets));
+            s.AddHostedService<FxRateFeedService>();
+        }
         s.AddSingleton(sp =>
         {
             var http = sp.GetRequiredService<HttpClient>();
@@ -134,6 +142,12 @@ public sealed class ServiceHost
             // An installed configuration release, put in force on consent (R-09-111): asked for by an engineer, or by the release API's pipeline.
             book.Check("put-in-force", async (_, a, ct) => await content.CheckPutInForce(a.Target!, ct));
             book.Run("put-in-force", (who, a, ct) => content.PutInForce(a.Target!, who, a.Reason!, ct));
+            // The standing consent to the rate feed's releases (R-09-179): granted or revoked on a bank approver's consent, for this bank only.
+            foreach (var (name, grant) in new[] { (StandingConsent.Grant, true), (StandingConsent.Revoke, false) })
+            {
+                book.Check(name, (_, a, _) => a.Target == bank.Id ? Task.CompletedTask : throw new ServiceRefused(422, ErrorCodes.ActionNotOffered, $"{name} is for this runtime's bank, {bank.Id}"));
+                book.Run(name, async (who, a, ct) => { await using var db = StoreDbContext.Open(store); return await StandingConsent.Record(db, clock, bank.Id, grant, who.Actor, a.Reason!, ct); });
+            }
             var backups = sp.GetRequiredService<BackupService>();
             book.Run("restore", async (who, a, ct) => await backups.Restore(await backups.Kept(a.Target!, ct), dryRun: false, who, a.Reason!, ct));
             book.Run("activate", (who, a, ct) => content.Activate(a.Target!, (string?)a.Parameters?["environment"],

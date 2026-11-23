@@ -155,17 +155,138 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
         var (store, _) = await dbs.Pair(StoreProvider.PostgreSql);
         var a = $"P-{Guid.NewGuid():N}"[..12];
         var b = $"P-{Guid.NewGuid():N}"[..12];
+        // A stream of its own from the newest fact: the gaps other tests leave in this database are not its own.
+        using var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named($"flight-{Guid.NewGuid():N}"[..20], "      from: latest\n"))) { GapTimeout = TimeSpan.FromMinutes(5) };
+        await relay.Poll();
         await using var slow = StoreDbContext.Open(store);
         await using var tx = await slow.Database.BeginTransactionAsync();
         await new FactLog(slow).Append(a, "payment", new NewFact("step", "slow", new JsonObject(), Actor: "engine"));
         await Write(store, [b], 1, "fast");
-        using var relay = new EventStreamRelay(store, Bank, Bound("simulator")) { GapTimeout = TimeSpan.FromMinutes(5) };
         Assert.Equal(0, await relay.Poll());
         Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == b);
         await tx.CommitAsync();
         await relay.CatchUp();
         var got = SimulatedEventStream.Published.Where(e => e.Subject == a || e.Subject == b).ToList();
         Assert.Equal([a, b], got.Select(e => e.Subject));
+    }
+
+    /// <summary>A clock that runs with the system's, moved on by hand.</summary>
+    sealed class Later : TimeProvider
+    {
+        public TimeSpan By { get; set; }
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow + By;
+    }
+
+    static string Named(string stream, string more = "") => $"    settings:\n      stream: {stream}\n{more}";
+
+    [Fact]
+    public async Task A_save_that_commits_after_the_gap_timeout_is_published_on_a_later_pass_even_after_a_restart_and_none_is_skipped()
+    {
+        // R-09-175, Issue I-257. PostgreSQL: a reader does not wait on another's uncommitted insert, so the relay sees the gap.
+        var (store, _) = await dbs.Pair(StoreProvider.PostgreSql);
+        var stream = $"slow-{Guid.NewGuid():N}"[..20];
+        var a = $"P-{Guid.NewGuid():N}"[..12];
+        var b = $"P-{Guid.NewGuid():N}"[..12];
+        var c = $"P-{Guid.NewGuid():N}"[..12];
+        await using var slow = StoreDbContext.Open(store);
+        await using var tx = await slow.Database.BeginTransactionAsync();
+        await new FactLog(slow).Append(a, "payment", new NewFact("step", "slow", new JsonObject(), Actor: "engine"));
+        await Write(store, [b], 1, "fast");
+        var clock = new Later();
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock))
+        {
+            // Within the gap timeout the stream waits for the save in flight.
+            await relay.CatchUp();
+            Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == b);
+            // The save takes longer than the timeout: the stream goes on without it, and keeps looking for its number.
+            clock.By = TimeSpan.FromSeconds(EventStreamRelay.DefaultGapSeconds + 5);
+            await relay.CatchUp();
+            Assert.Contains(SimulatedEventStream.Published, e => e.Subject == b);
+            Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == a);
+            Assert.NotEmpty(await relay.OpenGaps(stream));
+        }
+        // The slow save commits after the timeout, while the relay is down; a fact is written after it.
+        await tx.CommitAsync();
+        await Write(store, [c], 1, "after");
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock))
+        {
+            await relay.CatchUp();
+            Assert.Empty((await relay.OpenGaps(stream)).Where(g => g.From <= g.To && Covers(g, store, a)));
+        }
+        var got = SimulatedEventStream.Published.Where(e => e.Subject == a || e.Subject == b || e.Subject == c).Select(e => e.Subject).ToList();
+        // Every committed fact once: the late one before anything newer than it was published.
+        Assert.Equal([b, a, c], got);
+    }
+
+    static bool Covers(EventStreamRelay.Gap g, StoreOptions store, string subject)
+    {
+        using var db = StoreDbContext.Open(store);
+        return db.Outbox.AsNoTracking().Any(x => x.Id >= g.From && x.Id <= g.To && x.PayloadJson.Contains(subject));
+    }
+
+    [Fact]
+    public async Task A_number_a_rolled_back_save_took_is_looked_for_until_the_gap_horizon_then_dropped_and_recorded()
+    {
+        var (store, _) = await dbs.Pair(StoreProvider.PostgreSql);
+        var stream = $"gone-{Guid.NewGuid():N}"[..20];
+        var a = $"P-{Guid.NewGuid():N}"[..12];
+        var b = $"P-{Guid.NewGuid():N}"[..12];
+        await using (var doomed = StoreDbContext.Open(store))
+        {
+            await using var tx = await doomed.Database.BeginTransactionAsync();
+            await new FactLog(doomed).Append(a, "payment", new NewFact("step", "doomed", new JsonObject(), Actor: "engine"));
+            await Write(store, [b], 1, "kept");
+            await tx.RollbackAsync();
+        }
+        var clock = new Later { By = TimeSpan.FromMinutes(1) };
+        using var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream, "      gapHorizonMinutes: \"10\"\n")), clock: clock);
+        await relay.CatchUp();
+        Assert.Contains(SimulatedEventStream.Published, e => e.Subject == b);
+        Assert.NotEmpty(await relay.OpenGaps(stream));
+        Assert.Empty(await relay.DroppedGaps(stream));
+        clock.By = TimeSpan.FromMinutes(12);
+        await relay.Poll();
+        Assert.Empty(await relay.OpenGaps(stream));
+        Assert.NotEmpty(await relay.DroppedGaps(stream));
+        Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == a);
+    }
+
+    [Fact]
+    public async Task A_binding_names_its_stream_a_new_stream_starts_where_the_binding_says_and_a_dial_out_of_bounds_is_refused()
+    {
+        // R-09-176, Issue I-256.
+        var (store, _) = await dbs.Pair(StoreProvider.PostgreSql);
+        var old = $"P-{Guid.NewGuid():N}"[..12];
+        await Write(store, [old], 2, "old");
+        var replay = $"replay-{Guid.NewGuid():N}"[..20];
+        var fresh = $"fresh-{Guid.NewGuid():N}"[..20];
+        // A new stream that starts at the earliest fact (the default) gets the whole history.
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(replay))) { GapTimeout = TimeSpan.Zero }) await relay.CatchUp();
+        Assert.Equal(2, SimulatedEventStream.Published.Count(e => e.Subject == old));
+        // One that starts at the latest sends nothing of the past, then everything new.
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(fresh, "      from: latest\n"))) { GapTimeout = TimeSpan.Zero })
+        {
+            await relay.CatchUp();
+            Assert.Equal(2, SimulatedEventStream.Published.Count(e => e.Subject == old));
+            Assert.True(await relay.Position(fresh) > 0);
+            var now = $"P-{Guid.NewGuid():N}"[..12];
+            await Write(store, [now], 1, "new");
+            await relay.CatchUp();
+            Assert.Single(SimulatedEventStream.Published, e => e.Subject == now);
+        }
+        // `from` is read only while a stream has no position: the replayed stream goes on from where it is.
+        var replayAt = await new EventStreamRelay(store, Bank, new PortBindings()).Position(replay);
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(replay, "      from: latest\n"))) { GapTimeout = TimeSpan.Zero }) await relay.CatchUp();
+        Assert.True(await new EventStreamRelay(store, Bank, new PortBindings()).Position(replay) > replayAt);
+        Assert.Equal(2, SimulatedEventStream.Published.Count(e => e.Subject == old));
+
+        foreach (var bad in new[] { "      from: middle\n", "      gapSeconds: \"0\"\n", "      gapSeconds: \"601\"\n", "      gapHorizonMinutes: \"5\"\n", "      stream: \"Has Spaces\"\n" })
+        {
+            using var relay = new EventStreamRelay(store, Bank, Bound("simulator", "    settings:\n" + bad));
+            await Assert.ThrowsAsync<PortBindingException>(() => relay.Poll());
+        }
+        var d = EventStreamRelay.DialsOf(new PortBinding(Bank, EventStreamAdapters.Port, "simulator", DateTimeOffset.UnixEpoch, new Dictionary<string, string>()));
+        Assert.Equal((EventStreamRelay.Stream, false, TimeSpan.FromSeconds(10), TimeSpan.FromDays(1)), (d.Stream, d.FromLatest, d.Gap, d.Horizon));
     }
 
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]

@@ -28,8 +28,8 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | Rails and bank policies | The scheme manifest's rails, enabled in the bank's configuration set; dials with defaults and bounds | Built | |
 | Rule engine | The studio's rule service, with NRules semantics | Built; whether NRules is the evaluator is open | D13 (`docs/adr/0001-studio-stack.md`) |
 | Charges and VAT | `p.enrich.charges.v1` on the bank's slabs, posted by `p.post.accounting.v2`, native code-behinds (R-12-25) | Waiting on others (DIB's slabs) | I-58 |
-| GL mapping (settlement, suspense, charge income, VAT accounts) | Parameters of the accounting template (R-12-12) | Waiting on others (DIB's accounts) | I-58, I-184 (1) |
-| Exchange rates | A bank's rates as a dial of `p.enrich.fx-rate.v1` | Partly: no feed refreshes them | I-189 (4) |
+| GL mapping (settlement, suspense, charge income, VAT accounts) | Parameters of the accounting template (R-12-12), shown read-only to supervisors on the operations console's Ledger accounts page (R-05-91) | Waiting on others (DIB's accounts) | I-58, I-184 (1), I-282 |
+| Exchange rates | The rates feed: the bank's rates service through `p.port.fx-rates.v1`, published as a signed configuration release on a standing consent (R-09-177, R-09-179); `p.enrich.fx-rate.v1` 1.2.0 refuses a rate older than `maxRateAge` (R-09-178); "rates stale" in the operations console (R-05-92) | Waiting on others (each bank's rates service) | I-189 (4), I-163, I-275 to I-278 |
 | Posting windows | The posting gate and the schedule-gated await | Built | |
 | Business calendar and holds by business day | Reference table `uae.p.ref.business-calendar.v1`, the calendar port's `reference` adapter, hold expiry by business day (R-09-88) | Partly: an await still counts Saturday and Sunday only; the holidays that follow the moon are added each year | I-166, I-151 (3) |
 
@@ -69,7 +69,7 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | Retention and erasure | Tombstones on a bank approver's consent, legal holds (R-05-70) | Partly: the store keeps the values | I-180 |
 | Audit log and admin activity log | Hash-chained facts on every chain; the console's own chain (`GET /ops/api/audit`) and the service console's, each on an Audit page: newest first, filtered by person, action and date, each row with its hash, and whether the chain verifies (R-05-75, R-05-76); the studio's audit | Built | I-202 |
 | Customer 360 and counterparty 360 | None | No decision | I-189 (1) |
-| Fraud alerts and cases | Screening only | No decision | I-189 (2) |
+| Fraud alerts and cases | The fraud alert list in the operations console's work queue: assign, note, release or refuse through the payment's own action (R-05-90); case management deferred | Partly: no cases | I-189 (2), I-188, I-279, I-280 |
 | Compliance cases, sanctions case review, suspicious activity reports | None | Deferred by the owner | I-188 |
 | Treasury: nostro, FX quotes, liquidity, funding, exposure | None (`p.port.liquidity.v1` has no adapter) | Deferred by the owner | I-188 |
 | Incidents, shift handover, workflow replay | None (the studio's debugger replays a run at design time) | Deferred by the owner | I-188 |

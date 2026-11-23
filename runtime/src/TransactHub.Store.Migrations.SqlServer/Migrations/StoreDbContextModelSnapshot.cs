@@ -925,6 +925,9 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                     b.Property<int>("Events")
                         .HasColumnType("int");
 
+                    b.Property<string>("GapsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Stream")
                         .IsRequired()
                         .HasMaxLength(140)

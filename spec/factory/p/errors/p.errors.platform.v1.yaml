@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.3.0
+release: 1.7.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -923,6 +923,50 @@ entries:
         - Restore the last role map from a configuration backup.
       escalation: Escalate to the bank's security officer and the runtime's service team. Do not install or activate anything
         until it is explained.
+  - code: fx.RateStale
+    title: The exchange rate is older than the bank allows
+    category: business
+    retryable: false
+    raisedBy:
+      - activity
+      - native
+      - interpreter
+      - operations-console
+    meaning: 'p.enrich.fx-rate.v1 refused a rate whose asOf is older than the bank''s staleness limit (maxRateAge): the line
+      is no-rate and facts.fx names the pair as stale (R-09-178). The operations console warns "rates stale" for the same rate.'
+    causes:
+      - The rates feed has not published for longer than the limit; the bank's rates service does not answer, or its breaker is open.
+      - The bank approver has not consented to the feed's latest release, so it waits, installed and not in force.
+      - The bank's staleness limit is shorter than the feed's schedule (refreshMinutes).
+    runbook:
+      checks:
+        - Read the rates and their age on the operations console's banner, and the feed's last release on the service console.
+        - Read the health of the rates port's binding (p.port.fx-rates.v1) on the service console's Health page.
+        - Look for a configuration release of the feed that waits for consent.
+      safeActions:
+        - Mend the rates service or its binding, then let the feed publish again; consent to a release that waits, if it is right.
+        - Then decide the payment that was refused; do not set a rate by hand to get it through.
+      escalation: Escalate to the bank's treasury and payment operations supervisor with the pair, its asOf and the limit.
+  - code: fx.FeedFailed
+    title: The rates feed could not publish
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: 'A run of the exchange-rate feed published nothing: the rates service did not answer, refused, or gave a quote that
+      is not a pair of currencies with a rate above zero and an instant (R-09-177). The rates in force stay as they were and grow older.'
+    causes:
+      - The bank's rates service is down or slow, or its circuit breaker is open.
+      - The rates service answered a quote the feed will not publish.
+      - The feed's signing key is not one the bank's trusted signers list.
+    runbook:
+      checks:
+        - Read the feed's warning in the service console's log and the rates port's health.
+        - Check that the feed's public key is in the trusted signers.
+      safeActions:
+        - Wait for the next run; the feed runs again on its schedule.
+        - Mend the rates service or its binding; a quote is never corrected by hand.
+      escalation: Escalate to the bank's treasury systems team with the time of the run and the error.
   - code: ops.ActionNotOffered
     title: The action does not apply to this payment now
     category: business

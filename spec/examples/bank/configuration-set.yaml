@@ -1,6 +1,6 @@
 kind: configuration-set
 tenant: example-bank
-release: 1.9.0
+release: 1.10.0
 title: Example bank configuration
 accepts:
   - { scope: p, release: 1.8.0 }
@@ -43,6 +43,19 @@ values:
     value:
       - { from: AED, to: USD, rate: 0.2723 }
     validFrom: "2026-01-01"
+    validTo: "2026-10-31"
+  # From November the rates feed's rates as well (R-09-177, R-09-178, Issue I-189): each with the instant the bank's rates service
+  # gave it, so a payment refuses one older than the bank's staleness limit (P-FX-004, P-FX-005). The rate set by hand has no asOf
+  # and is not aged. Synthetic.
+  - parameter: p.enrich.fx-rate.v1#rates
+    value:
+      - { from: AED, to: USD, rate: 0.2723 }
+      - { from: AED, to: EUR, rate: 0.2511, asOf: "2026-11-15T09:00:00Z" }
+      - { from: AED, to: GBP, rate: 0.2134, asOf: "2026-11-16T12:00:00Z" }
+    validFrom: "2026-11-01"
+  - parameter: p.enrich.fx-rate.v1#maxRateAge
+    value: PT24H
+    validFrom: "2026-11-01"
   - parameter: p.enrich.charges.v1#chargeSlabs
     value:
       - { upTo: 1000, fixed: 5, percent: 0.1 }

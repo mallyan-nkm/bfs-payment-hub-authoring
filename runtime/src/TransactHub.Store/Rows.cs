@@ -265,6 +265,12 @@ public sealed class StreamPositionRow : IInsertOnly
     /// <summary>The last outbox row the stream has published, with every row before it.</summary>
     public long Through { get; set; }
     public int Events { get; set; }
+    /// <summary>
+    /// The outbox numbers the stream has passed over and still looks for (R-09-175, Issue I-257): a JSON object
+    /// <c>{"open": [{"from", "to", "at"}], "dropped": [...]}</c>, each a range of numbers a save took but had not committed when the
+    /// stream went past it. A later batch publishes any of them that has since committed. Null when there are none.
+    /// </summary>
+    public string? GapsJson { get; set; }
     public DateTimeOffset At { get; set; }
 }
 

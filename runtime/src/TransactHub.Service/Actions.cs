@@ -32,7 +32,9 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
     [
         new("install", "Install a version from GitHub", "tag", true, "built", "Downloads a signed version (a workflow package, a distribution or a configuration release), verifies it and stores it once (R-09-40)."),
         new("put-in-force", "Put a configuration release in force", "release", true, "built", "Puts an installed configuration release's values, port bindings, calendars and reference tables in force, once its signature and the parameter contract of every distribution not removed are checked again (R-09-111)."),
-                new("restore", "Restore a backup", "backup", true, "built", "Restores a verified, signed backup into an empty or test runtime: its releases installed again from GitHub, its activations and values (R-09-41)."),
+        new(StandingConsent.Grant, "Give a standing consent to rate releases", "bank", true, "built", "Lets the exchange-rate feed's configuration releases, which set the bank's rates and its rates table and nothing else, go in force without a consent each; every other release still waits for one (R-09-179, Issue I-275)."),
+        new(StandingConsent.Revoke, "Revoke the standing consent to rate releases", "bank", true, "built", "Ends the standing consent: from now each rate release of the feed waits for a bank approver's consent of its own (R-09-179)."),
+        new("restore", "Restore a backup", "backup", true, "built", "Restores a verified, signed backup into an empty or test runtime: its releases installed again from GitHub, its activations and values (R-09-41)."),
         new("activate", "Activate a release from a date", "release", true, "built", "Records an activation of an installed release; the release active until then starts draining."),
         new("rollback", "Roll back to the previous release", "scope", true, "built", "Activates again, now, the release that was active before the current one."),
         new("remove", "Remove a release", "release", true, "built", "Records the release as removed; refused while it is active or a payment pinned to it is open."),

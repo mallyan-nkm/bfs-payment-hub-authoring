@@ -1846,6 +1846,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add `balance`, `accounts` and `charges` to `p.port.core-banking.v1` in its next release (and their simulator scenarios), so a binding's settings for them are checked like the others (L48); decide with each bank whether the charge preview should be the platform's own pricing (`p.enrich.charges.v1` on the bank's dials, what the payment will post) instead of core banking's, and whether the channel needs the GL accounts at all.
 
+**Done for (1) (23 November 2026, owner's decision, docs/OWNER-ACTIONS.md A3, R-05-91).** The bank's own ledger accounts (settlement, suspense, charge income and VAT of each accounting activity, as its configuration in force names them, an account it does not set shown as not set) are a read-only page of the operations console for supervisors (`GET /ops/api/ledger-accounts`). They are bank settings, changed only in the studio, and not offered to channels: the channel keeps the corporate's own accounts from core banking. (2) stays open; what the view cannot know is I-282.
+
 ## I-185. Work management: what the queue does not yet do
 
 **Issue.** The owner asked for assignment, escalation and reassignment of a payment or a queue item, bulk actions, saved filters per user and a live queue.
@@ -1896,6 +1898,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Ask the owner, item by item, whether each is needed, deferred or dropped. For the exchange-rate feed, if it is needed: an `fx-rates` reference table or a rates port with a staleness limit (a dial with a default and bounds), so a payment refuses a rate older than the bank allows.
 
 **Done for the circuit breakers of (5) (23 November 2026, owner's decision, R-09-155, R-09-156).** Every production adapter that calls an outside system calls it through a breaker per target: core banking and the bank's other gateways, SFTP, MQTT, Kafka and the webhooks. After `breakerFailures` failures in a row (default 5, 1 to 100) it stops calling for `breakerOpenSeconds` (default 30, 1 to 3600), then tries one call; each move is a row of `breaker_change`, and the service console's health shows an open breaker (`circuit-breakers`). The Kubernetes portal is dropped and the customer 360 and the workspace deferred (docs/OWNER-ACTIONS.md A2); the exchange-rate feed and the fraud alert list are still to build. What is left of the breakers: I-255 and I-259.
+
+**Done for the exchange-rate feed of (4) and the fraud alerts of (2) (23 November 2026, owner's decision, R-09-177 to R-09-179, R-05-90, R-05-92, R-11-95, R-11-96).** (4) The rates port `p.port.fx-rates.v1` (factory 1.17.0, with its simulator) and its runtime adapters `simulator` and `gateway-rest`; a scheduled job of the service console's host, the rates feed, asks the bank's binding every `refreshMinutes` and publishes the rates as a signed configuration release of the bank (the table `b.ref.fx-rates.v1` and the value `p.enrich.fx-rate.v1#rates`, each rate with its `asOf`), put in force on the bank approver's standing consent to rate releases or else waiting for its own (I-275). `p.enrich.fx-rate.v1` 1.2.0 refuses a rate older than the bank's `maxRateAge` (default PT24H, from PT1H to P7D) as `no-rate` with `fx.RateStale`, on the studio interpreter and the native code alike, and the operations console says "rates stale" in its top bar. Each real bank binds the rates port by placeholder until it names its rates service (I-163). (2) A suspect payment is an alert in the work queue, with its reason and a link to the payment; staff take, escalate, note and close it, and release or refuse its payment by the payment's own action with the view's rules. Left: I-276 to I-280.
 
 ## I-190. Annex C and Part 9 still count 55 conformance scenarios
 
@@ -2186,11 +2190,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a binding setting `stream` (default the port's name) that names the position, so a bank that wants a replay to a new topic names a new stream, and `from` (`earliest`, the default, or `latest`), read only when the stream has no position yet. Both values with defaults and bounds, set in the configuration release.
 
+**Done as recommended (23 November 2026, owner's acceptance, R-09-176).** The relay reads `stream` (default `p.port.event-stream.v1`; small letters, digits, dots and dashes) and `from` (`earliest` or `latest`) from the binding in force. A topic changed under the same stream goes on from its position; a new stream starts at the first fact or, with `latest`, records the newest outbox number as its start and sends no history. A value outside its bounds is refused, never clamped (`EventStreamTests`).
+
 ## I-257. A save slower than the gap timeout is passed over by the event stream
 
 **Issue.** The relay publishes only an unbroken run of outbox numbers and waits at a gap (a save in flight) until the row after it is ten seconds old, as the read model's projection does (R-05-49). A save that takes longer than that between taking its outbox number and committing is taken for one that was rolled back, and its event is never published, though at-least-once delivery is asked for.
 
 **Recommendation.** Make the gap timeout a dial of the operations console with a default and bounds, record each gap passed over as a fact on the console's chain so it can be looked for, and, when the store can give one, publish in commit order instead (a commit-ordered sequence or the database's change feed).
+
+**Done (23 November 2026, owner's acceptance, R-09-175), by re-scanning behind the position.** When the relay passes a gap after the timeout it keeps the range of numbers it passed over in its position row (`stream_position.GapsJson`, insert-only, a column added on both databases), and every later pass looks for them again: a save that commits after the timeout is published on the next pass, before anything newer, even after a restart. Order per payment holds, because a payment's next fact can only be saved once the one before it committed (its chain's hash). The gap timeout is the binding's dial `gapSeconds` (default 10, from 1 to 600), not the console's, since it is the stream's; a range is dropped only after `gapHorizonMinutes` (default 1440, from 10 to 10080), and each range dropped is written in the position row so it can be looked for. `EventStreamTests` commits a save after the timeout, with the relay restarted in between, and sees every fact once. What is left is I-281.
 
 ## I-258. The laptop's configuration release does not carry its alert and event bindings
 
@@ -2203,6 +2211,54 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** A call an open breaker refuses fails as a transport failure (`CircuitOpenException`, an `HttpRequestException`), so a step retries it as it retries a system that does not answer, and the service console's probe `circuit-breakers` uses `service.ProbeFailed`. There is no entry in the platform's error dictionary that says a breaker is open and what to do (`p.errors.platform.v1` 1.4.0 is another change's, so this change added none).
 
 **Recommendation.** In `p.errors.platform.v1` 1.5.0 add `port.CircuitOpen` with a runbook (find the failing system in the probe's detail, mend it or its binding, and wait for the trial call), raise it from the probe and from a step's refusal, and have `ErrorDictionaryTests` read it.
+
+## I-275. Who consents to the exchange-rate feed's releases
+
+**Issue.** The owner asked that the rates feed publish its rates as a signed configuration release, which goes in force like any configuration (R-09-110, R-09-111): on a bank approver's consent. Rates refresh many times a day. The spec does not say whether each rate release needs its own consent, or whether the bank approver may consent once to a kind of release.
+
+**Recommendation, built (R-09-179).** A standing consent the bank approver grants once, for rate releases only. It is asked for in the service console's book (`grant-rate-consent`, by a service engineer) and given by a bank approver, another person, like every change of the system (R-09-77); it is revoked the same way (`revoke-rate-consent`); each is a fact on its own chain (`standing-consent:fx-rates:<bank>`). It covers only a release whose configuration set sets `p.enrich.fx-rate.v1#rates` and nothing else, whose only other file is the rates table `b.ref.fx-rates.v1`, with no binding, and whose manifest names the feed (`feed: fx-rates`). Such a release is still verified against the trusted signers and checked against every distribution's parameter contract, and its in-force fact names the standing consent and who gave it. Every other release, and every rate release while no standing consent is in force, waits for a consent of its own. Why not a consent each time: an hourly consent would either be given without reading or leave payments refusing stale rates; the rates are market data the bank's own rates service gives, and the staleness limit (R-09-178) and the bounds still hold. Decide with each bank's treasury and its bank approver whether to grant it.
+
+## I-276. The rates feed's releases and the studio's releases share one line of numbers
+
+**Issue.** A configuration release is numbered on the bank's one line of releases, and the value in force is the one the latest release that sets the parameter gives (R-09-111). The feed numbers its release the patch after the bank's newest (`1.10.1`, `1.10.2`, ...). The studio's next release is a minor (`1.11.0`), so the two do not collide while the studio makes no patch releases; but a studio release that sets `p.enrich.fx-rate.v1#rates` (the example bank's does) is newer than the feed's and its rates win until the feed runs again, and a studio patch release could take a number the feed took (the install refuses it, `ReleaseConflict`).
+
+**Recommendation.** For a bank on the feed, the studio should not set `p.enrich.fx-rate.v1#rates` (lint: a bank whose configuration binds `p.port.fx-rates.v1` sets no `rates`), and should never make a patch release of a bank's configuration; or give the feed a line of its own (a configuration release per kind, ordered per parameter by release and kind). Until one is decided, a bank that takes the feed removes its typed rates.
+
+## I-277. The feed's signing key is trusted like the studio's
+
+**Issue.** The feed signs its releases with a key of its own (`Service:FxRates:SigningKeyRef`, by reference), which the bank adds to its trusted signers. The trust list does not say what a key may sign, so a leak of the feed's key could sign any configuration release. That release would still wait for a bank approver's consent (the standing consent covers rate releases only), but it would verify.
+
+**Recommendation.** Let a trusted signer name the kinds it may sign (`kinds: [configuration]`) and, for a configuration release, a scope (`feed: fx-rates`), checked at verification; give the feed's key that scope only.
+
+## I-278. A rate set by hand is never aged
+
+**Issue.** `p.enrich.fx-rate.v1` 1.2.0 ages a rate only by its `asOf`, which the feed gives (R-09-178). A rate the bank types into its configuration has no `asOf`, so it is never refused as stale, and the operations console lists it as standing. That keeps every refund order of today running, but a bank that forgets to remove its typed rates once it takes the feed keeps old rates in force without a warning.
+
+**Recommendation.** Add a dial `requireAsOf` (default false) to `p.enrich.fx-rate.v1`; a bank on the feed sets it, so that a rate with no `asOf` is refused like a stale one. Decide with each bank's treasury.
+
+## I-279. Releasing a suspect payment needs no second approver
+
+**Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
+
+**Recommendation.** Let a view's action say `when: { hold: approval, activity: p.screen.fraud.v1 }` (the step that led to the hold), and give the platform view an `approve` for fraud holds with `secondApprover: Supervisor`, in its next release. Decide with each bank's fraud team.
+
+## I-280. What makes a fraud alert, beyond a suspect payment
+
+**Issue.** An alert is a payment `p.screen.fraud.v1` found `suspect` (R-05-90). The spec does not say whether a sanctions hit (`p.screen.sanctions.v1`, `hit`), a fraud engine that did not answer, or a payment the engine scored high but cleared is an alert too, nor whether an alert should carry the engine's score and case reference (the fraud port answers only a status, a reason code and a reference).
+
+**Recommendation.** Keep sanctions hits out of the fraud list (they are compliance work, deferred with the cases, I-188); ask each bank's fraud team whether a high but clear score should be an alert, and if so add a `score` to the fraud port's answer and a dial for the threshold.
+
+## I-281. The event stream still drops a gap after its horizon
+
+**Issue.** The relay looks for a passed-over outbox number until the gap horizon (R-09-175, default a day). A save that commits later than that is still never published. No save of the store lasts that long (each is one transaction with the database's command timeout), but the spec asks that no committed fact is ever skipped.
+
+**Recommendation.** When the store can give one, publish in commit order instead: on SQL Server a `rowversion` read below `MIN_ACTIVE_ROWVERSION()`, on PostgreSQL the transaction id read below `pg_snapshot_xmin(pg_current_snapshot())`; then no gap is passed over at all. Until then, keep the horizon well above the store's longest transaction.
+
+## I-282. The ledger view knows four parameter names
+
+**Issue.** The operations console's ledger view lists the accounts of every accounting activity whose parameters are named `settlementAccount`, `suspenseAccount`, `chargeIncomeAccount` or `vatAccount` (R-05-91). An activity that names a ledger account otherwise (a scheme's charge account, a future nostro per currency) is not shown, and the console cannot know it is an account.
+
+**Recommendation.** Let an activity's parameter say what it is (`role: ledger-account`, with its kind), in its next release, and have the view list every parameter so marked; until then the four names are the platform's convention, held by the accounting templates.
 
 ## Not done, and why
 
