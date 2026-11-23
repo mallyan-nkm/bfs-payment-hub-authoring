@@ -1,18 +1,17 @@
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { toYaml } from '../src/core/yaml.js';
 import { ACK_IN, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, GARBAGE, LEG, PORT, RULE, RULESET, SCHEME, SEND, SIM, SUBFLOW, SUBMIT, USD, VALID, VALIDATE } from '../test/blackbox/demo-scheme.js';
 import * as D from './hands-on/docs.js';
 import { SLOW, type Director, type Scene } from './record.js';
-import { BANK, ENVIRONMENT, URLS, call, compose, mask, runtimeGo, runtimeSignIn, sh, stackUp, useStackStudio } from './stack.js';
+import { BANK, ENVIRONMENT, ROOT, URLS, call, mask, runtimeGo, runtimeSignIn, sh, stackUp, useStackStudio } from './stack.js';
 
 // Runtime video 3: one master workflow, end to end, across every console, on the laptop stack (deploy/laptop).
 //
 //   The studio: a bank's values, hook and rule on the pre-deployed corporate payment workflow; a new scheme leg (the synthetic
 //   uae.demo, as demo/build.ts builds it) connected to that workflow by its dispatch table; the bench; maker-checker; the
 //   distribution the approval builds. The service console: install, a bank approver's consent, activate. A payment in through
-//   the File API, followed in the operations console. A value changed by a configuration release (no deployment). A second
+//   the File API (a WPS file: a bank cannot yet license a scheme built in the studio, I-205), followed in the operations console. A value changed by a configuration release (no deployment). A second
 //   distribution activated, the first draining while a payment pinned to it finishes there, then removed; and a roll back.
 //
 // Where a step has no screen today it is done as an operator would, by the API or a command shown in the terminal panel, and the
@@ -32,7 +31,7 @@ const SVC = `${URLS.service}/service/api`;
 const PLATFORM: [string, string][] = [
   ['p.port.core-banking.v1', 'p.sim.core-banking.v1'], ['p.port.sanctions.v1', 'p.sim.sanctions.v1'], ['p.port.fraud.v1', 'p.sim.fraud.v1'],
 ];
-const DEMO: [string, string][] = [[PORT.name, SIM.name], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1']];
+const DEMO: [string, string][] = [[PORT.name, SIM.name], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1'], ['p.port.encryption.v1', 'p.sim.encryption.v1']];
 /** The simulators the front door's one-off run binds: the platform's, WPS's, the demo scheme's and the bank's. */
 const RUN_BENCH = [
   ...['core-banking', 'sanctions', 'fraud', 'channel', 'payment-record', 'facts-out', 'encryption'].map((x) => ({ port: `p.port.${x}.v1`, simulator: `p.sim.${x}.v1`, scenario: 'accept' })),
@@ -60,13 +59,19 @@ export async function open(d: Director) {
   // The studio builds the bank's distributions for Temporal, with simulators, for this test environment.
   await d.api('shared.checker').put('/api/git', { actor: 'shared.checker', target: 'temporal', distributions: true, testDistributions: true });
   await d.as('', 'shared.designer');
-  await d.go('catalogue');
+  await d.page.goto(`${URLS.studio}/#/catalogue`);
 }
 
 export function scenes(d: Director): Scene[] {
   const p = () => d.page;
   const main = () => p().locator('main');
   const term = (command: string, output: string) => d.terminal(command, output);
+  /** A studio page, as the user signed in (Director.go would sign in as the example bank's maker for the bank's pages). */
+  const go = async (hash: string) => {
+    await p().goto(`${URLS.studio}/#/${hash}`);
+    await p().waitForLoadState('networkidle');
+    await d.wait(d.pace.after);
+  };
   const close = () => d.closeTerminal();
   const status = async (re: RegExp, within = p()) => {
     for (let i = 0; i < 240; i++) {
@@ -77,7 +82,7 @@ export function scenes(d: Director): Scene[] {
   };
   // ------------------------------------------------------------ studio helpers (as demo/build.ts and demo/hands-on.ts)
   const editor = async (kind: string, doc: any) => {
-    await d.go(`editors?kind=${kind}`);
+    await go(`editors?kind=${kind}`);
     await d.click(p().getByRole('button', { name: 'Start new' }));
     await d.click(p().getByRole('button', { name: 'Edit the YAML' }).first());
     await d.paste(p().getByLabel('Document YAML').first(), toYaml(doc));
@@ -86,7 +91,7 @@ export function scenes(d: Director): Scene[] {
   const save = async () => { await d.click(p().getByRole('button', { name: /^Save draft$/ }).first()); await status(/Saved draft/); };
   const publish = async (checker = 'shared.checker', maker = d.user) => { await d.release(checker, maker); await d.wait(700); };
   const designer = async (opts: { kind?: 'workflow' | 'hook'; wfKind?: string }, doc: any) => {
-    await d.go('designer');
+    await go('designer');
     await d.select(p().getByLabel('Start from'), { label: 'Blank' });
     if (opts.kind) await d.select(p().getByLabel('Kind', { exact: true }), opts.kind);
     if (opts.wfKind) await d.select(p().getByLabel('Workflow kind'), opts.wfKind);
@@ -98,7 +103,7 @@ export function scenes(d: Director): Scene[] {
     await d.wait(900);
   };
   const bench = async (target: string, tenant: string, ports: [string, string, string?][]) => {
-    await d.go('tests');
+    await go('tests');
     await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
     await d.select(p().getByLabel('Target', { exact: true }), target);
     await d.select(p().getByLabel('Run tenant'), tenant);
@@ -122,19 +127,26 @@ export function scenes(d: Director): Scene[] {
   };
   /** The bank's configuration set as the tenant page shows it, changed, pasted, saved; the bank approver approves it. */
   const configuration = async (change: (c: any) => void) => {
-    await d.go('tenant');
+    await go('tenant');
     const cs = (await d.api(MAKER).get(`/api/tenants/${BANK}/configuration`)).data;
     const next = JSON.parse(JSON.stringify(cs.configurationSet));
     next.release = String(next.release).replace(/^(\d+)\.(\d+)\..*/, (_: string, M: string, m: string) => `${M}.${Number(m) + 1}.0`);
     change(next);
-    await d.paste(p().getByLabel('Configuration set YAML'), toYaml(next));
+    // The page loads the stored set into the editor; paste only once it is in, or the load overwrites the paste.
+    const box = p().getByLabel('Configuration set YAML');
+    for (let i = 0; i < 120 && !(await box.inputValue()).includes(String(cs.configurationSet.release)); i++) await p().waitForTimeout(100);
+    await d.paste(box, toYaml(next));
+    // The set is validated on every edit; the save is offered once no error is left.
+    const saveButton = p().getByRole('button', { name: 'Save the configuration set' });
+    for (let i = 0; i < 300 && !(await saveButton.isEnabled()); i++) await p().waitForTimeout(100);
     await d.wait(1200);
-    await d.click(p().getByRole('button', { name: 'Save the configuration set' }));
+    await d.click(saveButton);
+    await status(/^Saved /);
     await d.wait(1200);
   };
   const approveBank = async (match: string) => {
     await d.as('', CHECKER);
-    await d.go('governance');
+    await go('governance');
     await d.approveRow(match);
   };
   const setValue = (c: any, parameter: string, value: unknown) => {
@@ -188,12 +200,12 @@ export function scenes(d: Director): Scene[] {
     {
       card: ['1. A new scheme leg', 'The synthetic scheme uae.demo, built by the platform\'s designer'],
       say: 'We start as the platform\'s workflow designer. The corporate payment workflow is already deployed for the bank. It has a slot, the scheme leg, and a scheme fills it. We will add a new, made-up scheme called U A E demo, so the bank can pay through it.',
-      do: async () => { await d.go('artefact/p.wf.corporate.v1'); await d.scroll(400); },
+      do: async () => { await go('artefact/p.wf.corporate.v1'); await d.scroll(400); },
     },
     {
       say: 'First, its test data: three synthetic files in the bench\'s library. A good file, a file in dollars, and a file that is not a demo file at all.',
       do: async () => {
-        await d.go('tests');
+        await go('tests');
         await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
         await d.click(p().getByRole('button', { name: 'Inbound sample' }));
         for (const [name, content] of [['demo-credit-file-valid.csv', VALID], ['demo-credit-file-usd.csv', USD], ['demo-credit-file-garbage.csv', GARBAGE]]) {
@@ -258,7 +270,7 @@ export function scenes(d: Director): Scene[] {
     {
       card: ['2. The bank\'s own values, hook and rule', 'As the bank\'s configurator, on the pre-deployed corporate workflow'],
       say: 'Now we work for the bank, as its configurator. The bank cannot change the shared workflow, but it can take a new scheme, set values within their bounds, add a rule of its own, and plug a hook into a hook point.',
-      do: async () => { await d.as('', MAKER); await d.go('bank'); },
+      do: async () => { await d.as('', MAKER); await go('bank'); },
     },
     {
       say: 'First the bank takes the new scheme: it accepts U A E demo and enables its rail, in its configuration set. The checks run as we type. The bank\'s approver, another person, approves it. That builds a configuration release: values, never code.',
@@ -309,7 +321,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       say: 'Export shows what went to the content branch: each approved change set as one commit, with the bank\'s distribution and configuration releases under their tags.',
-      do: async () => { await d.go('export'); await d.scroll(500); await d.scroll(400); },
+      do: async () => { await go('export'); await d.scroll(500); await d.scroll(400); },
     },
     // ================================================================== 3. install
     {
@@ -361,11 +373,16 @@ export function scenes(d: Director): Scene[] {
     // ================================================================== 4. a payment in
     {
       card: ['4. A payment in, through the File API', 'The only door for files'],
+      say: 'Now a payment. One gap first: a bank licenses a scheme in its bank pack\'s lock file, and the studio cannot change that file today. So this distribution does not carry U A E demo yet, and a demo file would find no route. We send a WPS salary file instead. That gap is recorded as an issue.',
+      do: async () => { await term('cat content-configurations/banks/adib/pack.yaml | grep -A2 licensedSchemes', sh('grep -A2 licensedSchemes content-configurations/banks/adib/pack.yaml')); },
+    },
+    {
       say: 'Every file comes in through the File API. A channel uploads a file over HTTPS, or the SFTP gateway picks it up from an inbox. There is no upload screen in the consoles yet, so we send it as a channel would, with its API.',
       do: async () => {
-        const body = { tenant: BANK, message: 'uae.demo.credit-file', fileName: `DEMO-${today}.csv`, contentBase64: Buffer.from(VALID).toString('base64') };
+        const sif = fs.readFileSync(path.join(ROOT, 'content-configurations', 'samples', 'wps-sif-valid.sif'));
+        const body = { tenant: BANK, message: 'uae.wps.sif', fileName: `${today}0001.SIF`, contentBase64: sif.toString('base64') };
         const r = await call(URLS.files, 'ops.operator', 'POST', '/files/ui', body);
-        await term(`curl -s -X POST http://localhost:8485/files/ui -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \\\n  -d '{"tenant":"${BANK}","message":"uae.demo.credit-file","fileName":"DEMO-${today}.csv","contentBase64":"..."}'`, mask(JSON.stringify(r.data, null, 2)));
+        await term(`curl -s -X POST http://localhost:8485/files/ui -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \\\n  -d '{"tenant":"${BANK}","message":"uae.wps.sif","fileName":"${today}0001.SIF","contentBase64":"..."}'`, mask(JSON.stringify(r.data, null, 2)));
       },
     },
     {
@@ -376,13 +393,9 @@ export function scenes(d: Director): Scene[] {
       say: 'So we do what the laptop\'s own test does: the front door pins the payment to the active distribution, and its one-off runner runs it from that copy, on Temporal, on SQL Server.',
       do: async () => {
         state.P1 = `PAY-DEMO-${today}-1`;
-        const pinned = await pin(state.P1, 'uae.demo');
-        // The file the File API kept, given to the runner in the test bench's work folder (the runner reads a path under /opt/th).
-        const local = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'th-demo-')), 'demo-credit-file.csv');
-        fs.writeFileSync(local, VALID);
-        compose(`cp ${local} testbench:/var/lib/transacthub/work/demo-credit-file.csv`);
-        const r = runPinned(state.P1, pinned.distribution ?? state.A.releaseId, '../../var/lib/transacthub/work/demo-credit-file.csv', 'uae.demo.credit-file');
-        await term(`curl -s -X POST http://localhost:8481/payments/pin ... '{"paymentId":"${state.P1}","bank":"${BANK}","scheme":"uae.demo"}'\n${JSON.stringify(pinned)}\n\n$ ${r.shown}`, '(running)');
+        const pinned = await pin(state.P1, 'uae.wps');
+        const r = runPinned(state.P1, pinned.distribution ?? state.A.releaseId, 'content-configurations/samples/wps-sif-valid.sif', 'uae.wps.sif');
+        await term(`curl -s -X POST http://localhost:8481/payments/pin ... '{"paymentId":"${state.P1}","bank":"${BANK}","scheme":"uae.wps"}'\n${JSON.stringify(pinned)}\n\n$ ${r.shown}`, '(running)');
         state.running = r.run();
       },
     },
@@ -393,12 +406,11 @@ export function scenes(d: Director): Scene[] {
       do: async () => {
         await close();
         await runtimeSignIn(d, URLS.ops, 'operator', 'payments');
-        await d.type(p().getByLabel(/Id, reference or file name/), state.P1 ?? '', 20);
         await d.wait(1500);
       },
     },
     {
-      say: 'Its page: the legs, and the timeline of facts, one per step, each chained to the one before. The bank\'s hook ran after validation and passed the file: two lines, under the limit of five.',
+      say: 'Its page: the legs, and the timeline of facts, one per step, each chained to the one before. The bank\'s hook ran after validation and passed the file: one line, under the limit of five.',
       do: async () => {
         const row = p().locator('[data-testid="payment-row"]').first();
         if (await row.count()) await d.click(row.locator('a').first());
@@ -453,7 +465,7 @@ export function scenes(d: Director): Scene[] {
         await d.page.context().clearCookies();
         await d.as('', MAKER);
         // A new release of the published hook, opened in the designer (?open=<name>), its title changed.
-        await d.go(`designer?open=${encodeURIComponent(D.BANK_HOOK.name)}`);
+        await go(`designer?open=${encodeURIComponent(D.BANK_HOOK.name)}`);
         for (let i = 0; i < 80 && !(await p().getByLabel('Workflow YAML').inputValue()).includes(D.BANK_HOOK.name); i++) await p().waitForTimeout(100);
         const yaml = await p().getByLabel('Workflow YAML').inputValue();
         await d.paste(p().getByLabel('Workflow YAML'), yaml.replace(/^title: .*$/m, 'title: Hold large salary and credit files for a person to approve'));
@@ -504,18 +516,21 @@ export function scenes(d: Director): Scene[] {
       },
     },
     {
-      say: 'It finished on A: its task queues and its build id are A\'s. A has no open payment now, so it is drained, and the engineer may remove it, with the approver\'s consent. The package stays on GitHub and in the store, as a record.',
+      say: 'It finished on A: its task queues and its build id are A\'s. A is removed only once no payment pinned to it is open. Here one still counts as open: the file the File API refused at the start was pinned to A, but never became a payment. That is an issue we recorded. When none is open, A is drained, and the engineer removes it with the approver\'s consent; its package stays on GitHub and in the store, as a record.',
       do: async () => {
-        await confirm(releaseRow(state.A.releaseId).getByRole('button', { name: 'Remove' }), `CR-DEMO-004: remove ${state.A.release}, drained (synthetic)`);
-        await consent('Agreed: CR-DEMO-004 (synthetic)');
-        await svcAs('service engineer', 'content');
+        const remove = releaseRow(state.A.releaseId).getByRole('button', { name: 'Remove' });
+        if (await remove.isEnabled()) {
+          await confirm(remove, `CR-DEMO-004: remove ${state.A.release}, drained (synthetic)`);
+          await consent('Agreed: CR-DEMO-004 (synthetic)');
+          await svcAs('service engineer', 'content');
+        } else await d.hover(remove, 2500);
         await d.point(p().getByRole('table', { name: 'Releases' }), 2000);
       },
     },
     // ================================================================== 8. roll back
     {
       card: ['8. Roll back', 'Activate the earlier distribution again'],
-      say: 'Last, a roll back. Rolling back is activating the earlier distribution again. A was removed, so it must be installed again from GitHub first, then activated, each with consent. Payments that started on B finish on B.',
+      say: 'Last, a roll back. Rolling back is activating the earlier distribution again, with consent: new payments take A again, and payments that started on B finish on B. Had A been removed, it would be installed again from GitHub first.',
       do: async () => {
         const again = (await distributions()).find((v) => v.tag === state.A.tag);
         if (again?.state === 'offered') {
@@ -538,7 +553,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       card: ['That is the whole run', 'Studio, service console, File API, operations console: one bank, end to end.'],
-      say: 'That is the whole run: a bank\'s values, hook and rule, and a new scheme leg, built and tested in the studio, approved by a second person, installed with a bank approver\'s consent, paid, followed, changed without a deployment, replaced side by side, drained, removed, and rolled back.',
+      say: 'That is the whole run: a bank\'s values, hook and rule, and a new scheme leg, built and tested in the studio, approved by a second person, installed with a bank approver\'s consent, paid, followed, changed without a deployment, replaced side by side while the first drained, and rolled back.',
     },
   ];
 }

@@ -169,7 +169,8 @@ export class Director {
   user = '';
   async as(_tenant: string, actor: string) {
     if (this.user === actor) return;
-    await signInPage(this.page, this.server.url, actor);
+    // A sign-in that lands signed out (a busy machine, a callback raced by the app's own navigation) is tried once more.
+    await signInPage(this.page, this.server.url, actor).catch(() => signInPage(this.page, this.server.url, actor));
     this.user = actor;
     await this.wait(this.pace.after);
   }
@@ -340,7 +341,11 @@ export async function record(prod: Production, outDir: string) {
     else await d.go('catalogue');
     for (const [i, s] of list.entries()) {
       process.stdout.write(`scene ${i + 1}/${list.length} at ${d.now().toFixed(1)}s\n`);
-      await d.scene(s);
+      // TH_DEMO_FAIL_SHOT=<file.png>: a screenshot of the page as it was when a scene failed.
+      await d.scene(s).catch(async (e) => {
+        if (process.env.TH_DEMO_FAIL_SHOT) await page.screenshot({ path: process.env.TH_DEMO_FAIL_SHOT }).catch(() => undefined);
+        throw e;
+      });
     }
     await d.wait(1500);
     length = d.now();

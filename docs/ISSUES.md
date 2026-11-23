@@ -1908,6 +1908,26 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a synthetic register maker (`reg.maker`, group `th-register-makers`) to the directory and `RegisterMaker` for that group to `role-map-ops.json`, with the bank approver consenting as today.
 
+## I-204. The new-scheme tests name configuration releases of an earlier factory
+
+**Issue.** `studio/test/blackbox/e2e-new-scheme.test.ts` and `ui-build.test.ts` build the synthetic scheme `uae.demo` and then save the example bank's configuration set as release `1.3.0` (and expect `config:example-bank@1.2.0` in the web app). The example bank's shipped set is at `1.8.0`, so the save is refused (a release is later than the last, R-11-35) and every step after it fails: the payment is rejected at the route, the export names `1.8.0`. Before that, both stopped earlier still: the demo scheme sent its file with no protect step, which L46 refuses; that is fixed (the subflow encrypts first). `demo/build.ts` already derives the next release from the shipped one and its dry run passes.
+
+**Recommendation.** Derive the next release from the set the studio returns, as `demo/build.ts` and `e2e-wps.test.ts` do (I-187), in both tests, and match the saved release by pattern in the web app's step.
+
+## I-205. A scheme built in the studio cannot be licensed to a bank from the studio
+
+**Issue.** A distribution carries the schemes the bank pack's lock file licenses (`licensedSchemes`, R-11-37). The lock file is written by `npm run studio -- bank-pack <bank> --licensed <scheme> --write`, which writes this repository's folder, not the studio's content branch; no screen or API of the running studio changes it. So a scheme built in the studio (the synthetic `uae.demo` in `studio/demo/full-run.ts`) can be accepted in a bank's configuration set, enabled as a rail and tested on the studio's bench for the bank, yet the bank's next distribution does not carry it, and the runtime finds no route for its file ("No start message in the package's dispatch tables leads to p.wf.corporate.v1").
+
+**What the video does.** It builds and tests the new leg in the studio, then sends a WPS file through the runtime, and says why.
+
+**Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
+
+## I-206. A payment pinned but never started keeps its distribution open
+
+**Issue.** The front door pins a payment to the active distribution (`POST /payments/pin`) before its intake runs. When the run then fails before the payment is stored (no route, no worker, I-200), the pin stays without an end, the service console counts it as an open payment of the distribution, and the distribution can never be removed after it drains. Nothing in the consoles lists such pins or closes one.
+
+**Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
+
 ## Not done, and why
 
 | Story | Why |
