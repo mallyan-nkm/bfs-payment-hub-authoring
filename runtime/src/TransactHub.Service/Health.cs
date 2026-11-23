@@ -71,7 +71,7 @@ public sealed class HealthMonitor(IEnumerable<IProbe> probes, TimeProvider clock
 }
 
 /// <summary>Samples every probe on a period (Service:Health:EverySeconds, default 30).</summary>
-public sealed class HealthSampler(HealthMonitor m, IConfiguration cfg) : BackgroundService
+public sealed class HealthSampler(HealthMonitor m, IConfiguration cfg, TransactHub.Operations.RuntimeGauges? gauges = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -79,6 +79,8 @@ public sealed class HealthSampler(HealthMonitor m, IConfiguration cfg) : Backgro
         while (!ct.IsCancellationRequested)
         {
             try { await m.Sample(ct); } catch (OperationCanceledException) { break; } catch { /* each probe reports its own failure */ }
+            // The gauges the alert rules read (R-09-72), on the same beat.
+            try { if (gauges is not null) await gauges.Refresh(ct); } catch (OperationCanceledException) { break; } catch { /* the next beat reads again */ }
             try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
         }
     }

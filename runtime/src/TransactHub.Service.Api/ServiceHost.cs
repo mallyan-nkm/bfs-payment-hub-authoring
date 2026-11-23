@@ -107,6 +107,7 @@ public sealed class ServiceHost
             probes.AddRange(Probes.Configured(cfg, http));
             return new HealthMonitor(probes, clock);
         });
+        s.AddSingleton(_ => new RuntimeGauges(store, ops, clock: clock));
         s.AddHostedService<HealthSampler>();
         s.AddSingleton(_ => new AssistantModel(AnthropicAssistantModel.FromEnvironment(k => cfg[k])));
         s.AddSingleton(sp => new AssistantService(sp.GetRequiredService<AssistantModel>().Model, cfg["TH_ASSISTANT_ENABLED"] == "true", store, sp.GetRequiredService<HealthMonitor>(),

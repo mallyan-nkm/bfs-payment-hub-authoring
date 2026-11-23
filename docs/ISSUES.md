@@ -1501,6 +1501,12 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **Recommendation.** Keep the harnesses as they are: they are for tests, and their caller asserts the failure. Record a failure the engine retries by itself (a workflow task failure that later succeeds) as a step fact only if the operators ask for it, since it is noise for a payment that then settles. Add an OpenSearch source behind `ILogSource` when the first installation needs it, configured the same way (`Service:LogSource:Kind=opensearch`).
 
+## I-143. The service-level targets the alert rules have no number for
+
+**Issue.** The alert rules are generated from the agreed targets (R-09-72, `runtime/observability/slo/targets.yaml`). Three are agreed: 50 lines a second on nodes of four or more cores (I-108), the acknowledgement wait (the bank's `ackWait`, by default P1D) and the hold expiry (`p.hold.approval.v1#expiry`, by default P1D). Two are not. (1) How many payments may be open on one distribution at once: the rules record the open payments per distribution (`th:payments_open:by_distribution`), and the alert is not generated while the number is null. (2) The waits are the factory's defaults; a bank that sets a shorter `ackWait` (ADIB's twenty minutes, I-116) or hold expiry is alerted only at the default. The warning points (75% of the wait, 80% of the expiry) and the `for` durations are the generator's, not the owner's. The throughput alert fires only while attempts wait on the queues, so a node that is simply idle never fires it.
+
+**Recommendation.** Have the owner set (1) per installation size once the load test on the bank's hardware has run (I-68), and confirm the warning points. For (2), generate one rule per bank from its configuration release's values (the service console holds them), or have the gauges carry each wait's own limit so one rule compares the age with the limit.
+
 ## Not done, and why
 
 | Story | Why |

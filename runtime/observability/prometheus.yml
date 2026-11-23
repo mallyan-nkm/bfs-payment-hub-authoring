@@ -7,6 +7,10 @@ global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
+# The runtime's alert and recording rules, generated from slo/targets.yaml (R-09-72).
+rule_files:
+  - /etc/prometheus/rules/transacthub.rules.yaml
+
 scrape_configs:
   - job_name: transacthub
     static_configs:
