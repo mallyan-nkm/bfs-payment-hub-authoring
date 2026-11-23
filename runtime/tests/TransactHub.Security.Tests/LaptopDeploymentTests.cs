@@ -118,6 +118,8 @@ public sealed class LaptopDeploymentTests
         var fileApi = Service("file-api");
         Assert.Contains("<<: [*store, *auth, *sftp-refs]", fileApi);
         Assert.Contains("FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any", fileApi);
+        // A scheme the bank licenses later (one built in the studio, I-205) has its intake map run on the same workers.
+        Assert.Contains("FileApi__Workers__*: http://workers:7700/{distribution}/_/any", fileApi);
         Assert.Contains("*file-api-client", Service("native"));
         Assert.Contains("*sftp-refs", Service("native"));
         foreach (var host in new[] { "enginehost", "enginehost-dtfx", "enginehost-elsa", "enginehost-flowable" })

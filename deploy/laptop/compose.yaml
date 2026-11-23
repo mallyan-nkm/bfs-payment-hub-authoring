@@ -369,6 +369,8 @@ services:
       # The intake maps run on the workers of the distribution the payment is pinned to (I-158, R-09-105).
       FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any
       FileApi__Workers__p: http://workers:7700/{distribution}/_/any
+      # Any other scope: a scheme the bank licenses later, one built in the studio among them (I-205), runs on the same workers.
+      FileApi__Workers__*: http://workers:7700/{distribution}/_/any
       # The bank's bindings, its inboxes among them: its configuration release in force, from the store (R-09-112, R-09-113).
       # The front door starts and correlates payments on the bank's engine host (R-09-85, R-09-95), on the compose network.
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
