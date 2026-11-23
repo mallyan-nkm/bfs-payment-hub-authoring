@@ -139,6 +139,21 @@ app.MapGet("/values", async (string tenant, DateTimeOffset? at, ClaimsPrincipal 
         ? Results.Ok(await BankValues.InForce(db, tenant, at ?? clock.GetUtcNow()))
         : Problem(403, $"{ApiAuth.Actor(user)} may not read the values of {tenant}")).RequireAuthorization(ApiAuth.ValuesReader);
 
+// The reference tables of the bank's installed configuration, as of a date (R-01-25, R-09-75): the participant directory, the
+// emirates, free zones, purpose codes, the business calendar, the bank's branches. The bank is the one named, or the only one the
+// caller's grant gives it.
+string? LookupBank(ClaimsPrincipal user, string? bank) => bank is { Length: > 0 } ? bank
+    : TransactHub.Auth.RuntimeAuth.RolesByTenant(user).Where(kv => kv.Key != "*" && kv.Value.Contains(ApiAuth.LookupReader)).Select(kv => kv.Key).ToList() is [var only] ? only : null;
+app.MapGet("/lookups", async (string? bank, ClaimsPrincipal user, StoreDbContext db, CancellationToken ct) =>
+    LookupBank(user, bank) is not { } b ? Problem(400, "Name the bank")
+    : !ApiAuth.Has(user, ApiAuth.LookupReader, b) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the lookups of {b}")
+    : Results.Ok(new { bank = b, domains = await Lookups.Domains(db, b, ct) })).RequireAuthorization(ApiAuth.LookupReader);
+app.MapGet("/lookups/{domain}", async (string domain, string? bank, DateTimeOffset? asOf, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock, CancellationToken ct) =>
+    LookupBank(user, bank) is not { } b ? Problem(400, "Name the bank")
+    : !ApiAuth.Has(user, ApiAuth.LookupReader, b) ? Problem(403, $"{ApiAuth.Actor(user)} may not read the lookups of {b}")
+    : await Lookups.At(db, b, domain, asOf ?? clock.GetUtcNow(), ct) is { } r ? Results.Ok(r)
+    : Problem(404, $"{b}'s installed configuration has no reference table {domain}")).RequireAuthorization(ApiAuth.LookupReader);
+
 app.MapPost("/activations", async (ActivationRequest a, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock) =>
     (await Activate(db, clock, a.Environment, a.Scope, a.Release, a.EffectiveFrom ?? clock.GetUtcNow(), ApiAuth.Actor(user))).Result).RequireAuthorization(ApiAuth.Activator);
 

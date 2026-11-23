@@ -3,12 +3,12 @@
 # The bank does not run WPS in the source, so only the platform is configured: no routing code, no WPS dial.
 kind: configuration-set
 tenant: enbd
-release: 1.6.0
+release: 1.7.0
 title: Bank configuration (platform only)
 accepts:
-  - { scope: p, release: 1.6.0 }
-  - { scope: uae.p, release: 1.6.0 }
-  - { scope: uae.wps, release: 1.6.0 }
+  - { scope: p, release: 1.7.0 }
+  - { scope: uae.p, release: 1.7.0 }
+  - { scope: uae.wps, release: 1.7.0 }
 values:
   # The rails the bank runs among the factory's: none. The source has no deployment of the bank: no customer overlay and no
   # licence. Its forks are stubs; none of its rails is licensed anywhere in the source.

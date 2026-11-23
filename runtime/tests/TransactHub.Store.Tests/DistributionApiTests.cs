@@ -49,10 +49,11 @@ public sealed class DistributionApiTests(Databases dbs)
         return TestSigners.Zip(bytes);
     }
 
-    static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null)
+    static byte[] Configuration(ECDsa key, string release, string values, string? bindings = null, Dictionary<string, string>? extra = null)
     {
         var files = new Dictionary<string, string> { ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {Bank}\nrelease: {release}\nvalues:\n{values}bindings: []\n" };
         if (bindings is not null) files["bindings/port-bindings.yaml"] = bindings;
+        foreach (var (k, v) in extra ?? []) files[k] = v;
         var bom = new JsonObject { ["artefacts"] = new JsonArray(files.OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => (JsonNode)new JsonObject { ["path"] = f.Key, ["sha256"] = Sha(f.Value) }).ToArray()) };
         files["manifest.yaml"] = new JsonObject { ["kind"] = "configuration-release", ["bank"] = Bank, ["release"] = release, ["billOfMaterials"] = bom.DeepClone() }.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
@@ -173,6 +174,29 @@ public sealed class DistributionApiTests(Databases dbs)
         Assert.Contains(values, v => (string?)v!["parameter"] == "b.rule.internal-limit.v1#internalLimit" && (decimal)v!["value"]! == 5000m);
         Assert.Equal(HttpStatusCode.NotFound, (await c.GetAsync($"/bindings?tenant={Bank}&port=p.port.core-banking.v1&at=2026-12-02T00:00:00Z")).StatusCode);
         Assert.Equal("gateway-rest", (string?)(await J(await c.GetAsync($"/bindings?tenant={Bank}&port=p.port.core-banking.v1&at=2026-12-16T00:00:00Z")))["adapter"]);
+    }
+
+    // R-01-25, R-09-75: the reference tables a configuration release carries are served by date under /lookups/{domain}, to a caller
+    // with the lookup-reader role in the bank.
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_reference_tables_of_a_configuration_release_are_served_by_date(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        await using var host = new ApiHost(dbs.Fresh(p), s);
+        var c = host.Client();
+        Assert.Equal(HttpStatusCode.Created, (await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.24-1")))).StatusCode);
+        const string emirates = "kind: reference-table\nname: uae.p.ref.emirates.v1\nrelease: 1.0.0\ntitle: The emirates\ndomain: emirates\nkey: [code]\ncolumns:\n  - { id: code, type: code }\n  - { id: name, type: text }\neditions:\n  - validFrom: \"2026-10-01\"\n    rows:\n      - { code: AE-DU, name: Dubai }\n  - validFrom: \"2026-12-01\"\n    rows:\n      - { code: AE-DU, name: Dubai }\n      - { code: AE-AZ, name: Abu Dhabi }\n";
+        var r = await c.PostAsync("/configuration-releases", new ByteArrayContent(Configuration(s.Key, "1.2.0", "  - parameter: b.rule.internal-limit.v1#internalLimit\n    value: 5000\n    validFrom: 2026-12-01\n", extra: new() { ["reference/uae.p.ref.emirates.v1.yaml"] = emirates })));
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var channel = host.Client("channel");
+        Assert.Equal(HttpStatusCode.Forbidden, (await host.Client("reader").GetAsync($"/lookups/emirates?bank={Bank}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await channel.GetAsync("/lookups/emirates?bank=other-bank")).StatusCode);
+        Assert.Equal("emirates", (string?)(await J(await channel.GetAsync("/lookups")))["domains"]![0]!["domain"]);
+        var nov = await J(await channel.GetAsync("/lookups/emirates?asOf=2026-11-24T00:00:00Z"));
+        Assert.Equal(("2026-10-01", 1), ((string?)nov["validFrom"], nov["rows"]!.AsArray().Count));
+        var dec = await J(await channel.GetAsync($"/lookups/emirates?bank={Bank}&asOf=2026-12-02T00:00:00Z"));
+        Assert.Equal(("2026-12-01", 2, "uae.p.ref.emirates.v1"), ((string?)dec["validFrom"], dec["rows"]!.AsArray().Count, (string?)dec["table"]));
+        Assert.Equal(HttpStatusCode.NotFound, (await channel.GetAsync("/lookups/branches")).StatusCode);
     }
 
     [Fact]

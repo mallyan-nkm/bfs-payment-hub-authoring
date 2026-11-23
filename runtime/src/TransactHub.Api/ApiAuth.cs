@@ -12,6 +12,7 @@ namespace TransactHub.Api;
 /// <item><term>release-activator</term><description><c>POST /activations</c>, and the activations an import carries</description></item>
 /// <item><term>release-reader</term><description><c>GET /releases</c>, <c>GET /releases/package</c>, <c>GET /activations/active</c></description></item>
 /// <item><term>values-reader</term><description><c>GET /values</c>, for the tenants the caller is given (or <c>*</c>)</description></item>
+/// <item><term>lookup-reader</term><description><c>GET /lookups</c>, <c>GET /lookups/{domain}</c>, for the tenants the caller is given</description></item>
 /// </list>
 /// </summary>
 public static class ApiAuth
@@ -22,7 +23,9 @@ public static class ApiAuth
     public const string ValuesReader = "values-reader";
     /// <summary>The front door: pins a payment to the active distribution at acceptance, and records its end (R-09-53, R-09-54).</summary>
     public const string Intake = "payment-intake";
-    public static readonly string[] Roles = [Importer, Activator, Reader, ValuesReader, Intake];
+    /// <summary>A channel or system reading the reference tables of the bank's configuration (R-09-75), per tenant.</summary>
+    public const string LookupReader = "lookup-reader";
+    public static readonly string[] Roles = [Importer, Activator, Reader, ValuesReader, Intake, LookupReader];
 
     public static string Actor(ClaimsPrincipal u) => RuntimeAuth.Actor(u);
     /// <summary>Whether the caller holds the role in this tenant (or every tenant), from one grant of the role map (R-06-28).</summary>

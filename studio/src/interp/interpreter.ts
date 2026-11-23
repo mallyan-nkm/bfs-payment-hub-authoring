@@ -1,3 +1,4 @@
+import { resolveReferenceValues } from '../core/reference.js';
 import { addDuration, durationMs, DEFAULT_CALENDAR, isDuration } from '../core/duration.js';
 import { clone } from '../core/canonical.js';
 import { coveredByAny, getPath, pick, setPath, type DeltaEntry } from '../core/paths.js';
@@ -363,7 +364,9 @@ export class Run {
     // A deployed worker on a runtime (TH_RUNTIME_URL): the bank's values as the runtime holds them at the attempt's time,
     // published there after the package was built (plan P6). They take the place of the package's configuration set.
     if (this.cfg.liveValues && key in this.cfg.liveValues) return this.cfg.liveValues[key];
-    const values = [...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key);
+    // A value read from a reference table (R-11-48) is read here, edition by edition, from the table the store holds.
+    const values = resolveReferenceValues([...(this.configSet?.values ?? []), ...(this.cfg.values ?? [])].filter((v: any) => v.parameter === key),
+      (n) => this.resolveDoc(n));
     const inForce = values.filter((v: any) => v.validFrom <= date && (!v.validTo || v.validTo >= date));
     inForce.sort((a: any, b: any) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
     if (inForce.length) return inForce[inForce.length - 1].value;

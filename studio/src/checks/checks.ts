@@ -1,3 +1,4 @@
+import { referenceTableProblems, referenceValueProblems } from '../core/reference.js';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -74,6 +75,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L46: 'On a file scheme, a file is encrypted by a protect step before a step sends or reports it',
   L47: 'A leg of a platform workflow that blocks or posts money calls no reserve or post activity itself',
   L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
+  L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
+  L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
 };
 
 // ---------------------------------------------------------------- walking
@@ -257,13 +260,14 @@ export class Checker {
     if (kind === 'table') this.checkTable(d, err, warn);
     if (kind === 'activity') this.checkActivity(d, err, warn);
     if (kind === 'configuration-set') this.checkConfigurationSet(d, err);
+    if (kind === 'reference-table') for (const m of referenceTableProblems(d, new Map(this.docs.filter((x) => x.kind === 'reference-table').map((x) => [x.name, x])))) err('L49', m);
     if (kind === 'port-bindings') for (const m of portBindingProblems(d, (n) => this.byName.get(n)?.kind === 'port')) err('L48', m);
     if (kind === 'test') this.checkTest(d, err, warn);
     if (kind === 'port' && !this.docs.some((x) => x.kind === 'simulator' && x.port === d.name)) err('L22', `${d.name} has no simulator`);
     if (kind === 'supersession') this.checkSupersession(d, err);
 
     // L09: shared content does not name a bank or vendor.
-    if (['activity', 'rule', 'ruleset', 'table', 'workflow', 'simulator', 'port', 'extension'].includes(kind) && name && scopeOf(name) !== 'b') {
+    if (['activity', 'rule', 'ruleset', 'table', 'workflow', 'simulator', 'port', 'extension', 'reference-table'].includes(kind) && name && scopeOf(name) !== 'b') {
       const text = JSON.stringify({ name: d.name, title: d.title, description: d.description, party: d.party, standsFor: d.standsFor }).toLowerCase();
       for (const t of this.denyNames) if (t && text.includes(t)) err('L09', `Shared content names a bank or vendor: ${t}`);
     }
@@ -695,6 +699,10 @@ export class Checker {
         continue;
       }
       const b = p.bounds ?? {};
+      if (v.fromReference) {
+        for (const m of referenceValueProblems(v, p, this.byName.get(v.fromReference.table))) err('L50', m);
+        continue;
+      }
       if (!withinBounds(p, v.value)) err('L14', `${v.parameter} = ${JSON.stringify(v.value)} is outside its bounds ${JSON.stringify(b)}`);
     }
     for (const b of d.bindings ?? []) {

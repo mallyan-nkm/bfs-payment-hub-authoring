@@ -198,7 +198,10 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
             foreach (var (path, _) in b.Files.Where(f => f.Key.StartsWith("calendars/") && f.Key.EndsWith(".yaml")))
                 if (b.Yaml(path) is JsonObject cal)
                     await store.Publish(CalendarKind, b.Bank, (string?)cal["name"] ?? Path.GetFileNameWithoutExtension(path), new JsonObject { ["calendar"] = cal.DeepClone(), ["configurationRelease"] = b.Release }, cal["validFrom"] is { } vf ? BankValues.DayOf((string)vf!) : DateTimeOffset.UnixEpoch, null, actor, ct);
-            await new FactLog(db, clock).Append(b.ReleaseId, "configuration", new NewFact(DistributionRegistry.ConfigKind, b.Release, new JsonObject { ["values"] = values, ["bindings"] = bindings.Count, ["checkedAgainst"] = new JsonArray(contracts.Keys.Select(k => (JsonNode)k).ToArray()) }, b.ReleaseId, actor), ct);
+            // The reference tables (R-01-25, R-09-75): each under its domain, served by GET /lookups/{domain}.
+            var tables = b.Files.Keys.Where(f => f.StartsWith("reference/") && f.EndsWith(".yaml")).Order(StringComparer.Ordinal).Select(f => b.Yaml(f)).OfType<JsonObject>().ToList();
+            await Lookups.Import(db, clock, b.Bank, b.Release, tables, actor, ct);
+            await new FactLog(db, clock).Append(b.ReleaseId, "configuration", new NewFact(DistributionRegistry.ConfigKind, b.Release, new JsonObject { ["values"] = values, ["bindings"] = bindings.Count, ["referenceTables"] = tables.Count, ["checkedAgainst"] = new JsonArray(contracts.Keys.Select(k => (JsonNode)k).ToArray()) }, b.ReleaseId, actor), ct);
         }
         return new JsonObject
         {

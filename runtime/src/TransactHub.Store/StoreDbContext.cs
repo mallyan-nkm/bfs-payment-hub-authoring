@@ -26,6 +26,10 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
     public DbSet<ActivationRow> Activations => Set<ActivationRow>();
     public DbSet<VersionedValueRow> VersionedValues => Set<VersionedValueRow>();
     public DbSet<OutboxRow> Outbox => Set<OutboxRow>();
+    public DbSet<RegisterChangeRow> RegisterChanges => Set<RegisterChangeRow>();
+    public DbSet<RegisterVersionRow> RegisterVersions => Set<RegisterVersionRow>();
+    public DbSet<RegisterIndexRow> RegisterIndex => Set<RegisterIndexRow>();
+    public DbSet<RegisterDecisionRow> RegisterDecisions => Set<RegisterDecisionRow>();
 
     /// <summary>The only place a provider is named (the build check allows it here).</summary>
     public static DbContextOptions<StoreDbContext> Configure(StoreOptions o)
@@ -260,6 +264,60 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Id).ValueGeneratedOnAdd();
             e.Property(x => x.Topic).HasMaxLength(Code).IsRequired();
             e.Property(x => x.Key).HasMaxLength(Short).IsRequired();
+        });
+
+        // The bank's registers (R-05-62): insert-only, effective-dated versions; a change takes effect on its approval.
+        m.Entity<RegisterChangeRow>(e =>
+        {
+            e.ToTable("register_change");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(Id);
+            e.Property(x => x.Tenant).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(16).IsRequired();
+            e.Property(x => x.MadeBy).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.Remarks).HasMaxLength(1000);
+            e.Property(x => x.Reference).HasMaxLength(Short);
+            e.HasIndex(x => new { x.Tenant, x.Kind, x.MadeAt });
+            e.HasIndex(x => new { x.Tenant, x.Kind, x.Reference });
+        });
+        m.Entity<RegisterVersionRow>(e =>
+        {
+            e.ToTable("register_version");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.ChangeId).HasMaxLength(Id).IsRequired();
+            e.Property(x => x.Tenant).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Key).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.Hash).HasMaxLength(64).IsRequired();
+            // One numbering per record: two makers racing for the same number cannot both win.
+            e.HasIndex(x => new { x.Tenant, x.Kind, x.Key, x.VersionNo }).IsUnique();
+            e.HasIndex(x => x.ChangeId);
+        });
+        m.Entity<RegisterIndexRow>(e =>
+        {
+            e.ToTable("register_index");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.Tenant).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Kind).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Field).HasMaxLength(Code).IsRequired();
+            e.Property(x => x.Value).HasMaxLength(Short).IsRequired();
+            e.HasIndex(x => new { x.Tenant, x.Kind, x.Field, x.Value });
+            e.HasIndex(x => x.VersionId);
+        });
+        m.Entity<RegisterDecisionRow>(e =>
+        {
+            e.ToTable("register_decision");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.ChangeId).HasMaxLength(Id).IsRequired();
+            e.Property(x => x.Decision).HasMaxLength(16).IsRequired();
+            e.Property(x => x.DecidedBy).HasMaxLength(Short).IsRequired();
+            e.Property(x => x.Remarks).HasMaxLength(1000);
+            // One decision per change: a second approver racing the first cannot decide it again.
+            e.HasIndex(x => x.ChangeId).IsUnique();
         });
     }
 

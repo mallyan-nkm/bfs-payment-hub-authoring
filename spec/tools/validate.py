@@ -21,7 +21,7 @@ SCHEMA_OF = {"activity": "activity", "rule": "rule", "ruleset": "rule", "table":
              "simulator": "simulator", "scheme": "scheme", "hook": "hook", "configuration-set": "configuration-set",
              "pack": "pack", "engine-binding": "engine-binding", "test": "test-case", "extension": "extension",
              "port": "port", "supersession": "supersession", "operations-view": "operations-view",
-             "error-dictionary": "error-dictionary"}
+             "error-dictionary": "error-dictionary", "reference-table": "reference-table"}
 errors, warnings = [], []
 
 
@@ -516,6 +516,72 @@ def within_bounds(decl, value):
     return True
 
 
+REF_TYPES = {"code": str, "text": str, "date": str, "boolean": bool, "number": (int, float), "list": list}
+
+
+def reference_table_problems(d, tables):
+    """L49 (R-01-25): a reference table's key and columns agree, its editions are in date order, and every row fits."""
+    out = []
+    cols = {c["id"]: c for c in d.get("columns") or []}
+    if len(cols) != len(d.get("columns") or []):
+        out.append("names a column twice")
+    for k in d.get("key") or []:
+        if k not in cols:
+            out.append("its key names %s, which is not a column" % k)
+    for c in cols.values():
+        r = c.get("references")
+        if r and (r not in tables or r == d.get("name")):
+            out.append("column %s references %s, which is no other reference table" % (c["id"], r))
+    dates = [str(e.get("validFrom")) for e in d.get("editions") or []]
+    if dates != sorted(dates) or len(set(dates)) != len(dates):
+        out.append("its editions are not in strictly increasing validFrom order")
+    for e in d.get("editions") or []:
+        seen = set()
+        for i, row in enumerate(e.get("rows") or []):
+            at = "edition %s, row %d" % (e.get("validFrom"), i + 1)
+            for k in row:
+                if k not in cols:
+                    out.append("%s has %s, which is not a column" % (at, k))
+            for c in cols.values():
+                v = row.get(c["id"])
+                if v is None or v == "":
+                    if c.get("required") or c["id"] in (d.get("key") or []):
+                        out.append("%s has no %s" % (at, c["id"]))
+                    continue
+                if not isinstance(v, REF_TYPES[c["type"]]) or (c["type"] == "number" and isinstance(v, bool)):
+                    out.append("%s: %s is not a %s" % (at, c["id"], c["type"]))
+                elif c.get("pattern") and isinstance(v, str) and not re.search(c["pattern"], v):
+                    out.append("%s: %s %r does not match %s" % (at, c["id"], v, c["pattern"]))
+                elif c.get("allowed") and v not in c["allowed"]:
+                    out.append("%s: %s %r is not one of %s" % (at, c["id"], v, c["allowed"]))
+                elif c.get("references") in tables:
+                    ref = tables[c["references"]]
+                    keys = {str(r.get((ref.get("key") or [""])[0])) for ed in ref.get("editions") or [] for r in ed.get("rows") or []}
+                    if str(v) not in keys:
+                        out.append("%s: %s %r is no key of %s" % (at, c["id"], v, c["references"]))
+            key = tuple(str(row.get(k)) for k in d.get("key") or [])
+            if key in seen:
+                out.append("%s repeats the key %s" % (at, "/".join(key)))
+            seen.add(key)
+    return out
+
+
+def reference_value_problems(v, decl):
+    """L50 (R-11-48): a value read from a reference table names a published one and its columns, for a list parameter."""
+    out = []
+    fr = v["fromReference"]
+    t = by_name.get(fr.get("table"))
+    if not t or t.get("kind") != "reference-table":
+        return ["%s reads %s, which is no reference table" % (v["parameter"], fr.get("table"))]
+    if decl.get("type") != "list":
+        out.append("%s reads a reference table, but it is a %s, not a list" % (v["parameter"], decl.get("type")))
+    cols = {c["id"] for c in t.get("columns") or []}
+    for field, col in (fr.get("columns") or {}).items():
+        if col not in cols:
+            out.append("%s reads column %s, which %s does not have" % (v["parameter"], col, t["name"]))
+    return out
+
+
 for path, d in docs:
     if d.get("kind") != "configuration-set":
         continue
@@ -526,6 +592,10 @@ for path, d in docs:
             err("L14", path, "%s is not a declared parameter" % v["parameter"])
             continue
         b = p.get("bounds") or {}
+        if "fromReference" in v:
+            for m in reference_value_problems(v, p):
+                err("L50", path, m)
+            continue
         if not within_bounds(p, v["value"]):
             err("L14", path, "%s = %r is outside its bounds %r" % (v["parameter"], v["value"], b))
     for b in d["bindings"]:
@@ -561,7 +631,7 @@ for path, d in docs:
 tenants = {d.get("tenant") for _, d in docs if d.get("tenant")} | {l.strip().lower() for l in (ROOT / "tools" / "deny-names.txt").read_text().splitlines() if l.strip() and not l.startswith("#")}
 for path, d in docs:
     name = d.get("name") or ""
-    if d.get("kind") in ("activity", "rule", "ruleset", "table", "workflow", "simulator", "port", "extension") and scope_of(name) != "b":
+    if d.get("kind") in ("activity", "rule", "ruleset", "table", "workflow", "simulator", "port", "extension", "reference-table") and scope_of(name) != "b":
         text = json.dumps({k: d.get(k) for k in ("name", "title", "description", "party", "standsFor")}).lower()
         for t in sorted(tenants):
             if t and t in text:
@@ -1373,6 +1443,14 @@ for path, d in docs:
             err("L44", path, "%s declares no default" % name)
         elif not within_bounds(decl, decl["default"]):
             err("L44", path, "%s: its default %r is outside its own bounds %r" % (name, decl["default"], decl.get("bounds")))
+
+# L49 (R-01-25) a reference table: its key and columns agree, its editions run in date order, every row fits its columns,
+# a column that references another table holds that table's keys, and a key is not repeated within an edition.
+ref_tables = {d["name"]: d for _, d in docs if d.get("kind") == "reference-table"}
+for path, d in docs:
+    if d.get("kind") == "reference-table":
+        for m in reference_table_problems(d, ref_tables):
+            err("L49", path, m)
 
 # ---------------------------------------------------------------- report
 kinds = {}

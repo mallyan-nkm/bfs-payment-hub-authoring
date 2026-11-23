@@ -23,6 +23,9 @@ const PARTY = {
     streetName: ['Max70Text', true], buildingNumber: ['Max16Text', true], postCode: ['Max16Text', true],
     townName: ['Max35Text', true, 'Town name, in its own element (R-02-13)'], countrySubDivision: ['Max35Text', true], country: ['CountryCode', false],
   },
+  // Pty/Id/OrgId/Othr (R-02-21): an organisation's id and the scheme that issued it, for example an establishment id (MOL).
+  // An organisation's id, not a person's: the party register is asked by it (R-12-27).
+  organisationId: { id: ['Max35Text', false, 'The organisation\'s id (OrgId/Othr/Id)'], scheme: ['Max35Text', false, 'The scheme that issued the id (OrgId/Othr/SchmeNm/Prtry)'] },
 };
 const ACCOUNT = {
   iban: ['IBAN2007Identifier', true, 'International bank account number'], other: ['Max34Text', true],

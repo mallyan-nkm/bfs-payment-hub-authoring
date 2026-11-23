@@ -1,0 +1,9 @@
+# The bank's party register as a port binding (R-12-27; owner's decisions of 2026-11-23). The register is bank customer data the
+# runtime keeps and its operations console maintains (R-05-62): the adapter `register` reads it from the runtime's own store, as
+# of the step. Read by runtime/src/TransactHub.Ports/PartyRegister.cs. No customer data is here.
+kind: port-bindings
+tenant: adib
+bindings:
+  - port: p.port.party-register.v1
+    adapter: register
+    validFrom: 2026-01-01T00:00:00Z

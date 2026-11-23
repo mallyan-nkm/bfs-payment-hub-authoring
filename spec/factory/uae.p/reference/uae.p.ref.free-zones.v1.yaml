@@ -1,0 +1,88 @@
+# Written by hand (spec/CLAUDE.md, "Generated files"): reference data, effective-dated (R-01-25). A new edition is a new minor release.
+kind: reference-table
+name: uae.p.ref.free-zones.v1
+release: 1.0.0
+title: The free zones of the UAE
+description: The free zones a corporate may be registered in, by the code the TransactHub source gave each, with the emirate.
+  Code 000 is outside any free zone.
+domain: free-zones
+key:
+  - code
+columns:
+  - id: code
+    type: code
+    title: Code
+    required: true
+    pattern: ^[A-Z0-9]{3,10}$
+  - id: name
+    type: text
+    title: Name
+    required: true
+  - id: emirate
+    type: code
+    title: Emirate
+    references: uae.p.ref.emirates.v1
+  - id: active
+    type: boolean
+    title: Active
+    required: true
+source:
+  publisher: TransactHub source
+  title: Corporate_FreezoneHeaders seed
+  public: false
+  note: The source's free zone list (services/platform/Database, SeedData/Platform). The names are public; the codes are the
+    source's.
+editions:
+  - validFrom: '2026-10-01'
+    rows:
+      - code: '000'
+        name: Outside any free zone
+        active: true
+      - code: DIFC
+        name: Dubai International Financial Centre
+        emirate: AE-DU
+        active: true
+      - code: JAFZA
+        name: Jebel Ali Free Zone Authority
+        emirate: AE-DU
+        active: true
+      - code: DWC
+        name: Dubai World Central
+        emirate: AE-DU
+        active: true
+      - code: RAK
+        name: Ras Al Khaimah Free Trade Zone
+        emirate: AE-RK
+        active: false
+      - code: SAIF
+        name: Sharjah Airport International Free Zone
+        emirate: AE-SH
+        active: true
+      - code: AJFZ
+        name: Ajman Free Zone
+        emirate: AE-AJ
+        active: true
+      - code: HAMRIYAH
+        name: Hamriyah Free Zone
+        emirate: AE-SH
+        active: true
+      - code: FUJFZ
+        name: Fujairah Free Zone
+        emirate: AE-FU
+        active: true
+      - code: UAQ
+        name: Umm Al Quwain Free Zone
+        emirate: AE-UQ
+        active: true
+      - code: ABUDHABI
+        name: Abu Dhabi Airport Free Zone
+        emirate: AE-AZ
+        active: true
+      - code: KHALIFA
+        name: Khalifa Port Free Zone
+        emirate: AE-AZ
+        active: true
+provenance:
+  origin: factory
+  status: provisional
+  note: The source's list; confirm the codes with the bank's operations (Issue I-149).

@@ -17,6 +17,7 @@ using TransactHub.Store;
 //                                            provider and role map (TransactHub.Auth, roles Operator and Supervisor)
 //   Auth:Oidc:ClientId, Auth:Oidc:Scopes      the console's public client (code flow with PKCE); TH_STUDIO_ISSUER refused
 //   TH_AUTH_DEV=1                             dev sign-in, refused in Production
+//   Operations:Registers                     a folder of further register kinds (*.register.json), beside the runtime's own
 var builder = WebApplication.CreateBuilder(args);
 var provider = Enum.Parse<StoreProvider>(builder.Configuration["Store:Provider"] ?? "SqlServer", ignoreCase: true);
 var store = new StoreOptions(provider, builder.Configuration["Store:Connection"] ?? throw new InvalidOperationException("Set Store:Connection"));
@@ -34,6 +35,8 @@ builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.Ge
     resendFolder is { Length: > 0 } ? new FileResend(store, new FolderFileTransfer(resendFolder), clock) : null));
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
 builder.Services.AddSingleton(new Reports(ops, views));
+// The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
+builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
@@ -279,6 +282,10 @@ api.MapPost("/rebuild", async (HttpContext http, Projector p) =>
     await p.Rebuild();
     return Results.Ok(new { lag = await p.Lag() });
 });
+
+// The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74).
+app.MapRegisters();
+app.MapChannel(ops);
 
 api.MapMethods("/{**rest}", ["PUT", "PATCH", "DELETE"], () => Problem(405, "The operations console changes a payment only through its declared actions")).AllowAnonymous();
 

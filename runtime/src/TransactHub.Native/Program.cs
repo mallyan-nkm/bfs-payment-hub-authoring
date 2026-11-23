@@ -71,7 +71,7 @@ var files = new HostFiles(store, signingKey);
 Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", "rendered", name, content, sha);
 INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif(keep),
     .. PlatformActivities.CoreBanking(coreBanking), .. OrderActivities.All(), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep),
-    .. FileProtectionActivities.All(bindings, files), EnrichEmployerStatus.On(bindings), .. holds];
+    .. FileProtectionActivities.All(bindings, files), EnrichEmployerStatus.On(bindings), PartyRegisterOn(bindings, store), .. holds];
 var byName = activities.ToDictionary(x => x.Name);
 
 var health = app.MapGet("/health", () => Results.Ok(new { activities = byName.Keys.Order(), served, store = store is not null, signingKey = TransactHub.Store.FileSignature.KeyIdOf(signingKey) }));
@@ -132,6 +132,21 @@ Guarded(app.MapGet("/files/{sha}", (string sha) => files.All.TryGetValue(sha, ou
     : Results.NotFound()));
 
 app.Run();
+
+// p.enrich.party-register.v1 (R-12-27): the bank's party register, read from the store's registers as of the step when the host
+// has a store (adapter `register`); WPS matches what it found with the source's MatchCorporate.
+static INativeActivity PartyRegisterOn(PortBindings bindings, TransactHub.Store.StoreOptions? store)
+{
+    RegisterReader? reader = null;
+    if (store is not null)
+    {
+        var regs = new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load());
+        reader = async (tenant, kind, field, value, at, ct) => kind is { Length: > 0 } && regs.Catalog.Find(kind)?.Key == field
+            ? (await regs.InForce(tenant, kind, value, at, ct)) is { } one ? [one] : []
+            : await regs.FindBy(tenant, kind, field, value, at, ct);
+    }
+    return EnrichPartyRegister.On(bindings, reader, WpsCorporateMatch.Matchers);
+}
 
 // Every URL the host listens on is a loopback address (127.0.0.0/8, ::1, localhost).
 static bool LoopbackOnly(string urls) => urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).All(u =>

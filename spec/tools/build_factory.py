@@ -21,7 +21,8 @@ EXAMPLES = ROOT / "examples"
 REL = "1.0.0"
 DATE = "2026-11-17"
 FOLDER = {"activity": "activities", "rule": "rules", "ruleset": "rules", "table": "rules",
-          "port": "ports", "simulator": "simulators", "extension": "extensions", "test": "tests"}
+          "port": "ports", "simulator": "simulators", "extension": "extensions", "test": "tests",
+          "reference-table": "reference"}
 OUT = []  # (base, doc)
 
 
@@ -109,6 +110,9 @@ RELEASES = {
     "p.enrich.fx-rate.v1": ("1.1.0", "native code-behind (Issue I-136)"),
     "p.enrich.charges.v1": ("1.1.0", "native code-behind (Issue I-136)"),
     "p.table.workflow-select.v1": ("1.2.0", "an inward refund order runs p.wf.refund.v1, an outward one p.wf.refund-out.v1"),
+    # Owner's decision of 2026-11-23 (R-12-27, Issue I-147): the salary file's employer is looked up in the bank's party register by
+    # its establishment id, carried as the debtor's organisation id (Dbtr/Id/OrgId/Othr). A field written under batch, a minor.
+    "uae.wps.map.sif-in.v1": ("1.3.0", "the employer's establishment id as the debtor's organisation id (R-12-27)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
@@ -116,8 +120,9 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
 # packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
 # 1.6.0: the order's posting that reads FX and charges, the outward refund order, the WPS parks (R-12-23 to R-12-26, I-136).
-PACK_RELEASES = {"p": "1.6.0", "uae.p": "1.6.0", "uae.wps": "1.6.0", "b": "1.6.0"}
-FACTORY_RELEASE = "1.6.0"
+# 1.7.0: reference tables (R-01-25), the party register lookup and its WPS step (R-12-27; owner's decisions of 2026-11-23).
+PACK_RELEASES = {"p": "1.7.0", "uae.p": "1.7.0", "uae.wps": "1.7.0", "b": "1.7.0"}
+FACTORY_RELEASE = "1.7.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -377,7 +382,10 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              # name of the line's bank from the scheme's participant directory, by the line's routing code
              {"from": "upload.accountType", "to": "items[].payment.creditorAccount.type"},
              {"from": "EDR.agentRoutingCode", "to": "items[].payment.creditorAgent.name", "via": "uae.wps.table.participant-names.v1"},
-             {"from": "constant SALA", "to": "batch.categoryPurpose"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
+             {"from": "constant SALA", "to": "batch.categoryPurpose"},
+             # 1.3.0 (R-12-27): the employer's establishment id as the debtor's organisation id, which the party register is asked by
+             {"from": "SCR.employerId", "to": "batch.debtor.organisationId.id"},
+             {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
      ["batch", "items[]", W], ["messages"])
 wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
@@ -442,6 +450,18 @@ for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "sen
 act("uae.wps.enrich.employer-status.v1", "Ask the labour ministry for the employer's status", ["header", "ext.uae.wps.employerId"],
     ["ext.uae.wps.employerStatus"], ["found", "not-found"], "read", level="batch", ports=["uae.wps.port.labour-ministry.v1"], policy=SHORT,
     script=True, native=True, p=WP)
+
+# The debtor in the bank's party register (owner's decisions of 2026-11-23, R-12-27, Issue I-147): bank customer data lives in the
+# runtime's registers only, so the studio asks a simulator and the runtime's native code-behind reads the register as of the step.
+# The platform looks the debtor up by its organisation id (lookupBy names the register's field); a scheme matches what it needs (on
+# the runtime, WPS feeds the source's SifUploadRules.MatchCorporate). Only the answer is written: found, active, and why not.
+act("p.enrich.party-register.v1", "Look up the debtor in the bank's party register", ["header", "batch.debtor", "batch.debtorAccount"],
+    ["facts.partyRegister"], ["registered", "not-registered", "mismatch"], "read", level="batch", ports=["p.port.party-register.v1"],
+    policy=SHORT, script=True, native=True,
+    params={"register": {"type": "code", "default": "corporate", "bounds": {"allowed": ["corporate"]},
+                         "description": "The register kind the debtor is looked up in."},
+            "lookupBy": {"type": "code", "default": "establishmentId", "bounds": {"allowed": ["corporateId", "cif", "establishmentId"]},
+                         "description": "The register's field the debtor's organisation id is matched against."}})
 
 # composite exchanges: one block to the designer, a subflow underneath (design/05, section 5.6)
 WPS_PORT = ["uae.wps.port.wps.v1"]
@@ -846,6 +866,7 @@ port("p.port.file-transfer.v1", "File transfer", "file transfer service", [("put
 port("p.port.decryption.v1", "File decryption", "decryption service", [("decrypt", RR)])
 # The pair of decryption (R-12-13, Issue I-87): a file the bank sends, encrypted for its recipient.
 port("p.port.encryption.v1", "File encryption", "encryption service", [("encrypt", RR)])
+port("p.port.party-register.v1", "Party register", "bank party register", [("lookup", RR)])
 port("uae.p.port.participant-directory.v1", "Participant directory", "central bank participant directory", [("lookup", RR)])
 port("uae.p.port.calendar.v1", "Business calendar", "business calendar service", [("business-date", RR)])
 port("uae.wps.port.wps.v1", "Wages protection system", "central bank wages protection system",
@@ -988,6 +1009,12 @@ sim("uae.wps.sim.wps-refunds.v1", "WPS simulator, a refund request to the bank a
         {"send": "uae.wps.ack", "family": "rrr", "status": "accepted", "after": "PT10M"}),
      sc("refund-request-return-refused", *refund_request("rejected")),
      sc("refund-request-no-reply", {"send": "uae.wps.rri"}, {"expect": "uae.wps.dcr"}, {"noReply": True})], p=WP)
+# The bank's party register (R-12-27): registered (accept), not registered, inactive, or registered with other details than supplied.
+sim("p.sim.party-register.v1", "Party register simulator", "outward", "p.port.party-register.v1", "bank party register",
+    outward_set("p.party-register.request", "p.party-register.reply", "NARR")
+    + [sc("not-registered", {"expect": "p.party-register.request"}, {"send": "p.party-register.reply", "status": "not-found"}),
+       sc("inactive", {"expect": "p.party-register.request"}, {"send": "p.party-register.reply", "status": "inactive"}),
+       sc("mismatch", {"expect": "p.party-register.request"}, {"send": "p.party-register.reply", "status": "mismatch"})])
 # The ministry answers an employer's status: active (accept), suspended, or not on its register (Issue I-88).
 sim("uae.wps.sim.labour-ministry.v1", "Labour ministry simulator", "outward", "uae.wps.port.labour-ministry.v1", "labour ministry establishment register",
     outward_set("uae.wps.employer-status.request", "uae.wps.employer-status.reply", "NARR")
@@ -1089,42 +1116,56 @@ WPS_FILE = {"inbound": "samples/wps-sif-valid.sif"}
 ENC = ("p.port.encryption.v1", "p.sim.encryption.v1", "accept")
 LM, LMSIM = "uae.wps.port.labour-ministry.v1", "uae.wps.sim.labour-ministry.v1"
 MIN = (LM, LMSIM, "accept")
-OUT_HEAD = ["business-date:set", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped"]
+# R-12-27: the employer is looked up in the bank's party register before its checks; the factory's tests name the simulator.
+REG, REGSIM = "p.port.party-register.v1", "p.sim.party-register.v1"
+OUT_HEAD = ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped"]
 test("WPS-OUT-001", "Salary file acknowledged", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 1}],
       "trace": OUT_HEAD + ["submit:accepted", "end:settled"],
       "detail": ["submit.encrypt:encrypted", "submit.send:accepted", "submit.await-ack:received", "submit.read-ack:ack"]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN))
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 test("WPS-OUT-002", "Salary file refused by WPS", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
-     {"outcome": "rejected", "reasonCode": "AM10"}, bench_=bench((WPS, WSIM, "reject"), CAL, ENC, MIN))
+     {"outcome": "rejected", "reasonCode": "AM10"}, bench_=bench((WPS, WSIM, "reject"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 test("WPS-OUT-003", "No acknowledgement within the wait ends pending", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "pending", "virtualElapsed": "P1D", "trace": OUT_HEAD + ["submit:pending", "end:pending"],
                                                         "detail": ["submit.encrypt:encrypted", "submit.send:accepted", "submit.await-ack:timeout"]},
-     bench_=bench((WPS, WSIM, "no-reply"), CAL, ENC, MIN))
+     bench_=bench((WPS, WSIM, "no-reply"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 test("WPS-OUT-004", "A control total that does not match is rejected before anything is sent", "uae.wps.wf.salary-file-out.v1", "leg",
      {"inbound": "samples/wps-sif-bad-control-total.sif"},
      {"outcome": "rejected", "reasonCode": "AM10", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN))
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 test("WPS-OUT-005", "A salary record with an invalid IBAN is rejected by the cluster check", "uae.wps.wf.salary-file-out.v1", "leg",
      {"inbound": "samples/wps-sif-bad-iban.sif"},
      {"outcome": "rejected", "reasonCode": "AC03", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:reject", "end:rejected"]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN))
+      "trace": ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:reject", "end:rejected"]},
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 # Issue I-88: the source's bank forks refused the file of an employer the labour ministry has suspended (WPS_RULES_FAILED).
 test("WPS-OUT-006", "The file of an employer the labour ministry has suspended is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
      "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "RR04", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "employer-status:found", "file-checks:reject", "end:rejected"]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "suspended")))
+      "trace": ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:reject", "end:rejected"]},
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "suspended"), (REG, REGSIM, "accept")))
 test("WPS-OUT-007", "An employer the labour ministry does not know is not refused for it", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
-     {"outcome": "settled", "trace": ["business-date:set", "employer-status:not-found", "file-checks:pass", "record-checks:pass", "record-iban:pass",
+     {"outcome": "settled", "trace": ["business-date:set", "corporate:registered", "employer-status:not-found", "file-checks:pass", "record-checks:pass", "record-iban:pass",
                                       "render:mapped", "submit:accepted", "end:settled"]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "not-registered")))
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "not-registered"), (REG, REGSIM, "accept")))
 # Issue I-87: a file the encryption service refuses is not sent.
 test("WPS-OUT-008", "A salary file the encryption service refuses is rejected and never sent", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "NARR", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
       "trace": OUT_HEAD + ["submit:rejected", "end:rejected"], "detail": ["submit.encrypt:refused"]},
-     bench_=bench((WPS, WSIM, "accept"), CAL, ("p.port.encryption.v1", "p.sim.encryption.v1", "reject"), MIN))
+     bench_=bench((WPS, WSIM, "accept"), CAL, ("p.port.encryption.v1", "p.sim.encryption.v1", "reject"), MIN, (REG, REGSIM, "accept")))
+# R-12-27 (Issue I-147): as in the source's pre-check, a file whose employer the bank has not registered, or registered with other
+# details than the channel supplied, is refused before anything else is asked or sent.
+test("WPS-OUT-009", "The file of an employer the bank has not registered is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
+     "leg", WPS_FILE,
+     {"outcome": "rejected", "reasonCode": "RR04", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
+      "trace": ["business-date:set", "corporate:not-registered", "end:rejected"]},
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "not-registered")))
+test("WPS-OUT-010", "The file of an employer registered with another debit account is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
+     "leg", WPS_FILE,
+     {"outcome": "rejected", "reasonCode": "BE01", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
+      "trace": ["business-date:set", "corporate:mismatch", "end:rejected"]},
+     bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "mismatch")))
 test("WPS-EXC-001", "The composite alone: encrypted, sent, acknowledged, read", "uae.wps.exchange.submit-salary-file.v1", "activity", WPS_FILE,
      {"outcome": "accepted", "detail": ["encrypt:encrypted", "send:accepted", "await-ack:received", "read-ack:ack"]}, bench_=bench((WPS, WSIM, "accept"), ENC),
      conformance=True)
@@ -1163,6 +1204,17 @@ test("WPS-ENR-001", "The labour ministry knows the employer: its status is writt
 test("WPS-ENR-002", "The labour ministry does not know the employer: no status, and the file is not refused for it", "uae.wps.enrich.employer-status.v1",
      "activity", {"context": {"header": {"paymentId": "P-1", "scheme": "uae.wps"}, "ext": {"uae": {"wps": {"employerId": "0000001234567"}}}}},
      {"outcome": "not-found", "writes": {"ext.uae.wps.employerStatus": "unknown"}}, bench_=bench((LM, LMSIM, "not-registered")))
+REG_CTX = {"context": {"header": {"paymentId": "P-1", "scheme": "uae.wps"},
+                       "batch": {"debtor": {"organisationId": {"id": "0000001234567", "scheme": "MOL"}}, "debtorAccount": {"iban": IBAN_OK}}}}
+test("P-REG-001", "A registered, active debtor is registered", "p.enrich.party-register.v1", "activity", REG_CTX,
+     {"outcome": "registered", "writes": {"facts.partyRegister.found": True, "facts.partyRegister.active": True}}, bench_=bench((REG, REGSIM, "accept")))
+test("P-REG-002", "A debtor the register does not hold is not registered", "p.enrich.party-register.v1", "activity", REG_CTX,
+     {"outcome": "not-registered", "reasonCode": "RR04", "writes": {"facts.partyRegister.found": False}}, bench_=bench((REG, REGSIM, "not-registered")))
+test("P-REG-003", "An inactive registration is not registered", "p.enrich.party-register.v1", "activity", REG_CTX,
+     {"outcome": "not-registered", "reasonCode": "RR04", "writes": {"facts.partyRegister.found": True, "facts.partyRegister.active": False}},
+     bench_=bench((REG, REGSIM, "inactive")))
+test("P-REG-004", "A registration whose details differ from what was supplied is a mismatch", "p.enrich.party-register.v1", "activity", REG_CTX,
+     {"outcome": "mismatch", "reasonCode": "BE01", "writes": {"facts.partyRegister.found": True}}, bench_=bench((REG, REGSIM, "mismatch")))
 test("WPS-IN-001", "Payment file confirmed, employees credited, disbursement reported", "p.wf.inward.v1", "end-to-end",
      {"inbound": "samples/wps-pif-valid.pif"},
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.prc", "count": 1}, {"port": WPS, "message": "uae.wps.dif", "count": 1},

@@ -5,12 +5,12 @@
 # bank's WPS plugin (PaymentHub.Activities.Bank.Adib.Wps). The source holds no WPS routing code for the bank, so none is set.
 kind: configuration-set
 tenant: adib
-release: 1.6.0
+release: 1.7.0
 title: Bank configuration for WPS
 accepts:
-  - { scope: p, release: 1.6.0 }
-  - { scope: uae.p, release: 1.6.0 }
-  - { scope: uae.wps, release: 1.6.0 }
+  - { scope: p, release: 1.7.0 }
+  - { scope: uae.p, release: 1.7.0 }
+  - { scope: uae.wps, release: 1.7.0 }
 values:
   # The rails the bank runs among the factory's: WPS. The source's base seed subscribes the tenant to WPS
   # (infra/docker/mssql/init.sql, TenantSubscriptions adib WPS); the owner decided on 2026-11-22 that it runs it here.
@@ -50,6 +50,12 @@ values:
   - parameter: p.protect.encrypt-file.v1#recipientKey
     value: cbuae-wps
     validFrom: "2026-11-22"
+  # The scheme's participant directory (Issue I-130, R-11-48): each bank's name by its routing code, read from the Central Bank's
+  # register of licensed banks (uae.p.ref.participant-directory.v1), edition by edition. A bank whose routing code the table
+  # does not yet hold is left out until the platform vendor fills it.
+  - parameter: uae.wps.table.participant-names.v1#participants
+    fromReference: { table: uae.p.ref.participant-directory.v1, columns: { routingCode: routingCode, name: name } }
+    validFrom: "2026-11-24"
 # The labour ministry notification is bound: the bank's WPS workflow calls it (wps-outward.v2, steps
 # mohre_salary_notification, mohre_salary_completion and mohre_nak_notification, mohreNotificationEnabled true), and the
 # bank runs WPS. The employer AML check stays unbound: no workflow of the source calls AdibWpsEmployerAmlCheck (README.md).

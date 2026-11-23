@@ -1,0 +1,449 @@
+# Written by hand (spec/CLAUDE.md, "Generated files"): reference data, effective-dated (R-01-25). A new edition is a new minor release.
+kind: reference-table
+name: uae.p.ref.participant-directory.v1
+release: 1.0.0
+title: The licensed banks of the UAE, the scheme participant directory
+description: 'The Central Bank''s register of licensed banks, as published. The register gives each bank''s name, licence
+  type and category, head office and identification number. It gives no UAEFTS routing code: the platform vendor fills routingCode
+  row by row from the scheme''s participant list in a later edition (Issue I-130). The one code filled is the only one the
+  TransactHub source holds. uae.wps.table.participant-names.v1 reads a bank''s name by its routing code from here (R-11-48).'
+domain: participant-directory
+key:
+  - identificationNumber
+columns:
+  - id: identificationNumber
+    type: code
+    title: Identification number
+    required: true
+    pattern: ^\d{2}\.\d{2}\.\d{2}\.\d{3}\.\d{4}\.\d{2}$
+  - id: registerNo
+    type: number
+    title: Number in the register
+    required: true
+  - id: name
+    type: text
+    title: Institution name
+    required: true
+  - id: licenceType
+    type: code
+    title: Licence type
+    required: true
+    allowed:
+      - national
+      - foreign
+  - id: licenceCategory
+    type: code
+    title: Licence category
+    required: true
+    allowed:
+      - conventional-retail
+      - islamic-retail
+      - conventional-wholesale
+      - conventional-investment
+      - conventional-specialized
+      - islamic-specialized
+  - id: headOffice
+    type: code
+    title: Head office
+    required: true
+    references: uae.p.ref.emirates.v1
+  - id: routingCode
+    type: code
+    title: UAEFTS routing code
+    pattern: ^[0-9]{9}$
+    maintainedBy: the platform vendor, from the scheme's participant list
+source:
+  publisher: Central Bank of the UAE
+  title: CB Register as of October 2026, Banks
+  url: https://centralbank.ae/media/ffco0wgo/cb-register-oct-2026.pdf
+  public: true
+  retrieved: '2026-11-23'
+  note: Rows 1 to 63 of the Banks section, pages 1 to 6, each checked against the PDF. The routing code of row 24 is from
+    the TransactHub source's WPS parameter migration (ReseedWpsParametersWithIdentityIds), not from the register.
+editions:
+  - validFrom: '2026-10-01'
+    note: The register as of October 2026.
+    rows:
+      - identificationNumber: 01.02.01.001.1946.02
+        registerNo: 1
+        name: HSBC Bank Middle East Limited
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.002.1958.02
+        registerNo: 2
+        name: Standard Chartered Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.003.1963.02
+        registerNo: 3
+        name: Emirates NBD Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.004.1964.02
+        registerNo: 4
+        name: CitiBank N.A.
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.005.1967.02
+        registerNo: 5
+        name: Mashreq Bank P.S.C.
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.006.1967.02
+        registerNo: 6
+        name: Habib Bank Ltd.
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.007.1967.02
+        registerNo: 7
+        name: United Bank Ltd.
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.008.1968.01
+        registerNo: 8
+        name: First Abu Dhabi Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.009.1968.02
+        registerNo: 9
+        name: Bank Saderat Iran
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.010.1969.02
+        registerNo: 10
+        name: Commercial Bank of Dubai P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.011.1969.02
+        registerNo: 11
+        name: Al Ahli Bank of Kuwait
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.012.1969.02
+        registerNo: 12
+        name: Bank Melli Iran
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.013.1970.02
+        registerNo: 13
+        name: Arab African International Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.014.1972.02
+        registerNo: 14
+        name: Banque Misr
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.015.1973.03
+        registerNo: 15
+        name: Bank of Sharjah P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-SH
+      - identificationNumber: 01.02.01.016.1973.01
+        registerNo: 16
+        name: Arab Bank PLC
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.017.1973.01
+        registerNo: 17
+        name: BNP Paribas
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.018.1973.02
+        registerNo: 18
+        name: Al Khaliji (France) S. A.
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.020.1974.01
+        registerNo: 19
+        name: Rafidain Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.021.1974.02
+        registerNo: 20
+        name: Bank of Baroda
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.022.1974.01
+        registerNo: 21
+        name: Janata Bank PLC
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.023.1974.02
+        registerNo: 22
+        name: Habib Bank A.G Zurich
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.024.1974.02
+        registerNo: 23
+        name: Banque Banorient France
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.02.025.1975.02
+        registerNo: 24
+        name: Dubai Islamic Bank P.J.S.C
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-DU
+        routingCode: '802420101'
+      - identificationNumber: 01.01.02.026.1975.03
+        registerNo: 25
+        name: Sharjah Islamic Bank P.J.S.C.
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-SH
+      - identificationNumber: 01.01.01.027.1975.03
+        registerNo: 26
+        name: United Arab Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-SH
+      - identificationNumber: 01.01.01.028.1975.03
+        registerNo: 27
+        name: InvestBank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-SH
+      - identificationNumber: 01.02.01.029.1975.02
+        registerNo: 28
+        name: Credit Agricole-Corporate and Investment Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.030.1976.01
+        registerNo: 29
+        name: Arab Bank for Inv.& Foreign Trade
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.02.031.1976.02
+        registerNo: 30
+        name: Emirates Islamic Bank P.J.S.C.
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.01.032.1976.06
+        registerNo: 31
+        name: National Bank of R.A.K P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-RK
+      - identificationNumber: 01.01.05.033.1976.02
+        registerNo: 32
+        name: Emirates Investment Bank (PJSC)
+        licenceType: national
+        licenceCategory: conventional-investment
+        headOffice: AE-DU
+      - identificationNumber: 01.02.02.034.1976.01
+        registerNo: 33
+        name: El Nilein Bank
+        licenceType: foreign
+        licenceCategory: islamic-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.035.1976.01
+        registerNo: 34
+        name: National Bank of Oman S.A.O.G.
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.01.037.1982.05
+        registerNo: 35
+        name: National Bank of U.A.Q PSC
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-UQ
+      - identificationNumber: 01.02.01.038.1982.01
+        registerNo: 36
+        name: National Bank of Bahrain
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.01.039.1984.07
+        registerNo: 37
+        name: National Bank of Fujairah PSC
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-FU
+      - identificationNumber: 01.01.01.040.1985.01
+        registerNo: 38
+        name: Abu Dhabi Commercial Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.01.041.1991.02
+        registerNo: 39
+        name: Commercial Bank International P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.02.042.1997.01
+        registerNo: 40
+        name: Abu Dhabi Islamic Bank P.J.S.C
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.02.045.2007.01
+        registerNo: 41
+        name: Al Hilal Bank P.J.S.C
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.01.046.2007.02
+        registerNo: 42
+        name: Doha Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.01.047.2007.02
+        registerNo: 43
+        name: The Saudi National Bank
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.01.02.048.2008.04
+        registerNo: 44
+        name: Ajman Bank P.J.S.C
+        licenceType: national
+        licenceCategory: islamic-retail
+        headOffice: AE-AJ
+      - identificationNumber: 01.02.01.049.2008.02
+        registerNo: 45
+        name: National Bank of Kuwait
+        licenceType: foreign
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.03.050.2009.01
+        registerNo: 46
+        name: Industrial & Commercial Bank of China
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.051.2009.01
+        registerNo: 47
+        name: Deutsche Bank AG
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.053.2012.01
+        registerNo: 48
+        name: KEB Hana Bank
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.054.2014.02
+        registerNo: 49
+        name: Barclays Bank PLC
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+      - identificationNumber: 01.02.03.055.2014.01
+        registerNo: 50
+        name: Bank of China Limited
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.056.2014.01
+        registerNo: 51
+        name: Gulf International Bank B.S.C
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.057.2015.02
+        registerNo: 52
+        name: MCB Bank Limited
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+      - identificationNumber: 01.02.03.058.2016.01
+        registerNo: 53
+        name: Intesa Sanpaolo S.P.A.
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.059.2016.02
+        registerNo: 54
+        name: Agricultural Bank of China Ltd.
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+      - identificationNumber: 01.02.03.060.2017.02
+        registerNo: 55
+        name: Bank Al Falah Limited
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+      - identificationNumber: 01.02.02.061.2017.01
+        registerNo: 56
+        name: BOK International Bank
+        licenceType: foreign
+        licenceCategory: islamic-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.07.062.2021.01
+        registerNo: 57
+        name: Al Maryah Community Bank L.L.C.
+        licenceType: national
+        licenceCategory: conventional-specialized
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.01.063.2022.01
+        registerNo: 58
+        name: WIO Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-AZ
+      - identificationNumber: 01.01.01.064.2022.02
+        registerNo: 59
+        name: Zand Bank P.J.S.C
+        licenceType: national
+        licenceCategory: conventional-retail
+        headOffice: AE-DU
+      - identificationNumber: 01.02.03.066.2022.02
+        registerNo: 60
+        name: International Development Bank for Investment & Finance
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+      - identificationNumber: 01.01.08.067.2024.04
+        registerNo: 61
+        name: Ruya Community Islamic Bank L.L.C
+        licenceType: national
+        licenceCategory: islamic-specialized
+        headOffice: AE-AJ
+      - identificationNumber: 01.01.07.068.2026.01
+        registerNo: 62
+        name: Reem Community Bank P.S.C
+        licenceType: national
+        licenceCategory: conventional-specialized
+        headOffice: AE-AZ
+      - identificationNumber: 01.02.03.069.2026.02
+        registerNo: 63
+        name: Iraqi Islamic Bank for Investment & Development
+        licenceType: foreign
+        licenceCategory: conventional-wholesale
+        headOffice: AE-DU
+provenance:
+  origin: factory
+  status: confirmed
+  note: Public reference data (owner's decision of 23 November 2026). Routing codes are to be filled.
