@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj" />
     <Project Path="src/TransactHub.Activities.Platform/TransactHub.Activities.Platform.csproj" />
     <Project Path="src/TransactHub.Activities.Wps/TransactHub.Activities.Wps.csproj" />
     <Project Path="src/TransactHub.Api/TransactHub.Api.csproj" />
@@ -30,6 +31,7 @@
     <Project Path="tests/TransactHub.EngineHost.Tests/TransactHub.EngineHost.Tests.csproj" />
     <Project Path="tests/TransactHub.Security.Tests/TransactHub.Security.Tests.csproj" />
     <Project Path="tests/TransactHub.FileApi.Tests/TransactHub.FileApi.Tests.csproj" />
+    <Project Path="tests/TransactHub.Native.Tests/TransactHub.Native.Tests.csproj" />
     <Project Path="tests/TransactHub.Operations.Tests/TransactHub.Operations.Tests.csproj" />
     <Project Path="tests/TransactHub.Service.Tests/TransactHub.Service.Tests.csproj" />
     <Project Path="tests/TransactHub.Store.Tests/TransactHub.Store.Tests.csproj" />
