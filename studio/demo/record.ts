@@ -214,6 +214,27 @@ export class Director {
     await this.approveRow('config:example-bank');
     await this.as('example-bank', maker);
   }
+  /**
+   * A wait the viewer need not watch (a payment waiting for its scheme's answer): a card says what happens and for how long, and
+   * the time is cut from the video. It starts once the scene's voice has finished, so no voice is cut.
+   */
+  cuts: { from: number; to: number }[] = [];
+  async skip(title: string, fn: () => Promise<void>) {
+    const last = this.marks[this.marks.length - 1];
+    if (last && !DRY) { const left = last.at + last.seconds + 0.3 - this.now(); if (left > 0) await this.page.waitForTimeout(left * 1000); }
+    const t0 = this.now();
+    await fn();
+    const took = this.now() - t0;
+    await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [title, `${Math.max(1, Math.round(took / 60))} minute(s) later`]);
+    await this.wait(2500);
+    await this.page.evaluate(() => (window as any).__card?.());
+    // Cut what came before the card, keep the card's last 2.5 seconds.
+    if (!DRY && took > 5) this.cuts.push({ from: t0 + 0.5, to: t0 + took });
+  }
+  /** A time on the recorded clock, on the clock of the video once the cuts are made. */
+  cutTime(at: number) {
+    return at - this.cuts.filter((c) => c.to <= at).reduce((n, c) => n + (c.to - c.from), 0);
+  }
   /** A terminal panel over the page, showing real command output. */
   async terminal(command: string, output: string) {
     await this.page.evaluate(([c, o]: string[]) => (window as any).__terminal?.(c, o), [command, output]);
@@ -305,7 +326,8 @@ export async function record(prod: Production, outDir: string) {
   d.server = await startServer({}, { keepAiKeys: !DRY });
   const browser = await require('playwright').chromium.launch();
   const size = { width: 1280, height: 720 };
-  const context = await browser.newContext({ viewport: size, ...(DRY ? {} : { recordVideo: { dir: work, size } }), acceptDownloads: true });
+  // bypassCSP: a deployed studio's or console's content security policy would refuse the overlay's styles.
+  const context = await browser.newContext({ viewport: size, bypassCSP: true, ...(DRY ? {} : { recordVideo: { dir: work, size } }), acceptDownloads: true });
   await context.addInitScript(OVERLAY);
   // The recordings show the studio without the assistant panel, unless a production opens it.
   await context.addInitScript(() => { try { if (localStorage.getItem('th.dock') === null) localStorage.setItem('th.dock', '0'); } catch { /* no storage */ } });
@@ -334,17 +356,28 @@ export async function record(prod: Production, outDir: string) {
   const webm = fs.readdirSync(work).find((f) => f.endsWith('.webm'))!;
   const video = path.join(work, webm);
 
+  // The waits a production skipped are cut from the video; every line's time moves with them.
+  for (const m of d.marks) m.at = d.cutTime(m.at);
+  length = d.cutTime(length);
+  const keep: [number, number | undefined][] = [];
+  let from = 0;
+  for (const c of d.cuts) { keep.push([from, c.from]); from = c.to; }
+  keep.push([from, undefined]);
+  const cutGraph = d.cuts.length
+    ? [...keep.map(([a, b], i) => `[0:v]trim=start=${a.toFixed(3)}${b === undefined ? '' : `:end=${b.toFixed(3)}`},setpts=PTS-STARTPTS[v${i}]`), `${keep.map((_, i) => `[v${i}]`).join('')}concat=n=${keep.length}:v=1:a=0[vout]`]
+    : [];
   // The voice: each line at the time its scene started, mixed into one track.
   const out = path.join(outDir, `${prod.NAME}.mp4`);
   const voiced = d.marks.filter((m) => m.wav);
   const args = ['-y', '-i', video];
   for (const m of voiced) args.push('-i', m.wav!);
-  if (voiced.length) {
+  if (voiced.length || cutGraph.length) {
     const delays = voiced.map((m, i) => `[${i + 1}:a]adelay=${Math.round(m.at * 1000)}|${Math.round(m.at * 1000)}[a${i}]`);
-    const mix = `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0,apad[aout]`;
+    const mix = voiced.length ? [`${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0,apad[aout]`] : [];
     const graph = path.join(work, 'mix.txt');
-    fs.writeFileSync(graph, [...delays, mix].join(';'));
-    args.push('-filter_complex_script', graph, '-map', '0:v', '-map', '[aout]', '-shortest');
+    fs.writeFileSync(graph, [...cutGraph, ...delays, ...mix].join(';'));
+    args.push('-filter_complex_script', graph, '-map', cutGraph.length ? '[vout]' : '0:v');
+    if (voiced.length) args.push('-map', '[aout]', '-shortest');
   }
   args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-metadata', `title=${prod.TITLE}`);
   if (voiced.length) args.push('-c:a', 'aac', '-b:a', '128k');

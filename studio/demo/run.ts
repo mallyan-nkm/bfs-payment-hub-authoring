@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { STUDIO } from '../test/blackbox/server.js';
 import { record, type Production } from './record.js';
 
-// Records one production: npx tsx demo/run.ts concepts|build|ideas|hands-on [--out dir]
+// Records one production: npx tsx demo/run.ts concepts|build|ideas|hands-on|install|architecture|full-run [--out dir]
 // (A separate entry point: the productions import record.ts, so record.ts must not wait on them.)
 
 const PRODUCTIONS: Record<string, () => Promise<Production>> = {
@@ -11,6 +11,10 @@ const PRODUCTIONS: Record<string, () => Promise<Production>> = {
   build: () => import('./build.js') as any,
   ideas: () => import('./ideas.js') as any,
   'hands-on': () => import('./hands-on.js') as any,
+  // The runtime videos (docs/demo/runtime/): the laptop stack and its consoles, the architecture, the full run.
+  install: () => import('./install.js') as any,
+  architecture: () => import('./architecture.js') as any,
+  'full-run': () => import('./full-run.js') as any,
 };
 const which = process.argv[2];
 if (!which || !PRODUCTIONS[which]) {

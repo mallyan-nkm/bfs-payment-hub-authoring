@@ -1882,6 +1882,32 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
+## I-200. On the laptop stack the File API keeps a file but cannot start its payment
+
+**Issue.** Recording the runtime videos (`studio/demo/full-run.ts`) on the laptop stack, a salary file and a demo credit file uploaded to the File API (`POST /files/ui`, as the operator) were checked and kept, and then refused with `frontdoor.NoWorker`: "No worker of dist/adib@… serves uae.wps for uae.wps.map.sif-in.v1". The front door runs a scheme's intake map on a worker of the distribution (`FileApi:Workers:<scope>`, R-09-85), and `deploy/laptop/compose.yaml` names none, so no file that reaches the laptop's File API starts a payment. The laptop's own test runs its payments with the front door's one-off runner (`deploy/laptop/bin/run-pinned.mts`) for this reason, and its README lists it under "What is not here", but nothing says that an upload is refused.
+
+**What the video does.** It shows the upload and the refusal, then pins the payment at the release API and runs it with `run-pinned`, as an operator would, and says so.
+
+**Recommendation.** Give the laptop's File API the workers of the bank's distributions (`FileApi__Workers__*`), served by the engine host's per-distribution host or by a worker service of the runtime image, and extend `deploy/laptop/test/insert-only.mts` to upload a file and see its payment start and end on the distribution it is pinned to.
+
+## I-201. No console has a screen to upload a file to the File API
+
+**Issue.** The File API takes a person's upload (`POST /files/ui`, role `file-uploader`, which the laptop's role map gives the operators), but neither the operations console nor the service console has a page that sends one. An operator who must put a file in by hand needs a command.
+
+**Recommendation.** An upload page in the operations console: tenant (the runtime's bank), message (the messages the active distribution receives), the file; it shows the File API's answer (kept, refused, started) with its code linked to the runbook and a link to the payment it started.
+
+## I-202. The consoles' own audit trails have no screen
+
+**Issue.** The operations console keeps its own hash-chained record of what people did (`GET /ops/api/audit`), and the service console its audit (`GET /service/api/audit`), but no page of either shows them. A payment's timeline shows that payment's facts; the console's own trail (filters saved, reports downloaded, unmasks asked, consents given) can be read only from the API. `docs/runtime/PLATFORM-PARITY.md` lists the audit log as built.
+
+**Recommendation.** An Audit page in each console, for the Supervisor and the BankApprover in the operations console and for the service roles in the service console: newest first, filtered by person, action and date, each row with its hash and whether the chain verifies.
+
+## I-203. The laptop's identity provider has no register maker
+
+**Issue.** `deploy/laptop/identity/directory.json` has five synthetic users, and no role map gives `RegisterMaker`, so on the laptop the operations console's Registers section can be read but nobody can propose a register change, and the maker-checker of a register cannot be shown.
+
+**Recommendation.** Add a synthetic register maker (`reg.maker`, group `th-register-makers`) to the directory and `RegisterMaker` for that group to `role-map-ops.json`, with the bank approver consenting as today.
+
 ## Not done, and why
 
 | Story | Why |

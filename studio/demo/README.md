@@ -1,6 +1,6 @@
 # Narrated demos and training videos
 
-Four recorded videos of the studio, each a real browser session on a fresh workspace, driven click by
+Four recorded videos of the studio (the three of the runtime are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
 an `.srt` subtitle file. The two training videos are in `docs/demo/training/` and run at a slower pace,
 in plain words for someone new to payments, with one picture throughout: a restaurant kitchen.
@@ -11,6 +11,39 @@ in plain words for someone new to payments, with one picture throughout: a resta
 | `training/training-1-the-ideas.mp4` | Training 1, about ten minutes, no screens: every idea of the studio drawn as a kitchen. Stations (activities), quality checks (rules, rule sets, decision tables, parameters), recipes (workflows, legs, subflows, composites), doors, stand-ins and translators (ports, simulators, maps), the standard ticket (the canonical context), partners (schemes, dispatch tables, slots), franchises (tenants, configuration, hooks), who may change what (maker and checker), tasting (tests and the bench), and service (export, workers, engines) |
 | `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; the assistant beside the editor: help on a field, the rule in plain words, then a rule built by asking, allowed once, a change allowed always and undone; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved; then the same payment in the debugger: stepping into and back, a breakpoint on the bank's hook point and on the route, the decision and the data it changed |
 | `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
+
+## The runtime videos
+
+Three videos of the runtime with the studio, in `docs/demo/runtime/`, each with its `.srt`, voiced at the training pace
+(`TH_TTS_SPEED=0.85`). Videos 1 and 3 run on the laptop stack (`deploy/laptop`); video 2 is drawn, with no screens.
+
+| Video | What it shows |
+| --- | --- |
+| `runtime-1-install-and-screens.mp4` | Building the images, the stack's secrets by name only, `docker compose ... up -d --wait` and what runs; the studio's sign-in and its surfaces by role (designer, bank configurator, bank approver, auditor, administrator); the runtime's sign-in at the bank's development provider; every page of the service console (health, content, logs, errors and runbooks, actions, backup, assistant), the operations console (payments and a payment's page, work queue, approvals, reports, breaks, turnaround, retention, consents, registers, and its audit read from the API) and the test bench (run, test data, suite, history) |
+| `runtime-2-north-star-architecture.mp4` | The north-star architecture, drawn: ISO 20022 at the centre and scheme formats mapped at the edges; one insert-only store on SQL Server or PostgreSQL; four engines behind one contract, Temporal the default; the three layers and why; a payment pinned at acceptance, side by side, drained, removed, rolled back; platform workflows with slots, scheme legs (WPS also in a refund order), hooks and rules; the File API as the only door for files; the studio multi-tenant on its GitHub branch, a runtime one bank; maker-checker and the bank approver's consent; what is not built yet |
+| `runtime-3-full-run.mp4` | Not recorded yet: its production (`demo/full-run.ts`) is written and dry-run. One master workflow across every console: a bank's values, hook and rule on the corporate workflow; the new scheme leg `uae.demo` connected by its dispatch table; the bench; maker-checker; install, consent, activate in the service console; a payment through the File API, followed in the operations console; a value changed by a configuration release; a second distribution, the first draining while a payment pinned to it finishes, then removed; a roll back |
+
+Bring the stack up first, with a compose project of your own and the secrets in your shell (`deploy/laptop/README.md`), then,
+from `studio/`, with the same shell:
+
+```bash
+TH_TTS_SPEED=0.85 npx tsx demo/run.ts install --out ../docs/demo/runtime
+```
+
+```bash
+TH_TTS_SPEED=0.85 npx tsx demo/run.ts architecture --out ../docs/demo/runtime
+```
+
+```bash
+TH_TTS_SPEED=0.85 npx tsx demo/run.ts full-run --out ../docs/demo/runtime
+```
+
+`demo/stack.ts` holds what the two stack videos share: the stack's URLs, the sign-in at the bank's development provider, the
+services' APIs for a step that has no screen, and the commands shown in the terminal panel, run for real with every
+`TH_LAPTOP_*` secret in their output replaced by stars. The full run starts on a fresh stack: it adds the bank's two studio
+users, then publishes and installs the bank's distributions. Where a step has no screen today it is done as an operator would,
+by the API or a command shown on screen, and the voice says so (Issues I-200 to I-203). A WPS payment on Temporal waits in real
+time for its simulator's answer; `Director.skip` cuts such a wait from the video and shows a card instead.
 
 ## Record them again
 
@@ -46,8 +79,9 @@ The agent takes from a few seconds to a minute to answer; the recording waits up
 each time.
 
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
-hands-on production also checks its results as it goes. `test/blackbox/demo-videos.test.ts` runs all
-four this way.
+hands-on production also checks its results as it goes. `test/blackbox/demo-videos.test.ts` runs the four studio
+productions and the architecture video this way, and the two stack videos too where a laptop stack is up with its
+secrets in the environment (the full run takes up to half an hour: it pays two payments on Temporal).
 
 Needs ffmpeg, and for the build demo the .NET 8 SDK (it deploys on DTFx). Without a voice the videos
 are recorded silent, with captions.
