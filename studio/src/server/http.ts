@@ -82,7 +82,7 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
     const id = userFor(env, s.subject);
     const u = id ? withAssertedRoles(id, assertedRoles(s), () => userById(env, id)) : undefined;
     const roles = effectiveRoles(u?.roles);
-    return { signedIn: true, provider: cfg.dev ? 'development' : 'oidc', identity: s.subject, user: u?.id, tenant: u?.tenant, roles, surfaces: u ? surfacesOf(roles) : [], landing: u ? landingOf(roles) : undefined, csrfToken: s.csrf };
+    return { signedIn: true, provider: cfg.dev ? 'development' : 'oidc', identity: s.subject, user: u?.id, tenant: u?.tenant, roles, surfaces: u ? surfacesOf(roles) : [], landing: u ? landingOf(roles) : undefined, csrfToken: s.csrf, heartbeatSeconds: Math.round((cfg.heartbeatMinutes ?? 5) * 60) };
   };
 
   return http.createServer((req, res) => {
@@ -155,8 +155,9 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
         }
         if (!deviceCode) return send(res, 400, { error: 'Send device_code' });
         let claims: Record<string, any>;
+        let refreshToken: string | undefined;
         try {
-          ({ claims } = await oidc.redeemDevice(deviceCode));
+          ({ claims, refreshToken } = await oidc.redeemDevice(deviceCode));
         } catch (e: any) {
           if (e instanceof DevicePending) return send(res, e.code === 'authorization_pending' || e.code === 'slow_down' ? 428 : 401, { error: e.code });
           security('cli-sign-in-failed', req, { 'th.reason': String(e?.message ?? e).slice(0, 200) });
@@ -166,7 +167,7 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
         if (!subject) return send(res, 401, { error: `The ID token has no ${cfg.userClaim} claim` });
         const groups = cfg.groupsClaim ? (Array.isArray(claims[cfg.groupsClaim]) ? claims[cfg.groupsClaim].map(String) : []) : undefined;
         const user = userFor(env, subject);
-        const t = sessions.cliToken(subject, user, groups);
+        const t = sessions.cliToken(subject, user, groups, refreshToken);
         log('info', 'Command line signed in {enduser.id}', { 'enduser.id': subject, 'th.user': user ?? '' });
         const who = me({ id: t.id, subject, user, csrf: '', expires: t.expires, groups, via: 'cli' });
         return send(res, 200, { token: t.token, expiresAt: new Date(t.expires).toISOString(), user: who.user, tenant: who.tenant, roles: who.roles, identity: subject });
@@ -191,8 +192,9 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
         }
         let claims: Record<string, any>;
         let idToken: string;
+        let refreshToken: string | undefined;
         try {
-          ({ claims, idToken } = await oidc.redeem(url.searchParams.get('code') ?? '', pending.verifier, pending.nonce));
+          ({ claims, idToken, refreshToken } = await oidc.redeem(url.searchParams.get('code') ?? '', pending.verifier, pending.nonce));
         } catch (e: any) {
           security('sign-in-failed', req, { 'th.reason': String(e?.message ?? e).slice(0, 200) });
           return send(res, 401, { error: `Sign-in failed: ${e.message}` }, { 'set-cookie': sessions.clearLoginCookie() });
@@ -201,17 +203,32 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
         if (!subject) return send(res, 401, { error: `The ID token has no ${cfg.userClaim} claim` });
         const groups = cfg.groupsClaim ? (Array.isArray(claims[cfg.groupsClaim]) ? claims[cfg.groupsClaim].map(String) : []) : undefined;
         void idToken;
-        const s = sessions.create(subject, userFor(env, subject), groups);
+        const s = sessions.create(subject, userFor(env, subject), groups, refreshToken);
         log('info', 'Signed in {enduser.id}', { 'enduser.id': subject, 'th.user': userFor(env, subject) ?? '' });
         res.writeHead(303, { location: `/${pending.returnTo}`, 'set-cookie': [sessions.sessionCookie(s), sessions.clearLoginCookie()], 'cache-control': 'no-store' }).end();
         return;
       }
 
       // A browser's session is its sealed cookie (R-11-45); a command line's is its sealed bearer token (R-11-46).
-      const cli = url.pathname.startsWith('/api/') || url.pathname === '/auth/cli/logout' ? sessions.fromCliToken(req.headers.authorization) : undefined;
-      const session = cli ?? sessions.fromCookieHeader(req.headers.cookie);
-      // A used session's cookie is sent again now and then, so its idle time slides on every instance.
-      if (session?.renew) res.setHeader('set-cookie', sessions.sessionCookie(session));
+      let cli = url.pathname.startsWith('/api/') || url.pathname === '/auth/cli/logout' ? sessions.fromCliToken(req.headers.authorization) : undefined;
+      let session = cli ?? sessions.fromCookieHeader(req.headers.cookie);
+      // The heartbeat (R-11-50, Issue I-139): every few minutes the session is checked with the identity provider. One the
+      // provider ended stops here, and at its next heartbeat on every other instance.
+      if (session && sessions.due(session)) {
+        const beat = await sessions.heartbeat(session, oidc);
+        if (beat === 'ended') {
+          security('session-ended-by-provider', req, { 'th.user': session.user ?? '', 'th.via': session.via ?? 'browser' });
+          if (!cli) res.setHeader('set-cookie', sessions.clearCookie());
+          session = cli = undefined;
+        } else if (beat === 'renewed') {
+          if (cli) res.setHeader('x-th-renewed-token', sessions.renewedCliToken(session));
+          else session.renew = true;
+        }
+      }
+      // A used session's cookie is sent again now and then, so its idle time slides on every instance. The page's own
+      // heartbeat (x-th-heartbeat) is not use: its cookie carries the new check and keeps the idle time.
+      const beatOnly = req.headers['x-th-heartbeat'] === '1';
+      if (session?.renew && !cli) res.setHeader('set-cookie', sessions.sessionCookie(session, beatOnly));
       if (url.pathname === '/auth/me' && method === 'GET') return send(res, session ? 200 : 401, me(session));
 
       if (url.pathname === '/auth/cli/logout' && method === 'POST') {
