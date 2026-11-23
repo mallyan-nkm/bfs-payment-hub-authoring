@@ -153,7 +153,7 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
     {
         // Whose files this attempt keeps: its tenant, payment and leg.
         HostFiles.Current.Value = new HostFiles.Attempt(tenant, NativeContext.S(view, "header.scheme") is { Length: > 0 } sc ? sc : name.Split('.')[0] == "p" ? "p" : string.Join('.', name.Split('.').Take(2)),
-            NativeContext.S(view, "header.paymentId") is { Length: > 0 } pid ? pid : null, (string?)body["instance"], name);
+            AttemptRouting.PaymentOf(body), (string?)body["instance"], name);
         // A reader keeps the file it is given as one received (the inbound message, or the reply an await took).
         if (name.Contains(".map.") && name.Contains("-in.v"))
             foreach (var path in new[] { "messages.lastReceived", "messages.inbound" })

@@ -2309,6 +2309,14 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Let an activity's parameter say what it is (`role: ledger-account`, with its kind), in its next release, and have the view list every parameter so marked; until then the four names are the platform's convention, held by the accounting templates.
 
+## I-285. A native map that reads no header was refused on a runtime as not pinned
+
+**Issue.** A runtime's native host finds the payment an attempt is for in the view's `header.paymentId` (R-09-132, R-09-143). The view is what the activity reads, and `uae.wps.map.sif-out.v1` reads the batch, its items and the scheme's extension only. Once the laptop gave the render to the native host (`TH_NATIVE_ACTIVITIES`), every salary file's render was refused as `native.NotPinned` and the payment was stuck before its file was written. The laptop's insert-only test, run for the first time after that change, showed it: no salary file reached the Central Bank's folder.
+
+**Done (23 November 2026).** The worker sends the payment's id beside the view, as the attempt's `paymentId`; the native host takes the view's `header.paymentId` first and the attempt's own otherwise, for its routing and for the files it keeps (`AttemptRouting.PaymentOf`, `AttemptPaymentTests`, `studio/test/native.test.ts`). The view stays what the activity reads.
+
+**Recommendation.** Write the attempt's envelope (activity, release, distribution, payment, instance, tenant, level) as a schema of its own, apart from the view, so that a field the host needs is never looked for in the view again.
+
 ## Not done, and why
 
 | Story | Why |

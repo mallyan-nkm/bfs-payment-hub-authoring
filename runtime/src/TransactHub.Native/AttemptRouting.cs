@@ -27,6 +27,14 @@ public sealed class AttemptRouting(StoreOptions? store, bool runtime = false, bo
         return new AttemptRouting(store, env("TH_BANK") is { Length: > 0 }, mode is "dev" or "test");
     }
 
+    /// <summary>
+    /// The payment an attempt is for (R-09-132): the view's <c>header.paymentId</c>, or the attempt's own <c>paymentId</c>, which the
+    /// worker sends beside the view for an activity that does not read the header (a map that reads the batch only, Issue I-285).
+    /// </summary>
+    public static string? PaymentOf(JsonObject body) =>
+        body["view"] is JsonObject view && NativeContext.S(view, "header.paymentId") is { Length: > 0 } v ? v
+        : (string?)body["paymentId"] is { Length: > 0 } b ? b : null;
+
     /// <summary>A payment's pin never changes (R-09-53): read once per payment.</summary>
     readonly ConcurrentDictionary<string, string> pins = new(StringComparer.Ordinal);
 
@@ -37,7 +45,7 @@ public sealed class AttemptRouting(StoreOptions? store, bool runtime = false, bo
         if (named is null) return worker;
         if (worker is not null && worker != named)
             throw new NativeRefusal("native.WrongDistribution", $"The attempt names {named}, but its worker runs {worker} (TH_DISTRIBUTION): a worker of one distribution does not serve another's payment");
-        var paymentId = body["view"] is JsonObject view ? NativeContext.S(view, "header.paymentId") : null;
+        var paymentId = PaymentOf(body);
         var strict = runtime && !allowUnpinned;
         if (store is null || paymentId is not { Length: > 0 })
             return strict ? throw new NativeRefusal("native.NotPinned", $"The attempt names {named} for a payment the runtime has no pin of{(paymentId is { Length: > 0 } ? "" : " (no header.paymentId)")}: on a runtime every payment is pinned at acceptance") : named;

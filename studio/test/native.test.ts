@@ -69,6 +69,15 @@ describe('native code-behind (R-08-14)', () => {
     expect(received).toEqual([{ method: 'POST', path: '/native', body: { activity: ACT.name, release: '1.0.0', view: VIEW, params: { template: 'default' }, now: NOW, tenant: 'example-bank', level: 'item' } }]);
   });
 
+  it('sends the payment\'s id beside the view, for an activity whose view has no header (R-09-132, Issue I-285)', async () => {
+    process.env.TH_NATIVE_HOST = `${url}/`;
+    received.length = 0;
+    reply = { kind: 'result', outcome: 'mapped', writes: {} };
+    await runNative(ACT, VIEW, {}, NOW, 'example-bank', 'item', 'root-1/leg1', 'PAY-SYNTHETIC-1');
+    expect(received[0].body).toMatchObject({ view: VIEW, instance: 'root-1/leg1', paymentId: 'PAY-SYNTHETIC-1' });
+    expect(received[0].body.view.header).toBeUndefined();
+  });
+
   it('sends the worker\'s token for the native host, read by reference from TH_NATIVE_TOKEN (R-08-17)', async () => {
     process.env.TH_NATIVE_HOST = url;
     reply = { kind: 'result', outcome: 'mapped', writes: {} };
