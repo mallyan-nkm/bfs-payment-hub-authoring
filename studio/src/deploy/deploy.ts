@@ -415,9 +415,12 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
  */
 function runtimeTokenEnv(): Record<string, string> {
   // The worker's token for the runtime's values API, and for the native host (R-08-17): each a reference the worker resolves.
-  const refs = (['TH_RUNTIME_TOKEN', 'TH_NATIVE_TOKEN'] as const).filter((k) => process.env[k] && isSecretRef(process.env[k]!));
-  if (!refs.length) return {};
-  const out: Record<string, string> = Object.fromEntries(refs.map((k) => [k, process.env[k]!]));
+  // The native host's client credentials and client certificate are references too (R-08-21); the token endpoint, client id,
+  // scope and audience are plain settings.
+  const refs = (['TH_RUNTIME_TOKEN', 'TH_NATIVE_TOKEN', 'TH_NATIVE_CLIENT_SECRET', 'TH_NATIVE_CLIENT_CERT', 'TH_NATIVE_CLIENT_KEY', 'TH_NATIVE_CA'] as const).filter((k) => process.env[k] && isSecretRef(process.env[k]!));
+  const plain = (['TH_NATIVE_TOKEN_URL', 'TH_NATIVE_CLIENT_ID', 'TH_NATIVE_SCOPE', 'TH_NATIVE_AUDIENCE'] as const).filter((k) => process.env[k]);
+  if (!refs.length && !plain.length) return {};
+  const out: Record<string, string> = Object.fromEntries([...refs, ...plain].map((k) => [k, process.env[k]!]));
   for (const k of ['TH_SECRET_FILE_ROOTS', 'TH_VAULT_ADDR', 'TH_VAULT_TOKEN', 'TH_VAULT_NAMESPACE']) if (process.env[k]) out[k] = process.env[k]!;
   for (const r of [...refs.map((k) => process.env[k]), process.env.TH_VAULT_TOKEN]) {
     const name = r?.startsWith('env:') ? r.slice(4) : undefined;
