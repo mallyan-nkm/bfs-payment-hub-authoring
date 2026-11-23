@@ -363,8 +363,14 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             // The same file again: the File API sends its kept bytes again, as a resend.
             Assert.Equal("sent", await port.Put(Bank, "P-9", "m-1", "000000000009.SIF.gpg", bytes));
             Assert.Equal(bytes, await File.ReadAllBytesAsync(at));
+            // A workflow's send on a host whose files go through the File API: the port's put is the File API's outbox.
+            var outbox = new OutboxFileTransfer(new SimulatedFileTransfer(), Bank, http.BaseAddress!, "env:TOKEN", new SecretResolver([new EnvSecretProvider(k => k == "TOKEN" ? token : null)]), http);
+            using (FileTransferOwner.Use(new FileTransferOwner("P-10", "leg-10", "p", "p.post.file-bulk", "p.post.accounting.v1")))
+                await outbox.Put("coreBanking/in", "BULK-000001.csv", Encoding.UTF8.GetBytes("synthetic,bulk\n"));
+            Assert.True(File.Exists(Path.Combine(root, "coreBanking", "in", "BULK-000001.csv")));
             await using var db = StoreDbContext.Open(o);
-            var f = Assert.Single(await db.StoredFiles.AsNoTracking().ToListAsync());
+            Assert.Equal(("P-10", "leg-10", "p.post.file-bulk"), (await db.StoredFiles.AsNoTracking().SingleAsync(x => x.SubjectId == "P-10")) is var b10 ? (b10.SubjectId, b10.Leg, b10.Kind) : default);
+            var f = Assert.Single(await db.StoredFiles.AsNoTracking().Where(x => x.SubjectId == "P-9").ToListAsync());
             Assert.Equal(("P-9", "out"), (f.SubjectId, f.Direction));
             Assert.Equal(["file.queued", "file.delivered", "file.resent", "file.delivered"], await db.Facts.AsNoTracking().Where(x => x.SubjectId == f.Id).OrderBy(x => x.Seq).Select(x => x.Kind).ToListAsync());
         }

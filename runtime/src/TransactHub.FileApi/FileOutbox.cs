@@ -33,7 +33,7 @@ public sealed class BoundTransfers(PortBindings bindings, TransactHub.Security.I
     public (IFileTransfer Transfer, PortBinding Binding) For(string tenant, DateTimeOffset at)
     {
         var b = bindings.InForce(tenant, FileTransferAdapters.Port, at);
-        return (built.GetOrAdd(b, x => FileTransferAdapters.Create(x, secrets)), b);
+        return (built.GetOrAdd(b, x => FileTransferAdapters.Direct(x, secrets)), b);
     }
 }
 

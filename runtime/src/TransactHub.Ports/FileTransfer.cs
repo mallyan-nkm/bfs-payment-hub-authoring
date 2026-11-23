@@ -23,7 +23,20 @@ public static class FileTransferAdapters
 {
     public const string Port = "p.port.file-transfer.v1";
 
-    public static IFileTransfer Create(PortBinding b, ISecretResolver? secrets = null) => b.Adapter switch
+    /// <summary>
+    /// The adapter a binding names. On a host whose files go through the File API (<c>TH_FILE_API_URL</c>, with its token by reference in
+    /// <c>TH_FILE_API_TOKEN_REF</c>), a file put is written to the File API's outbox, which delivers it on the same binding and records
+    /// the delivery (R-09-78); reads stay on the adapter. The File API itself builds the adapter direct.
+    /// </summary>
+    public static IFileTransfer Create(PortBinding b, ISecretResolver? secrets = null) =>
+        Environment.GetEnvironmentVariable("TH_FILE_API_URL") is { Length: > 0 } api
+            ? new OutboxFileTransfer(Direct(b, secrets), b.Tenant, new Uri(api.EndsWith('/') ? api : api + "/"),
+                Environment.GetEnvironmentVariable("TH_FILE_API_TOKEN_REF") ?? throw new PortBindingException("TH_FILE_API_URL is set: set TH_FILE_API_TOKEN_REF, this host's token for the File API, by reference"),
+                secrets ?? SecretResolver.FromEnvironment())
+            : Direct(b, secrets);
+
+    /// <summary>The adapter a binding names, never through the File API: what the File API delivers with.</summary>
+    public static IFileTransfer Direct(PortBinding b, ISecretResolver? secrets = null) => b.Adapter switch
     {
         SimulatedFileTransfer.Name => new SimulatedFileTransfer(),
         DirectoryFileTransfer.Name => new DirectoryFileTransfer(b, secrets),
