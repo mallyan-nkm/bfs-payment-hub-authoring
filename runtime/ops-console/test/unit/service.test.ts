@@ -11,8 +11,8 @@ import { DEV_USERS } from '../../src/shell/Shell';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe('the service console', () => {
-  it('has the seven pages of Part 9, section 9.12', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'logs', 'errors', 'actions', 'backup', 'assistant']);
+  it('has the seven pages of Part 9, section 9.12, and its audit trail (R-05-76)', () => {
+    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'logs', 'errors', 'actions', 'backup', 'assistant', 'audit']);
   });
 
   it('links an error to its runbook in the dictionary, whatever its code', () => {

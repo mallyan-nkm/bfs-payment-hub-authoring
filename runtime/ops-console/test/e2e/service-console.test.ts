@@ -326,4 +326,45 @@ describe('the service console', () => {
     expect(problems).toEqual([]);
     await page.close();
   });
+
+  it('shows the console\'s audit trail newest first, filtered by person and action, each row with its hash, and that its chains verify (R-05-76, I-202)', async () => {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    const problems: string[] = [];
+    page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    await page.goto(apiUrl);
+    await page.evaluate(() => sessionStorage.clear());
+    await page.goto(apiUrl);
+    await page.getByRole('button', { name: /Sign in as Example service engineer/ }).click();
+    await page.getByTestId('who').filter({ hasText: 'Example service engineer' }).waitFor();
+    await page.goto(`${apiUrl}/#/service/audit`);
+    await page.getByRole('heading', { name: 'Service audit' }).waitFor();
+    await page.getByTestId('chain').filter({ hasText: 'Every chain verifies' }).waitFor();
+    await page.getByTestId('audit-row').first().waitFor();
+    const all = await page.getByTestId('audit-row').count();
+    expect(all).toBeGreaterThan(3);
+    // Each row has its hash; the whole hash is in the cell's title.
+    const hashes = await page.getByTestId('audit-row').evaluateAll((rows: any[]) => rows.map((r) => r.lastElementChild.getAttribute('title')));
+    for (const h of hashes) expect(h).toMatch(/^[0-9a-f]{64}$/);
+    // Newest first.
+    const times = await page.getByTestId('audit-row').evaluateAll((rows: any[]) => rows.map((r) => r.firstElementChild.textContent));
+    expect([...times].sort().reverse()).toEqual(times);
+    // By person: the bank approver's consents only.
+    await page.getByLabel('Person').fill('reg.approver');
+    await page.getByRole('button', { name: 'Filter' }).click();
+    await until('the person filter', async () => { const n = await page.getByTestId('audit-row').count(); return n > 0 && n < all; }, 30000);
+    for (const t of await page.getByTestId('audit-row').allTextContents()) expect(t).toContain('reg.approver');
+    // By action: the install, asked for and carried out.
+    await page.getByLabel('Person').fill('');
+    await page.getByLabel('Action').fill('install');
+    await page.getByRole('button', { name: 'Filter' }).click();
+    await until('the action filter', async () => (await page.getByTestId('audit-row').allTextContents()).every((t: string) => /install/.test(t)) && (await page.getByTestId('audit-row').count()) > 0, 30000);
+    // A date before anything was written: nothing matches.
+    await page.getByLabel('Action').fill('');
+    await page.getByLabel('To').fill('2020-01-01');
+    await page.getByRole('button', { name: 'Filter' }).click();
+    await page.getByText('No fact matches.').waitFor();
+    expect(problems).toEqual([]);
+    await page.close();
+  });
 });

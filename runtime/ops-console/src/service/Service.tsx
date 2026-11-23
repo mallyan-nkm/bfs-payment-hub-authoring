@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ServiceError, type ActionResult, type ActionSpec, type Answer, type ErrorEntry, type ErrorLink, type Health, type LogItem, type Release, type ServiceClient, type Version } from './api';
 import { PAGES, diffSummary, hashQuery, logQuery, runbookHref, stateTone, when } from './format';
+import { AuditTrail } from '../shell/AuditTrail';
 
 // The service console (spec R-09-39 to R-09-44): a section of the runtime's web app for service engineers. Every action
 // asks for a person's confirmation and a reason; every error shown links to its runbook in the error dictionary.
@@ -375,6 +376,10 @@ export function ServiceSection({ api, path, approver }: { api: ServiceClient; pa
       {page === 'actions' && <ActionsPage key={location.hash} api={api} approver={approver} />}
       {page === 'backup' && <BackupPage api={api} />}
       {page === 'assistant' && <AssistantPage api={api} />}
+      {page === 'audit' && <AuditTrail title="Service audit" load={async (q) => {
+        const [rows, chain] = await Promise.all([api.audit(q), api.auditChain()]);
+        return { rows, chain };
+      }} />}
     </div>
   );
 }

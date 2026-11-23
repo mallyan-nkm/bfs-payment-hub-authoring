@@ -67,7 +67,7 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | Fixed WPS reports (SIF summary, SIF detail, upload history) | Fixed reports the WPS view declares (R-05-67) | Partly | I-183 |
 | Regulatory and scheduled reports | None | Deferred by the owner | I-188 |
 | Retention and erasure | Tombstones on a bank approver's consent, legal holds (R-05-70) | Partly: the store keeps the values | I-180 |
-| Audit log and admin activity log | Hash-chained facts on every chain; the console's own chain (`GET /ops/api/audit`); the studio's audit | Built | |
+| Audit log and admin activity log | Hash-chained facts on every chain; the console's own chain (`GET /ops/api/audit`) and the service console's, each on an Audit page: newest first, filtered by person, action and date, each row with its hash, and whether the chain verifies (R-05-75, R-05-76); the studio's audit | Built | I-202 |
 | Customer 360 and counterparty 360 | None | No decision | I-189 (1) |
 | Fraud alerts and cases | Screening only | No decision | I-189 (2) |
 | Compliance cases, sanctions case review, suspicious activity reports | None | Deferred by the owner | I-188 |

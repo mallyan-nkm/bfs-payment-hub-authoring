@@ -127,6 +127,24 @@ public sealed class ConsoleRecord(StoreOptions store, TimeProvider? clock = null
         return rows.Select(Show).ToList();
     }
 
+    /// <summary>
+    /// The console's whole trail for its audit page (R-05-75): every fact of its chain, newest first, filtered by person, action
+    /// and date, each with its hash and the hash it links to.
+    /// </summary>
+    public async Task<List<JsonObject>> Trail(AuditFilter filter, int take = 500, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var rows = await db.Facts.AsNoTracking().Where(f => f.SubjectId == Subject).OrderByDescending(f => f.Seq).ToListAsync(ct);
+        return rows.Where(filter.Matches).Take(take).Select(f => { var o = Show(f); o["hash"] = f.Hash; o["prevHash"] = f.PrevHash; return o; }).ToList();
+    }
+
+    /// <summary>Whether the console's chain verifies: numbering without gaps, each hash right, each link right.</summary>
+    public async Task<ChainCheck> Verify(CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        return await new FactLog(db, clock).Verify(Subject, ct);
+    }
+
     async Task<List<FactRow>> Facts(string? actionId, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);

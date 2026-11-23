@@ -107,6 +107,23 @@ export function client(auth: SignIn) {
     releaseHold: (id: string, remarks: string) => call<any>('POST', `/legal-holds/${encodeURIComponent(id)}/release`, { remarks }),
     fixedReports: () => call<FixedReport[]>('GET', '/reports/fixed'),
     fixedReportUrl: (view: string, id: string) => `/ops/api/reports/fixed/${encodeURIComponent(view)}/${encodeURIComponent(id)}.csv`,
+    // The upload page (R-05-73, R-05-74): what may be uploaded, and the file to the File API's POST /files/ui through the console.
+    upload: () => call<{ fileApi: boolean; environment: string; targets: import('./upload').UploadTarget[] }>('GET', '/upload'),
+    uploadFile: async (tenant: string, message: string, file: Blob & { name?: string }) => {
+      const form = new FormData();
+      form.append('tenant', tenant);
+      form.append('message', message);
+      form.append('file', file, file.name ?? 'upload');
+      const r = await fetch('/ops/api/upload', { method: 'POST', headers: { ...auth.headers() }, body: form });
+      const text = await r.text();
+      let body: any = null;
+      try { body = text ? JSON.parse(text) : null; } catch { body = { error: text }; }
+      // A refusal is an answer the page shows, with its code; only a missing sign-in or role is an error.
+      if (r.status === 401 || (r.status === 403 && !body?.status)) throw new ApiError(r.status, body?.error ?? r.statusText);
+      return { status: r.status, body };
+    },
+    // The console's own chain for its audit page (R-05-75): newest first, filtered, each fact with its hash, and whether it verifies.
+    audit: (q: Record<string, string>) => call<{ rows: any[]; chain: import('../shell/audit').ChainState }>('GET', `/audit?${new URLSearchParams(q)}`),
     headers: () => auth.headers(),
   };
 }

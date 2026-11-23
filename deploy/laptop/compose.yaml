@@ -284,6 +284,10 @@ services:
       Operations__FileApi__Url: http://file-api:8080
       Operations__FileApi__Folder: centralBank/upload/cb/wps/sif
       Operations__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
+      # The upload page (R-05-73): the messages of the distribution active in the File API's environment, a person's file to the
+      # File API's POST /files/ui with their own token; a refusal's code links to its runbook in the service console.
+      Operations__Environment: test
+      Operations__ServiceConsole: http://localhost:${TH_LAPTOP_SERVICE_PORT:-8482}
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro

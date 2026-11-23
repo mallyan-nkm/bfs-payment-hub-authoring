@@ -18,6 +18,8 @@ using TransactHub.Store;
 //   Auth:Oidc:ClientId, Auth:Oidc:Scopes      the console's public client (code flow with PKCE); TH_STUDIO_ISSUER refused
 //   TH_AUTH_DEV=1                             dev sign-in, refused in Production
 //   Operations:Registers                     a folder of further register kinds (*.register.json), beside the runtime's own
+//   Operations:Environment                   the environment whose active distribution the upload page offers the messages of
+//   Operations:ServiceConsole                the service console's address, for the runbook a refused upload's code links to
 var builder = WebApplication.CreateBuilder(args);
 var provider = Enum.Parse<StoreProvider>(builder.Configuration["Store:Provider"] ?? "SqlServer", ignoreCase: true);
 var store = new StoreOptions(provider, builder.Configuration["Store:Connection"] ?? throw new InvalidOperationException("Set Store:Connection"));
@@ -60,6 +62,8 @@ builder.Services.AddSingleton(new FixedReports(ops, views));
 builder.Services.AddSingleton(sp => new Erasure(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), clock));
 builder.Services.AddSingleton(sp => new Unmasking(ops, views, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<Projector>(), dials, sp.GetRequiredService<Erasure>(), clock));
 builder.Services.AddSingleton(sp => new Turnaround(ops, dials, sp.GetRequiredService<ConsoleRecord>(), notifier, clock));
+// The upload page's File API (Operations:FileApi:Url) and the service console its refusals' runbooks are in (Operations:ServiceConsole).
+builder.Services.AddSingleton(FileApiUploads.FromConfiguration(builder.Configuration));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
@@ -340,13 +344,22 @@ api.MapPost("/system-actions/{id}/decision", async (string id, DecisionRequest b
     }
     catch (ActionRefused e) { return Problem(e.Status, e.Message); }
 });
+// The console's own chain, for a supervisor or a bank approver: by kind as before, and for the audit page (R-05-75) the whole trail
+// newest first, filtered by person, action and date (person, action, from, to), each row with its hash, and whether the chain verifies.
 api.MapGet("/audit", async (HttpContext http, ConsoleRecord record) =>
-    Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "The console's audit is for supervisors and bank approvers")
-    : Results.Ok(new
+{
+    if (Who(http) is not { } who) return Problem(401, "Sign in");
+    if (!who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor))) return Problem(403, "The console's audit is for supervisors and bank approvers");
+    var filter = AuditFilter.Of(k => http.Request.Query[k].ToString());
+    var chain = await record.Verify(http.RequestAborted);
+    return Results.Ok(new
     {
         exports = await record.Recent(ConsoleRecord.ExportKind), consents = await record.Recent(ConsoleRecord.ConsentKind),
         unmasks = await record.Recent(ConsoleRecord.UnmaskKind), legalHolds = await record.Recent(ConsoleRecord.LegalHoldKind), turnaround = await record.Recent(ConsoleRecord.TatKind),
-    }));
+        rows = await record.Trail(filter, ct: http.RequestAborted),
+        chain = new { subject = ConsoleRecord.Subject, ok = chain.Ok, facts = chain.Facts, problem = chain.Problem },
+    });
+});
 
 // The reconciliation break queue (R-09-92): list, resolve, and a bank approver's consent to a resolution that changes the system.
 api.MapGet("/breaks", async (HttpContext http, BreakQueue q) =>
@@ -372,6 +385,8 @@ StoreBindings.RefuseFolder(app.Configuration["Operations:Banks"] ?? app.Configur
 app.MapEnquiries(store);
 // Work management, saved filters, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
 app.MapWork(ops);
+// The upload page (R-05-73, R-05-74): a person's file to the File API's POST /files/ui, with the person's own token.
+app.MapUpload(store);
 
 api.MapMethods("/{**rest}", ["PUT", "PATCH", "DELETE"], () => Problem(405, "The operations console changes a payment only through its declared actions")).AllowAnonymous();
 

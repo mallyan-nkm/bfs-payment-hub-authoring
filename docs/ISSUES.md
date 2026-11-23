@@ -1947,11 +1947,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** An upload page in the operations console: tenant (the runtime's bank), message (the messages the active distribution receives), the file; it shows the File API's answer (kept, refused, started) with its code linked to the runbook and a link to the payment it started.
 
+**Done (23 November 2026, R-05-73, R-05-74).** The operations console has an Upload page. It offers the runtime's bank (`TH_BANK`, else each tenant the person operates) and the messages the distribution active in the console's environment (`Operations:Environment`) receives: each scheme manifest's latest release in the stored package, `direction: in` with a `start` or a `deliver` disposition (`UploadCatalogue`, `GET /ops/api/upload`). `POST /ops/api/upload` refuses a message the distribution does not receive and a tenant the person does not operate, then posts the file to the File API's `POST /files/ui` (`Operations:FileApi:Url`) with the person's own token, so the File API decides by its role `file-uploader`; the console keeps nothing of the file. The page shows kept, refused or started, a refusal's code linked to its runbook in the service console (`Operations:ServiceConsole`) and the payment a start began. The laptop's `ops-api` sets both. Tests: `UploadAndAuditTests` (the File API a stand-in), `runtime/ops-console/test/unit/upload-audit.test.ts`, `runtime/ops-console/test/e2e/upload-audit.test.ts`. Not built: in dev sign-in (`TH_AUTH_DEV`) the console has no bearer token to pass on, and the File API has no dev sign-in, so an upload from a dev-mode console is refused by the File API (I-246).
+
 ## I-202. The consoles' own audit trails have no screen
 
 **Issue.** The operations console keeps its own hash-chained record of what people did (`GET /ops/api/audit`), and the service console its audit (`GET /service/api/audit`), but no page of either shows them. A payment's timeline shows that payment's facts; the console's own trail (filters saved, reports downloaded, unmasks asked, consents given) can be read only from the API. `docs/runtime/PLATFORM-PARITY.md` lists the audit log as built.
 
 **Recommendation.** An Audit page in each console, for the Supervisor and the BankApprover in the operations console and for the service roles in the service console: newest first, filtered by person, action and date, each row with its hash and whether the chain verifies.
+
+**Done (23 November 2026, R-05-75, R-05-76).** Each console has an Audit page (`runtime/ops-console/src/shell/AuditTrail.tsx`, shared). The operations console's, for a Supervisor or a BankApprover, reads `GET /ops/api/audit`, which now also gives `rows`: every fact of the console's chain, newest first, filtered by `person` (the actor or the name the fact records), `action` (its kind, its code or the system action it names) and `from`/`to` (days, UTC), each with its hash and the hash it links to, and `chain` (whether it verifies, and where it breaks). The service console's, for its service roles, reads `GET /service/api/audit` with the same filters, each row with its hash, and `GET /service/api/audit/chain`: whether every chain its facts are on (the console's and each release's) verifies, naming any that does not. The filter is one record in the store (`AuditFilter`). Tests: `UploadAndAuditTests` (both databases), `ServiceAuditTests`, the unit tests, and the e2e tests `upload-audit.test.ts` and `service-console.test.ts`.
 
 ## I-203. The laptop's identity provider has no register maker
 
@@ -1959,11 +1963,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a synthetic register maker (`reg.maker`, group `th-register-makers`) to the directory and `RegisterMaker` for that group to `role-map-ops.json`, with the bank approver consenting as today.
 
+**Done (23 November 2026).** `deploy/laptop/identity/directory.json` has the synthetic `reg.maker` (Example register maker, group `th-register-makers`), and `role-map-ops.json` gives that group `RegisterMaker` and nothing else; the bank approver consents as before. `runtime/ops-console/test/unit/upload-audit.test.ts` holds both files to it; the laptop's README names the user.
+
 ## I-204. The new-scheme tests name configuration releases of an earlier factory
 
 **Issue.** `studio/test/blackbox/e2e-new-scheme.test.ts` and `ui-build.test.ts` build the synthetic scheme `uae.demo` and then save the example bank's configuration set as release `1.3.0` (and expect `config:example-bank@1.2.0` in the web app). The example bank's shipped set is at `1.8.0`, so the save is refused (a release is later than the last, R-11-35) and every step after it fails: the payment is rejected at the route, the export names `1.8.0`. Before that, both stopped earlier still: the demo scheme sent its file with no protect step, which L46 refuses; that is fixed (the subflow encrypts first). `demo/build.ts` already derives the next release from the shipped one and its dry run passes.
 
 **Recommendation.** Derive the next release from the set the studio returns, as `demo/build.ts` and `e2e-wps.test.ts` do (I-187), in both tests, and match the saved release by pattern in the web app's step.
+
+**Done (23 November 2026).** Both tests take the next minor of the set the studio returns (`nextMinor` in `studio/test/blackbox/demo-scheme.ts`), the web app's step matches the saved release by pattern, and the export and the deploy expect the release the test made. Since R-11-77, a configuration that accepts `uae.demo` is refused until the bank licenses it, so both tests now license it first (I-205): `e2e-new-scheme.test.ts` through the API (16 of 16 pass), `ui-build.test.ts` in the bank workspace (12 of 12 pass); `demo/build.ts` and `demo/full-run.ts` do the same (`licenseScheme` in `demo/record.ts`).
 
 ## I-205. A scheme built in the studio cannot be licensed to a bank from the studio
 
@@ -1974,6 +1982,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
 
 **Owner's decision (23 November 2026):** build it as recommended.
+
+**Done (23 November 2026, R-11-75 to R-11-78).** The bank workspace has "Schemes licensed" (`studio/web/src/views/Licensing.tsx`): every scheme of the factory, whether the bank licenses it and whether its configuration binds it. A Bank Configurator proposes a licence (`POST /api/tenants/<bank>/licensing`): the studio writes the bank's next lock file as `bank-pack` does (`packManifest`), at the next minor, with the scheme added, and saves it as a draft of kind `pack` (now a kind of the permission table, scope `b`: the configurator authors, the approver approves). A Bank Approver who is not its maker approves it (the page's button, or `POST /api/publish`): the approval refuses a lock file that is not the one the studio writes for the bank at that moment, publishes it insert-only at `banks/<bank>/artefacts/b/pack/<release>.yaml` (the seeded `pack.yaml` stays as it was), and builds the bank's next distribution, which carries the scheme. The lock file in force is the bank's latest release (`bankPackOf`, `lockFileOf`). At every approval of a bank's change set, each scheme its configuration binds (accepted, enabled as a rail, dialled, or hooked) must be licensed, with the change set's lock file and set in place. Tests: `studio/test/licensing.test.ts` (10), `e2e-new-scheme.test.ts`, `ui-build.test.ts` step 8. What a later seed does with a studio-published lock file is I-245.
 
 ## I-206. A payment pinned but never started keeps its distribution open
 
@@ -2072,6 +2082,18 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Until a worker can load a distribution's tasks as the native host loads its assemblies, an installation starts a worker set per package that differs in those tasks, and names each set's queues in the plan of the distributions it serves. Then have the worker load each distribution's tasks from the store by the distribution the attempt names, as the native host does.
 
 **Owner's decision (23 November 2026):** deferred; one worker set per distribution stays.
+
+## I-245. A seed after a lock file the studio published
+
+**Issue.** Since R-11-76 a bank's lock file can have a release the studio published on the content branch (`banks/<bank>/artefacts/b/pack/<release>.yaml`) beside the seeded `pack.yaml`. The seed replaces `pack.yaml` only by a later release (R-11-35), and does not read the studio's releases: a seed whose `pack.yaml` is at or below the studio's release leaves the studio's in force (the latest release wins), and its new artefacts are not in any lock file in force until the bank licenses again; a seed above it drops a licence the studio added unless the repository's `pack.yaml` names it too. The spec does not say which is the bank's source of truth once the studio has licensed a scheme.
+
+**Recommendation.** Have `seed-content` read the bank's latest lock file on the branch (the studio's included) and keep its `licensedSchemes` in the lock file it writes, refusing a seed whose release is not later than it; or decide that a bank licensed in the studio is no longer seeded from this repository. Until then, after licensing in the studio, write the same list into the repository with `npm run studio -- bank-pack <bank> --licensed <scheme> --release <later> --write`.
+
+## I-246. An upload from a console in dev sign-in has no token for the File API
+
+**Issue.** The operations console's upload page passes the person's own bearer token to the File API's `POST /files/ui` (R-05-74). A console in dev sign-in (`TH_AUTH_DEV=1`) identifies its synthetic users by a header, not a token, and the File API has no dev sign-in, so the File API answers 401 and the page shows the refusal. On the laptop stack, where the console signs in at the bank's development provider, the upload works.
+
+**Recommendation.** Leave the File API without a dev sign-in (it is the runtime's one way in for files); say on the upload page, in dev mode, that uploads need the identity provider's sign-in. If a dev-mode upload is wanted, give the File API the same dev header, refused in Production, as the other hosts.
 
 ## Not done, and why
 
