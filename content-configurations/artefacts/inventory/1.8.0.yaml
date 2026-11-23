@@ -17,8 +17,8 @@ packs:
       simulator: 12
       test: 19
       operations-view: 1
-      workflow: 9
-    total: 94
+      workflow: 8
+    total: 93
     artefacts:
       - name: p.decide.await-posting-window.v1
         kind: activity
@@ -197,8 +197,6 @@ packs:
       - name: p.wf.commercial.v1
         kind: workflow
       - name: p.wf.corporate.v1
-        kind: workflow
-      - name: p.wf.inward.v1
         kind: workflow
       - name: p.wf.inward.v2
         kind: workflow

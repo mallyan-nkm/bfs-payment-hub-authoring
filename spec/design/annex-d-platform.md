@@ -55,7 +55,7 @@ Generated from `factory/inventory.yaml`.
 | Table | 3 | `p.table.inward-disposition.v1`, `p.table.rail-choice.v1`, `p.table.workflow-select.v1` |
 | Port | 12 | `p.port.channel.v1`, `p.port.core-banking.v1`, `p.port.decryption.v1`, `p.port.encryption.v1`, `p.port.facts-out.v1`, `p.port.file-transfer.v1`, `p.port.fraud.v1`, `p.port.liquidity.v1`, `p.port.operations-queue.v1`, `p.port.party-register.v1`, `p.port.payment-record.v1`, `p.port.sanctions.v1` |
 | Simulator | 12 | `p.sim.channel.v1`, `p.sim.core-banking.v1`, `p.sim.decryption.v1`, `p.sim.encryption.v1`, `p.sim.facts-out.v1`, `p.sim.file-transfer.v1`, `p.sim.fraud.v1`, `p.sim.liquidity.v1`, `p.sim.operations.v1`, `p.sim.party-register.v1`, `p.sim.payment-record.v1`, `p.sim.sanctions.v1` |
-| Workflow | 8 | `p.seg.check-and-screen.v1`, `p.sub.await-posting-window.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v1`, `p.wf.refund-out.v1`, `p.wf.refund.v1`, `p.wf.request.v1` |
+| Workflow | 8 | `p.seg.check-and-screen.v1`, `p.sub.await-posting-window.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v2`, `p.wf.refund-out.v1`, `p.wf.refund.v1`, `p.wf.request.v1` |
 | Test | 19 | `P-CHG-001`, `P-CHG-002`, `P-DEC-001`, `P-DEC-002`, `P-ENC-001`, `P-ENC-002`, `P-FX-001`, `P-FX-002`, `P-FX-003`, `P-POST-001`, `P-POST-002`, `P-POST-003`, `P-POST-004`, `P-REG-001`, `P-REG-002`, `P-REG-003`, `P-REG-004`, `P-RES-001`, `P-RES-002` |
 | Total | 93 | |
 <!-- /INVENTORY:p -->

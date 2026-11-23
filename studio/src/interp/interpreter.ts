@@ -27,7 +27,8 @@ export const SIGNALS = ['pause', 'resume', 'cancel', 're-screen'] as const;
  * The operator's controls of a parked step (R-05-55): `retry` gives it one more attempt, `redrive` runs it again with its full
  * retry policy. They are not signals a workflow declares (R-05-12): any parked step takes them.
  */
-export const OPERATOR_CONTROLS = ['retry', 'redrive'] as const;
+// requeue: a dead-lettered (parked) step run again with its full retry policy, as redrive (R-09-91).
+export const OPERATOR_CONTROLS = ['retry', 'redrive', 'requeue'] as const;
 
 export interface BenchEntry { port: string; simulator: string; scenario: string }
 

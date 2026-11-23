@@ -3,7 +3,7 @@
 kind: testbench-profile
 name: platform-iso-inward
 title: An ISO 20022 pacs.008 as the inward workflow's context, on the four engines, the store on PostgreSQL
-workflow: p.wf.inward.v1
+workflow: p.wf.inward.v2
 tenant: example-bank
 engines: [temporal, dtfx, elsa, flowable]
 reference: true

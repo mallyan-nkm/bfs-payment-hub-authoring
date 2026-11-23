@@ -4,7 +4,7 @@ name: p.wf.inward.v2
 release: 2.0.0
 dsl: 1.0.0
 title: Inward payments
-description: Inward lifecycle for every rail. Checks record their outcomes and carry on, because the scheme must always be answered by a leg. Release 2.0.0, a new major line beside p.wf.inward.v1 (owner's decision of 23 November 2026, Issue I-141, R-09-87), gives its leg the slot contract scheme-leg@2, which lets the leg write what it returned (facts.returns), and hands the returns on in its exit.
+description: Inward lifecycle for every rail. Checks record their outcomes and carry on, because the scheme must always be answered by a leg. Release 2.0.0, the major line after p.wf.inward.v1 (owner's decision of 23 November 2026, Issue I-141, R-09-87), gives its leg the slot contract scheme-leg@2, which lets the leg write what it returned (facts.returns), and hands the returns on in its exit.
 direction: inward
 entry:
   reads: [header, payment, batch, "items[]"]

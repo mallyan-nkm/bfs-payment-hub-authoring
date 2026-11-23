@@ -108,7 +108,7 @@ public sealed partial class FlowableBinding
         public bool Registered, Ended;
         public long StartedAt;
         public long? EndedAt;
-        public string? Failed, LastFatal, DeadLetter;
+        public string? Failed, LastFatal, DeadLetter, DeadLetterJob;
         public List<JsonObject> Bindings = new();
     }
 
@@ -536,7 +536,8 @@ public sealed partial class FlowableBinding
             moved |= await DeliverHeld();
             moved |= await ReleaseCompensation();
             await SurfaceDeadLetters();
-            if (pendingStarts == 0 && roots.All(r => r.DeadLetter is not null || r.Ended) && await Finished())
+            // In production with the runtime's live path, a dead-lettered payment waits for an operator's requeue (R-09-91), up to the wait.
+            if (pendingStarts == 0 && roots.All(r => (r.DeadLetter is not null && !(opts.Production && LiveSignals.Source is not null)) || r.Ended) && await Finished())
             {
                 // What is still queued can only meet a payment that has ended: it is counted as the virtual run counts it.
                 while (queue.TryDequeue(out var ev, out _)) await RunEv(ev);
@@ -679,6 +680,9 @@ public sealed partial class FlowableBinding
             if (root is not null)
             {
                 root.DeadLetter ??= $"{step}: {message}";
+                root.DeadLetterJob ??= id;
+                // A dead-letter job is the payment's dead-lettered step, as a parked step is on the other engines (R-09-91).
+                try { if (inst is not null) Interp.Stuck?.Invoke(PathOf(inst), step, inst.Attempts.GetValueOrDefault(step)); } catch (Exception) { }
                 root.Failed ??= $"dead letter at {step}: {message}";
             }
         }
@@ -1290,10 +1294,23 @@ public sealed partial class FlowableBinding
     {
         var root = roots.FirstOrDefault();
         if (root is null || root.Ended) return false;
+        // Requeue (R-09-91): a dead-letter job goes back to the executable jobs with its retries; a parked step is re-driven.
+        if (control == "requeue" && root.DeadLetterJob is { } job)
+        {
+            await rest.MoveDeadLetter(job);
+            notes.Add($"dead letter {job} requeued by an operator");
+            root.Trace.Add("operator:requeue");
+            root.DeadLetter = root.DeadLetterJob = null;
+            root.Failed = null;
+            Mark();
+            return true;
+        }
+        var shown = control;
+        if (control == "requeue") control = "redrive";
         var name = $"th.operator.{control}";
         var subs = await rest.EventSubscriptions(tenant, "message", name, root.Pid);
         if (subs.Count == 0) { notes.Add($"no parked step waits for {control}"); return false; }
-        root.Trace.Add($"operator:{control}");
+        root.Trace.Add($"operator:{shown}");
         Mark();
         await Message(J.S(subs[0], "executionId")!, name);
         return true;

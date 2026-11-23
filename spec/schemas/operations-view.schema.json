@@ -80,7 +80,7 @@
       "required": ["action", "role"],
       "additionalProperties": false,
       "properties": {
-        "action": { "enum": ["approve", "decline", "release", "reject", "cancel", "re-screen", "pause", "resume", "retry", "resend"] },
+        "action": { "enum": ["approve", "decline", "release", "reject", "cancel", "re-screen", "pause", "resume", "retry", "resend", "requeue"] },
         "label": { "type": "string" },
         "role": { "enum": ["Operator", "Supervisor"] },
         "secondApprover": { "enum": ["Operator", "Supervisor"], "description": "Maker-checker: carried out only when another person with this role approves." },

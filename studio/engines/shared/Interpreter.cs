@@ -244,8 +244,11 @@ public sealed partial class Interp
 {
     public const string ClaimCheck = "claim-check@1.0.0";
     static readonly string[] Signals = { "pause", "resume", "cancel", "re-screen" };
-    /// <summary>The operator's controls of a parked step (R-05-55): one more attempt, or the step again with its full retry policy.</summary>
-    public static readonly string[] OperatorControls = { "retry", "redrive" };
+    /// <summary>
+    /// The operator's controls of a parked step (R-05-55): one more attempt (retry), or the step again with its full retry policy
+    /// (redrive). A parked step is a dead-lettered step: its attempts are spent; requeue runs it again as redrive does (R-09-91).
+    /// </summary>
+    public static readonly string[] OperatorControls = { "retry", "redrive", "requeue" };
     /// <summary>The message a hold awaits: the operator's decision (R-05-56, Issue I-98).</summary>
     public const string DecisionMessage = "p.ops.decision";
 

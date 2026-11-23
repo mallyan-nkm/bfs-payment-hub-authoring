@@ -12,8 +12,9 @@ description: >-
   Release 1.3.0 adds the outward refund order (p.wf.refund-out.v1) and brings back the order's approval: on every engine a hold's
   decision is now a step fact of the hold's step, with who decided and when (R-05-60, Issue I-136). Its actions say which platform
   workflows they apply to: re-screen only where the payment is screened (R-05-61, Issue I-135). Release 1.4.0 shows the inward
-  lifecycle p.wf.inward.v2 too, which WPS's inward legs fill from factory release 1.8.0 (Issue I-141).
-platform: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.inward.v2, p.wf.refund.v1, p.wf.refund-out.v1]
+  lifecycle p.wf.inward.v2 in place of v1, which WPS's inward legs fill from factory release 1.8.0 (Issue I-141), and offers requeue for a
+  dead-lettered step on every engine (R-09-91).
+platform: [p.wf.corporate.v1, p.wf.inward.v2, p.wf.refund.v1, p.wf.refund-out.v1]
 subject:
   title: Payment
   groups:
@@ -79,9 +80,12 @@ subject:
     - { action: reject, label: Reject, role: Operator, remarks: required, when: { hold: repair } }
     - { action: cancel, label: Cancel, role: Operator, secondApprover: Supervisor, remarks: required }
     # Only the workflows that screen take re-screen (R-05-61, Issue I-135); a refund order has no screening step.
-    - { action: re-screen, label: Screen again, role: Operator, remarks: required, when: { workflow: [p.wf.corporate.v1, p.wf.inward.v1, p.wf.inward.v2] } }
+    - { action: re-screen, label: Screen again, role: Operator, remarks: required, when: { workflow: [p.wf.corporate.v1, p.wf.inward.v2] } }
     # A step that parked (the refund order's posting, R-05-55) is tried once more on an operator's retry.
     - { action: retry, label: Retry the parked step, role: Operator, remarks: required }
+    # A step whose attempts are spent (dead-lettered: parked, or a Flowable dead-letter job) is requeued with its full retry policy,
+    # on every engine, once per action (R-09-91).
+    - { action: requeue, label: Requeue the dead-lettered step, role: Operator, remarks: required }
 provenance:
   origin: factory
   status: confirmed

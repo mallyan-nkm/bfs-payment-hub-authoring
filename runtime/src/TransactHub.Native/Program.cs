@@ -78,7 +78,9 @@ var files = new HostFiles(store, signingKey);
 Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", "rendered", name, content, sha);
 INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif(keep),
     .. PlatformActivities.CoreBanking(coreBanking), .. OrderActivities.All(), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep),
-    .. FileProtectionActivities.All(bindings, files), EnrichEmployerStatus.On(bindings), PartyRegisterOn(bindings, store), .. holds];
+    .. FileProtectionActivities.All(bindings, files), EnrichEmployerStatus.On(bindings), PartyRegisterOn(bindings, store), .. holds,
+    // The platform's production adapters (R-09-90): screening, notices, outward facts, the business calendar and the directory.
+    .. PlatformPortActivities.All(bindings, ReferenceReaderOn(store))];
 var byName = activities.ToDictionary(x => x.Name);
 
 var health = app.MapGet("/health", () => Results.Ok(new { activities = byName.Keys.Order(), served, store = store is not null, signingKey = TransactHub.Store.FileSignature.KeyIdOf(signingKey) }));
@@ -154,6 +156,13 @@ static INativeActivity PartyRegisterOn(PortBindings bindings, TransactHub.Store.
     }
     return EnrichPartyRegister.On(bindings, reader, WpsCorporateMatch.Matchers);
 }
+
+// The reference tables the bank's configuration installed, for the `reference` adapters of the calendar and the directory (R-09-90).
+static ReferenceReader? ReferenceReaderOn(TransactHub.Store.StoreOptions? store) => store is null ? null : async (tenant, domain, at, ct) =>
+{
+    await using var db = TransactHub.Store.StoreDbContext.Open(store);
+    return await TransactHub.Store.ReferenceTables.RowsAt(db, tenant, domain, at, ct);
+};
 
 // Every URL the host listens on is a loopback address (127.0.0.0/8, ::1, localhost).
 static bool LoopbackOnly(string urls) => urls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).All(u =>

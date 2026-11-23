@@ -176,7 +176,8 @@ async function run(cmd: string, args: string[], env: StudioEnv, where: string) {
     let pass = 0;
     for (const r of res) {
       if (r.passed) pass++;
-      console.log(`${r.passed ? 'PASS' : 'FAIL'}  ${r.id}  ${r.passed ? '' : 'expected ' + JSON.stringify(r.expected) + ' got ' + JSON.stringify(r.actual)}${r.error ? ' error ' + r.error : ''}${r.notes?.length ? ' ' + r.notes.join('; ') : ''}`);
+      const failed = ((r as any).checks ?? []).filter((c: any) => !c.passed).map((c: any) => `${c.what}: expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(c.actual)}`);
+      console.log(`${r.passed ? 'PASS' : 'FAIL'}  ${r.id}  ${r.passed ? '' : 'expected ' + JSON.stringify(r.expected) + ' got ' + JSON.stringify(r.actual)}${failed.length ? ' (' + failed.join('; ') + ')' : ''}${r.error ? ' error ' + r.error : ''}${r.notes?.length ? ' ' + r.notes.join('; ') : ''}`);
     }
     console.log(`${pass} of ${res.length} conformance scenarios pass on the studio interpreter`);
     process.exitCode = pass === res.length ? 0 : 1;

@@ -451,6 +451,18 @@ scenarios:
         - { id: a, call: ck.kit.enrich.task.v1, policy: { retry: { maxAttempts: 1 }, park: PT4H }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
         - end: done
 
+  # Requeue of a dead-lettered step (R-09-91): both attempts of its policy fail and the step parks; the requeue runs it again
+  # with its full retry policy, through the same control path on every engine, and the workflow carries on.
+  - id: CK-PARK-03
+    stubs: { "step:a": { failTimes: 2 } }
+    signals: [ { after: PT1H, signal: requeue } ]
+    checks: { attempts: { a: 3 }, notBefore: { step: b, at: PT1H } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, policy: { retry: { maxAttempts: 2, firstInterval: PT1S }, park: P1D }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
   - id: CK-HOOK-01
     stubs: { "step:check": { outcomes: [rejected] }, "step:hold": { outcomes: [approved] } }
     bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-01.v1#gate", hook: b.hook.ck-halt.v1, release: 1.0.0, validFrom: "2026-01-01" } ]

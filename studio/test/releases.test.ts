@@ -33,8 +33,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     const env = freshEnv();
     for (const n of ['uae.wps.decide.returns', 'uae.wps.map.prc-out', 'uae.wps.map.dif-out', 'uae.wps.map.rtc-in', 'uae.wps.wf.agent-payment-in']) {
       expect(env.store.get(`${n}.v1`)!.release, n).toBe('1.0.0');
-      // the agent's leg at 2.1.0: its steps that may run again park (R-12-26)
-      expect(env.store.get(`${n}.v2`)!.release, n).toBe(n === 'uae.wps.wf.agent-payment-in' ? '2.1.0' : '2.0.0');
+      // the agent's leg at 2.1.0: its steps that may run again park (R-12-26); at 2.2.0 it fills p.wf.inward.v2 (R-09-87)
+      expect(env.store.get(`${n}.v2`)!.release, n).toBe(n === 'uae.wps.wf.agent-payment-in' ? '2.2.0' : '2.0.0');
     }
     // the posting that reads FX and charges is a new major line; payments on v1 keep it (R-12-23)
     expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.1.0');
@@ -64,7 +64,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).release).toBe('1.5.0');
     expect(body(disk('banks/example-bank/configuration-sets/1.7.0.yaml')).release).toBe('1.7.0');
     expect(body(disk('banks/example-bank/packs/1.6.0.yaml')).release).toBe('1.6.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.7.0');
+    expect(body(disk('banks/example-bank/packs/1.7.0.yaml')).release).toBe('1.7.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.8.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);

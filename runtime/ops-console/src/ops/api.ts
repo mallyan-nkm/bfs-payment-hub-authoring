@@ -65,10 +65,15 @@ export function client(auth: SignIn) {
     act: (id: string, action: string, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions`, { action, remarks }),
     decide: (id: string, action: string, approve: boolean, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions/${action}/decision`, { approve, remarks }),
     pending: () => call<any[]>('GET', '/actions/pending'),
+    // The reconciliation break queue (R-09-92).
+    breaks: (all = false) => call<import('./Breaks').Break[]>('GET', `/breaks${all ? '?all=true' : ''}`),
+    resolveBreak: (id: string, resolution: string, remarks?: string) => call<any>('POST', `/breaks/${encodeURIComponent(id)}/resolution`, { resolution, remarks }),
+    consentBreak: (id: string, approve: boolean, remarks?: string) => call<any>('POST', `/breaks/${encodeURIComponent(id)}/consent`, { approve, remarks }),
     reports: () => call<{ dimensions: string[]; fields: { key: string; label: string; scheme?: string }[] }>('GET', '/reports'),
     summary: (q: Record<string, string>) => call<{ groups: ReportGroup[]; payments: number }>('GET', `/reports/summary?${new URLSearchParams(q)}`),
     dashboard: (q: Record<string, string>) => call<Dashboard>('GET', `/reports/dashboard?${new URLSearchParams(q)}`),
     documentUrl: (id: string, doc: string) => `/ops/api/payments/${encodeURIComponent(id)}/documents/${encodeURIComponent(doc)}`,
+    me: () => call<{ subject: string; displayName: string; tenants: Record<string, string[]> }>('GET', '/me'),
     headers: () => auth.headers(),
   };
 }

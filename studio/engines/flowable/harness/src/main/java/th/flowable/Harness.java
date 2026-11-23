@@ -729,7 +729,8 @@ public final class Harness {
 
     /** An operator's control of a parked step (R-05-55): delivered only where a parked step waits for it. */
     void operator(Inst root, String control) {
-        String name = "th.operator." + control;
+        // requeue (R-09-91): the dead-lettered (parked) step re-driven with its full retry policy.
+        String name = "th.operator." + ("requeue".equals(control) ? "redrive" : control);
         List<EventSubscription> subs = rt.createEventSubscriptionQuery().processInstanceId(root.pid).eventType("message").eventName(name).list();
         if (subs.isEmpty()) { notes.add("no parked step waits for " + control); return; }
         root.trace().add("operator:" + control);
@@ -740,7 +741,7 @@ public final class Harness {
     void signal(String signal) {
         Inst root = roots.isEmpty() ? null : roots.get(0);
         if (root == null || root.ended) return;
-        if ("retry".equals(signal) || "redrive".equals(signal)) { operator(root, signal); return; }
+        if ("retry".equals(signal) || "redrive".equals(signal) || "requeue".equals(signal)) { operator(root, signal); return; }
         String aw = awaitingStep(root);
         if ("pause".equals(signal)) {
             if (aw != null) { root.trace().add(aw + ":waiting"); root.trace().add("signal:pause"); } else root.pending.add("signal:pause");

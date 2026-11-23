@@ -45,10 +45,10 @@ Public bank guides disagree on whether the SCR is the first or the last line, an
 | Leg | Role | Fills | Steps |
 | --- | --- | --- | --- |
 | `uae.wps.wf.salary-file-out.v1` | Employer's bank | `scheme-leg` of `p.wf.corporate.v1` | Set the business date; file checks; per item, record checks and the cluster IBAN check; render SIF; submit (composite) |
-| `uae.wps.wf.agent-payment-in.v2` | Agent | `scheme-leg` of `p.wf.inward.v1` | Receive the PSI that pairs with the PIF (composite); file checks; render PRC; confirm receipt (composite); wait for core banking's posting window (`p.decide.await-posting-window.v1`); credit each employee, and ask about a credit whose outcome is unknown; render DIF; report disbursement (composite); after its ACK or its NAK, decide the returns; if any, render RFA, return them (composite), and on ACK record the return, on NAK hand to operations |
+| `uae.wps.wf.agent-payment-in.v2` | Agent | `scheme-leg` of `p.wf.inward.v2` (`scheme-leg@2`, which lets it hand back its returns; R-09-87) | Receive the PSI that pairs with the PIF (composite); file checks; render PRC; confirm receipt (composite); wait for core banking's posting window (`p.decide.await-posting-window.v1`); credit each employee, and ask about a credit whose outcome is unknown; render DIF; report disbursement (composite); after its ACK or its NAK, decide the returns; if any, render RFA, return them (composite), and on ACK record the return, on NAK hand to operations |
 | `uae.wps.wf.refund-out.v2` | Employer's bank | `scheme-leg` of `p.wf.refund-out.v1` | Render RFR; request the refund (composite: encrypt, send, read the ACK, wait for and read the RSU). The platform credits the employer (R-12-24); `uae.wps.wf.refund-out.v1`, which credited the employer in the leg on `p.wf.request.v1`, drains (I-145) |
-| `uae.wps.wf.return-in.v1` | Employer's bank | `scheme-leg` of `p.wf.inward.v1` | Wait for core banking's posting window; credit the employer's account, which the RTC map (`uae.wps.map.rtc-in.v2`) names at payment level |
-| `uae.wps.wf.inward-refuse.v1` | Agent | `scheme-refuse` of `p.wf.inward.v1` | Hand to operations; nothing is sent |
+| `uae.wps.wf.return-in.v1` | Employer's bank | `scheme-leg` of `p.wf.inward.v2` | Wait for core banking's posting window; credit the employer's account, which the RTC map (`uae.wps.map.rtc-in.v2`) names at payment level |
+| `uae.wps.wf.inward-refuse.v1` | Agent | `scheme-refuse` of `p.wf.inward.v2` | Hand to operations; nothing is sent |
 
 Each exchange that waits is one block to the designer. The steps underneath are a subflow (Part 5, section 5.6).
 

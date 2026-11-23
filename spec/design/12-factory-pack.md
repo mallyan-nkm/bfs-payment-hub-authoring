@@ -69,7 +69,7 @@ The table is generated from `factory/inventory.yaml`.
 | --- | --- | --- | --- |
 | `p.wf.corporate.v1` | Outward file and high-value payments | `scheme-leg` | `after-validate`, `enrich-before-screen` (from the segment), `before-release`, `on-close` |
 | `p.wf.commercial.v1` | Outward instant payments | `scheme-leg` | The same four |
-| `p.wf.inward.v1` | Every inward payment and return | `scheme-leg`, `scheme-refuse` | `on-close` |
+| `p.wf.inward.v2` | Every inward payment and return (2.0.0 replaced `p.wf.inward.v1`: its `scheme-leg@2` lets the leg write `facts.returns`, R-09-87) | `scheme-leg`, `scheme-refuse` | `on-close` |
 | `p.wf.request.v1` | Requests and exceptions that are not payments | `scheme-leg` | `on-close` |
 | `p.seg.check-and-screen.v1` | The shared check and screen stages | None | `after-validate`, `enrich-before-screen` |
 

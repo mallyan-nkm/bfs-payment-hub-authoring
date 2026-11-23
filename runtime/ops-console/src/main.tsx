@@ -6,6 +6,7 @@ import { client, type Client, type Lag, type View } from './ops/api';
 import { Payments } from './ops/Payments';
 import { Detail } from './ops/Detail';
 import { Reports } from './ops/Reports';
+import { Breaks } from './ops/Breaks';
 import { show } from './ops/format';
 import { serviceClient } from './service/api';
 import { ServiceSection } from './service/Service';
@@ -86,6 +87,8 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
     { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
+    // Reconciliation breaks (R-09-92): a bank approver consents to a resolution that changes the system.
+    { id: 'breaks', title: 'Breaks', render: (_p, ctx) => <Breaks api={api} go={ctx.go} /> },
     // The bank's registers (R-05-62): makers propose, a different bank approver consents.
     { id: 'registers', title: 'Registers', render: (path, ctx) => <RegistersSection api={registersClient(auth)} path={path} go={ctx.go} /> },
   );

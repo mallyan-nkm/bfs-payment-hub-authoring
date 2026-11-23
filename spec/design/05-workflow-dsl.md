@@ -255,7 +255,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 ## 5.8 Examples
 
 - Platform workflow with a slot, hook points and `finally`: `factory/p/workflows/p.wf.corporate.v1.yaml`.
-- Inward platform workflow with a refuse slot: `factory/p/workflows/p.wf.inward.v1.yaml`.
+- Inward platform workflow with a refuse slot: `factory/p/workflows/p.wf.inward.v2.yaml`.
 - Leg that calls composites, as the designer writes it: `factory/uae.wps/workflows/uae.wps.wf.salary-file-out.v1.yaml`.
 - Subflow with a wait for a later reply: `factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml`.
 - Subflow with two waits on a business calendar: `factory/uae.wps/workflows/uae.wps.sub.request-refund.v1.yaml`.

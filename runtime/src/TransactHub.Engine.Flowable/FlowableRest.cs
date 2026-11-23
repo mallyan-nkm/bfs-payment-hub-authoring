@@ -188,6 +188,10 @@ public sealed class FlowableRest : IDisposable
     public Task<List<JsonObject>> TimerJobsOf(string processInstanceId) => List("timers", $"{service}/management/timer-jobs?processInstanceId={Uri.EscapeDataString(processInstanceId)}");
     public Task<List<JsonObject>> DeadLetterJobs(string? tenant) => List("dead-letters", $"{service}/management/deadletter-jobs?{Q(tenant)}");
 
+    /// <summary>A dead-letter job moved back to the executable jobs, with its retries again (an operator's requeue, R-09-91).</summary>
+    public async Task MoveDeadLetter(string id) =>
+        await Json("move-deadletter", HttpMethod.Post, $"{service}/management/deadletter-jobs/{id}", new JsonObject { ["action"] = "move" });
+
     /// <summary>Runs an executable job; the server's message when the job fails, else null.</summary>
     public async Task<string?> ExecuteJob(string id)
     {

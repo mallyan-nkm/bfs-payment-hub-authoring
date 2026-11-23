@@ -1,0 +1,49 @@
+# The platform's production adapters as port bindings (R-09-90, owner's direction of 23 November 2026): sanctions screening, fraud,
+# the channel's notices, the outward facts, the business calendar and the participant directory. Read by
+# runtime/src/TransactHub.Ports/PortBindings.cs and runtime/src/TransactHub.Ports/PlatformAdapters.cs.
+#
+# This is the bindings' shape only. The source names none of these services, so every host is a placeholder under .invalid and
+# every credential a reference the installation fills: a call fails until the bank gives its hosts in a new binding with a later
+# validFrom (README.md, Issue I-163). The calendar and the directory read the reference tables the bank's configuration release
+# installs (R-09-75), so they need no host.
+kind: port-bindings
+tenant: enbd
+bindings:
+  - port: p.port.sanctions.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      baseUrl: https://sanctions-screening.enbd.invalid/
+      screenPath: /screen
+      secretRef: env:TH_ENBD_SANCTIONS_TOKEN
+  - port: p.port.fraud.v1
+    adapter: gateway-rest
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      baseUrl: https://fraud-screening.enbd.invalid/
+      screenPath: /screen
+      secretRef: env:TH_ENBD_FRAUD_TOKEN
+  - port: p.port.channel.v1
+    adapter: email
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      host: smtp-relay.enbd.invalid
+      port: "587"
+      from: payments-notices@enbd.invalid
+      to: channel-desk@enbd.invalid
+      # The relay's login, user:password, by reference only.
+      secretRef: env:TH_ENBD_SMTP_LOGIN
+  - port: p.port.facts-out.v1
+    adapter: webhook
+    validFrom: 2026-11-23T00:00:00Z
+    settings:
+      baseUrl: https://payment-events.enbd.invalid/
+      publishPath: /facts
+      signingKeyRef: env:TH_ENBD_FACTS_SIGNING_KEY
+      secretRef: env:TH_ENBD_FACTS_TOKEN
+  - port: uae.p.port.calendar.v1
+    adapter: reference
+    validFrom: 2026-11-23T00:00:00Z
+  - port: uae.p.port.participant-directory.v1
+    adapter: reference
+    validFrom: 2026-11-23T00:00:00Z

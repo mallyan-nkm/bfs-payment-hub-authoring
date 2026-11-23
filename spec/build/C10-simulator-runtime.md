@@ -67,7 +67,7 @@ Size: 3 SP. Phase 2. Branch: `story/c10-s2-inward-simulators`.
 
 **Definition of Success**
 
-- uae.wps.sim.wps-inward.v1 payment-file starts p.wf.inward.v1 with the agent leg.
+- uae.wps.sim.wps-inward.v1 payment-file starts p.wf.inward.v2 with the agent leg.
 
 ### C10-S3 Self-check and malformed scenarios
 

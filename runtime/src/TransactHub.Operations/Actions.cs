@@ -17,9 +17,10 @@ public static class ActionNames
     public static readonly string[] Signals = ["cancel", "re-screen", "pause", "resume"];
     /// <summary>
     /// The operator's controls (R-05-55, R-05-58): <c>retry</c> gives a parked step one more attempt, through the engine's host;
-    /// <c>resend</c> sends a kept file again on the file-transfer port, by the runtime.
+    /// <c>resend</c> sends a kept file again on the file-transfer port, by the runtime; <c>requeue</c> runs a dead-lettered step again
+    /// with its full retry policy, through the engine's host, on every engine (R-09-91).
     /// </summary>
-    public static readonly string[] Controls = ["retry", "resend"];
+    public static readonly string[] Controls = ["retry", "resend", "requeue"];
     public static IEnumerable<string> All => HoldDecisions.Keys.Concat(Signals).Concat(Controls);
 }
 
@@ -102,6 +103,8 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 // Which states allow what (R-05-58): a signal while the payment runs; retry while a step is parked; resend when a file was sent.
                 if (ActionNames.Signals.Contains(name) && state.ended) continue;
                 if (name == "retry" && (state.ended || !state.parked)) continue;
+                // A dead-lettered step (R-09-91): one whose attempts are spent, parked on any engine or left dead by Flowable.
+                if (name == "requeue" && (state.ended || !(state.parked || state.deadLetter))) continue;
                 if (name == "resend" && !state.file) continue;
                 offers.Add(new ActionOffer(name, (string?)a["label"] ?? name, (string?)a["role"] ?? OperatorRoles.Operator, (string?)a["secondApprover"],
                     (string?)a["remarks"] == "required", ActionNames.HoldDecisions.ContainsKey(name) ? open?.id : null, leg));
@@ -135,13 +138,15 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
     }
 
     /// <summary>What the store says of a payment now: whether it has ended, whether its last step is parked, whether a file of it was kept.</summary>
-    async Task<(bool ended, bool parked, bool file)> StateOf(string subjectId, CancellationToken ct)
+    async Task<(bool ended, bool parked, bool file, bool deadLetter)> StateOf(string subjectId, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);
         var ended = await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == subjectId && f.Kind == "payment.end", ct);
         var lastStep = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step").OrderByDescending(f => f.Seq).Select(f => f.Code).FirstOrDefaultAsync(ct);
         var file = await db.Messages.AsNoTracking().AnyAsync(m => m.SubjectId == subjectId && m.Direction == "Outward", ct);
-        return (ended, lastStep == "stuck", file);
+        // A Flowable dead-letter job the binding surfaced (engine dead-letter) and no requeue of it delivered since (R-09-91).
+        var dead = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && (f.Kind == "engine" && f.Code == "dead-letter" || f.Kind == "engine" && f.Code == "requeued")).OrderByDescending(f => f.Seq).Select(f => f.Code).FirstOrDefaultAsync(ct);
+        return (ended, lastStep == "stuck", file, dead == "dead-letter");
     }
 
     async Task<(string tenant, string kind)> SubjectOf(string subjectId, CancellationToken ct)
@@ -215,7 +220,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 (status, text) = ("done", $"hold {hd.decision}");
             }
         }
-        else if (ActionNames.Signals.Contains(action) || action == "retry")
+        else if (ActionNames.Signals.Contains(action) || action == "retry" || action == "requeue")
         {
             (status, text) = ("done", await signals.Send(tenant, subjectId, null, action, id, ct));
         }

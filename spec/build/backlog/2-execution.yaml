@@ -221,7 +221,7 @@ components:
         dod:
           - Only the four fixed signals exist; cancel compensates then runs finally.
           - A hold awaits the operator's decision until its expiry, and a step that parks takes the operator's retry or re-drive (R-05-55, R-05-56).
-        dos: CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01 and CK-PARK-02 pass.
+        dos: CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01, CK-PARK-02 and CK-PARK-03 pass.
       - id: C09-S8
         title: Hook points and bindings
         sp: 5
@@ -295,7 +295,7 @@ components:
         needs: [C10-S1]
         dod:
           - A test step or a virtual-clock schedule triggers a send; the message goes through dispatch.
-        dos: uae.wps.sim.wps-inward.v1 payment-file starts p.wf.inward.v1 with the agent leg.
+        dos: uae.wps.sim.wps-inward.v1 payment-file starts p.wf.inward.v2 with the agent leg.
       - id: C10-S3
         title: Self-check and malformed scenarios
         sp: 3

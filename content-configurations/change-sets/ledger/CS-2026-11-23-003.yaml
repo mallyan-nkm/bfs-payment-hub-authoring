@@ -3,7 +3,7 @@ kind: release-ledger
 changeSet: CS-2026-11-23-003
 files:
   - path: artefacts/inventory/1.8.0.yaml
-    sha256: f4822d4b3175aeae808492baa1fafba671bb5924674a9549ace231d1d3aa49e1
+    sha256: 8345c95aead644e26da5c1d474daedfc663250c0dc449f2bdf22f24123ab6d2d
   - path: artefacts/p/p.hold.approval.v1/1.1.0.yaml
     sha256: 69dc7b70c4e3b08d98c75f0f842971a6e3550545214e1722c8f6abf343244c8c
   - path: artefacts/p/p.hold.repair.v1/1.1.0.yaml
@@ -11,11 +11,11 @@ files:
   - path: artefacts/p/p.table.workflow-select.v1/1.3.0.yaml
     sha256: b73e9e5ce197101143933cc4d068851669db6bccf9a5b7fa0648d44a181519da
   - path: artefacts/p/p.view.operations.v1/1.4.0.yaml
-    sha256: caf66f7fef626f862f0758581cd15b39be43f932d34545b578864b20356f0acb
+    sha256: df59ab03be210112c037cbc7828deda7252ae077144b3220af1032b883a979dc
   - path: artefacts/p/p.wf.inward.v2/2.0.0.yaml
-    sha256: 3325df357f4e4808b88c7f2a968b5b7088ffde78c5e211baac96a7155fbb31d1
+    sha256: 138a9428a0cc101b3b95f0dc6ace7932f2a48d05fae60f4fdfdc77e10e794e79
   - path: artefacts/p/pack/1.8.0.yaml
-    sha256: 3459cb2be7903748e823d7ad1ebedbc02e185c6022ab31bd3bd712878618fac2
+    sha256: 889a3cebc3c14ec1898e4c0deb13c02e6e564ae226fb40681c92db7f85328daa
   - path: artefacts/p/tests/P-CHG-001@1.8.0.yaml
     sha256: c025d6ce42156acfb16a115d4df86d9cc94c20eadcb9c38166ab233525dd4fee
   - path: artefacts/p/tests/P-CHG-002@1.8.0.yaml

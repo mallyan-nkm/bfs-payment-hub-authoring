@@ -99,7 +99,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
 
     sealed record Rig(StoreOptions Store, FileIntake Intake, FakeIntake Map, FakeEngines Engines, string Distribution, PortBindings Bindings);
 
-    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null)
+    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null)
     {
         var o = await pg.Fresh();
         var dist = await ActiveDistribution(o);
@@ -108,10 +108,31 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         bindings ??= new PortBindings();
         var resolver = new SecretResolver([new EnvSecretProvider(k => secrets?.GetValueOrDefault(k))]);
         var fd = new RuntimeFrontDoor(o, map, engines);
-        return new Rig(o, new FileIntake(o, Key, Config(), new Decryptor(bindings, resolver), fd), map, engines, dist, bindings);
+        return new Rig(o, new FileIntake(o, Key, Config(config), new Decryptor(bindings, resolver), fd), map, engines, dist, bindings);
     }
 
     static byte[] Pif(string tag) => Encoding.UTF8.GetBytes($"# synthetic payment file {tag}\nSCR,TEST\n");
+
+    [Fact]
+    public async Task A_scheme_report_is_reconciled_on_arrival_and_its_breaks_recorded_not_routed()
+    {
+        // R-09-92: the installation names the report's message (Issue I-164); the report is kept, matched against the store, and
+        // each break is a fact for the operations console's queue. Nothing is started and nothing is handed to an engine.
+        var r = await Make(config: new() { ["FileApi:Reports:uae.wps.scheme-report:Scheme"] = "uae.wps" });
+        var report = Encoding.UTF8.GetBytes("reference,amount,currency,status\n0000NOPAYMENT-1,10.00,AED,settled\n");
+        var got = await r.Intake.Receive(A("uae.wps.scheme-report", "report-20261123.csv", report));
+        Assert.True(got.Accepted, got.Detail);
+        Assert.Contains("reconciled: unmatched, 1 break(s)", got.Detail);
+        Assert.Empty(r.Engines.Started);
+        await using var db = StoreDbContext.Open(r.Store);
+        var fileFacts = (await db.Facts.AsNoTracking().Where(f => f.SubjectId == got.FileId).OrderBy(f => f.Seq).ToListAsync()).Select(f => $"{f.Kind}:{f.Code}").ToList();
+        Assert.Equal(["file.received:", "file.reconciled:unmatched"], fileFacts);
+        var brk = await db.Facts.AsNoTracking().SingleAsync(f => f.SubjectKind == SchemeReconciliation.SubjectKind && f.Code == "break");
+        Assert.Equal("not-in-store", (string?)JsonNode.Parse(brk.DataJson)!["kind"]);
+        Assert.Equal(got.FileId, (string?)JsonNode.Parse(brk.DataJson)!["file"]);
+        // The same report again is a duplicate, refused like any file.
+        Assert.Equal("file.Duplicate", (await r.Intake.Receive(A("uae.wps.scheme-report", "report-20261123-again.csv", report))).Code);
+    }
     static Arrival A(string message, string name, byte[] content, Dictionary<string, string>? correlation = null) => new(Bank, Env, message, name, content, "api", "channel-client", correlation);
 
     [Fact]

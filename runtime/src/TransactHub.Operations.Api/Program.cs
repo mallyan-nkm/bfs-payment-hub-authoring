@@ -39,6 +39,8 @@ builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<
 builder.Services.AddSingleton(new Reports(ops, views));
 // The console's own chain (R-09-77, R-05-65): its exports, and the changes of the system it waits for a bank approver's consent to.
 builder.Services.AddSingleton(new ConsoleRecord(store, clock));
+// The reconciliation break queue (R-09-92): the breaks the scheme reports' runs recorded, resolved with consent where they change the system.
+builder.Services.AddSingleton(new BreakQueue(store, clock));
 // The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
 builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
 builder.Services.AddHostedService<ProjectionService>();
@@ -312,6 +314,22 @@ api.MapGet("/audit", async (HttpContext http, ConsoleRecord record) =>
     Who(http) is not { } who ? Problem(401, "Sign in") : !who.MayConsent && !who.Tenants.Any(t => who.Has(t, OperatorRoles.Supervisor)) ? Problem(403, "The console's audit is for supervisors and bank approvers")
     : Results.Ok(new { exports = await record.Recent(ConsoleRecord.ExportKind), consents = await record.Recent(ConsoleRecord.ConsentKind) }));
 
+// The reconciliation break queue (R-09-92): list, resolve, and a bank approver's consent to a resolution that changes the system.
+api.MapGet("/breaks", async (HttpContext http, BreakQueue q) =>
+    Who(http) is not { } who ? Problem(401, "Sign in") : Results.Ok(await q.List(who, http.Request.Query["all"] == "true")));
+api.MapPost("/breaks/{id}/resolution", async (string id, BreakResolution body, HttpContext http, BreakQueue q) =>
+{
+    if (Who(http) is not { } who) return Problem(401, "Sign in");
+    try { return Results.Ok(await q.Resolve(who, id, body.Resolution, body.Remarks)); }
+    catch (ActionRefused e) { return Problem(e.Status, e.Message); }
+});
+api.MapPost("/breaks/{id}/consent", async (string id, DecisionRequest body, HttpContext http, BreakQueue q) =>
+{
+    if (Who(http) is not { } who) return Problem(401, "Sign in");
+    try { return Results.Ok(await q.Consent(who, id, body.Approve, body.Remarks)); }
+    catch (ActionRefused e) { return Problem(e.Status, e.Message); }
+});
+
 // The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74).
 app.MapRegisters();
 app.MapChannel(ops);
@@ -356,6 +374,7 @@ static string? Find(string rel)
 public sealed record ActionRequest(string Action, string? Remarks);
 public sealed record DecisionRequest(bool Approve, string? Remarks);
 public sealed record Reasoned(string? Remarks);
+public sealed record BreakResolution(string Resolution, string? Remarks);
 
 /// <summary>Keeps the read model up with the outbox: a poll every Operations:PollMilliseconds (default 500).</summary>
 sealed class ProjectionService(Projector p, HoldExpiry expiry, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService

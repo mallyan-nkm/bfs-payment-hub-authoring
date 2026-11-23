@@ -123,7 +123,10 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
         // 1. What the file is, by the dispatch table of the bank's active distribution: a file no scheme names is refused.
         MessageEntry? entry = null;
         string? refusedCode = null, refused = null;
-        if (frontDoor is not null)
+        // A scheme's report file (R-09-92) is reconciled on arrival, not routed: the installation names its messages until the scheme
+        // declares them (FileApi:Reports:<message>:Scheme, Issue I-164).
+        var reportScheme = cfg[$"FileApi:Reports:{a.Message}:Scheme"];
+        if (reportScheme is null && frontDoor is not null)
         {
             try
             {
@@ -165,7 +168,7 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
 
         // 5. Whose it is: a start names a new payment; a message for a running payment is correlated before it is kept.
         string? paymentId = null;
-        if (refused is null && frontDoor is not null && entry is not null)
+        if (refused is null && reportScheme is null && frontDoor is not null && entry is not null)
         {
             try
             {
@@ -195,6 +198,13 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
             ["payment"] = paymentId, ["decrypted"] = dec?.Id, ["why"] = refused,
         }, Actor: a.Actor), ct);
         if (refused is not null) return new Received("refused", row.Id, sha, dec?.Id, refusedCode, refused, null);
+        if (reportScheme is not null)
+        {
+            // p.reconcile.scheme-report.v1 on the runtime: matched against the store, each break a fact for the console's queue.
+            var r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, plain ?? a.Content, "file-api:reconcile", ct);
+            await log.Append(row.Id, FileKind, new NewFact("file.reconciled", (string?)r["outcome"], new JsonObject { ["run"] = r["run"]?.DeepClone(), ["breaks"] = (r["breaks"] as JsonArray)?.Count ?? 0 }, Actor: "file-api:reconcile"), ct);
+            return new Received("accepted", row.Id, sha, dec?.Id, null, $"reconciled: {(string?)r["outcome"]}, {(r["breaks"] as JsonArray)?.Count ?? 0} break(s) ({(string?)r["run"]})", null);
+        }
         if (frontDoor is null || entry is null) return new Received("accepted", row.Id, sha, dec?.Id, null, "kept; no front door is configured", null);
 
         // 7. The front door: the payment starts, or the message reaches the payment it belongs to.
