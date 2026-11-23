@@ -40,6 +40,8 @@ The driver is `driver/bench.ts`, run with the studio's `tsx`. The content is the
 | `databases` | `PostgreSql`, `SqlServer`, or `none` (no store: DTFx and Elsa then run the studio's own harnesses). A list runs each engine on each. |
 | `bench`, `ports` | A named bench from `benches.yaml`, and `port=simulator:scenario` to change one port. |
 | `clock.date` | The evaluation date. The run starts at 06:00 that day. Values with a `validFrom` are in force by this date (DIB's are from 2026-11-21). |
+| `clock.time` | When the run starts that day, HH:mm or HH:mm:ss UTC (default 06:00): a bank's cut-off is a time of day (R-12-28). |
+| `values` | Values beside the bank's configuration, each `{ parameter, value, validFrom }`, on the interpreter and on every engine (for example a cut-off that refuses a late file, TB-WPS-OUT-015). |
 | `environment.temporal` | `test-server` (the time-skipping server the harness starts) or `host:port` of a Temporal server, run in real time. `TH_TEMPORAL_ADDRESS` overrides it. |
 | `environment.flowable` | `container` (a Flowable REST 7.1.0 container, its async executor off) or the URL of a Flowable REST server. `TH_FLOWABLE_URL` overrides it. |
 | `environment.connections` | `{ PostgreSql: <connection>, SqlServer: <connection> }` to use a server of yours; each engine run gets a database `tb_<run>_<engine>` on it. `TH_TESTBENCH_POSTGRESQL` and `TH_TESTBENCH_SQLSERVER` do the same. Without one, a Testcontainers container is started for the run and removed after it. |

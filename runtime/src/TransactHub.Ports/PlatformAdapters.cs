@@ -242,6 +242,11 @@ public static class CalendarAdapters
         return (weekend, holidays);
     }
 
+    /// <summary>The days a bank's own calendar (domain bank-calendar) says it is closed: rows of kind <c>closed</c> with an ISO date.</summary>
+    public static HashSet<string> ClosedDays(JsonArray? rows) =>
+        (rows ?? []).OfType<JsonObject>().Where(r => (string?)r["kind"] == "closed").Select(r => (string?)r["day"] ?? "")
+            .Where(d => DateOnly.TryParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)).ToHashSet(StringComparer.Ordinal);
+
     public static BusinessDay Count(DateTimeOffset at, HashSet<int> weekend, HashSet<string> holidays, string source)
     {
         bool Business(DateOnly d) => !weekend.Contains((int)d.DayOfWeek) && !holidays.Contains(d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
@@ -252,17 +257,30 @@ public static class CalendarAdapters
     }
 }
 
-/// <summary>The bank's business calendar reference table (domain business-calendar), the edition in force on the day.</summary>
+/// <summary>
+/// The bank's business calendar reference table (domain business-calendar), the edition in force on the day, and the bank's own
+/// closing days (domain bank-calendar, setting <c>bankDomain</c>, R-11-52): a day of kind <c>closed</c> is no business day either
+/// (R-09-102). A half day is a business day; it moves the cut-off, not the business date (p.decide.cut-off.v1).
+/// </summary>
 public sealed class ReferenceCalendar(PortBinding b, ReferenceReader reader) : IBusinessCalendarService
 {
     public const string Name = "reference";
+    public const string BankDomain = "bank-calendar";
     public string Adapter => Name;
     public async Task<BusinessDay> Of(DateTimeOffset at, CancellationToken ct = default)
     {
         var (table, rows) = await reader(b.Tenant, b.Setting("domain", CalendarAdapters.Domain), at, ct);
         if (rows is null) throw new PortBindingException($"{b.Tenant} has no reference table of domain {b.Setting("domain", CalendarAdapters.Domain)} in force on {at:yyyy-MM-dd}");
         var (w, h) = CalendarAdapters.Of(rows);
-        return CalendarAdapters.Count(at, w, h, table ?? CalendarAdapters.Domain);
+        var source = table ?? CalendarAdapters.Domain;
+        var (bankTable, bankRows) = await reader(b.Tenant, b.Setting("bankDomain", BankDomain), at, ct);
+        var closed = CalendarAdapters.ClosedDays(bankRows);
+        if (closed.Count > 0)
+        {
+            h.UnionWith(closed);
+            source = $"{source}+{bankTable ?? BankDomain}";
+        }
+        return CalendarAdapters.Count(at, w, h, source);
     }
 }
 

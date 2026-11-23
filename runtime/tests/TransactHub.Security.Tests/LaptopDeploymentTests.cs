@@ -84,6 +84,48 @@ public sealed class LaptopDeploymentTests
         Assert.Contains("FileApi__EngineHostTokenRef: env:TH_LAPTOP_ENGINE_HOST_TOKEN", fileApi);
     }
 
+    static string Service(string name) => Regex.Match(Compose, $@"^  {Regex.Escape(name)}:(?: &\S+)?\n((?:    .*\n|\n)*?)(?=^  \S|^\S|\z)", RegexOptions.Multiline).Groups[1].Value;
+
+    [Fact]
+    public void Every_file_enters_and_leaves_through_the_File_API_on_the_laptop()
+    {
+        // R-09-105: the bank's partners are the stack's SFTP server, with its login from the environment and its host key pinned by
+        // reference; the File API polls its inboxes and runs the intake maps on the workers of the payment's distribution; every
+        // host that puts a file names the File API; the consoles resend through it; the engine hosts are served by the workers.
+        var sftp = Service("sftp");
+        Assert.Contains("atmoz/sftp:alpine@sha256:", sftp);
+        Assert.Contains("${TH_LAPTOP_SFTP_PASSWORD:?", sftp);
+        Assert.Matches(@"x-banks: &banks\n  TH_BANKS_DIR: /opt/th/content-configurations/banks:/opt/th/deploy/laptop/banks\n", Compose);
+        Assert.Matches(@"x-file-api: &file-api-client\n  TH_FILE_API_URL: http://file-api:8080\n  TH_FILE_API_TOKEN_REF: file:", Compose);
+        var fileApi = Service("file-api");
+        Assert.Contains("<<: [*store, *auth, *banks]", fileApi);
+        Assert.Contains("FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any", fileApi);
+        Assert.Contains("*file-api-client", Service("native"));
+        Assert.Contains("*banks", Service("native"));
+        foreach (var host in new[] { "enginehost", "enginehost-dtfx", "enginehost-elsa", "enginehost-flowable" })
+        {
+            Assert.Contains("<<: *file-api-client", Service(host));
+            Assert.Contains("TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}", Service(host));
+        }
+        Assert.Contains("Operations__FileApi__Url: http://file-api:8080", Service("ops-api"));
+        Assert.Contains("Operations__FileApi__TokenRef: file:", Service("ops-api"));
+        Assert.Contains("Service__FileApi__Url: http://file-api:8080", Service("service-api"));
+        Assert.Contains("command: [\"workers\"]", Service("workers"));
+        Assert.Contains("command: [\"tokens\"]", Service("tokens"));
+        // The laptop's own binding of each bank: every inbox names its message (I-160), the host key and the login by reference (I-161).
+        foreach (var bank in new[] { "adib", "dib" })
+        {
+            var b = File.ReadAllText(Path.Combine(Laptop, "banks", bank, "file-transfer.yaml"));
+            Assert.Contains($"tenant: {bank}", b);
+            Assert.Contains("hostKeyRef: env:TH_LAPTOP_SFTP_HOST_KEY", b);
+            Assert.Contains("secretRef: env:TH_LAPTOP_SFTP_LOGIN", b);
+            Assert.Contains("pickup.message: uae.wps.sif", b);
+            Assert.Contains("centralBank.inbox.ack.message: uae.wps.ack", b);
+            Assert.DoesNotMatch(@"(?i)password:|BEGIN .*PRIVATE KEY", b);
+        }
+        Assert.Contains("COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/", Dockerfile);
+    }
+
     [Fact]
     public void The_development_identity_provider_is_refused_in_Production()
     {

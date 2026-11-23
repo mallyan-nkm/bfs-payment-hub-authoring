@@ -9,7 +9,9 @@
   ],
   "clients": [
     { "clientId": "th-pipeline", "name": "The bank's release pipeline", "secretRef": "env:TH_LAPTOP_PIPELINE_SECRET", "roles": ["TransactHub.Pipeline"] },
-    { "clientId": "th-front-door", "name": "The front door and its workers", "secretRef": "env:TH_LAPTOP_FRONTDOOR_SECRET", "roles": ["TransactHub.FrontDoor"] }
+    { "clientId": "th-front-door", "name": "The front door and its workers", "secretRef": "env:TH_LAPTOP_FRONTDOOR_SECRET", "roles": ["TransactHub.FrontDoor"] },
+    { "clientId": "th-channel", "name": "The corporate channel, which sends salary files to the File API", "secretRef": "env:TH_LAPTOP_CHANNEL_SECRET", "roles": ["TransactHub.Channel"] },
+    { "clientId": "th-operations", "name": "The consoles' resend through the File API", "secretRef": "env:TH_LAPTOP_OPERATIONS_SECRET", "roles": ["TransactHub.Operations"] }
   ],
   "publicClients": ["transacthub-runtime-ui"]
 }

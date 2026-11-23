@@ -44,7 +44,10 @@ var workers = cfg.GetSection("FileApi:Workers").GetChildren().ToDictionary(c => 
 // One runtime serves one bank (R-09-76): FileApi:EngineHost names its supervisor.
 if (cfg["FileApi:EngineHost"] is { Length: > 0 } oneHost && cfg["TH_BANK"] is { Length: > 0 } oneBank) engineHosts[oneBank] = oneHost;
 var frontDoor = engineHosts.Count == 0 ? null : new RuntimeFrontDoor(store,
-    new WorkerIntake((_, scope) => workers.GetValueOrDefault(scope) ?? workers.GetValueOrDefault("*")),
+    // A worker's URL may name {distribution} and {scope}: an installation whose workers are per distribution (the laptop's workers
+    // service, R-09-105) runs the intake map on the workers of the distribution the payment is pinned to.
+    new WorkerIntake((dist, scope) => (workers.GetValueOrDefault(scope) ?? workers.GetValueOrDefault("*"))?
+        .Replace("{distribution}", Uri.EscapeDataString(dist)).Replace("{scope}", Uri.EscapeDataString(scope))),
     new HttpEngineHost(bank => engineHosts.GetValueOrDefault(bank), hostToken));
 
 builder.Services.AddSingleton(TimeProvider.System);
@@ -56,7 +59,7 @@ builder.Services.AddSingleton(sp => new InboxPoller(ports, sp.GetRequiredService
     {
         try { return Inbox.Of(bindings.InForce(g.Key, FileTransferAdapters.Port, DateTimeOffset.UtcNow)); }
         catch (PortBindingException) { return []; }
-    }).Concat(Inbox.Of(cfg)).ToList(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILoggerFactory>().CreateLogger("inbox")));
+    }).Concat(Inbox.Of(cfg)).ToList(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILoggerFactory>().CreateLogger("inbox"), cfg["TH_BANK"]));
 if (cfg["FileApi:Worker"] != "off") builder.Services.AddHostedService<FileApiWorker>();
 await builder.Services.AddRuntimeAuth(cfg, secrets, FileApiAuth.Roles);
 builder.Services.AddTransactHubTelemetry("transacthub-file-api");

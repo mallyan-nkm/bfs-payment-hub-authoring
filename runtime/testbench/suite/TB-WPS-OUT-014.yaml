@@ -1,0 +1,12 @@
+# A shipped test bench regression case (runtime/testbench/README.md). Run: testbench suite runtime/testbench/suite
+# The example bank's cut-off for a WPS salary file it sends is 14:00 in Dubai (R-12-28, Issue I-191): a file accepted at 11:00 UTC,
+# 15:00 in Dubai, on Tuesday 17 November 2026 counts for Wednesday 18 November and settles, the same on every engine.
+kind: testbench-case
+id: TB-WPS-OUT-014
+title: 'A salary file after the bank''s cut-off counts for the next business day'
+request:
+  profile: wps-all-engines
+  data: { sample: wps-sif-happy }
+  clock: { date: '2026-11-17', time: '11:00' }
+expect:
+  outcome: settled

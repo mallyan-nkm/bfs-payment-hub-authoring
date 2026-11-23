@@ -128,6 +128,13 @@ public sealed class ProjectionTests(Databases dbs)
         Assert.Equal("ack", (string?)lf["cbResponse"]);
         Assert.Equal("ACCP", (string?)lf["ackStatus"]);
         Assert.NotNull((string?)lf["sentToCbAt"]);
+        // R-05-72: the cut-off the file met, as the step applied it.
+        Assert.Equal("taken", (string?)lf["cutOff"]);
+        Assert.Equal("true", lf["cutOffApplied"]?.ToString());
+        Assert.Equal("14:00", (string?)lf["cutOffTime"]);
+        Assert.Equal("Asia/Dubai", (string?)lf["cutOffZone"]);
+        Assert.Equal("2026-11-17T15:00:00", (string?)lf["acceptedLocal"]);
+        Assert.Equal("2026-11-18", (string?)lf["countsFor"]);
         var lines = await o.Lines.Where(x => x.BulkId == id).OrderBy(x => x.LineNo).ToListAsync();
         var l1 = JsonNode.Parse(lines[0].FieldsJson)!;
         Assert.Equal("AE07***************3456", (string?)l1["creditAccount"]);

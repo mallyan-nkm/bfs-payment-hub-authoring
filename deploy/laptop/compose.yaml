@@ -42,6 +42,19 @@ x-auth: &auth
   Auth__Oidc__ClientId: transacthub-runtime-ui
   TH_STUDIO_ISSUER: ${TH_LAPTOP_STUDIO_URL:-http://localhost:4317}/auth/dev
 
+# The laptop's own bindings (deploy/laptop/banks) laid over the bank's (R-09-105): its file transfer is the stack's SFTP server.
+x-banks: &banks
+  TH_BANKS_DIR: /opt/th/content-configurations/banks:/opt/th/deploy/laptop/banks
+  TH_LAPTOP_SFTP_LOGIN: "th:${TH_LAPTOP_SFTP_PASSWORD:?set TH_LAPTOP_SFTP_PASSWORD}"
+  TH_LAPTOP_SFTP_HOST_KEY: ${TH_LAPTOP_SFTP_HOST_KEY:-}
+
+# Every file a host puts on the bank's file-transfer port goes through the File API's outbox (R-09-84, R-09-105), with a token of the
+# front door's client by reference, which the tokens service keeps fresh in its volume.
+x-file-api: &file-api-client
+  TH_FILE_API_URL: http://file-api:8080
+  TH_FILE_API_TOKEN_REF: file:/var/lib/transacthub/tokens/th-front-door.jwt
+  TH_SECRET_FILE_ROOTS: /var/lib/transacthub:/opt/th/deploy/laptop/identity
+
 x-github: &github
   # The studio's content branch, read only: its in-memory fake GitHub by default, the real one when TH_CONTENT_REPO is set.
   PackageSource__GitHub__Repository: ${TH_CONTENT_REPO:-local/content}
@@ -66,6 +79,22 @@ services:
       timeout: 5s
       retries: 40
       start_period: 20s
+
+  # The bank's SFTP partners on a laptop (R-09-105, Issue I-161): one SFTP server for the channel's pick-up, the Central Bank and the
+  # results. Its login is made at the stack's start (TH_LAPTOP_SFTP_PASSWORD, from the environment only); its host keys are made by
+  # the server on first start, kept in its volume, read out of band (ssh-keygen -lf) and pinned by reference in the File API's binding
+  # (TH_LAPTOP_SFTP_HOST_KEY): until they are, no session opens.
+  sftp:
+    image: atmoz/sftp:alpine@sha256:c5fb9e4beb8b7054a4c0b65c5e11df47cc20da95ad6002e88aecff62bab06372
+    restart: unless-stopped
+    command: ["th:${TH_LAPTOP_SFTP_PASSWORD:?set TH_LAPTOP_SFTP_PASSWORD}:1001::upload"]
+    volumes: ["sftp-host:/etc/ssh"]
+    ports: ["127.0.0.1:${TH_LAPTOP_SFTP_PORT:-12222}:22"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /etc/ssh/ssh_host_ed25519_key.pub && pidof sshd >/dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
 
   keys-init:
     <<: *runtime
@@ -150,8 +179,23 @@ services:
       TH_LAPTOP_USER_PASSWORD: ${TH_LAPTOP_USER_PASSWORD:?set TH_LAPTOP_USER_PASSWORD}
       TH_LAPTOP_PIPELINE_SECRET: ${TH_LAPTOP_PIPELINE_SECRET:?set TH_LAPTOP_PIPELINE_SECRET}
       TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET:?set TH_LAPTOP_FRONTDOOR_SECRET}
+      TH_LAPTOP_CHANNEL_SECRET: ${TH_LAPTOP_CHANNEL_SECRET:?set TH_LAPTOP_CHANNEL_SECRET}
+      TH_LAPTOP_OPERATIONS_SECRET: ${TH_LAPTOP_OPERATIONS_SECRET:?set TH_LAPTOP_OPERATIONS_SECRET}
       TH_HEALTH_URL: http://127.0.0.1:8080/health
-    ports: ["127.0.0.1:8480:8080"]
+    ports: ["127.0.0.1:${TH_LAPTOP_IDP_PORT:-8480}:8080"]
+
+  # Fresh client-credentials tokens in the tokens volume, for the hosts that call the File API with a token by reference (R-09-105).
+  tokens:
+    <<: *runtime
+    command: ["tokens"]
+    depends_on: { bank-idp: { condition: service_healthy } }
+    volumes: [tokens:/var/lib/transacthub/tokens]
+    environment:
+      TH_IDP_TOKEN_URL: http://bank-idp:8080/token
+      TH_MACHINE_CLIENTS: '{"th-front-door":"env:TH_LAPTOP_FRONTDOOR_SECRET","th-operations":"env:TH_LAPTOP_OPERATIONS_SECRET"}'
+      TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET}
+      TH_LAPTOP_OPERATIONS_SECRET: ${TH_LAPTOP_OPERATIONS_SECRET}
+      TH_HEALTH_FILE: /var/lib/transacthub/tokens/th-operations.jwt
 
   studio:
     image: th-laptop-studio:${TH_LAPTOP_TAG:-dev}
@@ -177,7 +221,7 @@ services:
       TH_SIGNING_KEY: file:/var/lib/transacthub/keys/studio-signing.pem
       TH_TRUSTED_SIGNERS: file:/var/lib/transacthub/keys/trusted-signers.json
       TH_SECRET_FILE_ROOTS: /var/lib/transacthub/keys
-    ports: ["127.0.0.1:4317:4317"]
+    ports: ["127.0.0.1:${TH_LAPTOP_STUDIO_PORT:-4317}:4317"]
 
   runtime-api:
     <<: *runtime
@@ -191,7 +235,7 @@ services:
       Releases__TestEnvironments: test
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
-    ports: ["127.0.0.1:8481:8080"]
+    ports: ["127.0.0.1:${TH_LAPTOP_API_PORT:-8481}:8080"]
 
   service-api:
     <<: *runtime
@@ -213,7 +257,15 @@ services:
       TH_BACKUP_SIGNING_KEY: file:/var/lib/transacthub/keys/backup-signing.pem
       TH_TEMPORAL_ADDRESS: temporal:7233
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-service.json
-    ports: ["127.0.0.1:8482:8080"]
+      # The service console's resend goes through the File API's outbox, onto the bank's binding (R-09-84).
+      Service__FileApi__Url: http://file-api:8080
+      Service__FileApi__Folder: centralBank/upload/cb/wps/sif
+      Service__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - jwks:/var/lib/transacthub/jwks:ro
+      - tokens:/var/lib/transacthub/tokens:ro
+    ports: ["127.0.0.1:${TH_LAPTOP_SERVICE_PORT:-8482}:8080"]
 
   ops-api:
     <<: *runtime
@@ -226,7 +278,15 @@ services:
       Operations__Console: /opt/th/runtime/ops-console/dist
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-ops.json
       TH_HEALTH_URL: http://127.0.0.1:8080/ops/api/health
-    ports: ["127.0.0.1:8483:8080"]
+      # The operations console's resend goes through the File API's outbox, onto the bank's binding (R-09-84, R-09-105).
+      Operations__FileApi__Url: http://file-api:8080
+      Operations__FileApi__Folder: centralBank/upload/cb/wps/sif
+      Operations__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - jwks:/var/lib/transacthub/jwks:ro
+      - tokens:/var/lib/transacthub/tokens:ro
+    ports: ["127.0.0.1:${TH_LAPTOP_OPS_PORT:-8483}:8080"]
 
   testbench:
     <<: *runtime
@@ -262,7 +322,7 @@ services:
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
       TH_HEALTH_URL: http://127.0.0.1:8080/testbench/api/health
       HOME: /var/lib/transacthub/work
-    ports: ["127.0.0.1:8484:8080"]
+    ports: ["127.0.0.1:${TH_LAPTOP_TESTBENCH_PORT:-8484}:8080"]
 
   native:
     <<: *runtime
@@ -270,10 +330,13 @@ services:
     depends_on:
       db-grants: { condition: service_completed_successfully }
       bank-idp: { condition: service_healthy }
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - jwks:/var/lib/transacthub/jwks:ro
+      - tokens:/var/lib/transacthub/tokens:ro
     environment:
-      <<: [*store, *auth]
+      <<: [*store, *auth, *banks, *file-api-client]
       TH_NATIVE_URLS: http://0.0.0.0:7300
-      TH_BANKS_DIR: /opt/th/content-configurations/banks
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-native.json
       TH_HEALTH_URL: http://127.0.0.1:7300/health
@@ -291,9 +354,12 @@ services:
       - jwks:/var/lib/transacthub/jwks:ro
       - files:/var/lib/transacthub/files
     environment:
-      <<: [*store, *auth]
+      <<: [*store, *auth, *banks]
       FileApi__Environment: test
-      TH_BANKS_DIR: /opt/th/content-configurations/banks
+      FileApi__PollSeconds: "3"
+      # The intake maps run on the workers of the distribution the payment is pinned to (I-158, R-09-105).
+      FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any
+      FileApi__Workers__p: http://workers:7700/{distribution}/_/any
       # The front door starts and correlates payments on the bank's engine host (R-09-85, R-09-95), on the compose network.
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       FileApi__EngineHost: http://enginehost:7600
@@ -301,7 +367,35 @@ services:
       TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-file-api.json
-    ports: ["127.0.0.1:8485:8080"]
+    ports: ["127.0.0.1:${TH_LAPTOP_FILE_API_PORT:-8485}:8080"]
+
+  # Every distribution's activity workers (R-09-105): the engine hosts' plans and the File API's front door name them by distribution.
+  # The laptop is a test environment, so the workers carry the simulators TH_LAPTOP_WORKERS_BENCH names (R-07-12).
+  workers:
+    <<: *runtime
+    command: ["workers"]
+    depends_on:
+      runtime-api: { condition: service_healthy }
+      bank-idp: { condition: service_healthy }
+      tokens: { condition: service_healthy }
+    volumes:
+      - keys:/var/lib/transacthub/keys:ro
+      - work:/var/lib/transacthub/work
+      - tokens:/var/lib/transacthub/tokens:ro
+    environment:
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      TH_RUNTIME_API: http://runtime-api:8080
+      TH_IDP_TOKEN_URL: http://bank-idp:8080/token
+      TH_LAPTOP_FRONTDOOR_SECRET: ${TH_LAPTOP_FRONTDOOR_SECRET}
+      TH_TRUSTED_SIGNERS: file:/var/lib/transacthub/keys/trusted-signers.json
+      TH_SECRET_FILE_ROOTS: /var/lib/transacthub
+      TH_WORKERS_HOME: /var/lib/transacthub/work/workers
+      # The bank's values from its installed configuration release, read by each worker at each attempt's time (R-12-28).
+      TH_RUNTIME_URL: http://runtime-api:8080
+      TH_RUNTIME_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
+      TH_WORKERS_BENCH: ${TH_LAPTOP_WORKERS_BENCH:-[{"port":"p.port.core-banking.v1","simulator":"p.sim.core-banking.v1","scenario":"accept"},{"port":"p.port.sanctions.v1","simulator":"p.sim.sanctions.v1","scenario":"accept"},{"port":"p.port.fraud.v1","simulator":"p.sim.fraud.v1","scenario":"accept"},{"port":"p.port.channel.v1","simulator":"p.sim.channel.v1","scenario":"accept"},{"port":"p.port.payment-record.v1","simulator":"p.sim.payment-record.v1","scenario":"accept"},{"port":"p.port.facts-out.v1","simulator":"p.sim.facts-out.v1","scenario":"accept"},{"port":"p.port.party-register.v1","simulator":"p.sim.party-register.v1","scenario":"accept"},{"port":"p.port.operations-queue.v1","simulator":"p.sim.operations.v1","scenario":"release"},{"port":"p.port.encryption.v1","simulator":"p.sim.encryption.v1","scenario":"accept"},{"port":"uae.wps.port.wps.v1","simulator":"uae.wps.sim.wps-outward.v1","scenario":"accept"},{"port":"uae.wps.port.labour-ministry.v1","simulator":"uae.wps.sim.labour-ministry.v1","scenario":"accept"},{"port":"uae.p.port.calendar.v1","simulator":"uae.p.sim.calendar.v1","scenario":"accept"},{"port":"b.port.aml-screening.v1","simulator":"b.sim.aml-screening.v1","scenario":"accept"},{"port":"b.port.labour-ministry.v1","simulator":"b.sim.labour-ministry.v1","scenario":"accept"}]}
+      TH_HEALTH_URL: http://127.0.0.1:7700/health
+      HOME: /var/lib/transacthub/work
 
   # The long-running engine host: a supervisor per engine for the runtime's bank, Temporal by default (R-09-66, R-09-79).
   enginehost: &enginehost
@@ -313,7 +407,9 @@ services:
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - work:/var/lib/transacthub/work
+      - tokens:/var/lib/transacthub/tokens:ro
     environment:
+      <<: *file-api-client
       TH_ENGINE: temporal
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_ENVIRONMENT: test
@@ -326,6 +422,8 @@ services:
       TH_HOST_URLS: http://0.0.0.0:7600/
       TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
       TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      # Each distribution's host is served by that distribution's own workers (R-09-105).
+      TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}
       TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
@@ -333,6 +431,7 @@ services:
     <<: *enginehost
     profiles: [dtfx]
     environment:
+      <<: *file-api-client
       TH_ENGINE: dtfx
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_ENVIRONMENT: test
@@ -344,6 +443,8 @@ services:
       TH_HOST_URLS: http://0.0.0.0:7600/
       TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
       TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      # Each distribution's host is served by that distribution's own workers (R-09-105).
+      TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}
       TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
@@ -351,6 +452,7 @@ services:
     <<: *enginehost
     profiles: [elsa]
     environment:
+      <<: *file-api-client
       TH_ENGINE: elsa
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_ENVIRONMENT: test
@@ -362,6 +464,8 @@ services:
       TH_HOST_URLS: http://0.0.0.0:7600/
       TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
       TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      # Each distribution's host is served by that distribution's own workers (R-09-105).
+      TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}
       TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
@@ -372,6 +476,7 @@ services:
       db-grants: { condition: service_completed_successfully }
       flowable: { condition: service_healthy }
     environment:
+      <<: *file-api-client
       TH_ENGINE: flowable
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_ENVIRONMENT: test
@@ -386,6 +491,8 @@ services:
       TH_HOST_URLS: http://0.0.0.0:7600/
       TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
       TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      # Each distribution's host is served by that distribution's own workers (R-09-105).
+      TH_HOST_WORKERS_URL: http://workers:7700/{distribution}/{workflow}/{queue}
       TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
@@ -423,6 +530,8 @@ services:
     ports: ["127.0.0.1:9090:9090"]
 
 volumes:
+  sftp-host:
+  tokens:
   sql:
   keys:
   idp:

@@ -132,8 +132,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # p.view.operations.v1 1.4.0 and uae.wps.view.operations.v1 1.5.0, written by hand; the example bank's calendar and cut-offs (R-11-52).
 # 1.9.0: p.wf.inward.v2 and the WPS inward legs in its scheme-leg@2 (Issue I-141, R-09-87); the holds' expiry on the business
 # calendar (Issue I-127, R-09-88); p.view.operations.v1 1.5.0 (R-09-91).
-PACK_RELEASES = {"p": "1.9.0", "uae.p": "1.9.0", "uae.wps": "1.9.0", "b": "1.9.0"}
-FACTORY_RELEASE = "1.9.0"
+# 1.10.0: the bank's cut-off (p.decide.cut-off.v1, R-12-28, Issues I-186 and I-191) after the WPS salary file's business date
+# (uae.wps.wf.salary-file-out.v1 1.4.0), and the WPS operations view 1.6.0 that shows it (R-05-72), both written by hand.
+PACK_RELEASES = {"p": "1.10.0", "uae.p": "1.10.0", "uae.wps": "1.10.0", "b": "1.10.0"}
+FACTORY_RELEASE = "1.10.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -304,6 +306,24 @@ WINDOW = {"windowStart": {"type": "string", "default": "00:00", "bounds": dict(H
 act("p.decide.posting-window.v1", "Is core banking taking postings now", ["header"], ["facts.postingWindow"], ["open", "closed"], "read",
     params=WINDOW, script=True, native=True, p=dict(status="provisional", clauses=["TransactHub source 666f1ee"],
     note="The source's call-hours gate (CbCallWindowGate). The bank sets the window."))
+# The bank's cut-off (R-12-28, Issues I-186 and I-191): a file accepted after the cut-off of its scheme and direction counts for
+# the next business day, or is refused, as the bank's row says. Its lists are the bank's values, each read from a reference table
+# of the bank's configuration release (fromReference, R-11-51): the cut-offs (b.ref.cut-offs.v1), the bank's own closing days
+# (b.ref.bank-calendar.v1) and the market's non-business days (uae.p.ref.business-calendar.v1). Shared content names no bank (L09),
+# so every default is empty: no cut-off, and Saturday and Sunday as the only non-business days.
+CUT_OFF = {
+    "cutOffs": {"type": "list", "default": [],
+                "description": "The cut-off of each scheme and direction the bank sets: each a scheme, a direction (inward or outward), cutOff (HH:mm local), timeZone (IANA) and afterCutOff (next-business-day or refuse). Empty by default: no cut-off."},
+    "closingDays": {"type": "list", "default": [],
+                    "description": "The days the bank itself closes, beyond the market's: each a day (YYYY-MM-DD) and a kind (closed, half-day). A closed day is no business day."},
+    "earlyClosings": {"type": "list", "default": [],
+                      "description": "The bank's half days: each a day (YYYY-MM-DD) and closesAt (HH:mm local). The cut-off that day is the earlier of the two."},
+    "nonBusinessDays": {"type": "list", "default": [],
+                        "description": "The market's non-business days: each a day, a weekday name (saturday) or a date (YYYY-MM-DD). Empty by default: Saturday and Sunday."},
+}
+act("p.decide.cut-off.v1", "Take a file for today or the next business day, by the bank's cut-off", ["header"],
+    ["header.businessDate", "facts.cutOff"], ["taken", "refused"], "read", params=CUT_OFF, script=True,
+    p=dict(status="provisional", note="Where the step runs, what moves and what a non-business day does are the recommendation of Issue I-191, not a rule of the spec or the source."))
 act("p.decide.await-posting-window.v1", "Wait for core banking's posting window", ["header"], ["facts.postingWindow"], ["open", "closed"], "read",
     sub="p.sub.await-posting-window.v1", p=dict(status="provisional", clauses=["TransactHub source 666f1ee"],
     note="The source's AwaitCbPostingWindow: the payment waits for the window. Asked again every fifteen minutes for a day."))
@@ -1134,7 +1154,7 @@ LM, LMSIM = "uae.wps.port.labour-ministry.v1", "uae.wps.sim.labour-ministry.v1"
 MIN = (LM, LMSIM, "accept")
 # R-12-27: the employer is looked up in the bank's party register before its checks; the factory's tests name the simulator.
 REG, REGSIM = "p.port.party-register.v1", "p.sim.party-register.v1"
-OUT_HEAD = ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped"]
+OUT_HEAD = ["business-date:set", "cut-off:taken", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:pass", "render:mapped"]
 test("WPS-OUT-001", "Salary file acknowledged", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
      {"outcome": "settled", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 1}],
       "trace": OUT_HEAD + ["submit:accepted", "end:settled"],
@@ -1153,16 +1173,16 @@ test("WPS-OUT-004", "A control total that does not match is rejected before anyt
 test("WPS-OUT-005", "A salary record with an invalid IBAN is rejected by the cluster check", "uae.wps.wf.salary-file-out.v1", "leg",
      {"inbound": "samples/wps-sif-bad-iban.sif"},
      {"outcome": "rejected", "reasonCode": "AC03", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:reject", "end:rejected"]},
+      "trace": ["business-date:set", "cut-off:taken", "corporate:registered", "employer-status:found", "file-checks:pass", "record-checks:pass", "record-iban:reject", "end:rejected"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "accept")))
 # Issue I-88: the source's bank forks refused the file of an employer the labour ministry has suspended (WPS_RULES_FAILED).
 test("WPS-OUT-006", "The file of an employer the labour ministry has suspended is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
      "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "RR04", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "corporate:registered", "employer-status:found", "file-checks:reject", "end:rejected"]},
+      "trace": ["business-date:set", "cut-off:taken", "corporate:registered", "employer-status:found", "file-checks:reject", "end:rejected"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "suspended"), (REG, REGSIM, "accept")))
 test("WPS-OUT-007", "An employer the labour ministry does not know is not refused for it", "uae.wps.wf.salary-file-out.v1", "leg", WPS_FILE,
-     {"outcome": "settled", "trace": ["business-date:set", "corporate:registered", "employer-status:not-found", "file-checks:pass", "record-checks:pass", "record-iban:pass",
+     {"outcome": "settled", "trace": ["business-date:set", "cut-off:taken", "corporate:registered", "employer-status:not-found", "file-checks:pass", "record-checks:pass", "record-iban:pass",
                                       "render:mapped", "submit:accepted", "end:settled"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ENC, (LM, LMSIM, "not-registered"), (REG, REGSIM, "accept")))
 # Issue I-87: a file the encryption service refuses is not sent.
@@ -1175,12 +1195,12 @@ test("WPS-OUT-008", "A salary file the encryption service refuses is rejected an
 test("WPS-OUT-009", "The file of an employer the bank has not registered is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
      "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "RR04", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "corporate:not-registered", "end:rejected"]},
+      "trace": ["business-date:set", "cut-off:taken", "corporate:not-registered", "end:rejected"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "not-registered")))
 test("WPS-OUT-010", "The file of an employer registered with another debit account is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
      "leg", WPS_FILE,
      {"outcome": "rejected", "reasonCode": "BE01", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
-      "trace": ["business-date:set", "corporate:mismatch", "end:rejected"]},
+      "trace": ["business-date:set", "cut-off:taken", "corporate:mismatch", "end:rejected"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ENC, MIN, (REG, REGSIM, "mismatch")))
 test("WPS-EXC-001", "The composite alone: encrypted, sent, acknowledged, read", "uae.wps.exchange.submit-salary-file.v1", "activity", WPS_FILE,
      {"outcome": "accepted", "detail": ["encrypt:encrypted", "send:accepted", "await-ack:received", "read-ack:ack"]}, bench_=bench((WPS, WSIM, "accept"), ENC),

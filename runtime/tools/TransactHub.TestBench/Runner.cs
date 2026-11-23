@@ -138,6 +138,8 @@ public sealed class Runner(Home home, Infra infra)
                     ["evaluationDate"] = plan.EvaluationDate, ["bench"] = new JsonArray(plan.Bench.Select(b => (JsonNode?)b.Json()).ToArray()),
                     ["reference"] = reference, ["release"] = plan.Release, ["engines"] = engines, ["work"] = wdir,
                 };
+                if (plan.StartTime is not null) job["startTime"] = plan.StartTime;
+                if (plan.Values is not null) job["values"] = plan.Values.DeepClone();
                 if (plan.Input.Payload is not null) job["inbound"] = new JsonObject { ["payload"] = plan.Input.Payload, ["message"] = plan.Input.Message };
                 if (plan.Input.Context is not null) job["context"] = plan.Input.Context.DeepClone();
                 if (packages is not null) job["packages"] = packages.DeepClone();

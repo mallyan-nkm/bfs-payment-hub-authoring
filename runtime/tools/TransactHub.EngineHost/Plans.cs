@@ -18,17 +18,45 @@ public static class Plans
 {
     static readonly string[] Kinds = ["workflow", "activity", "rule", "ruleset", "table", "port", "extension", "hook", "scheme", "reference-table", "error-dictionary", "operations-view"];
 
-    static JsonNode? Yaml(string text)
+    /// <summary>
+    /// A YAML document as JSON with its scalars typed as YAML 1.2's core schema types them (a plain <c>3</c> a number, <c>true</c> a
+    /// boolean, <c>null</c> or <c>~</c> null, a quoted scalar a string), as the studio reads it: the interpreter reads a policy's
+    /// <c>maxAttempts</c> as a number and an outcome's <c>primary</c> as a boolean. Every scalar a string, a plan from the stored
+    /// package failed at the first step with a retry policy (found by the laptop test, R-09-105).
+    /// </summary>
+    public static JsonNode? Yaml(string text)
     {
-        var o = new DeserializerBuilder().Build().Deserialize<object>(new StringReader(text));
-        return o is null ? null : JsonNode.Parse(new SerializerBuilder().JsonCompatible().Build().Serialize(o));
+        var ys = new YamlDotNet.RepresentationModel.YamlStream();
+        ys.Load(new StringReader(text));
+        return ys.Documents.Count == 0 ? null : Typed(ys.Documents[0].RootNode);
     }
 
-    /// <summary>The worker of a queue at this installation, or null.</summary>
-    public static string? WorkerOf(string queue)
+    static JsonNode? Typed(YamlDotNet.RepresentationModel.YamlNode n) => n switch
+    {
+        YamlDotNet.RepresentationModel.YamlSequenceNode s => new JsonArray(s.Children.Select(Typed).ToArray()),
+        YamlDotNet.RepresentationModel.YamlMappingNode m => new JsonObject(m.Children.Select(kv => KeyValuePair.Create(((YamlDotNet.RepresentationModel.YamlScalarNode)kv.Key).Value!, Typed(kv.Value)))),
+        YamlDotNet.RepresentationModel.YamlScalarNode { Style: not YamlDotNet.Core.ScalarStyle.Plain } q => JsonValue.Create(q.Value),
+        YamlDotNet.RepresentationModel.YamlScalarNode { Value: null or "~" or "null" or "Null" or "NULL" or "" } => null,
+        YamlDotNet.RepresentationModel.YamlScalarNode { Value: "true" or "True" or "TRUE" } => JsonValue.Create(true),
+        YamlDotNet.RepresentationModel.YamlScalarNode { Value: "false" or "False" or "FALSE" } => JsonValue.Create(false),
+        YamlDotNet.RepresentationModel.YamlScalarNode p when System.Text.RegularExpressions.Regex.IsMatch(p.Value!, @"^[-+]?[0-9]+$") && long.TryParse(p.Value, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var l) => JsonValue.Create(l),
+        YamlDotNet.RepresentationModel.YamlScalarNode p when System.Text.RegularExpressions.Regex.IsMatch(p.Value!, @"^[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?$") && double.TryParse(p.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) => JsonValue.Create(d),
+        YamlDotNet.RepresentationModel.YamlScalarNode p => JsonValue.Create(p.Value),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The worker of a queue at this installation, or null. Besides one URL per queue, an installation whose workers are per
+    /// distribution names a template, <c>TH_HOST_WORKERS_URL</c>, with <c>{distribution}</c>, <c>{workflow}</c> and <c>{queue}</c>
+    /// (each escaped for a path): the laptop's workers service, which runs each distribution's own workers (R-09-105).
+    /// </summary>
+    public static string? WorkerOf(string queue, string? distribution = null, string? workflow = null)
     {
         if (System.Environment.GetEnvironmentVariable("TH_HOST_WORKERS") is { Length: > 0 } all && JsonNode.Parse(all) is JsonObject o && (string?)o[queue] is string u) return u;
-        return System.Environment.GetEnvironmentVariable($"TH_HOST_WORKER_{queue.Replace('-', '_').ToUpperInvariant()}") is { Length: > 0 } one ? one : null;
+        if (System.Environment.GetEnvironmentVariable($"TH_HOST_WORKER_{queue.Replace('-', '_').ToUpperInvariant()}") is { Length: > 0 } one) return one;
+        if (System.Environment.GetEnvironmentVariable("TH_HOST_WORKERS_URL") is { Length: > 0 } template && distribution is not null)
+            return template.Replace("{distribution}", Uri.EscapeDataString(distribution)).Replace("{workflow}", Uri.EscapeDataString(workflow ?? "_")).Replace("{queue}", Uri.EscapeDataString(queue));
+        return null;
     }
 
     public static JsonObject FromPackage(byte[] zip, string distribution, string bank)
@@ -56,7 +84,7 @@ public static class Plans
             var queues = J.P(binding, "queues") as JsonObject ?? new JsonObject();
             var workers = new JsonObject();
             foreach (var q in queues.Select(kv => (string?)kv.Value).Where(q => q is not null).Distinct())
-                if (WorkerOf(q!) is string url) workers[q!] = url;
+                if (WorkerOf(q!, distribution, wf) is string url) workers[q!] = url;
             plans[wf] = new JsonObject
             {
                 ["built"] = new JsonObject

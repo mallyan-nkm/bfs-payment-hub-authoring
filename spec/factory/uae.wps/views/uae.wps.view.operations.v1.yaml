@@ -1,6 +1,6 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.5.0
+release: 1.6.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
@@ -14,6 +14,8 @@ description: >-
   the RSU are the leg's, the credit to the employer is the platform view's posting (R-12-24). Release 1.5.0 declares the source's
   fixed WPS reports, the SIF summary, the SIF detail and the upload history, as reports of declared fields (R-05-67, Issue I-144),
   the file's status, and the WPS turnaround limit and retention period a bank may set apart from the platform's (R-05-68, R-05-70).
+  Release 1.6.0 shows the bank's cut-off as the salary file met it: whether it was applied, the cut-off time and zone, the local
+  time the file was accepted and the business date it counts for (R-05-72, R-12-28).
 scheme: uae.wps
 parameters:
   # A bank's value for WPS wins over the platform view's; until the bank sets one, the platform's applies (R-05-68, R-05-70).
@@ -137,6 +139,12 @@ legs:
       - { id: gateway, title: Central Bank gateway }
     fields:
       - { id: businessDate, label: Business date, group: checks, source: "step:business-date.outcome", format: status }
+      - { id: cutOff, label: Cut-off, group: checks, source: "step:cut-off.outcome", format: status }
+      - { id: cutOffApplied, label: After the cut-off, group: checks, source: "step:cut-off.writes.facts.cutOff.applied", format: text }
+      - { id: cutOffTime, label: Cut-off time, group: checks, source: "step:cut-off.writes.facts.cutOff.cutOff", format: text }
+      - { id: cutOffZone, label: Cut-off time zone, group: checks, source: "step:cut-off.writes.facts.cutOff.timeZone", format: code }
+      - { id: acceptedLocal, label: Accepted at (local), group: checks, source: "step:cut-off.writes.facts.cutOff.receivedLocal", format: text }
+      - { id: countsFor, label: Counts for business date, group: checks, source: "step:cut-off.writes.facts.cutOff.businessDate", format: date }
       - { id: fileChecks, label: File checks, group: checks, source: "step:file-checks.outcome", format: status, oldScreen: "SIF Summary report, Current Status (validation stage)" }
       - { id: fileFindings, label: File findings, group: checks, source: "step:file-checks.writes.facts.validation.findings", format: json, oldScreen: "Upload History, Error Details" }
       - { id: employerStatusCheck, label: Labour ministry asked, group: checks, source: "step:employer-status.outcome", format: status, oldScreen: "SIF Detail report, MOHRE Update Status (the lookup)" }

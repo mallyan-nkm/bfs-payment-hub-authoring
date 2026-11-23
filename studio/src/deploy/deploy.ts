@@ -26,6 +26,8 @@ export interface DeployEnvironment {
   bench?: { port: string; simulator: string; scenario: string }[];
   values?: any[];
   configurationSet?: any;
+  /** When the run starts on its evaluation date, HH:MM:SS UTC (default 06:00:00): a bank's cut-off is a time of day (R-12-28). */
+  startTime?: string;
 }
 
 /** The engines the deploy runner drives. */
@@ -238,7 +240,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
     let intake: DeployResult['intake'];
     let endToEnd = false;
     let legs: Record<string, string> | undefined;
-    const start = Date.parse(`${req.environment.evaluationDate}T06:00:00Z`);
+    const start = Date.parse(`${req.environment.evaluationDate}T${req.environment.startTime ?? '06:00:00'}Z`);
     const frontDoor = (inbound: NonNullable<DeployRequest['inbound']>, n: number, base: any) => inSpan('th.payment.intake', attrs({ 'th.payment.id': `P-${n}` }), async () => {
       let ctx: any = base;
       let legs: Record<string, string> | undefined;
@@ -321,7 +323,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       itemConcurrency: binding.defaults?.forEachConcurrency ?? 1,
       // A bank's distribution runs as its own copy (R-09-55): the engine names its queues, orchestrations or deployment after it.
       ...(req.distribution ? { distribution: req.distribution } : {}),
-      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
+      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, ...(environment.startTime ? { startTime: environment.startTime } : {}), tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),
       queues: binding.queues,

@@ -30,6 +30,10 @@ interface Job {
   tenant?: string;
   banks?: string[];
   evaluationDate: string;
+  /** When the run starts that day, HH:MM:SS UTC (clock.time; default 06:00:00). */
+  startTime?: string;
+  /** Values the request gives beside the bank's configuration, each with its validFrom (values). */
+  values?: { parameter: string; value: any; validFrom: string }[];
   inbound?: { payload: string; message?: string };
   context?: any;
   bench: { port: string; simulator: string; scenario: string }[];
@@ -155,7 +159,7 @@ async function main() {
         given: { ...(job.context ? { context: job.context } : {}), ...(job.inbound?.message ? { message: job.inbound.message } : {}) },
         expect: {},
       };
-      const r = await runTest(env, test, job.inbound ? { inbound: job.inbound } : {});
+      const r = await runTest(env, test, { ...(job.inbound ? { inbound: job.inbound } : {}), ...(job.startTime ? { startTime: job.startTime } : {}), ...(job.values?.length ? { values: job.values } : {}) } as any);
       out.reference = { engine: 'interpreter', ok: !r.error, error: r.error?.split('\n')[0], outcome: r.outcome, trace: normalise(r.trace), detail: normalise(r.detail), elapsedMs: Date.now() - r0, businessElapsed: r.elapsed, warnings: r.warnings, level: test.level };
       progress(`interpreter: ${r.outcome ?? r.error?.split('\n')[0]}`);
     }
@@ -196,7 +200,7 @@ async function main() {
         if (res.package?.resignedForTheTest) process.env.TH_TRUSTED_SIGNERS = `file:${benchKey().trust}`;
         const d = await deploy({
           packagePath: pkgPath, workflow: job.workflow, studioRoot: env.studioRoot,
-          environment: { evaluationDate: job.evaluationDate, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined, bench: job.bench },
+          environment: { evaluationDate: job.evaluationDate, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined, bench: job.bench, ...(job.startTime ? { startTime: job.startTime } : {}), ...(job.values?.length ? { values: job.values } : {}) },
           inbound: job.inbound, context: job.context,
         });
         Object.assign(res, {
