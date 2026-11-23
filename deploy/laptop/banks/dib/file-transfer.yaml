@@ -1,5 +1,6 @@
-# The laptop's file transfer for DIB (deploy/laptop, R-09-105, Issues I-160 and I-161): laid over the bank's own binding in
-# content-configurations/banks/dib/file-transfer.yaml with a later validFrom (TH_BANKS_DIR names both folders), so that on a laptop
+# The laptop's file transfer for DIB (deploy/laptop, R-09-105, Issues I-160 and I-161). It reaches the runtime only inside the bank's
+# signed configuration release (R-09-110 to R-09-112): the insert-only test asks the studio to build DIB's release with it, and the
+# service console puts it in force with a bank approver's consent; no host reads a folder of bindings (R-09-113). So that on a laptop
 # every partner of the bank is the stack's one SFTP server (the `sftp` service). Synthetic: no host, folder or login of the bank's.
 # Each inbox names the message its files are, as I-160 asks of a bank; the host key is pinned by reference (I-161) and the login is
 # a reference too, both made by the stack at its start, never in a file of the repository.

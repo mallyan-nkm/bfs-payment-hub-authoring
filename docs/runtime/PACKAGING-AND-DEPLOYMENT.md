@@ -83,7 +83,7 @@ A distribution moves through these states. Each change is an insert-only activat
 - **Removal** is refused while any payment pinned to the distribution is open, or before its longest declared wait (for example the 30-day returns wait) has passed. The service console shows the open count per distribution.
 - **Rollback:** activate the previous distribution again. If it was removed, reinstall it from GitHub first. Payments that started on the newer one finish on it.
 - **One bank per runtime** (owner's decision of 23 November 2026, R-09-76): a runtime is configured with its bank at install (`TH_BANK`) and refuses a distribution or configuration release whose signed manifest names another bank, at verify, install and activate. The studio builds distributions for every bank; each bank's runtime takes only its own.
-- **Consent** (owner's decision of 23 November 2026, R-09-77): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-78).
+- **Consent** (owner's decision of 23 November 2026, R-09-77): installing, activating, draining, removing and rolling back are asked for by a service engineer in the service console and carried out once a bank approver, another person, consents. The release API's pipeline may do them itself only in a test environment (R-09-78). A configuration release is installed and put in force in two steps: the pipeline's install outside a test environment (`Releases:Environment`) is checked and stored, and waits for a bank approver's consent in the service console before any of its values is in force (R-09-111, I-211).
 - **Insert-only, at the database too** (R-09-81): a deployment runs the hosts as a login that may insert and read the store, never update or delete it. `deploy/laptop/test/insert-only.mts` shows a switch-over end to end on the laptop stack and that no row of a distribution, its activations or the fact log changed.
 
 ## 7. The dependency tree
@@ -105,7 +105,8 @@ Runtime software (NEST images, store schema)
 ```
 
 - A scheme pack declares the platform slot contract it fills (for example `scheme-leg@1`). The studio refuses to build a distribution whose scheme does not fit its platform's slot contract.
-- A configuration release is refused at install if any value is unknown to, or outside the bounds of, a distribution that will read it (one that is Installed, Active, Draining or Drained). A value for a new dial is ignored by distributions that do not declare that dial.
+- A configuration release is refused at install if any value is unknown to, or outside the bounds of, a distribution that will read it (one that is Installed, Active, Draining or Drained), and checked again when it is put in force. A value for a new dial is ignored by distributions that do not declare that dial. Values reach the runtime in no other way: no folder brings them (R-09-110, I-210).
+- Port bindings are values too: every host of the runtime reads them from the configuration release in force, as of each attempt's time, so scenario 2 needs no restart (R-09-112, R-09-113, I-213).
 
 ## 8. Scenarios
 
@@ -144,12 +145,12 @@ Owner's decision of 23 November 2026 (R-09-82 to R-09-86, I-158).
 
 | Part | Runtime software | Its settings at an installation |
 | --- | --- | --- |
-| File API (`runtime/src/TransactHub.FileApi`) | Its own process and container image, beside the release API, the engine host, the native host and the consoles | `Store:*`, `FileApi:Environment`, `TH_BANKS_DIR` (the port bindings), `FileApi:EngineHosts:<bank>`, `FileApi:Workers:<scope>`, `FileApi:Messages:*`, `FileApi:Inboxes:*`, `TH_FILE_SIGNING_KEY_REF`, `Auth:*` |
+| File API (`runtime/src/TransactHub.FileApi`) | Its own process and container image, beside the release API, the engine host, the native host and the consoles | `Store:*`, `FileApi:Environment`, `TH_BANK` (its bindings are the bank's configuration release in force, from the store, R-09-112), `FileApi:EngineHosts:<bank>`, `FileApi:Workers:<scope>`, `FileApi:Messages:*`, `FileApi:Inboxes:*`, `TH_FILE_SIGNING_KEY_REF`, `Auth:*` |
 | Front door | In the File API's process | The engine host's supervisor of each bank, the workers that run the intake maps |
 | SFTP gateway | The `sftp` adapter in the File API (`TransactHub.Ports`), polling each partner's inbox and pushing the outbox | The bank's binding of `p.port.file-transfer.v1` (a configuration release): partners, host keys and login by reference, `sessions.*` |
 
 - A file is routed by the distribution active for the bank: its dispatch table says whether the file starts a payment or answers one. A file for a payment pinned to a draining distribution is handed to that distribution's host, never the new one.
 - The bank's file rules (name, extension, size) and its inboxes are settings of the installation until the scheme declares them (I-159, I-160).
-- On a laptop the binding is the laptop's own (`deploy/laptop/banks`, laid over the bank's with a later `validFrom`): `sftp` to the stack's one SFTP server, each inbox naming its message, the host key pinned by reference and the login made at the stack's start. At a bank it is `sftp` to the bank's partners. The File API polls the inboxes of the runtime's bank only (R-09-104), and on the laptop runs each intake map on the workers of the payment's distribution (R-09-105).
+- On a laptop the binding is the laptop's (`deploy/laptop/banks/<bank>/file-transfer.yaml`, carried in the bank's signed configuration release): `sftp` to the stack's one SFTP server, each inbox naming its message, the host key pinned by reference and the login made at the stack's start. At a bank it is `sftp` to the bank's partners. The File API polls the inboxes of the runtime's bank only (R-09-104), and on the laptop runs each intake map on the workers of the payment's distribution (R-09-105).
 - The engine host takes a correlated message at any time: on Temporal as a signal to the payment's front door workflow, on DTFx, Elsa and Flowable through the payment's outbox to its run (R-09-93). The supervisor answers the File API beyond loopback only with its token; on the laptop it listens on the compose network (R-09-95, I-158).
 - A scheme's report file is reconciled on arrival (R-09-92): each break is a fact, listed and resolved in the operations console's break queue, a resolution that changes the system with a bank approver's consent. Which messages are reports is the installation's setting until the scheme declares them (I-164).

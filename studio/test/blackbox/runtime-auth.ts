@@ -29,11 +29,14 @@ export function runtimeApiEnv(): Record<string, string> {
     // The one bank the runtime serves (R-09-76), and where the pipeline may still change which release runs (R-09-78).
     TH_BANK: 'example-bank',
     Releases__MachineActivationEnvironments: 'test,dev,kit,uat,prod',
+    // The environment the runtime is (R-09-111): a test one, so a configuration release the pipeline installs is in force at once.
+    Releases__Environment: 'test',
     Auth__Oidc__Issuer: ISSUER,
     Auth__Oidc__Audience: AUDIENCE,
     Auth__Oidc__SigningKeys: JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'bb-1', use: 'sig', alg: 'RS256' }] }),
     Auth__RoleMap: JSON.stringify({ kind: 'runtime-role-map', grants: [{ claim: 'roles', value: 'TransactHub.Pipeline', roles: ['release-importer', 'release-activator', 'release-reader', 'values-reader', 'payment-intake'], tenants: ['*'] }] }),
-    // The runs' branch checkouts are temporary folders: the only folders POST /import-branch may read (R-09-58).
+    // The runs' branch checkouts are temporary folders: the only folders POST /import-branch may read (R-09-58). A branch brings
+    // workflow packages and activations only, never values (R-09-110).
     Releases__ImportRoots: os.tmpdir(),
   };
 }

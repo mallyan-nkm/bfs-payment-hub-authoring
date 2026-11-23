@@ -95,13 +95,15 @@ public sealed class LaptopDeploymentTests
         var sftp = Service("sftp");
         Assert.Contains("atmoz/sftp:alpine@sha256:", sftp);
         Assert.Contains("${TH_LAPTOP_SFTP_PASSWORD:?", sftp);
-        Assert.Matches(@"x-banks: &banks\n  TH_BANKS_DIR: /opt/th/content-configurations/banks:/opt/th/deploy/laptop/banks\n", Compose);
+        Assert.Contains("x-sftp: &sftp-refs\n  TH_LAPTOP_SFTP_LOGIN:", Compose);
+        // No host reads a folder of bindings (R-09-113): the laptop's binding arrives in the bank's configuration release.
+        Assert.DoesNotContain("TH_BANKS_DIR", Compose);
         Assert.Matches(@"x-file-api: &file-api-client\n  TH_FILE_API_URL: http://file-api:8080\n  TH_FILE_API_TOKEN_REF: file:", Compose);
         var fileApi = Service("file-api");
-        Assert.Contains("<<: [*store, *auth, *banks]", fileApi);
+        Assert.Contains("<<: [*store, *auth, *sftp-refs]", fileApi);
         Assert.Contains("FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any", fileApi);
         Assert.Contains("*file-api-client", Service("native"));
-        Assert.Contains("*banks", Service("native"));
+        Assert.Contains("*sftp-refs", Service("native"));
         foreach (var host in new[] { "enginehost", "enginehost-dtfx", "enginehost-elsa", "enginehost-flowable" })
         {
             Assert.Contains("<<: *file-api-client", Service(host));

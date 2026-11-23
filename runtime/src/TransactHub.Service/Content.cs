@@ -44,6 +44,10 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     {
         var versions = await List(ct);
         var states = await States(ct);
+        // A workflow package is offered, never installable, once the bank runs distributions (R-09-114).
+        string? beside = null;
+        if (settings.Bank is { } bank)
+            await using (var db = StoreDbContext.Open(store)) beside = await WorkflowPackages.Refusal(db, bank.Id, "A workflow package", ct);
         return new JsonArray(versions.Select(v =>
         {
             return (JsonNode)new JsonObject
@@ -52,8 +56,9 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
                 ["bank"] = v.Kind == ReleaseSignature.WorkflowPackage ? null : v.Workflow,
                 ["releaseId"] = v.ReleaseId, ["state"] = states.TryGetValue(v.ReleaseId, out var s) ? s : "offered",
                 // Another bank's distribution or configuration release is listed, never installable here (R-09-76).
-                ["installable"] = v.Kind == ReleaseSignature.WorkflowPackage || settings.Bank?.Serves(v.Workflow) != false,
-                ["notInstallable"] = v.Kind != ReleaseSignature.WorkflowPackage && settings.Bank is { } own && !own.Serves(v.Workflow) ? $"{v.Workflow}'s: this runtime serves {own.Id} only" : null,
+                ["installable"] = v.Kind == ReleaseSignature.WorkflowPackage ? beside is null : settings.Bank?.Serves(v.Workflow) != false,
+                ["notInstallable"] = v.Kind == ReleaseSignature.WorkflowPackage ? beside
+                    : settings.Bank is { } own && !own.Serves(v.Workflow) ? $"{v.Workflow}'s: this runtime serves {own.Id} only" : null,
             };
         }).ToArray());
     }
@@ -63,12 +68,19 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
     /// <summary>Refuses a version whose signed manifest names another bank than this runtime's (R-09-76).</summary>
     void OwnBank(string? bank, string what)
     {
-        if (settings.Bank?.Refusal(bank, what) is { } why) throw new ServiceRefused(422, ErrorCodes.PackageRejected, why);
+        if (settings.Bank?.Refusal(bank, what) is { } why) throw new ServiceRefused(422, ErrorCodes.WrongBank, why);
+    }
+
+    /// <summary>A workflow package is neither installed nor activated beside the bank's distributions (R-09-114, Issue I-212).</summary>
+    async Task BesideDistributions(StoreDbContext db, string releaseId, CancellationToken ct)
+    {
+        if (settings.Bank is { } own && await WorkflowPackages.Refusal(db, own.Id, releaseId, ct) is { } why) throw new ServiceRefused(409, ErrorCodes.KindNotInstallable, why);
     }
 
     static bool IsBundle(string id) => id.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal) || id.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal);
 
-    static ServiceRefused Refused(BundleRefused e) => new(e.Status, e.Status == 409 && e.Message.Contains("removed") || e.Message.Contains("open payment") || e.Message.Contains("longest declared wait") || e.Message.Contains("is active in") ? ErrorCodes.RemovalRefused
+    static ServiceRefused Refused(BundleRefused e) => new(e.Status, e.Code is { } own ? own
+        : e.Status == 409 && e.Message.Contains("removed") || e.Message.Contains("open payment") || e.Message.Contains("longest declared wait") || e.Message.Contains("is active in") ? ErrorCodes.RemovalRefused
         : e.Status == 409 && e.Message.Contains("already stored") ? ErrorCodes.ReleaseConflict
         : e.Message.Contains("not a dial") || e.Message.Contains("is below") || e.Message.Contains("is above") || e.Message.Contains("not one of") || e.Message.Contains("secret") ? ErrorCodes.PackageRejected
         : e.Status == 404 ? ErrorCodes.UnknownVersion
@@ -114,6 +126,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         }
         if (p.ReleaseId != v.ReleaseId) throw new ServiceRefused(422, ErrorCodes.WrongRelease, $"{tag} names {v.ReleaseId}, but its package is {p.ReleaseId}");
         if (p.Tenant is { Length: > 0 } tenant) OwnBank(tenant, p.ReleaseId);
+        await using (var db = StoreDbContext.Open(store)) await BesideDistributions(db, p.ReleaseId, ct);
         try { return (p, p.VerifySignature(await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct)), v); }
         catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.Of(e), $"{p.ReleaseId} is refused: {e.Message}"); }
     }
@@ -152,6 +165,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             throw;
         }
         await using var db = StoreDbContext.Open(store);
+        await BesideDistributions(db, p.ReleaseId, ct);
         StoreResult r;
         try { r = await new ReleaseRegistry(db, clock).Store(p.Scope, p.Release, p.CanonicalZip(), p.Manifest, who.Actor, ct, p.ContentHash); }
         catch (TransactHub.Store.ReleaseConflict e) { throw new ServiceRefused(409, ErrorCodes.ReleaseConflict, e.Message); }
@@ -178,7 +192,8 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         }
         await using var db = StoreDbContext.Open(store);
         JsonObject r;
-        try { r = b.Kind == ReleaseSignature.Distribution ? await Distributions(db).InstallDistribution(b, who.Actor, $"package-source:{tag}", ct) : await Distributions(db).InstallConfiguration(b, who.Actor, $"package-source:{tag}", ct); }
+        // A configuration release installed from the service console is installed on a bank approver's consent (R-09-77): it is put in force at once (R-09-111).
+        try { r = b.Kind == ReleaseSignature.Distribution ? await Distributions(db).InstallDistribution(b, who.Actor, $"package-source:{tag}", ct) : await Distributions(db).InstallConfiguration(b, who.Actor, $"package-source:{tag}", putInForce: true, ct, consent: new JsonObject { ["consentedBy"] = who.Actor, ["via"] = "service-console:install" }); }
         catch (BundleRefused e)
         {
             var refused = Refused(e);
@@ -190,6 +205,37 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             foreach (var (path, bytes) in b.Files.Where(f => f.Key.StartsWith("errors/") && f.Key.EndsWith(".yaml")))
                 dictionary.Add(Encoding.UTF8.GetString(bytes), b.ReleaseId);
         await audit.Record("install", who, why, new JsonObject { ["tag"] = tag, ["kind"] = b.Kind, ["result"] = stored ? "installed" : "already installed", ["keyId"] = v.KeyId }, release: b.ReleaseId, ct: ct);
+        return r;
+    }
+
+    /// <summary>Checks an installed configuration release as putting it in force will (R-09-111): when it is asked for, before any consent.</summary>
+    public async Task CheckPutInForce(string releaseId, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        try
+        {
+            if (await Distributions(db).InForce(releaseId, ct)) throw new ServiceRefused(409, ErrorCodes.AlreadyDecided, $"{releaseId} is in force already");
+            await Distributions(db).CheckStoredConfiguration(releaseId, ct);
+        }
+        catch (BundleRefused e) { throw Refused(e); }
+    }
+
+    /// <summary>
+    /// Puts an installed configuration release in force (R-09-111): carried out on a bank approver's consent to the request a
+    /// service engineer or the release API's pipeline made; its signature and its values' bounds are checked again first.
+    /// </summary>
+    public async Task<JsonObject> PutInForce(string releaseId, ServiceIdentity who, string why, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        JsonObject r;
+        try { r = await Distributions(db).PutConfigurationInForce(releaseId, who.Actor, why, new JsonObject { ["consentedBy"] = who.Actor, ["via"] = "service-console:put-in-force" }, ct); }
+        catch (BundleRefused e)
+        {
+            var refused = Refused(e);
+            await audit.Record("put-in-force", who, why, new JsonObject { ["result"] = "refused", ["error"] = refused.Code, ["message"] = e.Message }, release: releaseId, ct: ct);
+            throw refused;
+        }
+        await audit.Record("put-in-force", who, why, new JsonObject { ["result"] = (bool?)r["already"] == true ? "in force already" : "in force", ["values"] = (int?)r["values"], ["bindings"] = (int?)r["bindings"] }, release: releaseId, ct: ct);
         return r;
     }
 
@@ -282,6 +328,7 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         if (releaseId.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) return await Bundled("activate", releaseId, env, who, why, (svc, c) => svc.Activate(releaseId, env, who.Actor, why, c), ct);
         var (scope, release) = Split(releaseId);
         await using var db = StoreDbContext.Open(store);
+        await BesideDistributions(db, releaseId, ct);
         var reg = new ReleaseRegistry(db, clock);
         var row = await reg.Get(scope, release, ct) ?? throw new ServiceRefused(404, ErrorCodes.UnknownVersion, $"{releaseId} is not installed; install it first");
         if (await Removed(db, releaseId, ct)) throw new ServiceRefused(409, ErrorCodes.RemovalRefused, $"{releaseId} was removed; install it again before activating it");
@@ -413,13 +460,14 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         var releases = await db.Releases.AsNoTracking().Select(r => new { r.Id, r.Scope, r.Release }).ToListAsync(ct);
         var acts = await db.Activations.AsNoTracking().Where(a => a.Environment == env).ToListAsync(ct);
         var removed = await db.Facts.AsNoTracking().Where(f => f.Kind == ServiceAudit.Kind && f.Code == "removed").Select(f => f.SubjectId).ToListAsync(ct);
+        var inForce = (await db.Facts.AsNoTracking().Where(f => f.Kind == DistributionRegistry.InForceKind).Select(f => f.SubjectId).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         var open = await OpenPayments(ct);
         var states = new Dictionary<string, string>(StringComparer.Ordinal);
         var dreg = new DistributionRegistry(db, clock);
         foreach (var r in releases)
         {
             if (r.Scope.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) { states[r.Id] = await dreg.Refresh(r.Id, env, "service-console", ct) ?? "installed"; continue; }
-            if (r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal)) { states[r.Id] = "installed"; continue; }
+            if (r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal)) { states[r.Id] = inForce.Contains(r.Id) ? "in-force" : "awaiting-consent"; continue; }
             var mine = acts.Where(a => a.Scope == r.Scope).ToList();
             var active = mine.Where(a => a.EffectiveFrom <= now).OrderByDescending(a => a.EffectiveFrom).ThenByDescending(a => a.Id).FirstOrDefault()?.Release;
             var was = mine.Any(a => a.Release == r.Release && a.EffectiveFrom <= now);

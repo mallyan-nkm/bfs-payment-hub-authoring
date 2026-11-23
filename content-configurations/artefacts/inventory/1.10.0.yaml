@@ -7,7 +7,7 @@ packs:
   - scope: p
     packType: shared
     counts:
-      activity: 28
+      activity: 27
       error-dictionary: 1
       port: 12
       reference-table: 1
@@ -18,11 +18,9 @@ packs:
       test: 19
       operations-view: 1
       workflow: 8
-    total: 94
+    total: 93
     artefacts:
       - name: p.decide.await-posting-window.v1
-        kind: activity
-      - name: p.decide.cut-off.v1
         kind: activity
       - name: p.decide.inward-disposition.v1
         kind: activity

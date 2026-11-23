@@ -26,21 +26,12 @@ public sealed class CoreBankingResolver
     }
 
     /// <summary>Every bank folder under <paramref name="banksDir"/> (content-configurations/banks): each one's port bindings.</summary>
-    /// <summary>
-    /// Every bank's bindings under a folder of bank folders, or under several separated by the path separator (<c>:</c> on Linux):
-    /// an installation may lay a folder of its own over the content branch's, each binding with a later <c>validFrom</c> (the laptop's
-    /// file-transfer binding, R-09-105). A folder that does not exist is skipped.
-    /// </summary>
     public static PortBindings ReadBanks(string banksDir)
     {
         var all = new PortBindings();
-        foreach (var root in banksDir.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!Directory.Exists(root)) continue;
-            foreach (var dir in Directory.EnumerateDirectories(root).Order(StringComparer.Ordinal))
-                foreach (var f in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal))
-                    all.Add(File.ReadAllText(f), f);
-        }
+        foreach (var dir in Directory.EnumerateDirectories(banksDir).Order(StringComparer.Ordinal))
+            foreach (var f in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal))
+                all.Add(File.ReadAllText(f), f);
         return all;
     }
 

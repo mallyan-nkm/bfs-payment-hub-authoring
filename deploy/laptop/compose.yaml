@@ -42,9 +42,9 @@ x-auth: &auth
   Auth__Oidc__ClientId: transacthub-runtime-ui
   TH_STUDIO_ISSUER: ${TH_LAPTOP_STUDIO_URL:-http://localhost:4317}/auth/dev
 
-# The laptop's own bindings (deploy/laptop/banks) laid over the bank's (R-09-105): its file transfer is the stack's SFTP server.
-x-banks: &banks
-  TH_BANKS_DIR: /opt/th/content-configurations/banks:/opt/th/deploy/laptop/banks
+# The references the laptop's binding of the bank's file transfer names (deploy/laptop/banks/<bank>/file-transfer.yaml, which reaches
+# the runtime inside the bank's signed configuration release, R-09-105, R-09-110): the stack's SFTP server's login and host keys.
+x-sftp: &sftp-refs
   TH_LAPTOP_SFTP_LOGIN: "th:${TH_LAPTOP_SFTP_PASSWORD:?set TH_LAPTOP_SFTP_PASSWORD}"
   TH_LAPTOP_SFTP_HOST_KEY: ${TH_LAPTOP_SFTP_HOST_KEY:-}
 
@@ -233,6 +233,8 @@ services:
     environment:
       <<: [*store, *auth, *github]
       Releases__TestEnvironments: test
+      # The environment this runtime is (R-09-111): a test one, so the pipeline puts a configuration release in force by itself.
+      Releases__Environment: test
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
     ports: ["127.0.0.1:${TH_LAPTOP_API_PORT:-8481}:8080"]
@@ -252,7 +254,7 @@ services:
       Service__Console: /opt/th/runtime/ops-console/dist
       Service__Errors: /opt/th/content-configurations/artefacts
       Service__Docs: /opt/th/docs/north-star
-      Service__Banks: /opt/th/content-configurations/banks
+      # No bank folder: the bank's bindings are its configuration release's in force, from the store (R-09-112, R-09-113).
       Service__Installation: laptop-${TH_LAPTOP_BANK:-adib}
       TH_BACKUP_SIGNING_KEY: file:/var/lib/transacthub/keys/backup-signing.pem
       TH_TEMPORAL_ADDRESS: temporal:7233
@@ -335,8 +337,10 @@ services:
       - jwks:/var/lib/transacthub/jwks:ro
       - auth-files:/var/lib/transacthub/tokens:ro
     environment:
-      <<: [*store, *auth, *banks, *file-api-client]
+      <<: [*store, *auth, *sftp-refs, *file-api-client]
       TH_NATIVE_URLS: http://0.0.0.0:7300
+      # The bank's bindings: its configuration release in force, from the store, read at each attempt (R-09-112, R-09-113).
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-native.json
       TH_HEALTH_URL: http://127.0.0.1:7300/health
@@ -354,12 +358,13 @@ services:
       - jwks:/var/lib/transacthub/jwks:ro
       - files:/var/lib/transacthub/files
     environment:
-      <<: [*store, *auth, *banks]
+      <<: [*store, *auth, *sftp-refs]
       FileApi__Environment: test
       FileApi__PollSeconds: "3"
       # The intake maps run on the workers of the distribution the payment is pinned to (I-158, R-09-105).
       FileApi__Workers__uae.wps: http://workers:7700/{distribution}/_/any
       FileApi__Workers__p: http://workers:7700/{distribution}/_/any
+      # The bank's bindings, its inboxes among them: its configuration release in force, from the store (R-09-112, R-09-113).
       # The front door starts and correlates payments on the bank's engine host (R-09-85, R-09-95), on the compose network.
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       FileApi__EngineHost: http://enginehost:7600

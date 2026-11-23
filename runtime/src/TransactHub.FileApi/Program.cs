@@ -22,7 +22,8 @@ using TransactHub.Telemetry;
 //   POST /files/{id}/resend     the same kept bytes again (the operations and service consoles, role file-resender).
 //
 // Settings: Store:Provider, Store:Connection; FileApi:Environment (the environment whose active distribution routes a file);
-// TH_BANKS_DIR (the banks' port bindings); FileApi:EngineHosts:<bank> (the engine host's supervisor of each bank) and
+// the bank's port bindings are those of its configuration release in force, read from the store at each use (R-09-112, I-158 (2));
+// FileApi:EngineHosts:<bank> (the engine host's supervisor of each bank) and
 // FileApi:Workers:<scope> (the worker that runs a scope's intake maps): without an engine host the front door is off and a file is
 // checked and kept only; FileApi:MaxBytes, FileApi:Messages:<message>:*, FileApi:Inboxes:*, FileApi:PollSeconds; TH_FILE_SIGNING_KEY_REF;
 // Auth:* as every runtime host (RuntimeAuth).
@@ -36,8 +37,18 @@ var secrets = SecretResolver.FromEnvironment(k => cfg[k]);
 var fileKey = cfg["TH_FILE_SIGNING_KEY_REF"] is { Length: > 0 } fileKeyRef
     ? ReleaseSignature.PrivateKeyFromPem(await secrets.Resolve(fileKeyRef))
     : System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
-var bindings = cfg["TH_BANKS_DIR"] is { Length: > 0 } banks ? TransactHub.Activities.Platform.Posting.CoreBankingResolver.ReadBanks(banks) : new PortBindings();
+// The bank's port bindings: those of its configuration release in force, read live from the store, so a binding a new
+// configuration release brings reaches the inboxes, the outbox and the decryption with no restart (R-09-112). Never a folder.
+if (cfg["TH_BANKS_DIR"] is { Length: > 0 }) throw new InvalidOperationException("TH_BANKS_DIR names a folder of port bindings, but the File API reads the bank's bindings only from the configuration release in force (spec R-09-112, R-09-113): remove TH_BANKS_DIR and install the bank's configuration release");
+var bindings = PortBindings.Live(() => ConfigurationBindings.Load(store, cfg["TH_BANK"] is { Length: > 0 } own ? own : null)
+    .Select(b => new PortBinding(b.Tenant, b.Port, b.Adapter, b.ValidFrom, b.Settings, b.Release)).ToList());
 var ports = new BoundTransfers(bindings, secrets);
+// The bindings now, or none while the store cannot be read (the next poll reads them again).
+IReadOnlyList<PortBinding> Bound()
+{
+    try { return bindings.All; }
+    catch (PortBindingException) { return []; }
+}
 var hostToken = cfg["FileApi:EngineHostTokenRef"] is { Length: > 0 } tr ? (await secrets.Resolve(tr)).Reveal() : null;
 var engineHosts = cfg.GetSection("FileApi:EngineHosts").GetChildren().ToDictionary(c => c.Key, c => c.Value ?? "", StringComparer.Ordinal);
 var workers = cfg.GetSection("FileApi:Workers").GetChildren().ToDictionary(c => c.Key, c => c.Value ?? "", StringComparer.Ordinal);
@@ -55,7 +66,8 @@ builder.Services.AddSingleton(sp => new FileIntake(store, fileKey, cfg, new Decr
 builder.Services.AddSingleton(sp => new FileOutbox(store, fileKey, ports, sp.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<ITransferPorts>(ports);
 builder.Services.AddSingleton(sp => new InboxPoller(ports, sp.GetRequiredService<FileIntake>(), environment,
-    () => bindings.All.Where(b => b.Port == FileTransferAdapters.Port).GroupBy(b => b.Tenant).SelectMany(g =>
+    // The inboxes of the binding in force at each poll: a new configuration release's binding is polled with no restart (R-09-112).
+    () => Bound().Where(b => b.Port == FileTransferAdapters.Port).GroupBy(b => b.Tenant).SelectMany(g =>
     {
         try { return Inbox.Of(bindings.InForce(g.Key, FileTransferAdapters.Port, DateTimeOffset.UtcNow)); }
         catch (PortBindingException) { return []; }

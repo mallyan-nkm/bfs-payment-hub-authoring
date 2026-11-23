@@ -1,38 +1,39 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
+import { accept, runPinned, type RuntimeClient } from '../../src/deploy/front-door.js';
 import { client, startServer, STUDIO, type Server } from './server.js';
 import { runtimeApiEnv, runtimeClientEnv, runtimeHeaders } from './runtime-auth.js';
-import { unzip, zip } from '../../src/export/zip.js';
+import { TEST_TOKEN } from '../support/content.js';
 
-// P6 end to end, black box: the studio deploys a release to the runtime, and a rule value changes with no deployment.
-//   1. The bank publishes its internal limit (1200 for 2026) in the studio; the change lands on the connected branch.
-//   2. The corporate workflow's Temporal package is stored by the runtime's release API (PostgreSQL) and activated for test;
-//      the pipeline imports the branch, so the runtime holds the bank's values as effective-dated versions.
-//   3. A salary file of 1500 on 2026-11-17 runs on Temporal from the stored package: its workers read the bank's values from
+// P6 end to end, black box: the studio deploys a bank's distribution to the runtime, and a rule value changes with no
+// deployment. Values reach the runtime only in signed configuration releases (R-09-110), put in force with consent or, as here,
+// in a test environment where the pipeline may (R-09-111).
+//   1. The studio builds the bank's first distribution (Temporal, with simulators: a test one); the runtime's release API (on
+//      PostgreSQL) installs it from GitHub, verified, and activates it for test.
+//   2. The bank publishes its internal limit (1200 for 2026) in the studio; the approval builds a signed configuration release,
+//      checked against the distribution's parameter contract; the runtime installs it and its values are in force.
+//   3. A salary file of 1500 on 2026-11-17 runs on Temporal from the pinned distribution: its workers read the bank's values from
 //      the runtime at each attempt, so the total is above the limit and the payment is held for approval.
-//   4. The bank publishes 2000 from 2026-11-20. The pipeline imports the branch again: a new value version, no new release,
-//      no new activation.
-//   5. A second salary file on 2026-11-24 runs from the same stored package, byte for byte: 1500 is within 2000, so it is not
-//      held. A file on the first payment's date still takes 1200 and is held, as the first was: the first payment keeps
-//      the value of its date and the release it ran, and nothing was redeployed.
-// Signed all the way (R-09-23 to R-09-27): the studio signs the package with the run's key, the runtime verifies it before it
-// stores or activates it and records each verification on the release, refuses an unsigned or changed copy and any caller
-// without a token, and the deploy runner verifies the package it fetches from the runtime before a worker starts.
+//   4. The bank publishes 2000 from 2026-11-20: a new configuration release, a new value version; no new distribution, no new
+//      activation.
+//   5. A second salary file on 2026-11-24 runs from the same distribution: 1500 is within 2000, so it is not held. A file on the
+//      first payment's date still takes 1200 and is held, as the first was: nothing was redeployed.
+// Signed all the way (R-09-23 to R-09-27, R-09-49, R-09-51): the runtime verifies each bundle before it stores it, and the front
+// door verifies the distribution it fetches from the runtime before a worker starts.
 
 const REPO = path.resolve(STUDIO, '..');
 const RUNTIME = path.join(REPO, 'runtime');
 const TENANT = 'example-bank';
+const ENV = 'test';
 const MAKER = 'example.maker';
 const PLATFORM = 'p.wf.corporate.v1';
-const SCOPE = `${PLATFORM}/temporal`;
 const LIMIT = 'b.rule.internal-limit.v1#internalLimit';
-const TWO_LINES = path.join(STUDIO, 'fixtures', 'samples', 'wps-sif-two-lines.sif'); // 1000 and 500, total 1500
+const TWO_LINES = fs.readFileSync(path.join(STUDIO, 'fixtures', 'samples', 'wps-sif-two-lines.sif'), 'utf8'); // 1000 and 500, total 1500
 const BENCH = [
   ...['core-banking', 'sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })),
   { port: 'uae.wps.port.wps.v1', simulator: 'uae.wps.sim.wps-outward.v1', scenario: 'accept' },
@@ -45,20 +46,32 @@ const DOTNET_ENV = { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NO
 let server: Server;
 let api: ReturnType<typeof client>;
 let runtime: ChildProcess;
-let runtimeUrl = '';
+let rt: RuntimeClient;
+let pgPort = '';
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-p6-'));
+const cache = path.join(work, 'distributions');
 const containers: string[] = [];
 let shipped: any;
-let release = '';
-const payments: Record<string, { trace: string[]; outcome?: string; sha: string; out: string }> = {};
+let distribution = '';
+const payments: Record<string, { trace: string[]; outcome?: string; distribution: string }> = {};
 
 const freePort = () => new Promise<number>((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = (s.address() as any).port; s.close(() => resolve(p)); }); });
 const build = (dir: string) => {
   const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: dir, encoding: 'utf8', env: DOTNET_ENV });
   if (b.status !== 0) throw new Error(`dotnet build ${dir} failed:\n${b.stdout}\n${b.stderr}`);
 };
-const post = async (url: string, body: any) => (await fetch(url, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify(body) }));
-const get = (url: string) => fetch(url, { headers: runtimeHeaders() });
+const store = () => `Host=127.0.0.1;Port=${pgPort};Username=postgres;Password=${PASSWORD};Database=th_p6`;
+const call = async (method: string, p: string, body?: any) => {
+  const r = await fetch(`${rt.url}${p}`, { method, headers: runtimeHeaders(body ? { 'content-type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined });
+  const t = await r.text();
+  return { status: r.status, data: t ? JSON.parse(t) : undefined };
+};
+const install = async (tag: string) => {
+  const r = await call('POST', '/sources/install', { tag });
+  expect([200, 201], `${tag}: ${JSON.stringify(r.data)}`).toContain(r.status);
+  return r.data;
+};
+const valueAt = async (t: string) => ((await call('GET', `/values?tenant=${TENANT}&at=${t}`)).data as any[]).find((v: any) => v.parameter === LIMIT)?.value;
 
 beforeAll(async () => {
   build(path.join(RUNTIME, 'src', 'TransactHub.Api'));
@@ -67,32 +80,41 @@ beforeAll(async () => {
   if (!fs.existsSync(path.join(tts, 'classpath.txt'))) spawnSync(path.join(tts, 'setup.sh'), { encoding: 'utf8' });
   server = await startServer();
   api = client(server.url);
-  const c = await api.put('/api/git', { actor: 'shared.checker', target: 'temporal', environment: 'test' });
-  expect(c.status).toBe(200);
+  // On approval, the studio builds the bank's distributions and configuration releases, for the test environment (with simulators).
+  const c = await api.put('/api/git', { actor: 'shared.checker', target: 'temporal', distributions: true, testDistributions: true });
+  expect(c.status, JSON.stringify(c.data)).toBe(200);
   shipped = (await api.get(`/api/tenants/${TENANT}/configuration`)).data.configurationSet;
 
   const name = `th-p6-pg-${process.pid}`;
   const pg = spawnSync('docker', ['run', '-d', '--name', name, '-e', `POSTGRES_PASSWORD=${PASSWORD}`, '-p', '127.0.0.1::5432', 'postgres:16-alpine'], { encoding: 'utf8' });
   if (pg.status !== 0) throw new Error(pg.stderr);
   containers.push(name);
-  const port = spawnSync('docker', ['port', name], { encoding: 'utf8' }).stdout.split('\n')[0].split(':').pop()!.trim();
+  pgPort = spawnSync('docker', ['port', name, '5432'], { encoding: 'utf8' }).stdout.split('\n')[0].split(':').pop()!.trim();
   for (let i = 0; i < 60 && spawnSync('docker', ['exec', name, 'pg_isready', '-U', 'postgres']).status !== 0; i++) await new Promise((r) => setTimeout(r, 1000));
-  runtimeUrl = `http://127.0.0.1:${await freePort()}`;
-  runtime = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Api', 'bin', 'Release', 'net10.0', 'TransactHub.Api.dll'), '--urls', runtimeUrl], {
-    env: { ...DOTNET_ENV, ...runtimeApiEnv(), Store__Provider: 'PostgreSql', Store__Connection: `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_p6` }, stdio: 'ignore',
+  const url = `http://127.0.0.1:${await freePort()}`;
+  runtime = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Api', 'bin', 'Release', 'net10.0', 'TransactHub.Api.dll'), '--urls', url], {
+    env: {
+      ...DOTNET_ENV, ...runtimeApiEnv(), Store__Provider: 'PostgreSql', Store__Connection: store(),
+      PackageSource__GitHub__Repository: server.repo, PackageSource__GitHub__Api: server.fake.url, PackageSource__GitHub__TokenRef: 'env:TH_BB_GH_READ_TOKEN', TH_BB_GH_READ_TOKEN: TEST_TOKEN,
+    }, stdio: 'ignore',
   });
-  for (let i = 0; i < 120; i++) { try { await fetch(`${runtimeUrl}/activations/active?environment=x&scope=x`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
+  for (let i = 0; i < 120; i++) { try { if ((await fetch(`${url}/health/ready`)).ok) break; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
+  rt = { url, headers: runtimeHeaders() };
+  // The workers read the bank's values from the runtime at each attempt (TH_RUNTIME_URL, its token by reference).
+  Object.assign(process.env, runtimeClientEnv(), { TH_RUNTIME_URL: url, TH_STORE_PROVIDER: 'PostgreSql', TH_STORE_CONNECTION: store() });
 }, 900000);
 afterAll(() => {
   server?.stop();
   runtime?.kill();
+  for (const k of ['TH_RUNTIME_URL', 'TH_STORE_PROVIDER', 'TH_STORE_CONNECTION']) delete process.env[k];
   for (const c of containers) spawnSync('docker', ['rm', '-f', c]);
   fs.rmSync(work, { recursive: true, force: true });
 });
 
 /**
- * A new release of the bank's configuration set, saved by the bank's designer: one commit on the branch. The limit's 2026
- * period gets the value; from a later validFrom, the earlier period is closed the day before (periods may not overlap, L14).
+ * A new release of the bank's configuration set, saved by the bank's designer and approved by the bank approver: one commit on
+ * the branch, and the signed configuration release the approval builds. The limit's 2026 period gets the value; from a later
+ * validFrom, the earlier period is closed the day before (periods may not overlap, L14).
  */
 async function publishLimit(version: string, value: number, validFrom?: string) {
   const c = JSON.parse(JSON.stringify(shipped));
@@ -107,119 +129,81 @@ async function publishLimit(version: string, value: number, validFrom?: string) 
   }
   const saved = await api.post(`/api/tenants/${TENANT}/configuration`, { actor: MAKER, yaml: toYaml(c) });
   expect(saved.status, JSON.stringify(saved.data)).toBe(200);
-  // The bank approver makes it the version the runtime is given (R-11-31).
   const approved = await api.post('/api/publish', { tenant: TENANT, key: saved.data.draft.key, checker: 'example.checker' });
   expect(approved.status, JSON.stringify(approved.data).slice(0, 400)).toBe(200);
   shipped = c;
-  const onBranch = server.fake.files(server.repo, 'main')[`content-configurations/banks/${TENANT}/configuration-sets/${version}.yaml`];
-  expect(onBranch, 'the configuration set is on the branch').toContain(`value: ${value}`);
+  const bundle = (approved.data.bundles as any[]).find((b) => b.kind === 'configuration');
+  expect(bundle, JSON.stringify(approved.data.bundles)).toBeDefined();
+  expect(bundle.releaseId).toBe(`config/${TENANT}@${version}`);
+  return bundle as { releaseId: string; tag: string };
 }
 
-/** The pipeline on the connected branch: check it out and post it to the runtime (plan W8). */
-async function pipeline() {
-  const look = fs.mkdtempSync(path.join(work, 'branch-'));
-  for (const [p, text] of Object.entries(server.fake.files(server.repo, 'main'))) {
-    if (!p.startsWith('content-configurations/')) continue;
-    const f = path.join(look, p.slice('content-configurations/'.length));
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    fs.writeFileSync(f, text);
-  }
-  const r = await (await post(`${runtimeUrl}/import-branch`, { path: look, actor: 'pipeline' })).json();
-  expect(r.problems, JSON.stringify(r.problems)).toEqual([]);
-  return r;
-}
-
-/** A salary file on a date, run on Temporal from the package the runtime holds for the active release. */
+/** A salary file on a date: accepted at the front door, pinned to the active distribution, run on Temporal from it. */
+let n = 0;
 async function pay(label: string, date: string) {
-  const active = await (await get(`${runtimeUrl}/activations/active?environment=test&scope=${encodeURIComponent(SCOPE)}`)).json();
-  expect(active.release).toBe(release);
-  const zip = Buffer.from(await (await get(`${runtimeUrl}/releases/package?scope=${encodeURIComponent(SCOPE)}&release=${active.release}`)).arrayBuffer());
-  const file = path.join(work, `${label}.zip`);
-  fs.writeFileSync(file, zip);
-  const args = ['src/cli.ts', 'deploy', file, '--workflow', PLATFORM, '--message', 'uae.wps.sif', '--inbound', TWO_LINES, '--tenant', TENANT, '--date', date, ...BENCH.flatMap((b) => ['--bench', `${b.port}=${b.simulator}:${b.scenario}`])];
-  const out = await new Promise<string>((resolve) => {
-    let text = '';
-    const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), args, { cwd: STUDIO, env: { ...process.env, ...runtimeClientEnv(), TH_RUNTIME_URL: runtimeUrl } });
-    const timer = setTimeout(() => child.kill('SIGKILL'), 600000);
-    child.stdout.on('data', (d) => (text += d));
-    child.stderr.on('data', (d) => (text += d));
-    child.on('close', () => { clearTimeout(timer); resolve(text); });
+  const paymentId = `PAY-P6-${process.pid}-${++n}`;
+  const pinned = await accept(rt, { paymentId, bank: TENANT, environment: ENV });
+  const r = await runPinned({
+    runtime: rt, bank: TENANT, environment: ENV, paymentId, distribution: pinned, workflow: PLATFORM, studioRoot: STUDIO, cache,
+    inbound: { message: 'uae.wps.sif', payload: TWO_LINES }, deployEnvironment: { evaluationDate: date, bench: BENCH },
   });
-  const p = { out, trace: /^trace  (.*)$/m.exec(out)?.[1].split(' | ') ?? [], outcome: /^outcome (\w+)/m.exec(out)?.[1], sha: crypto.createHash('sha256').update(zip).digest('hex') };
+  const p = { trace: r.result.trace, outcome: r.result.outcome, distribution: pinned };
   payments[label] = p;
-  expect(out).toContain(`values from the runtime at ${runtimeUrl}`);
-  // The deploy runner verified the package the runtime gave it, with the studio's key, before anything ran.
-  expect(out).toMatch(/^package verified: \d+ file\(s\) signed by key [0-9a-f]{32}/m);
-  expect(out, out.slice(-2000)).toMatch(/worker th-bank .*values read from the runtime [1-9]\d* time/);
-  return p;
+  expect(r.result.log.join('\n')).toContain(`values from the runtime at ${rt.url}`);
+  // The front door verified the distribution the runtime gave it, with the studio's key, before anything ran.
+  expect(r.result.verification.keyId).toMatch(/^[0-9a-f]{32}$/);
+  expect(r.result.workers.some((w) => (w.valuesRead ?? 0) > 0), JSON.stringify(r.result.workers)).toBe(true);
+  expect(r.ended).toBe(true);
+  return { ...p, log: r.result.log };
 }
 
-describe('P6: the studio deploys a release to the runtime and hot-updates a rule value with no deployment', () => {
-  it('1. the bank publishes its internal limit in the studio, and the change lands on the connected branch', async () => {
-    await publishLimit('1.3.0', 1200);
-  }, 120000);
+describe('P6: the studio deploys a distribution to the runtime and hot-updates a rule value with no deployment', () => {
+  it('1. the bank\'s first distribution is installed from GitHub, verified, and activated for test', async () => {
+    const d = await api.post('/api/distributions', { actor: 'example.checker', bank: TENANT, engine: 'temporal', withSimulators: true });
+    expect(d.status, JSON.stringify(d.data).slice(0, 600)).toBe(200);
+    // Without a token the runtime takes nothing.
+    expect((await fetch(`${rt.url}/sources/install`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tag: d.data.tag }) })).status).toBe(401);
+    const inst = await install(d.data.tag);
+    expect(inst).toMatchObject({ state: 'installed', signedBy: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    distribution = d.data.releaseId;
+    expect((await call('POST', '/distributions/activate', { id: distribution, environment: ENV, why: 'P6' })).status).toBe(201);
+    // No value of the bank is in force yet: values arrive only in a configuration release.
+    expect(await valueAt('2026-11-17T06:00:00Z')).toBeUndefined();
+  }, 600000);
 
-  it('2. the runtime stores the Temporal package once, activates it for test, and takes the bank\'s values from the branch', async () => {
-    const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
-    expect(z.status).toBe(200);
-    // Without a token the runtime takes nothing; with the pipeline's, it verifies the studio's signature and stores the package.
-    expect((await fetch(`${runtimeUrl}/releases`, { method: 'POST', body: z.data })).status).toBe(401);
-    const stored = await (await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
-    expect(stored, JSON.stringify(stored)).toMatchObject({ scope: SCOPE, stored: true, signedBy: expect.stringMatching(/^[0-9a-f]{32}$/) });
-    release = stored.release;
-    expect((await post(`${runtimeUrl}/activations`, { environment: 'test', scope: SCOPE, release, actor: 'ops' })).status).toBe(201);
-    const imported = await pipeline();
-    expect(imported.values).toBeGreaterThan(0);
-    const inForce = await (await get(`${runtimeUrl}/values?tenant=${TENANT}&at=2026-11-17T06:00:00Z`)).json();
-    expect(inForce.find((v: any) => v.parameter === LIMIT)?.value).toBe(1200);
-    // The upload and the activation each verified the package; both are facts on the release.
-    const got = await (await get(`${runtimeUrl}/releases?scope=${encodeURIComponent(SCOPE)}&release=${release}`)).json();
-    expect(got.verifications.map((v: any) => v.purpose)).toEqual(['upload', 'activation:test']);
-    expect(got.verifications[0].detail.keyId).toBe(stored.signedBy);
+  it('2. the bank publishes its internal limit; its signed configuration release is installed and its values are in force', async () => {
+    const c = await publishLimit('1.3.0', 1200);
+    const inst = await install(c.tag);
+    expect(inst).toMatchObject({ inForce: true, state: 'in-force', checkedAgainst: [distribution] });
+    expect(await valueAt('2026-11-17T06:00:00Z')).toBe(1200);
   }, 300000);
-
-  it('2b. the runtime refuses the same package unsigned, or with one file changed, and stores nothing', async () => {
-    const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
-    const entries = unzip(z.data);
-    const unsigned = zip(entries.filter((e) => e.name !== 'release.json' && e.name !== 'release.sig'));
-    const r1 = await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: new Uint8Array(unsigned) });
-    expect(r1.status).toBe(422);
-    expect((await r1.json()).error).toContain('is not signed');
-    const wf = entries.find((e) => e.name.startsWith('workflows/'))!;
-    const tampered = zip(entries.map((e) => (e === wf ? { name: e.name, content: Buffer.concat([e.content, Buffer.from('# changed after release\n')]) } : e)));
-    const r2 = await fetch(`${runtimeUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: new Uint8Array(tampered) });
-    expect(r2.status).toBe(422);
-    expect((await r2.json()).error).toMatch(/does not match its hash/);
-    expect((await (await get(`${runtimeUrl}/releases?scope=${encodeURIComponent(SCOPE)}&release=${release}`)).json()).verifications).toHaveLength(2);
-  }, 120000);
 
   it('3. a salary file of 1500 on 2026-11-17 is held: the total is above the limit the runtime holds for that date', async () => {
     const a = await pay('first', '2026-11-17');
-    expect(a.outcome, a.out.slice(-2500)).toBe('settled');
+    expect(a.outcome, a.log.slice(-40).join('\n')).toBe('settled');
     expect(a.trace).toContain('hook:hold');
     expect(a.trace).toContain('hold:approved');
+    expect(a.distribution).toBe(distribution);
   }, 600000);
 
-  it('4. the bank raises the limit to 2000 from 2026-11-20; the runtime takes it as a new value version, with no new release or activation', async () => {
-    await publishLimit('1.4.0', 2000, '2026-11-20');
-    const imported = await pipeline();
-    expect(imported.values).toBeGreaterThan(0);
-    expect(imported.stored).toEqual([]);
-    expect(imported.activated).toEqual([]);
-    const at = async (t: string) => (await (await get(`${runtimeUrl}/values?tenant=${TENANT}&at=${t}`)).json()).find((v: any) => v.parameter === LIMIT)?.value;
-    expect(await at('2026-11-24T06:00:00Z')).toBe(2000);
-    expect(await at('2026-11-17T06:00:00Z')).toBe(1200);
+  it('4. the bank raises the limit to 2000 from 2026-11-20: a configuration release, a new value version, no new distribution or activation', async () => {
+    const before = ((await call('GET', `/distributions?bank=${TENANT}&environment=${ENV}`)).data as any[]).length;
+    const c = await publishLimit('1.4.0', 2000, '2026-11-20');
+    expect((await install(c.tag)).inForce).toBe(true);
+    expect(await valueAt('2026-11-24T06:00:00Z')).toBe(2000);
+    expect(await valueAt('2026-11-17T06:00:00Z')).toBe(1200);
+    expect(((await call('GET', `/distributions?bank=${TENANT}&environment=${ENV}`)).data as any[]).length).toBe(before);
+    expect((await call('GET', `/distributions/active?bank=${TENANT}&environment=${ENV}`)).data.distribution).toBe(distribution);
   }, 300000);
 
   it('5. with nothing redeployed, a salary file on 2026-11-24 takes the new limit and is not held; the first payment keeps its own', async () => {
     const b = await pay('second', '2026-11-24');
-    expect(b.outcome, b.out.slice(-2500)).toBe('settled');
+    expect(b.outcome, b.log.slice(-40).join('\n')).toBe('settled');
     expect(b.trace).not.toContain('hook:hold');
-    // The same package, byte for byte, and the same release: no deployment came between the two payments.
-    expect(b.sha).toBe(payments.first.sha);
+    expect(b.distribution).toBe(payments.first.distribution);
     // A payment on the first payment's date still takes 1200: the first ran on the value of its date, and still would.
     const c = await pay('first-date-again', '2026-11-17');
     expect(c.trace).toEqual(payments.first.trace);
-    expect(c.sha).toBe(payments.first.sha);
+    expect(c.distribution).toBe(distribution);
   }, 900000);
 });

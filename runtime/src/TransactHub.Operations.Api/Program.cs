@@ -47,7 +47,7 @@ builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterServi
 // Work management, saved filters, the console's dials, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
 //   Operations:Notify:Adapter, Operations:Notify:Url   where the console's alerts go (log by default; simulator; webhook)
 //   Operations:TatSweepSeconds                          how often turnaround breaches are looked for and alerted (default 60)
-//   Operations:Banks (or TH_BANKS_DIR)                  the bank folder whose core-banking binding the channel's enquiries use
+//   (no bank folder: the channel's enquiries use the core-banking binding of the configuration release in force, R-09-112)
 //                                                       where no configuration release bound one (R-09-100)
 //   Operations:Registers:SystemReadsMasked              true: the register API answers core banking masked (Issue I-149, I-181)
 var dials = new OperationsDials(store, views);
@@ -367,7 +367,9 @@ api.MapPost("/breaks/{id}/consent", async (string id, DecisionRequest body, Http
 // The registers area and the register API (R-05-62 to R-05-64, R-09-73), and the channel enquiry APIs (R-09-74, R-09-100).
 app.MapRegisters(app.Configuration["Operations:Registers:SystemReadsMasked"] == "true");
 app.MapChannel(ops);
-app.MapEnquiries(store, app.Configuration["Operations:Banks"] ?? app.Configuration["TH_BANKS_DIR"]);
+// The core-banking binding comes from the configuration release in force, never a folder (R-09-112, R-09-113).
+StoreBindings.RefuseFolder(app.Configuration["Operations:Banks"] ?? app.Configuration["TH_BANKS_DIR"], app.Configuration["Operations:Banks"] is { Length: > 0 } ? "Operations:Banks" : "TH_BANKS_DIR");
+app.MapEnquiries(store);
 // Work management, saved filters, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).
 app.MapWork(ops);
 

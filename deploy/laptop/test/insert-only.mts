@@ -204,11 +204,13 @@ async function main() {
   const ia = await install(A.tag);
   check('A is stored, verified by the studio\'s key', ia.stored === true && ia.state === 'installed', ia);
   // The bank's values (its rail, its WPS values, its cut-offs if it has any) reach the workers from its installed configuration
-  // release, checked against A's parameter contract (R-12-28): the studio builds it, the runtime installs it with consent.
-  const cr = await studio.post('/api/configuration-releases', { actor: `${BANK}.checker`, tenant: BANK, bank: BANK });
+  // release, checked against A's parameter contract (R-12-28), and with them the laptop's binding of its file transfer, the stack's
+  // SFTP server (R-09-105, R-09-110 to R-09-112): the studio builds the release, the runtime puts it in force with consent.
+  const laptopBindings = parseYaml(fs.readFileSync(path.join(LAPTOP, 'banks', BANK, 'file-transfer.yaml'), 'utf8')).bindings;
+  const cr = await studio.post('/api/configuration-releases', { actor: `${BANK}.checker`, tenant: BANK, bank: BANK, bindings: laptopBindings });
   check('the studio publishes ADIB\'s configuration release', cr.status === 200, cr.data);
   const ic = await install(cr.data.tag);
-  check(`the configuration release is installed (${ic.values} values)`, ic.stored === true && ic.values > 0, ic);
+  check(`the configuration release is installed and in force (${ic.values} values, ${ic.bindings} binding)`, ic.stored === true && ic.values > 0 && ic.bindings === laptopBindings.length, ic);
   await activate(A.releaseId);
   const before = snapshot();
   check(`the store holds A, its activation and its facts (${before.size} rows)`, [...before.keys()].some((k) => k === `release|${A.releaseId}`), [...before.keys()].slice(0, 5));

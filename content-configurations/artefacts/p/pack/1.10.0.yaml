@@ -12,11 +12,6 @@ artefacts:
     release: 1.0.0
     hash: sha256:cea93da09dd5bfc9533191a81addc64fe9376e45c817e607870be45ad316df9b
     path: activities/p.decide.await-posting-window.v1.yaml
-  - name: p.decide.cut-off.v1
-    kind: activity
-    release: 1.0.0
-    hash: sha256:c1f7cb39b5035de4aa75a8ddb21656e8d498eb8270abad4fbcfa3711b0dbcdb6
-    path: activities/p.decide.cut-off.v1.yaml
   - name: p.decide.inward-disposition.v1
     kind: activity
     release: 1.0.0
@@ -149,8 +144,8 @@ artefacts:
     path: activities/p.validate.limits.v1.yaml
   - name: p.errors.platform.v1
     kind: error-dictionary
-    release: 1.1.0
-    hash: sha256:7c529ce56f674d767541f9224e3f218f6356b767d56114af3c1a0bf8e167bb2b
+    release: 1.2.0
+    hash: sha256:e454991ba8ebf020e772f56c3d5d5d2a32b2f35806b052b920eb6131ac2d64be
     path: errors/p.errors.platform.v1.yaml
   - name: p.port.channel.v1
     kind: port

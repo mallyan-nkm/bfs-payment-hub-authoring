@@ -387,12 +387,21 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
     public async Task The_consoles_resend_goes_through_the_File_API_outbox_and_is_delivered_on_the_banks_binding()
     {
         var o = await pg.Fresh();
-        var banks = Directory.CreateTempSubdirectory("th-fileapi-banks-").FullName;
         var root = Directory.CreateTempSubdirectory("th-fileapi-cb-").FullName;
+        var root2 = Directory.CreateTempSubdirectory("th-fileapi-cb2-").FullName;
+        // The bank's file-transfer binding, as its configuration release put in force leaves it in the store (R-09-112).
+        async Task Bind(string release, string rootRef)
+        {
+            await using var db = StoreDbContext.Open(o);
+            await new VersionedValues(db).Publish(ConfigurationBindings.Kind, Bank, "p.port.file-transfer.v1", new JsonObject
+            {
+                ["binding"] = new JsonObject { ["port"] = "p.port.file-transfer.v1", ["adapter"] = "directory", ["validFrom"] = "2026-01-01", ["settings"] = new JsonObject { ["rootRef"] = rootRef } },
+                ["configurationRelease"] = release,
+            }, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), null, "bank.checker");
+        }
         try
         {
-            Directory.CreateDirectory(Path.Combine(banks, Bank));
-            await File.WriteAllTextAsync(Path.Combine(banks, Bank, "file-transfer.yaml"), $"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.file-transfer.v1\n    adapter: directory\n    validFrom: 2026-01-01T00:00:00Z\n    settings: {{ rootRef: env:TH_TEST_CB_ROOT }}\n");
+            await Bind("1.0.0", "env:TH_TEST_CB_ROOT");
             using var rsa = RSA.Create(2048);
             var p = rsa.ExportParameters(false);
             var jwks = new JsonObject { ["keys"] = new JsonArray(new JsonObject { ["kty"] = "RSA", ["kid"] = "t1", ["use"] = "sig", ["alg"] = "RS256", ["n"] = Base64UrlEncoder.Encode(p.Modulus), ["e"] = Base64UrlEncoder.Encode(p.Exponent) }) }.ToJsonString();
@@ -405,7 +414,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             var roleMap = $$"""{ "kind": "runtime-role-map", "grants": [ { "claim": "roles", "value": "Ops", "roles": ["file-outbox", "file-resender", "file-reader"], "tenants": ["{{Bank}}"] } ] }""";
             await using var app = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Store:Provider", "PostgreSql").UseSetting("Store:Connection", o.ConnectionString)
                 .UseSetting("FileApi:Environment", Env).UseSetting("FileApi:Worker", "off").UseSetting("Auth:Oidc:Issuer", iss).UseSetting("Auth:Oidc:Audience", aud)
-                .UseSetting("Auth:Oidc:SigningKeys", jwks).UseSetting("Auth:RoleMap", roleMap).UseSetting("TH_BANKS_DIR", banks).UseSetting("TH_TEST_CB_ROOT", root));
+                .UseSetting("Auth:Oidc:SigningKeys", jwks).UseSetting("Auth:RoleMap", roleMap).UseSetting("TH_BANK", Bank).UseSetting("TH_TEST_CB_ROOT", root).UseSetting("TH_TEST_CB_ROOT2", root2));
             var http = app.CreateClient();
             var port = new TransactHub.Operations.FileApiTransferPort(http.BaseAddress!, "centralBank/sif", _ => Task.FromResult(token), http);
             var bytes = Encoding.UTF8.GetBytes("synthetic salary file, encrypted\n");
@@ -426,11 +435,24 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             var f = Assert.Single(await db.StoredFiles.AsNoTracking().Where(x => x.SubjectId == "P-9").ToListAsync());
             Assert.Equal(("P-9", "out"), (f.SubjectId, f.Direction));
             Assert.Equal(["file.queued", "file.delivered", "file.resent", "file.delivered"], await db.Facts.AsNoTracking().Where(x => x.SubjectId == f.Id).OrderBy(x => x.Seq).Select(x => x.Kind).ToListAsync());
+
+            // A later configuration release binds another folder: the next delivery uses it, with no restart of the File API (R-09-112).
+            await Bind("1.1.0", "env:TH_TEST_CB_ROOT2");
+            await Task.Delay(TimeSpan.FromSeconds(2.5));
+            Assert.Equal("sent", await port.Put(Bank, "P-11", "m-11", "000000000011.SIF.gpg", bytes));
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(root2, "centralBank", "sif", "000000000011.SIF.gpg")));
+            Assert.False(File.Exists(Path.Combine(root, "centralBank", "sif", "000000000011.SIF.gpg")));
+
+            // A folder of bindings is never read: a File API given one does not start (R-09-113).
+            await using var folder = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Store:Provider", "PostgreSql").UseSetting("Store:Connection", o.ConnectionString)
+                .UseSetting("FileApi:Environment", Env).UseSetting("FileApi:Worker", "off").UseSetting("Auth:Oidc:Issuer", iss).UseSetting("Auth:Oidc:Audience", aud)
+                .UseSetting("Auth:Oidc:SigningKeys", jwks).UseSetting("Auth:RoleMap", roleMap).UseSetting("TH_BANKS_DIR", Path.GetTempPath()));
+            Assert.Contains("TH_BANKS_DIR names a folder of port bindings", Assert.ThrowsAny<Exception>(() => folder.CreateClient()).ToString());
         }
         finally
         {
-            Directory.Delete(banks, true);
             Directory.Delete(root, true);
+            Directory.Delete(root2, true);
         }
     }
 }
