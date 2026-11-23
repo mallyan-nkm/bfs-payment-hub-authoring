@@ -22,6 +22,17 @@ public sealed class VirtualClock
     /// </summary>
     public Func<bool>? Hold;
 
+    /// <summary>
+    /// Real time (the long-running engine host, R-09-93): the clock follows the wall clock from its start, and a timer fires when the
+    /// wall clock reaches it, never sooner, so a wait for a scheme's message is as long as its timeout says and a message the host
+    /// delivers meanwhile (LiveSignals, kind deliver) reaches the run. Set by TH_HARNESS_REAL_TIME=1.
+    /// </summary>
+    public bool RealTime = Environment.GetEnvironmentVariable("TH_HARNESS_REAL_TIME") == "1";
+    readonly DateTime wallStart = DateTime.UtcNow;
+
+    /// <summary>The wall clock as this clock's time.</summary>
+    long WallNow => Start + (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
+
     public VirtualClock(long startMs) { Start = startMs; now = startMs; }
 
     public long Now { get { lock (gate) return now; } }
@@ -88,6 +99,21 @@ public sealed class VirtualClock
             Action fire;
             lock (gate)
             {
+                if (RealTime)
+                {
+                    // Time passes as the wall clock does: what is due fires, the rest waits; with nothing scheduled the run waits for
+                    // a delivery until its limit, instead of ending.
+                    var wall = WallNow;
+                    if (wall > now) now = wall;
+                    if (now > limitAt) return false;
+                    if (timers.Count == 0 || timers.First().Key.at > now)
+                    {
+                        var wait = timers.Count == 0 ? 200 : Math.Clamp(timers.First().Key.at - now, 1, 200);
+                        progress++;
+                        Monitor.Wait(gate, TimeSpan.FromMilliseconds(wait));
+                        continue;
+                    }
+                }
                 if (timers.Count == 0 && Hold?.Invoke() != true) return false;
                 if ((timers.Count == 0 || timers.First().Key.at > now) && Hold?.Invoke() == true)
                 {

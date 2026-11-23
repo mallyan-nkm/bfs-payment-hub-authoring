@@ -1330,7 +1330,7 @@ public sealed partial class FlowableBinding
         if (LiveSignals.Source is not { } source) return false;
         var root = roots.FirstOrDefault();
         if (root is null) return false;
-        if (!liveTried) { liveTried = true; liveFeed = await source.Follow(root.Ref, "flowable", root.Pid, null); }
+        if (!liveTried) { liveTried = true; liveFeed = await source.Follow(root.Ref, "flowable", root.Pid, J.S(input, "rootId")); }
         if (liveFeed is null || Wall() - livePolled < 250) return false;
         livePolled = Wall();
         var moved = false;

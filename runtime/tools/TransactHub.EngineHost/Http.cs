@@ -36,9 +36,12 @@ public sealed class Http(Func<string, string, JsonObject?, Task<(int status, Jso
 
     public void Start(string urls)
     {
-        var u = new Uri(urls);
-        if (!IPAddress.IsLoopback(IPAddress.TryParse(u.Host, out var ip) ? ip : IPAddress.None) && u.Host != "localhost")
-            throw new InvalidOperationException($"the engine host answers on a loopback address only, not {u.Host}");
+        var u = new Uri(urls.Replace("://*", "://0.0.0.0").Replace("://+", "://0.0.0.0"));
+        var loopback = IPAddress.IsLoopback(IPAddress.TryParse(u.Host, out var ip) ? ip : IPAddress.None) || u.Host == "localhost";
+        // Beyond a loopback address only with the configured token (R-08-22, R-09-95): the supervisor answers the File API's front
+        // door on a compose network or an installation's own, and every call must carry the token.
+        if (!loopback && token is null)
+            throw new InvalidOperationException($"the engine host answers on a loopback address only, not {u.Host}, unless TH_ENGINE_HOST_TOKEN is set");
         var port = u.Port;
         if (port == 0)
         {
@@ -47,8 +50,16 @@ public sealed class Http(Func<string, string, JsonObject?, Task<(int status, Jso
             port = ((IPEndPoint)l.LocalEndpoint).Port;
             l.Stop();
         }
-        Url = $"http://127.0.0.1:{port}";
-        listener.Prefixes.Add($"{Url}/");
+        if (loopback)
+        {
+            Url = $"http://127.0.0.1:{port}";
+            listener.Prefixes.Add($"{Url}/");
+        }
+        else
+        {
+            Url = u.Host == "0.0.0.0" ? $"http://{System.Net.Dns.GetHostName()}:{port}" : $"http://{u.Host}:{port}";
+            listener.Prefixes.Add(u.Host == "0.0.0.0" ? $"http://*:{port}/" : $"http://{u.Host}:{port}/");
+        }
         listener.Start();
     }
 

@@ -455,6 +455,78 @@ public class EngineHostTests(Servers servers)
         }
     }
 
+    /// <summary>A distribution's stored package as the studio builds it: an engine package per platform workflow (engine/&lt;wf&gt;/).</summary>
+    static byte[] Package(string release)
+    {
+        var docs = Documents(release);
+        docs[$"p.wf.ask.v1@{release}"] = Doc($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.ask.v1", "release": "{{release}}", "do": [
+              { "id": "a", "call": "p.enrich.check.v1" },
+              { "id": "w", "await": { "message": "p.test.answer", "timeout": "PT3M", "onTimeout": { "end": "timedout" } } },
+              { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
+        var ms = new MemoryStream();
+        using (var z = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            void Put(string name, string text) { using var w = new StreamWriter(z.CreateEntry(name).Open()); w.Write(text); }
+            Put("manifest.yaml", $"kind: distribution\nrelease: {release}\n");
+            Put("engine/p.wf.ask.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
+            foreach (var (k, v) in docs) Put($"engine/p.wf.ask.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// R-09-93, R-09-94: with no plan written by a caller, the supervisor builds the host's plan from the stored package; a payment
+    /// runs in real time in the host and takes a message the front door correlated to it after its run started (here a message its
+    /// platform workflow awaits). Before, DTFx and Elsa refused every message once a run had started (Issue I-158 (1)).
+    /// </summary>
+    async Task MessageAfterStart(string engine)
+    {
+        var bank = $"msg-{engine}-{Guid.NewGuid():N}"[..20];
+        const string id = "2026.11.23-1";
+        var dist = DistributionRegistry.IdOf(bank, id);
+        using var worker = new Worker();
+        var plans = Path.Combine(Path.GetTempPath(), $"th-hosts-{bank}");
+        try
+        {
+            var package = Package("1.0.0");
+            await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
+            await WithRegistry(r => r.Activate(dist, Environment, "test", "e2e"));
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", new JsonObject { ["th-p"] = worker.Url }.ToJsonString());
+            await using var sup = await StartSupervisor(engine, bank, plans);
+            try
+            {
+                await Until(async () => J.Truthy(J.P(J.P(await sup.Distribution(dist), "host"), "current")), TimeSpan.FromMinutes(3), $"{dist} current");
+                Assert.Contains(J.A((await sup.Call("GET", "/events")).body, "events"), e => J.S(e, "event") == "plan built from the stored package");
+                var p = $"M1-{bank}";
+                var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.ask.v1" });
+                Assert.True(r.status == 202, r.body.ToJsonString());
+                await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
+                // The message, after the run started: delivered on the payment's live path.
+                (int status, JsonObject body) m = default;
+                await Until(async () => (m = await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.answer", ["id"] = $"answer-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
+                JsonObject? e = null;
+                await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(3), $"{p} ended");
+                Assert.True(J.S(e, "outcome") == "done", e!.ToJsonString());
+                Assert.Contains("w:received", J.Strings(J.P(J.A(J.P(e, "observation"), "instances")[0], "trace")));
+            }
+            catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+            {
+                throw new Xunit.Sdk.XunitException($"{x.Message}\n--- the supervisor's log ---\n{sup.Log}");
+            }
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
+    [Fact] public Task Dtfx_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("dtfx");
+    [Fact] public Task Elsa_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("elsa");
+
     [Fact] public Task Temporal_worker_versioning_on_a_real_server() => SwitchOver("temporal");
     [Fact] public Task Dtfx() => SwitchOver("dtfx");
     [Fact] public Task Elsa() => SwitchOver("elsa");

@@ -135,7 +135,8 @@ public sealed class Harness : IDisposable
         bool Done()
         {
             if (J.Truthy(J.P(spec, "handler"))) return handlerOutputs.Count > 0 && Clock.PendingTimers == 0;
-            return roots.All(r => Find(r.id)?.Completed == true) && Clock.PendingTimers == 0;
+            // In real time (the engine host, R-09-93) the run ends with its roots: the timers left are for nothing that runs.
+            return roots.All(r => Find(r.id)?.Completed == true) && (Clock.RealTime || Clock.PendingTimers == 0);
         }
         var finished = Clock.RunUntil(Done, start + Duration.Ms("P60D"), TimeSpan.FromSeconds(60));
         liveStop.Cancel();

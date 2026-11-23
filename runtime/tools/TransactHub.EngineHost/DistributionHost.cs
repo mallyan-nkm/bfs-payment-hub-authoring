@@ -20,6 +20,18 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
     protected readonly string Engine = engine, Distribution = distribution, Bank = bank, Environment = environment;
     protected readonly JsonObject Plan = plan;
     protected readonly ConcurrentDictionary<string, JsonObject> Payments = new(StringComparer.Ordinal);
+    /// <summary>The platform workflow each payment runs, as the front door routed it.</summary>
+    protected readonly ConcurrentDictionary<string, string> Workflows = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The plan of a platform workflow of the distribution (R-09-94): a plan built from the stored package holds one per platform
+    /// workflow under <c>plans</c>; a plan a caller wrote holds one workflow. Null asks for the plan's own workflow.
+    /// </summary>
+    protected JsonObject PlanFor(string? workflow) =>
+        workflow is not null && J.P(Plan, "plans") is JsonObject ps && ps[workflow] is JsonObject p ? p : J.P(Plan, "plans") is JsonObject all && all.Count > 0 && J.P(Plan, "built") is null ? (JsonObject)all.First().Value! : Plan;
+
+    /// <summary>Whether this host runs a platform workflow.</summary>
+    protected bool Runs(string workflow) => J.P(Plan, "plans") is JsonObject ps ? ps.ContainsKey(workflow) : J.S(J.P(Plan, "built"), "workflow") == workflow;
     protected bool Current;
     readonly CancellationTokenSource exit = new();
 
@@ -109,10 +121,14 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                 await using (var db = StoreDbContext.Open(Store)) pinned = await new DistributionRegistry(db).PinOf(id);
                 // A payment runs only on the distribution it is pinned to (R-09-53).
                 if (pinned != Distribution) return (409, new JsonObject { ["error"] = $"{id} is pinned to {pinned ?? "no distribution"}, not {Distribution}" });
-                var ctx = (JsonObject)J.Clone(J.P(body, "context") ?? J.P(J.P(Plan, "built"), "context"))!;
-                // The runtime's front door names the workflow it routed the payment to and the legs in its slots (R-09-85).
-                if (J.S(body, "workflow") is string wf && wf != J.S(J.P(Plan, "built"), "workflow"))
-                    return (409, new JsonObject { ["error"] = $"{Distribution}'s host runs {J.S(J.P(Plan, "built"), "workflow")}, not {wf}" });
+                var ctx = (JsonObject)J.Clone(J.P(body, "context") ?? J.P(J.P(PlanFor(J.S(body, "workflow")), "built"), "context") ?? new JsonObject())!;
+                // The runtime's front door names the workflow it routed the payment to and the legs in its slots (R-09-85); a host
+                // whose plan came from the stored package runs every platform workflow of the distribution (R-09-94).
+                if (J.S(body, "workflow") is string wf)
+                {
+                    if (!Runs(wf)) return (409, new JsonObject { ["error"] = $"{Distribution}'s host does not run {wf}" });
+                    Workflows[id] = wf;
+                }
                 var legs = J.P(body, "legs") is JsonObject l ? (JsonObject)J.Clone(l)! : null;
                 _ = Task.Run(() => Start(id, ctx, legs));
                 return (202, new JsonObject { ["paymentId"] = id, ["host"] = Distribution });
@@ -171,7 +187,7 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
         TemporalEngine.RealServer = true;
         await using (var db = StoreDbContext.Open(Store)) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database, ct);
         StoreSignals.Install(Store, StepFacts.Install(Store));
-        workers = new DistributionWorkers(client, Plan, DeploymentName(Bank, Environment), IdPart, null, Store);
+        workers = new DistributionWorkers(client, PlanFor(null), DeploymentName(Bank, Environment), IdPart, null, Store);
         await workers.StartAsync();
     }
 
@@ -249,9 +265,19 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
 
     protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
-        var input = (JsonObject)J.Clone(Plan)!;
+        var input = (JsonObject)J.Clone(PlanFor(Workflows.GetValueOrDefault(paymentId)))!;
         var built = (JsonObject)input["built"]!;
         built["context"] = context;
+        // DTFx and Elsa run in real time in the host (R-09-93): the run starts now, its timers fire on the wall clock, and a message
+        // the front door correlates to it after it started reaches it on its live path (DeliverToRun).
+        if (Engine is "dtfx" or "elsa")
+        {
+            var cfg = built["config"] as JsonObject ?? new JsonObject();
+            var now = DateTimeOffset.UtcNow;
+            cfg["evaluationDate"] = now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            cfg["startTime"] = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            built["config"] = cfg;
+        }
         if (legs is not null) built["legs"] = legs;
         built["id"] = paymentId;
         input["distribution"] = Distribution;
@@ -266,6 +292,7 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
             var psi = new ProcessStartInfo("dotnet", [HarnessDll(Engine), file]) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
             var patience = HostStore.Duration("TH_HOST_OPERATOR_PATIENCE", TimeSpan.FromDays(30));
             psi.Environment["TH_OPERATOR_PATIENCE_SECONDS"] = ((long)patience.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (Engine is "dtfx" or "elsa") psi.Environment["TH_HARNESS_REAL_TIME"] = System.Environment.GetEnvironmentVariable("TH_HARNESS_REAL_TIME") ?? "1";
             if (Engine == "flowable")
             {
                 psi.Environment["TH_FLOWABLE_MODE"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MODE") ?? "production";
@@ -288,6 +315,19 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
             }
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    /// <summary>
+    /// A message for a payment whose run has started (R-09-93): on DTFx, Elsa and Flowable it goes on the payment's outbox, and its
+    /// run, which follows the payment's live path, hands it to the instance that awaits it (a leg in its slot takes what its platform
+    /// workflow does not await). Refused while the run has not yet been accepted on the store; the front door tries again.
+    /// </summary>
+    protected override async Task<(int, JsonNode?)> Deliver(string paymentId, JsonObject message)
+    {
+        var subject = await new StoreSignals(Store).DeliverToRun($"root-{Key(paymentId)}", message, $"engine-host:{Distribution}");
+        return subject is null
+            ? (409, new JsonObject { ["error"] = $"{paymentId}'s run on {Engine} has not started on the store yet; send the message again" })
+            : (202, new JsonObject { ["answer"] = "delivered", ["paymentId"] = paymentId, ["path"] = "outbox", ["subject"] = subject });
     }
 
     protected override Task<JsonObject> Status() => Task.FromResult(new JsonObject

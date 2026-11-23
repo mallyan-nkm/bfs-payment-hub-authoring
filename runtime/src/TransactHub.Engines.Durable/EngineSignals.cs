@@ -69,6 +69,46 @@ public sealed class StoreSignals(StoreOptions store, TimeProvider? clock = null)
         return new Feed(store, clock, subject, kind!, engine, instance);
     }
 
+    /// <summary>
+    /// A message the runtime's front door correlated to a running payment (R-09-93), put on the payment's outbox (signal
+    /// <c>deliver</c>) for the engine host that runs it; its run reads it on its live path, as it reads an operator's decision.
+    /// Null when the payment has not been accepted with this payload yet.
+    /// </summary>
+    public async Task<string?> Deliver(string payloadRef, JsonObject message, string actor, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var f = await db.Facts.AsNoTracking().Where(x => x.SubjectId == payloadRef && x.Code == "accepted").OrderByDescending(x => x.Seq).FirstOrDefaultAsync(ct);
+        var d = f is null ? null : JsonNode.Parse(f.DataJson) as JsonObject;
+        var subject = J.S(d, "bulk") ?? J.S(d, "payment");
+        if (subject is null) return null;
+        db.Outbox.Add(new OutboxRow
+        {
+            Topic = Topic, Key = subject, At = StoreTime.Of(clock.GetUtcNow()),
+            PayloadJson = CanonicalJson.Of(new JsonObject { ["subject"] = subject, ["signal"] = "deliver", ["action"] = Guid.NewGuid().ToString("N"), ["by"] = actor, ["message"] = message.DeepClone() }),
+        });
+        await db.SaveChangesAsync(ct);
+        return subject;
+    }
+
+    /// <summary>
+    /// The same, for the run a host named (its root id): the run's <c>engine started</c> fact names it as its instance (DTFx, Elsa)
+    /// or its run (Flowable, whose root is its process instance), on the payment's chain.
+    /// </summary>
+    public async Task<string?> DeliverToRun(string rootId, JsonObject message, string actor, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var started = await db.Facts.AsNoTracking().Where(f => f.Kind == "engine" && f.Code == "started" && f.DataJson.Contains(rootId)).OrderByDescending(f => f.Seq).ToListAsync(ct);
+        var subject = started.FirstOrDefault(f => JsonNode.Parse(f.DataJson) is JsonObject d && (J.S(d, "instance") == rootId || J.S(d, "run") == rootId))?.SubjectId;
+        if (subject is null) return null;
+        db.Outbox.Add(new OutboxRow
+        {
+            Topic = Topic, Key = subject, At = StoreTime.Of(clock.GetUtcNow()),
+            PayloadJson = CanonicalJson.Of(new JsonObject { ["subject"] = subject, ["signal"] = "deliver", ["action"] = Guid.NewGuid().ToString("N"), ["by"] = actor, ["message"] = message.DeepClone() }),
+        });
+        await db.SaveChangesAsync(ct);
+        return subject;
+    }
+
     /// <summary>An instance's engine ids, as a fact on the payment's chain when it starts (Issues I-99, I-101).</summary>
     public async Task Started(string subject, string kind, string engine, string instance, string? run, CancellationToken ct = default)
     {

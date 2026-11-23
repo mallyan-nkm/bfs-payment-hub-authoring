@@ -60,6 +60,16 @@ public static class LiveSignals
                 ["id"] = $"decision-{id}", ["type"] = Interp.DecisionMessage, ["status"] = J.S(row, "decision"), ["hold"] = J.S(row, "hold"), ["by"] = J.S(row, "by"),
                 ["conversation"] = J.S(header, "conversation"), ["correlation"] = new JsonObject { ["paymentId"] = J.S(header, "paymentId") },
             });
+        // A scheme's message the runtime's front door correlated to the running payment (R-09-93): the message the run awaits,
+        // delivered by its engine host on the same path, so a run takes a message after it started on every engine.
+        if (signal == "deliver" && J.P(row, "message") is JsonObject msg)
+        {
+            var m = (JsonObject)J.Clone(msg)!;
+            if (J.S(m, "id") is null) m["id"] = $"delivered-{id}";
+            if (J.S(m, "conversation") is null && J.S(header, "conversation") is string conv) m["conversation"] = conv;
+            if (J.P(m, "correlation") is null) m["correlation"] = new JsonObject { ["paymentId"] = J.S(header, "paymentId") };
+            return ("message", m);
+        }
         var data = new JsonObject { ["signal"] = signal, ["id"] = $"row-{id}" };
         if (J.S(row, "step") is string step) data["step"] = step;
         return ("signal", data);

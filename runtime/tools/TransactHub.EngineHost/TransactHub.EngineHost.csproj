@@ -6,6 +6,8 @@
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Security\TransactHub.Security.csproj" />
+    <!-- The plan of a host from the stored package's YAML (R-09-94). -->
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
   <PropertyGroup>

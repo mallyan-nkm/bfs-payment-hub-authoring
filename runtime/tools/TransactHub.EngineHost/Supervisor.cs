@@ -103,6 +103,20 @@ public sealed class Supervisor(StoreOptions store, string engine, string bank, s
                 if (child is null || child.Process.HasExited)
                 {
                     var plan = PlanFile(plansDir, dist);
+                    if (!File.Exists(plan))
+                    {
+                        // No caller wrote one: the host's plan from the stored, verified package (R-09-94, Issue I-138 (3)).
+                        try
+                        {
+                            if (await Plans.FromStore(store, dist, ct) is JsonObject built)
+                            {
+                                Directory.CreateDirectory(plansDir);
+                                await File.WriteAllTextAsync(plan, J.Str(built), ct);
+                                Event("plan built from the stored package", dist, new JsonObject { ["workflows"] = J.Arr(((JsonObject)built["plans"]!).Select(kv => kv.Key)) });
+                            }
+                        }
+                        catch (Exception e) when (e is not OperationCanceledException) { if (child is null) Event("no plan for its host", dist, new JsonObject { ["plan"] = plan, ["why"] = e.Message }); continue; }
+                    }
                     if (!File.Exists(plan)) { if (child is null) Event("no plan for its host", dist, new JsonObject { ["plan"] = plan }); continue; }
                     child = Spawn(dist, plan);
                     children[dist] = child;

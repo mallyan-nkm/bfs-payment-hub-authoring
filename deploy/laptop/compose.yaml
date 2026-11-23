@@ -294,6 +294,11 @@ services:
       <<: [*store, *auth]
       FileApi__Environment: test
       TH_BANKS_DIR: /opt/th/content-configurations/banks
+      # The front door starts and correlates payments on the bank's engine host (R-09-85, R-09-95), on the compose network.
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
+      FileApi__EngineHost: http://enginehost:7600
+      FileApi__EngineHostTokenRef: env:TH_LAPTOP_ENGINE_HOST_TOKEN
+      TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-file-api.json
     ports: ["127.0.0.1:8485:8080"]
@@ -316,7 +321,12 @@ services:
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
       TH_TEMPORAL_ADDRESS: temporal:7233
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/temporal
-      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
+      # without the token is refused, so the health check only connects.
+      TH_HOST_URLS: http://0.0.0.0:7600/
+      TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
+      TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
   enginehost-dtfx:
@@ -329,7 +339,12 @@ services:
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/dtfx
-      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
+      # without the token is refused, so the health check only connects.
+      TH_HOST_URLS: http://0.0.0.0:7600/
+      TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
+      TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
   enginehost-elsa:
@@ -342,7 +357,12 @@ services:
       TH_STORE_PROVIDER: SqlServer
       TH_STORE_CONNECTION: "Server=sqlserver,1433;Database=th_store;User Id=th_runtime;Password=${TH_LAPTOP_RUNTIME_DB_PASSWORD};TrustServerCertificate=true"
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/elsa
-      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
+      # without the token is refused, so the health check only connects.
+      TH_HOST_URLS: http://0.0.0.0:7600/
+      TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
+      TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
   enginehost-flowable:
@@ -361,7 +381,12 @@ services:
       TH_FLOWABLE_USER: th-laptop
       TH_FLOWABLE_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}
       TH_HOST_PLANS: /var/lib/transacthub/work/plans/flowable
-      TH_HEALTH_URL: http://127.0.0.1:7600/distributions
+      # The supervisor answers the File API's front door on the compose network, with its token (R-09-95, I-158 (3)); a call
+      # without the token is refused, so the health check only connects.
+      TH_HOST_URLS: http://0.0.0.0:7600/
+      TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN
+      TH_LAPTOP_ENGINE_HOST_TOKEN: ${TH_LAPTOP_ENGINE_HOST_TOKEN:?set TH_LAPTOP_ENGINE_HOST_TOKEN}
+      TH_HEALTH_TCP: 127.0.0.1:7600
       HOME: /var/lib/transacthub/work
 
   flowable:

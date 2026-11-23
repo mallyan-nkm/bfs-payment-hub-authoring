@@ -41,7 +41,7 @@ const secret = (prefix = '') => prefix + randomBytes(15).toString('base64url').r
 const env: Record<string, string> = {
   ...process.env as Record<string, string>,
   TH_LAPTOP_SA_PASSWORD: secret('Sa1-'), TH_LAPTOP_RUNTIME_DB_PASSWORD: secret('Rt1-'), TH_LAPTOP_TESTBENCH_DB_PASSWORD: secret('Tb1-'),
-  TH_LAPTOP_TEMPORAL_DB_PASSWORD: secret('Tp1-'), TH_LAPTOP_USER_PASSWORD: secret(), TH_LAPTOP_PIPELINE_SECRET: secret(), TH_LAPTOP_FRONTDOOR_SECRET: secret(),
+  TH_LAPTOP_TEMPORAL_DB_PASSWORD: secret('Tp1-'), TH_LAPTOP_USER_PASSWORD: secret(), TH_LAPTOP_PIPELINE_SECRET: secret(), TH_LAPTOP_FRONTDOOR_SECRET: secret(), TH_LAPTOP_ENGINE_HOST_TOKEN: secret(),
   TH_LAPTOP_BANK: BANK,
 };
 const compose = (...a: string[]) => spawnSync('docker', ['compose', '-p', PROJECT, '-f', path.join(LAPTOP, 'compose.yaml'), ...a], { env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

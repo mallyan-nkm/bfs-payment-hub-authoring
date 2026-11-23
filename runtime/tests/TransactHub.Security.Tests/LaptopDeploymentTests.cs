@@ -67,6 +67,24 @@ public sealed class LaptopDeploymentTests
     }
 
     [Fact]
+    public void The_engine_host_answers_the_File_API_on_the_compose_network_with_its_token_only()
+    {
+        // R-09-95 (I-158 (3)): every engine host supervisor listens beyond loopback, inside the compose network (no published port),
+        // and takes the token by reference; the File API's front door calls it with the same token.
+        var hosts = Regex.Matches(Compose, @"^  (enginehost[a-z-]*):(?: &\S+)?\n((?:    .*\n|\n)*?)(?=^  \S|\z)", RegexOptions.Multiline).Select(m => (m.Groups[1].Value, m.Groups[2].Value)).ToList();
+        Assert.Equal(4, hosts.Count);
+        foreach (var (name, body) in hosts)
+        {
+            Assert.Contains("TH_HOST_URLS: http://0.0.0.0:7600/", body);
+            Assert.Contains("TH_ENGINE_HOST_TOKEN: env:TH_LAPTOP_ENGINE_HOST_TOKEN", body);
+            Assert.DoesNotContain("ports:", body);
+        }
+        var fileApi = Regex.Match(Compose, @"^  file-api:\n((?:    .*\n|\n)*?)(?=^  \S)", RegexOptions.Multiline).Groups[1].Value;
+        Assert.Contains("FileApi__EngineHost: http://enginehost:7600", fileApi);
+        Assert.Contains("FileApi__EngineHostTokenRef: env:TH_LAPTOP_ENGINE_HOST_TOKEN", fileApi);
+    }
+
+    [Fact]
     public void The_development_identity_provider_is_refused_in_Production()
     {
         var project = Path.Combine(Root(), "runtime", "tools", "TransactHub.DevIdentity");
