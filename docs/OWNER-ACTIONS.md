@@ -62,6 +62,14 @@ Also decide whether turnaround limits count business days or clock time. I recom
 
 **Done (23 November 2026).** All three: `package.WrongBank` in the error dictionary 1.2.0 (R-09-117), `ServiceApprover` dropped (R-09-115), and the kit is the one place that counts its scenarios, held by lint L51 (R-09-118).
 
+### A7. Decided on 23 November 2026, later the same day
+- **I-191, the cut-off:** accepted as built. The check runs right after the business date is set. A late file moves to the next business day or is refused, as the bank's row says. A file that arrives on a closing day counts for the next business day.
+- **I-205, licensing a scheme from the studio:** build it. The bank configurator proposes "license this scheme" and the bank approver approves.
+- **I-206, a payment pinned but never started:** build it. It gets an "abandoned" end, and the service console lists stuck pins.
+- **I-232, one worker set per distribution:** deferred.
+- **Outbound files:** the File API becomes a port that sends data out, so a scheme's outgoing file leaves through the File API's outbox (I-192).
+- Also to build: the upload page and the audit pages in the consoles, the file name read from the File API (I-195), the laptop's register maker, and the two studio tests that use old release numbers.
+
 ## B. Things to ask each bank
 You pass these on; I cannot get them myself. Until each arrives, the bank's folder holds a placeholder, and the runtime refuses rather than guessing.
 
@@ -73,7 +81,7 @@ You pass these on; I cannot get them myself. Until each arrives, the bank's fold
 | Every bank | The host-key fingerprints of each SFTP partner (Central Bank, ministry, core banking), and a login per partner | The SFTP connection refuses any server whose key is not pinned | I-161 |
 | Every bank | The interfaces of its sanctions engine, fraud engine, e-mail and SMS gateways, and the endpoint that receives payment events | The production connections are built, but each bank's systems speak their own form | I-163 |
 | Every bank's security officer | Two settings: should core banking read the registers masked (`SystemReadsMasked`), and how long an unmasked value stays visible (`unmaskWindow`, at most 4 hours) | Both are off or open by default; the bank must choose | I-181 |
-| Every bank's operations head | The turnaround limits, the retention period, its own closing days and its cut-off times | All default to zero or empty: nothing breaches and nothing is erased until set | I-182, I-180, I-186 |
+| Every bank's operations head | The turnaround limits, the retention period, its own closing days and its cut-off times (ADIB and DIB have no cut-off table yet) | All default to zero or empty: nothing breaches and nothing is erased until set | I-182, I-180, I-186 |
 | Every bank's data protection officer | Approval to switch on the service console's AI assistant (it sends masked data to the model provider) | It stays off until approved | I-104 |
 | Every bank's database administrators | Apply `deploy/laptop/sql/grants.sql`: the runtime's login may read and insert, never update or delete | That is what makes "insert, never update" hold at the database in production | I-157 |
 

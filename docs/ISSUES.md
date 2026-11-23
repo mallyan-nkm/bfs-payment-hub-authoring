@@ -1783,6 +1783,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Done: the test now reads the line's two times and checks what the requirement says, that the timer was placed one business day minus two minutes before the day the BPMN wrote, whatever minute the wait began. If the line is ever missing again, keep the binding's log of the run (the assertion prints its tail) and look at the reschedule's answer.
 
+**Done (23 November 2026).** The test is corrected as the recommendation says.
+
 ## I-170. The banks' configuration sets accept earlier packs
 
 **Issue.** Factory release 1.9.0 adds `expiryCalendar` to the holds (R-09-88) and routes inward payments to `p.wf.inward.v2` (R-09-87). The four banks' lock files moved to 1.9.0, but their configuration sets name earlier packs in `accepts`, so a bank cannot yet set `expiryCalendar` (the default, business days, applies) and its configuration is checked against the 1.7.0 parameter contract.
@@ -1903,6 +1905,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation, built and marked as the recommendation (R-12-28).** (1) A platform step, `p.decide.cut-off.v1`, called where the business date is set: in `uae.wps.wf.salary-file-out.v1` 1.4.0 right after `uae.p.enrich.business-date.v1`, so the same rule runs on the studio interpreter and every engine (each runs it on its workers, as any script-behind); the inward legs and the other platform workflows call it once a bank names an inward cut-off or a scheme other than WPS. (2) What moves is the business date (`header.businessDate`), which the posting reads as its value date; the file is not held until that day. (3) A file accepted on a day that is no business day counts for the next business day and is never refused for it: the cut-off is a time of a business day. (4) On the bank's half day the cut-off is the earlier of the two times. (5) The front door's acceptance, `header.receivedAt`, in the row's time zone; the edition of each table is the one in force on the day of the step, which on every engine is the day of acceptance, since the step runs at once. (6) TM01 (ISO 20022: received after the cut-off). The values reach the step as the bank's lists read from its reference tables (`fromReference`, R-11-51); a bank's configuration names them (the example bank's does). Every one of these is the builder's recommendation, not a scheme rule: the activity's provenance says so. Decide with the banks; a change is a new release of the activity.
 
+**Owner's decision (23 November 2026):** accepted as built.
+
 ## I-192. A test distribution's outward WPS file goes to the simulator, not out as a file
 
 **Issue.** The owner asked that the laptop's outbound files go out through the File API's outbox. On the laptop's test distribution the WPS port (`uae.wps.port.wps.v1`) is bound to its simulator, so the salary file the outward leg submits is a message to the simulator, not a file on `p.port.file-transfer.v1`; and no runtime adapter of the WPS port writes the file to the Central Bank's folder. The only files a runtime host puts on the file-transfer port today are the native host's inward renders (PRC, DIF, RFA) and core banking's `file-bulk` postings, and ADIB's outward path on the laptop has neither.
@@ -1969,17 +1973,23 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
 
+**Owner's decision (23 November 2026):** build it as recommended.
+
 ## I-206. A payment pinned but never started keeps its distribution open
 
 **Issue.** The front door pins a payment to the active distribution (`POST /payments/pin`) before its intake runs. When the run then fails before the payment is stored (no route, no worker, I-200), the pin stays without an end, the service console counts it as an open payment of the distribution, and the distribution can never be removed after it drains. Nothing in the consoles lists such pins or closes one.
 
 **Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
 
+**Owner's decision (23 November 2026):** build it as recommended.
+
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
 **Issue.** The north-star review of 23 November 2026 found that `POST /import-branch` loaded every configuration set under a branch's `banks/` folder into the store as values in force: no signature, no check against any distribution's parameter contract, no consent. The spec asked for values to arrive in signed configuration releases checked against the parameter contracts (R-09-51, PACKAGING section 7), but did not say whether a test environment might keep a shorter path.
 
 **Recommendation and what was chosen.** No folder brings values, in any environment. `POST /import-branch` takes workflow packages and activations only; `BankValues.Import` (the folder reader) is gone. A test environment uses the same signed configuration release as any other, checked at install against the parameter contract of every distribution not yet removed; what differs there is only who may put it in force (I-211). So the black-box test of a hot update (`e2e-p6-hot-update.test.ts`) now installs the bank's distribution and its configuration releases from GitHub, as a bank's runtime does (R-09-110).
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-110).
 
 ## I-211. Configuration releases from the release API went into force without consent
 
@@ -1989,11 +1999,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Still open.** A distribution installed through the release API (`POST /distributions`, `/sources/install`) is stored without consent, as before: it runs nothing until it is activated, and activation waits for consent outside the test environments, but R-09-77 counts installing as a change of the system. Recommendation: hold it to the same rule (stored, its host not started, until consented) in the next change to the engine host's supervisor, which starts a host for every installed distribution.
 
+**Done (23 November 2026).** Built as the recommendation says (R-09-111). Distributions installed through the release API still go without consent; activation waits for it.
+
 ## I-212. Per-scope workflow packages beside distributions: refused, not yet retired
 
 **Issue.** The release API (`POST /releases`, `/activations`, `/import-branch`, `/sources/install`) and the service console still installed and activated the earlier per-scope workflow packages beside a bank's distributions, so code could run that is not part of the distribution a payment is pinned to.
 
 **Recommendation and what was chosen.** Refuse them where the runtime's bank has a distribution installed (R-09-114): stored and activated by neither the release API nor the service console, listed as not installable, `package.KindNotInstallable`. They are not retired yet, because the studio's deploy runner, the test bench and several black-box tests still run them in runtimes with no distribution. Recommendation: retire them once those run from distributions; the packages stored stay as the record.
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-114); retiring the packages waits for the deploy runner and the test bench.
 
 ## I-213. Port bindings read once from a folder
 
@@ -2003,11 +2017,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Still open.** (1) The laptop stack has no configuration release in force until one is installed: until then its native host and File API have no binding. The insert-only test does not install one yet; the laptop's own bindings (the `directory` file transfer of its `files` volume) belong in the bank's configuration release built for the laptop. Recommendation: the laptop work installs ADIB's configuration release through the service console, with consent, after its first distribution. (2) The service console's health probes of bound hosts are built when it starts; a new binding's host is probed from the next start. (3) When the store cannot be read, a native activity is refused as `PortNotBound`, not retried. Recommendation: make that refusal transient.
 
+**Done (23 November 2026).** Built as the recommendation says (R-09-112, R-09-113).
+
 ## I-214. A backup took every bank folder's bindings
 
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-116).
 
 ## I-220. A native module still reaches into the image beyond the contract
 
@@ -2052,6 +2070,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** One set of workers now serves every distribution of a bank (R-09-133), but a worker holds one package's tasks, by name and release, with their script-behinds, maps and rules. A distribution whose other tasks are at releases the set does not register is refused at the worker (`NotOnThisQueue`). Only a native activity's build is chosen per attempt.
 
 **Recommendation.** Until a worker can load a distribution's tasks as the native host loads its assemblies, an installation starts a worker set per package that differs in those tasks, and names each set's queues in the plan of the distributions it serves. Then have the worker load each distribution's tasks from the store by the distribution the attempt names, as the native host does.
+
+**Owner's decision (23 November 2026):** deferred; one worker set per distribution stays.
 
 ## Not done, and why
 
