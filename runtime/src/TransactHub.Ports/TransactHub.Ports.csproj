@@ -8,8 +8,10 @@
 
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
-    <!-- OpenPGP for the file encryption and decryption adapters (R-12-13, Issue I-87). Pinned. -->
-    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <!-- OpenPGP for the file encryption and decryption adapters (R-12-13, Issue I-87). Pinned; 2.7.0 is the release SSH.NET needs. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <!-- SSH for the sftp adapter of the file-transfer port (R-09-80, Issue I-129). Pinned. -->
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,69 @@
+{
+  "about": "The front door route of every start message of the content branch's schemes, as the runtime (TransactHub.FileApi.Dispatch) and the studio deploy runner (studio/src/deploy/route.ts) both work it out (R-09-79). Both tests read this file.",
+  "routes": {
+    "uae.wps.pif": {
+      "scheme": "uae.wps",
+      "intakeMap": "uae.wps.map.pif-in.v1",
+      "route": {
+        "kind": "payment",
+        "direction": "inward"
+      },
+      "workflow": "p.wf.inward.v1",
+      "legs": {
+        "scheme-leg": "uae.wps.wf.agent-payment-in.v2",
+        "scheme-refuse": "uae.wps.wf.inward-refuse.v1"
+      }
+    },
+    "uae.wps.refund-order": {
+      "scheme": "uae.wps",
+      "intakeMap": "uae.wps.map.refund-order-in.v1",
+      "route": {
+        "kind": "refund",
+        "direction": "outward"
+      },
+      "workflow": "p.wf.refund-out.v1",
+      "legs": {
+        "scheme-leg": "uae.wps.wf.refund-out.v2"
+      }
+    },
+    "uae.wps.rri": {
+      "scheme": "uae.wps",
+      "intakeMap": "uae.wps.map.rri-in.v1",
+      "route": {
+        "kind": "refund",
+        "direction": "inward"
+      },
+      "workflow": "p.wf.refund.v1",
+      "legs": {
+        "scheme-leg": "uae.wps.wf.refund-request-in.v1",
+        "scheme-refuse": "uae.wps.wf.refund-request-refuse.v1"
+      }
+    },
+    "uae.wps.rtc": {
+      "scheme": "uae.wps",
+      "intakeMap": "uae.wps.map.rtc-in.v2",
+      "route": {
+        "kind": "return",
+        "direction": "inward"
+      },
+      "workflow": "p.wf.inward.v1",
+      "legs": {
+        "scheme-leg": "uae.wps.wf.return-in.v1",
+        "scheme-refuse": "uae.wps.wf.inward-refuse.v1"
+      }
+    },
+    "uae.wps.sif": {
+      "scheme": "uae.wps",
+      "intakeMap": "uae.wps.map.sif-in.v1",
+      "route": {
+        "kind": "payment",
+        "direction": "outward",
+        "segment": "corporate"
+      },
+      "workflow": "p.wf.corporate.v1",
+      "legs": {
+        "scheme-leg": "uae.wps.wf.salary-file-out.v1"
+      }
+    }
+  }
+}

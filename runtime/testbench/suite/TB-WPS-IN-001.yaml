@@ -7,7 +7,3 @@ request:
   data: { sample: wps-pif-happy }
 expect:
   outcome: settled
-knownIssue:
-  id: I-94
-  engines: [temporal, dtfx, elsa, flowable]
-  note: The deploy runner does not play the inward simulator's later deliveries (the PSI), so the leg waits for the supplement on every engine

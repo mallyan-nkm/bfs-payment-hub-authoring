@@ -3,7 +3,7 @@
 kind: testbench-profile
 name: wps-inward-reference
 title: WPS inward on the studio interpreter only, in seconds
-workflow: uae.wps.wf.agent-payment-in.v1
+workflow: p.wf.inward.v1
 message: uae.wps.pif
 tenant: example-bank
 engines: []

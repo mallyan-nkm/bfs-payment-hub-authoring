@@ -4,10 +4,10 @@ using TransactHub.Security;
 namespace TransactHub.Ports;
 
 // The file-transfer port (p.port.file-transfer.v1, R-12-12) on the runtime: a file put in a folder of the bank's counterpart,
-// read back, listed and removed. Which transport carries it is the bank's binding. This runtime builds two adapters: `simulator`,
-// an in-memory folder tree for tests and the example bank, and `directory`, a folder on the host's file system (a mounted share,
-// or a folder an SFTP gateway mirrors). An `sftp` binding is read but not built here (Issue I-129): the adapter that names it
-// refuses, and nothing is sent.
+// read back, listed and removed. Which transport carries it is the bank's binding. This runtime builds three adapters: `simulator`,
+// an in-memory folder tree for tests and the example bank; `directory`, a folder on the host's file system (a mounted share, or a
+// laptop's inbox and outbox); and `sftp`, the bank's SFTP partners (Sftp.cs, Issue I-129, R-09-80). Every file the runtime sends
+// or receives goes through the File API (runtime/src/TransactHub.FileApi, R-09-76), which uses these adapters.
 
 /// <summary>A file in or out, by folder and name.</summary>
 public interface IFileTransfer
@@ -27,7 +27,8 @@ public static class FileTransferAdapters
     {
         SimulatedFileTransfer.Name => new SimulatedFileTransfer(),
         DirectoryFileTransfer.Name => new DirectoryFileTransfer(b, secrets),
-        _ => throw new PortBindingException($"{b.Port} for {b.Tenant} names adapter {b.Adapter}, which this runtime does not build (Issue I-129)"),
+        SftpFileTransfer.Name => new SftpFileTransfer(b, secrets),
+        _ => throw new PortBindingException($"{b.Port} for {b.Tenant} names adapter {b.Adapter}, which this runtime does not build"),
     };
 
     /// <summary>A folder and a name joined as a relative path; a name that climbs out of its folder is refused.</summary>
@@ -42,7 +43,7 @@ public static class FileTransferAdapters
 }
 
 /// <summary>An in-memory folder tree: what was put is there to read, list and remove. Shared by every caller of one adapter.</summary>
-public sealed class SimulatedFileTransfer : IFileTransfer
+public sealed class SimulatedFileTransfer : IFileTransfer, IFileTransferListing
 {
     public const string Name = "simulator";
     public string Adapter => Name;
@@ -62,6 +63,9 @@ public sealed class SimulatedFileTransfer : IFileTransfer
     public Task<bool> Delete(string folder, string name, CancellationToken ct = default) =>
         Task.FromResult(files.TryRemove(FileTransferAdapters.Relative(folder, name), out _));
 
+    public async Task<IReadOnlyList<TransferFile>> ListFiles(string folder, CancellationToken ct = default) =>
+        (await List(folder, ct)).Select(n => new TransferFile(n, files[FileTransferAdapters.Relative(folder, n)].LongLength, null)).ToList();
+
     public Task<IReadOnlyList<string>> List(string folder, CancellationToken ct = default)
     {
         var prefix = FileTransferAdapters.Relative(folder, "x")[..^1];
@@ -75,7 +79,7 @@ public sealed class SimulatedFileTransfer : IFileTransfer
 /// as a secret is, so no host path is in the bank's configuration). A file is written to a temporary name and moved into place,
 /// so a reader never sees half a file.
 /// </summary>
-public sealed class DirectoryFileTransfer(PortBinding b, ISecretResolver? secrets = null) : IFileTransfer
+public sealed class DirectoryFileTransfer(PortBinding b, ISecretResolver? secrets = null) : IFileTransfer, IFileTransferListing
 {
     public const string Name = "directory";
     public string Adapter => Name;
@@ -120,6 +124,15 @@ public sealed class DirectoryFileTransfer(PortBinding b, ISecretResolver? secret
         var dir = Path.GetDirectoryName(await PathOf(folder, "x", ct))!;
         return Directory.Exists(dir)
             ? Directory.EnumerateFiles(dir).Select(Path.GetFileName).OfType<string>().Where(n => !n.EndsWith(".part", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToList()
+            : [];
+    }
+
+    public async Task<IReadOnlyList<TransferFile>> ListFiles(string folder, CancellationToken ct = default)
+    {
+        var dir = Path.GetDirectoryName(await PathOf(folder, "x", ct))!;
+        return Directory.Exists(dir)
+            ? Directory.EnumerateFiles(dir).Where(f => !f.EndsWith(".part", StringComparison.Ordinal)).Select(f => new FileInfo(f))
+                .Select(f => new TransferFile(f.Name, f.Length, new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero))).OrderBy(f => f.Name, StringComparer.Ordinal).ToList()
             : [];
     }
 }

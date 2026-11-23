@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The File API (R-09-76 to R-09-80): one runtime service every file passes through, with the runtime's front door behind its
+       intake. Its own process and container image. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.SqlServer\TransactHub.Store.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\TransactHub.Store.Migrations.PostgreSql\TransactHub.Store.Migrations.PostgreSql.csproj" />
+    <ProjectReference Include="..\TransactHub.Ports\TransactHub.Ports.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
+    <ProjectReference Include="..\TransactHub.Telemetry\TransactHub.Telemetry.csproj" />
+    <ProjectReference Include="..\TransactHub.Security\TransactHub.Security.csproj" />
+    <ProjectReference Include="..\TransactHub.Auth\TransactHub.Auth.csproj" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+</Project>
