@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STUDIO } from './server.js';
+import { stackUp } from '../../demo/stack.js';
 
 // Black box, in the browser: every step of the recorded demo and training videos, run fast with no
 // video and no voice (TH_DEMO_DRY=1). The hands-on video checks its own results as it goes: the
@@ -12,21 +13,34 @@ import { STUDIO } from './server.js';
 
 const tsx = path.join(STUDIO, 'node_modules', '.bin', 'tsx');
 /** Runs one production dry; asynchronous, so the test worker stays responsive while it runs. */
-const dry = (which: string) => new Promise<string>((resolve) => {
+const dry = (which: string, limit = 300_000) => new Promise<string>((resolve) => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), `th-dry-${which}-`));
   const c = spawn(tsx, ['demo/run.ts', which, '--out', out], { cwd: STUDIO, env: { ...process.env, TH_DEMO_DRY: '1', TH_TTS: '' } });
   let o = '';
   c.stdout.on('data', (b) => (o += b));
   c.stderr.on('data', (b) => (o += b));
-  const t = setTimeout(() => c.kill(), 300_000);
+  const t = setTimeout(() => c.kill(), limit);
   c.on('close', () => { clearTimeout(t); resolve(o); });
 });
 
 describe('demo and training videos, dry run', () => {
-  for (const which of ['concepts', 'build', 'ideas', 'hands-on']) {
+  for (const which of ['concepts', 'build', 'ideas', 'hands-on', 'architecture']) {
     it(`${which}: every scene runs`, async () => {
       const out = await dry(which);
       expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);
     }, 320_000);
+  }
+});
+
+// The runtime videos that drive the laptop stack (deploy/laptop) run only where a stack is up, with its secrets in the
+// environment (studio/demo/README.md). The full run pays two payments on Temporal, each of which waits in real time for its
+// simulator's answer, so it is given half an hour.
+const up = await stackUp();
+describe.skipIf(!up)('runtime videos on the laptop stack, dry run', () => {
+  for (const [which, limit] of [['install', 300_000], ['full-run', 1_800_000]] as const) {
+    it(`${which}: every scene runs`, async () => {
+      const out = await dry(which, limit);
+      expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);
+    }, limit + 20_000);
   }
 });

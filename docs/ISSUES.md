@@ -1888,7 +1888,54 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
-<<<<<<< HEAD
+**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
+
+## I-200. On the laptop stack the File API keeps a file but cannot start its payment
+
+**Issue.** Recording the runtime videos (`studio/demo/full-run.ts`) on the laptop stack, a salary file and a demo credit file uploaded to the File API (`POST /files/ui`, as the operator) were checked and kept, and then refused with `frontdoor.NoWorker`: "No worker of dist/adib@… serves uae.wps for uae.wps.map.sif-in.v1". The front door runs a scheme's intake map on a worker of the distribution (`FileApi:Workers:<scope>`, R-09-85), and `deploy/laptop/compose.yaml` names none, so no file that reaches the laptop's File API starts a payment. The laptop's own test runs its payments with the front door's one-off runner (`deploy/laptop/bin/run-pinned.mts`) for this reason, and its README lists it under "What is not here", but nothing says that an upload is refused.
+
+**What the video does.** It shows the upload and the refusal, then pins the payment at the release API and runs it with `run-pinned`, as an operator would, and says so.
+
+**Recommendation.** Give the laptop's File API the workers of the bank's distributions (`FileApi__Workers__*`), served by the engine host's per-distribution host or by a worker service of the runtime image, and extend `deploy/laptop/test/insert-only.mts` to upload a file and see its payment start and end on the distribution it is pinned to.
+
+## I-201. No console has a screen to upload a file to the File API
+
+**Issue.** The File API takes a person's upload (`POST /files/ui`, role `file-uploader`, which the laptop's role map gives the operators), but neither the operations console nor the service console has a page that sends one. An operator who must put a file in by hand needs a command.
+
+**Recommendation.** An upload page in the operations console: tenant (the runtime's bank), message (the messages the active distribution receives), the file; it shows the File API's answer (kept, refused, started) with its code linked to the runbook and a link to the payment it started.
+
+## I-202. The consoles' own audit trails have no screen
+
+**Issue.** The operations console keeps its own hash-chained record of what people did (`GET /ops/api/audit`), and the service console its audit (`GET /service/api/audit`), but no page of either shows them. A payment's timeline shows that payment's facts; the console's own trail (filters saved, reports downloaded, unmasks asked, consents given) can be read only from the API. `docs/runtime/PLATFORM-PARITY.md` lists the audit log as built.
+
+**Recommendation.** An Audit page in each console, for the Supervisor and the BankApprover in the operations console and for the service roles in the service console: newest first, filtered by person, action and date, each row with its hash and whether the chain verifies.
+
+## I-203. The laptop's identity provider has no register maker
+
+**Issue.** `deploy/laptop/identity/directory.json` has five synthetic users, and no role map gives `RegisterMaker`, so on the laptop the operations console's Registers section can be read but nobody can propose a register change, and the maker-checker of a register cannot be shown.
+
+**Recommendation.** Add a synthetic register maker (`reg.maker`, group `th-register-makers`) to the directory and `RegisterMaker` for that group to `role-map-ops.json`, with the bank approver consenting as today.
+
+## I-204. The new-scheme tests name configuration releases of an earlier factory
+
+**Issue.** `studio/test/blackbox/e2e-new-scheme.test.ts` and `ui-build.test.ts` build the synthetic scheme `uae.demo` and then save the example bank's configuration set as release `1.3.0` (and expect `config:example-bank@1.2.0` in the web app). The example bank's shipped set is at `1.8.0`, so the save is refused (a release is later than the last, R-11-35) and every step after it fails: the payment is rejected at the route, the export names `1.8.0`. Before that, both stopped earlier still: the demo scheme sent its file with no protect step, which L46 refuses; that is fixed (the subflow encrypts first). `demo/build.ts` already derives the next release from the shipped one and its dry run passes.
+
+**Recommendation.** Derive the next release from the set the studio returns, as `demo/build.ts` and `e2e-wps.test.ts` do (I-187), in both tests, and match the saved release by pattern in the web app's step.
+
+## I-205. A scheme built in the studio cannot be licensed to a bank from the studio
+
+**Issue.** A distribution carries the schemes the bank pack's lock file licenses (`licensedSchemes`, R-11-37). The lock file is written by `npm run studio -- bank-pack <bank> --licensed <scheme> --write`, which writes this repository's folder, not the studio's content branch; no screen or API of the running studio changes it. So a scheme built in the studio (the synthetic `uae.demo` in `studio/demo/full-run.ts`) can be accepted in a bank's configuration set, enabled as a rail and tested on the studio's bench for the bank, yet the bank's next distribution does not carry it, and the runtime finds no route for its file ("No start message in the package's dispatch tables leads to p.wf.corporate.v1").
+
+**What the video does.** It builds and tests the new leg in the studio, then sends a WPS file through the runtime, and says why.
+
+**Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
+
+## I-206. A payment pinned but never started keeps its distribution open
+
+**Issue.** The front door pins a payment to the active distribution (`POST /payments/pin`) before its intake runs. When the run then fails before the payment is stored (no route, no worker, I-200), the pin stays without an end, the service console counts it as an open payment of the distribution, and the distribution can never be removed after it drains. Nothing in the consoles lists such pins or closes one.
+
+**Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
+
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
 **Issue.** The north-star review of 23 November 2026 found that `POST /import-branch` loaded every configuration set under a branch's `banks/` folder into the store as values in force: no signature, no check against any distribution's parameter contract, no consent. The spec asked for values to arrive in signed configuration releases checked against the parameter contracts (R-09-51, PACKAGING section 7), but did not say whether a test environment might keep a shorter path.
@@ -1922,7 +1969,6 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
->>>>>>> claude/cool-ptolemy-js3lcz
 
 ## I-220. A native module still reaches into the image beyond the contract
 
@@ -1947,8 +1993,6 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The studio builds a distribution's native assemblies from the code-behind project at publish (`TH_NATIVE_MODULES=build`, R-09-120). A studio with no .NET SDK, such as the laptop image, takes the same build made ahead of time (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh` in the image's build stage). That folder is checked against its own SHA-256, but nothing signs it: it is trusted as the studio's own files are. The distribution's signature then covers whatever the folder held.
 
 **Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
-=======
-**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
 
 ## Not done, and why
 

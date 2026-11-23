@@ -33,6 +33,22 @@ public sealed class LaptopDeploymentTests
         Assert.All(bases, b => Assert.Matches(@"@sha256:[0-9a-f]{64}$", b));
     }
 
+    /// <summary>The .NET projects a build publishes: the words src/... and tools/... in its publish loop.</summary>
+    static string[] Published(string text) =>
+        Regex.Matches(text, @"(?<![\w/])((?:src|tools)/TransactHub\.[\w.]+)").Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
+
+    [Fact]
+    public void The_local_build_publishes_every_project_the_source_build_does()
+    {
+        // build.sh --local feeds the same final stages as the Dockerfile's source build; a project missing from it leaves its
+        // service with no program in the image (the File API's container restarted for want of its dll).
+        var source = Dockerfile[Dockerfile.IndexOf("AS dotnet-source\n", StringComparison.Ordinal)..Dockerfile.IndexOf("AS ops-console-source", StringComparison.Ordinal)];
+        var script = File.ReadAllText(Path.Combine(Laptop, "build.sh"));
+        var local = script[script.IndexOf("for p in", StringComparison.Ordinal)..script.IndexOf("done", script.IndexOf("for p in", StringComparison.Ordinal), StringComparison.Ordinal)];
+        Assert.Contains("src/TransactHub.FileApi", Published(source));
+        Assert.Equal(Published(source), Published(local));
+    }
+
     [Fact]
     public void Every_final_image_runs_as_an_unprivileged_user_with_a_health_check()
     {
