@@ -94,7 +94,7 @@ public sealed class ConsentTests(Databases dbs)
         Assert.Contains("names bank dib, but this runtime serves example-bank only", (string?)(await J.Of(verify))["error"]);
         var install = await se.PostAsJsonAsync("/service/api/content/install", new { tag = "dist/dib/2026.11.23-1", reason = "try (synthetic)" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, install.StatusCode);
-        Assert.Equal("package.Rejected", (string?)(await J.Of(install))["code"]);
+        Assert.Equal("package.WrongBank", (string?)(await J.Of(install))["code"]);
         Assert.Empty((await J.Of(await se.GetAsync("/service/api/actions/pending"))).AsArray());
 
         // Already in the store (as a runtime of no bank could have stored it): never activated here, even with consent.

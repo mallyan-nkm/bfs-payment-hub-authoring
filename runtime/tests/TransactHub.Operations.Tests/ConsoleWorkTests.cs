@@ -348,48 +348,55 @@ public sealed class ConsoleWorkTests(Databases dbs)
         };
         var draft = await regs.Draft(Bank, "corporate", "operator:maker-1", "console", [new RegisterInput(corporate)], "onboarding");
         await regs.Decide(draft!.Id, "operator:approver-1", true);
-        var banks = Directory.CreateTempSubdirectory("th-banks-");
-        try
+        // The bank's core-banking binding, as its configuration release put in force leaves it in the store (R-09-112).
+        async Task Bind(string release, string balance)
         {
-            Directory.CreateDirectory(Path.Combine(banks.FullName, Bank));
-            File.WriteAllText(Path.Combine(banks.FullName, Bank, "core-banking.yaml"), """
-                kind: port-bindings
-                tenant: example-bank
-                bindings:
-                  - port: p.port.core-banking.v1
-                    adapter: simulator
-                    validFrom: 2026-01-01T00:00:00Z
-                    settings:
-                      openingBalance: "250000.50"
-                      currency: AED
-                      accounts.CIF000111: AE070331234567890123456,AE260331234567890123457
-                      chargeFixed: "10"
-                      chargePerRecord: "1.5"
-                      vatRate: "0.05"
-                """);
-            await using var host = new Host(store, b => b.UseSetting("Operations:Banks", banks.FullName));
-            var channel = As(host, "channel-ib", $"{Bank}:channel-enquiry");
-            var op = As(host, "op-1", $"{Bank}:Operator");
-
-            Assert.Equal(HttpStatusCode.Forbidden, (await op.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" })).StatusCode);
-            var bal = await Json(await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" }));
-            Assert.Equal(250000.50m, (decimal)bal["available"]!);
-            Assert.Equal("simulator", (string?)bal["adapter"]);
-            // An account the register does not hold for the corporate, or a corporate it does not hold, is never sent.
-            Assert.Equal(HttpStatusCode.NotFound, (await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE260331234567890123457" })).StatusCode);
-            Assert.Equal(HttpStatusCode.NotFound, (await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-9999", account = "AE070331234567890123456" })).StatusCode);
-
-            var accts = await Json(await channel.GetAsync("/api/channel/accounts?corporateId=C-0001"));
-            Assert.Equal(["AE070331234567890123456", "AE260331234567890123457"], accts["accounts"]!.AsArray().Select(a => (string?)a!["account"]));
-            Assert.Equal([true, false], accts["accounts"]!.AsArray().Select(a => (bool)a!["registered"]!));
-
-            var q = await Json(await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=2&amount=1500"));
-            Assert.Equal(13m, (decimal)q["charge"]!);
-            Assert.Equal(0.65m, (decimal)q["vat"]!);
-            Assert.True((bool)q["preview"]!);
-            Assert.Equal(HttpStatusCode.BadRequest, (await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=0")).StatusCode);
+            await using var db = StoreDbContext.Open(store);
+            await new VersionedValues(db).Publish(ConfigurationBindings.Kind, Bank, "p.port.core-banking.v1", new JsonObject
+            {
+                ["binding"] = new JsonObject
+                {
+                    ["port"] = "p.port.core-banking.v1", ["adapter"] = "simulator", ["validFrom"] = "2026-01-01",
+                    ["settings"] = new JsonObject
+                    {
+                        ["openingBalance"] = balance, ["currency"] = "AED", ["accounts.CIF000111"] = "AE070331234567890123456,AE260331234567890123457",
+                        ["chargeFixed"] = "10", ["chargePerRecord"] = "1.5", ["vatRate"] = "0.05",
+                    },
+                },
+                ["configurationRelease"] = release,
+            }, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), null, "bank.checker");
         }
-        finally { banks.Delete(true); }
+        // A bank folder is never read: a host given one does not start (R-09-113).
+        await using (var folder = new Host(store, b => b.UseSetting("Operations:Banks", Path.GetTempPath())))
+            Assert.Contains("Operations:Banks names a folder of port bindings", Assert.ThrowsAny<Exception>(() => folder.CreateClient()).ToString());
+        await using var host = new Host(store);
+        var channel = As(host, "channel-ib", $"{Bank}:channel-enquiry");
+        var op = As(host, "op-1", $"{Bank}:Operator");
+        // No configuration release in force binds core banking yet: nothing is made up.
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" })).StatusCode);
+        await Bind("1.0.0", "250000.50");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await op.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" })).StatusCode);
+        var bal = await Json(await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" }));
+        Assert.Equal(250000.50m, (decimal)bal["available"]!);
+        Assert.Equal("simulator", (string?)bal["adapter"]);
+        // An account the register does not hold for the corporate, or a corporate it does not hold, is never sent.
+        Assert.Equal(HttpStatusCode.NotFound, (await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE260331234567890123457" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-9999", account = "AE070331234567890123456" })).StatusCode);
+
+        var accts = await Json(await channel.GetAsync("/api/channel/accounts?corporateId=C-0001"));
+        Assert.Equal(["AE070331234567890123456", "AE260331234567890123457"], accts["accounts"]!.AsArray().Select(a => (string?)a!["account"]));
+        Assert.Equal([true, false], accts["accounts"]!.AsArray().Select(a => (bool)a!["registered"]!));
+
+        var q = await Json(await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=2&amount=1500"));
+        Assert.Equal(13m, (decimal)q["charge"]!);
+        Assert.Equal(0.65m, (decimal)q["vat"]!);
+        Assert.True((bool)q["preview"]!);
+        Assert.Equal(HttpStatusCode.BadRequest, (await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=0")).StatusCode);
+
+        // A later configuration release binds core banking anew: the next enquiry asks it, with no restart (R-09-112).
+        await Bind("1.1.0", "1000.00");
+        Assert.Equal(1000.00m, (decimal)(await Json(await channel.PostAsJsonAsync("/api/channel/accounts/balance", new { corporateId = "C-0001", account = "AE070331234567890123456" })))["available"]!);
     }
 
     [Fact]

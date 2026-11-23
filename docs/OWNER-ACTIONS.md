@@ -22,6 +22,8 @@ Status: 23 November 2026.
 2. **Native code in the distribution:** each distribution carries its native assemblies, checked by hash and loaded side by side.
 3. **Engine host:** values are read as of each step's date; one worker per distribution; two activations at once cannot both win; files go through the File API by default; and the laptop stack gets a PostgreSQL version.
 
+**Done for piece 1 (23 November 2026).** Values arrive only in signed configuration releases, checked against every distribution's bounds and put in force on a bank approver's consent (R-09-110, R-09-111); the release API's configuration installs wait for that consent outside its test environments; every host reads its bindings from the configuration release in force, with no restart (R-09-112, R-09-113); a backup holds its own bank only (R-09-116); workflow packages are refused beside a distribution (R-09-114). Issues I-210 to I-214 say what is left: the laptop stack must now install its bank's configuration release (I-213), and a distribution's install through the release API is not yet held to consent (I-211).
+
 ### A2. Capabilities of the original platform with no home (I-189)
 The original had these; nothing in the new design covers them yet.
 
@@ -57,6 +59,8 @@ Also decide whether turnaround limits count business days or clock time. I recom
 - **I-154:** give "this is another bank's package" an error code of its own. Today it reuses `package.Rejected`. Recommendation: yes.
 - **I-155:** drop the old role name `ServiceApprover` once role maps say `BankApprover`. Recommendation: yes, in the next runtime release.
 - **I-190:** the spec text still says the conformance kit has 55 scenarios; it has 57. Recommendation: correct it the next time those spec parts change.
+
+**Done (23 November 2026).** All three: `package.WrongBank` in the error dictionary 1.2.0 (R-09-117), `ServiceApprover` dropped (R-09-115), and the kit is the one place that counts its scenarios, held by lint L51 (R-09-118).
 
 ## B. Things to ask each bank
 You pass these on; I cannot get them myself. Until each arrives, the bank's folder holds a placeholder, and the runtime refuses rather than guessing.

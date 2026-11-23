@@ -44,7 +44,7 @@ public sealed class DistributionContentTests(Databases dbs)
         return bytes;
     }
 
-    static Dictionary<string, byte[]> Configuration(ECDsa key, string release, string ack)
+    public static Dictionary<string, byte[]> Configuration(ECDsa key, string release, string ack)
     {
         var files = new Dictionary<string, string> { ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {Bank}\nrelease: {release}\nvalues:\n  - parameter: uae.wps.exchange.submit-salary-file.v1#ackWait\n    value: {ack}\n    validFrom: 2026-12-01\nbindings: []\n" };
         var bom = new JsonObject { ["artefacts"] = new JsonArray(files.Select(f => (JsonNode)new JsonObject { ["path"] = f.Key, ["sha256"] = Sha(f.Value) }).ToArray()) };

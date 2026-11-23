@@ -150,6 +150,8 @@ public sealed class ApiHost(StoreOptions o, TestSigners signers, Action<IWebHost
         // The one bank this runtime serves (R-09-76); the pipeline may still change which release runs in these environments (R-09-78).
         b.UseSetting("TH_BANK", Bank);
         b.UseSetting("Releases:MachineActivationEnvironments", "test,dev,kit,uat,prod");
+        // The environment this runtime is (R-09-111): one the pipeline may change, so a configuration release it installs is in force at once.
+        b.UseSetting("Releases:Environment", "test");
         b.UseSetting("Auth:Oidc:Issuer", TestIdp.Issuer);
         b.UseSetting("Auth:Oidc:Audience", TestIdp.Audience);
         b.UseSetting("Auth:Oidc:SigningKeys", Idp.Jwks);

@@ -238,7 +238,8 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
     }
 
     public HttpClient Engineer => As("se-1", "*:ServiceEngineer");
-    public HttpClient Approver => As("sa-1", "*:ServiceApprover");
+    /// <summary>A second bank approver, another person than <see cref="BankApprover"/>.</summary>
+    public HttpClient Approver => As("sa-1", "*:BankApprover");
     /// <summary>The bank approver who consents to a change of the system another person asked for (R-09-77).</summary>
     public HttpClient BankApprover => As("ba-1", "*:BankApprover");
 

@@ -21,6 +21,8 @@ public static class ErrorCodes
     public const string NotSigned = "signing.NotSigned", Tampered = "signing.Tampered", UntrustedKey = "signing.UntrustedKey", RevokedKey = "signing.RevokedKey",
         RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid";
     public const string PackageRejected = "package.Rejected", NotPromotable = "package.NotPromotable", KindNotInstallable = "package.KindNotInstallable";
+    // Content of another bank than the runtime's (R-09-76), with its own code since the dictionary's 1.2.0 (Issue I-154).
+    public const string WrongBank = TransactHub.Api.RuntimeBank.WrongBank;
     public const string SourceUnreachable = "package-source.Unreachable", UnknownVersion = "package-source.UnknownVersion";
     public const string Unauthenticated = "auth.Unauthenticated", Forbidden = "auth.Forbidden", StudioIssuer = "auth.StudioIssuer", DevRefused = "auth.DevRefused", RoleMapInvalid = "auth.RoleMapInvalid";
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",

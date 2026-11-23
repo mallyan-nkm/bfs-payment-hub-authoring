@@ -17,9 +17,11 @@ using TransactHub.Ports;
 //   GET  /files         -> the files native activities received or produced (a rendered SIF, PRC, DIF or RFA, an encrypted or decrypted file): hash, name, size
 //   GET  /files/{sha}   -> one of them, as kept
 //   GET  /postings      -> what the core-banking simulator adapter was asked to post, per tenant and binding
-// TH_NATIVE_URLS (default http://127.0.0.1:7300) sets where it listens. TH_BANKS_DIR names the banks' configuration
-// (content-configurations/banks): the port bindings the platform's core-banking, file and register activities resolve per
-// tenant, as of the engine's time (plan P2, R-08-15). Without it no tenant has a port bound, and those activities are refused.
+// TH_NATIVE_URLS (default http://127.0.0.1:7300) sets where it listens. The port bindings the platform's core-banking, file and
+// register activities resolve per tenant, as of the engine's time (plan P2, R-08-15): on a runtime (TH_BANK and its store) those of
+// the bank's configuration release in force, read live (R-09-112); on a host that serves no runtime's bank (the studio's test
+// runs) those of TH_BANKS_DIR (content-configurations/banks, R-09-113). Without either no tenant has a port bound, and those
+// activities are refused.
 // With TH_STORE_PROVIDER and TH_STORE_CONNECTION every file is also kept in the store (Issue I-97, R-09-62), signed by the key
 // TH_FILE_SIGNING_KEY_REF names (a P-256 private key in PEM, by reference); without one the host makes a key for its own lifetime.
 //
@@ -61,14 +63,22 @@ RouteHandlerBuilder Guarded(RouteHandlerBuilder r) => authenticated ? r.RequireA
 
 var served = new ConcurrentDictionary<string, int>();
 var banksDir = Environment.GetEnvironmentVariable("TH_BANKS_DIR");
-var bindings = banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings();
-var coreBanking = new CoreBankingResolver(bindings);
 // With TH_STORE_PROVIDER and TH_STORE_CONNECTION the platform's holds are answered here too (p.port.operations-queue.v1 given to
 // the runtime): a hold is opened on the payment's chain and answered held; the engine awaits the operator's decision (R-05-50, R-05-56).
-var storeProvider = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER");
-var storeConnection = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION");
+// The store as TH_STORE_PROVIDER and TH_STORE_CONNECTION name it, or as every runtime host's settings do (Store:Provider, Store:Connection).
+var storeProvider = Environment.GetEnvironmentVariable("TH_STORE_PROVIDER") is { Length: > 0 } sp ? sp : builder.Configuration["Store:Provider"];
+var storeConnection = Environment.GetEnvironmentVariable("TH_STORE_CONNECTION") is { Length: > 0 } sc ? sc : builder.Configuration["Store:Connection"];
 TransactHub.Store.StoreOptions? store = string.IsNullOrEmpty(storeProvider) || string.IsNullOrEmpty(storeConnection) ? null
     : new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(storeProvider, true), storeConnection);
+// The port bindings (R-09-112, R-09-113). The native host of a runtime (TH_BANK, with its store) reads its bank's bindings from the
+// configuration release in force, live, as of each attempt's time: a binding a new configuration release brings is used with no
+// restart, and no folder is read. A host that serves no runtime's bank (the studio's test runs) may read a folder, TH_BANKS_DIR.
+var runtimeBank = Environment.GetEnvironmentVariable("TH_BANK");
+if (runtimeBank is { Length: > 0 } && store is null) throw new InvalidOperationException("TH_BANK is set but no store: a runtime's native host reads its bank's port bindings from the configuration release in force (set TH_STORE_PROVIDER and TH_STORE_CONNECTION; spec R-09-112)");
+if (runtimeBank is { Length: > 0 }) TransactHub.Operations.StoreBindings.RefuseFolder(banksDir, "TH_BANKS_DIR");
+var bindings = runtimeBank is { Length: > 0 } ? TransactHub.Operations.StoreBindings.Live(store!, runtimeBank)
+    : banksDir is { Length: > 0 } ? CoreBankingResolver.ReadBanks(banksDir) : new PortBindings();
+var coreBanking = new CoreBankingResolver(bindings);
 INativeActivity[] holds = store is null ? [] : TransactHub.Operations.StoreHold.For(store);
 var signingRef = Environment.GetEnvironmentVariable("TH_FILE_SIGNING_KEY_REF");
 var signingKey = signingRef is { Length: > 0 }

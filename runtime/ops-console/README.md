@@ -31,7 +31,7 @@ Then open http://127.0.0.1:7400. Configuration:
 | `Operations:FileApi:Url`, `:Folder`, `:TokenRef` | A resend goes through the File API's outbox onto the bank's binding (R-09-84); else `Operations:FileTransfer:Folder` (or `TH_FILE_TRANSFER_DIR`), a folder |
 | `Operations:Notify:Adapter`, `Operations:Notify:Url` | Where the console's alerts go: `log` (default, ids only), `simulator`, or `webhook` (I-182) |
 | `Operations:TatSweepSeconds` | How often turnaround breaches are looked for and alerted, each once (60, R-05-68) |
-| `Operations:Banks` (or `TH_BANKS_DIR`) | The bank folder whose core-banking binding the channel's core-banking enquiries use where no configuration release bound one (R-09-100) |
+| (no bank folder) | The channel's core-banking enquiries use the core-banking binding of the bank's configuration release in force, read at each enquiry (R-09-100, R-09-112); the host does not start with `Operations:Banks` or `TH_BANKS_DIR` (R-09-113) |
 | `Operations:Registers`, `Operations:Registers:SystemReadsMasked` | Further register kinds; `true` makes the register API answer core banking masked (R-09-101, I-181) |
 | `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:Oidc:Authority`, `Auth:Oidc:SigningKeys` | The bank's identity provider, through the runtime's authentication library (`runtime/src/TransactHub.Auth`, `AddRuntimeAuth`): the API validates its bearer tokens |
 | `Auth:RoleMap` | The bank's role map (kind `runtime-role-map`, or a reference to it): its claims and groups to the roles `Operator` and `Supervisor` and the tenants |
@@ -99,7 +99,7 @@ The same web app has a Test bench section (`src/testbench`, `#/testbench`) for t
 
 ## The service console
 
-The same web app has a Service section for service engineers (R-06-25, R-09-39 to R-09-44; design: `spec/design/09-export-bindings.md`, section 9.12), served by its own API host, `runtime/src/TransactHub.Service.Api` (routes under `/service/api`, the built app at `/`). The app finds which APIs answer (`/ops/api`, `/service/api`, or both behind one gateway) and shows their sections. Its pages: Health, Content, Logs, Errors and runbooks, Actions, Backup and the Assistant. Every action asks for a reason and is a fact; one that changes the system (an install, activation, drain, removal, rollback, restore, and the troubleshooting actions that change what runs) waits for a BankApprover, another person (R-09-77; `ServiceApprover` is its earlier name); every error shown links to its runbook (`#/service/errors/<code>`).
+The same web app has a Service section for service engineers (R-06-25, R-09-39 to R-09-44; design: `spec/design/09-export-bindings.md`, section 9.12), served by its own API host, `runtime/src/TransactHub.Service.Api` (routes under `/service/api`, the built app at `/`). The app finds which APIs answer (`/ops/api`, `/service/api`, or both behind one gateway) and shows their sections. Its pages: Health, Content, Logs, Errors and runbooks, Actions, Backup and the Assistant. Every action asks for a reason and is a fact; one that changes the system (an install, activation, drain, removal, rollback, restore, and the troubleshooting actions that change what runs) waits for a BankApprover, another person (R-09-77; the earlier name `ServiceApprover` gives nothing, R-09-115); a configuration release the release API installed outside its test environments waits there as `put-in-force` (R-09-111); every error shown links to its runbook (`#/service/errors/<code>`).
 
 ```
 cd runtime && dotnet run --project src/TransactHub.Service.Api -- \
@@ -111,7 +111,7 @@ cd runtime && dotnet run --project src/TransactHub.Service.Api -- \
 | --- | --- |
 | `Service:Environment` | The environment it activates in (default `production`); `Releases:TestEnvironments` as the release API's |
 | `Service:Errors`, `Service:Docs` | The published artefacts holding the error dictionaries (default `content-configurations/artefacts`), and the documents the assistant searches (default `docs/north-star`) |
-| `Service:Probes:<n>:Name`, `:Group`, `:Kind`, `:Target`, `:Dashboard` | Cheap probes (`http`, `tcp`, `worker`, which reads the worker's version); `Service:Banks` adds a TCP probe per bound port's host; `Service:Certificates:<n>:Name` and `:Path`, `Service:Disks:<n>`, `Service:Dashboards:<name>`; `TH_FLOWABLE_URL`, `TH_TEMPORAL_ADDRESS` |
+| `Service:Probes:<n>:Name`, `:Group`, `:Kind`, `:Target`, `:Dashboard` | Cheap probes (`http`, `tcp`, `worker`, which reads the worker's version); the bank's configuration release in force adds a TCP probe per bound port's host (R-09-112); `Service:Certificates:<n>:Name` and `:Path`, `Service:Disks:<n>`, `Service:Dashboards:<name>`; `TH_FLOWABLE_URL`, `TH_TEMPORAL_ADDRESS` |
 | `TH_BACKUP_SIGNING_KEY`, `Service:Backup:TrustedSigners`, `Service:RestoreDir` | The backup's signing key (a reference), whose backups it restores, and where a restore writes the bindings, the role map and the trusted signers |
 | `Service:TrustWritable` | `true` lets `rotate-trusted-key` write the file `TH_TRUSTED_SIGNERS` names |
 | `Service:Project` | `true` when this host is the installation's projecting process |

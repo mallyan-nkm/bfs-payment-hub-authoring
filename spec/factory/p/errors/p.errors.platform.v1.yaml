@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.1.0
+release: 1.2.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -614,6 +614,28 @@ entries:
         - Do not install it. Ask the studio for a new release.
       escalation: Escalate to the bank's security officer and the runtime's service team. Do not install or activate anything
         until it is explained.
+  - code: package.WrongBank
+    title: The content is another bank's
+    category: technical
+    retryable: false
+    raisedBy:
+      - signing
+      - package-source
+      - service-console
+    meaning: A distribution, a configuration release, a workflow package exported for a tenant, a payment, a kept file or a
+      backup names another bank than the one this runtime serves (TH_BANK, set at install), so it is refused at verify, install
+      and activate, whatever the caller's roles are (R-09-76).
+    causes:
+      - The version was built by the studio for another bank, which builds distributions for every bank.
+      - The runtime was installed with another bank in TH_BANK than the one meant.
+    runbook:
+      checks:
+        - Read the bank the message names and the bank this runtime serves.
+        - Check TH_BANK in the runtime's installation settings.
+      safeActions:
+        - Do not install it here. Install the bank's own version, or install the other bank's version in that bank's runtime.
+      escalation: Escalate to the runtime's service team and the bank's security officer if another bank's content was offered
+        to this runtime on purpose.
   - code: package.NotPromotable
     title: The package may not be activated here
     category: technical
@@ -982,19 +1004,21 @@ entries:
         - Read the trace in the installation's own log and trace tools by its trace id.
       escalation: Escalate to the runtime's service team with the trace id and the time.
   - code: service.ApproverRequired
-    title: A risky action waits for a ServiceApprover
+    title: A change of the system waits for a bank approver's consent
     category: technical
     retryable: false
     raisedBy:
       - service-console
-    meaning: The action is risky; it is carried out only when a ServiceApprover, another person, approves it.
+    meaning: The action changes the system; it is carried out only when a bank approver (the role BankApprover), another person
+      than the one who asked, consents (R-09-77). A configuration release the release API installed outside its test
+      environments waits in the same way before it is put in force (R-09-111).
     causes:
-      - The action changes what runs or what new payments take.
+      - The action changes what runs, what new payments take, or the bank's values or bindings in force.
     runbook:
       checks:
         - Check the pending actions.
       safeActions:
-        - Ask a ServiceApprover to decide it.
+        - Ask a bank approver to decide it.
       escalation: Escalate to the runtime's service team with the payment id, the engine and the trace id.
   - code: service.RemovalRefused
     title: A release may not be removed now
