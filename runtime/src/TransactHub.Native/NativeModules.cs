@@ -115,7 +115,8 @@ public sealed class NativeModules : IDisposable
                 if (!Removed(await new DistributionRegistry(db).StatesOf(distribution, ct))) unloaded.TryRemove(distribution, out _);
             if (unloaded.ContainsKey(distribution)) throw new NativeRefusal("DistributionRemoved", $"{distribution} was removed: its native assemblies are unloaded");
         }
-        var lazy = tables.GetOrAdd(distribution, d => new Lazy<Task<ActivityTable>>(() => Load(d, ct)));
+        // Loaded once for every attempt that asks, whichever asked first: not cancelled with that one attempt.
+        var lazy = tables.GetOrAdd(distribution, d => new Lazy<Task<ActivityTable>>(() => Load(d, CancellationToken.None)));
         try { return await lazy.Value; }
         catch
         {

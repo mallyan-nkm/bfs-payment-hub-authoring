@@ -105,6 +105,7 @@ var distributions = store ?? (builder.Configuration["Store:Provider"] is { Lengt
     ? new TransactHub.Store.StoreOptions(Enum.Parse<TransactHub.Store.StoreProvider>(sp, true), sc) : null);
 var modules = new NativeModules(Platform, (dist, _) => new HostServices(dist, keep, bindings, coreBanking), distributions, devModules, refreshEvery);
 var development = await modules.For(null);
+app.Lifetime.ApplicationStopping.Register(modules.Dispose);
 
 var health = app.MapGet("/health", () => Results.Ok(new { activities = development.ByName.Keys.Order(), served, store = store is not null, signingKey = TransactHub.Store.FileSignature.KeyIdOf(signingKey), contract = NativeContract.Version }));
 if (authenticated) health.AllowAnonymous();
