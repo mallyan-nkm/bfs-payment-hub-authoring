@@ -9,7 +9,7 @@ The Temporal binding lives in the runtime: `runtime/src/TransactHub.Engine.Tempo
 ```
 runtime/tools/temporal-test-server/setup.sh     # once: resolve the test server
 cd studio
-npx tsx engines/temporal/run-kit.ts             # all 56 scenarios, PASS or FAIL each
+npx tsx engines/temporal/run-kit.ts             # every scenario, PASS or FAIL each
 npx tsx engines/temporal/run-kit.ts CK-AWAIT-03 --verbose
 npm run studio -- deploy <export-for-temporal.zip> --workflow p.wf.corporate.v1 ...   # a deployment, a worker process per task queue
 ```

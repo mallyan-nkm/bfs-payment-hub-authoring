@@ -23,13 +23,13 @@ The studio is a design-time tool. It must run workflows on its own interpreter w
 | Python scripts | One isolated `python3 -I -S` process per call, a restricted set of builtins and pure modules, JSON lines to the studio for port and rule calls | The same interface and the same simulators, rule service and virtual clock as TypeScript; a parity suite checks both give the same result. It runs in a worker process with an empty environment, no network (a namespace on Linux), Landlock and an audit hook, and memory and time limits (R-08-20, Issue I-119). |
 | Tests | Vitest | Fast, TypeScript native. |
 | Export | Generated files in a reproducible zip | R-09-15. No engine SDK is a dependency of the studio. |
-| AI assistant | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output, server-side refusal fallbacks | Drafts go through the same gates as a designer's; publish stays with maker-checker. Needs `ANTHROPIC_API_KEY` or an `ant` profile on the server. |
+| AI assistant | `@anthropic-ai/sdk` on the Claude API, structured output, server-side refusal fallbacks | Drafts go through the same gates as a designer's; publish stays with maker-checker. Needs `ANTHROPIC_API_KEY` or an `ant` profile on the server. |
 | Engine harnesses | One per target under `studio/engines/`, each with its own toolchain | Keeps engine SDKs out of the studio; the kit adapter interface (`KitAdapter`) is the contract. |
 
 ## Consequences
 
 - The interpreter in `src/interp/` is the reference for the conformance kit. An engine adapter replaces `runScenario` in `src/conformance/kit.ts` and keeps the trace comparison.
-- Engines run beside the studio, not inside it. `studio/engines/dtfx/` (C#, DurableTask.Core on a time-skipping in-process orchestration service) and `studio/engines/flowable/` (Java, embedded Flowable 7.1.0 with H2) run the conformance kit through the party service (`src/conformance/party.ts`), which supplies stubs, scripts and simulators on the engine's clock. Temporal is not built: see the README.
+- Engines run beside the studio, not inside it. `studio/engines/dtfx/` (C#, DurableTask.Core on a time-skipping in-process orchestration service), `studio/engines/elsa/` (C#, Elsa Workflows 3), `studio/engines/temporal/` (Temporal's time-skipping test server, the runtime's Temporal binding) and `studio/engines/flowable/` (Java, embedded Flowable 7.1.0 with H2) run the conformance kit through the party service (`src/conformance/party.ts`), which supplies stubs, scripts and simulators on the engine's clock. The C# engines share one interpreter (`studio/engines/shared/`).
 - A bank's scripts run in a worker process of their own, one tenant per worker (R-08-20). A platform without namespaces or Landlock keeps fewer layers (Issue I-147).
 
 ## Open decisions this record does not close

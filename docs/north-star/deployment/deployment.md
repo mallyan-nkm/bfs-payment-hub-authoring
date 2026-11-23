@@ -36,11 +36,15 @@ Each installation runs one engine (D1). How each engine is hosted is decision D3
 Beside the engine:
 
 - **The store**: SQL Server 2022 or PostgreSQL 16, as tested. Migrations come from the provider's migrations assembly.
-- **The release API** (`TransactHub.Api`): stores releases and activations, each verified against the studio's signature. It takes bearer JWTs from the bank's identity provider only, with roles from the bank's role map (`guidelines/access-control.md`). It needs `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:RoleMap` and `TH_TRUSTED_SIGNERS`, or it does not start.
+- **The release API** (`TransactHub.Api`): stores releases and activations, each verified against the studio's signature. It takes bearer JWTs from the bank's identity provider only, with roles from the bank's role map (`guidelines/access-control.md`). It needs `TH_BANK`, `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:RoleMap` and `TH_TRUSTED_SIGNERS`, or it does not start. Its pipeline may change which distribution runs only in a test environment (R-09-78); elsewhere the service console does it, with a bank approver's consent (R-09-77).
 - **The native host** (`TransactHub.Native`): code-behind for native activities, on `TH_NATIVE_URLS`.
+- **The File API** (`TransactHub.FileApi`, its own process): every file in and out, and the front door behind its intake (R-09-82 to R-09-86).
+- **The engine host** (`tools/TransactHub.EngineHost`): a supervisor per engine for the bank and environment, a host per distribution (R-09-66 to R-09-68, R-09-93 to R-09-95).
+- **The operations console** (`TransactHub.Operations.Api`) and **the service console** (`TransactHub.Service.Api`), one web app (`runtime/ops-console`).
+- **The migrations** (`tools/TransactHub.Migrate`), run once as the databases' owner; the hosts then run as a login that may insert and read, never update or delete (R-09-81).
 - **One worker per task queue**, the queue derived from the scope (R-09-05). A bank never has a worker of its own.
 
-The front door host and the worker hosts of the plan (`TransactHub.FrontDoor`, `TransactHub.Host`) are target.
+Every host serves the one bank `TH_BANK` names (R-09-76). `deploy/laptop/` shows all of them in Docker containers on one machine (R-09-80); what it leaves to a bank's installation is [I-156](../../ISSUES.md#i-156-the-laptop-deployment-what-it-leaves-to-an-installation).
 
 ## Temporal on SQL Server
 
@@ -53,16 +57,16 @@ The source rolled services to change behaviour. Here behaviour changes by releas
 - A new workflow release is stored, then activated from a time. New payments take it; running ones finish on theirs. Engines run several releases side by side.
 - A rule or configuration value changes by its effective date, with no deployment.
 - Rollback is a new activation pointing at an earlier release.
-- Code of the runtime itself (hosts, adapters, the interpreter) is still deployed. How workers keep old activity versions loaded while payments pinned to them are open is plan W4, and is target.
+- Workflow and activity code arrives in a distribution: each runs side by side on its own engine host, new payments take the active one, and an older one drains and is removed (`docs/runtime/PACKAGING-AND-DEPLOYMENT.md`). Code of the runtime itself (hosts, adapters, the interpreter) is still deployed as a software upgrade.
 
 ## Configuration and secrets
 
 - An installation's settings come from its environment. A bank's values come from its folder on the branch.
-- Secrets are set at deployment, never committed, and named by reference: `env:NAME`, `file:/path` (a Kubernetes or Docker secret), `vault:mount/path#field` (`TH_VAULT_ADDR`, `TH_VAULT_TOKEN`). See `guidelines/encryption-and-secrets.md`.
+- Secrets are set at deployment, never committed, and named by reference: `env:NAME`, `file:/path` (a Kubernetes or Docker secret), `vault:mount/path#field` (`TH_VAULT_ADDR`, `TH_VAULT_TOKEN`), `akv:`, `aws-sm:` and `aws-ssm:`. See `guidelines/encryption-and-secrets.md`.
 - The studio signs every released package with `TH_SIGNING_KEY` (a reference). Each runtime installation and each deploy runner trusts the studio's public keys the bank lists in `TH_TRUSTED_SIGNERS`, with retired and revoked keys; nothing unsigned is stored, activated or run.
 - GitHub is the artefact repository: each published release is a signed folder on the content branch and an annotated tag `release/<workflow>/<release>/<target>`. An installation may take versions from it through its package source (`PackageSource:GitHub:*`, a read-only token by reference), verified like any upload.
 - A worker that reads the runtime's values sends a client-credentials token from the bank's provider, by reference in `TH_RUNTIME_TOKEN`.
 
 ## Not decided
 
-Sizes, availability and recovery targets, container images and orchestration, gateway and TLS termination, and telemetry ([I-66](../../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio), [I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)).
+Sizes, availability and recovery targets, orchestration, gateway and TLS termination ([I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side), [I-156](../../ISSUES.md#i-156-the-laptop-deployment-what-it-leaves-to-an-installation)).

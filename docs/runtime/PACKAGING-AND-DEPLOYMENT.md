@@ -57,8 +57,8 @@ The runtime stores each value as an insert-only, effective-dated version (built 
 2. Every leg, child workflow, activity and rule of that payment runs from that distribution. A payment never mixes distributions.
 3. Values are read from the configuration versions in force on the date each rule declares: as of acceptance, or as of the step (W4). A value change therefore reaches a running payment only where its rule says "as of the step".
 4. A message for a running payment (an ACK, a NAK, a supplementary file) is correlated to that payment's instance, so it is handled by the distribution the payment is pinned to.
-6. Where this happens: every file reaches the runtime through the File API (section 11), and the front door that pins, starts and correlates runs in the File API's process, behind its intake.
 5. A related new payment (an inward return for an earlier outward file) is a new payment. It takes the distribution active when it arrives and refers to the earlier payment by id.
+6. Where this happens: every file reaches the runtime through the File API (section 11), and the front door that pins, starts and correlates runs in the File API's process, behind its intake.
 
 ## 6. Running side by side, draining and removal
 

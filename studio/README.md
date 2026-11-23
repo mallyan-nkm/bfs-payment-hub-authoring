@@ -135,15 +135,17 @@ npm run test:blackbox
 | --- | --- |
 | `npm test` | The white-box suite, in process: store, names, hashes, schemas, rule service, sandboxes, simulators, interpreter, factory tests, conformance kit, checks with mutation cases, export, every API route through `dispatch`, the party service, the deploy runner, the assistant with a fake client |
 | `npm run test:coverage` | The same with line and branch coverage (V8), written to `coverage/` |
-| `npm run test:blackbox` | The black-box suites, against the studio as separate processes: the HTTP API on a fresh fork of the seeded content repository in the fake GitHub, the command line by output and exit code, the web app in Chromium through Playwright (every view, at desktop and phone width), and the end-to-end test below. `TH_ENGINES=1` adds the kit on DTFx and Flowable |
+| `npm run test:blackbox` | The black-box suites, against the studio as separate processes: the HTTP API on a fresh fork of the seeded content repository in the fake GitHub, the command line by output and exit code, the web app in Chromium through Playwright (every view, at desktop and phone width), and the end-to-end test below. `TH_ENGINES=1` adds the kit on DTFx, Elsa and Flowable |
 | `studio -- test [ID...]` | The factory and bank test cases on the studio interpreter, with failing checks. Like `kit`, `check` and the engine adapters, it reads the connected branch when `TH_CONTENT_REPO` is set, else an in-memory fake seeded from `content-configurations/`; it says which on stderr |
 | `studio -- seed-content [--write-local]` | Publish the factory and the example bank to the content branch as one change set, or regenerate `content-configurations/` |
-| `studio -- kit [CK-ID...]` | The 55 conformance scenarios against the expected traces in `spec/conformance/kit.yaml` |
+| `studio -- kit [CK-ID...]` | Every conformance scenario (57) against the expected traces in `spec/conformance/kit.yaml` |
 | `studio -- check` | Schemas and static checks over every artefact |
 | `studio -- export <workflow> <target>` | The manifest of an export package |
 | `studio -- export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]` | The package as a reproducible zip, with one worker per task queue |
-| `studio -- deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--tenant t] [--config file] [--bench port=simulator:scenario ...]` | Deploys the package on DTFx: starts each worker as its own process, runs the workflow, prints the outcome, the traces and what each worker served |
+| `studio -- deploy <package> --workflow <name> [--inbound file [--message <start message>]] [--tenant t] [--config file] [--bench port=simulator:scenario ...]` | Deploys the package on the engine its binding names (DTFx, Elsa, Temporal, or Flowable on its REST server, `TH_FLOWABLE_URL`): starts each worker as its own process, runs the workflow, prints the outcome, the traces and what each worker served |
 | `npx tsx engines/dtfx/run-kit.ts` | The kit on DTFx (needs `dotnet-sdk-8.0`) |
+| `npx tsx engines/elsa/run-kit.ts` | The kit on Elsa Workflows (needs `dotnet-sdk-8.0`) |
+| `../runtime/tools/temporal-test-server/setup.sh && npx tsx engines/temporal/run-kit.ts` | The kit on Temporal's time-skipping test server (`TH_TEMPORAL_ADDRESS` for a real server) |
 | `engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts` | The kit on Flowable (needs Java; fetches Maven) |
 
 ## Where things are
@@ -155,7 +157,7 @@ npm run test:blackbox
 | `test/support/fake-github.ts` | The fake GitHub API every test runs on: real SHA semantics, fast-forward checks, pull requests | R-11-24 |
 | `src/core/names.ts`, `canonical.ts`, `yaml.ts` | Names and scopes; RFC 8785 canonical JSON and the content hash; YAML as the spec tools read it | C01 |
 | `src/core/schema.ts` | Validation by kind against `spec/schemas`, with errors a designer can act on | C02 |
-| `src/checks/checks.ts` | Static checks L02 to L29, per document as it is edited and over the store; interface diff and semver | C04, C05 |
+| `src/checks/checks.ts` | The static checks of the catalogue in `spec/design/05-workflow-dsl.md` (L00 to L50), per document as it is edited and over the store; interface diff and semver | C04, C05 |
 | `src/rules/` | The rule service: expression language, sessions with NRules semantics, stages, parameters by date and tenant, decision tables with gap and overlap analysis, examples, trace | C06 |
 | `src/interp/sandbox.ts` | The TypeScript script sandbox and the script lint | C07 |
 | `src/sim/runtime.ts` | Simulators: scenarios, conversation state, virtual-clock delays, the standard scenario set | C10 |
@@ -176,13 +178,13 @@ npm run test:blackbox
 | `src/samples/` | Valid and invalid sample messages per scheme, each proved | C12-S4 |
 | `src/ai/` | The authoring gates and the assistant on the Claude API | C16 |
 | `src/conformance/party.ts`, `party-server.ts` | The party service an engine harness calls for every activity attempt | C20 to C23 |
-| `engines/dtfx/`, `engines/flowable/` | The conformance kit on DTFx and on Flowable, each with its own README | C21, C22 |
+| `engines/dtfx/`, `engines/elsa/`, `engines/temporal/`, `engines/flowable/` | The conformance kit on each engine, each with its own README; `engines/shared/` is the one C# interpreter | C20 to C22 |
 
 ## Export, workers and deploy
 
 An export package holds, under `workers/<queue>/`, one worker per task queue of the engine binding (for example `th-uae-p` and `th-uae-wps`): a bundled `worker.cjs`, a `manifest.json` naming the tasks it serves as `name@release`, the artefacts those tasks need, their scripts and, with `--with-simulators`, the simulators of their ports. A package with simulators is marked not promotable. A worker refuses a task that is not on its queue.
 
-`studio deploy` unpacks the package and starts every worker as a separate process. It runs the intake map on the worker that owns it, then runs the workflow on DTFx with a router that sends each activity attempt to the worker of its queue. With `--message`, the front door runs a payment end to end. Workflow-select picks the platform workflow, and the leg the dispatch table names fills its slot. The tenant's configuration set comes from the package; `--config` overrides it. Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command line. `TH_WORKER_LOG=<file>` makes each worker log its attempts.
+`studio deploy` unpacks the package and starts every worker as a separate process. It runs the intake map on the worker that owns it, then runs the workflow on the package's engine (DTFx, Elsa, Temporal or Flowable) with a router that sends each activity attempt to the worker of its queue. With `--message`, the front door runs a payment end to end; it routes a start message as the runtime's front door does (`src/deploy/route.ts`, one fixture with `runtime/tests/TransactHub.FileApi.Tests/front-door-routes.json`). Workflow-select picks the platform workflow, and the leg the dispatch table names fills its slot. The tenant's configuration set comes from the package; `--config` overrides it. Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command line. `TH_WORKER_LOG=<file>` makes each worker log its attempts.
 
 ## End to end
 

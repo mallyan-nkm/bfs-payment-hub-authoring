@@ -21,24 +21,28 @@ Each part of the north star: what it does, where it is, and whether it is built.
 
 ## Running
 
+One runtime serves one bank (`TH_BANK`, R-09-76). What of the source's platform is here, and what is not: `docs/runtime/PLATFORM-PARITY.md`.
+
 | Component | What it does | Where | Built |
 | --- | --- | --- | --- |
 | Model | ISO 20022 internal model and `PaymentContext` | `runtime/src/TransactHub.Model` | Yes |
-| Store | Insert-only data on two databases | `runtime/src/TransactHub.Store` | Yes |
-| Release API | Store a release once, activate, import the branch | `runtime/src/TransactHub.Api` | Yes: the bank's bearer JWTs and role map (`TransactHub.Auth`), every package's signature verified (`TransactHub.Security`) |
+| Store | Insert-only data on two databases, insert-only at the database too (R-09-81) | `runtime/src/TransactHub.Store` | Yes |
+| Release API | Store a release or distribution once, activate in a test environment, import the branch, pin a payment, record its end | `runtime/src/TransactHub.Api` | Yes: the bank's bearer JWTs and role map (`TransactHub.Auth`), every package's signature verified (`TransactHub.Security`) |
+| File API and front door | Every file in and out: uploads, inboxes, checks, decryption, kept files, the outbox; the front door starts or correlates a payment on the bank's engine host | `runtime/src/TransactHub.FileApi` | Yes ([I-158](../../ISSUES.md#i-158-the-file-api-and-the-runtimes-front-door) to [I-161](../../ISSUES.md#i-161-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form)) |
 | Interpreter | The one C# interpreter for every engine | `studio/engines/shared`, compiled into `runtime/src/TransactHub.Interpreter` | Yes |
 | Temporal binding | Interpreter workflow, front-door workflow, host activities | `runtime/src/TransactHub.Engine.Temporal` | Yes |
 | DTFx and Elsa on the store | The claim check journalled to the store | `runtime/src/TransactHub.Engines.Durable`, `runtime/tools/TransactHub.{Dtfx,Elsa}Harness` | Yes |
-| Flowable binding | External-worker client and BPMN deployment | `TransactHub.Engine.Flowable` | No (plan P3) |
-| Temporal on SQL Server | Persistence and visibility plugin | `runtime/temporal-mssql` | Yes, pinned to v1.32.2 |
-| WPS activities | The scheme's own rules and file formats, golden against the source | `runtime/src/TransactHub.Activities.Wps` | In part (outward) |
+| Flowable binding | External-worker client of the Flowable REST server; the exported BPMN, payloads in the claim check | `runtime/src/TransactHub.Engine.Flowable` | Yes, in virtual and production mode |
+| Engine host | A supervisor per engine, a host per distribution, side by side; plans from the stored package | `runtime/tools/TransactHub.EngineHost` | Yes; DTFx and Elsa runs do not survive a restart ([I-165](../../ISSUES.md#i-165-dtfx-and-elsa-runs-do-not-survive-a-restart-of-their-host-and-flowable-deploys-per-payment)) |
+| Temporal on SQL Server | Persistence and visibility plugin, the default engine (R-09-79) | `runtime/temporal-mssql` | Yes, pinned to v1.32.2 |
+| Native activities | The platform's posting, pricing, reservation and party register lookup; WPS's rules and file formats, golden against the source | `runtime/src/TransactHub.Activities.Platform`, `runtime/src/TransactHub.Activities.Wps` | Yes |
 | Native host | Code-behind for activities bound `native` (R-08-14), and the holds of the operations-queue port when given the store | `runtime/src/TransactHub.Native` | Yes |
-| Operations read model | The projection of the store's facts through the outbox; the operations views; operator actions | `runtime/src/TransactHub.Operations` | Yes ([operations-console.md](operations-console.md)) |
-| Operations console | The console's API (OIDC, roles per tenant) and its web app | `runtime/src/TransactHub.Operations.Api`, `runtime/ops-console` | Yes; signals reach no engine yet ([I-99](../../ISSUES.md#i-99-signals-retry-and-resend-have-no-path-from-the-runtime-to-an-engine)) |
-| Ports | Interfaces and effective-dated port bindings | `runtime/src/TransactHub.Ports` | Core banking only |
-| Platform and UAE activities | `p.*` and `uae.p.*` code-behind | `TransactHub.Activities.Platform`, `TransactHub.Activities.Uae` | No |
-| Front door host | One intake API; file watchers call it | `TransactHub.FrontDoor` | No; the front door runs as a workflow today |
-| Hosts | Worker and API hosts, one engine per installation | `TransactHub.Host` | No |
+| Operations read model | The projection of the store's facts through the outbox; the operations views; operator actions; work, reports, unmasking, turnaround, retention, breaks; the registers | `runtime/src/TransactHub.Operations` | Yes ([operations-console.md](operations-console.md)) |
+| Operations console | The console's API (OIDC, roles per tenant), the register API and the channel enquiry APIs, and its web app | `runtime/src/TransactHub.Operations.Api`, `runtime/ops-console` | Yes |
+| Service console | Health, content install and activation with consent, logs, errors and runbooks, troubleshooting actions, backup, the assistant | `runtime/src/TransactHub.Service`, `runtime/src/TransactHub.Service.Api` | Yes |
+| Ports | Interfaces, effective-dated port bindings, and the adapters: core banking, file transfer (`directory`, `sftp`), encryption, the registers, screening, notices, calendar, participant directory, facts out | `runtime/src/TransactHub.Ports` | Yes; the banks' counterparts are to come ([I-163](../../ISSUES.md#i-163-the-production-adapters-counterparts-are-the-banks-and-the-source-names-none)) |
+| Test bench | Send data, run it on the engines a profile names, compare with the studio interpreter | `runtime/tools/TransactHub.TestBench`, `runtime/testbench` | Yes |
+| Laptop stack | The studio and one bank's runtime in Docker containers | `deploy/laptop` | Yes |
 
 ## How a payment is routed
 
@@ -60,7 +64,7 @@ This replaces the source's rule engine screens and its four-level configuration 
 
 ## Participants and code sets
 
-Code sets and participant lists are versioned registries and lists, looked up by date (C03). This replaces the source's participant directory service. The registry content in the studio was written from memory and is marked unverified.
+Code sets are versioned registries, looked up by date (C03); their content in the studio was written from memory and is marked unverified. Reference data (the participant directory from the Central Bank's register, emirates, free zones, purpose codes, the business calendar, a bank's branches, calendar and cut-offs) are reference tables with editions by date, edited in the studio and served by the runtime at `GET /lookups` (R-01-25, R-09-75). This replaces the source's participant directory service; the routing codes are still missing ([I-151](../../ISSUES.md#i-151-what-the-reference-tables-still-lack)).
 
 ## Map from the source's service designs
 
@@ -74,10 +78,11 @@ Code sets and participant lists are versioned registries and lists, looked up by
 | Bank worker, orchestrator | None: a bank is configuration; the engine binding hosts the client |
 | Configuration | Configuration sets on the branch |
 | Rule engine dynamic configuration | Rules and values (above) |
-| Participant directory | Registries and lists |
+| Participant directory | Reference tables (above) |
 | Simulator | The studio's simulators; a deployable stub for tests, never in a promotable pack |
 | AI workflow builder | The studio's assistant |
 | Operations | The operations console: declared operator actions on the packs' operations views ([operations-console.md](operations-console.md), I-65) |
 | IAM, RBAC | [../guidelines/access-control.md](../guidelines/access-control.md) |
 | Smart integration | Ports and adapters |
-| Report sync | The outbox ([I-68](../../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side)) |
+| Report sync | The outbox and the operations read model; reports and fixed reports in the console |
+| SFTP gateway | The File API and its `sftp` adapter |

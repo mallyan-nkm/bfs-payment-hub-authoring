@@ -2,7 +2,7 @@
 
 The commands of this repository. It replaces the source's `build-and-run.md`, whose solution, PowerShell scripts and compose stack are not part of the north star. `CLAUDE.md` holds the short list; this page adds what each needs and what it showed when run here.
 
-"Ran here" means run in this repository on 2026-11-22, on Linux with Node 22, Python 3, .NET 10 and .NET 8, Go and Docker, while this page was written.
+"Ran here" means run in this repository on 2026-11-23, on Linux with Node 22, Python 3, .NET 10 and .NET 8, Java, Go and Docker, while this page was written.
 
 ## Needs
 
@@ -13,7 +13,7 @@ The commands of this repository. It replaces the source's `build-and-run.md`, wh
 | .NET 10 SDK | The runtime (`runtime/global.json`) |
 | .NET 8 SDK | The DTFx and Elsa harnesses |
 | Java and Maven | The Flowable harness (`engines/flowable/setup.sh` fetches Maven) |
-| Docker | The runtime's tests (SQL Server and PostgreSQL in Testcontainers), Temporal on SQL Server, one kit scenario on Temporal |
+| Docker | The runtime's tests (SQL Server, PostgreSQL, Temporal, Flowable, Vault, LocalStack and SFTP in Testcontainers), Temporal on SQL Server, one kit scenario on Temporal, the laptop stack |
 | Go (the version `runtime/temporal-mssql/go.mod` names) | Temporal on SQL Server |
 
 ## The spec
@@ -32,9 +32,10 @@ Run all five in that order before a pull request that touches `spec/` (`spec/CLA
 
 | Ran here | Result |
 | --- | --- |
-| `validate.py` | 0 errors, 4 warnings |
-| `expand.py --check` | Up to date |
-| `mutation_tests.py` | 28 of 28 caught |
+| `validate.py` | 267 documents, 0 errors, 3 warnings (L11) |
+| `expand.py --check` | Up to date (6 workflows) |
+| `mutation_tests.py` | 80 of 80 caught |
+| `build_docs.py` | 125 stories, 6 generated blocks |
 
 ## The studio
 
@@ -54,12 +55,12 @@ npm run test:blackbox                     # API, command line, web app in Chromi
 
 | Ran here | Result |
 | --- | --- |
-| `npm test` | 223 pass, 1 skipped |
-| `npm run typecheck` | No errors |
-| `studio -- test` | 19 of 19 |
-| `studio -- kit` | 55 of 55 |
-| `studio -- check` | 0 errors, 13 warnings |
-| `studio -- seed-content` | 163 of 163 seeded files current |
+| `npm test` | 501 pass, 1 skipped (the real-GitHub test), in 54 files |
+| `npx tsc --noEmit -p .` | No errors |
+| `studio -- test` | 63 of 63 |
+| `studio -- kit` | 57 of 57 |
+| `studio -- check` | 0 errors, 18 warnings |
+| `studio -- seed-content` | 295 of 295 seeded files current |
 | `npm run test:blackbox` | Not run here |
 
 ### Run the studio
@@ -71,7 +72,7 @@ cd studio
 npm run studio:dev
 ```
 
-It starts a fake GitHub in memory, seeded from `content-configurations/`, and the studio against it on http://localhost:4317 (`PORT` changes it). Nothing is written to disk. Ran here: it served the web app (HTTP 200) and reported 167 documents read into memory.
+It starts a fake GitHub in memory, seeded from `content-configurations/`, and the studio against it on http://localhost:4317 (`PORT` changes it). Nothing is written to disk.
 
 Against a real branch:
 
@@ -112,10 +113,10 @@ npx tsx engines/flowable/run-kit.ts
 
 | Ran here | Result |
 | --- | --- |
-| DTFx | 55 of 55, about 4 minutes |
-| Elsa | 55 of 55, about 5 minutes |
-| Temporal | 55 of 55, about 8 minutes (the adapter runs CK-FOREACH-02 on a real dev server, as its README says) |
-| Flowable | 55 of 55, about 26 minutes on a shared machine (7 on its own, as its README says) |
+| DTFx | 57 of 57, 419 s |
+| Elsa | 57 of 57, 400 s |
+| Temporal | Not run: the time-skipping test server did not start here (`setup.sh` not run in this checkout) |
+| Flowable | Not run here; 56 of 56 on 22 November 2026, before CK-PARK-03 (its README) |
 
 ## The runtime
 
@@ -130,7 +131,7 @@ dotnet ef migrations add <Name> -p src/TransactHub.Store.Migrations.PostgreSql -
 
 A model change needs a migration for both providers; a test fails if either is missing.
 
-Ran here: `dotnet build` builds. `dotnet test` was not run here.
+`dotnet test tests/TransactHub.FileApi.Tests` runs one project. Ran here: the DTFx, Elsa and Temporal harnesses built for the kit; `dotnet test` was not run here.
 
 ## The runtime test bench
 
@@ -144,6 +145,10 @@ dotnet run --project tools/TransactHub.TestBench -- serve      # the service and
 ```
 
 Profiles, the sample library, the data builder, regression cases, the service, the UI and its sign-in: [runtime/testbench/README.md](../../runtime/testbench/README.md).
+
+## The laptop stack
+
+The studio and one bank's runtime as separate services in Docker containers (R-09-80): `deploy/laptop/README.md` has the commands, the services, the secrets to set in the shell and the insert-only test. Not run here.
 
 ## Temporal
 
@@ -162,6 +167,7 @@ The source's startup prompt for Temporal on SQLite and PostgreSQL is not carried
 | `.github/workflows/studio.yml` | Typecheck, `npm test`, `check`, `seed-content` |
 | `.github/workflows/runtime.yml` | Build and test the runtime solution |
 | `.github/workflows/engines.yml` | Black-box suites, the kit on four engines, the store matrix, Temporal on SQL Server |
+| `.github/workflows/ops-console.yml` | The operations and service consoles' tests, the app's own tests and its Playwright tests |
 | `.github/workflows/testbench.yml` | The test bench's shipped suite on four engines and the interpreter, on PostgreSQL and on SQL Server; its UI in a browser |
 | `.github/workflows/security.yml` | Secret scan (gitleaks, pinned), check L37, `npm audit --omit=dev`, `dotnet list package --vulnerable` |
 

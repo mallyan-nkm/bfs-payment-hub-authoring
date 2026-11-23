@@ -27,17 +27,17 @@ The source ran one generic workflow and guarded each behaviour change with a nes
 4. A pipeline on the branch stores each new release in the runtime, through `POST /import-branch` or `POST /releases` (plan W8). The API is built; the pipeline is target.
 5. Someone records an activation (`POST /activations`): from that time new payments take the release. Payments already running finish on theirs.
 
-A rule or configuration value change follows steps 1 and 2 only. It reaches payments by its effective date, with no deployment. The store's versioned values are built; carrying a configuration set from the branch into them is target.
+A rule or configuration value change follows steps 1 and 2 only, and approval builds the bank's signed configuration release. It reaches payments by its effective date, with no deployment, once the service console installs it with a bank approver's consent (or the pipeline imports the branch, `POST /import-branch`).
 
 ## Running payments
 
-A running payment changes only through declared operator actions: retry, repair, cancel, decide (plan W4). There is no `InjectState` and no free key-and-value edit. Who may take an action, and where, is [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it).
+A running payment changes only through declared operator actions: retry, requeue, repair, cancel, decide (plan W4, R-05-50, R-09-91). There is no `InjectState` and no free key-and-value edit. Who may take an action, and where: the operations console (`design/operations-console.md`).
 
 ## Activity code
 
 - An activity is versioned as `name@release`, with the checksum of its code or script in the package manifest.
 - A worker refuses a task that is not on its queue.
-- Workers keep old versions loaded while a payment pinned to them is open, and on Temporal a release's activities run on their own versioned queue or Build ID (plan W4). That is target: the studio's export and the kit pin activities today; the runtime's versioned workers are not built yet.
+- Workers keep old versions loaded while a payment pinned to them is open: the engine host runs a host per distribution, side by side, and on Temporal each distribution is a version of the bank's worker deployment whose build id is the distribution's id (R-09-66 to R-09-68). A distribution drains, and is removed only once none of its payments is open (`docs/runtime/PACKAGING-AND-DEPLOYMENT.md`).
 
 ## Supersession
 

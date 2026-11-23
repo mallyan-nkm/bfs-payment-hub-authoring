@@ -84,11 +84,11 @@ sequenceDiagram
   S->>S: check bounds and overlaps
   C->>S: approve
   S->>G: commit
-  G-->>D: a new versioned value row (target)
+  G-->>D: a new versioned value row (configuration release installed, or the branch imported)
   Note over D: Payments that ask as of acceptance keep the old answer. Payments that ask as of the step see the new one from its date.
 ```
 
-The store's side is proved by `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update`. Carrying a configuration set from the branch into the store is target: `POST /import-branch` reads releases and activations only. The runtime reads a bank's port bindings from its folder (`BankFolderConfigurationTests`).
+The store's side is proved by `StoreTests.A_payment_asking_as_of_its_acceptance_gets_the_same_answer_after_a_hot_update`. A bank's values reach the store as a signed configuration release the service console installs with a bank approver's consent, or through `POST /import-branch`, which stores the bank's own configuration set as effective-dated versions (`BankValues`, `e2e-p6-hot-update.test.ts`). The runtime reads a bank's port bindings from its folder (`BankFolderConfigurationTests`).
 
 ## 5. A bank changes its core banking
 
@@ -96,4 +96,4 @@ A new port binding with a later `validFrom` in the bank's folder. No release and
 
 ## 6. An operator acts on a running payment
 
-Retry, repair, cancel or decide, each with a permission and a second approver where the package says so (plan W4). Where the operator does it and how they are identified is [I-65](../../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it). No diagram until it is decided.
+Retry, requeue, repair, cancel or decide, in the operations console, each as the payment's operations view declares it, with a second approver where the view names one (R-05-50). The operator signs in at the bank's identity provider; the decision is a fact and an `engine-signal` outbox row, which the engine host delivers (R-05-57). See [operations-console.md](operations-console.md).

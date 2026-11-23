@@ -1,6 +1,6 @@
 # TransactHub runtime: the north-star convergence plan
 
-Status: **proposed, for acceptance before any runtime code is built.**
+Status: **accepted (section 8), and built in large part.** What of the source's platform the runtime has, and what waits, is `docs/runtime/PLATFORM-PARITY.md`; how packages reach a runtime is `docs/runtime/PACKAGING-AND-DEPLOYMENT.md`.
 Input: `TransactHub-src.zip` (commit `666f1ee`), the N* architecture, the AI architecture review (21 issues), the competition view.
 Rule we keep: the source is never changed in place. The new runtime is built beside it, and the source stays as the reference and as the baseline we compare against.
 
@@ -88,13 +88,13 @@ content-configurations/      what the studio publishes and what a bank configure
 - **Mapping the old tables:** every one of the 64 `wps.*` tables, plus `transaction_headers`, `cycle_states` and `xbdr.Transactions`, is mapped to the new tables in a mapping table kept in `runtime/docs/data-mapping.md`. A migration tool copies the old data across for a cut-over.
 
 ### W3. Four engines behind one seam (N* item 5; the review's item 16)
-- We start from what the studio has already proved. The conformance kit (55 scenarios since 2026-11-22, with CK-MONEY-01, and CK-HOLD-01 and 02 and CK-PARK-01 and 02; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
+- We start from what the studio has already proved. The conformance kit (57 scenarios since 2026-11-23, with CK-MONEY-01, CK-HOLD-01 and 02, and CK-PARK-01 to 03; 46 when this was written) passes on Temporal, DTFx, Flowable and Elsa through `studio/engines/*`, with one interpreter (`studio/engines/shared/Interpreter.cs`) and one `IEngine` seam.
 - The runtime turns that into a product:
   - **Temporal:** the .NET SDK, with worker versioning by Build ID. Each release's activity versions run on their own versioned workers.
   - **DTFx:** `Microsoft.DurableTask.SqlServer`. Task-queue routing is done by the host (one hub per release line). The source's "`IsPatched` is always true" is not carried over: versions come from releases, not patches.
   - **Elsa 3.x:** journal replay inside one Elsa activity, with bookmarks, as the studio's harness does, now with Elsa's SQL Server and PostgreSQL persistence.
   - **Flowable 7:** BPMN generated from the expanded workflow (`src/export/bpmn.ts`). It runs in a Java sidecar with its own database. .NET external workers take the jobs over REST.
-- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass all 55 scenarios plus the WPS parity suite on each engine.
+- **The conformance kit runs in CI** against 4 engines × 2 databases, using Testcontainers for SQL Server, PostgreSQL, Temporal and Flowable. Each runtime release must pass every scenario of the kit plus the WPS parity suite on each engine.
 - The runtime's own data is always through EF Core (W2). Each engine also keeps its own state:
 
 | Engine | Its own state on SQL Server | Its own state on PostgreSQL |
@@ -245,7 +245,7 @@ The results, pass by pass and project by project, with each failure classified (
 | P0 | Inputs and baseline | The missing `dsl/` and `.github/` files are added. The baseline is recorded with every failure classified. The parity matrix is listed, with targets still open. |
 | P1 | Model, store, releases, interpreter, Temporal | WPS outward (SIF upload to CB ACK and the NAK reversal) runs on the new runtime on Temporal, on SQL Server and PostgreSQL. Its golden runs match the source. Releases are insert-only and pinned. |
 | P2 | WPS complete | Inward PIF/PSI, PRC, DIF, RFA, RRI, DE, RTC and posting windows. Every WPS line of the parity matrix is green. |
-| P3 | DTFx, Elsa, Flowable | The kit (48) and the WPS parity suite pass on all four engines × two databases in CI. |
+| P3 | DTFx, Elsa, Flowable | The kit and the WPS parity suite pass on all four engines × two databases in CI. |
 | P4 | Temporal on SQL Server | The plugin passes Temporal's persistence suite and the kit (if D2 is accepted). Met on 21 November 2026, see W5. |
 | P5 | Banks | DIB, ADIB, ENBD and FAB are each a configuration set. No bank name is in shared code, and a check enforces it. Switching the example bank's core banking needs only a binding. |
 | P1s | Studio export to GitHub (W8), alongside P1 | A published change set lands as one commit on a connected branch. A rewrite is refused. The pull-request mode and the conflict stop are tested on a local bare repository. |
@@ -272,12 +272,12 @@ The results, pass by pass and project by project, with each failure classified (
 | PRC (receipt confirmation) | `uae.wps.map.prc-out.v2`: the source's `PrcFileBuilder` and `PrcFileNamePolicy` (the bank's `agentId`), the file kept by the host; its ACK or NAK through `uae.wps.map.ack-in.v1` 1.1.0 (`WpsAckNakFile`). | The PRC NAK's extraction (`PrcNakFileReader` is ported and tested; no leg reads a NAK file, the simulators send a status). |
 | DIF (disbursement file) | `uae.wps.map.dif-out.v2`: the source's `DifLines` and `DifFileBuilder`, one DIR per credit posted, named from the PRC. ACK and NAK as above. | The DIF NAK's line resolution (`DifNakLineResolver` ported and tested, not called). |
 | RFA (returns file) | `uae.wps.map.rfa-out.v1` 1.1.0: the source's `RfaLines`, `RfaFileBuilder`, `RfaFileNamePolicy` (the bank's `headRoutingCode`); the file must agree with the returns decision's count and amount. `uae.wps.post.return.v1` posts the decision's `amount` from suspense to settlement through the binding (`e2e-wps-inward-native`: 1500.00 for the refused credit). | On the engines' own simulators the return's posting is not compared, as a simulator's scenario state is its worker's (I-84); on the runtime it is. |
-| RRI (refund request instruction) | `uae.wps.map.rri-in.v1`: the source's `InwardRriParser` (the bank's `fileNameAgentCode`). | No factory flow: the account block needs a core-banking block operation (I-82). |
-| DE (bulk posting file) | Nothing. | A bank's bulk route to its own core banking, a mode of the core-banking adapter, not a WPS step (I-82). |
+| RRI (refund request instruction) | `uae.wps.map.rri-in.v1`: the source's `InwardRriParser` (the bank's `fileNameAgentCode`); the refund as an order on `p.wf.refund.v1`, WPS as the leg (I-133). | The scheme's open questions (I-134). |
+| DE (bulk posting file) | The `file-bulk` adapter of the core-banking port (R-12-15), in the source's DE layout. | One file per posting batch, not per salary file (I-132). |
 | RTC (return to the employer's bank) | `uae.wps.map.rtc-in.v2` writes the payment-level creditor account (the employer's) and the debtor (the return file), so `uae.wps.wf.return-in.v1` 1.1.0 credits it in the posting window; script-behind and native code-behind of one provisional layout (RTH, RTD). WPS-RTC-001. | The layout: the source parses no RTC lines (its `ParseRtcRecords` takes a name, a count and a total). |
 | Posting windows | The gate on every posting activity, and the schedule-gated await in both inward legs. | |
 
-  P2's exit ("every WPS line of the parity matrix is green") is still not met: of the matrix's 101 platform activities, 6 are DE (I-82), 3 exchange-rate, 2 charges and the salary file's decryption are open (`docs/runtime/PARITY.md`).
+  P2's exit ("every WPS line of the parity matrix is green") is still not met: of the matrix's 101 platform activities, the 3 of the exchange-rate refresh have no home (I-189), and some activities still run on the studio contract only (`docs/runtime/PARITY.md`). DE, the charges and the salary file's decryption are built.
 
 ### Progress on P6 (the studio deploys and hot-updates)
 
@@ -299,7 +299,7 @@ Decided by the owner on 2026-11-22: an operations console in the runtime, leg-ge
 - **Operations views.** A new artefact kind, `operations-view` (schema, Part 5 section 5.10, lint L38, mutation cases M40 to M46): `p.view.operations.v1` for the platform, `uae.wps.view.operations.v1` for the WPS legs. The WPS view covers the source's WPS screens field by field (`docs/runtime/ops-console-wps-mapping.md`); what has no source is I-100.
 - **Operator actions.** Approve and decline an approval hold, release and reject a repair hold, cancel, re-screen, retry, resend, each as a view declares it, with maker-checker where it names a second approver. A hold the runtime answers (the operations-queue port given to the runtime) waits for the operator's decision (I-98); signals go to the outbox for the engine host (I-99).
 - **The console.** `runtime/src/TransactHub.Operations.Api` (behind the runtime's authentication library `TransactHub.Auth`: the bank's OIDC issuer and role map, roles Operator and Supervisor; dev sign-in outside production only) and `runtime/ops-console` (React and Vite, as the studio's web app). The Playwright test runs a WPS file on the runtime's DTFx build with the store on PostgreSQL, filters to it, opens it, approves its hold and sees its WPS leg settle (`runtime/ops-console/test/e2e/wps-hold.test.ts`). CI job `ops-console`.
-- **Not yet:** an end fact and the files of a deployment in the store (I-97); a durable hold and the store's id on the header (I-98); signals delivered to an engine, retry and resend (I-99); the source's report database's reports and exports (I-68); a role per tenant in the role map (I-65).
+- **Since built (22 and 23 November 2026):** the end fact and the files of a deployment (I-97); holds as engine awaits (I-98); signals delivered by every engine host, retry, requeue and resend (I-99, R-09-91); reports, fixed reports and audited CSV export (I-144, I-183); a role per tenant (R-06-28); the work queue, unmasking, turnaround, retention and erasure, and the break queue (R-05-66 to R-05-71, R-09-92); the registers and the channel enquiries (R-05-62 to R-05-64, R-09-73, R-09-74, R-09-100). One bank per runtime (R-09-76) and the bank approver's consent for every change of the system (R-09-77) are the owner's decisions of 23 November 2026.
 
 ### Progress on P3 (DTFx, Elsa, Flowable)
 

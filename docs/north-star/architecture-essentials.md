@@ -23,7 +23,8 @@ If a change makes shared code know a scheme's table or a bank's name, it is wron
 | `spec/` | The studio's specification: design parts, schemas, the factory pack, the example bank, the conformance kit, the backlog | Yes |
 | `studio/` | The studio: server, interpreter, rule service, sandboxes, simulators, checks, export, governance, web app | Yes |
 | `studio/engines/` | The kit on each engine: Temporal, DTFx, Flowable, Elsa; `shared/` holds the one C# interpreter | Yes |
-| `runtime/` | The .NET 10 runtime: model, store, release API, interpreter, engine bindings, WPS activities, ports | In part (P1 to P5) |
+| `runtime/` | The .NET 10 runtime: model, store, release API, File API and front door, interpreter, engine bindings and hosts, native activities, ports, operations and service consoles, test bench | Yes, for one bank per runtime; what of the source's platform is here: `docs/runtime/PLATFORM-PARITY.md` |
+| `deploy/laptop/` | The studio and one bank's runtime in Docker containers (R-09-80) | Yes |
 | `runtime/temporal-mssql/` | Temporal's persistence and visibility on SQL Server, as a plugin we keep (D2) | Yes (P4) |
 | `content-configurations/` | What the studio publishes and what a bank configures; the studio's only store | Yes |
 
@@ -68,16 +69,18 @@ Rules: [guidelines/store-and-migrations.md](guidelines/store-and-migrations.md).
 
 ## Four engines on one store
 
-All four run one interpreter of the expanded workflow, behind one seam (`IEngine` in `studio/engines/shared/Interpreter.cs`), and all four pass the kit's 55 scenarios.
+All four run one interpreter of the expanded workflow, behind one seam (`IEngine` in `studio/engines/shared/Interpreter.cs`), proved by the conformance kit (57 scenarios). Temporal is the default engine, on the SQL Server plugin (R-09-79).
 
 | Engine | How it is hosted (D3) | Its own state | Kit | On the store |
 | --- | --- | --- | --- | --- |
-| Temporal | Temporal service; workers poll task queues | PostgreSQL, or SQL Server through `runtime/temporal-mssql` | 55 of 55 | Yes, both databases |
-| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 55 of 55 | Yes, payments data on both databases |
-| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 55 of 55 | Yes, both databases |
-| Flowable 7 | Flowable REST server; .NET external workers over REST | Both | 55 of 55 (embedded harness on H2) | Yes, both databases (the REST server, in virtual and in production mode) |
+| Temporal | Temporal service; workers poll task queues | PostgreSQL, or SQL Server through `runtime/temporal-mssql` | Not run on 23 November 2026 (the test server did not start here) | Yes, both databases |
+| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 57 of 57 (23 November 2026) | Yes, payments data on both databases |
+| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 57 of 57 (23 November 2026) | Yes, both databases |
+| Flowable 7 | Flowable REST server; .NET external workers over REST | Both | 56 of 56 on 22 November 2026, before CK-PARK-03 (embedded harness on H2) | Yes, both databases (the REST server, in virtual and in production mode) |
 
 Each installation runs one engine (D1). The source's `IsPatched` ladder is not carried: versions come from releases, not patches.
+
+The long-running engine host (`runtime/tools/TransactHub.EngineHost`) runs a host per distribution, side by side, builds each host's plan from the stored package (R-09-94), and takes the messages the front door correlates to a running payment (R-09-93). On DTFx and Elsa a payment runs in a harness run of its own, in real time, which does not survive a restart of its host; Flowable deploys per payment (I-165).
 
 ## Releases, activations and hot update
 
@@ -108,19 +111,25 @@ laptop inbox folder ---------+        +-- outbox <-- workflows' file sends, cons
 
 ## Ports and adapters
 
-- An outside system is a port. Core banking is `TransactHub.Ports.ICoreBanking`, with adapters `simulator` and `gateway-rest`. Built.
+- An outside system is a port. Core banking is `TransactHub.Ports.ICoreBanking`, with adapters `simulator`, `gateway-rest` and `file-bulk` (R-12-15). Built.
+- Production adapters sit beside the simulators (R-09-90): screening over REST, the channel's notices by e-mail and SMS, the business calendar and the participant directory from reference tables or REST, the outward facts as a signed webhook. Each bank's binding is a shape until the bank names its counterparts (I-163).
 - A bank chooses an adapter by an effective-dated port binding in its folder (kind `port-bindings`). The example bank moves from the simulator to the gateway on 2026-12-01 by a binding alone, and a test shows it.
 - A port with no binding, or a setting that is missing, is refused, not defaulted.
 - Native code-behind for activities bound `native` runs in `runtime/src/TransactHub.Native` (R-08-14).
+
+## One bank per runtime, and consent
+
+- A runtime serves one bank, set at install (`TH_BANK`, R-09-76); it refuses another bank's distribution, configuration release, package, kept file and backup, whatever the caller's roles (I-154). The studio stays multi-tenant.
+- Every change of the system is asked for by one person and carried out when another, with the bank approver's role, consents (R-09-77, I-155): installs, activations, drains, removals, rollbacks, restores, the troubleshooting actions, a register change, an unmask, an erasure, a rebuild of the read model.
+- The hosts run as a login that may insert and read the store, never update or delete it (R-09-81).
 
 ## What is not decided
 
 | Subject | Issue |
 | --- | --- |
-| Where operators act on a running payment, and who they are | [I-65](../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) |
-| Traces, metrics, logs and health | [I-66](../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio) |
-| Secrets, keys and file decryption | [I-67](../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment) |
-| What the File API and the front door leave open: messages after a harness run started, file rules, inbox messages, host keys | [I-158](../ISSUES.md#i-158-the-file-api-and-the-runtimes-front-door) to [I-161](../ISSUES.md#i-161-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form) |
-| Performance targets, deployment sizes, reports | [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) |
+| What the File API and the front door leave open: file rules, inbox messages, host keys | [I-158](../ISSUES.md#i-158-the-file-api-and-the-runtimes-front-door) to [I-161](../ISSUES.md#i-161-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form) |
+| Durable DTFx and Elsa runs in the engine host; one Flowable deployment per distribution | [I-165](../ISSUES.md#i-165-dtfx-and-elsa-runs-do-not-survive-a-restart-of-their-host-and-flowable-deploys-per-payment) |
+| Performance targets, deployment sizes | [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side), [I-143](../ISSUES.md#i-143-the-service-level-targets-the-alert-rules-have-no-number-for) |
 | Who keeps the SQL Server plugin on each Temporal release | [I-42](../ISSUES.md#i-42-who-keeps-the-sql-server-plugin-for-temporal-and-how-an-upgrade-is-proved) |
+| The original platform's capabilities the owner deferred, and those with no home yet | [I-188](../ISSUES.md#i-188-the-original-platforms-capabilities-the-owner-deferred), [I-189](../ISSUES.md#i-189-capabilities-of-the-original-platform-with-no-home-yet) |
 | Where scripts run (D14), whether NRules is the evaluator (D13) | `docs/adr/0001-studio-stack.md` |

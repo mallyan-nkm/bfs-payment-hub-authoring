@@ -38,6 +38,9 @@ The source taught one lesson worth keeping: every copy of a rule drifts. So a ru
 | `runtime/src`, `runtime/tests` | `runtime/README.md`, [guidelines/runtime-dotnet.md](guidelines/runtime-dotnet.md) | `dotnet build` and `dotnet test` in `runtime/` |
 | The store's model | [guidelines/store-and-migrations.md](guidelines/store-and-migrations.md) | A migration for both providers; `dotnet test` |
 | `runtime/temporal-mssql/` | Its README (Pinning) | The proof its README lists |
+| `runtime/ops-console/` | Its README, [design/operations-console.md](design/operations-console.md) | `npm run typecheck`, `npm test` and `npm run test:e2e` there; `dotnet test tests/TransactHub.Operations.Tests` and `tests/TransactHub.Service.Tests` in `runtime/` |
+| `runtime/src/TransactHub.FileApi` | `runtime/README.md`, `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 11 | `dotnet test tests/TransactHub.FileApi.Tests` in `runtime/` |
+| `deploy/laptop/` | Its README | `docker compose -f deploy/laptop/compose.yaml config -q`; the insert-only test |
 | `content-configurations/` | `content-configurations/README.md` | `npm run studio -- seed-content`, `npm run studio -- test` |
 | Releases or activations | [guidelines/versioning-and-releases.md](guidelines/versioning-and-releases.md) | `ReleaseApiTests` |
 

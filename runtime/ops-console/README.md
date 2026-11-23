@@ -27,6 +27,12 @@ Then open http://127.0.0.1:7400. Configuration:
 | `Operations:Views` | The published artefacts that hold the operations views; by default `content-configurations/artefacts` |
 | `Operations:Console` | The built app; by default `runtime/ops-console/dist` |
 | `Operations:PollMilliseconds` | How often the projection reads the outbox (500) |
+| `Operations:HoldSweepSeconds` | How often holds whose expiry passed are expired (30); a hold's expiry counts the bank's business calendar (R-09-88) |
+| `Operations:FileApi:Url`, `:Folder`, `:TokenRef` | A resend goes through the File API's outbox onto the bank's binding (R-09-84); else `Operations:FileTransfer:Folder` (or `TH_FILE_TRANSFER_DIR`), a folder |
+| `Operations:Notify:Adapter`, `Operations:Notify:Url` | Where the console's alerts go: `log` (default, ids only), `simulator`, or `webhook` (I-182) |
+| `Operations:TatSweepSeconds` | How often turnaround breaches are looked for and alerted, each once (60, R-05-68) |
+| `Operations:Banks` (or `TH_BANKS_DIR`) | The bank folder whose core-banking binding the channel's core-banking enquiries use where no configuration release bound one (R-09-100) |
+| `Operations:Registers`, `Operations:Registers:SystemReadsMasked` | Further register kinds; `true` makes the register API answer core banking masked (R-09-101, I-181) |
 | `Auth:Oidc:Issuer`, `Auth:Oidc:Audience`, `Auth:Oidc:Authority`, `Auth:Oidc:SigningKeys` | The bank's identity provider, through the runtime's authentication library (`runtime/src/TransactHub.Auth`, `AddRuntimeAuth`): the API validates its bearer tokens |
 | `Auth:RoleMap` | The bank's role map (kind `runtime-role-map`, or a reference to it): its claims and groups to the roles `Operator` and `Supervisor` and the tenants |
 | `Auth:Oidc:ClientId`, `Auth:Oidc:Scopes` | The console's public client: the app signs in with the authorisation code flow and PKCE |
@@ -46,6 +52,7 @@ The same host serves the bank's systems, as system clients of its identity provi
 | `GET /api/registers/{kind}/{key}`, `GET /api/registers/{kind}?cif=…` (any lookup field), `?q=` | `register-client` | Look up, list and search, unmasked (R-09-73) |
 | `POST /api/registers/{kind}/changes`, `POST /api/registers/{kind}/sync` | `register-client` | Draft changes; load or sync in bulk, once per `reference`; every change waits for a BankApprover |
 | `GET /api/channel/payments/{transactionId}/status`, `GET /api/channel/batches/{batchId}/status`, `GET /api/channel/payments?reference=&from=&to=&status=&scheme=` | `channel-enquiry` | A payment's or a file's status, and a search, in pain.002 words with the scheme's own status (R-09-74): the source's `/api/payment/{id}/status`, `/api/wps/inquiry/{id}`, `/api/batch/{id}/status` and SIF upload search |
+| `POST /api/channel/accounts/balance`, `GET /api/channel/accounts`, `GET /api/channel/charges/preview` | `channel-enquiry` | Core banking asked through the bank's binding in force: a balance of an account the register holds for the corporate, the accounts core banking holds for its CIF, a charge preview (R-09-100). A corporate or account the register does not hold is 404 and nothing is sent; a binding with no path is 503 (I-184) |
 
 ## Development
 
@@ -70,8 +77,19 @@ npm run test:e2e     # Playwright: a WPS file on the runtime's DTFx build, its h
 | `POST /ops/api/payments/{id}/actions` | `{ action, remarks }`: ask for an action; carried out at once unless the view names a second approver |
 | `POST /ops/api/payments/{id}/actions/{action}/decision` | `{ approve, remarks }`: a second approver decides |
 | `GET /ops/api/actions/pending` | Actions waiting for the caller as second approver |
+| `POST /ops/api/payments/bulk-actions`, `POST /ops/api/actions/bulk-decision` | The same for a selection, item by item, each with its own rules and second approver (R-05-71) |
+| `GET /ops/api/work/queue`, `/work/changes`, `/work/{kind}/{id}`; `POST /ops/api/work`, `/work/bulk` | The work queue: the payments waiting for a person and the actions waiting for a second approver; take, assign, escalate, release; a long poll for changes (R-05-71) |
+| `GET`, `POST /ops/api/filters`, `POST /ops/api/filters/{id}/remove` | A person's saved filters |
+| `POST /ops/api/unmask`, `GET /ops/api/unmask/{id}` | Ask, with a reason, to see one masked field of a payment or a line; shown to the asker only, once a bank approver consents, for the bank's `unmaskWindow` (R-05-69) |
+| `GET /ops/api/tat/breaches` | The payments past their turnaround limit (R-05-68) |
+| `GET /ops/api/retention/due`, `POST /ops/api/erasures`, `GET`, `POST /ops/api/legal-holds`, `POST /ops/api/legal-holds/{id}/release` | Retention and erasure: what is due, a supervisor's erasure on a bank approver's consent, legal holds (R-05-70, I-180) |
+| `GET /ops/api/reports`, `/reports/summary`, `/reports/dashboard`, `/reports/export.csv` | Reports, the dashboard and CSV export from the read model and the views; each export an audit fact (R-05-59, R-05-65) |
+| `GET /ops/api/reports/fixed`, `/reports/fixed/{view}/{id}.csv` | The fixed reports a view declares (WPS: SIF summary, SIF detail, upload history), CSV only (R-05-67, I-183) |
+| `GET /ops/api/breaks`, `POST /ops/api/breaks/{id}/resolution`, `/breaks/{id}/consent` | The reconciliation break queue: an explanation at once, adopting the scheme's status on a bank approver's consent (R-09-92, I-168) |
+| `GET /ops/api/system-actions/pending`, `POST /ops/api/system-actions/{id}/decision` | The changes of the system waiting for a bank approver: unmasks, erasures, a legal hold's release, a rebuild (R-09-77) |
+| `GET /ops/api/audit` | The console's own chain: exports and system actions, for a supervisor or a bank approver |
 | `GET /ops/api/health` | The read model's lag and the views loaded |
-| `POST /ops/api/rebuild` | A supervisor rebuilds the read model from the facts |
+| `POST /ops/api/rebuild` | A supervisor asks for the read model to be rebuilt from the facts; a bank approver consents (R-09-77) |
 
 PUT, PATCH and DELETE are refused: a payment changes only through declared actions.
 
@@ -81,7 +99,7 @@ The same web app has a Test bench section (`src/testbench`, `#/testbench`) for t
 
 ## The service console
 
-The same web app has a Service section for service engineers (R-06-25, R-09-39 to R-09-44; design: `spec/design/09-export-bindings.md`, section 9.12), served by its own API host, `runtime/src/TransactHub.Service.Api` (routes under `/service/api`, the built app at `/`). The app finds which APIs answer (`/ops/api`, `/service/api`, or both behind one gateway) and shows their sections. Its pages: Health, Content, Logs, Errors and runbooks, Actions, Backup and the Assistant. Every action asks for a reason and is a fact; a risky one waits for a ServiceApprover; every error shown links to its runbook (`#/service/errors/<code>`).
+The same web app has a Service section for service engineers (R-06-25, R-09-39 to R-09-44; design: `spec/design/09-export-bindings.md`, section 9.12), served by its own API host, `runtime/src/TransactHub.Service.Api` (routes under `/service/api`, the built app at `/`). The app finds which APIs answer (`/ops/api`, `/service/api`, or both behind one gateway) and shows their sections. Its pages: Health, Content, Logs, Errors and runbooks, Actions, Backup and the Assistant. Every action asks for a reason and is a fact; one that changes the system (an install, activation, drain, removal, rollback, restore, and the troubleshooting actions that change what runs) waits for a BankApprover, another person (R-09-77; `ServiceApprover` is its earlier name); every error shown links to its runbook (`#/service/errors/<code>`).
 
 ```
 cd runtime && dotnet run --project src/TransactHub.Service.Api -- \
@@ -97,16 +115,18 @@ cd runtime && dotnet run --project src/TransactHub.Service.Api -- \
 | `TH_BACKUP_SIGNING_KEY`, `Service:Backup:TrustedSigners`, `Service:RestoreDir` | The backup's signing key (a reference), whose backups it restores, and where a restore writes the bindings, the role map and the trusted signers |
 | `Service:TrustWritable` | `true` lets `rotate-trusted-key` write the file `TH_TRUSTED_SIGNERS` names |
 | `Service:Project` | `true` when this host is the installation's projecting process |
-| `TH_ASSISTANT_ENABLED`, `TH_ANTHROPIC_API_KEY` | The assistant (off unless `true`), on `claude-opus-5-5` with the studio's key |
-| `Auth:*`, `TH_AUTH_DEV=1` | As the operations console's: the bank's identity provider and role map (roles ServiceEngineer, ServiceApprover); dev sign-in outside production only |
+| `TH_ASSISTANT_ENABLED`, `TH_ANTHROPIC_API_KEY` | The assistant (off unless `true`), on the Anthropic API with the studio's key; switch it on only once the bank's data protection officer approves (I-104) |
+| `TH_BANK` | The one bank this runtime serves; the host does not start without it (R-09-76) |
+| `Auth:*`, `TH_AUTH_DEV=1` | As the operations console's: the bank's identity provider and role map (roles ServiceEngineer, BankApprover); dev sign-in outside production only |
 
 `npm run test:e2e` also runs `test/e2e/service-console.test.ts`: a service engineer signs in, checks health, installs a signed version from a fake GitHub, sees a refused version's error with its runbook, and confirms an action.
 
 ## Not finished
 
-- The store holds no end of a payment and no files of a deployment yet, so the duration and the documents of a deployed file are empty (I-97).
-- A harness on virtual time waits for a live operator at most `TH_OPERATOR_PATIENCE_SECONDS` of wall time (I-127).
-- Signals are put on the outbox for the engine host, which does not read them yet; retry and resend are recorded and refused (I-99).
-- Fields of the source's WPS screens with no source in the new model, and an unmask (I-100); reports, dashboards and exports (I-68).
 - One projecting process per installation is assumed; a lease for several is not built.
-- Service console: re-drive and reset reach a parked step only (I-125); new codes wait for the dictionary's next release, logs of other hosts (I-126); the adapters behind resend and reconcile (I-128); the assistant's data handling is the bank's decision (I-104).
+- The work queue: no named teams, nothing escalates by itself, and it reads every item's facts (I-185).
+- Unmasking reads a payment's or a line's fields only, not a leg's or a register record's (I-181).
+- An erasure masks and refuses; the store keeps the values (I-180).
+- A break is resolved by an explanation or the scheme's status only (I-168); which messages are reports is the installation's setting (I-164).
+- The console's alerts have no platform port yet (I-182); the fixed WPS reports lack the source's user names and ministry date (I-183).
+- Service console: re-drive and reset reach a parked step only (I-125); the drain and restart of a worker under an orchestrator (I-128); the assistant's data handling is the bank's decision (I-104).

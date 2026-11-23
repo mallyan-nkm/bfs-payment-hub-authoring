@@ -23,35 +23,35 @@ for b in sorted(os.listdir(os.path.join(src, 'services/activities/bank'))):
 RULES = [
     (r'BuildValidationResponse|ConsolidateValidationErrors', 'p + uae.wps', 'the channel response (p.notify.channel) with the uae.wps error codes', 'error codes kept in the ported rules; response: P2'),
     (r'InitializePostingToNostro|RetrieveAccountAndFileMetadataForPosting', 'p', 'posting preparation inside p.post.accounting, read from the store by id', 'studio factory activities run on Temporal; source parity: P2'),
-    (r'ParseJsonDocument|SaveToSalaryFileUploadQueue', 'p (intake)', 'front door intake; the file kept as a message in the store', 'store: messages and accepted bulk (DurableClaimCheck); intake: P2'),
+    (r'ParseJsonDocument|SaveToSalaryFileUploadQueue', 'p (intake)', 'File API intake; the file kept in the store with its signed hash (R-09-82)', 'built: File API (FileApiTests)'),
     (r'UpdateFileStatus', 'p (store)', 'a status fact on the bulk; the status is a projection (insert-only)', 'store: status facts and projection'),
     (r'(Validate|Check).*Filename|FilenameDate|ValidateSifFilename', 'uae.wps', 'uae.wps.validate.salary-file (CBX file-name rules 1–7)', 'rules ported, golden'),
     (r'ParseSif|ValidateSif|InitiateSifFileParsing|ParseSifControl|ValidateWpsSifFile|ParseSifRecords|ParseAndQueueSifFile', 'uae.wps', 'uae.wps.map.sif-in + uae.wps.validate.salary-file / salary-record', 'rules ported, golden; activity on the studio contract: P2'),
     (r'GenerateCbxSif|GenerateSifFile|GenerateAndTransferSif', 'uae.wps', 'uae.wps.map.sif-out (CentralBankSif from the ISO 20022 store)', 'ported, golden; generated from the store'),
-    (r'SubmitSifToCb|UploadSifToCbSftp|SftpUpload|TransferSif', 'uae.p + uae.wps', 'uae.wps.exchange.send-salary-file over the uae.p CB SFTP port', 'studio factory activity runs on Temporal; source transport: P2'),
+    (r'SubmitSifToCb|UploadSifToCbSftp|SftpUpload|TransferSif', 'uae.p + uae.wps', 'uae.wps.exchange.send-salary-file through the File API outbox and the sftp adapter (R-09-84, R-09-86)', 'built (SftpTests); host keys: I-161'),
     (r'ProcessCbResponse|ReceiveSifAckNak|Ack|Nak', 'uae.wps', 'uae.wps.map.ack-in and the leg\'s NAK path', 'ACK/NAK file ported, golden; studio factory flow runs on Temporal; activity: P2'),
     (r'Duplicate', 'p (pattern) + uae.wps (keys)', 'p.validate.duplicate with uae.wps keys', 'studio factory activity; source keys: P2'),
     (r'Approval|Quorum|PaymentQueue', 'p', 'p.hold.approval / operations queue', 'studio factory activity; source policy rules: P2'),
-    (r'Charge', 'p + b values', 'p charges activity, slabs/VAT/narration as bank values', 'P2'),
-    (r'BalanceEnquiry|CorePosting|ReverseCorePosting|PostingStatus|ReconcilePosting|PostingIndeterminate|RecordPostingStatus|ConstructSalaryAmountPosting|RetrieveBranchCode|CoreBanking|WpsCoreBankingPosting|ReverseWpsPosting|ReversalPosting', 'p via core-banking port; b binding', 'p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking', 'studio factory activities run on Temporal; bank adapter binding: P5'),
-    (r'Decrypt', 'p', 'p decrypt (file intake)', 'P2'),
-    (r'Corporate|MolEstablishment|Precheck|UploadRequest|SaveUiUploaded|LocateAndReadSalaryFile|InitializeSifUpload|ExtractAndParseSifUpload|AuditQueue|QueueSif', 'p (intake) + uae.wps (MOL)', 'front door intake; uae.wps MOL corporate match (SifUploadRules.MatchCorporate)', 'MatchCorporate ported, golden; intake: P2'),
+    (r'Charge', 'p + b values', 'p.enrich.charges.v1 on the bank\'s slabs, posted by p.post.accounting.v2 (R-12-23, R-12-25)', 'built, native code-behind (PlatformNativeTests); DIB slabs: I-58'),
+    (r'BalanceEnquiry|CorePosting|ReverseCorePosting|PostingStatus|ReconcilePosting|PostingIndeterminate|RecordPostingStatus|ConstructSalaryAmountPosting|RetrieveBranchCode|CoreBanking|WpsCoreBankingPosting|ReverseWpsPosting|ReversalPosting', 'p via core-banking port; b binding', 'p.reserve.funds / p.post.accounting / p.post.reverse / p.post.verify over p.port.core-banking', 'built: simulator, gateway-rest and file-bulk bindings (CoreBankingPostingTests); bank settings: I-85, I-116'),
+    (r'Decrypt', 'p', 'p.protect.decrypt-file.v1 in the File API on arrival (R-09-83)', 'built: openpgp and gnupg (EncryptionTests, FileApiTests)'),
+    (r'Corporate|MolEstablishment|Precheck|UploadRequest|SaveUiUploaded|LocateAndReadSalaryFile|InitializeSifUpload|ExtractAndParseSifUpload|AuditQueue|QueueSif', 'p (intake) + uae.wps (MOL)', 'File API intake and front door (R-09-82, R-09-85); the corporate register and the WPS match (R-12-27)', 'MatchCorporate ported, golden; intake built'),
     (r'Pif|Psi', 'uae.wps', 'uae.wps.map.pif-in.v1 / psi-in.v1 (native: InwardPifParser, InwardPsiParser); the agent leg', 'ported, source unit tests; leg on all engines; PSI map not wired (I-84)'),
     (r'Prc', 'uae.wps', 'uae.wps.map.prc-out.v2 (native: PrcFileBuilder, PrcFileNamePolicy); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
     (r'Dif', 'uae.wps', 'uae.wps.map.dif-out.v2 (native: DifLines, DifFileBuilder); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
     (r'RfaReversal', 'uae.wps via core-banking port', 'uae.wps.post.return.v1 (suspense to settlement, the returns decision amount)', 'on the runtime (e2e-wps-inward-native)'),
     (r'Rfa', 'uae.wps', 'uae.wps.map.rfa-out.v1 (native: RfaLines, RfaFileBuilder, RfaFileNamePolicy); ACK/NAK uae.wps.map.ack-in.v1', 'ported, source unit tests; leg on all engines'),
-    (r'Rri', 'uae.wps; core-banking block', 'uae.wps.map.rri-in.v1 (native: InwardRriParser); the block and the flow: I-82', 'parser ported, source unit tests; flow not built (I-82)'),
-    (r'DeBulk|DeOutcome|DeUpload|RepostFailedDe|LostDe|DetermineDe|SubmitDe|TransferDe', 'p core-banking adapter (bulk); b binding', 'a bulk mode of the core-banking binding, not a WPS step (I-82)', 'not ported (I-82)'),
+    (r'Rri', 'uae.wps; core-banking block', 'uae.wps.wf.refund-request-in.v1 on the refund order p.wf.refund.v1 (native: InwardRriParser; I-133)', 'built (WPS-RRI tests); open questions: I-134'),
+    (r'DeBulk|DeOutcome|DeUpload|RepostFailedDe|LostDe|DetermineDe|SubmitDe|TransferDe', 'p core-banking adapter (bulk); b binding', 'the file-bulk adapter of p.port.core-banking.v1, not a WPS step (R-12-15)', 'built (FileBulkCoreBankingTests); one file per batch: I-132'),
     (r'CbCallWindow|PostingWindow|Restricted|Rb[A-Z]|CbPostingAwait|AwaitCbPosting', 'p; b values', 'p.decide.await-posting-window.v1 (schedule-gated await; native: PostingWindow)', 'gate ported; await in the inward legs on all engines'),
     (r'CbPosting', 'p via core-banking port; b binding', 'p.post.accounting.v1 through the binding, in the posting window', 'on the runtime (CoreBankingPostingTests, e2e-wps-core-banking)'),
-    (r'ExchangeRate', 'p', 'p exchange-rate refresh (not WPS)', 'P2'),
+    (r'ExchangeRate', 'p', 'p exchange-rate refresh (not WPS); rates are a dial of p.enrich.fx-rate.v1', 'no feed: I-189'),
     (r'Hook', 'p hook points', 'workflow hook points with bank bindings', 'hooks run on Temporal (kit CK-HOOK-01..04)'),
     (r'Rtc', 'uae.wps', 'uae.wps.wf.return-in.v1 with uae.wps.map.rtc-in.v2 (payment-level creditor account; the source parses no RTC lines)', 'on the runtime: map native, posting through the binding (WPS-RTC-001, NativeInwardTests)'),
-    (r'Mohre|Notify', 'p.notify + uae.wps', 'p.notify.channel; MOHRE notify as a bank hook', 'studio factory notify runs on Temporal; MOHRE: P5'),
+    (r'Mohre|Notify', 'p.notify + uae.wps', 'p.notify.channel; MOHRE notify as a bank hook', 'studio factory notify runs on Temporal; ministry status adapter built (R-12-16, I-118)'),
     (r'Aml|Screen', 'p', 'p.screen.sanctions / p.screen.fraud', 'studio factory activities run on Temporal'),
     (r'Route', 'p', 'front door workflow-select', 'studio front door runs on Temporal'),
-    (r'SftpDownload', 'p', 'file intake watcher', 'P2'),
+    (r'SftpDownload', 'p', 'File API inboxes on the bank\'s file-transfer binding (R-09-82)', 'built; inbox messages: I-160'),
 ]
 def classify(n):
     for p, layer, target, status in RULES:
@@ -66,7 +66,7 @@ for c in ['CbxFileNameRules', 'CbxRecordRules', 'CbxScrRules', 'CbxRuleSettings'
     lines.append(f'| `{c}` | `TransactHub.Activities.Wps` | golden (1,977 cases in all) |')
 for c in ['InwardFileText', 'InwardPifParser', 'InwardPsiParser', 'PrcFileBuilder, PrcFileNamePolicy, PrcNakFileReader', 'DifLines, DifFileBuilder, DifAmountRule, DifNakLineResolver', 'RfaLines, RfaFileBuilder, RfaFileNamePolicy, RfaAmountRule', 'InwardRriParser']:
     lines.append(f'| `{c}` | `TransactHub.Activities.Wps.Inward` | the source\'s unit tests (446 cases, `runtime/tests/TransactHub.Activities.Wps.Tests/Source`) |')
-lines += ['', 'Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, the DE rule classes (I-82), `AccTxnDecisionRules`, `RbPostingClassifier`.', '',
+lines += ['', 'Not yet ported (P2): the SSM structure checks inline in `WpsPlatformActivities.cs`, `AccTxnDecisionRules`, `RbPostingClassifier`. The DE file layout is in the `file-bulk` adapter (R-12-15).', '',
  '## Platform activities', '', '| Activity | Source file | Target layer | Target | Status |', '| --- | --- | --- | --- | --- |']
 for n in sorted(plat):
     layer, target, status = classify(n)

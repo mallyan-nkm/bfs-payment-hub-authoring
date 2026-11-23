@@ -12,8 +12,9 @@ The TransactHub Designer Studio and one bank's runtime, as separate services in 
 | `ops-api` | th-laptop-runtime | The operations console's API and the web app | http://localhost:8483 |
 | `testbench` | th-laptop-runtime | The test bench's service and web app; Temporal by default, DTFx and Elsa in its harnesses, Flowable with the `flowable` profile | http://localhost:8484/#/testbench |
 | `native` | th-laptop-runtime | The native host, behind the bank's provider | (inside) |
-| `enginehost` | th-laptop-runtime | The long-running engine host's supervisor for the bank, on Temporal | (inside) |
-| `enginehost-dtfx`, `-elsa`, `-flowable` | th-laptop-runtime | A supervisor per other engine, by profile | (inside) |
+| `file-api` | th-laptop-runtime | The File API (R-09-82 to R-09-86): every file the runtime receives or sends, and the front door behind its intake, which starts or correlates a payment on the bank's engine host. The bank's file-transfer binding is a folder here: the inbox and the outbox are the `files` volume | http://localhost:8485 |
+| `enginehost` | th-laptop-runtime | The long-running engine host's supervisor for the bank, on Temporal. It builds each distribution's plan from the stored package (R-09-94) and answers the File API's front door on the compose network with its token (`TH_LAPTOP_ENGINE_HOST_TOKEN`, R-09-95) | (inside) |
+| `enginehost-dtfx`, `-elsa`, `-flowable` | th-laptop-runtime | A supervisor per other engine, by profile, set up as `enginehost` | (inside) |
 | `bank-idp` | th-laptop-runtime | The bank's development identity provider: synthetic users, client credentials, refused in Production | http://localhost:8480 |
 | `temporal` | th-laptop-temporal | Temporal 1.32.2 with the SQL Server plugin (`runtime/temporal-mssql`) | 127.0.0.1:17233 |
 | `sqlserver` | mssql/server:2022 | The store (`th_store`), the read model (`th_ops`) and Temporal's two databases | 127.0.0.1:14330 |
@@ -48,7 +49,7 @@ sh deploy/laptop/prune-cache.sh                                             # th
 
 - **Another bank**: `TH_LAPTOP_BANK=dib` (the runtime then refuses ADIB's content).
 - **The real content branch**: `TH_CONTENT_REPO=owner/repo TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=...` for the studio, and `TH_LAPTOP_GITHUB_API=https://api.github.com/ TH_LAPTOP_GITHUB_READ_TOKEN=...` (a read-only token) for the runtime's package source. The tokens come from the environment only.
-- **Sign-in**: the studio's development provider lists the studio's users; the runtime's web app signs in at the bank's development provider (`bank-idp`) as one of its synthetic users: a service engineer, a bank approver, an operator, a supervisor, a tester (`identity/directory.json`). Machine callers (the pipeline, the front door) use client credentials. The role maps are `identity/role-map-*.json`.
+- **Sign-in**: the studio's development provider lists the studio's users; the runtime's web app signs in at the bank's development provider (`bank-idp`) as one of its synthetic users: a service engineer, a bank approver, an operator, a supervisor, a tester (`identity/directory.json`). Machine callers (the pipeline, the front door) use client credentials. The role maps are `identity/role-map-*.json`; the File API's (`role-map-file-api.json`) lets the operators upload, the channel send and the front door use the outbox.
 
 ## Insert, never update
 
@@ -58,5 +59,6 @@ On a real Temporal server a WPS payment waits in real time for the simulator's a
 
 ## What is not here
 
-- A bank's installation (TLS, the bank's identity provider, its secret stores, high availability): this is a laptop.
-- The engine host's supervisors run, but have no plan to run until a caller writes one (Issue I-138 (3)); the laptop's payments run through the front door's deploy runner.
+- A bank's installation (TLS, the bank's identity provider, its secret stores, high availability, the `sftp` binding to the bank's partners): this is a laptop. What the laptop chose that an installation decides is Issue I-156.
+- The insert-only test runs its payments with the front door's one-off runner (`bin/run-pinned.mts`, the studio's deploy runner on Temporal), not through the File API and the supervisor.
+- A DTFx or Elsa payment on its supervisor does not survive a restart of its container, and Flowable deploys per payment (Issue I-165).

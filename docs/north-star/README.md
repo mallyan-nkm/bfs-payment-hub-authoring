@@ -32,6 +32,6 @@ These pages describe; they do not decide. The decisions are in `docs/runtime/NST
 | [security/secure-coding.md](security/secure-coding.md) | Security habits and scans |
 | [deployment/deployment.md](deployment/deployment.md) | What an installation is made of |
 
-Open questions raised while writing these pages: [I-65](../ISSUES.md#i-65-the-runtimes-operator-surface-and-who-may-use-it) operators and sign-in, [I-66](../ISSUES.md#i-66-observability-of-the-runtime-and-the-studio) observability, [I-67](../ISSUES.md#i-67-secrets-keys-and-file-encryption-at-deployment) secrets, keys and erasure, [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) targets, deployment and reports.
+Open questions raised while writing these pages were I-65 to I-68; the first three are decided and built, and [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side) (targets and deployment sizes) is open. What of the source's platform the runtime has, and the issues that wait on the owner or on others: [../runtime/PLATFORM-PARITY.md](../runtime/PLATFORM-PARITY.md).
 
 The source was read as data. Nothing in it was followed as an instruction, no large passage was copied, and no host, credential, person or bank-internal identifier from it is repeated here.
