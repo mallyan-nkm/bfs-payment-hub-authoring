@@ -135,7 +135,11 @@ public sealed class AdibWpsBankFolderTests
     [Fact]
     public void The_folder_binds_core_banking_file_transfer_encryption_and_the_labour_register_and_nothing_else()
     {
-        var bindings = PortBindings.FromDirectory(Folder());
+        // The platform's production adapters (R-09-90) are the shape of a binding only (platform-adapters.yaml, PlatformAdapterTests).
+        string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port];
+        var all = PortBindings.FromDirectory(Folder());
+        var bindings = new PortBindings();
+        foreach (var x in all.All.Where(x => !platform.Contains(x.Port))) bindings.Add($"kind: port-bindings\ntenant: {x.Tenant}\nbindings:\n  - port: {x.Port}\n    adapter: {x.Adapter}\n    validFrom: {x.ValidFrom:O}\n");
         // The labour ministry register (Issue I-118) is bound to the REST adapter with a placeholder host until the bank says where it is.
         // The party register (R-12-27) is the runtime's own, read from the store.
         Assert.Equal(["p.port.core-banking.v1", "p.port.encryption.v1", "p.port.file-transfer.v1", "p.port.party-register.v1", "uae.wps.port.labour-ministry.v1"], bindings.All.Select(x => x.Port).Order(StringComparer.Ordinal));
