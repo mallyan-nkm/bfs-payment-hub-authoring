@@ -12,6 +12,8 @@ namespace TransactHub.Api;
 public sealed record RuntimeBank(string Id)
 {
     public const string Setting = "TH_BANK";
+    /// <summary>The error dictionary's code of a refusal of another bank's content (R-09-117, Issue I-154).</summary>
+    public const string WrongBank = "package.WrongBank";
 
     /// <summary>The bank from the host's configuration. Throws, so the host does not start, when none is set.</summary>
     public static RuntimeBank FromConfiguration(IConfiguration cfg)
@@ -33,6 +35,6 @@ public sealed record RuntimeBank(string Id)
     /// <summary>Refuses content of another bank with 422.</summary>
     public void Check(string? bank, string what)
     {
-        if (Refusal(bank, what) is { } why) throw new BundleRefused(422, why);
+        if (Refusal(bank, what) is { } why) throw new BundleRefused(422, why, WrongBank);
     }
 }

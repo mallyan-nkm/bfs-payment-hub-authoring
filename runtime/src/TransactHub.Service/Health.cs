@@ -176,10 +176,11 @@ public static class Probes
 
     /// <summary>
     /// The probes an installation configures, <c>Service:Probes:&lt;n&gt;:Name|Group|Kind|Target|Dashboard</c> (kind <c>http</c>,
-    /// <c>tcp</c> or <c>worker</c>, which also reads the worker's version), and the ports of the banks' bindings
-    /// (<c>Service:Banks</c>): each binding with a <c>baseUrl</c> is probed by a TCP connection to its host, never by a request.
+    /// <c>tcp</c> or <c>worker</c>, which also reads the worker's version), and the ports the bank's configuration release in
+    /// force binds (R-09-112), as the service console starts: each binding with a <c>baseUrl</c> is probed by a TCP connection to
+    /// its host, never by a request.
     /// </summary>
-    public static IEnumerable<IProbe> Configured(IConfiguration cfg, HttpClient http)
+    public static IEnumerable<IProbe> Configured(IConfiguration cfg, HttpClient http, PortBindings? bindings = null)
     {
         foreach (var s in cfg.GetSection("Service:Probes").GetChildren())
         {
@@ -194,17 +195,15 @@ public static class Probes
                 _ => Http(name, group, target, dash, http),
             };
         }
-        if (cfg["Service:Banks"] is { Length: > 0 } banks && Directory.Exists(banks))
-            foreach (var bank in Directory.EnumerateDirectories(banks).Order(StringComparer.Ordinal))
-            {
-                PortBindings b;
-                try { b = PortBindings.FromDirectory(bank); } catch (PortBindingException) { continue; }
-                foreach (var g in b.All.GroupBy(x => (x.Tenant, x.Port)))
-                {
-                    var now = g.MaxBy(x => x.ValidFrom)!;
-                    if (now.Settings.TryGetValue("baseUrl", out var url) && Uri.TryCreate(url, UriKind.Absolute, out var u))
-                        yield return Tcp($"port:{now.Tenant}:{now.Port}", "ports", $"{u.Host}:{u.Port}", cfg["Service:Dashboards:Ports"]);
-                }
-            }
+        if (bindings is null) yield break;
+        IReadOnlyList<PortBinding> all;
+        try { all = bindings.All; } catch (PortBindingException) { yield break; }
+        foreach (var g in all.GroupBy(x => (x.Tenant, x.Port)))
+        {
+            PortBinding now;
+            try { now = bindings.InForce(g.Key.Tenant, g.Key.Port, DateTimeOffset.UtcNow); } catch (PortBindingException) { continue; }
+            if (now.Settings.TryGetValue("baseUrl", out var url) && Uri.TryCreate(url, UriKind.Absolute, out var u))
+                yield return Tcp($"port:{now.Tenant}:{now.Port}", "ports", $"{u.Host}:{u.Port}", cfg["Service:Dashboards:Ports"]);
+        }
     }
 }

@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-COPY = ("schemas", "factory", "examples", "conformance", "tools")
+COPY = ("schemas", "factory", "examples", "conformance", "tools", "design")
 # The bank packs on the branch (check L35) sit beside spec/, so a case copies them too.
 BANKS = ROOT.parent / "content-configurations" / "banks"
 CONTENT = ROOT.parent / "content-configurations"
@@ -231,6 +231,10 @@ CASES = [
      "      document: uae.wps.sif\n", "      document: uae.wps.payroll\n", "a report of documents lists a kind the view does not declare"),
     ("M80", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
      "  unmaskWindow: { type: duration,", "  unmaskWindows: { type: duration,", "a view declares a dial the operations console does not read"),
+    # L51 (R-09-118, Issue I-190): the kit is the one place that counts its scenarios; a design text that counts them agrees
+    ("M81", "ERROR L51", "design/annex-c-conformance-kit.md",
+     "and it is the one place that counts the scenarios", "it holds 55 scenarios, and it is the one place that counts the scenarios",
+     "Annex C counts the kit's scenarios again, and wrongly"),
 ]
 
 

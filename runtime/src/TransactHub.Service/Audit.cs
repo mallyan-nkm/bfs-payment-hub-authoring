@@ -11,8 +11,9 @@ namespace TransactHub.Service;
 /// </summary>
 public sealed class ServiceAudit(StoreOptions store, TimeProvider clock)
 {
-    public const string Subject = "service-console";
-    public const string Kind = "service";
+    // The same chain the release API asks a bank approver's consent on (ConsentRequests, R-09-111).
+    public const string Subject = TransactHub.Api.ConsentRequests.Subject;
+    public const string Kind = TransactHub.Api.ConsentRequests.Kind;
 
     public async Task<FactRow> Record(string code, ServiceIdentity who, string? why, JsonObject? data = null, string? release = null, string? payment = null, string? paymentKind = null, CancellationToken ct = default)
     {

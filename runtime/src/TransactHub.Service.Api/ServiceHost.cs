@@ -20,7 +20,7 @@ namespace TransactHub.Service.Api;
 /// <item><c>PackageSource:GitHub:Repository|Api|Root|TokenRef</c>: GitHub as the artefact repository, read only.</item>
 /// <item><c>Service:Environment</c> (default production), <c>Releases:TestEnvironments</c> (test,dev,kit).</item>
 /// <item><c>Service:Errors</c> (default content-configurations/artefacts), <c>Service:Docs</c> (default docs/north-star), <c>Service:Console</c>.</item>
-/// <item><c>Service:Probes:n:*</c>, <c>Service:Certificates:n:Name|Path</c>, <c>Service:Disks:n</c>, <c>Service:Dashboards:*</c>, <c>Service:Banks</c>: health.</item>
+/// <item><c>Service:Probes:n:*</c>, <c>Service:Certificates:n:Name|Path</c>, <c>Service:Disks:n</c>, <c>Service:Dashboards:*</c>: health; the bank's bound ports from its configuration release in force.</item>
 /// <item><c>TH_BACKUP_SIGNING_KEY</c> (a reference), <c>Service:Backup:TrustedSigners</c>, <c>Service:RestoreDir</c>: backups.</item>
 /// <item><c>TH_FLOWABLE_URL</c>, <c>TH_FLOWABLE_USER</c>, <c>Service:Flowable:PasswordRef</c>: the Flowable engine; <c>Service:TrustWritable</c>.</item>
 /// <item><c>TH_ASSISTANT_ENABLED</c> (true to switch on), <c>TH_ANTHROPIC_API_KEY</c>: the assistant.</item>
@@ -62,6 +62,9 @@ public sealed class ServiceHost
         var environment = cfg["Service:Environment"] ?? "production";
         // The one bank this runtime serves, set at install (R-09-76).
         var bank = RuntimeBank.FromConfiguration(cfg);
+        // The bank's port bindings are those of its configuration release in force, read from the store (R-09-112): never a folder.
+        TransactHub.Operations.StoreBindings.RefuseFolder(cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"], cfg["Service:Banks"] is { Length: > 0 } ? "Service:Banks" : "TH_BANKS_DIR");
+        var bindings = TransactHub.Operations.StoreBindings.Live(store, bank.Id);
         var errorsDir = cfg["Service:Errors"] ?? Find("content-configurations/artefacts");
         var docsDir = cfg["Service:Docs"] ?? Find("docs/north-star");
         var viewsDir = cfg["Operations:Views"] ?? errorsDir;
@@ -84,7 +87,7 @@ public sealed class ServiceHost
         s.AddSingleton(new ServiceAudit(store, clock));
         s.AddSingleton(sp => new ContentService(store, ops, sp.GetService<IPackageSource>(), sp.GetRequiredService<ContentSettings>(), sp.GetRequiredService<ServiceAudit>(), sp.GetRequiredService<ErrorDictionary>(), clock));
         s.AddSingleton(sp => new BackupService(store, sp.GetRequiredService<ContentService>(), sp.GetRequiredService<ContentSettings>(),
-            new BackupSettings(cfg["Service:Installation"] ?? environment, cfg["TH_BACKUP_SIGNING_KEY"], cfg["Service:Backup:TrustedSigners"] ?? trust, cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"], cfg["Auth:RoleMap"], cfg["Service:RestoreDir"]),
+            new BackupSettings(cfg["Service:Installation"] ?? environment, cfg["TH_BACKUP_SIGNING_KEY"], cfg["Service:Backup:TrustedSigners"] ?? trust, cfg["Auth:RoleMap"], cfg["Service:RestoreDir"]),
             secrets, sp.GetRequiredService<ServiceAudit>(), clock));
         // The other hosts' logs, read only from the installation's back end, configured like a probe (R-09-71, Issue I-103).
         if (cfg["Service:LogSource:Url"] is { Length: > 0 } logUrl && (cfg["Service:LogSource:Kind"] ?? "loki") == "loki")
@@ -107,7 +110,7 @@ public sealed class ServiceHost
                 if (c["Path"] is { } path) probes.Add(Probes.Certificate(c["Name"] ?? c.Key, path, clock, TimeSpan.FromDays(30)));
             var disks = cfg.GetSection("Service:Disks").GetChildren().Select(c => c.Value).OfType<string>().ToList();
             foreach (var d in disks.Count > 0 ? disks : [AppContext.BaseDirectory]) probes.Add(Probes.Disk(d));
-            probes.AddRange(Probes.Configured(cfg, http));
+            probes.AddRange(Probes.Configured(cfg, http, bindings));
             return new HealthMonitor(probes, clock);
         });
         s.AddSingleton(_ => new RuntimeGauges(store, ops, clock: clock));
@@ -125,6 +128,9 @@ public sealed class ServiceHost
             // checked when asked for, so a version that does not verify is refused at once; carried out on consent.
             book.Check("install", async (who, a, ct) => await content.Verify(a.Target!, who, a.Reason, ct));
             book.Run("install", (who, a, ct) => content.Install(a.Target!, who, a.Reason!, ct));
+            // An installed configuration release, put in force on consent (R-09-111): asked for by an engineer, or by the release API's pipeline.
+            book.Check("put-in-force", async (_, a, ct) => await content.CheckPutInForce(a.Target!, ct));
+            book.Run("put-in-force", (who, a, ct) => content.PutInForce(a.Target!, who, a.Reason!, ct));
             var backups = sp.GetRequiredService<BackupService>();
             book.Run("restore", async (who, a, ct) => await backups.Restore(await backups.Kept(a.Target!, ct), dryRun: false, who, a.Reason!, ct));
             book.Run("activate", (who, a, ct) => content.Activate(a.Target!, (string?)a.Parameters?["environment"],
@@ -148,9 +154,8 @@ public sealed class ServiceHost
                 book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, viaFileApi, clock)));
             else if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
                 book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, new FolderFileTransfer(outFolder), clock)));
-            // Core banking, as the banks' port bindings bind it (R-08-19): what reconcile-posting asks.
-            var banks = cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"];
-            var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(banks is { Length: > 0 } ? TransactHub.Activities.Platform.Posting.CoreBankingResolver.ReadBanks(banks) : new TransactHub.Ports.PortBindings(), secrets: secrets);
+            // Core banking, as the bank's configuration release in force binds it (R-08-19, R-09-112): what reconcile-posting asks.
+            var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(bindings, secrets: secrets);
             book.Run("reconcile-posting", ActionBook.ReconcilePosting(store, signals, tenant => { try { return resolver.For(tenant, clock.GetUtcNow()).CoreBanking; } catch (Exception) { return null; } }, clock));
             book.Run("pause-intake", ActionBook.Intake(store, true, clock));
             book.Run("resume-intake", ActionBook.Intake(store, false, clock));

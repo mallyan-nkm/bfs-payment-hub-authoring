@@ -12,8 +12,8 @@ namespace TransactHub.Operations.Api;
 /// <summary>
 /// The channel's enquiries of core banking (R-09-100, Issue I-184), beside the status enquiries of <see cref="ChannelEndpoints"/>,
 /// for a system client with <c>channel-enquiry</c> in the bank. Each asks the bank's binding of <c>p.port.core-banking.v1</c> in
-/// force now: the one its installed configuration release bound (kind <c>binding</c> in the store), else the installation's bank
-/// folder (<c>Operations:Banks</c> or <c>TH_BANKS_DIR</c>, <c>&lt;bank&gt;/*.yaml</c>). A corporate is named by its id in the bank's
+/// force now: the one its configuration release in force bound (kind <c>binding</c> in the store, R-09-112); no folder is read.
+/// A corporate is named by its id in the bank's
 /// corporate register (R-05-62); an account must be one the register holds for it, or nothing is sent to core banking.
 /// <list type="table">
 /// <item><term>POST /api/channel/accounts/balance</term><description>{ corporateId, account, branch? }: the available balance</description></item>
@@ -39,27 +39,15 @@ public static class EnquiryEndpoints
         return mine.Count == 1 ? (mine[0], null) : (null, Problem(mine.Count == 0 ? 403 : 400, mine.Count == 0 ? $"{RuntimeAuth.Actor(http.User)} has no {SystemRoles.ChannelEnquiry} role" : "Name the tenant (X-TH-Tenant)"));
     }
 
-    /// <summary>The core-banking binding in force for the tenant now.</summary>
-    public static async Task<PortBinding> Binding(StoreOptions store, string? banksDir, string tenant, DateTimeOffset now, CancellationToken ct)
+    /// <summary>The core-banking binding in force for the tenant now: its configuration release's, read from the store at each enquiry (R-09-112).</summary>
+    public static async Task<PortBinding> Binding(StoreOptions store, string tenant, DateTimeOffset now, CancellationToken ct)
     {
-        await using (var db = StoreDbContext.Open(store))
-        {
-            var t = StoreTime.Of(now);
-            var row = await db.VersionedValues.AsNoTracking().Where(v => v.Kind == BindingKind && v.Tenant == tenant && v.Name == Port && v.EffectiveFrom <= t && v.PublishedAt <= t)
-                .OrderByDescending(v => v.EffectiveFrom).ThenByDescending(v => v.VersionNo).FirstOrDefaultAsync(ct);
-            if (row is not null && JsonNode.Parse(row.BodyJson)?["binding"] is JsonObject b)
-            {
-                var settings = (b["settings"] as JsonObject ?? new JsonObject()).ToDictionary(kv => kv.Key, kv => kv.Value is JsonValue v ? v.ToString() : kv.Value?.ToJsonString() ?? "", StringComparer.Ordinal);
-                if ((string?)b["secretRef"] is { Length: > 0 } sr) settings["secretRef"] = sr;
-                return new PortBinding(tenant, Port, (string)b["adapter"]!, row.EffectiveFrom, settings);
-            }
-        }
-        var dir = banksDir is null ? null : Path.Combine(banksDir, tenant);
-        if (dir is null || !Directory.Exists(dir)) throw new PortBindingException($"{Port} is not bound for {tenant}: no configuration release binds it and no bank folder is set");
-        return PortBindings.FromDirectory(dir).InForce(tenant, Port, now);
+        await using var db = StoreDbContext.Open(store);
+        return await ConfigurationBindings.InForce(db, tenant, Port, now, ct) is { } b ? StoreBindings.ToPort(b)
+            : throw new PortBindingException($"{Port} is not bound for {tenant}: no configuration release in force binds it");
     }
 
-    public static void MapEnquiries(this WebApplication app, StoreOptions store, string? banksDir, Func<PortBinding, ICoreBankingEnquiries>? adapters = null)
+    public static void MapEnquiries(this WebApplication app, StoreOptions store, Func<PortBinding, ICoreBankingEnquiries>? adapters = null)
     {
         var api = app.MapGroup("/api/channel");
         adapters ??= b => CoreBankingEnquiryAdapters.Create(b);
@@ -71,7 +59,7 @@ public static class EnquiryEndpoints
             if (string.IsNullOrWhiteSpace(corporateId)) return (null, null, tenant, Problem(400, "Name the corporate (corporateId)"));
             var corporate = await regs.InForce(tenant!, "corporate", corporateId, DateTimeOffset.UtcNow, http.RequestAborted);
             if (corporate is null) return (null, null, tenant, Problem(404, $"No corporate {corporateId} is registered with the bank; nothing was sent to core banking", "CORPORATE_NOT_FOUND"));
-            try { return (adapters(await Binding(store, banksDir, tenant!, DateTimeOffset.UtcNow, http.RequestAborted)), corporate, tenant, null); }
+            try { return (adapters(await Binding(store, tenant!, DateTimeOffset.UtcNow, http.RequestAborted)), corporate, tenant, null); }
             catch (PortBindingException e) { return (null, null, tenant, Problem(503, e.Message, "CORE_BANKING_NOT_BOUND")); }
         }
 

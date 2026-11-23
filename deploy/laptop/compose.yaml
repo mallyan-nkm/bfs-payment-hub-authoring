@@ -189,6 +189,8 @@ services:
     environment:
       <<: [*store, *auth, *github]
       Releases__TestEnvironments: test
+      # The environment this runtime is (R-09-111): a test one, so the pipeline puts a configuration release in force by itself.
+      Releases__Environment: test
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-api.json
     ports: ["127.0.0.1:8481:8080"]
@@ -208,7 +210,7 @@ services:
       Service__Console: /opt/th/runtime/ops-console/dist
       Service__Errors: /opt/th/content-configurations/artefacts
       Service__Docs: /opt/th/docs/north-star
-      Service__Banks: /opt/th/content-configurations/banks
+      # No bank folder: the bank's bindings are its configuration release's in force, from the store (R-09-112, R-09-113).
       Service__Installation: laptop-${TH_LAPTOP_BANK:-adib}
       TH_BACKUP_SIGNING_KEY: file:/var/lib/transacthub/keys/backup-signing.pem
       TH_TEMPORAL_ADDRESS: temporal:7233
@@ -273,7 +275,8 @@ services:
     environment:
       <<: [*store, *auth]
       TH_NATIVE_URLS: http://0.0.0.0:7300
-      TH_BANKS_DIR: /opt/th/content-configurations/banks
+      # The bank's bindings: its configuration release in force, from the store, read at each attempt (R-09-112, R-09-113).
+      TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_FILE_SIGNING_KEY_REF: file:/var/lib/transacthub/keys/file-signing.pem
       Auth__RoleMap: file:/opt/th/deploy/laptop/identity/role-map-native.json
       TH_HEALTH_URL: http://127.0.0.1:7300/health
@@ -293,7 +296,7 @@ services:
     environment:
       <<: [*store, *auth]
       FileApi__Environment: test
-      TH_BANKS_DIR: /opt/th/content-configurations/banks
+      # The bank's bindings, its inboxes among them: its configuration release in force, from the store (R-09-112, R-09-113).
       # The front door starts and correlates payments on the bank's engine host (R-09-85, R-09-95), on the compose network.
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       FileApi__EngineHost: http://enginehost:7600
