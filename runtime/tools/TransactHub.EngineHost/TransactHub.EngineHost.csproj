@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Engine.Temporal\TransactHub.Engine.Temporal.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Engines.Durable\TransactHub.Engines.Durable.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Security\TransactHub.Security.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

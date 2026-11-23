@@ -23,10 +23,14 @@ public static class HostStore
 
 /// <summary>
 /// A small JSON endpoint on a loopback address: the hosts serve only the supervisor and the runtime on the same machine, as the
-/// native host does without a bank's identity provider (R-08-17).
+/// native host does without a bank's identity provider (R-08-17). With a token (R-08-22, Issue I-121) every call must carry it
+/// as <c>Authorization: Bearer</c>; a call without it is answered 401 and goes no further.
 /// </summary>
-public sealed class Http(Func<string, string, JsonObject?, Task<(int status, JsonNode? body)>> route) : IDisposable
+public sealed class Http(Func<string, string, JsonObject?, Task<(int status, JsonNode? body)>> route, string? token = null) : IDisposable
 {
+    /// <summary>The token this process sends on its own calls to the hosts (the supervisor's to its hosts).</summary>
+    public static string? CallerToken { get; set; }
+
     readonly HttpListener listener = new();
     public string Url { get; private set; } = "";
 
@@ -63,6 +67,8 @@ public sealed class Http(Func<string, string, JsonObject?, Task<(int status, Jso
                 JsonNode? body;
                 try
                 {
+                    if (token is not null && !TransactHub.Security.HostToken.Accepts(token, c.Request.Headers["Authorization"]))
+                        throw new HostUnauthorised();
                     JsonObject? input = null;
                     if (c.Request.HasEntityBody)
                     {
@@ -72,6 +78,7 @@ public sealed class Http(Func<string, string, JsonObject?, Task<(int status, Jso
                     }
                     (status, body) = await route(c.Request.HttpMethod, c.Request.Url!.AbsolutePath, input);
                 }
+                catch (HostUnauthorised) { (status, body) = (401, new JsonObject { ["error"] = "Send the engine host's token: Authorization: Bearer (R-08-22)" }); }
                 catch (DistributionRefused e) { (status, body) = (409, new JsonObject { ["error"] = e.Message }); }
                 catch (Exception e) { (status, body) = (500, new JsonObject { ["error"] = e.Message }); }
                 try
@@ -94,9 +101,13 @@ public sealed class Http(Func<string, string, JsonObject?, Task<(int status, Jso
     public static async Task<(int status, JsonObject body)> Call(string method, string url, JsonObject? body = null)
     {
         using var req = new HttpRequestMessage(new HttpMethod(method), url);
+        if (CallerToken is not null) req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CallerToken);
         if (body is not null) req.Content = new StringContent(J.Str(body), Encoding.UTF8, "application/json");
         using var res = await client.SendAsync(req);
         var text = await res.Content.ReadAsStringAsync();
         return ((int)res.StatusCode, string.IsNullOrWhiteSpace(text) ? new JsonObject() : JsonNode.Parse(text) as JsonObject ?? new JsonObject());
     }
 }
+
+/// <summary>A call without the engine host's token (R-08-22).</summary>
+sealed class HostUnauthorised : Exception;

@@ -46,9 +46,17 @@ public sealed class Supervisor(StoreOptions store, string engine, string bank, s
         Console.Error.WriteLine($"engine host {engine}: {what} {distribution}{(more is null ? "" : " " + J.Str(more))}");
     }
 
+    /// <summary>The token of this run's hosts (R-08-22): the configured one, else one made for this run.</summary>
+    string hostToken = "";
+
     public async Task Run(string urls, CancellationToken ct)
     {
-        using var http = new Http(Route);
+        // The supervisor's callers send TH_ENGINE_HOST_TOKEN when one is set; its hosts always take a token, this run's own if none is.
+        var configured = await TransactHub.Security.HostToken.FromEnvironment();
+        hostToken = configured ?? TransactHub.Security.HostToken.New();
+        Http.CallerToken = hostToken;
+        if (configured is null) Console.Error.WriteLine($"engine host {engine}: {TransactHub.Security.HostToken.Setting} is not set; the supervisor answers on loopback only and its hosts take this run's own token (R-08-22)");
+        using var http = new Http(Route, configured);
         http.Start(urls);
         var serving = http.Serve(ct);
         Console.Out.WriteLine($"LISTENING {http.Url}");
@@ -120,6 +128,9 @@ public sealed class Supervisor(StoreOptions store, string engine, string bank, s
         var self = typeof(Supervisor).Assembly.Location;
         var psi = new ProcessStartInfo("dotnet", [self, "serve", "--engine", engine, "--distribution", dist, "--plan", plan, "--bank", bank, "--environment", environment])
         { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        // The host takes only this run's token, given by reference (R-08-22).
+        psi.Environment[TransactHub.Security.HostToken.Setting] = "env:TH_ENGINE_HOST_TOKEN_VALUE";
+        psi.Environment["TH_ENGINE_HOST_TOKEN_VALUE"] = hostToken;
         var p = Process.Start(psi)!;
         var c = new Child { Distribution = dist, Process = p };
         _ = Task.Run(async () =>
