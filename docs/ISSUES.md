@@ -1028,7 +1028,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** Each folder sets `enabledRails` to the empty list, from 2026-11-22, and no WPS value. BANK-RAIL-001 shows a payment that asks for WPS finds no rail, and `studio/test/platform-bank-packs.test.ts` shows a salary file is refused at routing, before anything is sent.
 
-
 **Done (owner's decision of 2026-11-22): ADIB runs WPS.** ENBD and FAB stay platform only.
 
 - ADIB's folder (`content-configurations/banks/adib/`) carries the WPS values the source holds for it: the rail (`enabledRails` `[uae.wps]`, the base seed's subscription in `infra/docker/mssql/init.sql`); VAT 5 per cent and the four general-ledger names of `dsl/workflows/wps-outward.v2.workflow.json` (the WPS workflow only `AdibWpsActivities` serves); the file transfer the bank's WPS plugin uses (`file-transfer.yaml`: `/wps/inbound`, `/wps/outbound`, `/cb/wps/ack`, `/cb/wps/rtc`, `.invalid` hosts, the credential by `secretRef`); the encryption of its salary files (`encryption.yaml`, I-87). Configuration set 1.2.0 on the 1.2.0 packs; the lock file regenerated.
@@ -1043,7 +1042,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Decide whether a file a bank sends is encrypted by the file-transfer adapter (a setting of `p.port.file-transfer.v1`'s binding: profile and key by reference) or by its own port and activity in `p.*`, in one change with a requirement id and a check, together with I-67.
 
 **What is built.** Nothing. FAB's README lists the sample's profiles as not carried.
-
 
 **Done (owner's decision of 2026-11-22): a file the bank sends is encrypted by a port of its own** (R-03-24, R-12-13).
 
@@ -1060,7 +1058,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Add a `uae.wps` rule that refuses a salary file whose employer the ministry has suspended, with the status as a registered extension read by an activity (a lookup behind a port), and its reason code from the scheme's code set once confirmed (`uae.wps` is provisional). Do not add it as a bank rule: it is the same for every bank.
 
 **What is built.** Nothing in the factory. ADIB's, ENBD's and FAB's READMEs list the step as not carried; their `rules/` are empty.
-
 
 **Done (owner's decision of 2026-11-22): the rule is the scheme's** (R-12-14).
 
@@ -1175,7 +1172,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Register the allowances and the leave encashment as item fields of `uae.wps.ext.salary.v1` (provisional until the rulebook confirms them) and map them in `uae.wps.map.sif-in.v1`; carry the channel, the employer's name and the debit account from the channel's upload into the bulk at intake; write the NAK's DER records and the posting's charge, VAT and legs as step writes (state, with masked accounts); and add the reports as projections of their own (I-68). Decide whether an unmask is needed at all: if it is, it reads the store, needs a permission of its own, and is a fact on the payment's chain.
 
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
-
 
 **Done (owner's decision of 2026-11-22: the recommendation, with ISO 20022 homes).** Coverage went from 101 mapped (15 empty) and 27 not mapped to 125 mapped (10 empty) and 3 not mapped of 128 rows (`docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`).
 
@@ -1296,7 +1292,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** Each distribution runs as its own copy: the front door keeps one verified copy per distribution, and the engine names what it registers after it (on Temporal the task queues and the worker build id, on DTFx the orchestration's name, on Elsa the workflow definition, on Flowable the deployment). But each payment's run is its own harness process: no long-running engine host serves several distributions at once, Temporal's worker-versioning rules (a build id set per task queue on a server) are not used, the time-skipping test server does not support them, and a removed distribution's workers stop because nothing starts them, not because a host unregisters them. The longest declared wait is the largest bound or default of a duration dial named a wait, a timeout or a hold; an `await` with a literal timeout is not counted. Scenario 6 (a new scheme) is shown only as far as one scheme allows: every distribution lists only its bank's schemes, and a leg naming a slot contract the platform does not offer refuses the approval.
 
 **Recommendation.** When the runtime's engine hosts become long-running (I-89, I-101), give each a registry of the distributions it serves, started at activation and stopped at removal, with Temporal worker versioning on the real server; count an await's literal timeout in the longest wait (or make every wait a dial, as the DSL asks); and add a second scheme pack to the factory's tests so that scenario 6 builds a distribution for a bank that licenses it and not for one that does not.
-
 
 **Done (2026-11-22).** `uae.wps.map.sif-in.v1` 1.1.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.1.0.ts`) reads every amount from the file's own text into exact minor units and writes it as a decimal string with two places; a line's amount is the exact sum of its fixed and variable pay. WPS-MAP-004 maps a sixteen-digit total (`samples/wps-sif-large-total.sif`) with every digit. The runtime's `CanonicalMapper` reads an amount given as a string.
 
@@ -1966,6 +1961,31 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
+
+## I-220. A native module still reaches into the image beyond the contract
+
+**Issue.** R-09-123 puts one versioned assembly, `TransactHub.Activities.Contract`, between the runtime image and a distribution's native assemblies. The WPS module needs more than that assembly holds: it derives from the platform's `CoreBankingActivity`, builds `BoundAdapters` over `PortBindings`, gives the platform's party register a `PartyMatcher`, and reads the source's rules over `TransactHub.Model` and `TransactHub.Store` types. Those assemblies stay in the image and are shared with the module by name. A change to one of their public types that the module uses breaks a distribution that the contract version says is supported.
+
+**Recommendation.** Until the module needs the contract only, treat a change to a public type of `TransactHub.Activities.Platform`, `TransactHub.Ports`, `TransactHub.Model`, `TransactHub.Store` or `TransactHub.Security` that a module uses as a new major of the native contract. Then narrow the surface: move what a scheme module needs (the posting base, the bound adapters, the party match) behind interfaces of the contract assembly, so that a module references the contract and nothing else.
+
+## I-221. The platform's native activities stay in the runtime image
+
+**Issue.** By the owner's direction of 23 November 2026, a distribution carries the scheme and bank native activities, and the platform's own (`p.post.accounting.v2`, `p.enrich.fx-rate.v1`, `p.enrich.charges.v1`, `p.enrich.party-register.v1`, the file protection and the platform's production adapters) stay in the runtime image as runtime software (R-09-120). A fix to one of them is therefore a runtime software upgrade, not a platform release and a new distribution, and two distributions side by side share one build of them. Section 8 of `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` says scenario 5 (a platform release) changes the code that runs; for these activities it does not.
+
+**Recommendation.** Decide whether the platform pack's native activities become a module of their own, carried like a scheme's, with only the ports, the store and the adapters left in the image. Until then the packaging document says that a platform native activity changes with the runtime image.
+
+## I-222. Only the worker says which distribution an attempt is for
+
+**Issue.** The native host serves an attempt from the distribution the attempt names (R-09-122). The worker names it from `TH_DISTRIBUTION`, which the deploy runner sets for the workers it starts for a pinned payment. An engine's attempt request (Temporal's `Host.Attempt`, the DTFx and Elsa harnesses, the Flowable binding) does not carry the distribution, so a worker started without `TH_DISTRIBUTION` sends none, and the host then serves the attempt from its development modules, or refuses it. The long-running engine host takes its workers from the installation (`TH_WORKER_URL`), and does not say which distribution each serves.
+
+**Recommendation.** Put the distribution in every attempt request the engines send, from the payment's pin, and have the worker forward it to the native host before its own `TH_DISTRIBUTION`. Until then an installation runs one worker set per distribution, each with its `TH_DISTRIBUTION`, as the deploy runner does.
+
+## I-223. A module built ahead of time is trusted as the studio is
+
+**Issue.** The studio builds a distribution's native assemblies from the code-behind project at publish (`TH_NATIVE_MODULES=build`, R-09-120). A studio with no .NET SDK, such as the laptop image, takes the same build made ahead of time (`TH_NATIVE_MODULES=<dir>`, written by `runtime/tools/native-module/build.sh` in the image's build stage). That folder is checked against its own SHA-256, but nothing signs it: it is trusted as the studio's own files are. The distribution's signature then covers whatever the folder held.
+
+**Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
+**Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
 
 ## Not done, and why
 

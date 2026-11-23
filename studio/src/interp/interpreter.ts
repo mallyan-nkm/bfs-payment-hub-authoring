@@ -1066,7 +1066,10 @@ export async function runNative(act: any, view: any, params: Record<string, any>
     res = await inSpan(`th.port.call native-host`, portAttrs, async () => {
       // The native host takes the bank's machine callers only (R-08-17, R-08-21): the worker's own client-credentials token,
       // kept fresh, or a token by reference, and over mutual TLS where it is configured (native-auth.ts).
-      const body = JSON.stringify({ activity: act.name, release: act.release, view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) });
+      // A deployed worker runs one distribution's copy (TH_DISTRIBUTION, set by whoever starts it): the host serves the attempt from
+      // that distribution's own native assemblies, by activity and release (R-09-122). The studio's interpreter names none.
+      const distribution = process.env.TH_DISTRIBUTION;
+      const body = JSON.stringify({ activity: act.name, release: act.release, ...(distribution ? { distribution } : {}), view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}) });
       const call = async () => nativeFetch(`${host.replace(/\/$/, '')}/native`, { method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...(await nativeAuthHeaders()) }, body });
       let r = await call();
       // A token the host no longer takes is fetched again once.

@@ -3,6 +3,7 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, STUDIO, type Server } from './server.js';
+import { wpsDevModules } from './native-module.js';
 
 // End to end, black box (plan P2, R-08-15): the WPS payment file, with the bank as the agent, on the studio's
 // interpreter, its core banking given to the runtime. The runtime's native host (TH_BANKS_DIR = the banks' folders)
@@ -31,7 +32,7 @@ beforeAll(async () => {
   const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.join(RUNTIME, 'src', 'TransactHub.Native'), encoding: 'utf8', env: DOTNET_ENV });
   if (b.status !== 0) throw new Error(`dotnet build failed:\n${b.stdout}\n${b.stderr}`);
   nativeUrl = `http://127.0.0.1:${await freePort()}`;
-  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: BANKS }, stdio: 'ignore' });
+  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: BANKS, TH_NATIVE_DEV_MODULES: wpsDevModules() }, stdio: 'ignore' });
   for (let i = 0; i < 120; i++) { try { if ((await fetch(`${nativeUrl}/health`)).ok) break; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
   server = await startServer({ TH_NATIVE_HOST: nativeUrl });
   api = client(server.url);

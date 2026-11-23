@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { client, startServer, STUDIO, type Server } from './server.js';
+import { wpsDevModules } from './native-module.js';
 
 // End to end, black box (plan P2, R-08-16): the WPS payment file, the bank as the agent, with every WPS file on the runtime.
 // The runtime's native host answers the payment file (the source's PIF parser), the receipt confirmation and the disbursement
@@ -39,7 +40,7 @@ beforeAll(async () => {
   const b = spawnSync('dotnet', ['build', '-c', 'Release', '--nologo', '-v', 'q'], { cwd: path.join(RUNTIME, 'src', 'TransactHub.Native'), encoding: 'utf8', env: DOTNET_ENV });
   if (b.status !== 0) throw new Error(`dotnet build failed:\n${b.stdout}\n${b.stderr}`);
   nativeUrl = `http://127.0.0.1:${await freePort()}`;
-  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: banks }, stdio: 'ignore' });
+  native = spawn('dotnet', [path.join(RUNTIME, 'src', 'TransactHub.Native', 'bin', 'Release', 'net10.0', 'TransactHub.Native.dll')], { env: { ...DOTNET_ENV, TH_NATIVE_URLS: nativeUrl, TH_BANKS_DIR: banks, TH_NATIVE_DEV_MODULES: wpsDevModules() }, stdio: 'ignore' });
   for (let i = 0; i < 120; i++) { try { if ((await fetch(`${nativeUrl}/health`)).ok) break; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
   // Every file the agent sends is encrypted first (Issue I-117). The example bank holds no Central Bank key, so its encryption stays
   // with the studio's simulator here; the runtime's encryption is proved by FileProtectionAndRegisterTests.

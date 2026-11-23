@@ -91,7 +91,8 @@ function start(w: Worker): Promise<string> {
     const child = spawn(process.execPath, [path.join(w.dir, 'worker.cjs'), '--dir', w.dir, '--port', '0', '--env', environmentFile(w)], {
       // The bank's values from its installed configuration release, at each attempt's time (TH_RUNTIME_URL, R-12-28): the token by
       // reference, a file the tokens service keeps fresh.
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, ...pass('TH_RUNTIME_URL', 'TH_RUNTIME_TOKEN', 'TH_SECRET_FILE_ROOTS'), TH_PY_HARNESS: path.join(w.dir, 'py_harness.py'), TH_SCRIPT_WORKER: path.join(w.dir, 'script-worker.cjs'), TH_SIM_SHARED_DIR: shared, NODE_PATH: path.join(studio, 'node_modules') },
+      // The worker runs one distribution's copy: a native attempt names it to the native host (TH_DISTRIBUTION, R-09-120).
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, TH_DISTRIBUTION: w.distribution, ...pass('TH_RUNTIME_URL', 'TH_RUNTIME_TOKEN', 'TH_SECRET_FILE_ROOTS', 'TH_NATIVE_HOST', 'TH_NATIVE_ACTIVITIES'), TH_PY_HARNESS: path.join(w.dir, 'py_harness.py'), TH_SCRIPT_WORKER: path.join(w.dir, 'script-worker.cjs'), TH_SIM_SHARED_DIR: shared, NODE_PATH: path.join(studio, 'node_modules') },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     w.child = child;

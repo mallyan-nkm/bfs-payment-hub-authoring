@@ -39,6 +39,13 @@ public sealed class Bundle
         var b = new Bundle { Files = files, Manifest = manifest, Kind = kind };
         _ = b.Bank; _ = b.Release;
         b.CheckBillOfMaterials();
+        // The native assemblies (R-09-121): each the one its SHA-256 in the signed bill of materials names, built against a native
+        // contract this runtime supports; a mismatch refuses the whole distribution at install.
+        if (kind == ReleaseSignature.Distribution)
+        {
+            try { TransactHub.Store.NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
+            catch (TransactHub.Store.NativeAssembliesRefused e) { throw new PackageRejected($"Its native assemblies are refused: {e.Message}"); }
+        }
         return b;
     }
 

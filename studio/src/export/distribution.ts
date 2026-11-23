@@ -12,6 +12,7 @@ import { resolveReferenceValues } from '../core/reference.js';
 import { compareReleases } from '../core/names.js';
 import type { StudioEnv } from '../env.js';
 import { scopedEnv } from '../core/scope.js';
+import { nativeModules } from './native-modules.js';
 
 // A bank's distribution and configuration release (docs/runtime/PACKAGING-AND-DEPLOYMENT.md, spec R-09-48 to R-09-52,
 // R-11-37 to R-11-40). A distribution is the complete, signed copy of everything one bank runs on one engine: the platform
@@ -238,6 +239,16 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
   }
   files['workflows/slots.yaml'] = toYaml({ kind: 'slot-fills', slots });
 
+  // The native assemblies of the schemes' and the bank's native activities, each with its SHA-256 (R-09-120): the platform's
+  // own stay in the runtime image. A promotable distribution carries every one; a test distribution says which it does not.
+  const native = nativeModules(all.map((e) => e.doc), scopeOfName, !req.withSimulators);
+  if (native.problems.length) throw new DistributionRefused(`The distribution of ${bank} is refused: ${native.problems.join('; ')}`);
+  Object.assign(files, native.files);
+  for (const a of native.artefacts) {
+    const pk = a.scope === 'b' ? bankPackOf(env, bank)?.doc : env.store.byKind('pack').find((e) => e.doc.scope === a.scope)?.doc;
+    artefacts.push({ ...a, release: pk?.release ?? '1.0.0' });
+  }
+
   const id = req.id ?? nextDistributionId(env, bank, req.date);
   if (!DIST_ID.test(id)) throw new DistributionRefused(`${id} is not a distribution id (YYYY.MM.DD-n)`);
   const packs = scopes.map((s) => {
@@ -251,6 +262,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
     billOfMaterials,
     parameterContract: params.contract,
     slotContracts: slot.fills,
+    native: native.section,
     longestWait: longestWait(params.contract),
     changeSets: req.changeSets ?? [],
     promotable: !req.withSimulators,
