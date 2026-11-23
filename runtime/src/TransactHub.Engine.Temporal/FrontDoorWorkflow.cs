@@ -32,6 +32,11 @@ public sealed class FrontDoorWorkflow
     readonly List<JsonObject> handlerOutputs = new();
     readonly List<string> log = new();
     int pending, unmatched, duplicates, handlerSeq;
+    List<string> expected = new();
+    // Messages that came before any run they correlate to had registered, while a root was still to begin (Issue I-94): the PSI sent
+    // with its payment file is due a second after the run starts, and on a server's clock the root may register after it. Each is
+    // routed when a run it correlates to registers, as the engines on a virtual clock route it at once.
+    readonly List<(JsonObject m, long at)> early = new();
 
     [WorkflowInit]
     public FrontDoorWorkflow(string input) => offset = (long)J.Num((JsonObject)J.Parse(input)!, "offset")!.Value;
@@ -43,7 +48,7 @@ public sealed class FrontDoorWorkflow
     public async Task<string> RunAsync(string input)
     {
         var inp = (JsonObject)J.Parse(input)!;
-        var expected = J.Strings(J.P(inp, "roots"));
+        expected = J.Strings(J.P(inp, "roots")).ToList();
         var handlerOnly = J.Truthy(J.P(inp, "handlerOnly"));
         var horizon = (long)J.Num(inp, "horizon")!.Value;
         foreach (var s in J.A(inp, "starts")) _ = StartLater((JsonObject)s!);
@@ -143,7 +148,21 @@ public sealed class FrontDoorWorkflow
         r.Kind = J.S(d, "kind") ?? "workflow";
         r.Header = J.Clone(J.P(d, "header"));
         r.Done = false;
+        foreach (var x in early.Where(x => r.Kind != "batch" && Correlates(r.Header, x.m)).ToList())
+        {
+            early.Remove(x);
+            _ = RouteEarly(x.m, x.at);
+        }
+        // Every root has begun: what none of them correlates to is unmatched.
+        if (expected.All(e => runs.Any(x => x.Id == e)))
+            foreach (var x in early.ToList()) { early.Remove(x); pending--; unmatched++; }
         return Task.CompletedTask;
+    }
+
+    async Task RouteEarly(JsonObject m, long at)
+    {
+        try { await FrontDoor(m, at); }
+        finally { pending--; }
     }
 
     [WorkflowSignal(Completed)]
@@ -188,7 +207,13 @@ public sealed class FrontDoorWorkflow
         // payment's header but awaits none of its messages: a message the scheme sends for the payment reaches the leg, or the
         // platform workflow, which hands it to its leg (R-09-16).
         var target = candidates.LastOrDefault(c => !c.Done && c.Kind != "hook") ?? candidates.LastOrDefault(c => !c.Done) ?? candidates.LastOrDefault();
-        if (target is null) { unmatched++; return; }
+        if (target is null)
+        {
+            // A root still to register: keep the message for it, and route it when it registers.
+            if (expected.Any(id => runs.All(r => r.Id != id))) { pending++; early.Add((m, at)); return; }
+            unmatched++;
+            return;
+        }
         if (target.Done)
         {
             var key = J.S(m, "inReplyTo") is string irt ? $"{type}:{irt}:{J.S(m, "status") ?? ""}" : J.S(m, "id")!;

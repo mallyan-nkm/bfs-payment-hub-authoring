@@ -57,6 +57,7 @@ The runtime stores each value as an insert-only, effective-dated version (built 
 2. Every leg, child workflow, activity and rule of that payment runs from that distribution. A payment never mixes distributions.
 3. Values are read from the configuration versions in force on the date each rule declares: as of acceptance, or as of the step (W4). A value change therefore reaches a running payment only where its rule says "as of the step".
 4. A message for a running payment (an ACK, a NAK, a supplementary file) is correlated to that payment's instance, so it is handled by the distribution the payment is pinned to.
+6. Where this happens: every file reaches the runtime through the File API (section 11), and the front door that pins, starts and correlates runs in the File API's process, behind its intake.
 5. A related new payment (an inward return for an earlier outward file) is a new payment. It takes the distribution active when it arrives and refers to the earlier payment by id.
 
 ## 6. Running side by side, draining and removal
@@ -133,3 +134,18 @@ Runtime software (NEST images, store schema)
 3. Service console: list both kinds from GitHub, verify, show the difference with the active one, install, activate, drain, remove, roll back; the open-payment count per distribution.
 4. Spec: requirements for distributions, configuration releases, pinning and draining in Part 09 and Part 11, with checks.
 5. Tests: scenarios 1 to 12 as end-to-end tests, at least on Temporal, with 3, 4, 5, 8 and 9 on every engine.
+
+## 11. The File API: how files reach and leave a runtime
+
+Owner's decision of 23 November 2026 (R-09-76 to R-09-80, I-154).
+
+| Part | Runtime software | Its settings at an installation |
+| --- | --- | --- |
+| File API (`runtime/src/TransactHub.FileApi`) | Its own process and container image, beside the release API, the engine host, the native host and the consoles | `Store:*`, `FileApi:Environment`, `TH_BANKS_DIR` (the port bindings), `FileApi:EngineHosts:<bank>`, `FileApi:Workers:<scope>`, `FileApi:Messages:*`, `FileApi:Inboxes:*`, `TH_FILE_SIGNING_KEY_REF`, `Auth:*` |
+| Front door | In the File API's process | The engine host's supervisor of each bank, the workers that run the intake maps |
+| SFTP gateway | The `sftp` adapter in the File API (`TransactHub.Ports`), polling each partner's inbox and pushing the outbox | The bank's binding of `p.port.file-transfer.v1` (a configuration release): partners, host keys and login by reference, `sessions.*` |
+
+- A file is routed by the distribution active for the bank: its dispatch table says whether the file starts a payment or answers one. A file for a payment pinned to a draining distribution is handed to that distribution's host, never the new one.
+- The bank's file rules (name, extension, size) and its inboxes are settings of the installation until the scheme declares them (I-155, I-156).
+- On a laptop the binding is `directory`: the inbox and the outbox are folders the compose set-up mounts. At a bank it is `sftp`.
+- The engine host on Temporal takes a correlated message at any time; on DTFx, Elsa and Flowable a payment's run takes none after it started (I-154).

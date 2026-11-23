@@ -56,7 +56,7 @@ On the command line: `--profile`, `--file|--sample|--text`, `--bench`, `--port` 
 | `wps-all-engines` | the four | PostgreSQL | WPS SIF, outward, through the front door and `p.wf.corporate.v1` |
 | `wps-all-engines-sqlserver` | the four | SQL Server | the same |
 | `wps-all-engines-both-databases` | the four | both, in turn | the same |
-| `wps-inward-all-engines` | the four | PostgreSQL | WPS PIF, inward, `uae.wps.wf.agent-payment-in.v1` |
+| `wps-inward-all-engines` | the four | PostgreSQL | WPS PIF, inward, through the front door and `p.wf.inward.v1` (the leg `uae.wps.wf.agent-payment-in.v2` in its slot) |
 | `wps-inward-all-engines-sqlserver` | the four | SQL Server | the same |
 | `wps-reference`, `wps-inward-reference` | none | none | the interpreter only, in seconds |
 | `wps-quick-dtfx` | DTFx | none | a quick check while working |

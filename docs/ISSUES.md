@@ -1142,6 +1142,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What remains.** The host's signing key at deployment (I-131).
 
+**Done for (2) (23 November 2026).** Every file of a deployment is kept by the File API (I-154, R-09-76 to R-09-78): each file received, as received and as decrypted, and each file a workflow sends through its outbox, with its payment and leg, so the documents tab lists them.
+
 ## I-98. A hold answered by the runtime waits in one attempt
 
 **Issue.** A hold reaches the operator through its port, `p.port.operations-queue.v1`, given to the runtime (R-08-15): the native host opens the hold on the payment's chain and the attempt waits for the decision the console records (R-05-50). An attempt holds a connection while it waits, and is bounded (`TH_OPS_HOLD_WAIT_SECONDS`, default 240, under the worker's five minutes): a hold not decided by then ends `expired`, not after the hold's own `expiry` (P1D). The hold also finds its payment by the header's file id or end-to-end id, the newest of that tenant and scheme, because the header carries no id of the store's.
@@ -1322,6 +1324,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What remains.** No leg or front door calls `p.protect.decrypt-file.v1` yet: it is declared `invokedBy: front-door`, and the front door still hands the file over as received (the refund flows and the inward intake that would decrypt are later work). The encrypted bytes are what the host keeps as sent; the transfer to the Central Bank's SFTP is I-129.
 
+**Done: decryption is called (23 November 2026).** The File API decrypts every encrypted file on arrival through `p.protect.decrypt-file.v1`'s native code-behind and the bank's decryption binding, before the front door reads it, and keeps both files (R-09-77, I-154). The refund flows' inward files reach it the same way once they arrive through the File API.
+
 ## I-118. The labour ministry status comes only from a simulator
 
 **Issue.** `uae.wps.port.labour-ministry.v1` has a simulator and no runtime adapter, and the scheme's reason code for a suspended employer is not confirmed (RR04 is the ISO code the factory uses). The source read `mohreStatus` from its input without saying where it came from.
@@ -1408,11 +1412,15 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Build the file-transfer adapter the WPS gateway needs behind `IFileTransferPort` (with the port work of the WPS adapters), and keep every file an exchange sends (I-97 (2)) so that any can be resent. Ask each bank for its gateway's inquiry function and add it to the bank's core-banking binding. Keep refused payments in the store as `intake.queued` facts if a bank wants them taken in order after a pause. Link the worker actions to the orchestrator's own drain (a readiness probe that fails while draining) in the installation's guide.
 
+**Done for the file transfer (23 November 2026).** The `sftp` adapter is built (I-129), and the consoles' resend goes through the File API's outbox onto the bank's binding (R-09-78), so any file the File API kept can be sent again. The rest stays open.
+
 ## I-129. The runtime has no SFTP adapter of the file-transfer port
 
 **Issue.** DIB's and ADIB's `p.port.file-transfer.v1` bindings name an `sftp` adapter (the source's SFTP gateway profiles and folders). The runtime builds two file-transfer adapters, `simulator` and `directory` (a folder on the host, its root by reference), and refuses `sftp` ("which this runtime does not build"). So the `file-bulk` core-banking adapter (I-82) and the encrypted WPS files (I-117) reach a real counterpart only through a mounted folder.
 
 **Recommendation.** Build an `sftp` adapter in `TransactHub.Ports` on a pinned SSH library, with the host key pinned by reference, the credential by `secretRef`, and the session settings DIB's binding carries (`sessions.*`); prove it against an SFTP container with a key made at test time. Until then a bank that posts by file binds `directory` on a share its SFTP gateway mirrors. The operations console's resend (`IFileTransferPort` in `runtime/src/TransactHub.Operations/Controls.cs`, I-128) writes to a folder of its own: put it on the same port adapters (`IFileTransfer`, `FileTransferAdapters`), so one binding of `p.port.file-transfer.v1` serves both.
+
+**Done (23 November 2026, R-09-80).** `SftpFileTransfer` in `runtime/src/TransactHub.Ports/Sftp.cs`, on SSH.NET 2026.0.0 (pinned): each partner of the binding by its prefix (`centralBank`, `ministry`, `coreBanking`, `pickup`), its host key pinned by reference and checked before any login, the login by `secretRef`, the `sessions.*` settings as a session pool, a file written under `.part` and renamed. `SftpTests` proves it against an SFTP server in a container (atmoz/sftp, pinned by digest) with a login key made at test time, and loads DIB's and ADIB's bindings. The File API polls the partners' inboxes and delivers the outbox through it; the consoles' resend is on the same binding (I-154). What remains: the banks' host keys (I-157) and inbox messages (I-156).
 
 ## I-130. The participant directory has no source the factory may carry
 
@@ -1427,6 +1435,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** Each kept file's hash is signed by the host that kept it (R-09-64). The key is named by `TH_FILE_SIGNING_KEY_REF` (a P-256 private key in PEM, by reference); without it the native host and the runtime's API make a key for their own lifetime, so a file kept before a restart cannot be checked against a key anyone still holds, and the public keys are not published anywhere.
 
 **Recommendation.** Require the reference outside development, as the release signing key is; publish each host's public key id with the trusted signers (`TH_TRUSTED_SIGNERS`) so an auditor can verify a file's signature; record a rotation as a fact. Decide with I-67 who holds the key.
+
+**Note (23 November 2026).** The File API signs the files it keeps with the same setting, `TH_FILE_SIGNING_KEY_REF`; the recommendation applies to it as well.
 
 ## I-132. A bulk posting file per posting batch, and the DE columns the store cannot fill
 
@@ -1618,6 +1628,36 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 4. **The read model's lag.** The enquiries read the operations read model, so a payment accepted a moment ago may not be found yet.
 
 **Recommendation.** Register the CIF as a debtor's organisation id with scheme CIF (R-02-21) and have the intake map write it from the channel's upload; let an operations view declare its channel status field (an operations-view schema change with its lint, in the same change as the enquiry that reads it); merge `status.transactions` into the lines in the projection; answer 404 with a retry hint while the read model's lag is above a second.
+
+## I-154. The File API and the runtime's front door
+
+**Issue.** Files reached the runtime by four roads that did not meet: the studio deploy runner's front door kept each inbound file (`POST /payments/files`), the native host kept what its activities rendered in memory, the consoles' resend wrote to a folder of their own, and nothing read a partner's SFTP folder. Nothing called the decryption binding (I-117), and the front door's logic (the intake map, the route, the pin, the start) lived in the studio's deploy runner, not in the runtime.
+
+**Decided (owner, 23 November 2026) and built.** One runtime service, the File API (`runtime/src/TransactHub.FileApi`, its own process), is the way every file comes in and goes out (R-09-76 to R-09-78). The runtime's front door is part of the File API's process, behind its intake, so a file is checked, decrypted and kept before anything is started from it (R-09-79). It is a class of its own (`RuntimeFrontDoor`, `Dispatch`), with the intake map run on the worker of its queue and the payment started on the bank's engine host's supervisor, so another host can use it. The deploy runner keeps its own front door for its tests and shares the route with the runtime (`studio/src/deploy/route.ts`), both held to one fixture (`front-door-routes.json`).
+- Inbound: `POST /files` (channels and corporates, `file-sender`; the SFTP gateway, `file-gateway`), `POST /files/ui` (a person, `file-uploader`), and the inboxes it polls on the bank's binding of `p.port.file-transfer.v1` (a folder on a laptop, a partner's SFTP folder at a bank). The source's `/api/wps/UploadSIFFile` and `/api/wps/ui/upload-sif-file` are these with message `uae.wps.sif`.
+- On arrival: the message must be one the active distribution's dispatch table receives; size, extension and name checks; a duplicate by hash, or by name where the message's names are unique, is refused; an encrypted file is decrypted by `p.protect.decrypt-file.v1`'s native code-behind; both files are kept once with the host's signature, linked to the payment; each step is a fact on the file's chain.
+- Outbound: `POST /outbox` keeps a workflow's file with its payment and leg and delivers it by the bank's binding; a host that sets `TH_FILE_API_URL` puts every file of `p.port.file-transfer.v1` there (`OutboxFileTransfer`); each delivery is a fact; the operations and service consoles resend through it (`FileApiTransferPort`, settings `Operations:FileApi:*`, `Service:FileApi:*`).
+- The engine host takes the front door's start with the workflow and the legs it routed to, and a correlated message for a running payment (`POST /payments/{id}/messages`): on Temporal it is signalled to the payment's front door workflow, which routes it to the run that awaits it.
+
+**What remains.** (1) On DTFx, Elsa and Flowable the engine host runs each payment in one harness run and refuses a message that arrives after the run started (409); the PSI that arrives with its PIF reaches the leg only on Temporal through the runtime's front door. Recommendation: give the harness runs an inbox the host feeds (the party's `start` and `sent` calls already reach the workers), or run those engines in their hosts as Temporal's are. (2) The File API reads the banks' port bindings from `TH_BANKS_DIR`, as the native host does, not from the installed configuration release (`GET /bindings`). Recommendation: read the binding in force from the store, so a binding's `validFrom` switches the File API with no restart. (3) The laptop compose set-up (`deploy/laptop`) does not exist on this branch: the File API needs its own service there (`dotnet TransactHub.FileApi.dll`, the store, `FileApi:Environment`, `TH_BANKS_DIR`, `FileApi:EngineHosts:<bank>` and `FileApi:Workers:<scope>`), with an inbox folder mounted for the directory binding. (4) The old `POST /payments/files` of the release API stays for the deploy runner; once every file goes through the File API it should be removed.
+
+## I-155. The scheme declares no file rules
+
+**Issue.** The File API checks a file's size, extension and name and refuses a name received before, but the scheme manifest says nothing of a message's file: not its name pattern, its extensions, its largest size, whether a name may come twice, nor whether it is encrypted. The source's WPS upload checked a file name structure and date and refused a repeated file name (codes 002, 005).
+
+**Recommendation.** Add a `file` block to a scheme manifest's message (`namePattern`, `extensions`, `maxBytes`, `uniqueName`, `encrypted`) in a schema change with its lint and mutation case, and have the File API read it from the active distribution. Until then the rules are the installation's settings (`FileApi:Messages:<message>:MaxBytes|Extensions|NamePattern|UniqueName`, default: any extension, 50 MB, names unique), and `uae.wps` sets none, as it is provisional.
+
+## I-156. How a received file names its message and its payment
+
+**Issue.** (1) An inbox must say which message its files are, and the banks' bindings do not: DIB's `pickup.folder` holds the channel's salary files and ADIB's `centralBank.ackFolder` and `rtcFolder` the Central Bank's answers, but neither names a message, and neither bank names a labour ministry or core banking partner at all. (2) A message for a running payment is correlated by its keys, but the scheme does not say where a file carries them: the factory's simulators put a `correlation` beside the message, a real PSI or ACK file has only its content and its name.
+
+**Recommendation.** (1) Have each bank name, in a new binding with a later `validFrom`, each inbox's message (`<partner>.message`, or `<partner>.inbox.<name>.*`) and the partners it lacks (`ministry.*`, `coreBanking.*`); until then the File API polls only the inboxes that name a message, and an installation may name more in `FileApi:Inboxes`. (2) Give each `deliver` disposition a correlation map (an activity of type `map` that reads the key from the file), so the front door reads the key as the scheme says; until then the front door matches the keys the sender gives (`correlation` on `POST /files`) and, failing those, the stem of the file name, which pairs a PIF with its PSI only when both share it.
+
+## I-157. The banks' SFTP partners have no pinned host key, and the login's form
+
+**Issue.** The `sftp` adapter refuses a partner whose host key the binding does not pin (`<partner>.hostKeyRef`), and DIB's and ADIB's bindings pin none: the source's SFTP gateway trusted what its profile held, and the profiles are not in the source. The login is one reference per binding (`secretRef`), and a reference holds one value, so its form (`<user>:<password>`, or `<user>` and a new line and a private key) is the runtime's choice; the source kept the user in the gateway's profile.
+
+**Recommendation.** Ask each bank for its partners' host key fingerprints and add them by reference in a new binding with a later `validFrom` (`centralBank.hostKeyRef: vault:...`), one reference per partner, with the login per partner (`<partner>.secretRef`, `<partner>.user`). Until then the bindings load and name their partners, and no session opens.
 
 ## Not done, and why
 
