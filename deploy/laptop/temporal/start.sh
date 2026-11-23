@@ -1,24 +1,21 @@
 #!/bin/sh
-# Temporal on the SQL Server plugin (runtime/temporal-mssql), the laptop's default engine (R-09-79).
-#   start.sh schema   create both databases if absent and bring their schemas to the plugin's version (as the databases' owner)
-#   start.sh server   run the server, its frontend on 0.0.0.0:7233 for the other containers (as the least-privileged login)
-# TEMPORAL_SQLSERVER_ADDR, TEMPORAL_SQLSERVER_USER and TEMPORAL_SQLSERVER_PASSWORD come from the environment only.
+# Temporal for the laptop stack: on the SQL Server plugin (runtime/temporal-mssql), the default engine (R-09-79), or on PostgreSQL
+# (compose.postgres.yaml, TEMPORAL_DB_PLUGIN=postgres12).
+#   start.sh server   run the server, its frontend on 0.0.0.0:7233 for the other containers, as the least-privileged login
+# Its two databases' schemas are not set up here: the stack's migrate step (db-init, runtime/tools/TransactHub.Migrate) brings them
+# up to the server's version once, at the stack's start, as the databases' owner (R-09-141). The server's login holds data rights
+# only. TEMPORAL_SQLSERVER_* or TEMPORAL_POSTGRES_* (address, user, password) come from the environment only.
 set -eu
 cd /opt/th/temporal
 case "${1:-server}" in
-  schema)
-    host=${TEMPORAL_SQLSERVER_ADDR%:*}; port=${TEMPORAL_SQLSERVER_ADDR##*:}
-    for pair in "${TEMPORAL_DB:-temporal}:temporal" "${TEMPORAL_VISIBILITY_DB:-temporal_visibility}:visibility"; do
-      db=${pair%%:*}; part=${pair##*:}
-      tool() { bin/temporal-sql-tool --plugin sqlserver --ep "$host" -p "$port" -u "$TEMPORAL_SQLSERVER_USER" --pw "$TEMPORAL_SQLSERVER_PASSWORD" --db "$db" "$@"; }
-      tool create-database 2>/dev/null || echo "database $db is there"
-      tool setup-schema -v 0.0 2>/dev/null || echo "schema of $db is set up"
-      tool update-schema -d "schema/sqlserver/$part/versioned"
-    done
-    ;;
   server)
     export TEMPORAL_BIND_IP=${TEMPORAL_BIND_IP:-0.0.0.0}
-    exec bin/temporal-server --config-file config/development-sqlserver.yaml --allow-no-auth start
+    case "${TEMPORAL_DB_PLUGIN:-sqlserver}" in
+      sqlserver) config=config/development-sqlserver.yaml ;;
+      postgres12) config=laptop/development-postgres.yaml ;;
+      *) echo "TEMPORAL_DB_PLUGIN is sqlserver or postgres12" >&2; exit 2 ;;
+    esac
+    exec bin/temporal-server --config-file "$config" --allow-no-auth start
     ;;
-  *) echo "usage: start.sh schema|server" >&2; exit 2 ;;
+  *) echo "usage: start.sh server (the schemas are the migrate step's, R-09-141)" >&2; exit 2 ;;
 esac

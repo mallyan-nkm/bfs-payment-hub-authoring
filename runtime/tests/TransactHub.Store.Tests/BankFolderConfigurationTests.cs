@@ -62,6 +62,11 @@ public sealed class BankFolderConfigurationTests
         Assert.Equal("IBMK", req.Headers.GetValues("X-External-Host-Id").Single());
         Assert.Equal("Y", req.Headers.GetValues("X-Txn-Flag").Single());
         Assert.Equal("WPS", req.Headers.GetValues("X-Channel").Single());
+        // The channel is the bank's setting, never the platform's default (R-09-142): a binding that names none sends none.
+        var none = b with { Settings = b.Settings.Where(kv => kv.Key != "channel").ToDictionary(kv => kv.Key, kv => kv.Value) };
+        var rec2 = new Recorder();
+        await CoreBankingAdapters.Create(none, new HttpClient(rec2), TransactHub.Security.SecretResolver.FromEnvironment(k => k == "TH_DIB_CORE_BANKING_TOKEN" ? token : null)).Post(batch);
+        Assert.False(rec2.Requests.Single().Item1.Headers.Contains("X-Channel"));
         var j = (JsonObject)JsonNode.Parse(body)!;
         Assert.Equal("IBSSYSTEM", (string?)j["serviceCode"]);
         Assert.Equal("997", (string?)j["uploadBranch"]);

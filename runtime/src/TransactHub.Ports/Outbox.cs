@@ -27,16 +27,17 @@ public sealed record FileTransferOwner(string? PaymentId, string? Leg, string Sc
 }
 
 /// <summary>
-/// The file-transfer port on a host whose files go through the File API (R-09-84): a put is a write to the File API's outbox
-/// (<c>POST /outbox</c>), which keeps the file and delivers it on the bank's binding; a file the File API could not deliver yet stays in
-/// its outbox and is tried again there. Reads, lists and removals are the binding's adapter's.
+/// The file-transfer port on a host whose files go through the File API (R-09-84, R-09-138): a put is a write to the File API's
+/// outbox (<c>POST /outbox</c>), which keeps the file and delivers it on the bank's binding; a file the File API could not deliver yet
+/// stays in its outbox and is tried again there. A read, a listing and a removal are asked of the File API too (<c>POST
+/// /transfer</c>), which carries them out on the same binding: the host never opens the bank's folder or SFTP session itself.
 /// </summary>
-public sealed class OutboxFileTransfer(IFileTransfer inner, string tenant, Uri fileApi, string tokenRef, ISecretResolver secrets, HttpClient? http = null) : IFileTransfer
+public sealed class OutboxFileTransfer(string adapter, string tenant, Uri fileApi, string tokenRef, ISecretResolver secrets, HttpClient? http = null) : IFileTransfer
 {
     static readonly HttpClient shared = new() { Timeout = TimeSpan.FromMinutes(2) };
     readonly HttpClient http = http ?? shared;
-    public string Adapter => inner.Adapter;
-    public IFileTransfer Inner => inner;
+    /// <summary>The adapter of the bank's binding the File API carries the files on.</summary>
+    public string Adapter => adapter;
 
     public async Task Put(string folder, string name, byte[] content, CancellationToken ct = default)
     {
@@ -53,7 +54,29 @@ public sealed class OutboxFileTransfer(IFileTransfer inner, string tenant, Uri f
         if (!res.IsSuccessStatusCode) throw new FileTransferException($"The File API's outbox answered {(int)res.StatusCode} for {name}");
     }
 
-    public Task<byte[]?> Get(string folder, string name, CancellationToken ct = default) => inner.Get(folder, name, ct);
-    public Task<bool> Delete(string folder, string name, CancellationToken ct = default) => inner.Delete(folder, name, ct);
-    public Task<IReadOnlyList<string>> List(string folder, CancellationToken ct = default) => inner.List(folder, ct);
+    public async Task<byte[]?> Get(string folder, string name, CancellationToken ct = default)
+    {
+        FileTransferAdapters.Relative(folder, name);
+        var r = await Transfer("get", folder, name, ct);
+        return (string?)r?["contentBase64"] is string b ? Convert.FromBase64String(b) : null;
+    }
+
+    public async Task<bool> Delete(string folder, string name, CancellationToken ct = default)
+    {
+        FileTransferAdapters.Relative(folder, name);
+        return (bool?)(await Transfer("delete", folder, name, ct))?["deleted"] ?? false;
+    }
+
+    public async Task<IReadOnlyList<string>> List(string folder, CancellationToken ct = default) =>
+        ((await Transfer("list", folder, null, ct))?["names"] as JsonArray ?? []).Select(n => (string)n!).ToList();
+
+    async Task<JsonObject?> Transfer(string op, string folder, string? name, CancellationToken ct)
+    {
+        var body = new JsonObject { ["tenant"] = tenant, ["op"] = op, ["folder"] = folder, ["fileName"] = name };
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(fileApi, "transfer")) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", (await secrets.Resolve(tokenRef, ct)).Reveal());
+        using var res = await http.SendAsync(req, ct);
+        if (!res.IsSuccessStatusCode) throw new FileTransferException($"The File API answered {(int)res.StatusCode} to {op} {folder}{(name is null ? "" : "/" + name)}");
+        return JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonObject;
+    }
 }

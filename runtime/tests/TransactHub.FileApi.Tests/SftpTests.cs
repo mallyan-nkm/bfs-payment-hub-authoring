@@ -180,7 +180,7 @@ public sealed class SftpTests(SftpServer server) : IClassFixture<SftpServer>
             var all = new PortBindings();
             all.Add(File.ReadAllText(Path.Combine(repo, "content-configurations", "banks", bank, "file-transfer.yaml")));
             var binding = all.InForce(bank, FileTransferAdapters.Port, DateTimeOffset.Parse("2026-12-01T00:00:00Z"));
-            var t = Assert.IsType<SftpFileTransfer>(FileTransferAdapters.Create(binding, Secrets(new())));
+            var t = Assert.IsType<SftpFileTransfer>(FileTransferAdapters.Direct(binding, Secrets(new())));
             Assert.Equal(["centralBank", "pickup"], t.Partners.Keys.Order(StringComparer.Ordinal));
             Assert.Equal("centralBank", t.DefaultPartner);
             Assert.All(t.Partners.Values, p => Assert.Equal(22, p.Port));

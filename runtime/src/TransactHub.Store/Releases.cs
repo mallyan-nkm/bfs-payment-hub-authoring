@@ -49,13 +49,22 @@ public sealed class ReleaseRegistry(StoreDbContext db, TimeProvider? clock = nul
     {
         if (!await db.Releases.AnyAsync(r => r.Scope == scope && r.Release == release, ct))
             throw new InvalidOperationException($"{scope}@{release} is not stored; store it before activating it.");
-        db.Activations.Add(new ActivationRow
+        // A workflow package's activations are dated, not a switch-over: one that lost its number to another is numbered again.
+        for (var attempt = 0; ; attempt++)
         {
-            Environment = environment, Scope = scope, Release = release, EffectiveFrom = StoreTime.Of(effectiveFrom),
-            Actor = actor, RecordedAt = StoreTime.Of(clock.GetUtcNow()),
-        });
-        await db.SaveChangesAsync(ct);
+            db.Activations.Add(new ActivationRow
+            {
+                Environment = environment, Scope = scope, Release = release, EffectiveFrom = StoreTime.Of(effectiveFrom),
+                Actor = actor, RecordedAt = StoreTime.Of(clock.GetUtcNow()), Sequence = await LastSequence(db, environment, scope, ct) + 1,
+            });
+            try { await db.SaveChangesAsync(ct); return; }
+            catch (DbUpdateException) when (attempt < 5) { db.ChangeTracker.Clear(); }
+        }
     }
+
+    /// <summary>The number of the last activation recorded in an environment and scope, 0 when none (R-09-137).</summary>
+    public static async Task<long> LastSequence(StoreDbContext db, string environment, string scope, CancellationToken ct = default) =>
+        await db.Activations.AsNoTracking().Where(a => a.Environment == environment && a.Scope == scope).MaxAsync(a => (long?)a.Sequence, ct) ?? 0;
 
     /// <summary>The release new payments take at a moment: the latest activation in effect then (the later recorded wins a tie).</summary>
     public async Task<string?> ActiveAt(string environment, string scope, DateTimeOffset at, CancellationToken ct = default)

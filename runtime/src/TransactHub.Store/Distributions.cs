@@ -120,16 +120,27 @@ public sealed class DistributionRegistry(StoreDbContext db, TimeProvider? clock 
         if (await new ReleaseRegistry(db, clock).Get(Scope(bank), id, ct) is null) throw new DistributionRefused($"{dist} is not installed; install it first");
         var state = await StateIn(dist, environment, ct);
         if (state == "removed") throw new DistributionRefused($"{dist} was removed from {environment}; install it again from GitHub before activating it");
+        // The last activation's number first, then the active distribution (R-09-137): a writer that read the number before another
+        // activation committed takes the same number and is refused by the store's unique key, so it never drains a distribution
+        // that is no longer the active one.
+        var sequence = await ReleaseRegistry.LastSequence(db, environment, Scope(bank), ct) + 1;
         var previous = await Active(bank, environment, ct);
         if (previous == dist) return (dist, null);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         db.Activations.Add(new ActivationRow
         {
             Environment = environment, Scope = Scope(bank), Release = id, EffectiveFrom = StoreTime.Of(clock.GetUtcNow()), Actor = actor, RecordedAt = StoreTime.Of(clock.GetUtcNow()),
+            Sequence = sequence,
         });
-        await db.SaveChangesAsync(ct);
-        await Fact(dist, "active", environment, actor, why, previous is null ? null : new JsonObject { ["replaces"] = previous }, ct);
-        if (previous is not null) await Fact(previous, "draining", environment, actor, why, new JsonObject { ["replacedBy"] = dist }, ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException e)
+        {
+            await tx.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            throw new ActivationRaced($"Another activation of {bank} in {environment} was recorded first, as activation {sequence}: {dist} was not activated. Read the active distribution and activate again if it is still wanted", e);
+        }
+        await Fact(dist, "active", environment, actor, why, previous is null ? new JsonObject { ["activation"] = sequence } : new JsonObject { ["replaces"] = previous, ["activation"] = sequence }, ct);
+        if (previous is not null) await Fact(previous, "draining", environment, actor, why, new JsonObject { ["replacedBy"] = dist, ["activation"] = sequence }, ct);
         await tx.CommitAsync(ct);
         return (dist, previous);
     }
@@ -319,6 +330,13 @@ public static class ParameterContract
         }
         return problems;
     }
+}
+
+/// <summary>An activation another activation of the same bank and environment beat to the store (R-09-137): nothing was changed.</summary>
+public sealed class ActivationRaced(string message, Exception inner) : InvalidOperationException(message, inner)
+{
+    /// <summary>The error dictionary's code.</summary>
+    public string Code => "distribution.ActivationRaced";
 }
 
 public sealed class DistributionRefused(string message) : InvalidOperationException(message)

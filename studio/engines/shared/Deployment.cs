@@ -82,6 +82,34 @@ public sealed class Deployment
         .Where(v => J.S(v, "parameter") == key && string.CompareOrdinal(J.S(v, "validFrom") ?? "", date) <= 0 && (J.S(v, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0))
         .OrderBy(v => J.S(v, "validFrom"), StringComparer.Ordinal).Select(v => J.S(v, "value")).LastOrDefault();
 
+    /// <summary>
+    /// Where a runtime's engine host reads the bank's values as of a step (R-09-135): given <c>tenant</c>, <c>paymentId</c>, the step's
+    /// time <c>at</c> (ms) and the <c>parameters</c> asked, each with its <c>lookupDate</c>, it answers <c>values</c>, parameter to the
+    /// value in force then (none when the bank set none). Installed by the runtime's builds from the store; the studio's harnesses
+    /// leave it unset and read the deployment's <c>values</c>.
+    /// </summary>
+    public static Func<JsonObject, JsonObject>? LiveValues;
+
+    /// <summary>Whether this deployment reads the bank's values live, step by step (a plan the engine host built, <c>liveValues</c>).</summary>
+    public bool Live => LiveValues is not null && J.P(Config, "liveValues") is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+
+    /// <summary>The values asked of the live source, or none when there is none (an engine's host answers the op <c>values</c> with it).</summary>
+    public static JsonObject ValuesOp(JsonObject a) => LiveValues?.Invoke(a) ?? new JsonObject { ["values"] = new JsonObject() };
+
+    /// <summary>
+    /// The date a parameter (<c>owner#name</c>) is read as of, as its owner declares it (R-04-10): <c>payment-date</c>, the payment's
+    /// acceptance, or <c>step-time</c>, the default.
+    /// </summary>
+    public string LookupDateOf(string parameter)
+    {
+        var i = parameter.IndexOf('#');
+        if (i < 0) return "step-time";
+        var (owner, name) = (parameter[..i], parameter[(i + 1)..]);
+        foreach (var d in docs.Values)
+            if (J.S(d, "name") == owner && J.S(J.P(J.P(d, "parameters"), name), "lookupDate") is string l) return l;
+        return "step-time";
+    }
+
     public JsonObject? Stub(string step, string activity)
     {
         var stubs = J.P(Config, "stubs");

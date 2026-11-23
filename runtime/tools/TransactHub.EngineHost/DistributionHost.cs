@@ -185,8 +185,11 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
         var ns = System.Environment.GetEnvironmentVariable("TH_TEMPORAL_NAMESPACE") ?? "default";
         var client = await TemporalClient.ConnectAsync(new(address) { Namespace = ns });
         TemporalEngine.RealServer = true;
-        await using (var db = StoreDbContext.Open(Store)) await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database, ct);
+        // The schema is the migrate step's, as the owner, on a runtime (R-09-141): this host migrates only where the installation lets it.
+        if (StoreMigration.Allowed()) { await using var db = StoreDbContext.Open(Store); await Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions.MigrateAsync(db.Database, ct); }
         StoreSignals.Install(Store, StepFacts.Install(Store));
+        // The bank's values as of each step, from the configuration releases in force (R-09-135).
+        StoreValues.Install(Store);
         workers = new DistributionWorkers(client, PlanFor(null), DeploymentName(Bank, Environment), IdPart, null, Store, pinnedAs: Distribution);
         await workers.StartAsync();
     }
@@ -194,7 +197,7 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
     protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
         Interlocked.Increment(ref open);
-        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context, ["legs"] = legs }); }
+        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context, ["legs"] = legs, ["now"] = DateTimeOffset.UtcNow.ToString("O") }); }
         finally { Interlocked.Decrement(ref open); }
     }
 

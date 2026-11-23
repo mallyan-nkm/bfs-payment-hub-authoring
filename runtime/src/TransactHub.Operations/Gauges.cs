@@ -20,8 +20,25 @@ public sealed class RuntimeGauges
     public static readonly Meter Meter = new(MeterName, "1.0.0");
     public static readonly Counter<long> HoldsExpired = Meter.CreateCounter<long>("th.holds.expired", "{hold}", "Holds that reached their expiry with no decision");
 
-    /// <summary>The awaited replies of the factory's schemes: the WPS salary file and its acknowledgement (R-05-47).</summary>
-    public static readonly AwaitedReply[] Default = [new("uae.wps", "uae.wps.sif", ["uae.wps.ack"])];
+    /// <summary>
+    /// The awaited replies the gauge watches: none unless the installation names them. Platform code names no scheme (R-09-142); the
+    /// scheme declares no reply to a message it sends yet (Issue I-235), so an installation names each scheme's in its settings.
+    /// </summary>
+    public static readonly AwaitedReply[] Default = [];
+
+    /// <summary>
+    /// The awaited replies an installation names (<c>Service:Gauges:AwaitedReplies</c>): a JSON array of <c>{ scheme, sent, replies }</c>,
+    /// for example a WPS salary file and its acknowledgement.
+    /// </summary>
+    public static IReadOnlyList<AwaitedReply> FromSetting(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Default;
+        return (System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonArray ?? throw new InvalidOperationException("Service:Gauges:AwaitedReplies is a JSON array of { scheme, sent, replies }"))
+            .OfType<System.Text.Json.Nodes.JsonObject>()
+            .Select(o => new AwaitedReply((string?)o["scheme"] ?? throw new InvalidOperationException("an awaited reply names its scheme"), (string?)o["sent"] ?? throw new InvalidOperationException("an awaited reply names the message sent"),
+                (o["replies"] as System.Text.Json.Nodes.JsonArray ?? []).Select(r => (string)r!).ToList()))
+            .ToList();
+    }
 
     readonly StoreOptions store;
     readonly StoreOptions ops;

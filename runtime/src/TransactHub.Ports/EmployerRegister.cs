@@ -54,8 +54,8 @@ public sealed class SimulatedEmployerRegister(PortBinding b) : IEmployerRegister
 
 /// <summary>
 /// The register behind a REST service: <c>POST {baseUrl}{statusPath}</c> with <c>{ "employerId": … }</c>; the reply's <c>status</c>
-/// is the employer's; a 404 is an employer the register does not know. Headers: <c>X-Channel</c> (setting <c>channel</c>, default
-/// WPS) and <c>X-Ref</c>; the credential by <c>secretRef</c> as a bearer token, or in the header <c>credentialHeader</c> names.
+/// is the employer's; a 404 is an employer the register does not know. Headers: <c>X-Channel</c> (setting <c>channel</c>, the bank's: sent only
+/// when the binding names one) and <c>X-Ref</c>; the credential by <c>secretRef</c> as a bearer token, or in the header <c>credentialHeader</c> names.
 /// </summary>
 public sealed class RestEmployerRegister(PortBinding b, HttpClient http, ISecretResolver? secrets = null) : IEmployerRegister
 {
@@ -69,7 +69,8 @@ public sealed class RestEmployerRegister(PortBinding b, HttpClient http, ISecret
         {
             Content = JsonContent.Create(new JsonObject { ["employerId"] = employerId }),
         };
-        m.Headers.Add("X-Channel", b.Setting("channel", "WPS"));
+        // The channel the gateway knows the caller by is the bank's binding's (R-09-142): platform code names no scheme.
+        if (b.Setting("channel", "") is { Length: > 0 } channel) m.Headers.Add("X-Channel", channel);
         m.Headers.Add("X-Ref", employerId);
         if (b.Setting("secretRef", "") is { Length: > 0 } r)
         {

@@ -144,6 +144,57 @@ public sealed class LaptopDeploymentTests
         Assert.Contains("COPY --chown=root:root deploy/laptop/banks/ /opt/th/deploy/laptop/banks/", Dockerfile);
     }
 
+    static string ServicesOf(string text) => text[text.IndexOf("\nservices:\n", StringComparison.Ordinal)..];
+
+    [Fact]
+    public void No_host_migrates_from_the_runtimes_login_and_the_migrate_step_brings_Temporals_schemas_up_to_date()
+    {
+        // R-09-141: the migrate step (db-init) migrates the store, the read model and Temporal's two databases as the owner, once; every
+        // service that connects as th_runtime runs with Store__Migrate=false, and the Temporal image sets up no schema.
+        var dbInit = Service("db-init");
+        Assert.Contains("command: [\"migrate\"]", dbInit);
+        Assert.Contains("TH_TEMPORAL_SCHEMA_PLUGIN: sqlserver", dbInit);
+        Assert.Contains("TH_TEMPORAL_SCHEMA_PASSWORD_REF: env:", dbInit);
+        Assert.DoesNotContain("temporal-schema", Compose);
+        Assert.DoesNotContain("setup-schema", File.ReadAllText(Path.Combine(Laptop, "temporal", "start.sh")));
+        Assert.Matches(@"x-store: &store\n(?:  .*\n)*?  Store__Migrate: ""false""", Compose);
+        var checkedHosts = 0;
+        foreach (Match m in Regex.Matches(ServicesOf(Compose), @"^  ([a-z-]+):(?: &\S+)?\n((?:    .*\n|\n)*?)(?=^  \S|^\S|\z)", RegexOptions.Multiline))
+        {
+            var (name, body) = (m.Groups[1].Value, m.Groups[2].Value);
+            var viaAnchor = Regex.IsMatch(body, @"<<: \[?\*store\b");
+            if (!body.Contains("th_runtime") && !viaAnchor) continue;
+            checkedHosts++;
+            Assert.True(viaAnchor || body.Contains("Store__Migrate: \"false\""), $"{name} connects as the runtime's login but may migrate the store");
+        }
+        Assert.True(checkedHosts >= 10, $"only {checkedHosts} services connect as the runtime's login");
+        // The runtime image carries the schema tool and both databases' schema files for the migrate step.
+        Assert.Contains("COPY --from=temporal-bits /out/temporal-sql-tool /opt/th/temporal/bin/", Dockerfile);
+        Assert.True(Directory.Exists(Path.Combine(Laptop, "temporal", "schema", "postgresql", "v12", "temporal", "versioned")));
+    }
+
+    [Fact]
+    public void The_PostgreSQL_variant_runs_the_store_the_read_model_and_Temporal_on_PostgreSQL_with_the_same_grants()
+    {
+        // R-09-140: an override of compose.yaml; its images pinned, no secret value, ports on loopback; its grants SQL Server's.
+        var pg = File.ReadAllText(Path.Combine(Laptop, "compose.postgres.yaml"));
+        var images = Regex.Matches(pg, @"^\s+image:\s*(\S+)", RegexOptions.Multiline).Select(m => m.Groups[1].Value).ToList();
+        Assert.NotEmpty(images);
+        Assert.All(images, i => Assert.Contains("@sha256:", i));
+        foreach (Match m in Regex.Matches(pg, @"Password=([^;""]*)")) Assert.StartsWith("${", m.Groups[1].Value);
+        foreach (Match m in Regex.Matches(pg, @"ports:\s*\[(.*?)\]")) Assert.StartsWith("\"127.0.0.1:", m.Groups[1].Value.Trim());
+        Assert.Contains("TH_TEMPORAL_SCHEMA_PLUGIN: postgres12", pg);
+        Assert.Contains("TEMPORAL_DB_PLUGIN: postgres12", pg);
+        Assert.Contains("grants-postgres.sql", pg);
+        foreach (var svc in new[] { "runtime-api", "service-api", "ops-api", "native", "file-api", "testbench", "enginehost", "enginehost-dtfx", "enginehost-elsa", "enginehost-flowable" })
+            Assert.Matches($@"(?m)^  {Regex.Escape(svc)}:", pg);
+        var grants = File.ReadAllText(Path.Combine(Laptop, "sql", "grants-postgres.sql"));
+        var store = grants[grants.IndexOf("\\connect th_store", StringComparison.Ordinal)..grants.IndexOf("\\connect th_ops", StringComparison.Ordinal)];
+        Assert.Contains("GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO th_runtime;", store);
+        Assert.Contains("REVOKE UPDATE, DELETE, TRUNCATE", store);
+        Assert.DoesNotMatch(@"GRANT[^;]*(UPDATE|DELETE|TRUNCATE|ALL PRIVILEGES)[^;]*TABLES[^;]*th_runtime", store);
+    }
+
     [Fact]
     public void The_development_identity_provider_is_refused_in_Production()
     {

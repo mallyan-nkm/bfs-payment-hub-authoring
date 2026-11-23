@@ -245,6 +245,8 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Release).HasMaxLength(32).IsRequired();
             e.Property(x => x.Actor).HasMaxLength(Short).IsRequired();
             e.HasIndex(x => new { x.Environment, x.Scope, x.EffectiveFrom });
+            // One activation per number in an environment and scope: of two concurrent activations, one wins (R-09-137).
+            e.HasIndex(x => new { x.Environment, x.Scope, x.Sequence }).IsUnique();
         });
 
         m.Entity<VersionedValueRow>(e =>

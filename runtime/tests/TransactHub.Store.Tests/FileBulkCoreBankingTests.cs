@@ -269,14 +269,14 @@ public sealed class FileBulkCoreBankingTests
         try
         {
             var secrets = new TransactHub.Security.SecretResolver([new TransactHub.Security.EnvSecretProvider(k => k == "TH_TEST_FT_ROOT" ? root.FullName : null)]);
-            var t = FileTransferAdapters.Create(new PortBinding("test-bank", FileTransferAdapters.Port, DirectoryFileTransfer.Name, From, new Dictionary<string, string> { ["rootRef"] = "env:TH_TEST_FT_ROOT" }), secrets);
+            var t = FileTransferAdapters.Direct(new PortBinding("test-bank", FileTransferAdapters.Port, DirectoryFileTransfer.Name, From, new Dictionary<string, string> { ["rootRef"] = "env:TH_TEST_FT_ROOT" }), secrets);
             await t.Put("/cbs/de/in", "a.txt", [1, 2, 3]);
             Assert.Equal([1, 2, 3], await t.Get("cbs/de/in", "a.txt"));
             Assert.Equal(["a.txt"], await t.List("/cbs/de/in"));
             Assert.True(await t.Delete("/cbs/de/in", "a.txt"));
             await Assert.ThrowsAsync<PortBindingException>(() => t.Put("/cbs/../etc", "x", [0]));
             await Assert.ThrowsAsync<PortBindingException>(() => t.Put("/cbs", "../x", [0]));
-            Assert.Throws<PortBindingException>(() => FileTransferAdapters.Create(new PortBinding("test-bank", FileTransferAdapters.Port, "sftp", From, new Dictionary<string, string>())));
+            Assert.Throws<PortBindingException>(() => FileTransferAdapters.Direct(new PortBinding("test-bank", FileTransferAdapters.Port, "sftp", From, new Dictionary<string, string>())));
         }
         finally { root.Delete(true); }
     }

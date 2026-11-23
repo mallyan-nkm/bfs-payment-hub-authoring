@@ -156,6 +156,14 @@ public sealed class DistributionWorkers : IAsyncDisposable
         var built = (JsonObject)input["built"]!;
         if (J.P(payment, "context") is JsonObject ctx) built["context"] = J.Clone(ctx);
         if (J.S(payment, "id") is string id) built["id"] = id;
+        // A payment's run starts at its own time on the host's clock (R-09-135), not at the host's start: a wait it reads as of
+        // the step's day reads that day.
+        if (J.S(payment, "now") is string now && DateTimeOffset.TryParse(now, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var t))
+        {
+            var cfg = (JsonObject)built["config"]!;
+            cfg["evaluationDate"] = t.UtcDateTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            cfg["startTime"] = t.UtcDateTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        }
         input["distribution"] = Distribution;
         if (J.P(payment, "legs") is JsonObject legs) built["legs"] = J.Clone(legs);
         var paymentId = J.S(payment, "id");
