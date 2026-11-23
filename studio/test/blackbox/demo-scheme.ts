@@ -77,7 +77,9 @@ export const SUBFLOW = {
   kind: 'workflow', wfKind: 'subflow', name: `${S}.sub.submit-file.v1`, release: '1.0.0', dsl: '1.0.0', title: 'Submit the demo file and read the acknowledgement',
   description: 'Sends the file, waits for the acknowledgement for as long as the calling step allows, and reads it.',
   implements: { activity: SUBMIT.name }, exit: { outcomes: ['accepted', 'rejected', 'pending'] },
+  // A file scheme's file is encrypted for its recipient before it is sent (L46, R-12-17).
   do: [
+    { id: 'encrypt', call: 'p.protect.encrypt-file.v1', handle: { refused: { return: 'rejected' } } },
     { id: 'send', call: SEND.name, handle: { rejected: { return: 'rejected' }, unknown: { return: 'pending' } } },
     { id: 'await-ack', await: { message: `${S}.ack`, correlateBy: 'header.fileId', onTimeout: { return: 'pending' } } },
     { id: 'read-ack', call: ACK_IN.name, handle: { nak: { return: 'rejected' } } },
@@ -122,6 +124,7 @@ export const GARBAGE = 'this is not a demo file\n';
 export const bench = (scenario: string, platform = false) => [
   { port: PORT.name, simulator: SIM.name, scenario },
   { port: 'uae.p.port.calendar.v1', simulator: 'uae.p.sim.calendar.v1', scenario: 'accept' },
+  { port: 'p.port.encryption.v1', simulator: 'p.sim.encryption.v1', scenario: 'accept' },
   ...(platform ? ['core-banking', 'sanctions', 'fraud'].map((p) => ({ port: `p.port.${p}.v1`, simulator: `p.sim.${p}.v1`, scenario: 'accept' })) : []),
 ];
 export const T = (id: string, title: string, target: string, level: string, given: any, expect: any, b: any[] = [], tenant?: string) => ({ kind: 'test', id, title, target, level, evaluationDate: '2026-11-17', ...(tenant ? { tenant } : {}), ...(b.length ? { bench: b } : {}), given, expect });
@@ -135,12 +138,12 @@ export const TESTS = {
     T('DEMO-MAP-002', 'Something that is not a demo file does not', FILE_IN.name, 'activity', { inbound: 'samples/demo-credit-file-garbage.csv' }, { outcome: 'unmappable', reasonCode: 'FF01' }),
   ],
   submit: [
-    T('DEMO-EXC-001', 'The composite alone: sent, acknowledged, read', SUBMIT.name, 'activity', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'accepted', detail: ['send:accepted', 'await-ack:received', 'read-ack:ack'] }, bench('accept')),
-    T('DEMO-EXC-002', 'The composite alone: refused', SUBMIT.name, 'activity', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'rejected', detail: ['send:accepted', 'await-ack:received', 'read-ack:nak'] }, bench('reject')),
+    T('DEMO-EXC-001', 'The composite alone: sent, acknowledged, read', SUBMIT.name, 'activity', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'accepted', detail: ['encrypt:encrypted', 'send:accepted', 'await-ack:received', 'read-ack:ack'] }, bench('accept')),
+    T('DEMO-EXC-002', 'The composite alone: refused', SUBMIT.name, 'activity', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'rejected', detail: ['encrypt:encrypted', 'send:accepted', 'await-ack:received', 'read-ack:nak'] }, bench('reject')),
     T('DEMO-EXC-003', 'The composite alone: no acknowledgement within a business day', SUBMIT.name, 'activity', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'pending' }, bench('no-reply')),
   ],
   leg: [
-    T('DEMO-OUT-001', 'The demo file is acknowledged', LEG.name, 'leg', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'settled', trace: ['business-date:set', 'file-checks:pass', 'record-iban[0]:pass', 'record-iban[1]:pass', 'render:mapped', 'submit:accepted', 'end:settled'], detail: ['submit.send:accepted', 'submit.await-ack:received', 'submit.read-ack:ack'] }, bench('accept')),
+    T('DEMO-OUT-001', 'The demo file is acknowledged', LEG.name, 'leg', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'settled', trace: ['business-date:set', 'file-checks:pass', 'record-iban[0]:pass', 'record-iban[1]:pass', 'render:mapped', 'submit:accepted', 'end:settled'], detail: ['submit.encrypt:encrypted', 'submit.send:accepted', 'submit.await-ack:received', 'submit.read-ack:ack'] }, bench('accept')),
     T('DEMO-OUT-002', 'Refused by the clearing house', LEG.name, 'leg', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'rejected', reasonCode: 'AC03' }, bench('reject')),
     T('DEMO-OUT-003', 'A file in dollars is rejected before anything is sent', LEG.name, 'leg', { inbound: 'samples/demo-credit-file-usd.csv' }, { outcome: 'rejected', reasonCode: 'AM03', trace: ['business-date:set', 'file-checks:reject', 'end:rejected'], messages: [{ port: PORT.name, message: `${S}.file-submission`, count: 0 }] }, bench('accept')),
     T('DEMO-OUT-004', 'No acknowledgement within a business day is pending', LEG.name, 'leg', { inbound: 'samples/demo-credit-file-valid.csv' }, { outcome: 'pending' }, bench('no-reply')),

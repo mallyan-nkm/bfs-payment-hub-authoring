@@ -1,3 +1,4 @@
+import { resolveReferenceValues } from '../core/reference.js';
 import { canonicalJson, clone, contentHash } from '../core/canonical.js';
 import { toYaml } from '../core/yaml.js';
 import { Checker, pinnable, type Issue } from '../checks/checks.js';
@@ -103,7 +104,9 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
       const h = env.store.doc(b.hook, b.release);
       if (h) flows.set(h.name, h);
     }
-    if (req.values !== false) files[`configuration/${req.tenant}.yaml`] = toYaml(config);
+    // A value read from a reference table goes into the package as the values it reads, one per edition (R-11-51, R-09-103): a
+    // deployed worker holds no reference table, and reads the value as the studio's interpreter does.
+    if (req.values !== false) files[`configuration/${req.tenant}.yaml`] = toYaml({ ...config, values: resolveReferenceValues(config.values ?? [], (n) => env.store.doc(n, undefined, req.tenant)) });
   }
 
   const blocks = new Map<string, any>();

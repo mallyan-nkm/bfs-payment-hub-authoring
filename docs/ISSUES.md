@@ -1028,7 +1028,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **What is built.** Each folder sets `enabledRails` to the empty list, from 2026-11-22, and no WPS value. BANK-RAIL-001 shows a payment that asks for WPS finds no rail, and `studio/test/platform-bank-packs.test.ts` shows a salary file is refused at routing, before anything is sent.
 
-
 **Done (owner's decision of 2026-11-22): ADIB runs WPS.** ENBD and FAB stay platform only.
 
 - ADIB's folder (`content-configurations/banks/adib/`) carries the WPS values the source holds for it: the rail (`enabledRails` `[uae.wps]`, the base seed's subscription in `infra/docker/mssql/init.sql`); VAT 5 per cent and the four general-ledger names of `dsl/workflows/wps-outward.v2.workflow.json` (the WPS workflow only `AdibWpsActivities` serves); the file transfer the bank's WPS plugin uses (`file-transfer.yaml`: `/wps/inbound`, `/wps/outbound`, `/cb/wps/ack`, `/cb/wps/rtc`, `.invalid` hosts, the credential by `secretRef`); the encryption of its salary files (`encryption.yaml`, I-87). Configuration set 1.2.0 on the 1.2.0 packs; the lock file regenerated.
@@ -1043,7 +1042,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Decide whether a file a bank sends is encrypted by the file-transfer adapter (a setting of `p.port.file-transfer.v1`'s binding: profile and key by reference) or by its own port and activity in `p.*`, in one change with a requirement id and a check, together with I-67.
 
 **What is built.** Nothing. FAB's README lists the sample's profiles as not carried.
-
 
 **Done (owner's decision of 2026-11-22): a file the bank sends is encrypted by a port of its own** (R-03-24, R-12-13).
 
@@ -1060,7 +1058,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Add a `uae.wps` rule that refuses a salary file whose employer the ministry has suspended, with the status as a registered extension read by an activity (a lookup behind a port), and its reason code from the scheme's code set once confirmed (`uae.wps` is provisional). Do not add it as a bank rule: it is the same for every bank.
 
 **What is built.** Nothing in the factory. ADIB's, ENBD's and FAB's READMEs list the step as not carried; their `rules/` are empty.
-
 
 **Done (owner's decision of 2026-11-22): the rule is the scheme's** (R-12-14).
 
@@ -1175,7 +1172,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Recommendation.** Register the allowances and the leave encashment as item fields of `uae.wps.ext.salary.v1` (provisional until the rulebook confirms them) and map them in `uae.wps.map.sif-in.v1`; carry the channel, the employer's name and the debit account from the channel's upload into the bulk at intake; write the NAK's DER records and the posting's charge, VAT and legs as step writes (state, with masked accounts); and add the reports as projections of their own (I-68). Decide whether an unmask is needed at all: if it is, it reads the store, needs a permission of its own, and is a fact on the payment's chain.
 
 **What is built.** Each of these rows is in the mapping as not mapped, with this issue's number; every mapped row is checked against the views (`OperationsViewTests`).
-
 
 **Done (owner's decision of 2026-11-22: the recommendation, with ISO 20022 homes).** Coverage went from 101 mapped (15 empty) and 27 not mapped to 125 mapped (10 empty) and 3 not mapped of 128 rows (`docs/runtime/ops-console-wps-mapping.md`, checked by `OperationsViewTests`).
 
@@ -1296,7 +1292,6 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 **Issue.** Each distribution runs as its own copy: the front door keeps one verified copy per distribution, and the engine names what it registers after it (on Temporal the task queues and the worker build id, on DTFx the orchestration's name, on Elsa the workflow definition, on Flowable the deployment). But each payment's run is its own harness process: no long-running engine host serves several distributions at once, Temporal's worker-versioning rules (a build id set per task queue on a server) are not used, the time-skipping test server does not support them, and a removed distribution's workers stop because nothing starts them, not because a host unregisters them. The longest declared wait is the largest bound or default of a duration dial named a wait, a timeout or a hold; an `await` with a literal timeout is not counted. Scenario 6 (a new scheme) is shown only as far as one scheme allows: every distribution lists only its bank's schemes, and a leg naming a slot contract the platform does not offer refuses the approval.
 
 **Recommendation.** When the runtime's engine hosts become long-running (I-89, I-101), give each a registry of the distributions it serves, started at activation and stopped at removal, with Temporal worker versioning on the real server; count an await's literal timeout in the longest wait (or make every wait a dial, as the DSL asks); and add a second scheme pack to the factory's tests so that scenario 6 builds a distribution for a bank that licenses it and not for one that does not.
-
 
 **Done (2026-11-22).** `uae.wps.map.sif-in.v1` 1.1.0 (`studio/scripts/uae.wps.map.sif-in.v1@1.1.0.ts`) reads every amount from the file's own text into exact minor units and writes it as a decimal string with two places; a line's amount is the exact sum of its fixed and variable pay. WPS-MAP-004 maps a sixteen-digit total (`samples/wps-sif-large-total.sif`) with every digit. The runtime's `CanonicalMapper` reads an amount given as a string.
 
@@ -1684,6 +1679,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation and what was chosen.** (1) Three images on one base (ASP.NET Core 10 and Node 22's binary): the studio, the runtime (every runtime host, one image, a service per host) and Temporal with the SQL Server plugin; the runtime's image carries the studio's bundle as one shared layer, because the test bench and the front door run the studio's deploy runner. Recommendation: keep it for a laptop; for a bank's installation split the test bench out, so the hosts that run payments carry no studio code. (2) The supervisor builds each host's plan from the stored package (I-138 (3), R-09-94), and the laptop's File API front door starts and correlates payments on it (R-09-95); the insert-only test still runs its two payments with the front door's one-off runner (`deploy/laptop/bin/run-pinned.mts`) on Temporal. Recommendation: run the insert-only test's payments through the File API, so the laptop proves the path a bank's files take. (3) The bank's identity provider is a development provider of the runtime's own (`runtime/tools/TransactHub.DevIdentity`), refused in Production; the studio signs in with its own built-in development provider, standing in for the platform vendor's. (4) The images are built from source by the Dockerfile's build stages, or, where Docker builds have no network (as here), from the host's builds (`deploy/laptop/build.sh --local`); both end in the same final stages. (5) On a real Temporal server a WPS payment waits in real time for the scheme's acknowledgement, up to the bank's `ackWait` (ADIB's is twenty minutes, at least fifteen by the factory's bound, I-116): the simulator's acknowledgement comes about ten minutes after the file is sent, so the insert-only test runs its two payments side by side. Recommendation: a laptop profile of the simulators that answers at once, or a test calendar, so that a laptop run of a WPS file takes seconds. (6) A whole distribution posted to the release API's `POST /distributions` is refused by Kestrel's request body limit (30 MB by default) before the API sees it: the studio publishes to GitHub and the runtime installs from there (`/sources/install`, the service console), so only an upload is affected; the insert-only test shows the refusal of a second install of the same id with a small bundle. Recommendation: raise the limit for that route (`RequestSizeLimit`) to the largest distribution the studio builds, with a test.
 
+**Done for (2) (23 November 2026, R-09-105).** The insert-only test sends its payments as a bank's files arrive: two salary files dropped on the stack's SFTP server, which the File API's inbox poller reads, and one posted to `POST /files` by the channel's client; the File API's front door pins, routes and starts each on the engine host over the compose network, on the workers of its distribution (I-193). `bin/run-pinned.mts` stays for a one-off run. The host ports may be moved (`TH_LAPTOP_*_PORT`), so the test can run beside another laptop stack. (5) still holds: each payment waits for the simulator's acknowledgement in real time.
+
 ## I-157. Insert-only at the database, and what the database cannot say
 
 **Issue.** The store refused updates and deletes in its own code (`InsertOnlyGuard`, plan W2), but the database let the runtime's login change anything, so a host with a bug, or anyone with the hosts' connection, could update a distribution, an activation or a fact.
@@ -1710,6 +1707,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done for (2) (23 November 2026, R-09-112, R-09-113, Issue I-213).** The File API reads the bank's bindings from the configuration release in force, live, at each poll, delivery and decryption: a binding a new configuration release brings is used with no restart (`FileApiTests`, the resend test, which switches the outbox's folder by a later release). A File API given `TH_BANKS_DIR` does not start.
 
+**Done for the laptop's workers (23 November 2026, R-09-105).** The laptop sets `FileApi__Workers__uae.wps` and `FileApi__Workers__p` to its `workers` service, by distribution, and its engine hosts name the same service (`TH_HOST_WORKERS_URL`); every host that puts a file names the File API (`TH_FILE_API_URL`), and the operations and service consoles resend through it (`Operations__FileApi__*`, `Service__FileApi__*`). The inbox poller reads only the runtime's bank's inboxes (R-09-104). (2) and (4) stay open.
+
 ## I-159. The scheme declares no file rules
 
 **Issue.** The File API checks a file's size, extension and name and refuses a name received before, but the scheme manifest says nothing of a message's file: not its name pattern, its extensions, its largest size, whether a name may come twice, nor whether it is encrypted. The source's WPS upload checked a file name structure and date and refused a repeated file name (codes 002, 005).
@@ -1722,11 +1721,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** (1) Have each bank name, in a new binding with a later `validFrom`, each inbox's message (`<partner>.message`, or `<partner>.inbox.<name>.*`) and the partners it lacks (`ministry.*`, `coreBanking.*`); until then the File API polls only the inboxes that name a message, and an installation may name more in `FileApi:Inboxes`. (2) Give each `deliver` disposition a correlation map (an activity of type `map` that reads the key from the file), so the front door reads the key as the scheme says; until then the front door matches the keys the sender gives (`correlation` on `POST /files`) and, failing those, the stem of the file name, which pairs a PIF with its PSI only when both share it.
 
+**On the laptop (23 November 2026, R-09-105).** The laptop's binding of each bank's file transfer (`deploy/laptop/banks/<bank>/file-transfer.yaml`, carried in the bank's signed configuration release that the insert-only test has the studio build and puts in force with consent, R-09-110 to R-09-112) names each inbox's message: the pick-up folder's `uae.wps.sif`, the Central Bank's `uae.wps.ack` and `uae.wps.rtc`. Synthetic folders on the stack's SFTP server; the banks' own bindings still name none, and (2) stays open.
+
 ## I-161. The banks' SFTP partners have no pinned host key, and the login's form
 
 **Issue.** The `sftp` adapter refuses a partner whose host key the binding does not pin (`<partner>.hostKeyRef`), and DIB's and ADIB's bindings pin none: the source's SFTP gateway trusted what its profile held, and the profiles are not in the source. The login is one reference per binding (`secretRef`), and a reference holds one value, so its form (`<user>:<password>`, or `<user>` and a new line and a private key) is the runtime's choice; the source kept the user in the gateway's profile.
 
 **Recommendation.** Ask each bank for its partners' host key fingerprints and add them by reference in a new binding with a later `validFrom` (`centralBank.hostKeyRef: vault:...`), one reference per partner, with the login per partner (`<partner>.secretRef`, `<partner>.user`). Until then the bindings load and name their partners, and no session opens.
+
+**On the laptop (23 November 2026, R-09-105).** The stack's SFTP server makes its host keys on first start; the insert-only test reads them out of band (`ssh-keygen -lf`) and pins them by reference (`TH_LAPTOP_SFTP_HOST_KEY`), and the login is made at the stack's start (`TH_LAPTOP_SFTP_PASSWORD`), both from the environment only. The banks' partners still have no pinned host key.
 
 ## I-162. A simulator's scenario runs once per worker on the engines
 
@@ -1759,6 +1762,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** A hold's expiry counts the bank's business calendar table with its holidays (R-09-88), but an await whose `calendar` is `business` (`replyCalendar`, the WPS acknowledgement waits) is still counted on the default calendar, Saturday and Sunday, in the studio interpreter, the engines and the Flowable binding. The two waits of one payment can therefore count a public holiday differently.
 
 **Recommendation.** Count every business-calendar wait on the same table: hand the calendar to the engines with the deployment's values (it is a reference table the configuration release carries), and replace `DEFAULT_CALENDAR` and `BusinessCalendar.Default` by it where a run has one; prove it with a WPS acknowledgement wait across a holiday on every engine.
+
+**Still open (23 November 2026).** The business calendar the studio interpreter and the party hand a hold now counts the bank's own closed days too (R-09-102), but an await's business calendar did not fall out of the cut-off work: the engines count an await on `BusinessCalendar.Default` and would need the calendar with the deployment's values, so the studio interpreter was left as the engines are, to keep their waits equal.
 
 ## I-167. A requeue cannot be told from a retry by the kit's stubs
 
@@ -1855,6 +1860,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the calendar adapter read `uae.p.ref.business-calendar.v1` and the bank's `b.ref.bank-calendar.v1` by date, and add a platform step (or a front-door rule) that reads `b.ref.cut-offs.v1` for the file's scheme and direction, each with its tests; make a shared reference table's approval build each taking bank's configuration release.
 
+**Done for (1) (23 November 2026, R-12-28, R-09-102).** `p.decide.cut-off.v1` reads the bank's cut-offs, its own closing days and the market's calendar, each from its reference table by the bank's configuration (R-11-51), and moves a late file to the next business day or refuses it (I-191); the WPS salary file calls it after its business date, on the studio interpreter and every engine, and the operations console shows it (R-05-72). The calendar port's `reference` adapter and a hold's expiry count the bank's closed days (domain `bank-calendar`) as well as the market's. (2) stays open.
+
 ## I-187. The source slice's bundle carried a release the factory had since published
 
 **Issue.** `studio/test/blackbox/e2e-wps-source-slice.test.ts` failed at its first step: the extraction bundle (`content-configurations/extractions/wps-outward-cbx`) held `uae.wps.wf.salary-file-out.v1` at 1.3.0, written when the factory's leg was at 1.2.0; the factory then published its own 1.3.0 (the employer looked up in the party register, R-12-27). The import refused it rightly (R-01-10: a published release is never edited). The test and its bundle were stale, not the code. The bundle's configuration set (1.7.0) was also no later than the example bank's own.
@@ -1889,6 +1896,84 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** State the count in one place only, the kit file, and have Annex C and Part 9 say "every scenario of `conformance/kit.yaml`" instead of a number, in the next change to the spec; have `engines.test.ts` read the count from the kit, as the white-box test should.
 
 **Done (23 November 2026, R-09-118).** Annex C and Part 9 name no number: the kit is the one place that counts its scenarios, and lint L51 (mutation case M81) refuses a design text that counts them otherwise. Annex C's groups now name CK-FOREACH-03 and 04, CK-TIMEOUT-03 and CK-PARK-03, which it had left out. `engines.test.ts` reads the count from the kit (commit 23c773d).
+
+## I-191. The bank's cut-off: where it is applied, what moves, and a file of a day that is no business day
+
+**Issue.** A bank's cut-off times are a reference table of its own (`b.ref.cut-offs.v1`, R-11-52): per scheme and direction a time, a time zone, and what follows it (`next-business-day` or `refuse`). Nothing read it (I-186). The spec says what a cut-off is and what follows it, but not (1) where in a payment it is applied, (2) what "the next business day" moves, (3) what a file accepted on a day that is no business day is, (4) whether a half day of the bank's calendar moves the cut-off, (5) which instant counts as the file's acceptance, or (6) the reason a refusal gives. The source holds no cut-off of its own (its WPS forks have none), so it cannot answer either.
+
+**Recommendation, built and marked as the recommendation (R-12-28).** (1) A platform step, `p.decide.cut-off.v1`, called where the business date is set: in `uae.wps.wf.salary-file-out.v1` 1.4.0 right after `uae.p.enrich.business-date.v1`, so the same rule runs on the studio interpreter and every engine (each runs it on its workers, as any script-behind); the inward legs and the other platform workflows call it once a bank names an inward cut-off or a scheme other than WPS. (2) What moves is the business date (`header.businessDate`), which the posting reads as its value date; the file is not held until that day. (3) A file accepted on a day that is no business day counts for the next business day and is never refused for it: the cut-off is a time of a business day. (4) On the bank's half day the cut-off is the earlier of the two times. (5) The front door's acceptance, `header.receivedAt`, in the row's time zone; the edition of each table is the one in force on the day of the step, which on every engine is the day of acceptance, since the step runs at once. (6) TM01 (ISO 20022: received after the cut-off). The values reach the step as the bank's lists read from its reference tables (`fromReference`, R-11-51); a bank's configuration names them (the example bank's does). Every one of these is the builder's recommendation, not a scheme rule: the activity's provenance says so. Decide with the banks; a change is a new release of the activity.
+
+## I-192. A test distribution's outward WPS file goes to the simulator, not out as a file
+
+**Issue.** The owner asked that the laptop's outbound files go out through the File API's outbox. On the laptop's test distribution the WPS port (`uae.wps.port.wps.v1`) is bound to its simulator, so the salary file the outward leg submits is a message to the simulator, not a file on `p.port.file-transfer.v1`; and no runtime adapter of the WPS port writes the file to the Central Bank's folder. The only files a runtime host puts on the file-transfer port today are the native host's inward renders (PRC, DIF, RFA) and core banking's `file-bulk` postings, and ADIB's outward path on the laptop has neither.
+
+**Recommendation.** Give the WPS port a `file-transfer` adapter in the runtime (the SIF to `centralBank.sifFolder`, the ACK and NAK read from `centralBank.ackFolder`, correlated as I-160 (2) says), so that a bank's outward file leaves through the File API's outbox. Until then the laptop test shows the outbox the way every host uses it: a file posted to `POST /outbox` with the front door's client is delivered on the laptop's SFTP binding, and the consoles' client resends the same bytes through `POST /files/{id}/resend`, once per action (R-09-105). Every host that could put a file names the File API (`TH_FILE_API_URL`).
+
+## I-193. The laptop's workers, and the tokens its hosts give the File API
+
+**Issue.** The File API's front door runs the intake map on a worker of the payment's distribution, and the engine host's plans name the workers of each queue; the laptop ran no worker services (I-158 (3)), so its front door was off for intake and its engine host had no workers. A host that puts a file through the File API, and the consoles' resend, take a bearer token by reference, which a laptop's development identity provider issues for an hour only.
+
+**Recommendation and what was chosen (R-09-105).** (1) One `workers` service on the laptop: on a distribution's first call it fetches the package from the release API with the front door's client, verifies it against the trusted signers, and starts that distribution's own workers, one process per queue, so a payment pinned to A is never served by B's; an attempt goes to the worker whose tasks name its activity and release. The engine host names it by a template (`TH_HOST_WORKERS_URL`, `{distribution}`, `{workflow}`, `{queue}`), the File API by `FileApi:Workers:<scope>` with `{distribution}`. At a bank the workers are the installation's (one deployment per distribution and queue, R-09-04). (2) A `machine-auth` service writes fresh client-credentials tokens to a volume every ten minutes, and the hosts read them by `file:` reference. At a bank the hosts take tokens from the bank's own identity provider; give `FileApiTransferPort` and `OutboxFileTransfer` a client-credentials source of their own so that no file of tokens is needed.
+
+**Found on the way, and what remains.** (3) A plan built from the stored package (R-09-94) read its YAML documents with every scalar a string, so the first step with a retry policy failed on the engine host ("Nullable object must have a value"); `Plans.Yaml` now types the scalars as YAML's core schema does. (4) A distribution carries no values, so a payment on the engine host reads the bank's values from its installed configuration release: the laptop's workers call the release API's `GET /values` at each attempt's time (`TH_RUNTIME_URL`), and the insert-only test installs ADIB's configuration release with consent before it activates A. (5) The engine host's plan names no hook bindings (they are the bank's configuration set's, not the distribution's), so a hook the bank binds (ADIB's labour ministry notice on close) does not run on the engine host. Recommendation: have the supervisor read the bindings in force from the installed configuration release, as the workers read the values, with a test that a bound hook runs on each engine.
+
+## I-194. The studio read a test's releases in text order: 1.9.0 after 1.10.0
+
+**Issue.** A factory test carries no release of its own; each pack release publishes it again as `tests/<id>@<pack release>.yaml`, and the store keeps the one it reads last. The store read the branch in text order, so at the factory's 1.10.0 it read `@1.9.0` after `@1.10.0` and kept the older test; the same held for a bank's `packs/` and `configuration-sets/` files.
+
+**Done.** The store reads the branch in release order (`naturalPath` in `studio/src/core/store.ts`: every run of digits compared as a number), so the later release is read last. Found while releasing the factory at 1.10.0; shown by `core.test.ts` ("matches the hashes the factory pack manifests carry").
+
+## I-195. The salary file's intake map reads the file's name from the file, not from the File API
+
+**Issue.** `uae.wps.map.sif-in.v1` takes the file's name from a first line `# file: <name>`, the samples' metadata, and its edge rule `uae.wps.rule.file-name-matches-control.v1` refuses a file whose name does not start with the employer's id. A file a bank's channel drops on the SFTP server or posts to `POST /files` has no such line: the File API's front door hands the map the file's name beside its content (the message's `fileName`), which the map does not read, so the map answers `unmappable` and nothing starts. Found by the laptop test (R-09-105), which keeps the samples' first line in its files until this is fixed.
+
+**Recommendation.** A minor release of the map (its script at `scripts/uae.wps.map.sif-in.v1@<release>.ts`) that takes the name from the inbound message's `fileName` when the file carries no `# file:` line, with a test that maps a file without it; then the laptop test drops the line.
+
+## I-200. On the laptop stack the File API keeps a file but cannot start its payment
+
+**Issue.** Recording the runtime videos (`studio/demo/full-run.ts`) on the laptop stack, a salary file and a demo credit file uploaded to the File API (`POST /files/ui`, as the operator) were checked and kept, and then refused with `frontdoor.NoWorker`: "No worker of dist/adib@… serves uae.wps for uae.wps.map.sif-in.v1". The front door runs a scheme's intake map on a worker of the distribution (`FileApi:Workers:<scope>`, R-09-85), and `deploy/laptop/compose.yaml` names none, so no file that reaches the laptop's File API starts a payment. The laptop's own test runs its payments with the front door's one-off runner (`deploy/laptop/bin/run-pinned.mts`) for this reason, and its README lists it under "What is not here", but nothing says that an upload is refused.
+
+**What the video does.** It shows the upload and the refusal, then pins the payment at the release API and runs it with `run-pinned`, as an operator would, and says so.
+
+**Recommendation.** Give the laptop's File API the workers of the bank's distributions (`FileApi__Workers__*`), served by the engine host's per-distribution host or by a worker service of the runtime image, and extend `deploy/laptop/test/insert-only.mts` to upload a file and see its payment start and end on the distribution it is pinned to.
+
+## I-201. No console has a screen to upload a file to the File API
+
+**Issue.** The File API takes a person's upload (`POST /files/ui`, role `file-uploader`, which the laptop's role map gives the operators), but neither the operations console nor the service console has a page that sends one. An operator who must put a file in by hand needs a command.
+
+**Recommendation.** An upload page in the operations console: tenant (the runtime's bank), message (the messages the active distribution receives), the file; it shows the File API's answer (kept, refused, started) with its code linked to the runbook and a link to the payment it started.
+
+## I-202. The consoles' own audit trails have no screen
+
+**Issue.** The operations console keeps its own hash-chained record of what people did (`GET /ops/api/audit`), and the service console its audit (`GET /service/api/audit`), but no page of either shows them. A payment's timeline shows that payment's facts; the console's own trail (filters saved, reports downloaded, unmasks asked, consents given) can be read only from the API. `docs/runtime/PLATFORM-PARITY.md` lists the audit log as built.
+
+**Recommendation.** An Audit page in each console, for the Supervisor and the BankApprover in the operations console and for the service roles in the service console: newest first, filtered by person, action and date, each row with its hash and whether the chain verifies.
+
+## I-203. The laptop's identity provider has no register maker
+
+**Issue.** `deploy/laptop/identity/directory.json` has five synthetic users, and no role map gives `RegisterMaker`, so on the laptop the operations console's Registers section can be read but nobody can propose a register change, and the maker-checker of a register cannot be shown.
+
+**Recommendation.** Add a synthetic register maker (`reg.maker`, group `th-register-makers`) to the directory and `RegisterMaker` for that group to `role-map-ops.json`, with the bank approver consenting as today.
+
+## I-204. The new-scheme tests name configuration releases of an earlier factory
+
+**Issue.** `studio/test/blackbox/e2e-new-scheme.test.ts` and `ui-build.test.ts` build the synthetic scheme `uae.demo` and then save the example bank's configuration set as release `1.3.0` (and expect `config:example-bank@1.2.0` in the web app). The example bank's shipped set is at `1.8.0`, so the save is refused (a release is later than the last, R-11-35) and every step after it fails: the payment is rejected at the route, the export names `1.8.0`. Before that, both stopped earlier still: the demo scheme sent its file with no protect step, which L46 refuses; that is fixed (the subflow encrypts first). `demo/build.ts` already derives the next release from the shipped one and its dry run passes.
+
+**Recommendation.** Derive the next release from the set the studio returns, as `demo/build.ts` and `e2e-wps.test.ts` do (I-187), in both tests, and match the saved release by pattern in the web app's step.
+
+## I-205. A scheme built in the studio cannot be licensed to a bank from the studio
+
+**Issue.** A distribution carries the schemes the bank pack's lock file licenses (`licensedSchemes`, R-11-37). The lock file is written by `npm run studio -- bank-pack <bank> --licensed <scheme> --write`, which writes this repository's folder, not the studio's content branch; no screen or API of the running studio changes it. So a scheme built in the studio (the synthetic `uae.demo` in `studio/demo/full-run.ts`) can be accepted in a bank's configuration set, enabled as a rail and tested on the studio's bench for the bank, yet the bank's next distribution does not carry it, and the runtime finds no route for its file ("No start message in the package's dispatch tables leads to p.wf.corporate.v1").
+
+**What the video does.** It builds and tests the new leg in the studio, then sends a WPS file through the runtime, and says why.
+
+**Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
+
+## I-206. A payment pinned but never started keeps its distribution open
+
+**Issue.** The front door pins a payment to the active distribution (`POST /payments/pin`) before its intake runs. When the run then fails before the payment is stored (no route, no worker, I-200), the pin stays without an end, the service console counts it as an open payment of the distribution, and the distribution can never be removed after it drains. Nothing in the consoles lists such pins or closes one.
+
+**Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
 
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
@@ -1942,7 +2027,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Put the distribution in every attempt request the engines send, from the payment's pin, and have the worker forward it to the native host before its own `TH_DISTRIBUTION`. Until then an installation runs one worker set per distribution, each with its `TH_DISTRIBUTION`, as the deploy runner does.
 
-**Done (23 November 2026, R-09-130 to R-09-133).** Every attempt an engine sends to a worker names its payment's distribution: the workers' router of the four engines (`WorkerRouter`, `studio/engines/shared/Deployment.cs`) adds the engine's `distribution` to each attempt, on Temporal (the deploy runner's runs and the long-running host's version workers), DTFx, Elsa and Flowable (and the studio's Flowable harness), and the File API's front door names the payment's pin for its intake map. The worker hands it to the native host before its own `TH_DISTRIBUTION`, which it sends beside it as `workerDistribution`. The native host serves the attempt from the distribution it names (`AttemptRouting`, `runtime/src/TransactHub.Native`), and refuses it when the worker runs another distribution (`WrongDistribution`) or when the payment is pinned to another (`NotPinned`). An attempt that names none is served as before. One worker set that names no distribution now serves every distribution whose tasks it registers: the engine host's workers (`TH_HOST_WORKERS`) needed nothing more, and the laptop stack has no worker service to change. The deploy runner takes an installation's workers (`DeployRequest.workers`, `startWorkers`), and `e2e-native-distributions` runs two builds of the WPS ACK mapping through one worker set on Temporal and DTFx. A set still serves only the tasks it registers (Issue I-232); the refusals' codes have no dictionary entry yet (Issue I-230).
+**Done (23 November 2026, R-09-130 to R-09-133).** Every attempt an engine sends to a worker names its payment's distribution: the workers' router of the four engines (`WorkerRouter`, `studio/engines/shared/Deployment.cs`) adds the engine's `distribution` to each attempt, on Temporal (the deploy runner's runs and the long-running host's version workers), DTFx, Elsa and Flowable (and the studio's Flowable harness), and the File API's front door names the payment's pin for its intake map. The worker hands it to the native host before its own `TH_DISTRIBUTION`, which it sends beside it as `workerDistribution`. The native host serves the attempt from the distribution it names (`AttemptRouting`, `runtime/src/TransactHub.Native`), and refuses it when the worker runs another distribution (`WrongDistribution`) or when the payment is pinned to another (`NotPinned`). An attempt that names none is served as before. One worker set that names no distribution now serves every distribution whose tasks it registers: the engine host's installation workers (`TH_HOST_WORKERS`) needed nothing more. The laptop's `workers` service keeps a set per distribution, started from the distribution's own copy with its `TH_DISTRIBUTION` (R-09-105), because its tasks and scripts are that distribution's (Issue I-232); its attempts now also name the distribution, which the native host checks against the worker's. The deploy runner takes an installation's workers (`DeployRequest.workers`, `startWorkers`), and `e2e-native-distributions` runs two builds of the WPS ACK mapping through one worker set on Temporal and DTFx. A set still serves only the tasks it registers (Issue I-232); the refusals' codes have no dictionary entry yet (Issue I-230).
 
 ## I-223. A module built ahead of time is trusted as the studio is
 

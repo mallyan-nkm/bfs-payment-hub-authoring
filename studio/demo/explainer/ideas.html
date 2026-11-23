@@ -81,6 +81,14 @@ const I = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
   hat: '<path d="M6 14h12v6H6z"/><path d="M6 14c-3 0-4-3-2-5 1-1 3-1 4 0 0-3 2-5 4-5s4 2 4 5c1-1 3-1 4 0 2 2 1 5-2 5"/>',
   blueprint: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M7 16V8h5v4h5v4z"/>',
+  // Used by the architecture video (demo/architecture.ts).
+  db: '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>',
+  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/>',
+  file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/>',
+  branch: '<circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="8" r="2.2"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3-11.2 7"/>',
+  shield: '<path d="M12 3 4.5 6v6c0 4.5 3.2 7.7 7.5 9 4.3-1.3 7.5-4.5 7.5-9V6z"/><path d="m8.8 12 2.2 2.2 4.3-4.4"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 2.6 14.4 0 17M12 3.5c-2.6 2.6-2.6 14.4 0 17"/>',
+  layers: '<path d="M12 3 3 8l9 5 9-5z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
 };
 const svgIcon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${I[n] || ''}</svg>`;
 const COLORS = { station: 'var(--station)', rule: 'var(--rule)', recipe: 'var(--recipe)', door: 'var(--door)', scheme: 'var(--scheme)', bank: 'var(--bank)', safety: 'var(--safety)', test: 'var(--test)', run: 'var(--run)', ticket: 'var(--ticket)' };

@@ -129,13 +129,30 @@ export function businessCalendarOf(table: any, date: string): CalendarDays | und
   return { weekend: weekend.sort((a, b) => a - b), holidays: holidays.sort(), table: table.name };
 }
 
-/** The business calendar in force on a date: the bank's own table of domain business-calendar first, else a shared one (R-09-88). */
+/**
+ * The business calendar in force on a date: the bank's own table of domain business-calendar first, else a shared one (R-09-88),
+ * with the bank's own closed days (its table of domain bank-calendar, kind closed, R-11-52) as holidays too (R-09-102). A half day
+ * is a business day: it moves a cut-off (p.decide.cut-off.v1), not a business date.
+ */
 export function businessCalendarIn(tables: any[], date: string): CalendarDays | undefined {
   const cal = tables.filter((t) => t?.kind === 'reference-table' && t.domain === 'business-calendar');
   cal.sort((a, b) => Number(!String(a.name).startsWith('b.')) - Number(!String(b.name).startsWith('b.')));
+  let found: CalendarDays | undefined;
   for (const t of cal) {
-    const c = businessCalendarOf(t, date);
-    if (c) return c;
+    found = businessCalendarOf(t, date);
+    if (found) break;
   }
-  return undefined;
+  const closed = bankClosedDays(tables, date);
+  if (!closed.length) return found;
+  const base = found ?? { weekend: [0, 6], holidays: [] };
+  const names = [base.table, ...tables.filter((t) => t?.kind === 'reference-table' && t.domain === 'bank-calendar').map((t) => t.name)].filter(Boolean);
+  return { ...base, holidays: [...new Set([...base.holidays, ...closed])].sort(), table: names.join('+') };
+}
+
+/** The days the bank itself is closed, by its table of domain bank-calendar in force on a date (R-11-52, R-09-102). */
+export function bankClosedDays(tables: any[], date: string): string[] {
+  const out: string[] = [];
+  for (const t of tables.filter((x) => x?.kind === 'reference-table' && x.domain === 'bank-calendar'))
+    for (const r of rowsAt(t, date)) if (r.kind === 'closed' && /^\d{4}-\d{2}-\d{2}$/.test(String(r.day ?? ''))) out.push(String(r.day));
+  return out;
 }

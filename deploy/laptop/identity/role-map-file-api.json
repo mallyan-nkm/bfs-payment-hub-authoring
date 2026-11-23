@@ -4,7 +4,7 @@
   "grants": [
     { "claim": "roles", "value": "TransactHub.Channel", "roles": ["file-sender", "file-reader"] },
     { "claim": "roles", "value": "TransactHub.FrontDoor", "roles": ["file-gateway", "file-outbox", "file-reader"] },
-    { "claim": "roles", "value": "TransactHub.Operations", "roles": ["file-resender", "file-reader"] },
+    { "claim": "roles", "value": "TransactHub.Operations", "roles": ["file-outbox", "file-resender", "file-reader"] },
     { "claim": "groups", "value": "th-operators", "roles": ["file-uploader", "file-reader"] }
   ]
 }

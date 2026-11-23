@@ -68,6 +68,30 @@ public sealed class HoldExpiryCalendarTests(Databases dbs)
         Assert.Equal(1, await sweep.Sweep());
     }
 
+    /// <summary>R-09-102: the bank's own closed days, from its table of domain bank-calendar, are no business days of a hold either.</summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_day_the_bank_itself_is_closed_is_not_counted(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        await InstallCalendar(store);
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var own = new JsonObject
+            {
+                ["kind"] = "reference-table", ["name"] = "b.ref.bank-calendar.v1", ["release"] = "1.1.0", ["domain"] = "bank-calendar",
+                ["editions"] = new JsonArray(new JsonObject { ["validFrom"] = "2026-10-01", ["rows"] = new JsonArray(new JsonObject { ["day"] = "2026-11-30", ["kind"] = "closed", ["name"] = "A synthetic closing day" }) }),
+            };
+            await new VersionedValues(db).Publish("reference", WpsRun.Tenant, "bank-calendar", new JsonObject { ["table"] = own, ["configurationRelease"] = "test" }, DateTimeOffset.Parse("2026-10-01T00:00:00Z"), null, "test");
+            var cal = await HoldCalendar.Of(db, WpsRun.Tenant, Friday);
+            Assert.Contains("2026-11-30", cal.Holidays);
+            Assert.Equal("uae.p.ref.business-calendar.v1+b.ref.bank-calendar.v1", cal.Table);
+            // Opened on Friday, a business day's expiry passes the weekend, the bank's closed Monday and the market's holidays of 1 to
+            // 3 December: Friday 4 December. Without the bank's own day it is Monday 30 November.
+            Assert.Equal(DateTimeOffset.Parse("2026-12-04T06:00:00Z"), HoldCalendar.ExpiresAt(Friday, "P1D", cal));
+            Assert.Equal(DateTimeOffset.Parse("2026-11-30T06:00:00Z"), HoldCalendar.ExpiresAt(Friday, "P1D", cal with { Holidays = [.. cal.Holidays.Where(h => h != "2026-11-30")] }));
+        }
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task A_bank_that_counts_elapsed_time_expires_a_day_later_whatever_the_day(StoreProvider p)
     {
