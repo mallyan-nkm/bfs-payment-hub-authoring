@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { parseYaml } from '../core/yaml.js';
 import { unzip } from '../export/zip.js';
 import { trustedSigners, verifyFiles } from '../export/signing.js';
-import { deploy, type DeployEnvironment, type DeployResult, type Engine } from './deploy.js';
+import { deploy, type DeployEnvironment, type DeployResult, type Engine, type WorkerSet } from './deploy.js';
 
 // The runtime's front door for a bank's distributions (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 5, R-09-53 to
 // R-09-55). At acceptance it asks the runtime to pin the payment to the distribution active for its bank and environment
@@ -108,6 +108,8 @@ export interface AcceptAndRun {
   scheme?: string;
   /** While the scheme's intake is paused: keep the payment and offer it again, for up to this many ms; by default it is refused. */
   queueWhilePaused?: number;
+  /** An installation's workers, shared by the bank's distributions (R-09-133); by default the run starts the distribution's own. */
+  workers?: WorkerSet;
 }
 
 /** Accepts a payment, runs it from the distribution it is pinned to, and records its end. */
@@ -127,7 +129,7 @@ export async function runPinned(req: AcceptAndRun & { distribution: string }): P
   if (!fs.existsSync(pkg)) throw new Error(`${req.distribution} carries no ${req.workflow}`);
   const result = await deploy({
     packagePath: pkg, workflow: req.workflow, engine: req.engine ?? manifest.engine, environment: { tenant: req.bank, ...req.deployEnvironment },
-    inbound: req.inbound, studioRoot: req.studioRoot, distribution: req.distribution, paymentId: req.paymentId,
+    inbound: req.inbound, studioRoot: req.studioRoot, distribution: req.distribution, paymentId: req.paymentId, workers: req.workers,
   });
   const ended = result.outcome ? await end(req.runtime, req.paymentId, result.outcome) : false;
   return { result, ended, manifest };

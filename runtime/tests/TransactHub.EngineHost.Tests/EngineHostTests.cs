@@ -69,6 +69,8 @@ sealed class Worker : IDisposable
     readonly HttpListener listener = new();
     public readonly string Url;
     public readonly System.Collections.Concurrent.ConcurrentQueue<string> Calls = new();
+    /// <summary>Each attempt's payment and the distribution it names (R-09-130): <c>payment=distribution</c>.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentQueue<string> Named = new();
 
     public Worker()
     {
@@ -98,6 +100,7 @@ sealed class Worker : IDisposable
                 var activity = J.S(req, "activity")!;
                 var release = J.S(req, "release");
                 Calls.Enqueue($"{payment}:{J.S(req, "step")}@{release}");
+                Named.Enqueue($"{payment}={J.S(req, "distribution")}");
                 answer = activity.StartsWith("p.hold.")
                     ? new JsonObject { ["kind"] = "held", ["hold"] = $"HOLD-{payment}", ["expiry"] = "P1D" }
                     : new JsonObject { ["kind"] = "result", ["outcome"] = "ok", ["writes"] = new JsonObject { [$"facts.{J.S(req, "step")}"] = release } };
@@ -423,6 +426,11 @@ public class EngineHostTests(Servers servers)
             Assert.DoesNotContain(rt2, x => x.Contains("1.0.0"));
             Assert.Contains($"{p1}:b@1.0.0", worker.Calls);
             Assert.Contains($"{p2}:b@1.1.0", worker.Calls);
+            // One worker serves both distributions: every attempt names its payment's distribution, for the native host (R-09-130, R-09-133).
+            Assert.All(worker.Named.Where(x => x.StartsWith($"{p1}=", StringComparison.Ordinal)), x => Assert.Equal($"{p1}={distA}", x));
+            Assert.All(worker.Named.Where(x => x.StartsWith($"{p2}=", StringComparison.Ordinal)), x => Assert.Equal($"{p2}={distB}", x));
+            Assert.Contains($"{p1}={distA}", worker.Named);
+            Assert.Contains($"{p2}={distB}", worker.Named);
             if (engine == "temporal")
             {
                 // Every workflow of each payment ran on its own distribution's version of the worker deployment, pinned.

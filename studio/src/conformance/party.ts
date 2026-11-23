@@ -6,6 +6,7 @@ import { getPath, setPath, coveredByAny } from '../core/paths.js';
 import { Cancelled, Scope } from '../interp/clock.js';
 import { Instance, invoke, Run, type Frame, type RunConfig } from '../interp/interpreter.js';
 import { TransientFailure, ActivityFailure } from '../interp/reference.js';
+import { withAttemptDistribution } from '../interp/attempt-distribution.js';
 import { ContractViolation, ScriptError } from '../interp/sandbox.js';
 import type { Message } from '../sim/runtime.js';
 import type { StudioEnv } from '../env.js';
@@ -30,6 +31,8 @@ export interface AttemptRequest {
   level?: 'item';
   policy?: any;
   messages?: { id: string; type: string; payload?: any }[];
+  /** The distribution the payment is pinned to, as the engine names it (R-09-130): a native activity runs that distribution's build. */
+  distribution?: string;
 }
 
 export type AttemptResponse =
@@ -125,7 +128,7 @@ export class PartyService {
    */
   async attemptOwn(req: AttemptRequest): Promise<{ result: AttemptResponse; deliveries: Delivery[] }> {
     const owner: AttemptOwner = { due: [], holding: false, now: req.now };
-    const result = await owners.run(owner, () => this.attempt(req));
+    const result = await owners.run(owner, () => withAttemptDistribution(req.distribution, () => this.attempt(req)));
     return { result, deliveries: owner.due.sort((a, b) => a.at - b.at) };
   }
 

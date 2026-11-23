@@ -40,7 +40,9 @@ public sealed class DistributionWorkers : IAsyncDisposable
     public readonly SortedSet<string> TaskQueues = new(StringComparer.Ordinal);
     public int PaymentsRun;
 
-    public DistributionWorkers(TemporalClient client, JsonObject plan, string deploymentName, string distribution, IParty? party = null, StoreOptions? store = null)
+    /// <param name="pinnedAs">The distribution's id as payments are pinned to it (<c>dist/&lt;bank&gt;@&lt;id&gt;</c>), named in every attempt
+    /// the workers send (R-09-130); by default the plan's <c>distribution</c>.</param>
+    public DistributionWorkers(TemporalClient client, JsonObject plan, string deploymentName, string distribution, IParty? party = null, StoreOptions? store = null, string? pinnedAs = null)
     {
         this.client = client;
         Plan = plan;
@@ -52,7 +54,7 @@ public sealed class DistributionWorkers : IAsyncDisposable
         // One distribution per process: the interpreter's workflow code reads its documents from here (I-127: one host per engine and distribution).
         Dep = new Deployment((JsonObject)J.P(plan, "documents")!, config, start, (int)(J.Num(plan, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(plan, "itemConcurrency") ?? 1) };
         Deployment.Current = Dep;
-        ownParty = party is null ? new WorkerRouter((JsonObject)J.P(plan, "workers")!, (JsonObject)J.P(plan, "queues")!) : null;
+        ownParty = party is null ? new WorkerRouter((JsonObject)J.P(plan, "workers")!, (JsonObject)J.P(plan, "queues")!, pinnedAs ?? J.S(plan, "distribution")) : null;
         Party = party ?? ownParty!;
         Store = store;
         Claim = store is null ? null : new DurableClaimCheck(store);
