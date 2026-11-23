@@ -50,7 +50,8 @@ function Fields({ section, values, testid, api, subject }: { section?: Section; 
             {g.fields.map((f) => (
               <div key={f.id} data-field={f.id}>
                 <dt>{f.label}</dt>
-                <dd><Value f={f} v={values?.[f.id]} />{api && subject && values?.[f.id] != null && values[f.id] !== '[erased]' && <> <Unmask api={api} subject={subject} field={f} /></>}</dd>
+                <dd><Value f={f} v={values?.[f.id]} /></dd>
+                {api && subject && values?.[f.id] != null && values[f.id] !== '[erased]' && <Unmask api={api} subject={subject} field={f} />}
               </div>
             ))}
           </dl>

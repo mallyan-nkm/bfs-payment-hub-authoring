@@ -151,7 +151,10 @@ describe('the source WPS outward flow, through the north-star path', () => {
     try {
       for (let i = 0; i < 120; i++) { try { await fetch(`${apiUrl}/activations/active?environment=x&scope=x`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
       const imp = await (await fetch(`${apiUrl}/import-branch`, { method: 'POST', headers: runtimeHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ path: look }) })).json();
-      expect(imp.problems, JSON.stringify(imp.problems)).toEqual([]);
+      // One bank per runtime (R-09-76): the other banks' configuration sets on the branch are named and not imported, nothing else.
+      const problems: string[] = imp.problems ?? [];
+      expect(problems.filter((p) => !/^[a-z-]+: the configuration set of [a-z-]+ is not this runtime's bank \(example-bank\), not imported \(R-09-76\)$/.test(p)), JSON.stringify(problems)).toEqual([]);
+      expect(problems.some((p) => p.startsWith('example-bank:')), JSON.stringify(problems)).toBe(false);
       // Every engine package the studio published on the branch carried its signature, and the runtime verified each.
       const onBranch = Object.keys(server.fake.files(server.repo, 'main')).filter((p) => /^content-configurations\/releases\/.+\/manifest\.yaml$/.test(p));
       for (const m of onBranch) expect(server.fake.files(server.repo, 'main')[m.replace(/manifest\.yaml$/, 'release.sig')], m).toBeDefined();
