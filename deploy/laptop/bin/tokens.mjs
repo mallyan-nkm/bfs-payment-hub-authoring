@@ -1,6 +1,6 @@
 // The laptop's machine tokens (deploy/laptop, R-09-105): a host that calls the File API with a bearer token by reference (the native
 // host's outbox, TH_FILE_API_TOKEN_REF; the consoles' resend, Operations:FileApi:TokenRef and Service:FileApi:TokenRef) reads it
-// from a file in the `tokens` volume, `file:/var/lib/transacthub/tokens/<client>.jwt`, which this service fills with a fresh
+// from a file in the `auth-files` volume, `file:/var/lib/transacthub/tokens/<client>.jwt`, which this service fills with a fresh
 // client-credentials token from the bank's development identity provider every TH_TOKENS_EVERY seconds (default 600), well within a
 // token's hour. A host's secret resolver reads the file again after its cache (TH_SECRET_CACHE_SECONDS). A bank's installation
 // gives its hosts tokens from its own identity provider instead. The client secrets come from the environment only.

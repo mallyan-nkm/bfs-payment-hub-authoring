@@ -185,11 +185,11 @@ services:
     ports: ["127.0.0.1:${TH_LAPTOP_IDP_PORT:-8480}:8080"]
 
   # Fresh client-credentials tokens in the tokens volume, for the hosts that call the File API with a token by reference (R-09-105).
-  tokens:
+  machine-auth:
     <<: *runtime
     command: ["tokens"]
     depends_on: { bank-idp: { condition: service_healthy } }
-    volumes: [tokens:/var/lib/transacthub/tokens]
+    volumes: [auth-files:/var/lib/transacthub/tokens]
     environment:
       TH_IDP_TOKEN_URL: http://bank-idp:8080/token
       TH_MACHINE_CLIENTS: '{"th-front-door":"env:TH_LAPTOP_FRONTDOOR_SECRET","th-operations":"env:TH_LAPTOP_OPERATIONS_SECRET"}'
@@ -264,7 +264,7 @@ services:
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro
-      - tokens:/var/lib/transacthub/tokens:ro
+      - auth-files:/var/lib/transacthub/tokens:ro
     ports: ["127.0.0.1:${TH_LAPTOP_SERVICE_PORT:-8482}:8080"]
 
   ops-api:
@@ -285,7 +285,7 @@ services:
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro
-      - tokens:/var/lib/transacthub/tokens:ro
+      - auth-files:/var/lib/transacthub/tokens:ro
     ports: ["127.0.0.1:${TH_LAPTOP_OPS_PORT:-8483}:8080"]
 
   testbench:
@@ -333,7 +333,7 @@ services:
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro
-      - tokens:/var/lib/transacthub/tokens:ro
+      - auth-files:/var/lib/transacthub/tokens:ro
     environment:
       <<: [*store, *auth, *banks, *file-api-client]
       TH_NATIVE_URLS: http://0.0.0.0:7300
@@ -377,11 +377,11 @@ services:
     depends_on:
       runtime-api: { condition: service_healthy }
       bank-idp: { condition: service_healthy }
-      tokens: { condition: service_healthy }
+      machine-auth: { condition: service_healthy }
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - work:/var/lib/transacthub/work
-      - tokens:/var/lib/transacthub/tokens:ro
+      - auth-files:/var/lib/transacthub/tokens:ro
     environment:
       TH_BANK: ${TH_LAPTOP_BANK:-adib}
       TH_RUNTIME_API: http://runtime-api:8080
@@ -407,7 +407,7 @@ services:
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - work:/var/lib/transacthub/work
-      - tokens:/var/lib/transacthub/tokens:ro
+      - auth-files:/var/lib/transacthub/tokens:ro
     environment:
       <<: *file-api-client
       TH_ENGINE: temporal
@@ -531,7 +531,7 @@ services:
 
 volumes:
   sftp-host:
-  tokens:
+  auth-files:
   sql:
   keys:
   idp:

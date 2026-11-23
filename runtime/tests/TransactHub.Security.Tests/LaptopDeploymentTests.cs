@@ -111,7 +111,7 @@ public sealed class LaptopDeploymentTests
         Assert.Contains("Operations__FileApi__TokenRef: file:", Service("ops-api"));
         Assert.Contains("Service__FileApi__Url: http://file-api:8080", Service("service-api"));
         Assert.Contains("command: [\"workers\"]", Service("workers"));
-        Assert.Contains("command: [\"tokens\"]", Service("tokens"));
+        Assert.Contains("command: [\"tokens\"]", Service("machine-auth"));
         // The laptop's own binding of each bank: every inbox names its message (I-160), the host key and the login by reference (I-161).
         foreach (var bank in new[] { "adib", "dib" })
         {
