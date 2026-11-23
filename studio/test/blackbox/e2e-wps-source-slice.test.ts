@@ -103,7 +103,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
       expect(pub.status, JSON.stringify(pub.data).slice(0, 600)).toBe(200);
       expect(pub.data.git?.status, JSON.stringify(pub.data.git)).toBe('committed');
     }
-    const leg = (await api.get('/api/catalogue?q=uae.wps.wf.salary-file-out.v1')).data.items.find((e: any) => e.release === '1.2.0');
+    const leg = (await api.get('/api/catalogue?q=uae.wps.wf.salary-file-out.v1')).data.items.find((e: any) => e.release === '1.3.0');
     expect(leg?.status).toBe('published');
     // The bank part, once the shared part is a version: imported by the bank configurator, approved by the bank approver.
     const bank = await api.post('/api/import/apply', { bundle: bundleB64, actor: 'example.maker' });
@@ -170,7 +170,7 @@ describe('the source WPS outward flow, through the north-star path', () => {
         expect((await inst.json()).signedBy).toMatch(/^[0-9a-f]{32}$/);
       }
       // A leg is packaged with the platform workflow that uses it: the corporate workflow's Temporal
-      // package, which now carries leg 1.2.0 and the native writer, is stored once and activated for test.
+      // package, which now carries leg 1.3.0 and the native writer, is stored once and activated for test.
       const z = await api.get(`/api/export/download?workflows=${PLATFORM}&target=temporal&withSimulators=true&tenant=${TENANT}`);
       const stored = await (await fetch(`${apiUrl}/releases`, { method: 'POST', headers: runtimeHeaders(), body: z.data })).json();
       expect(stored, JSON.stringify(stored)).toMatchObject({ scope: `${PLATFORM}/temporal`, stored: true, promotable: false });
