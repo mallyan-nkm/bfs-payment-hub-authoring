@@ -544,7 +544,7 @@ public class EngineHostTests(Servers servers)
               "do": [
               { "id": "a", "call": "p.enrich.check.v1" },
               { "id": "w1", "wait": { "parameter": "p.wf.wait.v1#gap", "default": "PT20M" } },
-              { "id": "go", "await": { "message": "p.test.go", "timeout": "PT5M", "onTimeout": { "end": "timedout" } } },
+              { "id": "pause", "wait": "PT20S" },
               { "id": "w2", "wait": { "parameter": "p.wf.wait.v1#gap", "default": "PT20M" } },
               { "id": "w3", "wait": { "parameter": "p.wf.wait.v1#late", "default": "PT20M" } },
               { "id": "b", "call": "p.enrich.check.v1" },
@@ -598,16 +598,21 @@ public class EngineHostTests(Servers servers)
                 var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.wait.v1" });
                 Assert.True(r.status == 202, r.body.ToJsonString());
                 await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
-                // The payment waits at go. A later configuration release is put in force, with no restart of any host: from now on the
-                // gap is two seconds, and so is the late value, but the payment was accepted before.
-                await Task.Delay(TimeSpan.FromSeconds(3));
+                // The payment pauses for twenty seconds after w1. A later configuration release is put in force meanwhile, with no
+                // restart of any host: from now on the gap is two seconds, and so is the late value, but the payment was accepted before.
+                await Task.Delay(TimeSpan.FromSeconds(4));
                 var cut = DateTimeOffset.UtcNow;
                 await PutInForce(bank, "2026.11.24", ("p.wf.wait.v1#gap", "PT1S", since, cut), ("p.wf.wait.v1#gap", "PT2S", cut, null),
                     ("p.wf.wait.v1#late", "PT1S", since, cut), ("p.wf.wait.v1#late", "PT2S", cut, null));
-                (int status, JsonObject body) m = default;
-                await Until(async () => (m = await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.go", ["id"] = $"go-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
                 JsonObject? e = null;
-                await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(4), $"{p} ended");
+                try { await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(4), $"{p} ended"); }
+                catch (Xunit.Sdk.XunitException x)
+                {
+                    await using var db = StoreDbContext.Open(servers.Store);
+                    var subject = await SubjectOf(p);
+                    var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject).OrderBy(f => f.Seq).Select(f => f.Kind + ":" + f.Code).ToListAsync();
+                    throw new Xunit.Sdk.XunitException($"{x.Message}: {e?.ToJsonString()}; facts: {string.Join(", ", steps)}");
+                }
                 Assert.True(J.S(e, "outcome") == "done", e!.ToJsonString());
                 var trace = J.Strings(J.P(J.A(J.P(e, "observation"), "instances")[0], "trace"));
                 // As of each step: the first release's second before, the later release's two seconds after; as of acceptance, a second.

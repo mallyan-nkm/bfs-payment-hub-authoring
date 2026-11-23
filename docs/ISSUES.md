@@ -2087,7 +2087,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Issue.** Two activations of one bank and environment at once cannot both win (R-09-137): the store's unique key on the activation's number refuses the second, as `distribution.ActivationRaced`, and nothing of it is recorded. The service console shows the refusal to the bank approver who consented, whose action then fails; the person must ask again. A workflow package's dated activations (`ReleaseRegistry.Activate`) are numbered again and tried up to five times instead, as they are not a switch-over.
 
-**Recommendation.** Keep the refusal: a switch-over the approver consented to was a switch-over from the distribution active then, and another may now be active. Have the service console's action say so and offer to ask again from the distribution active now.
+**Recommendation.** Keep the refusal: a switch-over the approver consented to was a switch-over from the distribution active then, and another may now be active. Have the service console's action say so and offer to ask again from the distribution active now. The refusal's code, `distribution.ActivationRaced`, has no entry in the platform's error dictionary yet: add one with its runbook in the next release of `p.errors.platform.v1`, and have `ErrorDictionaryTests` read the store's refusal codes too.
 
 ## I-240. On Flowable a value read as of the payment's date is read as of the timer
 

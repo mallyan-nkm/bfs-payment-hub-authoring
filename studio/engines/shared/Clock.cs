@@ -28,12 +28,20 @@ public sealed class VirtualClock
     /// delivers meanwhile (LiveSignals, kind deliver) reaches the run. Set by TH_HARNESS_REAL_TIME=1.
     /// </summary>
     public bool RealTime = Environment.GetEnvironmentVariable("TH_HARNESS_REAL_TIME") == "1";
-    readonly DateTime wallStart = DateTime.UtcNow;
+    readonly DateTime wallStart;
 
     /// <summary>The wall clock as this clock's time.</summary>
     long WallNow => Start + (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
 
-    public VirtualClock(long startMs) { Start = startMs; now = startMs; }
+    public VirtualClock(long startMs)
+    {
+        Start = startMs;
+        now = startMs;
+        // In real time, a run whose start is the wall clock's moment (the engine host's, R-09-135) follows the wall clock itself, not
+        // the wall clock less the time the harness took to start: a value read as of a step reads it as of the step's real time.
+        var wall = DateTime.UtcNow;
+        wallStart = RealTime && Math.Abs((wall - Duration.Utc(startMs)).TotalMinutes) < 10 ? Duration.Utc(startMs) : wall;
+    }
 
     public long Now { get { lock (gate) return now; } }
     public DateTime NowUtc => Duration.Utc(Now);
