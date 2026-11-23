@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.return-in.v1
-release: 1.1.0
+release: 1.2.0
 dsl: 1.0.0
 title: WPS return, bank as the employer's bank
-description: A return file has arrived. Wait for core banking's posting window, then credit the employer's account, which the return map names.
+description: A return file has arrived. Wait for core banking's posting window, then credit the employer's account, which the return map names. Release 1.2.0 parks a failed credit for a business day, for an operator's retry (R-12-26, Issue I-125).
 direction: inward
 implements:
   slot: scheme-leg
@@ -22,6 +22,7 @@ do:
       closed: { end: pending }
   - id: credit-employer
     call: p.post.accounting.v1
+    policy: { park: P1D }
     handle:
       rejected: { end: pending }
       unknown: { end: pending }

@@ -1000,6 +1000,8 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
     for (const c of res.changes) {
       if (c.after === undefined) continue;
       if (c.path.startsWith('items')) writes['items[]'] = getPath(res.ctx, 'items');
+      // A list inside a fact (a posting's entries and legs) is written whole too, so it stays a list in the context.
+      else if (c.path.includes('[')) { const list = c.path.slice(0, c.path.indexOf('[')); writes[list] = getPath(res.ctx, list); }
       else writes[c.path] = c.after;
     }
     if (!(act.outcomes ?? []).some((o: any) => o.name === res.outcome)) throw new ContractViolation('R-03-02', `${act.name} returned ${res.outcome}, which is not one of its outcomes`);

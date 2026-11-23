@@ -103,14 +103,21 @@ RELEASES = {
     "p.table.workflow-select.v1": ("1.1.0", "a refund order runs p.wf.refund.v1"),
     "uae.wps.ext.salary.v1": ("1.2.0", "the refund request instruction's fields: the establishment, the reason and the payroll file of each line"),
     "uae.wps.map.rri-in.v1": ("1.1.0", "a script-behind for the source's RRI layout; the earlier payment by id (header.originalPaymentId)"),
+    # Issue I-136, R-12-23 to R-12-25: the posting reads the order's FX and charges (p.post.accounting.v2, a new major line: its reads
+    # and its parameters changed), FX and charges gain native code-behinds, and an outward refund order runs p.wf.refund-out.v1.
+    "p.post.accounting.v2": ("2.0.0", "reads facts.fx and facts.charges; the converted amount, the charge and the VAT as entries of their own; no slabs of its own"),
+    "p.enrich.fx-rate.v1": ("1.1.0", "native code-behind (Issue I-136)"),
+    "p.enrich.charges.v1": ("1.1.0", "native code-behind (Issue I-136)"),
+    "p.table.workflow-select.v1": ("1.2.0", "an inward refund order runs p.wf.refund.v1, an outward one p.wf.refund-out.v1"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
 # packs that depend on it), and the example bank's lock file names the schemes it licenses (b; R-11-37, Issue I-111).
-PACK_RELEASES = {"p": "1.5.0", "uae.p": "1.5.0", "uae.wps": "1.5.0", "b": "1.5.0"}
-FACTORY_RELEASE = "1.5.0"
+# 1.6.0: the order's posting that reads FX and charges, the outward refund order, the WPS parks (R-12-23 to R-12-26, I-136).
+PACK_RELEASES = {"p": "1.6.0", "uae.p": "1.6.0", "uae.wps": "1.6.0", "b": "1.6.0"}
+FACTORY_RELEASE = "1.6.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -241,6 +248,16 @@ ACCOUNTING = {
 act("p.post.accounting.v1", "Post with an accounting template", ["header", "payment", "facts.route", "facts.reservation"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
     comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING)
+# The order's posting (R-12-23, Issue I-136): a new major line, so payments on v1 keep it. It reads what the platform's own steps
+# found (facts.fx, the converted amount of each line and of the order; facts.charges, each line's charge and VAT) and prices nothing
+# itself: its template has no slabs. Each line posts its converted amount between the line's account and the settlement account (a
+# line that names a debtor account is debited, one that names only a creditor account is credited), then its charge and its VAT,
+# each debited from the line's account to the template's income and VAT accounts, as entries of their own (camt.054 Ntry, ChrgsInf).
+# Exact decimals (R-02-17): the script adds with rules.money; the native code-behind on decimal gives the same entries.
+ACCOUNTING_V2 = {k: v for k, v in ACCOUNTING.items() if k not in ("chargeSlabs", "vatPercent", "schemeChargeTransactionCode")}
+act("p.post.accounting.v2", "Post an order's converted amounts, charges and VAT with an accounting template",
+    ["header", "payment", "items[]", "facts.fx", "facts.charges"], ["facts.posting"], ["posted", "rejected", "unknown"], "write",
+    level="batch", ports=["p.port.core-banking.v1"], policy=STD, comp="p.post.reverse.v1", params=ACCOUNTING_V2, script=True, native=True)
 act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"], ["facts.postingVerified"],
     ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
@@ -252,7 +269,7 @@ act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting
 RATE_LIST = {"rates": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
                        "description": "The bank's exchange rates, each {from, to, rate}: one unit of from is rate units of to. None, and only a line in its account's own currency converts."}}
 act("p.enrich.fx-rate.v1", "Convert each line at the bank's exchange rate", ["payment.instructedAmount", "payment.debtorAccount", "items[]"],
-    ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True)
+    ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True, native=True)
 CHARGE_DIALS = {
     "chargeSlabs": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
                     "description": "Charge slabs, each {upTo, fixed, percent} in the line's converted currency: the first slab whose upTo is not below the line's amount gives a fixed charge plus a percentage of the amount. None, no charge."},
@@ -261,7 +278,7 @@ CHARGE_DIALS = {
     "vatPercent": {"type": "decimal", "default": 0, "bounds": {"min": 0, "max": 100}, "description": "VAT on a charge, in per cent, each line's rounded to two decimals."},
 }
 act("p.enrich.charges.v1", "Price the bank's charge and its VAT on each line", ["payment.instructedAmount", "items[]", "facts.fx"],
-    ["facts.charges", "items[]"], ["priced", "none"], "pure", level="batch", params=CHARGE_DIALS, script=True)
+    ["facts.charges", "items[]"], ["priced", "none"], "pure", level="batch", params=CHARGE_DIALS, script=True, native=True)
 # Posting windows (plan P2): the hours core banking takes postings, the bank's values. The decision reads the engine's time; the
 # composite waits and asks again while the window is closed, so a payment waits for the window instead of retrying into it
 # (the source's AwaitCbPostingWindow). The defaults are always open.
@@ -712,13 +729,16 @@ table("p.table.workflow-select.v1", "Which platform workflow runs a payment", "u
        {"when": {"kind": "payment", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward payment"},
        {"when": {"kind": "return", "direction": "inward"}, "then": {"workflow": "p.wf.inward.v1"}, "reason": "Every inward return"},
        # 1.1.0 (R-12-19): a refund of an earlier payment is an order of its own, on the refund lifecycle
-       {"when": {"kind": "refund"}, "then": {"workflow": "p.wf.refund.v1"}, "reason": "A refund of an earlier payment is a new order on the refund lifecycle"},
+       {"when": {"kind": "refund", "direction": "inward"}, "then": {"workflow": "p.wf.refund.v1"}, "reason": "A refund of an earlier payment is a new order on the refund lifecycle"},
+       # 1.2.0 (R-12-24): the bank asks for a refund for its customer (the employer's side), and credits it when the scheme settles
+       {"when": {"kind": "refund", "direction": "outward"}, "then": {"workflow": "p.wf.refund-out.v1"}, "reason": "A refund the bank asks for is an order on the outward refund lifecycle"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "corporate"}, "then": {"workflow": "p.wf.corporate.v1"}, "reason": "File and high-value rails"},
        {"when": {"kind": "payment", "direction": "outward", "segment": "commercial"}, "then": {"workflow": "p.wf.commercial.v1"}, "reason": "Instant rails"}],
       [{"name": "inward payment", "given": {"Header": {"kind": "payment", "direction": "inward", "segment": "commercial"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.inward.v1"}]}},
        {"name": "outward corporate", "given": {"Header": {"kind": "payment", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.corporate.v1"}]}},
        {"name": "request", "given": {"Header": {"kind": "request", "direction": "outward", "segment": "corporate"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.request.v1"}]}},
-       {"name": "refund", "given": {"Header": {"kind": "refund", "direction": "inward"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.refund.v1"}]}}])
+       {"name": "refund", "given": {"Header": {"kind": "refund", "direction": "inward"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.refund.v1"}]}},
+       {"name": "outward refund", "given": {"Header": {"kind": "refund", "direction": "outward"}}, "expect": {"decisions": [{"name": "workflow", "value": "p.wf.refund-out.v1"}]}}])
 table("p.table.inward-disposition.v1", "What to do with an inward payment after checks and screening", "first",
       [("validation", "facts.validation.worst"), ("duplicate", "facts.duplicate.found"), ("sanctions", "facts.screening.sanctions.result"), ("fraud", "facts.screening.fraud.result")],
       ["disposition"],
@@ -1318,6 +1338,96 @@ test("WPS-RRI-007", "The agent's refund leg alone: the funds returned and the re
       "detail": ["return-funds.encrypt:encrypted", "return-funds.send:accepted", "return-funds.await-ack:received", "return-funds.read-ack:ack",
                  "answer.encrypt:encrypted", "answer.send:accepted", "answer.await-ack:received", "answer.read-ack:ack"]},
      bench_=refund_bench(), tenant="example-bank")
+# R-12-23 (Issue I-136): the order's posting reads the platform's FX and charges. Each line posts its converted amount, then its
+# charge and its VAT as entries of their own, on exact decimals; the template prices nothing itself.
+def with_facts(ctx, lines, fx=None, charges=None):
+    """A refund order's context with the facts its FX and charges steps wrote: each line's (items[].facts) and the order's."""
+    c = copy.deepcopy(ctx)
+    for item, (lfx, lch) in zip(c["context"]["items"], lines):
+        item["facts"] = {k: v for k, v in (("fx", lfx), ("charges", lch)) if v is not None}
+    c["context"]["facts"] = {k: v for k, v in (("fx", fx), ("charges", charges)) if v is not None}
+    return c
+
+
+def line_fx(amount, rate=1, to="AED"):
+    return {"outcome": "converted", "from": "AED", "to": to, "rate": rate, "source": "same-currency" if to == "AED" else "bank", "amount": amount}
+
+
+def line_charge(amount, vat, currency="AED"):
+    return {"outcome": "priced" if amount else "none", "amount": amount, "currency": currency, "tax": {"rate": 5, "amount": vat},
+            "totalChargesAndTaxAmount": round(amount + vat, 2)}
+
+
+CORE_ACCEPT = bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "accept"))
+POST2 = "p.post.accounting.v2"
+test("P-POST-001", "A refund order posts each line's converted amount, then its charge and its VAT as entries of their own", POST2, "activity",
+     with_facts(refund_lines(100, 499.75), [(line_fx(100), line_charge(5.1, 0.26)), (line_fx(499.75), line_charge(5.5, 0.28))],
+                fx={"outcome": "converted", "lines": 2, "currency": "AED", "amount": 599.75, "rate": 1},
+                charges={"outcome": "priced", "lines": 2, "amount": 10.6, "currency": "AED", "tax": {"rate": 5, "amount": 0.54}, "totalChargesAndTaxAmount": 11.14}),
+     # 599.75 debited from the lines' accounts, 10.60 charged and 0.54 VAT: 610.89 in all, each line's entries in line order
+     {"outcome": "posted", "writes": {"facts.posting.amount": 599.75, "facts.posting.currency": "AED", "facts.posting.charges.amount": 10.6,
+                                      "facts.posting.charges.tax.amount": 0.54, "facts.posting.charges.totalChargesAndTaxAmount": 11.14,
+                                      "facts.posting.totalAmount": 610.89, "facts.posting.entryCount": 12,
+                                      "facts.posting.entries.0.creditDebitIndicator": "DBIT", "facts.posting.entries.0.amount": 100,
+                                      "facts.posting.entries.1.creditDebitIndicator": "CRDT", "facts.posting.entries.1.amount": 100,
+                                      "facts.posting.entries.2.amount": 5.1, "facts.posting.entries.2.transactionCode": "CHG",
+                                      "facts.posting.entries.4.amount": 0.26, "facts.posting.entries.4.transactionCode": "VAT",
+                                      "facts.posting.entries.6.amount": 499.75, "facts.posting.entries.8.amount": 5.5, "facts.posting.entries.10.amount": 0.28}},
+     bench_=CORE_ACCEPT)
+test("P-POST-002", "A line converted into another currency posts the converted amount in that currency, with no charge entries when none was priced",
+     POST2, "activity",
+     with_facts(refund_lines(100, currency="USD"), [(line_fx(27.23, 0.2723, "USD"), line_charge(0, 0, "USD"))],
+                fx={"outcome": "converted", "lines": 1, "currency": "USD", "amount": 27.23, "rate": 0.2723},
+                charges={"outcome": "none", "lines": 1, "amount": 0, "currency": "USD", "tax": {"rate": 5, "amount": 0}, "totalChargesAndTaxAmount": 0}),
+     {"outcome": "posted", "writes": {"facts.posting.amount": 27.23, "facts.posting.currency": "USD", "facts.posting.totalAmount": 27.23,
+                                      "facts.posting.entryCount": 2, "facts.posting.entries.0.currency": "USD", "facts.posting.entries.0.amount": 27.23}},
+     bench_=CORE_ACCEPT)
+REFUND_OUT_CTX = {"context": {"header": {"paymentId": "R-2", "fileId": "RFR-2", "endToEndId": "RFR-2", "kind": "refund", "direction": "outward",
+                                         "scheme": "uae.wps", "originalPaymentId": "P-1"},
+                              "payment": {"creditorAccount": {"iban": IBAN_OK}, "instructedAmount": {"value": 600, "currency": "AED"}},
+                              "batch": {"id": "RFR-2", "numberOfTransactions": 1, "controlSum": 600, "currency": "AED"}}}
+test("P-POST-003", "An outward refund order credits its customer's account with the settled amount and debits the charge and the VAT",
+     POST2, "activity",
+     {"context": dict(REFUND_OUT_CTX["context"], facts={
+         "fx": {"outcome": "converted", "lines": 1, "currency": "AED", "amount": 600, "rate": 1},
+         "charges": {"outcome": "priced", "lines": 1, "amount": 5.6, "currency": "AED", "tax": {"rate": 5, "amount": 0.28}, "totalChargesAndTaxAmount": 5.88}})},
+     # 600.00 credited, 5.60 and 0.28 debited: 594.12 net to the customer
+     {"outcome": "posted", "writes": {"facts.posting.amount": 600, "facts.posting.totalAmount": 594.12, "facts.posting.entryCount": 6,
+                                      "facts.posting.entries.0.creditDebitIndicator": "CRDT", "facts.posting.entries.0.amount": 600,
+                                      "facts.posting.entries.1.creditDebitIndicator": "DBIT", "facts.posting.entries.2.creditDebitIndicator": "DBIT",
+                                      "facts.posting.entries.2.amount": 5.6, "facts.posting.entries.4.amount": 0.28}},
+     bench_=CORE_ACCEPT)
+test("P-POST-004", "Core banking refuses the posting: it is rejected, with its entries kept", POST2, "activity",
+     with_facts(refund_lines(100), [(line_fx(100), None)], fx={"outcome": "converted", "lines": 1, "currency": "AED", "amount": 100, "rate": 1}),
+     {"outcome": "rejected", "writes": {"facts.posting.outcome": "rejected", "facts.posting.entryCount": 2}},
+     bench_=bench(("p.port.core-banking.v1", "p.sim.core-banking.v1", "reject")))
+# R-12-24: the employer's side of a refund is an outward refund order on p.wf.refund-out.v1, WPS its leg. The leg builds the refund
+# request (RFR), encrypts and sends it, reads its acknowledgement and waits for the settlement (RSU); the platform then converts,
+# prices, posts the credit to the customer's account and verifies it. The leg moves no money (L47).
+REFUND_OUT = "p.wf.refund-out.v1"
+
+
+def refund_out_bench(wps="refund-settled", core="accept", record="accept"):
+    return bench((WPS, "uae.wps.sim.wps-outward.v1", wps), ("p.port.core-banking.v1", "p.sim.core-banking.v1", core),
+                 ("p.port.payment-record.v1", "p.sim.payment-record.v1", record), ENC,
+                 ("p.port.channel.v1", "p.sim.channel.v1", "accept"), ("p.port.facts-out.v1", "p.sim.facts-out.v1", "accept"))
+
+
+test("WPS-RFR-001", "An outward refund order: WPS settles the refund the bank asked for, and the platform credits its customer",
+     REFUND_OUT, "end-to-end", REFUND_OUT_CTX,
+     {"outcome": "settled", "trace": ["original:found", "leg:settled", "fx:converted", "charges:priced", "post:posted", "verify:verified"] + REFUND_FINALLY + ["end:settled"],
+      "messages": [{"port": WPS, "message": "uae.wps.rfr", "count": 1}]},
+     bench_=refund_out_bench(), tenant="example-bank", scope="uae.wps")
+test("WPS-RFR-002", "WPS declines the refund: nothing is posted and the order is rejected", REFUND_OUT, "end-to-end", REFUND_OUT_CTX,
+     {"outcome": "rejected", "trace": ["original:found", "leg:rejected"] + REFUND_FINALLY + ["end:rejected"],
+      "messages": [{"port": WPS, "message": "uae.wps.rfr", "count": 1}]},
+     bench_=refund_out_bench("refund-declined"), tenant="example-bank", scope="uae.wps")
+test("WPS-RFR-003", "The employer's refund leg alone: the request built, encrypted, sent and acknowledged, and the settlement read",
+     "uae.wps.wf.refund-out.v2", "end-to-end", REFUND_OUT_CTX,
+     {"outcome": "settled", "trace": ["render:mapped", "request:accepted", "end:settled"],
+      "detail": ["request.encrypt:encrypted", "request.send:accepted", "request.await-ack:received", "request.read-ack:ack",
+                 "request.await-settlement:received", "request.read-settlement:settled"]},
+     bench_=refund_out_bench(), tenant="example-bank")
 # Issue I-87: the encryption block alone, one test per outcome (R-03-16).
 test("P-ENC-001", "A file the encryption service encrypts is encrypted", "p.protect.encrypt-file.v1", "activity", PAY_CTX,
      {"outcome": "encrypted"}, bench_=bench(("p.port.encryption.v1", "p.sim.encryption.v1", "accept")))

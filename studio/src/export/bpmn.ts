@@ -573,7 +573,7 @@ class B {
     this.els.push(`<eventBasedGateway id="${eg}" name="await the decision of ${esc(stepId)}"/>`);
     this.flow(hg, eg, `\${${v(ov)} == 'held'}`, 'held');
     const got = `${sid}_decided`;
-    this.els.push(`<intermediateCatchEvent id="${got}" name="${esc(stepId)}:decided">${ext(ann('await', { step: stepId, message: DECISION_MESSAGE, hold: 'true' }))}<messageEventDefinition messageRef="${this.g.message(DECISION_MESSAGE)}"/></intermediateCatchEvent>`);
+    this.els.push(`<intermediateCatchEvent id="${got}" name="${esc(stepId)}:decided">${ext(ann('await', { step: stepId, message: DECISION_MESSAGE, hold: 'true', activity: act.name }))}<messageEventDefinition messageRef="${this.g.message(DECISION_MESSAGE)}"/></intermediateCatchEvent>`);
     this.flow(eg, got);
     const dg = `${sid}_decidedAs`;
     this.gateway(dg, 'th_decision', `${dg}_other`);

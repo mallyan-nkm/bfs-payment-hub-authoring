@@ -77,7 +77,7 @@ var signingKey = signingRef is { Length: > 0 }
 var files = new HostFiles(store, signingKey);
 Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", "rendered", name, content, sha);
 INativeActivity[] activities = [new ValidateCbxFile(), new RenderCbSif(keep),
-    .. PlatformActivities.CoreBanking(coreBanking), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep),
+    .. PlatformActivities.CoreBanking(coreBanking), .. OrderActivities.All(), new PostReturn(coreBanking), .. WpsInwardActivities.All(keep),
     .. FileProtectionActivities.All(bindings, files), EnrichEmployerStatus.On(bindings), .. holds];
 var byName = activities.ToDictionary(x => x.Name);
 

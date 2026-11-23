@@ -90,6 +90,7 @@
           "additionalProperties": false,
           "properties": {
             "hold": { "enum": ["approval", "repair"] },
+            "workflow": { "type": "array", "minItems": 1, "items": { "$ref": "urn:th:schema:common#/$defs/artefactName" }, "description": "The platform workflows the action applies to (R-05-61); without it, every platform workflow of the view." },
             "status": { "type": "array", "items": { "type": "string" } },
             "notStatus": { "type": "array", "items": { "type": "string" } }
           }

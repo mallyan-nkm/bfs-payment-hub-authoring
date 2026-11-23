@@ -50,10 +50,12 @@ afterAll(async () => {
   fs.rmSync(local, { recursive: true, force: true });
 });
 
-async function signIn(as: RegExp) {
+async function signIn(as: RegExp, slowTemplates = false) {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e: Error) => errors.push(e.message));
+  // The bench's templates may arrive after its library (a busy host): the builder must wait for them, not send a recipe with none.
+  if (slowTemplates) await page.route('**/testbench/api/data/templates', async (r: any) => { await new Promise((x) => setTimeout(x, 2000)); await r.continue(); });
   await page.goto(`${url}/#/testbench`);
   await page.getByRole('button', { name: as }).click();
   return { page, errors };
@@ -84,7 +86,7 @@ describe('the Test bench section of the runtime web app', () => {
   });
 
   it('the builder makes a valid file for the bank, and an injected error is found before running', async () => {
-    const { page } = await signIn(/Sign in as Example tester/);
+    const { page } = await signIn(/Sign in as Example tester/, true);
     await page.getByTestId('nav-data').click();
     await page.getByTestId('library').getByText('wps-sif-nak').waitFor();
     await page.getByTestId('build').click();

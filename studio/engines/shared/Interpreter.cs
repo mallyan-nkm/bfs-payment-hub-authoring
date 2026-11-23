@@ -258,6 +258,12 @@ public sealed partial class Interp
 
     /// <summary>Told when a step parks (instance as the workers know it, step, call): a runtime host records it as the payment's step fact <c>stuck</c>.</summary>
     public static Action<string, string, int>? Stuck;
+    /// <summary>
+    /// Told when an instance takes a hold's decision (R-05-60): the hold's step as a worker's request names it (instance, workflow,
+    /// step, activity, release, call, header) and the step's result (its outcome and its writes: who decided, and when). A runtime
+    /// host records it as the hold step's fact, so every engine leaves the same step fact for a hold as for any other step.
+    /// </summary>
+    public static Action<JsonObject, JsonObject>? Decided;
     static readonly string[] StateParts = { "header", "facts", "status", "messages" };
 
     readonly IEngine eng;
@@ -565,14 +571,26 @@ public sealed partial class Interp
             outcome = status is not null && names.Contains(status) ? status : status is "rejected" or "declined" ? negative ?? prim : prim;
         }
         var writes = new JsonObject();
+        var decidedAt = DateTimeOffset.FromUnixTimeMilliseconds(eng.Now).ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
         foreach (var p in J.Strings(J.P(act, "writes")).Where(p => p.StartsWith("facts", StringComparison.Ordinal)))
         {
             var f = new JsonObject { ["outcome"] = outcome, ["result"] = outcome };
             if (J.S(msg, "status") is string st) f["status"] = st;
             if (hold is not null) f["hold"] = hold;
             if (J.S(msg, "by") is string by) f["by"] = by;
+            // When the decision was taken, on the engine's business clock (R-05-60).
+            f["at"] = decidedAt;
             writes[p] = f;
         }
+        try
+        {
+            Decided?.Invoke(new JsonObject
+            {
+                ["instance"] = partyKey, ["workflow"] = J.S(doc, "name"), ["step"] = id, ["activity"] = J.S(act, "name"), ["release"] = J.S(act, "release"),
+                ["call"] = callCounts.GetValueOrDefault(id), ["attempt"] = 0, ["ctx"] = new JsonObject { ["header"] = J.Clone(J.P(frame.State, "header")) },
+            }, new JsonObject { ["kind"] = "result", ["outcome"] = outcome, ["writes"] = J.Clone(writes) });
+        }
+        catch (Exception) { /* a fact not recorded does not stop the engine */ }
         return new JsonObject { ["kind"] = "result", ["outcome"] = outcome, ["stateWrites"] = writes };
     }
 
@@ -977,7 +995,7 @@ public sealed partial class Interp
                 var limitAt = Math.Min(attemptMs is long a ? eng.Now + a : long.MaxValue, total);
                 var input = new JsonObject
                 {
-                    ["instance"] = partyKey, ["activity"] = J.S(act, "name"), ["release"] = release, ["step"] = id, ["call"] = callNo,
+                    ["instance"] = partyKey, ["workflow"] = J.S(doc, "name"), ["activity"] = J.S(act, "name"), ["release"] = release, ["step"] = id, ["call"] = callNo,
                     ["attempt"] = attempt, ["now"] = eng.Now, ["state"] = J.Clone(frame.State), ["payloadRef"] = frame.PayloadRef,
                     ["item"] = frame.Item, ["level"] = level, ["policy"] = J.Clone(J.P(st, "policy")),
                     ["deadline"] = limitAt == long.MaxValue ? null : limitAt,

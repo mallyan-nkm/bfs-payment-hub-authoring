@@ -80,6 +80,7 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         var open = await OpenHold(subjectId, ct);
         var legs = await o.Legs.AsNoTracking().Where(l => l.SubjectId == subjectId).Select(l => l.Leg).Distinct().ToListAsync(ct);
         var state = await StateOf(subjectId, ct);
+        var platform = await PlatformWorkflow(subjectId, ct);
         var offers = new List<ActionOffer>();
         foreach (var v in views.For(subj.Scheme))
         {
@@ -93,6 +94,9 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 var when = a["when"] as JsonObject ?? new JsonObject();
                 if (ActionNames.HoldDecisions.TryGetValue(name, out var hd) && open?.kind != hd.hold) continue;
                 if ((string?)when["hold"] is string wantHold && open?.kind != wantHold) continue;
+                // An action for some platform workflows only (R-05-61): offered on a payment that runs one of them. A payment whose
+                // steps name no workflow (recorded before they did) is offered it, as before.
+                if (when["workflow"] is JsonArray wf && platform is not null && !wf.Any(x => (string?)x == platform)) continue;
                 if (when["notStatus"] is JsonArray ns && ns.Any(x => (string?)x == subj.Status)) continue;
                 if (when["status"] is JsonArray st && !st.Any(x => (string?)x == subj.Status)) continue;
                 // Which states allow what (R-05-58): a signal while the payment runs; retry while a step is parked; resend when a file was sent.
@@ -116,6 +120,18 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         if (open is null) return null;
         var d = JsonNode.Parse(open.DataJson)!;
         return ((string)d["hold"]!, (string?)d["kind"] ?? "approval");
+    }
+
+    /// <summary>
+    /// The platform workflow a payment runs (R-05-61): the workflow its root instance's steps name. The root is the instance with the
+    /// shortest path; a leg's instance is under it. Null when no step names one.
+    /// </summary>
+    async Task<string?> PlatformWorkflow(string subjectId, CancellationToken ct)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step").OrderBy(f => f.Seq).Select(f => f.DataJson).Take(200).ToListAsync(ct);
+        return steps.Select(j => JsonNode.Parse(j) as JsonObject).Where(d => d?["workflow"] is not null && d["instance"] is not null)
+            .OrderBy(d => ((string)d!["instance"]!).Count(c => c == '/')).Select(d => (string?)d!["workflow"]).FirstOrDefault();
     }
 
     /// <summary>What the store says of a payment now: whether it has ended, whether its last step is parked, whether a file of it was kept.</summary>

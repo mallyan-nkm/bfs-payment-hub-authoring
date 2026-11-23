@@ -1,7 +1,7 @@
 kind: workflow
 wfKind: platform
 name: p.wf.refund.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: Refund orders
 description: >-
@@ -10,6 +10,9 @@ description: >-
   platform owns its lifecycle: it finds the earlier payment, converts each line at the bank's rate, prices the bank's charge,
   blocks the amount on the account, holds the order for approval, and posts it. The scheme leg returns the funds and answers
   the scheme (pacs.004 PmtRtr and camt.029 RsltnOfInvstgtn); the refuse leg answers a refusal (camt.029). Neither leg posts.
+  Release 1.1.0 posts with p.post.accounting.v2, which reads the order's FX and charges: each line's converted amount, then its
+  charge and its VAT as entries of their own (R-12-23, Issue I-136); and it no longer declares re-screen, which a refund order has
+  no step for: the platform view offers re-screen only on the workflows that screen (R-05-61, Issue I-135).
 direction: inward
 entry:
   reads: [header, payment, batch, "items[]"]
@@ -42,8 +45,7 @@ hookPoints:
     contract:
       reads: [header, status]
     policy: { timeout: PT10S, onFailure: fail-open }
-# The platform view offers re-screen on every platform workflow (Issue I-135); a refund order has no screening step, so it changes nothing.
-signals: [pause, resume, cancel, re-screen]
+signals: [pause, resume, cancel]
 do:
   # The earlier payment, by the id the order names (R-12-19).
   - id: original
@@ -96,7 +98,7 @@ do:
   # The posting may run again (it carries an idempotency key), so a failed attempt parks for a business day for an operator's
   # retry instead of ending the order (R-05-55, Issue I-125).
   - id: post
-    call: p.post.accounting.v1
+    call: p.post.accounting.v2
     policy: { park: P1D }
     handle:
       rejected: { end: review }

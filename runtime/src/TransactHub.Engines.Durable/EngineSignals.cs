@@ -33,6 +33,27 @@ public sealed class StoreSignals(StoreOptions store, TimeProvider? clock = null)
             if (!seen.TryAdd($"{instance}|{step}|{call}", true)) return;
             facts.Record(new JsonObject { ["instance"] = instance, ["step"] = step, ["call"] = call }, new JsonObject { ["kind"] = "stuck" }).GetAwaiter().GetResult();
         };
+        // A hold's decision is the hold step's fact, as a worker's answer is any other step's (R-05-60): its outcome, who and when.
+        // Once per instance, step and call: an engine that replays its history takes the decision again on replay.
+        // The decision is taken in workflow code (Temporal's deterministic scheduler, DTFx's and Elsa's orchestrations), which must not
+        // wait on the database: it is queued here and written by a thread of its own, in order.
+        var decided = new System.Collections.Concurrent.BlockingCollection<(JsonObject req, JsonObject res)>();
+        var writer = new Thread(() =>
+        {
+            foreach (var (req, res) in decided.GetConsumingEnumerable())
+            {
+                try { facts.Record(req, res).GetAwaiter().GetResult(); }
+                catch (Exception e) { Console.Error.WriteLine($"[store] a hold's decision was not recorded: {e.GetType().Name}"); }
+            }
+        }) { IsBackground = true, Name = "th-decided" };
+        writer.Start();
+        // A host that ends writes what it has queued first.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => { decided.CompleteAdding(); writer.Join(TimeSpan.FromSeconds(10)); };
+        Interp.Decided = (req, res) =>
+        {
+            if (!seen.TryAdd($"decided|{J.S(req, "instance")}|{J.S(req, "step")}|{J.Num(req, "call")}", true)) return;
+            try { decided.Add((req, res)); } catch (InvalidOperationException) { /* the host is ending */ }
+        };
         return s;
     }
 
