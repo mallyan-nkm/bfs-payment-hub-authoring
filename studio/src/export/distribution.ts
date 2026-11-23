@@ -275,7 +275,7 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   env = scopedEnv(env, bank);
   const set = clone(req.set ?? env.store.configurationSet(bank));
   if (!set) throw new DistributionRefused(`${bank} has no configuration set`);
-  // A value read from a reference table goes out as the values it reads, one per edition (R-11-48).
+  // A value read from a reference table goes out as the values it reads, one per edition (R-11-51).
   set.values = resolveReferenceValues(set.values ?? [], (n) => env.store.doc(n, undefined, bank));
   // The bank's port bindings go out in its configuration release (R-11-47): those given, else the ones the studio last released.
   // A release of the bindings names the configuration release with build metadata, so that one with the same values and

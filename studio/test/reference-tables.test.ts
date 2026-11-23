@@ -7,7 +7,7 @@ import { checkAll } from '../src/checks/checks.js';
 import { clone, freshEnv } from './helpers.js';
 import './support/signing-env.js';
 
-// Reference tables (R-01-25, R-11-48; owner's decisions of 23 November 2026): market, scheme and bank reference data as
+// Reference tables (R-01-25, R-11-51; owner's decisions of 23 November 2026): market, scheme and bank reference data as
 // effective-dated tables in the studio, shipped in a bank's configuration release, never in a distribution. The participant
 // directory is the Central Bank's register of licensed banks, October 2026, with no routing code but the one the source holds;
 // a bank's participant list reads names by routing code from it.
@@ -46,7 +46,7 @@ describe('the reference tables of the factory and the example bank (R-01-25)', (
   });
 });
 
-describe('a bank\'s participant list read from the participant directory (R-11-48, Issue I-130)', () => {
+describe('a bank\'s participant list read from the participant directory (R-11-51, Issue I-130)', () => {
   it('reads one value per edition, leaving out a bank whose routing code is not yet filled (L50)', () => {
     const env = freshEnv({ banks: ['dib'] } as any);
     const set = env.store.configurationSet('dib');

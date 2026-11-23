@@ -7,7 +7,7 @@ title: The licensed banks of the UAE, the scheme participant directory
 description: 'The Central Bank''s register of licensed banks, as published. The register gives each bank''s name, licence
   type and category, head office and identification number. It gives no UAEFTS routing code: the platform vendor fills routingCode
   row by row from the scheme''s participant list in a later edition (Issue I-130). The one code filled is the only one the
-  TransactHub source holds. uae.wps.table.participant-names.v1 reads a bank''s name by its routing code from here (R-11-48).'
+  TransactHub source holds. uae.wps.table.participant-names.v1 reads a bank''s name by its routing code from here (R-11-51).'
 domain: participant-directory
 key:
   - identificationNumber

@@ -217,7 +217,7 @@ CASES = [
      "        headOffice: AE-AJ\n", "        headOffice: AE-XX\n", "a head office names no emirate of the emirates table"),
     ("M75", "ERROR L49", "factory/uae.p/reference/uae.p.ref.emirates.v1.yaml",
      "      - code: AE-DU\n", "      - code: AE-AZ\n", "an edition repeats a key"),
-    # L50 (R-11-48): a value read from a reference table names a published table and its columns
+    # L50 (R-11-51): a value read from a reference table names a published table and its columns
     ("M76", "ERROR L50", "examples/bank/configuration-set.yaml",
      "    value:\n      - { routingCode: \"203320101\", name: Example Bank One }\n      - { routingCode: \"302620122\", name: Example Bank Two }\n",
      "    fromReference: { table: uae.p.ref.participant-directory.v1, columns: { routingCode: routingCode, name: bankName } }\n",

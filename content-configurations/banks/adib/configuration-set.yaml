@@ -50,7 +50,7 @@ values:
   - parameter: p.protect.encrypt-file.v1#recipientKey
     value: cbuae-wps
     validFrom: "2026-11-22"
-  # The scheme's participant directory (Issue I-130, R-11-48): each bank's name by its routing code, read from the Central Bank's
+  # The scheme's participant directory (Issue I-130, R-11-51): each bank's name by its routing code, read from the Central Bank's
   # register of licensed banks (uae.p.ref.participant-directory.v1), edition by edition. A bank whose routing code the table
   # does not yet hold is left out until the platform vendor fills it.
   - parameter: uae.wps.table.participant-names.v1#participants

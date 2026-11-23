@@ -45,6 +45,7 @@ The factory pack is the default content that ships with the studio: the platform
 | R-12-24 | A refund the bank asks a scheme for, for its customer, MUST be an outward refund order on `p.wf.refund-out.v1`, which `p.table.workflow-select.v1` 1.2.0 picks for `header.kind` refund and `header.direction` outward. The scheme leg only builds, encrypts, sends and reads the scheme's answers (for WPS `uae.wps.wf.refund-out.v2`: the RFR, its ACK, the RSU); after the scheme settles, the platform converts, prices, posts the credit to its customer (R-12-23) and verifies it. The leg calls no `reserve` or `post` activity. | Lint L47 (mutation M69); the table's example `outward refund`; tests WPS-RFR-001 to WPS-RFR-003; `studio/test/blackbox/e2e-refund-order.test.ts` |
 | R-12-25 | `p.enrich.fx-rate.v1`, `p.enrich.charges.v1` and `p.post.accounting.v2` MUST have native code-behinds on the runtime (R-08-16) that give the same results as their script-behinds, on `decimal`, rounded half away from zero where the script rounds. | `PlatformNativeTests` (every P-FX, P-CHG and P-POST test on the native code-behind); `studio/test/native-dual.test.ts` |
 | R-12-26 | A WPS payment flow's step that may run again and whose failure would end the file (the business date, the employer's status, the file checks and the files the bank renders, the returns decision, the return's posting, the employer's credit of a return) MUST park for a business day for an operator's retry (R-05-55) instead of ending the payment. | Lint L45; `studio/test/wps-park.test.ts` |
+| R-12-27 | The platform MUST look a debtor up in the bank's party register with `p.enrich.party-register.v1` over `p.port.party-register.v1`, by its organisation id (R-02-21) matched against the register field `lookupBy` names, writing only the answer (found, active, a scheme code) to `facts.partyRegister`: registered, not registered (RR04) or a mismatch (BE01). The studio answers with `p.sim.party-register.v1`; the runtime's native code-behind reads the register as of the step (adapter `register`), and a scheme MAY give its own match: WPS's is the source's `SifUploadRules.MatchCorporate`. `uae.wps.wf.salary-file-out.v1` 1.3.0 refuses a file whose employer the bank has not registered, or registered with another debit account, before anything is asked or sent. | Tests P-REG-001 to 004, WPS-OUT-009 and 010; `RegisterTests`; `studio/test/blackbox/e2e-wps-party-register.test.ts` |
 
 ## 12.4 Contents
 
@@ -55,11 +56,11 @@ The table is generated from `factory/inventory.yaml`.
 <!-- INVENTORY:summary -->
 | Pack | Type | Activity | Rule | Ruleset | Table | Port | Simulator | Workflow | Scheme | Extension | Hook | Test | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `factory/p/` | shared | 26 | 7 | 2 | 3 | 11 | 11 | 8 |  |  |  | 15 | 85 |
-| `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 14 |
-| `factory/uae.wps/` | shared | 36 | 12 | 3 | 2 | 3 | 5 | 15 | 1 | 1 |  | 38 | 118 |
-| `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 17 |
-| Total | | 68 | 25 | 7 | 5 | 18 | 20 | 23 | 1 | 2 | 3 | 57 | 234 |
+| `factory/p/` | shared | 27 | 7 | 2 | 3 | 12 | 12 | 8 |  |  |  | 19 | 93 |
+| `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 18 |
+| `factory/uae.wps/` | shared | 36 | 12 | 3 | 2 | 3 | 5 | 15 | 1 | 1 |  | 40 | 120 |
+| `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 18 |
+| Total | | 69 | 25 | 7 | 5 | 19 | 21 | 23 | 1 | 2 | 3 | 63 | 249 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack

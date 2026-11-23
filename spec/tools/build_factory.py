@@ -110,7 +110,7 @@ RELEASES = {
     "p.enrich.fx-rate.v1": ("1.1.0", "native code-behind (Issue I-136)"),
     "p.enrich.charges.v1": ("1.1.0", "native code-behind (Issue I-136)"),
     "p.table.workflow-select.v1": ("1.2.0", "an inward refund order runs p.wf.refund.v1, an outward one p.wf.refund-out.v1"),
-    # Owner's decision of 2026-11-23 (R-12-27, Issue I-147): the salary file's employer is looked up in the bank's party register by
+    # Owner's decision of 2026-11-23 (R-12-27, Issue I-149): the salary file's employer is looked up in the bank's party register by
     # its establishment id, carried as the debtor's organisation id (Dbtr/Id/OrgId/Othr). A field written under batch, a minor.
     "uae.wps.map.sif-in.v1": ("1.3.0", "the employer's establishment id as the debtor's organisation id (R-12-27)"),
 }
@@ -451,7 +451,7 @@ act("uae.wps.enrich.employer-status.v1", "Ask the labour ministry for the employ
     ["ext.uae.wps.employerStatus"], ["found", "not-found"], "read", level="batch", ports=["uae.wps.port.labour-ministry.v1"], policy=SHORT,
     script=True, native=True, p=WP)
 
-# The debtor in the bank's party register (owner's decisions of 2026-11-23, R-12-27, Issue I-147): bank customer data lives in the
+# The debtor in the bank's party register (owner's decisions of 2026-11-23, R-12-27, Issue I-149): bank customer data lives in the
 # runtime's registers only, so the studio asks a simulator and the runtime's native code-behind reads the register as of the step.
 # The platform looks the debtor up by its organisation id (lookupBy names the register's field); a scheme matches what it needs (on
 # the runtime, WPS feeds the source's SifUploadRules.MatchCorporate). Only the answer is written: found, active, and why not.
@@ -1154,7 +1154,7 @@ test("WPS-OUT-008", "A salary file the encryption service refuses is rejected an
      {"outcome": "rejected", "reasonCode": "NARR", "messages": [{"port": WPS, "message": "uae.wps.sif-submission", "count": 0}],
       "trace": OUT_HEAD + ["submit:rejected", "end:rejected"], "detail": ["submit.encrypt:refused"]},
      bench_=bench((WPS, WSIM, "accept"), CAL, ("p.port.encryption.v1", "p.sim.encryption.v1", "reject"), MIN, (REG, REGSIM, "accept")))
-# R-12-27 (Issue I-147): as in the source's pre-check, a file whose employer the bank has not registered, or registered with other
+# R-12-27 (Issue I-149): as in the source's pre-check, a file whose employer the bank has not registered, or registered with other
 # details than the channel supplied, is refused before anything else is asked or sent.
 test("WPS-OUT-009", "The file of an employer the bank has not registered is refused before anything is sent", "uae.wps.wf.salary-file-out.v1",
      "leg", WPS_FILE,
@@ -1183,6 +1183,8 @@ test("WPS-MAP-002", "The SCR-last channel variant maps to the same canonical bat
 test("WPS-MAP-003", "The channel's upload and the EVP allowances map into the batch and its lines", "uae.wps.map.sif-in.v1", "activity",
      {"inbound": "samples/wps-sif-upload-evp.sif"},
      {"outcome": "mapped", "writes": {"batch.initiatingParty.id": "U-0001", "batch.debtor.name": "Example Trading LLC",
+                                      # R-02-21, R-12-27: the employer's establishment id as the debtor's organisation id
+                                      "batch.debtor.organisationId.id": "0000001234567", "batch.debtor.organisationId.scheme": "MOL",
                                       "batch.debtorAccount.iban": IBAN_OK, "ext.uae.wps.uploadChannel": "IB",
                                       "items.0.ext.uae.wps.housingAllowance": "200.00", "items.0.ext.uae.wps.otherAllowances": "50.00",
                                       "items.0.ext.uae.wps.leaveEncashment": "0.00", "items.0.payment.instructedAmount.value": "1500.00",

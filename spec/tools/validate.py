@@ -569,7 +569,7 @@ def reference_table_problems(d, tables):
 
 
 def reference_value_problems(v, decl):
-    """L50 (R-11-48): a value read from a reference table names a published one and its columns, for a list parameter."""
+    """L50 (R-11-51): a value read from a reference table names a published one and its columns, for a list parameter."""
     out = []
     fr = v["fromReference"]
     t = by_name.get(fr.get("table"))

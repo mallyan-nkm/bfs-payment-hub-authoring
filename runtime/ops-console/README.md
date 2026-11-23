@@ -35,6 +35,18 @@ Then open http://127.0.0.1:7400. Configuration:
 
 For a WPS file's holds to wait for an operator, give the operations-queue port to the runtime (`--bench p.port.operations-queue.v1=runtime`) and run the native host with the store (`TH_STORE_PROVIDER`, `TH_STORE_CONNECTION`): the hold answers held and the engine awaits the decision (R-05-56).
 
+## Registers (R-05-62 to R-05-64)
+
+The bank's customer data, starting with the corporate registration, lives in the runtime's registers, never in the studio or on GitHub. The **Registers** section renders each declared register kind (`runtime/src/TransactHub.Operations/Registers/*.register.json`; further kinds in `Operations:Registers`): the records in force, searched, each with its full history, personal and declared fields masked as the operations views mask. A **RegisterMaker** proposes a new record or a change (only the fields changed are sent); it takes effect only when a **BankApprover** who is not its maker consents, from the later of its `validFrom` and the consent. Both roles come from the bank's role map per tenant, like Operator and Supervisor (R-06-29); the dev sign-in has a synthetic maker and approver.
+
+The same host serves the bank's systems, as system clients of its identity provider (client credentials), by roles the role map gives per tenant:
+
+| Route | Role | What |
+| --- | --- | --- |
+| `GET /api/registers/{kind}/{key}`, `GET /api/registers/{kind}?cif=…` (any lookup field), `?q=` | `register-client` | Look up, list and search, unmasked (R-09-73) |
+| `POST /api/registers/{kind}/changes`, `POST /api/registers/{kind}/sync` | `register-client` | Draft changes; load or sync in bulk, once per `reference`; every change waits for a BankApprover |
+| `GET /api/channel/payments/{transactionId}/status`, `GET /api/channel/batches/{batchId}/status`, `GET /api/channel/payments?reference=&from=&to=&status=&scheme=` | `channel-enquiry` | A payment's or a file's status, and a search, in pain.002 words with the scheme's own status (R-09-74): the source's `/api/payment/{id}/status`, `/api/wps/inquiry/{id}`, `/api/batch/{id}/status` and SIF upload search |
+
 ## Development
 
 ```

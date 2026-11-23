@@ -46,6 +46,7 @@ A signed directory under `releases/configuration/<bank>/<release>/`, with `manif
 - the configuration set (dial values, rule values), each with its `validFrom`;
 - port bindings (adapter and settings, with credentials as `secretRef` only), each with its `validFrom`;
 - calendars;
+- the reference tables the bank sees, each with every edition (`reference/<name>.yaml`; R-01-25): the participant directory, emirates, free zones, purpose codes and business-day calendars the platform vendor keeps, and the bank's own branches. A value that reads a list from a table (`fromReference`, R-11-51) goes out as the values it reads. The runtime serves the tables by date under `GET /lookups/{domain}` (R-09-75). Bank customer data (the corporate registration) is never in a release: it lives in the runtime's registers (R-05-62);
 - `requiresContract`: the parameter contract versions it was checked against.
 
 The runtime stores each value as an insert-only, effective-dated version (built in P6, `BankValues`).

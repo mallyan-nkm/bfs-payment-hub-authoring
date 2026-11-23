@@ -4,7 +4,7 @@ name: uae.p.ref.business-calendar.v1
 release: 1.0.0
 title: The UAE's non-business days
 description: The weekend and the public holidays fixed by date, from which a business date is worked out. Holidays that follow
-  the moon are announced each year and are added as an edition when announced (Issue I-149).
+  the moon are announced each year and are added as an edition when announced (Issue I-151).
 domain: business-calendar
 key:
   - day
@@ -53,4 +53,4 @@ editions:
 provenance:
   origin: factory
   status: provisional
-  note: Fixed-date holidays only; confirm each year's list with the bank (Issue I-149).
+  note: Fixed-date holidays only; confirm each year's list with the bank (Issue I-151).

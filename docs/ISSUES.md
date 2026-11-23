@@ -1420,6 +1420,8 @@ Neither is a scheme step the factory can author with what it has. The RRI's bloc
 
 **Recommendation.** Take the directory from the Central Bank's published participant list as reference data, effective-dated, and decide with the owner where it lives: a value in each bank's configuration set, or a registry the deployment loads. Then set it for DIB and ADIB with its `validFrom`.
 
+**Decided and built (owner's decision of 23 November 2026).** The directory is a reference table in shared scope, `uae.p.ref.participant-directory.v1`, loaded from the Central Bank's register of licensed banks, October 2026 (63 banks, `validFrom` 2026-10-01; R-01-25, I-150), and DIB's and ADIB's participant lists read names by routing code from it (`fromReference`, R-11-51). The register has no routing codes; only DIB's, which the source holds, is filled (I-151).
+
 ## I-131. A host's file signing key at deployment
 
 **Issue.** Each kept file's hash is signed by the host that kept it (R-09-64). The key is named by `TH_FILE_SIGNING_KEY_REF` (a P-256 private key in PEM, by reference); without it the native host and the runtime's API make a key for their own lifetime, so a file kept before a restart cannot be checked against a key anyone still holds, and the public keys are not published anywhere.
@@ -1566,6 +1568,56 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 **Issue.** The heartbeat (R-11-50) renews a session with its refresh token, and a provider that rotates refresh tokens gives a new one each time. One instance coalesces concurrent heartbeats of one session and remembers what it learnt, but two instances that heartbeat the same session within the same moment each send the token they hold; a provider that refuses the older token at once, with reuse detection, then ends the session, and the user signs in again.
 
 **Recommendation.** Configure the provider's rotation with a grace period for the previous token (Okta's grace period, Keycloak's default that keeps it valid, Entra ID's tokens that stay valid until they expire), as the development provider does for a minute; or keep a load balancer's affinity for the minute after a heartbeat. A shared store of heartbeats would close it, at the cost R-11-21 names.
+
+## I-149. The corporate registration had no home, and how the bank's registers are kept
+
+**Issue.** The source's WPS pre-check matched a salary file against a registered corporate (`WpsPlatformActivities.Precheck`, `SifUploadRules.MatchCorporate`, ported in `runtime/src/TransactHub.Activities.Wps/Rules/Shared.cs`), from its `CorporateRegistration` table, which an operator maintained on a screen. Nothing in the new model held that registration: the port was a function no activity called, the factory could not ask whether a file's employer was the bank's customer, and the operations console had no screen for it. Bank customer data cannot go into the studio or onto GitHub (owner's decision of 23 November 2026).
+
+**Decided and built (owner's decisions of 23 November 2026).** The runtime keeps the bank's customer data in **registers** of declared kinds, maintained in the operations console (R-05-62 to R-05-64): a `register-kind` declaration (key, fields, types, ISO 20022 homes, personal fields and their masks, lookup fields), not a WPS screen. The first kind is the corporate registration (`runtime/src/TransactHub.Operations/Registers/corporate.register.json`), with the source's fields on the ISO 20022 party: its organisation ids (corporate id, CIF, unified number, trade licence, labour ministry establishment id, each an `OrgId/Othr` with its issuing scheme), name, postal address and emirate, contact details, accounts, and the bank's own flags (active, WPS registration form held, registered with the labour ministry, free zone, branch, managers, corporate type). Records are insert-only, effective-dated versions in the store on SQL Server and PostgreSQL (`register_change`, `register_version`, `register_index`, `register_decision`; migration `Registers`). A change is a maker's draft that takes effect only on a different bank approver's consent, from the later of its `validFrom` and the consent (R-05-63); the full history is shown, masked as the operations views mask. Core banking reads and syncs through the register API (R-09-73). The platform looks a debtor up with `p.enrich.party-register.v1`, and WPS feeds `MatchCorporate` with what it found (R-12-27): `uae.wps.wf.salary-file-out.v1` 1.3.0 refuses a file whose employer is not registered (the source's code 003) or registered with another debit account (010).
+
+**Left open.**
+1. **Masking for core banking.** The register API answers core banking unmasked: it is the system the data came from. If the bank wants its systems to see masked values too, add a scope to the role map's grant.
+2. **Unmasking on screen.** As for payments (I-100), the console shows personal fields masked only; a maker changing a record sends only the fields it changed, so a masked value is never resubmitted.
+3. **A register's size.** Search reads the records in force into memory; a register of more than some tens of thousands of records needs a read model of its own (a projection like the operations read model).
+4. **References between registers and reference tables.** The corporate's emirate, free zone and branch name codes of the reference tables (R-01-25), but the runtime does not yet check them against the installed configuration's tables.
+
+**Recommendation.** Keep the register kinds declared in the runtime software (a new kind is a runtime release, since it is bank data, not configuration); add the reference check of (4) on `/lookups` when a bank installs its first configuration release with branches; decide (1) with each bank's security officer.
+
+## I-150. Reference tables: a kind of their own, not rule tables
+
+**Issue.** Market, scheme and bank reference data (the participant directory, emirates, free zones, purpose codes, business-day calendars, a bank's branches) had no home: the participant directory was a list parameter of `uae.wps.table.participant-names.v1`, empty by default (I-130), and each bank would have had to copy the whole directory into its configuration set. Rule tables are logic, pinned with the workflow, with hit policies and examples; reference data is values, looked up by date.
+
+**Decided and built.** A new artefact kind, `reference-table` (`spec/schemas/reference-table.schema.json`, R-01-25): columns and key are its interface, each edition of its rows has a `validFrom`, and a new edition is a new minor release. The platform vendor keeps the shared ones (`p.ref.purpose-codes.v1`, `uae.p.ref.participant-directory.v1`, `uae.p.ref.emirates.v1`, `uae.p.ref.free-zones.v1`, `uae.p.ref.business-calendar.v1`), the Bank Configurator a bank's own (`b.ref.branches.v1`, synthetic in the example bank). Tables travel to the runtime in the bank's configuration release, never in a distribution, and the runtime serves them under `GET /lookups/{domain}` by date (R-09-75). A list parameter may read its value from a table (`fromReference`, R-11-51): DIB's and ADIB's participant lists now read names by routing code from the participant directory. Lints L49 and L50 check them. The tables are written by hand in `spec/factory/*/reference/` and `spec/examples/bank/reference/`.
+
+**Recommendation.** Give the Bank Configurator an editor for a bank's own tables in the studio (today a table is authored as YAML, like a rule), and add each new kind of reference data as a table, not as a parameter.
+
+## I-151. What the reference tables still lack
+
+**Issue.** Loading the Central Bank's register of licensed banks, October 2026, as the participant directory left gaps:
+1. **Routing codes.** The register gives no UAEFTS routing code. The TransactHub source's participant directory (`services/ecosystem/ParticipantDirectory`, seed data in `services/platform/Database/.../SeedData/Platform/PlatformModelBuilderExtensions.MasterData.cs`) holds BIC-like bank codes only, some not real, and no nine-digit routing code. The one routing code the source holds is DIB's WPS routing code, 802420101 (`Migrations/Wps/20261006094046_ReseedWpsParametersWithIdentityIds.cs`, confirmed by the business on 2026-10-06), filled in register row 24. Every other bank's routing code is empty, so a salary line to another bank still gets no bank name.
+2. **The other sections of the register.** Only the Banks section (63 rows) is loaded; finance companies, exchange houses and the rest are not participants of the payment schemes in the factory.
+3. **The business calendar.** Only the weekend and the holidays fixed by date are in `uae.p.ref.business-calendar.v1`; the holidays that follow the moon are announced each year. The calendar port (`uae.p.port.calendar.v1`) does not read the table yet.
+4. **Free zone codes.** `uae.p.ref.free-zones.v1` takes the source's codes (`Corporate_FreezoneHeaders`), which the bank's own systems may name differently.
+
+**Recommendation.** Ask the Central Bank (or the scheme operator) for the participant list with routing codes and release `uae.p.ref.participant-directory.v1` 1.1.0 with an edition that fills them; add each year's announced holidays as a new edition and have the calendar adapter read the table; confirm the free zone codes with DIB's and ADIB's operations.
+
+## I-152. The roles for the registers and the consent of system changes
+
+**Issue.** The runtime had the roles Operator and Supervisor (payments) and ServiceEngineer and ServiceApprover (the service console). The owner decided that any action that updates the system needs the bank approver's consent (a maker plus a different approver), and that the operations console maintains the bank's customer data. Neither role pair fits a register: an operator acts on payments, and a supervisor's approval is a second approver of a payment action.
+
+**Decided and built.** Two new people's roles in the operations console, given per tenant by the bank's role map (R-06-29): **RegisterMaker** drafts a register change, **BankApprover** consents to it or refuses it; both may read the registers, as may an Operator and a Supervisor. A person holding both may never consent to their own change. Two machine roles for system clients of the bank's identity provider (client credentials): `register-client` (core banking's register API and bulk sync, its changes waiting for a BankApprover like a person's) and `channel-enquiry` (the channel enquiry APIs, R-09-74), and `lookup-reader` on the release API (R-09-75).
+
+**Recommendation.** When the runtime's consent for other system changes is built (configuration, distributions), use the same BankApprover role, so the bank grants one approver role for every change to the system; the dev sign-in's synthetic users show both roles.
+
+## I-153. What the channel enquiries and the party register lookup leave open
+
+**Issue.**
+1. **The CIF and e-mail the channel supplied.** The source's `MatchCorporate` compared a CIF, an account and an e-mail the channel supplied with the upload. The canonical model carries the debit account (`batch.debtorAccount`) but neither a CIF nor an e-mail, so the runtime's match compares the account only.
+2. **Which status a channel sees.** The channel status (PENDING, ACCEPTED, REJECTED) is worked out from the ISO status and how the payment ended, and the scheme's own status is the status fields of the scheme's operations view. The source mapped the Central Bank's status through a per-tenant rail status catalogue; no view declares which field is the channel's status.
+3. **A line's status.** A line is RJCT in the enquiry when its validation found it wanting; a NAK's per-line errors (`status.transactions`) are not yet merged into the lines' statuses.
+4. **The read model's lag.** The enquiries read the operations read model, so a payment accepted a moment ago may not be found yet.
+
+**Recommendation.** Register the CIF as a debtor's organisation id with scheme CIF (R-02-21) and have the intake map write it from the channel's upload; let an operations view declare its channel status field (an operations-view schema change with its lint, in the same change as the enquiry that reads it); merge `status.transactions` into the lines in the projection; answer 404 with a retry hint while the read model's lag is above a second.
 
 ## Not done, and why
 

@@ -39,7 +39,7 @@
           },
           "value": {},
           "fromReference": {
-            "description": "A list value read from a reference table (R-11-48, lint L50): one item per row of each edition in force, each item's fields taken from the columns named; a row with an empty column named is left out. Each edition's validFrom starts its own value.",
+            "description": "A list value read from a reference table (R-11-51, lint L50): one item per row of each edition in force, each item's fields taken from the columns named; a row with an empty column named is left out. Each edition's validFrom starts its own value.",
             "type": "object",
             "required": ["table", "columns"],
             "additionalProperties": false,

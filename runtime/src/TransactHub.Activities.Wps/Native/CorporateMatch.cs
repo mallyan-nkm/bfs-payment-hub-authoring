@@ -10,7 +10,7 @@ namespace TransactHub.Activities.Wps.Native;
 /// the ported <see cref="SifUploadRules.MatchCorporate"/>. The corporate must exist, be active and hold the WPS registration form;
 /// the debit account the channel supplied must be one it registered. The source's codes become the step's scheme code: 003 is not
 /// registered (RR04), 114, 010 and 165 a mismatch (BE01). The CIF and e-mail the source's channel supplied have no home in the
-/// canonical model, so they are not compared (Issue I-151).
+/// canonical model, so they are not compared (Issue I-153).
 /// </summary>
 public static class WpsCorporateMatch
 {

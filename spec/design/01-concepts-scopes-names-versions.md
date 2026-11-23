@@ -59,6 +59,7 @@ This part fixes the vocabulary every other part uses: what an artefact is, where
 | R-01-22 | The payment record MUST show, per step, the pinned release, the release that ran and any supersession reference. | Conformance CK-SUP-01 |
 | R-01-23 | A release MUST NOT be removed while any published workflow release pins it or any instance is pinned to it. | Store test (C19) |
 | R-01-24 | A block used by two schemes SHOULD move to the cluster platform, and a block used by two clusters SHOULD move to `p`. | Studio usage report (advisory) |
+| R-01-25 | Market, scheme and bank reference data (a participant directory, the emirates, free zones, purpose codes, business-day calendars, a bank's branches) MUST be a reference table, kind `reference-table`, named `<scope>.ref.<name>.v<major>`: its columns and key are its interface (a change is a new major), each edition of its rows has a `validFrom` (a new edition is a new minor release), and it is looked up by date, never pinned. The platform vendor keeps the shared ones in `p` and `<cluster>.p`, the Bank Configurator a bank's own in `b`. A reference table MUST travel to the runtime in the bank's configuration release, never in a distribution, and MUST hold no personal data and no bank customer data (owner's decision of 23 November 2026). A shared table's own words name no bank (L09); a public register's rows MAY. | Schema `reference-table` (L00); lints L09, L49; `studio/test/reference-tables.test.ts`; `DistributionApiTests` (the runtime serves them, R-09-75) |
 
 ## 1.5 Hot update, in one table
 

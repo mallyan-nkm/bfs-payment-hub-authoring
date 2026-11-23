@@ -1,4 +1,4 @@
-// Reference tables (R-01-25, R-11-48; owner's decisions of 23 November 2026). Market, scheme and bank reference data as an
+// Reference tables (R-01-25, R-11-51; owner's decisions of 23 November 2026). Market, scheme and bank reference data as an
 // effective-dated table: values, not logic. A table travels to the runtime in a bank's configuration release and is served there
 // by GET /lookups/{domain}; a configuration value may read a list from one (`fromReference`). The same checks as
 // spec/tools/validate.py (L49, L50).
