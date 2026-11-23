@@ -6,7 +6,7 @@ import { parseYaml } from '../core/yaml.js';
 import { walkYaml } from '../core/store.js';
 import { unzip } from '../export/zip.js';
 import { startEntryFor } from '../testing/runner.js';
-import { runTable } from '../rules/service.js';
+import { selectWorkflow, startRoute } from './route.js';
 import { routeOf } from '../interp/interpreter.js';
 import { blockedByWindows } from './blocked.js';
 import { attrs, childEnv, inSpan, SpanKind, traceHeaders } from '../telemetry/telemetry.js';
@@ -272,14 +272,12 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
       if (endToEnd) Object.assign(ctx.header, routeOf(entry.disposition.start), { scheme: scheme.scope });
       if (endToEnd) {
-        const sel = Object.values<any>(documents).find((d) => d.name === 'p.table.workflow-select.v1');
-        if (!sel) throw new Error('The package has no p.table.workflow-select.v1 for the front door');
-        const chosen = runTable(sel, { Header: [ctx.header] }, { resolve: (n) => Object.values<any>(documents).find((d) => d.name === n), evaluationDate: req.environment.evaluationDate }).decisions.find((d) => d.name === 'workflow')?.value;
+        // The same route the runtime's front door works out (route.ts, R-09-79).
+        const byName = (nm: string) => Object.values<any>(documents).find((d) => d.name === nm);
+        const chosen = selectWorkflow(byName, ctx.header, req.environment.evaluationDate);
         if (n === 1) log.push(`front door: workflow-select chose ${chosen ?? 'nothing'} for ${ctx.header.kind} ${ctx.header.direction} ${ctx.header.segment ?? ''}`.trimEnd());
         if (chosen !== req.workflow) throw new Error(`The front door chose ${chosen ?? 'no workflow'} for ${entry.id}, not ${req.workflow}`);
-        const leg = Object.values<any>(documents).find((d) => d.name === entry.disposition.start.leg);
-        if (!leg) throw new Error(`The leg ${entry.disposition.start.leg} that ${entry.id} starts is not in the package`);
-        legs = { [leg.implements?.slot ?? 'scheme-leg']: entry.disposition.start.leg, ...(entry.disposition.start.refuseLeg ? { 'scheme-refuse': entry.disposition.start.refuseLeg } : {}) };
+        legs = startRoute(schemes, byName, entry.id, req.environment.evaluationDate).legs;
         if (n === 1) log.push(`front door: ${entry.disposition.start.leg} fills ${Object.keys(legs).join(', ')}`);
       }
       // The payload stays with the workers by reference; every worker can resolve it.

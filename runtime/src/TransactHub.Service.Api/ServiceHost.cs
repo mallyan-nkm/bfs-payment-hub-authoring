@@ -134,7 +134,10 @@ public sealed class ServiceHost
             book.Run("reset-activity", ActionBook.Signal(store, signals, "redrive", needsParked: true, new JsonObject { ["reset"] = true }));
             book.Run("expire-hold", ActionBook.ExpireHold(store, new HoldExpiry(store, signals, clock)));
             // The file-transfer port the runtime resends on (R-05-58): a folder the scheme's gateway collects from.
-            if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
+            // With the File API (Service:FileApi:Url), through its outbox, delivered on the bank's binding (R-09-78).
+            if (FileApiPort.FromConfiguration(k => cfg[k], "Service") is { } viaFileApi)
+                book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, viaFileApi, clock)));
+            else if ((cfg["Service:FileTransfer:Folder"] ?? cfg["TH_FILE_TRANSFER_DIR"]) is { Length: > 0 } outFolder)
                 book.Run("resend-file", ActionBook.ResendFile(store, new FileResend(store, new FolderFileTransfer(outFolder), clock)));
             // Core banking, as the banks' port bindings bind it (R-08-19): what reconcile-posting asks.
             var banks = cfg["Service:Banks"] ?? cfg["TH_BANKS_DIR"];

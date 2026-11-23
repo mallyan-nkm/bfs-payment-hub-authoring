@@ -155,7 +155,24 @@ public sealed class DistributionWorkers : IAsyncDisposable
         if (J.P(payment, "context") is JsonObject ctx) built["context"] = J.Clone(ctx);
         if (J.S(payment, "id") is string id) built["id"] = id;
         input["distribution"] = Distribution;
-        return await new ScenarioRunner(input).Run(new WorkflowEnvironment(client), this);
+        if (J.P(payment, "legs") is JsonObject legs) built["legs"] = J.Clone(legs);
+        var paymentId = J.S(payment, "id");
+        return await new ScenarioRunner(input) { OnFrontDoor = fd => { if (paymentId is not null) FrontDoors[paymentId] = fd; } }.Run(new WorkflowEnvironment(client), this);
+    }
+
+    /// <summary>The front door workflow of each payment this host runs, by the payment's id.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> FrontDoors = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Hands a message for a running payment to its front door workflow, which routes it by correlation to the run that awaits it
+    /// (R-09-79). Answers false when this host runs no such payment.
+    /// </summary>
+    public async Task<bool> DeliverAsync(string paymentId, JsonObject message)
+    {
+        if (!FrontDoors.TryGetValue(paymentId, out var fd)) return false;
+        var d = new JsonObject { ["deliveries"] = new JsonArray(new JsonObject { ["at"] = 0, ["message"] = J.Clone(message) }) };
+        await client.GetWorkflowHandle(fd).SignalAsync(FrontDoorWorkflow.Deliver, new object?[] { J.Str(d) });
+        return true;
     }
 
     /// <summary>Removal on the engine: the workers stop polling, and the version is deleted from the server once it lets it go.</summary>

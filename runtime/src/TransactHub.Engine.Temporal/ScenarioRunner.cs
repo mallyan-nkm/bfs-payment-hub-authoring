@@ -53,6 +53,12 @@ public sealed class ScenarioRunner
     public Task<JsonObject> Run(WorkflowEnvironment env) => Run(env, null);
 
     /// <summary>
+    /// Told the front door workflow's id once it has started: the runtime's front door hands a message for this payment to it
+    /// (FrontDoorWorkflow.Deliver), which routes it to the run it belongs to (R-09-79).
+    /// </summary>
+    public Action<string>? OnFrontDoor { get; set; }
+
+    /// <summary>
     /// With <paramref name="hosted"/>, one payment on a long-running host's workers (Issue I-114): the distribution's documents,
     /// party and claim check are the host's, its workers already poll, and the payment is started pinned to the host's version.
     /// </summary>
@@ -175,6 +181,7 @@ public sealed class ScenarioRunner
         // Pinned to the host's version from its first task: the payment, its roots and their children run on this distribution only.
         if (hosted is not null) fdOptions.VersioningOverride = new Temporalio.Common.VersioningOverride.Pinned(hosted.Version, Temporalio.Common.VersioningOverride.PinnedOverrideBehavior.Pinned);
         var fd = await env.Client.StartWorkflowAsync((FrontDoorWorkflow wf) => wf.RunAsync(J.Str(fdInput)), fdOptions);
+        OnFrontDoor?.Invoke(frontDoorId);
 
         // The live path from the runtime (R-05-57): with a store, the root's payment is followed on the outbox, and each row is
         // signalled to the root's workflow at the business time now. While an operator wait is open and a live operator may still

@@ -14,6 +14,47 @@ public interface IFileTransferPort
 {
     /// <summary>Puts the file; answers what happened (<c>sent</c>, or <c>already there</c> when the receiver has these bytes).</summary>
     Task<string> Put(string fileId, string fileName, byte[] content, CancellationToken ct = default);
+
+    /// <summary>Puts a payment's file, whose tenant and payment the port is told (the File API keeps the file under them).</summary>
+    Task<string> Put(string tenant, string subjectId, string fileId, string fileName, byte[] content, CancellationToken ct = default) => Put(fileId, fileName, content, ct);
+}
+
+/// <summary>
+/// The file-transfer port through the File API (R-09-78, Issue I-129): the file goes to its outbox for the payment, and the File API
+/// delivers it on the bank's binding of p.port.file-transfer.v1 (the SFTP gateway, a directory), recording each delivery; a file it
+/// delivered before is sent again by its resend. Settings: the File API's URL, the folder of the binding to put the file in, and the
+/// host's client-credentials token by reference.
+/// </summary>
+public sealed class FileApiTransferPort(Uri fileApi, string folder, Func<CancellationToken, Task<string>> token, HttpClient? http = null) : IFileTransferPort
+{
+    readonly HttpClient http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+
+    public Task<string> Put(string fileId, string fileName, byte[] content, CancellationToken ct = default) =>
+        throw new InvalidOperationException("The File API keeps a file under its tenant and payment: name them");
+
+    async Task<JsonObject> Post(string path, JsonObject body, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(fileApi, path)) { Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json") };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await token(ct));
+        using var res = await http.SendAsync(req, ct);
+        var o = JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonObject ?? new JsonObject();
+        if ((int)res.StatusCode >= 400 && (int)res.StatusCode != 502) throw new ActionRefused(502, $"The File API answered {(int)res.StatusCode}: {(string?)o["error"]}", OpsCodes.NoFileKept);
+        return o;
+    }
+
+    public async Task<string> Put(string tenant, string subjectId, string fileId, string fileName, byte[] content, CancellationToken ct = default)
+    {
+        var name = Path.GetFileName(string.IsNullOrWhiteSpace(fileName) ? fileId : fileName);
+        var q = await Post("outbox", new JsonObject
+        {
+            ["tenant"] = tenant, ["scheme"] = "p", ["kind"] = "resend", ["folder"] = folder, ["fileName"] = name,
+            ["contentBase64"] = Convert.ToBase64String(content), ["paymentId"] = subjectId, ["activity"] = "resend-file",
+        }, ct);
+        var delivery = (string?)q["delivery"];
+        if (delivery != "delivered before") return delivery == "delivered" ? "sent" : delivery ?? "queued";
+        var r = await Post($"files/{Uri.EscapeDataString((string)q["file"]!)}/resend", new JsonObject { ["actionId"] = $"{fileId}:{Guid.NewGuid():N}" }, ct);
+        return (string?)r["result"] == "resent" ? "sent" : (string?)r["result"] ?? "failed";
+    }
 }
 
 /// <summary>
@@ -32,6 +73,19 @@ public sealed class FolderFileTransfer(string folder) : IFileTransferPort
         await File.WriteAllBytesAsync(part, content, ct);
         File.Move(part, target, overwrite: true);
         return "sent";
+    }
+}
+
+/// <summary>The File API port of a host, when its settings name one: <c>&lt;section&gt;:FileApi:Url</c>, <c>:Folder</c>, <c>:TokenRef</c>.</summary>
+public static class FileApiPort
+{
+    public static IFileTransferPort? FromConfiguration(Func<string, string?> cfg, string section)
+    {
+        if (cfg($"{section}:FileApi:Url") is not { Length: > 0 } url) return null;
+        var folder = cfg($"{section}:FileApi:Folder") ?? throw new InvalidOperationException($"Set {section}:FileApi:Folder: the folder of the bank's file-transfer binding a resend goes to");
+        var tokenRef = cfg($"{section}:FileApi:TokenRef") ?? throw new InvalidOperationException($"Set {section}:FileApi:TokenRef: this host's token for the File API, by reference");
+        var secrets = TransactHub.Security.SecretResolver.FromEnvironment(cfg);
+        return new FileApiTransferPort(new Uri(url.EndsWith('/') ? url : url + "/"), folder, async ct => (await secrets.Resolve(tokenRef, ct)).Reveal());
     }
 }
 
@@ -54,7 +108,9 @@ public sealed class FileResend(StoreOptions store, IFileTransferPort port, TimeP
         var done = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "message" && f.Code == "resent").Select(f => f.DataJson).ToListAsync(ct);
         if (done.Any(d => (string?)JsonNode.Parse(d)?["action"] == actionId))
             return new JsonObject { ["file"] = file.Id, ["result"] = "already resent by this action" };
-        var result = await port.Put(file.Id, file.FileName ?? file.Id, file.Content, ct);
+        var tenant = await db.Bulks.AsNoTracking().Where(b => b.Id == subjectId).Select(b => b.Tenant).FirstOrDefaultAsync(ct)
+            ?? await db.Payments.AsNoTracking().Where(p => p.Id == subjectId).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "";
+        var result = await port.Put(tenant, subjectId, file.Id, file.FileName ?? file.Id, file.Content, ct);
         await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("message", "resent",
             new JsonObject { ["file"] = file.Id, ["fileName"] = file.FileName, ["kind"] = file.Kind, ["sha256"] = file.ContentHash, ["result"] = result, ["action"] = actionId }, Actor: actor), ct);
         return new JsonObject { ["file"] = file.Id, ["fileName"] = file.FileName, ["sha256"] = file.ContentHash, ["result"] = result };

@@ -181,6 +181,17 @@ public sealed class Supervisor(StoreOptions store, string engine, string bank, s
             res["distribution"] = dist;
             return (status, res);
         }
+        // A message the runtime's front door correlated to a running payment goes to the host of the distribution it is pinned to (R-09-79).
+        if (method == "POST" && path.StartsWith("/payments/") && path.EndsWith("/messages"))
+        {
+            var id = Uri.UnescapeDataString(path["/payments/".Length..^"/messages".Length]);
+            string? dist;
+            await using (var db = StoreDbContext.Open(store)) dist = await new DistributionRegistry(db).PinOf(id);
+            if (dist is null || !children.TryGetValue(dist, out var c)) return (404, new JsonObject { ["error"] = $"{id} is not running here" });
+            var (status, res) = await Http.Call("POST", $"{c.Url}/payments/{Uri.EscapeDataString(id)}/messages", body);
+            res["distribution"] = dist;
+            return (status, res);
+        }
         if (method == "GET" && path.StartsWith("/payments/"))
         {
             var id = Uri.UnescapeDataString(path["/payments/".Length..]);

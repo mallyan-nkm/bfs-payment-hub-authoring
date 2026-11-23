@@ -329,4 +329,49 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         var get = new HttpRequestMessage(HttpMethod.Get, $"/files/{file}/content") { Headers = { Authorization = new AuthenticationHeaderValue("Bearer", Token("Reader")) } };
         Assert.Equal(Pif("sif"), await (await http.SendAsync(get)).Content.ReadAsByteArrayAsync());
     }
+
+    [Fact]
+    public async Task The_consoles_resend_goes_through_the_File_API_outbox_and_is_delivered_on_the_banks_binding()
+    {
+        var o = await pg.Fresh();
+        var banks = Directory.CreateTempSubdirectory("th-fileapi-banks-").FullName;
+        var root = Directory.CreateTempSubdirectory("th-fileapi-cb-").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(banks, Bank));
+            await File.WriteAllTextAsync(Path.Combine(banks, Bank, "file-transfer.yaml"), $"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.file-transfer.v1\n    adapter: directory\n    validFrom: 2026-01-01T00:00:00Z\n    settings: {{ rootRef: env:TH_TEST_CB_ROOT }}\n");
+            using var rsa = RSA.Create(2048);
+            var p = rsa.ExportParameters(false);
+            var jwks = new JsonObject { ["keys"] = new JsonArray(new JsonObject { ["kty"] = "RSA", ["kid"] = "t1", ["use"] = "sig", ["alg"] = "RS256", ["n"] = Base64UrlEncoder.Encode(p.Modulus), ["e"] = Base64UrlEncoder.Encode(p.Exponent) }) }.ToJsonString();
+            const string iss = "https://idp.bank.example.test/realms/runtime", aud = "transacthub-runtime";
+            var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+            {
+                Issuer = iss, Audience = aud, Expires = DateTime.UtcNow.AddMinutes(10), Claims = new Dictionary<string, object> { ["sub"] = "ops-host", ["roles"] = new[] { "Ops" } },
+                SigningCredentials = new SigningCredentials(new RsaSecurityKey(rsa) { KeyId = "t1" }, SecurityAlgorithms.RsaSha256),
+            });
+            var roleMap = $$"""{ "kind": "runtime-role-map", "grants": [ { "claim": "roles", "value": "Ops", "roles": ["file-outbox", "file-resender", "file-reader"], "tenants": ["{{Bank}}"] } ] }""";
+            await using var app = new WebApplicationFactory<Program>().WithWebHostBuilder(b => b.UseSetting("Store:Provider", "PostgreSql").UseSetting("Store:Connection", o.ConnectionString)
+                .UseSetting("FileApi:Environment", Env).UseSetting("FileApi:Worker", "off").UseSetting("Auth:Oidc:Issuer", iss).UseSetting("Auth:Oidc:Audience", aud)
+                .UseSetting("Auth:Oidc:SigningKeys", jwks).UseSetting("Auth:RoleMap", roleMap).UseSetting("TH_BANKS_DIR", banks).UseSetting("TH_TEST_CB_ROOT", root));
+            var http = app.CreateClient();
+            var port = new TransactHub.Operations.FileApiTransferPort(http.BaseAddress!, "centralBank/sif", _ => Task.FromResult(token), http);
+            var bytes = Encoding.UTF8.GetBytes("synthetic salary file, encrypted\n");
+            Assert.Equal("sent", await port.Put(Bank, "P-9", "m-1", "000000000009.SIF.gpg", bytes));
+            var at = Path.Combine(root, "centralBank", "sif", "000000000009.SIF.gpg");
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(at));
+            File.Delete(at);
+            // The same file again: the File API sends its kept bytes again, as a resend.
+            Assert.Equal("sent", await port.Put(Bank, "P-9", "m-1", "000000000009.SIF.gpg", bytes));
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(at));
+            await using var db = StoreDbContext.Open(o);
+            var f = Assert.Single(await db.StoredFiles.AsNoTracking().ToListAsync());
+            Assert.Equal(("P-9", "out"), (f.SubjectId, f.Direction));
+            Assert.Equal(["file.queued", "file.delivered", "file.resent", "file.delivered"], await db.Facts.AsNoTracking().Where(x => x.SubjectId == f.Id).OrderBy(x => x.Seq).Select(x => x.Kind).ToListAsync());
+        }
+        finally
+        {
+            Directory.Delete(banks, true);
+            Directory.Delete(root, true);
+        }
+    }
 }

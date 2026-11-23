@@ -27,7 +27,14 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
     protected string IdPart => DistributionRegistry.Split(Distribution).id;
 
     protected abstract Task Open(CancellationToken ct);
-    protected abstract Task<JsonObject> RunPayment(string paymentId, JsonObject context);
+    protected abstract Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs);
+
+    /// <summary>
+    /// Hands a message the runtime's front door correlated to a running payment of this host (R-09-79). A host that runs each payment
+    /// to its end in one harness run takes none once the run has started (Issue I-134): it is refused, and the front door says so.
+    /// </summary>
+    protected virtual Task<(int, JsonNode?)> Deliver(string paymentId, JsonObject message) =>
+        Task.FromResult<(int, JsonNode?)>((409, new JsonObject { ["error"] = $"{Engine} runs {paymentId} in one harness run and takes no message once it has started (Issue I-134)" }));
     protected virtual Task<JsonObject> MakeCurrent() => Task.FromResult(new JsonObject { ["engine"] = Engine, ["note"] = "new payments are pinned to this distribution in the store and sent to this host" });
     protected virtual Task<JsonObject> Status() => Task.FromResult(new JsonObject());
     protected abstract Task<JsonObject> Unregister();
@@ -54,13 +61,13 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
         return last.StartsWith("end:") ? last[4..] : J.S(root, "failed") is not null ? "failed" : "unknown";
     }
 
-    async Task Start(string paymentId, JsonObject context)
+    async Task Start(string paymentId, JsonObject context, JsonObject? legs)
     {
         var rec = new JsonObject { ["paymentId"] = paymentId, ["status"] = "running", ["distribution"] = Distribution, ["startedAt"] = DateTimeOffset.UtcNow.ToString("O") };
         if (!Payments.TryAdd(paymentId, rec)) return;
         try
         {
-            var obs = await RunPayment(paymentId, context);
+            var obs = await RunPayment(paymentId, context, legs);
             var outcome = Outcome(obs);
             await using (var db = StoreDbContext.Open(Store))
             {
@@ -103,7 +110,11 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                 // A payment runs only on the distribution it is pinned to (R-09-53).
                 if (pinned != Distribution) return (409, new JsonObject { ["error"] = $"{id} is pinned to {pinned ?? "no distribution"}, not {Distribution}" });
                 var ctx = (JsonObject)J.Clone(J.P(body, "context") ?? J.P(J.P(Plan, "built"), "context"))!;
-                _ = Task.Run(() => Start(id, ctx));
+                // The runtime's front door names the workflow it routed the payment to and the legs in its slots (R-09-79).
+                if (J.S(body, "workflow") is string wf && wf != J.S(J.P(Plan, "built"), "workflow"))
+                    return (409, new JsonObject { ["error"] = $"{Distribution}'s host runs {J.S(J.P(Plan, "built"), "workflow")}, not {wf}" });
+                var legs = J.P(body, "legs") is JsonObject l ? (JsonObject)J.Clone(l)! : null;
+                _ = Task.Run(() => Start(id, ctx, legs));
                 return (202, new JsonObject { ["paymentId"] = id, ["host"] = Distribution });
             }
             case ("POST", "/current"):
@@ -126,6 +137,12 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                 _ = Task.Run(async () => { await Task.Delay(200); exit.Cancel(); });
                 return (200, r);
             }
+        }
+        if (method == "POST" && path.StartsWith("/payments/") && path.EndsWith("/messages"))
+        {
+            var id = Uri.UnescapeDataString(path["/payments/".Length..^"/messages".Length]);
+            if (!Payments.TryGetValue(id, out var rec) || J.S(rec, "status") != "running") return (404, new JsonObject { ["error"] = $"{id} is not running on {Distribution}" });
+            return await Deliver(id, J.P(body, "message") as JsonObject ?? throw new ArgumentException("message is required"));
         }
         if (method == "GET" && path.StartsWith("/payments/") && Payments.TryGetValue(Uri.UnescapeDataString(path["/payments/".Length..]), out var p))
             return (200, (JsonObject)J.Clone(p)!);
@@ -158,12 +175,17 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
         await workers.StartAsync();
     }
 
-    protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context)
+    protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
         Interlocked.Increment(ref open);
-        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context }); }
+        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context, ["legs"] = legs }); }
         finally { Interlocked.Decrement(ref open); }
     }
+
+    protected override async Task<(int, JsonNode?)> Deliver(string paymentId, JsonObject message) =>
+        await workers.DeliverAsync(paymentId, message)
+            ? (202, new JsonObject { ["answer"] = "delivered", ["paymentId"] = paymentId })
+            : (409, new JsonObject { ["error"] = $"{paymentId} has no front door on {Distribution} yet" });
 
     protected override async Task<JsonObject> MakeCurrent()
     {
@@ -225,11 +247,12 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
         return Task.CompletedTask;
     }
 
-    protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context)
+    protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
         var input = (JsonObject)J.Clone(Plan)!;
         var built = (JsonObject)input["built"]!;
         built["context"] = context;
+        if (legs is not null) built["legs"] = legs;
         built["id"] = paymentId;
         input["distribution"] = Distribution;
         // Many payments on one store: each root's instance, and so its payload's chain, is the payment's own.
