@@ -1113,7 +1113,11 @@ export function portBindingProblems(d: any, isPort: (name: string) => boolean): 
  * The writes beyond a slot contract that wait for the owner's decision, by `<leg> <platform workflow> <path>`: reported as a
  * warning, and let into a distribution, until the content is released again (Issue I-141). tools/validate.py holds the same.
  */
-export const SLOT_WRITE_OPEN: Record<string, string> = { 'uae.wps.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141' };
+export const SLOT_WRITE_OPEN: Record<string, string> = {
+  'uae.wps.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
+  // The import training bundle's copy of WPS as uae.wpsx (src/import/sample.ts) carries the same leg, so the same open write.
+  'uae.wpsx.wf.agent-payment-in.v2 p.wf.inward.v1 facts.returns': 'I-141',
+};
 
 export function checkDocument(env: StudioEnv, doc: any, tenant?: string, alongside: any[] = []): Issue[] {
   const issues: Issue[] = env.schemas.validate(doc).map((s) => ({ code: 'L00', severity: 'error' as const, key: doc?.name ?? doc?.id ?? '', message: s.message + (s.hint ? ` ${s.hint}` : ''), step: s.path }));

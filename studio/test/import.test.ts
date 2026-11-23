@@ -48,6 +48,10 @@ describe('import: the training bundle', () => {
     expect(env.scripts.find('uae.wpsx.map.sif-in.v1')?.source).toMatch(/wpsx/);
     // Provenance records where it came from.
     expect(env.store.drafts('owner').find((d) => d.name === 'uae.wpsx.wf.salary-file-out.v1')!.doc.provenance.note).toMatch(/Imported from WPS salary files.*not yet validated by an expert/);
+    // The bank licenses the imported scheme, as its bank pack's next release would say (R-11-37, Issue I-111): its
+    // configuration release sets the scheme's dials, which only a distribution carrying the scheme declares.
+    const pack = env.store.all().filter((e) => e.kind === 'pack' && e.doc.scope === 'b' && e.doc.tenant === 'example-bank').sort((x, y) => y.release.localeCompare(x.release, undefined, { numeric: true }))[0];
+    pack.doc = { ...pack.doc, licensedSchemes: ['uae.wps', 'uae.wpsx'] };
     // A checker approves each change set; the imported tests then pass on the published content.
     const call = (method: string, p: string, body: any = {}) => dispatch(env, { method, path: p, query: {}, body });
     for (const set of res.changeSets) {
