@@ -20,9 +20,10 @@ export const FORMAT = 'th-release-statement/1';
 /**
  * The kinds of signed package: a workflow package (built), and a bank's distribution and configuration release
  * (docs/runtime/PACKAGING-AND-DEPLOYMENT.md), which add their bill of materials and parameter contract as further
- * fields of the same statement (`extra`).
+ * fields of the same statement (`extra`). A native module built ahead of time (`runtime/tools/native-module/build.sh`) is signed
+ * the same way, as a `native-module` (R-09-127): its statement adds the module's scope, assembly, contract and source hash.
  */
-export type PackageKind = 'workflow-package' | 'distribution' | 'configuration';
+export type PackageKind = 'workflow-package' | 'distribution' | 'configuration' | 'native-module';
 export const SIGNING_KEY_ENV = 'TH_SIGNING_KEY';
 export const TRUSTED_SIGNERS_ENV = 'TH_TRUSTED_SIGNERS';
 

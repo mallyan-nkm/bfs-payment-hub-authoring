@@ -13,11 +13,11 @@ import { TEST_TOKEN } from '../support/content.js';
 import { wpsCopy } from './native-module.js';
 
 // Native code in the distribution (docs/runtime/PACKAGING-AND-DEPLOYMENT.md sections 3, 6 and scenario 4; spec R-09-120 to
-// R-09-124), end to end, black box. The studio builds each distribution with the WPS native assembly built from its code-behind
-// project at publish (TH_NATIVE_MODULES=build), its SHA-256 in the signed bill of materials. Two scheme patch releases of the same
+// R-09-126), end to end, black box. The studio builds each distribution with the platform's and the WPS native assemblies built from
+// their code-behind projects at publish (TH_NATIVE_MODULES=build), each SHA-256 in the signed bill of materials. Two scheme patch releases of the same
 // WPS native activity (the ACK mapping, which writes a marker of its build) give distributions A and B; the runtime's release API
-// (on PostgreSQL) verifies and installs each; the native host, whose image carries no scheme code, loads each distribution's
-// assembly from the store into a context of its own. A payment pinned to A runs A's build while one pinned to B runs B's, on
+// (on PostgreSQL) verifies and installs each; the native host, whose image carries no native code-behind, loads each distribution's
+// assemblies from the store into a context of its own. A payment pinned to A runs A's build while one pinned to B runs B's, on
 // Temporal and on DTFx, both through one set of workers that names no distribution: each attempt names its payment's
 // distribution, from the engine to the worker to the native host (R-09-130 to R-09-133, Issue I-222). The host refuses an
 // attempt whose worker runs another distribution, and one for a distribution the payment is not pinned to. Removal and unloading are shown by runtime/tests/TransactHub.Native.Tests (SideBySideTests): here a
@@ -202,10 +202,17 @@ describe.each(['temporal', 'dtfx'] as const)('two builds of a WPS native activit
 
     // Each carries its own build, its SHA-256 in the signed bill of materials.
     const [ma, mb] = [manifestOf(a), manifestOf(b)];
-    const shaOf = (m: any) => m.native.modules.find((x: any) => x.scope === 'uae.wps').files[0].sha256;
-    expect(ma.native.modules[0].activities).toContain(`${ACK}@1.2.0`);
+    const wpsOf = (m: any) => m.native.modules.find((x: any) => x.scope === 'uae.wps');
+    const shaOf = (m: any) => wpsOf(m).files[0].sha256;
+    expect(wpsOf(ma).activities).toContain(`${ACK}@1.2.0`);
     expect(shaOf(ma)).not.toBe(shaOf(mb));
-    expect(mb.billOfMaterials.artefacts.find((x: any) => x.kind === 'native-assembly').assemblySha256).toBe(shaOf(mb));
+    expect(mb.billOfMaterials.artefacts.find((x: any) => x.kind === 'native-assembly' && x.scope === 'uae.wps').assemblySha256).toBe(shaOf(mb));
+    // The platform's native activities travel the same way, as the platform module (R-09-126), referencing the contract only.
+    const platformOf = (m: any) => m.native.modules.find((x: any) => x.scope === 'p');
+    expect(ma.native.contract).toBe('1.1.0');
+    expect(platformOf(ma).assembly).toBe('TransactHub.Activities.Platform.Native');
+    expect(platformOf(ma).activities.some((x: string) => x.startsWith('p.decide.posting-window.v1@'))).toBe(true);
+    expect(mb.billOfMaterials.artefacts.find((x: any) => x.kind === 'native-assembly' && x.scope === 'p').assemblySha256).toBe(platformOf(mb).files[0].sha256);
 
     // One set of workers, started once and naming no distribution, runs both: B's payment first, then A's. Each attempt names
     // its payment's distribution, and each payment runs its own distribution's build (R-09-133).
@@ -220,9 +227,9 @@ describe.each(['temporal', 'dtfx'] as const)('two builds of a WPS native activit
     // A worker that runs A (TH_DISTRIBUTION) does not serve B's payment (R-09-131), and no attempt runs a distribution its payment is
     // not pinned to (R-09-132); the attempt for the payment's own distribution is served.
     const wrong = await nativeAttempt(pb.paymentId, b, a);
-    expect([wrong.kind, wrong.name], JSON.stringify(wrong)).toEqual(['error', 'WrongDistribution']);
+    expect([wrong.kind, wrong.name], JSON.stringify(wrong)).toEqual(['error', 'native.WrongDistribution']);
     const notPinned = await nativeAttempt(pb.paymentId, a);
-    expect([notPinned.kind, notPinned.name], JSON.stringify(notPinned)).toEqual(['error', 'NotPinned']);
+    expect([notPinned.kind, notPinned.name], JSON.stringify(notPinned)).toEqual(['error', 'native.NotPinned']);
     const right = await nativeAttempt(pb.paymentId, b, b);
     expect(right.writes?.status?.additionalInformation, JSON.stringify(right)).toBe('wps-build-b');
 
@@ -232,8 +239,9 @@ describe.each(['temporal', 'dtfx'] as const)('two builds of a WPS native activit
     const lb = m.loaded.find((x: any) => x.distribution === b);
     expect(la.collectible && lb.collectible).toBe(true);
     expect(la.context).not.toBe(lb.context);
-    expect(la.modules[0].sha256).toBe(shaOf(ma));
-    expect(lb.modules[0].sha256).toBe(shaOf(mb));
+    expect(la.modules.find((x: any) => x.scope === 'uae.wps').sha256).toBe(shaOf(ma));
+    expect(lb.modules.find((x: any) => x.scope === 'uae.wps').sha256).toBe(shaOf(mb));
+    expect(la.modules.find((x: any) => x.scope === 'p').sha256).toBe(platformOf(ma).files[0].sha256);
     expect(la.served[ACK]).toBeGreaterThan(0);
     expect(lb.served[ACK]).toBeGreaterThan(0);
   }, 3600000);

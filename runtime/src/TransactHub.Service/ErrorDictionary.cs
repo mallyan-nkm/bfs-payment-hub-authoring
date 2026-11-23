@@ -23,6 +23,8 @@ public static class ErrorCodes
     public const string PackageRejected = "package.Rejected", NotPromotable = "package.NotPromotable", KindNotInstallable = "package.KindNotInstallable";
     // Content of another bank than the runtime's (R-09-76), with its own code since the dictionary's 1.2.0 (Issue I-154).
     public const string WrongBank = TransactHub.Api.RuntimeBank.WrongBank;
+    // A native module that references the image's runtime software beyond the contract (R-09-125), since the dictionary's 1.3.0 (Issue I-220).
+    public const string NativeImageReference = TransactHub.Store.NativeAssemblies.ImageReference;
     public const string SourceUnreachable = "package-source.Unreachable", UnknownVersion = "package-source.UnknownVersion";
     public const string Unauthenticated = "auth.Unauthenticated", Forbidden = "auth.Forbidden", StudioIssuer = "auth.StudioIssuer", DevRefused = "auth.DevRefused", RoleMapInvalid = "auth.RoleMapInvalid";
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",

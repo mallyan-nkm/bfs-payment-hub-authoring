@@ -136,8 +136,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # package.WrongBank (Issue I-154), and service.ApproverRequired names the bank approver (Issue I-155, R-09-115).
 # 1.11.0: the bank's cut-off (p.decide.cut-off.v1, R-12-28, Issues I-186 and I-191) after the WPS salary file's business date
 # (uae.wps.wf.salary-file-out.v1 1.4.0), and the WPS operations view 1.6.0 that shows it (R-05-72), both written by hand.
-PACK_RELEASES = {"p": "1.11.0", "uae.p": "1.11.0", "uae.wps": "1.11.0", "b": "1.11.0"}
-FACTORY_RELEASE = "1.11.0"
+# 1.12.0: the platform's error dictionary 1.3.0: a native module that references the runtime image beyond the native contract has
+# its own code, package.NativeImageReference (R-09-125, Issue I-220), and each refusal of the native host its native. code (R-09-128, I-230).
+PACK_RELEASES = {"p": "1.12.0", "uae.p": "1.12.0", "uae.wps": "1.12.0", "b": "1.12.0"}
+FACTORY_RELEASE = "1.12.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 

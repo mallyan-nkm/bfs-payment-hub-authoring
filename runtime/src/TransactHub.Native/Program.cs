@@ -26,10 +26,11 @@ using TransactHub.Ports;
 // With TH_STORE_PROVIDER and TH_STORE_CONNECTION every file is also kept in the store (Issue I-97, R-09-62), signed by the key
 // TH_FILE_SIGNING_KEY_REF names (a P-256 private key in PEM, by reference); without one the host makes a key for its own lifetime.
 //
-// Side by side (spec R-09-120 to R-09-124): this image holds the platform's native activities only. A scheme's or a bank's native
-// activities (WPS's) come in the distribution, built from their code-behind project when the studio built it, each assembly with
-// its SHA-256 in the signed bill of materials. An attempt names the distribution its payment is pinned to, as the engine sent it
-// (AttemptRouting, R-09-130 to R-09-132), else the worker's TH_DISTRIBUTION; the host loads that distribution's assemblies from the store (TH_STORE_*) into a collectible context of its
+// Side by side (spec R-09-120 to R-09-126): this image holds no native code-behind of any pack. The platform's native activities
+// (p's, Issue I-221), a scheme's (WPS's) and a bank's come in the distribution, each a module built from its code-behind project
+// when the studio built it, each assembly with its SHA-256 in the signed bill of materials. A module references the native
+// contract only (R-09-125): the image answers its core banking, ports and files through INativeServices. An attempt names the distribution its payment is pinned to, as the engine
+// sent it (AttemptRouting, R-09-130 to R-09-132), else the worker's TH_DISTRIBUTION; the host loads that distribution's assemblies from the store (TH_STORE_*) into a collectible context of its
 // own, checks their hashes and native contract again, and serves the attempt from it by activity and release. A distribution
 // removed in every environment it was known in is unloaded (checked every TH_NATIVE_REFRESH, 10 seconds by default). An attempt
 // that names none (the studio's interpreter) is served by the modules TH_NATIVE_DEV_MODULES names, if any.
@@ -95,22 +96,22 @@ var signingKey = signingRef is { Length: > 0 }
     : ECDsa.Create(ECCurve.NamedCurves.nistP256);
 var files = new HostFiles(store, signingKey);
 Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", "rendered", name, content, sha);
-// The platform's own native activities: runtime software, in this image. A scheme's or a bank's native activities are not: each
-// distribution carries its own build of them, loaded side by side in a context of its own (R-09-122). What a distribution's
-// modules give the platform (a scheme's match of a registered party) is read from that distribution's contributions.
+// What the image answers itself: the builtin services the runtime gives a port (R-08-15: accounting and reservation on core banking,
+// the holds), and the platform's production adapters (R-09-90: screening, notices, outward facts, the business calendar and the
+// directory). No native code-behind is here: each distribution carries its own build of the platform's, a scheme's and a bank's
+// (R-09-122, R-09-126), loaded side by side in a context of its own; a module's activity of the same name is served first.
 IEnumerable<INativeActivity> Platform(IReadOnlyDictionary<string, object> contributed) =>
 [
-    .. PlatformActivities.CoreBanking(coreBanking), .. OrderActivities.All(),
-    .. FileProtectionActivities.All(bindings, files), PartyRegisterOn(bindings, store, contributed), .. holds,
-    // The platform's production adapters (R-09-90): screening, notices, outward facts, the business calendar and the directory.
+    .. PlatformActivities.CoreBanking(coreBanking), .. holds,
     .. PlatformPortActivities.All(bindings, ReferenceReaderOn(store)),
 ];
+var registers = RegisterReaderOn(store);
 // TH_NATIVE_DEV_MODULES: module build folders (native-module.json and its assemblies) served to attempts that name no
 // distribution: the studio's interpreter and the black-box tests on one machine. A payment pinned to a distribution never uses them.
 var devModules = (Environment.GetEnvironmentVariable("TH_NATIVE_DEV_MODULES") ?? "").Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var refreshEvery = TimeSpan.TryParse(Environment.GetEnvironmentVariable("TH_NATIVE_REFRESH"), System.Globalization.CultureInfo.InvariantCulture, out var re) ? re : TimeSpan.FromSeconds(10);
 // The distributions are read from the store (TH_STORE_*, or Store:* as every runtime host names it).
-var modules = new NativeModules(Platform, (dist, _) => new HostServices(dist, keep, bindings, coreBanking), store, devModules, refreshEvery);
+var modules = new NativeModules(Platform, (dist, _) => new NativeHostServices(dist, keep, files, bindings, coreBanking, registers), store, devModules, refreshEvery);
 var development = await modules.For(null);
 var routing = AttemptRouting.FromEnvironment(store);
 app.Lifetime.ApplicationStopping.Register(modules.Dispose);
@@ -190,22 +191,15 @@ Guarded(app.MapGet("/files/{sha}", (string sha) => files.All.TryGetValue(sha, ou
 
 app.Run();
 
-// p.enrich.party-register.v1 (R-12-27): the bank's party register, read from the store's registers as of the step when the host
-// has a store (adapter `register`); WPS matches what it found with the source's MatchCorporate.
-static INativeActivity PartyRegisterOn(PortBindings bindings, TransactHub.Store.StoreOptions? store, IReadOnlyDictionary<string, object> contributed)
+// The bank's party register (R-12-27), read from the store's registers as of the step when the host has a store (adapter `register`),
+// for the platform module's p.enrich.party-register.v1 through the native contract (R-09-125).
+static RegisterReader? RegisterReaderOn(TransactHub.Store.StoreOptions? store)
 {
-    // A scheme's own match, from its distribution's module (WPS: the source's MatchCorporate).
-    var matchers = contributed.Where(kv => kv.Key.StartsWith("party-matcher:", StringComparison.Ordinal) && kv.Value is PartyMatcher)
-        .ToDictionary(kv => kv.Key["party-matcher:".Length..], kv => (PartyMatcher)kv.Value, StringComparer.Ordinal);
-    RegisterReader? reader = null;
-    if (store is not null)
-    {
-        var regs = new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load());
-        reader = async (tenant, kind, field, value, at, ct) => kind is { Length: > 0 } && regs.Catalog.Find(kind)?.Key == field
-            ? (await regs.InForce(tenant, kind, value, at, ct)) is { } one ? [one] : []
-            : await regs.FindBy(tenant, kind, field, value, at, ct);
-    }
-    return EnrichPartyRegister.On(bindings, reader, matchers);
+    if (store is null) return null;
+    var regs = new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load());
+    return async (tenant, kind, field, value, at, ct) => kind is { Length: > 0 } && regs.Catalog.Find(kind)?.Key == field
+        ? (await regs.InForce(tenant, kind, value, at, ct)) is { } one ? [one] : []
+        : await regs.FindBy(tenant, kind, field, value, at, ct);
 }
 
 // The reference tables the bank's configuration installed, for the `reference` adapters of the calendar and the directory (R-09-90).
@@ -221,15 +215,6 @@ static bool LoopbackOnly(string urls) => urls.Split(';', StringSplitOptions.Remo
     && (x.Host == "localhost" || (IPAddress.TryParse(x.Host.Trim('[', ']'), out var ip) && IPAddress.IsLoopback(ip))));
 
 public partial class Program;
-
-/// <summary>What a distribution's native module is given (R-09-122): the host's file keeping, the bank's port bindings and core banking.</summary>
-sealed class HostServices(string? distribution, Action<string, string, byte[]> keep, PortBindings bindings, TransactHub.Activities.Platform.Posting.CoreBankingResolver coreBanking) : INativeServices
-{
-    public string? Distribution => distribution;
-    public void KeepRendered(string sha256, string fileName, byte[] content) => keep(sha256, fileName, content);
-    public T? Service<T>() where T : class => typeof(T) == typeof(PortBindings) ? bindings as T : typeof(T) == typeof(TransactHub.Activities.Platform.Posting.CoreBankingResolver) ? coreBanking as T : null;
-    public void Contribute(string key, object value) => throw new InvalidOperationException("A module contributes through its distribution's table");
-}
 
 /// <summary>
 /// The host's files: in its memory, by SHA-256 (served on <c>/files</c>), and, with a store, in the store's files (Issue I-97), with the

@@ -1,8 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    The WPS native module (spec R-09-122): a distribution carries its build under activities/native/uae.wps/. It references the native
+    contract and no other assembly of TransactHub (R-09-125, Issue I-220): the studio's build and the runtime refuse a module that does.
+    What reads or writes the store for WPS is TransactHub.Activities.Wps.Store, which no distribution carries.
+  -->
   <ItemGroup>
-    <ProjectReference Include="..\TransactHub.Store\TransactHub.Store.csproj" />
-    <ProjectReference Include="..\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
+    <ProjectReference Include="..\TransactHub.Activities.Contract\TransactHub.Activities.Contract.csproj" />
   </ItemGroup>
 
   <ItemGroup>

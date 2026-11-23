@@ -9,7 +9,7 @@ namespace TransactHub.Native.Tests;
 /// <summary>
 /// Spec R-09-130 to R-09-132 (Issue I-222): an attempt names its payment's distribution, as the engine sent it, and the native host
 /// serves it from that distribution's build, whatever worker carried it; it refuses an attempt whose worker runs another
-/// distribution (<c>WrongDistribution</c>) and one for a distribution the payment is not pinned to (<c>NotPinned</c>). An attempt
+/// distribution (<c>native.WrongDistribution</c>) and one for a distribution the payment is not pinned to (<c>native.NotPinned</c>). An attempt
 /// that names none is served as before: from the worker's distribution, then from the development modules.
 /// </summary>
 [Collection(StoreCollection.Name)]
@@ -76,7 +76,7 @@ public sealed class AttemptRoutingTests(Store store)
         // A worker of A does not carry B's payment (R-09-131).
         var wrong = await Post(c, Ack(pinnedToB, b, a));
         Assert.Equal("error", (string?)wrong["kind"]);
-        Assert.Equal("WrongDistribution", (string?)wrong["name"]);
+        Assert.Equal("native.WrongDistribution", (string?)wrong["name"]);
         Assert.False((bool)wrong["retryable"]!);
         Assert.Contains(a, (string?)wrong["message"]);
 
@@ -84,14 +84,14 @@ public sealed class AttemptRoutingTests(Store store)
         foreach (var asked in new[] { Ack(pinnedToB, a), Ack(pinnedToB, a, a) })
         {
             var notPinned = await Post(c, asked);
-            Assert.Equal("NotPinned", (string?)notPinned["name"]);
+            Assert.Equal("native.NotPinned", (string?)notPinned["name"]);
             Assert.False((bool)notPinned["retryable"]!);
             Assert.Contains(b, (string?)notPinned["message"]);
         }
 
         // An attempt that names none is served as before: from its worker's distribution, then from the development modules.
         Assert.Equal("wps-build-b", Build(await Post(c, Ack(pinnedToB, null, b))));
-        Assert.Equal("NotNative", (string?)(await Post(c, Ack(pinnedToB, null)))["name"]);
+        Assert.Equal("native.NotNative", (string?)(await Post(c, Ack(pinnedToB, null)))["name"]);
 
         // A payment with no pin in the store (the studio's test runs) is served from the distribution the attempt names (Issue I-230).
         Assert.Equal("wps-build-a", Build(await Post(c, Ack(unpinned, a))));
@@ -127,7 +127,7 @@ public sealed class AttemptRoutingTests(Store store)
         foreach (var id in new[] { unpinned, null })
         {
             var e = await Assert.ThrowsAsync<NativeRefusal>(() => runtime.DistributionOf(Body(id)));
-            Assert.Equal("NotPinned", e.Name);
+            Assert.Equal("native.NotPinned", e.Name);
         }
         foreach (var mode in new[] { "dev", "test" })
             Assert.Equal(a, await AttemptRouting.FromEnvironment(store.Options, k => Env(new() { ["TH_BANK"] = Bank, ["TH_NATIVE_MODE"] = mode }, k)).DistributionOf(Body(unpinned)));

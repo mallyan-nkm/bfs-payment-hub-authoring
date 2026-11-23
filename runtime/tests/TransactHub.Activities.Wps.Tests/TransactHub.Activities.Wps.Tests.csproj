@@ -23,6 +23,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
-    <ProjectReference Include="..\..\src\TransactHub.Activities.Platform\TransactHub.Activities.Platform.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Platform.Native\TransactHub.Activities.Platform.Native.csproj" />
   </ItemGroup>
 </Project>

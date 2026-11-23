@@ -1785,6 +1785,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Done: the test now reads the line's two times and checks what the requirement says, that the timer was placed one business day minus two minutes before the day the BPMN wrote, whatever minute the wait began. If the line is ever missing again, keep the binding's log of the run (the assertion prints its tail) and look at the reschedule's answer.
 
+**Done (23 November 2026).** The test is corrected as the recommendation says.
+
 ## I-170. The banks' configuration sets accept earlier packs
 
 **Issue.** Factory release 1.9.0 adds `expiryCalendar` to the holds (R-09-88) and routes inward payments to `p.wf.inward.v2` (R-09-87). The four banks' lock files moved to 1.9.0, but their configuration sets name earlier packs in `accepts`, so a bank cannot yet set `expiryCalendar` (the default, business days, applies) and its configuration is checked against the 1.7.0 parameter contract.
@@ -1905,6 +1907,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation, built and marked as the recommendation (R-12-28).** (1) A platform step, `p.decide.cut-off.v1`, called where the business date is set: in `uae.wps.wf.salary-file-out.v1` 1.4.0 right after `uae.p.enrich.business-date.v1`, so the same rule runs on the studio interpreter and every engine (each runs it on its workers, as any script-behind); the inward legs and the other platform workflows call it once a bank names an inward cut-off or a scheme other than WPS. (2) What moves is the business date (`header.businessDate`), which the posting reads as its value date; the file is not held until that day. (3) A file accepted on a day that is no business day counts for the next business day and is never refused for it: the cut-off is a time of a business day. (4) On the bank's half day the cut-off is the earlier of the two times. (5) The front door's acceptance, `header.receivedAt`, in the row's time zone; the edition of each table is the one in force on the day of the step, which on every engine is the day of acceptance, since the step runs at once. (6) TM01 (ISO 20022: received after the cut-off). The values reach the step as the bank's lists read from its reference tables (`fromReference`, R-11-51); a bank's configuration names them (the example bank's does). Every one of these is the builder's recommendation, not a scheme rule: the activity's provenance says so. Decide with the banks; a change is a new release of the activity.
 
+**Owner's decision (23 November 2026):** accepted as built.
+
 ## I-192. A test distribution's outward WPS file goes to the simulator, not out as a file
 
 **Issue.** The owner asked that the laptop's outbound files go out through the File API's outbox. On the laptop's test distribution the WPS port (`uae.wps.port.wps.v1`) is bound to its simulator, so the salary file the outward leg submits is a message to the simulator, not a file on `p.port.file-transfer.v1`; and no runtime adapter of the WPS port writes the file to the Central Bank's folder. The only files a runtime host puts on the file-transfer port today are the native host's inward renders (PRC, DIF, RFA) and core banking's `file-bulk` postings, and ADIB's outward path on the laptop has neither.
@@ -1973,17 +1977,23 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Let the Bank Configurator propose a new release of the bank pack's lock file that licenses a further scheme, as a change set the Bank Approver approves (R-11-35), which builds the bank's next distribution with it; and check at approval that a scheme a configuration set accepts is one the bank pack licenses.
 
+**Owner's decision (23 November 2026):** build it as recommended.
+
 ## I-206. A payment pinned but never started keeps its distribution open
 
 **Issue.** The front door pins a payment to the active distribution (`POST /payments/pin`) before its intake runs. When the run then fails before the payment is stored (no route, no worker, I-200), the pin stays without an end, the service console counts it as an open payment of the distribution, and the distribution can never be removed after it drains. Nothing in the consoles lists such pins or closes one.
 
 **Recommendation.** Pin and store the payment in one step after the intake has mapped it, or record an end fact (`abandoned`, with its reason) when the front door's start fails; list pins with no payment in the service console with a troubleshooting action, with the bank approver's consent, to close one.
 
+**Owner's decision (23 November 2026):** build it as recommended.
+
 ## I-210. A bank's values had a way into the runtime with no signature, no bounds and no consent
 
 **Issue.** The north-star review of 23 November 2026 found that `POST /import-branch` loaded every configuration set under a branch's `banks/` folder into the store as values in force: no signature, no check against any distribution's parameter contract, no consent. The spec asked for values to arrive in signed configuration releases checked against the parameter contracts (R-09-51, PACKAGING section 7), but did not say whether a test environment might keep a shorter path.
 
 **Recommendation and what was chosen.** No folder brings values, in any environment. `POST /import-branch` takes workflow packages and activations only; `BankValues.Import` (the folder reader) is gone. A test environment uses the same signed configuration release as any other, checked at install against the parameter contract of every distribution not yet removed; what differs there is only who may put it in force (I-211). So the black-box test of a hot update (`e2e-p6-hot-update.test.ts`) now installs the bank's distribution and its configuration releases from GitHub, as a bank's runtime does (R-09-110).
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-110).
 
 ## I-211. Configuration releases from the release API went into force without consent
 
@@ -1993,11 +2003,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Still open.** A distribution installed through the release API (`POST /distributions`, `/sources/install`) is stored without consent, as before: it runs nothing until it is activated, and activation waits for consent outside the test environments, but R-09-77 counts installing as a change of the system. Recommendation: hold it to the same rule (stored, its host not started, until consented) in the next change to the engine host's supervisor, which starts a host for every installed distribution.
 
+**Done (23 November 2026).** Built as the recommendation says (R-09-111). Distributions installed through the release API still go without consent; activation waits for it.
+
 ## I-212. Per-scope workflow packages beside distributions: refused, not yet retired
 
 **Issue.** The release API (`POST /releases`, `/activations`, `/import-branch`, `/sources/install`) and the service console still installed and activated the earlier per-scope workflow packages beside a bank's distributions, so code could run that is not part of the distribution a payment is pinned to.
 
 **Recommendation and what was chosen.** Refuse them where the runtime's bank has a distribution installed (R-09-114): stored and activated by neither the release API nor the service console, listed as not installable, `package.KindNotInstallable`. They are not retired yet, because the studio's deploy runner, the test bench and several black-box tests still run them in runtimes with no distribution. Recommendation: retire them once those run from distributions; the packages stored stay as the record.
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-114); retiring the packages waits for the deploy runner and the test bench.
 
 ## I-213. Port bindings read once from a folder
 
@@ -2007,11 +2021,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Still open.** (1) The laptop stack has no configuration release in force until one is installed: until then its native host and File API have no binding. The insert-only test does not install one yet; the laptop's own bindings (the `directory` file transfer of its `files` volume) belong in the bank's configuration release built for the laptop. Recommendation: the laptop work installs ADIB's configuration release through the service console, with consent, after its first distribution. (2) The service console's health probes of bound hosts are built when it starts; a new binding's host is probed from the next start. (3) When the store cannot be read, a native activity is refused as `PortNotBound`, not retried. Recommendation: make that refusal transient.
 
+**Done (23 November 2026).** Built as the recommendation says (R-09-112, R-09-113).
+
 ## I-214. A backup took every bank folder's bindings
 
 **Issue.** The service console's backup took the bindings of every folder under `Service:Banks`, while a restore refuses a backup that holds another bank's content (R-09-76), so a laptop's backup (its folder holds five banks) could not be restored into its own runtime.
 
 **Recommendation and what was chosen.** A backup holds the runtime's own bank only (R-09-116): its releases and shared workflow packages, their activations, its values, and the bindings of its configuration releases in force, from the store. A restore puts the bindings back as values of the store and writes no bindings folder. `BackupTests.A_laptop_backup_holds_only_its_own_bank_and_restores_into_its_own_runtime` restores a laptop's backup into its own (test) runtime.
+
+**Done (23 November 2026).** Built as the recommendation says (R-09-116).
 
 ## I-220. A native module still reaches into the image beyond the contract
 
@@ -2019,11 +2037,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Until the module needs the contract only, treat a change to a public type of `TransactHub.Activities.Platform`, `TransactHub.Ports`, `TransactHub.Model`, `TransactHub.Store` or `TransactHub.Security` that a module uses as a new major of the native contract. Then narrow the surface: move what a scheme module needs (the posting base, the bound adapters, the party match) behind interfaces of the contract assembly, so that a module references the contract and nothing else.
 
+**Done (23 November 2026, R-09-125).** The native contract is 1.1.0, a minor: `NativeContract.Supports` still takes the runtime's major at a minor no later than its own, so a module built against 1.0.0 runs on it. `INativeServices` now gives what a module truly needs of the image: `CoreBanking` (`INativeCoreBanking`, the binding in force with its posting window, the account and branch rules, the posting with its reply classified), `Ports` (`INativePorts`: the party register, encryption, decryption and the labour ministry's register, each by the image's adapter), `Files` (`INativeFiles`, moved into the contract) and `Contribution` (another module's contribution; `PartyMatch`, `PartyMatcher` and `NativeParty` moved into the contract). The WPS module references the contract and nothing else of TransactHub: `PostReturn` posts through `INativeCoreBanking`, the employer status asks through `INativePorts`, the corporate match is a contract `PartyMatcher`, the NAK's lines are its own record, and what reads and writes the store for WPS (`WpsRuleValues`, `CentralBankSif`) moved to `TransactHub.Activities.Wps.Store`, which no distribution carries. The image's side is `NativeHostServices`, `NativeCoreBanking`, `NativePorts` and `FileProtectionPort` in `TransactHub.Activities.Platform`. The studio reads each module assembly's references from its metadata (`studio/src/export/assembly-refs.ts`) and refuses one that references another assembly of TransactHub; the runtime refuses such a distribution at install and at load (`NativeAssemblies.References`), both with the code `package.NativeImageReference`, in the platform's error dictionary 1.3.0 (factory 1.12.0, change set CS-2026-11-23-007). Tests: `NativeInstallTests` and `SideBySideTests.A_distribution_whose_module_references_the_image_beyond_the_contract_is_not_loaded` (an emitted assembly that references `TransactHub.Ports` is refused; the WPS and platform builds pass), `studio/test/native-modules.test.ts`.
+
 ## I-221. The platform's native activities stay in the runtime image
 
 **Issue.** By the owner's direction of 23 November 2026, a distribution carries the scheme and bank native activities, and the platform's own (`p.post.accounting.v2`, `p.enrich.fx-rate.v1`, `p.enrich.charges.v1`, `p.enrich.party-register.v1`, the file protection and the platform's production adapters) stay in the runtime image as runtime software (R-09-120). A fix to one of them is therefore a runtime software upgrade, not a platform release and a new distribution, and two distributions side by side share one build of them. Section 8 of `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` says scenario 5 (a platform release) changes the code that runs; for these activities it does not.
 
 **Recommendation.** Decide whether the platform pack's native activities become a module of their own, carried like a scheme's, with only the ports, the store and the adapters left in the image. Until then the packaging document says that a platform native activity changes with the runtime image.
+
+**Done (23 November 2026, R-09-126).** They are a module, scope `p`, `runtime/src/TransactHub.Activities.Platform.Native`, carried in each distribution under `activities/native/p/` as WPS's is: every platform activity with `implementation.native: true` (`p.enrich.fx-rate.v1`, `p.enrich.charges.v1`, `p.decide.posting-window.v1`, `p.post.accounting.v2`, `p.enrich.party-register.v1`, `p.protect.encrypt-file.v1`, `p.protect.decrypt-file.v1`). `p.decide.posting-window.v1`, which the WPS module had served, is the platform module's. The native host's image holds none of them: only the builtin services the runtime gives a port (`p.post.accounting.v1`, the reservation, the reversal and the verification, the holds) and the production adapters (R-09-90) stay, and the File API decrypts through the image's `FileProtectionPort`. `NativeAssemblies.Shared` (what the image keeps) is documented as such; `deploy/laptop/Dockerfile` and `build.sh --local` build the platform module beside WPS's for the studio image; the packaging document (sections 2, 3, 3.1, 6, 8 scenario 5) says a platform native activity changes with a platform release. Shown by `SideBySideTests.Each_distribution_runs_its_own_build_of_a_platform_native_activity_side_by_side`: two distributions with two builds of `p.decide.posting-window.v1` answer each with its own build in one native host, and `e2e-native-distributions.test.ts` carries the platform module in each distribution. A black-box test that runs native activities outside a distribution gives the host both modules as development modules (`devModules()`).
 
 ## I-222. Only the worker says which distribution an attempt is for
 
@@ -2039,11 +2061,40 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have NEST's build sign each module build with its own key, and have the studio verify that signature against its trusted signers before it carries the module, so that a module reaches a distribution only from the code-behind's own build.
 
+**Done (23 November 2026, R-09-127).** `runtime/tools/native-module/build.sh` signs the folder it writes as the studio signs a distribution: `release.json`, a `th-release-statement/1` of kind `native-module` for `native-module/<scope>` naming every file (the assembly, `native-module.json`) with its SHA-256 and the module's assemblies, contract and source hash; `release.sig`, ECDSA P-256 with SHA-256, DER, Base64. The key comes from the environment only (`TH_NATIVE_SIGNING_KEY=env:<NAME>`) and is piped to `openssl`, never written; `build.sh --signers` prints its trusted-signers entry. The source hash is now one `sha256sum` can give (the SHA-256 of what it lists for every .cs and .csproj file, in byte order), the same in the studio. The studio verifies a prebuilt folder (`TH_NATIVE_MODULES=<dir>`) against `TH_NATIVE_MODULE_SIGNERS` and refuses one unsigned, changed, signed for another scope or by a key it does not trust; `TH_NATIVE_MODULES_UNVERIFIED=test` or `dev` takes it outside production and records `signature: { unverified }` in the manifest. The studio's unit tests sign their synthetic modules with a key made for the run. Tests: `studio/test/native-modules.test.ts` (a good, a tampered, an unsigned, another scope's and an untrusted folder; the mode, and its refusal in production) and `studio/test/blackbox/native-module-signing.test.ts` (build.sh's own signature verified, tampered and unsigned builds refused).
+
+
+## I-224. Distributions built before native contract 1.1.0 no longer load
+
+**Issue.** A WPS module built before R-09-125 references `TransactHub.Activities.Platform`, `TransactHub.Ports`, `TransactHub.Model` and `TransactHub.Store`. The runtime now refuses such a distribution at install and at load (`package.NativeImageReference`), so a payment pinned to one cannot run its native activities on this runtime, though its contract version (1.0.0) is supported.
+
+**Recommendation.** Rebuild and reinstall every distribution of a bank once its runtime takes this change, before it takes payments (no bank is in production yet). If a runtime must keep such a distribution, keep the earlier image for it until it drains; do not relax the check.
+
+## I-225. The laptop's module builds are signed by a key their own image build makes
+
+**Issue.** The laptop image (`deploy/laptop/Dockerfile`, `build.sh --local`) has no module builder's key, so its build step makes a P-256 key, holds it in that step's environment, signs the platform and WPS modules with it and writes its public key to `/opt/th/native-module-signers.json`, which the laptop's studio trusts. That proves the folder was not changed after the image was built, not who built it.
+
+**Recommendation.** For any image beyond a laptop, pass NEST's module signing key into the build as a BuildKit secret mounted as an environment variable (`RUN --mount=type=secret,id=...,env=TH_NATIVE_MODULE_KEY`), and give the studio NEST's trusted signers in `TH_NATIVE_MODULE_SIGNERS` at run time.
+
+## I-226. `INativeServices.Service<T>` still hands out the image's types
+
+**Issue.** Contract 1.0.0's `Service<T>()` gave a module the image's `PortBindings` and `CoreBankingResolver`. It stays, so that a module built against 1.0.0 keeps running, but a module that references the contract only has nothing of the image it can name with it.
+
+**Recommendation.** Remove `Service<T>` at the contract's next major (2.0.0), with every other change that breaks a module, and let the runtime refuse 1.x modules then.
+
+## I-227. Two small pieces of logic are written twice for the contract's sake
+
+**Issue.** The posting window gate (`PostingWindow`) is in the image, where it checks a core-banking binding's posting hours, and in the platform module, for `p.decide.posting-window.v1`. The accounting template's reading is in the image (`AccountingTemplate`, for `p.post.accounting.v1`), in the platform module (`PostingTemplate`) and in WPS's `PostReturn`. A module may not reference the image, so each carries its own copy.
+
+**Recommendation.** Move `p.post.accounting.v1` and the window gate's use by a binding into the platform module in a later platform release (the image then keeps no copy), or accept the copies and keep a test that each gives the same answers on the same cases.
+
 ## I-230. The native host's refusals have no entry in the error dictionary
 
 **Issue.** The native host refuses an attempt with a name of its own: `NotNative`, `NotInDistribution`, `DistributionUnknown`, `DistributionRemoved`, `NativeModuleRefused` and, since R-09-131 and R-09-132, `WrongDistribution` and `NotPinned`. None has an entry in the platform's error dictionary (`p.errors.platform.v1`), so no runbook covers them, and `ErrorDictionaryTests` does not look for them: it reads only `NativeFailure`, `StepFailure` and `AttemptFailed` codes. The change that made the last two kept the factory unchanged, so it could not add them.
 
 **Recommendation.** In the next release of `p.errors.platform.v1` (1.3.0), add an entry with a runbook for each refusal of the native host, under a `native.` prefix as the runtime's other codes have one (`native.WrongDistribution`, `native.NotPinned`, and the others), raise them with those codes, and have `ErrorDictionaryTests` read `NativeRefusal` codes as well.
+
+**Done (23 November 2026, R-09-128).** The native host refuses with codes under a `native.` prefix: `native.NotNative`, `native.NotInDistribution`, `native.DistributionUnknown`, `native.DistributionRemoved`, `native.ModuleRefused` (was `NativeModuleRefused`), `native.WrongDistribution` and `native.NotPinned`; a module that references the image beyond the contract keeps its own code, `package.NativeImageReference` (R-09-125). Each has an entry with a runbook in `p.errors.platform.v1` 1.3.0 (factory 1.12.0, change set CS-2026-11-23-007), and `ErrorDictionaryTests.Every_code_a_native_activity_or_the_interpreter_raises_has_an_entry` reads every `NativeRefusal` code too, so a refusal added without an entry fails it. `SideBySideTests`, `AttemptRoutingTests` and `e2e-native-distributions.test.ts` expect the new codes.
 
 ## I-231. An attempt for a payment with no pin
 
@@ -2051,13 +2102,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have a runtime's native host (one with `TH_BANK`) refuse an attempt that names a distribution for a payment with no pin, as `NotPinned`, and keep the present rule for a host that serves no runtime's bank.
 
-**Done (23 November 2026, R-09-143).** A runtime's native host (`TH_BANK`) refuses an attempt that names a distribution for a payment the store has no pin of, or that names no payment, as `NotPinned`, not retryable (`AttemptRouting.FromEnvironment`). Only an explicit mode, `TH_NATIVE_MODE` `dev` or `test`, serves it from the distribution it names; any other value of the setting stops the host at its start. A host that serves no runtime's bank (the studio's test runs) keeps the earlier rule. `AttemptRoutingTests.A_runtimes_native_host_refuses_an_attempt_for_a_payment_with_no_pin_unless_in_dev_or_test_mode`. The refusal still has no dictionary entry (Issue I-230).
+**Done (23 November 2026, R-09-143).** A runtime's native host (`TH_BANK`) refuses an attempt that names a distribution for a payment the store has no pin of, or that names no payment, as `native.NotPinned`, not retryable (`AttemptRouting.FromEnvironment`). Only an explicit mode, `TH_NATIVE_MODE` `dev` or `test`, serves it from the distribution it names; any other value of the setting stops the host at its start. A host that serves no runtime's bank (the studio's test runs) keeps the earlier rule. `AttemptRoutingTests.A_runtimes_native_host_refuses_an_attempt_for_a_payment_with_no_pin_unless_in_dev_or_test_mode`. The refusal is the dictionary's `native.NotPinned` (R-09-128).
 
 ## I-232. A worker set serves only the tasks it registers
 
 **Issue.** One set of workers now serves every distribution of a bank (R-09-133), but a worker holds one package's tasks, by name and release, with their script-behinds, maps and rules. A distribution whose other tasks are at releases the set does not register is refused at the worker (`NotOnThisQueue`). Only a native activity's build is chosen per attempt.
 
 **Recommendation.** Until a worker can load a distribution's tasks as the native host loads its assemblies, an installation starts a worker set per package that differs in those tasks, and names each set's queues in the plan of the distributions it serves. Then have the worker load each distribution's tasks from the store by the distribution the attempt names, as the native host does.
+
+**Owner's decision (23 November 2026):** deferred; one worker set per distribution stays.
 
 ## I-235. A scheme declares no reply that a message it sends waits for
 

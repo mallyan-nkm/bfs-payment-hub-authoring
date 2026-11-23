@@ -44,7 +44,7 @@ public sealed class Bundle
         if (kind == ReleaseSignature.Distribution)
         {
             try { TransactHub.Store.NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
-            catch (TransactHub.Store.NativeAssembliesRefused e) { throw new PackageRejected($"Its native assemblies are refused: {e.Message}"); }
+            catch (TransactHub.Store.NativeAssembliesRefused e) { throw new PackageRejected($"Its native assemblies are refused: {e.Message}", e.Code ?? "package.Rejected"); }
         }
         return b;
     }
