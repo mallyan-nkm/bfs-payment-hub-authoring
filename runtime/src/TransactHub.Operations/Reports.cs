@@ -133,9 +133,10 @@ public sealed class Reports(StoreOptions ops, ViewCatalog views)
         await using var o = OpsDbContext.Open(ops);
         var (rows, cut) = await Load(o, tenants, f, ct);
         var platform = views.All.FirstOrDefault(v => v.Scheme is null);
-        var scheme = f.Scheme is { } s ? views.SchemeView(s) : null;
+        // A scheme filter names one scheme; without one, every scheme the rows hold adds its view's columns.
+        var schemes = f.Scheme is { } s ? new List<string> { s } : rows.Select(r => r.Scheme).OfType<string>().Distinct().Order(StringComparer.Ordinal).ToList();
         var extra = new List<(string id, string label)>();
-        foreach (var v in new[] { platform, scheme }.OfType<OperationsView>())
+        foreach (var v in new[] { platform }.Concat(schemes.Select(views.SchemeView)).OfType<OperationsView>())
         {
             var decl = (v.Subject?["fields"] as JsonArray ?? []).OfType<JsonObject>().ToDictionary(x => (string)x["id"]!, x => x);
             foreach (var c in (v.Subject?["columns"] as JsonArray ?? []).Select(c => (string)c!))
