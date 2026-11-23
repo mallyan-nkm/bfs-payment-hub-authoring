@@ -34,6 +34,12 @@ export interface Detail {
   offers: Offer[];
 }
 export interface Facets { tenants: string[]; schemes: string[]; directions: string[]; statuses: string[]; outcomes: string[]; holdReasons: string[]; legs: string[]; legOutcomes: string[] }
+export interface ReportGroup { key: string; payments: number; lines: number; amounts: { currency: string; amount: number; payments: number }[] }
+export interface Dashboard {
+  payments: number; lines: number; amounts: { currency: string; amount: number }[]; cut: boolean;
+  byScheme: ReportGroup[]; byStatus: ReportGroup[]; byDay: ReportGroup[]; holds: ReportGroup[];
+  schemes: { scheme: string; view: string; title: string; payments: number; measures: { id: string; label: string; format: string; total: number }[]; dimensions: { id: string; label: string; values: { value: string; payments: number }[] }[] }[];
+}
 export interface Lag { behind: number; oldestSeconds: number; through: number; applied: number; lastFactAt?: string; projectedAt?: string; rebuiltAt?: string }
 
 export class ApiError extends Error {
@@ -59,6 +65,9 @@ export function client(auth: SignIn) {
     act: (id: string, action: string, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions`, { action, remarks }),
     decide: (id: string, action: string, approve: boolean, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions/${action}/decision`, { approve, remarks }),
     pending: () => call<any[]>('GET', '/actions/pending'),
+    reports: () => call<{ dimensions: string[]; fields: { key: string; label: string; scheme?: string }[] }>('GET', '/reports'),
+    summary: (q: Record<string, string>) => call<{ groups: ReportGroup[]; payments: number }>('GET', `/reports/summary?${new URLSearchParams(q)}`),
+    dashboard: (q: Record<string, string>) => call<Dashboard>('GET', `/reports/dashboard?${new URLSearchParams(q)}`),
     documentUrl: (id: string, doc: string) => `/ops/api/payments/${encodeURIComponent(id)}/documents/${encodeURIComponent(doc)}`,
     headers: () => auth.headers(),
   };

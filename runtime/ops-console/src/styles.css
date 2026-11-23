@@ -123,3 +123,4 @@ tr.clickable:hover td { background: var(--surface-2); }
 tr.error-row td { background: var(--fail-soft); }
 a.badge { text-decoration: none; }
 pre.card { white-space: pre-wrap; overflow-wrap: anywhere; }
+.big { font-size: 1.6rem; font-weight: 600; margin: 0; }

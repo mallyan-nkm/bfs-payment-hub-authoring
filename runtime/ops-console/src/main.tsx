@@ -5,6 +5,7 @@ import { Shell, type Section } from './shell/Shell';
 import { client, type Client, type Lag, type View } from './ops/api';
 import { Payments } from './ops/Payments';
 import { Detail } from './ops/Detail';
+import { Reports } from './ops/Reports';
 import { show } from './ops/format';
 import { serviceClient } from './service/api';
 import { ServiceSection } from './service/Service';
@@ -82,6 +83,7 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
       render: (path, ctx) => !views ? <p className="muted">Loading…</p> : path[0] ? <Detail api={api} views={views} id={path[0]} go={ctx.go} /> : <Payments api={api} views={views} go={ctx.go} />,
     },
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
+    { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
   );
   if (hosts.service) sections.push({ id: 'service', title: 'Service', render: (path) => <ServiceGate auth={auth} path={path} /> });
   if (hosts.testbench) sections.push({ id: 'testbench', title: 'Test bench', render: (path, ctx) => <TestBenchGate auth={auth} path={path} go={ctx.go} /> });

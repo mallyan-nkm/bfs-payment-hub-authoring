@@ -33,6 +33,7 @@ var resendFolder = builder.Configuration["Operations:FileTransfer:Folder"] ?? bu
 builder.Services.AddSingleton(sp => new OperatorActions(store, ops, views, sp.GetRequiredService<IEngineSignals>(), clock,
     resendFolder is { Length: > 0 } ? new FileResend(store, new FolderFileTransfer(resendFolder), clock) : null));
 builder.Services.AddSingleton(sp => new HoldExpiry(store, sp.GetRequiredService<IEngineSignals>(), clock));
+builder.Services.AddSingleton(new Reports(ops, views));
 builder.Services.AddHostedService<ProjectionService>();
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
@@ -166,6 +167,52 @@ api.MapGet("/payments/{id}", async (string id, HttpContext http, OperatorActions
         documents = docs.Select(d => new { d.Id, d.Kind, d.Direction, d.FileName, d.Size, d.ContentHash, d.At, d.Source, d.Leg, signed = d.SigningKeyId is not null, d.SigningKeyId }),
         holds, actions = acts, offers = await actions.Offers(id),
     });
+});
+
+// Reports, the dashboard and the CSV export (R-05-59, Issue I-68): from the read model and the views only, for the tenants the
+// caller holds the operator's role for; a tenant named must be one of them.
+async Task<(List<string>? tenants, ReportFilter filter, IResult? refused)> ReportScope(HttpContext http, OpsDbContext o)
+{
+    if (Who(http) is not { } who) return (null, new(), Problem(401, "Sign in"));
+    var q = http.Request.Query;
+    string? S(string k) => q.TryGetValue(k, out var v) && v.ToString().Length > 0 ? v.ToString() : null;
+    var tenants = await TenantsOf(who, o);
+    if (S("tenant") is { } t) { if (!who.Has(t, OperatorRoles.Operator)) return (null, new(), Problem(403, $"No role for tenant {t}")); tenants = [t]; }
+    DateTimeOffset? D(string k, bool end) => S(k) is { } x && DateTimeOffset.TryParse(x, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var d) ? (end && x.Length == 10 ? d.AddDays(1) : d) : null;
+    return (tenants, new ReportFilter(S("scheme"), S("direction"), S("status"), D("from", false), D("to", true), S("kind")), null);
+}
+
+api.MapGet("/reports", async (HttpContext http, Reports reports) =>
+{
+    await using var o = OpsDbContext.Open(ops);
+    var (tenants, _, refused) = await ReportScope(http, o);
+    return refused ?? Results.Ok(new { dimensions = Reports.Dimensions, fields = reports.Fields() });
+});
+api.MapGet("/reports/summary", async (HttpContext http, Reports reports) =>
+{
+    await using var o = OpsDbContext.Open(ops);
+    var (tenants, f, refused) = await ReportScope(http, o);
+    if (refused is not null) return refused;
+    try { return Results.Ok(await reports.Summary(tenants!, f, http.Request.Query["by"].ToString() is { Length: > 0 } by ? by : "scheme", http.RequestAborted)); }
+    catch (ArgumentException e) { return Problem(400, e.Message); }
+});
+api.MapGet("/reports/dashboard", async (HttpContext http, Reports reports) =>
+{
+    await using var o = OpsDbContext.Open(ops);
+    var (tenants, f, refused) = await ReportScope(http, o);
+    return refused ?? Results.Ok(await reports.Dashboard(tenants!, f, http.RequestAborted));
+});
+api.MapGet("/reports/export.csv", async (HttpContext http, Reports reports, ILoggerFactory logs) =>
+{
+    await using var o = OpsDbContext.Open(ops);
+    var (tenants, f, refused) = await ReportScope(http, o);
+    if (refused is not null) return refused;
+    var (csv, rows, cut) = await reports.Csv(tenants!, f, http.RequestAborted);
+    // Who exported what is logged with ids only (R-09-35).
+    logs.CreateLogger("TransactHub.Operations.Export").LogWarning("Export of {Rows} payment(s) for {Tenants} by {Subject}", rows, string.Join(",", tenants!), Who(http)!.Subject);
+    http.Response.Headers["x-th-rows"] = rows.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    if (cut) http.Response.Headers["x-th-cut"] = "true";
+    return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", $"payments-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.csv");
 });
 
 // A document as it was kept (the old Raw File tab): operators of the payment's tenant only.
