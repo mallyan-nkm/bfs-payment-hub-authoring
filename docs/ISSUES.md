@@ -2186,6 +2186,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have `seed-content` read the bank's latest lock file on the branch (the studio's included) and keep its `licensedSchemes` in the lock file it writes, refusing a seed whose release is not later than it; or decide that a bank licensed in the studio is no longer seeded from this repository. Until then, after licensing in the studio, write the same list into the repository with `npm run studio -- bank-pack <bank> --licensed <scheme> --release <later> --write`.
 
+**Done (24 November 2026, R-11-105).** `seed-content` reads the bank's latest lock file on the branch. When it is one the studio published (`banks/<bank>/artefacts/b/pack/<release>.yaml`), the seed keeps its `licensedSchemes`, with the seed's own after them, in the `pack.yaml` it writes (and in its ledger), and refuses a seed whose release is not later than it, writing nothing (`studio/src/content/seed.ts`, `keepStudioLicences`; the plan reports what it kept, `seedPlan(env).kept`). While the latest lock file is the seeded one, nothing changes. `studio/test/releases.test.ts` shows both.
+
 ## I-246. An upload from a console in dev sign-in has no token for the File API
 
 **Issue.** The operations console's upload page passes the person's own bearer token to the File API's `POST /files/ui` (R-05-74). A console in dev sign-in (`TH_AUTH_DEV=1`) identifies its synthetic users by a header, not a token, and the File API has no dev sign-in, so the File API answers 401 and the page shows the refusal. On the laptop stack, where the console signs in at the bank's development provider, the upload works.

@@ -6,6 +6,7 @@ import { compareReleases } from '../core/names.js';
 import { OWNER_TENANT, StoreError, keyOf, tenantKey, walkYaml } from '../core/store.js';
 import { parseYamlAll, toYaml } from '../core/yaml.js';
 import { DEFAULT_USERS } from '../governance/governance.js';
+import { lockFileOf } from '../governance/licensing.js';
 import type { StudioEnv } from '../env.js';
 import { USERS_PATH, documentPath } from './layout.js';
 
@@ -138,6 +139,15 @@ export function seedPlan(env: StudioEnv) {
   const clash: SeedFile[] = [];
   const replace: { file: SeedFile; was: string; keptAt?: string }[] = [];
   let same = 0;
+  const kept: { bank: string; release: string; from: string; licensedSchemes: string[] }[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const lock = BANK_LOCK.exec(files[i].path);
+    if (!lock) continue;
+    const k = keepStudioLicences(env, files[i], lock[1]);
+    if (!k) continue;
+    files[i] = k.file;
+    kept.push(k.kept);
+  }
   for (const f of files) {
     const now = c.files.get(f.path);
     if (now === undefined) add.push(f);
@@ -149,7 +159,34 @@ export function seedPlan(env: StudioEnv) {
       else clash.push(f);
     }
   }
-  return { files, add, clash, replace, same, users: !c.files.has(USERS_PATH) };
+  return { files, add, clash, replace, same, kept, users: !c.files.has(USERS_PATH) };
+}
+
+/**
+ * A bank's lock file the studio published (R-11-76) is the bank's latest on the branch: the seed's lock file keeps its
+ * `licensedSchemes`, the seed's own after them, and a seed whose release is not later than it is refused (R-11-105, Issue I-245).
+ * Nothing changes while the latest lock file is the seeded one.
+ */
+function keepStudioLicences(env: StudioEnv, f: SeedFile, bank: string) {
+  const seeded = f.docs.find(({ doc }) => doc?.kind === 'pack')?.doc;
+  if (!seeded) return undefined;
+  const tenant = seeded.tenant ?? bank;
+  const latest = lockFileOf(env, tenant);
+  if (!latest || latest.source !== 'studio') return undefined;
+  if (compareReleases(String(seeded.release ?? '1.0.0'), latest.release || '1.0.0') <= 0) {
+    throw new StoreError('R-11-105', `The seed's lock file of ${tenant} is release ${seeded.release}, not later than ${latest.release}, which the studio published at ${latest.path}: release the bank pack later than it (tools/build_factory.py), then seed again.`);
+  }
+  const have: string[] = Array.isArray(latest.doc.licensedSchemes) ? latest.doc.licensedSchemes : [];
+  const own: string[] = Array.isArray(seeded.licensedSchemes) ? seeded.licensedSchemes : [];
+  const licensedSchemes = [...have, ...own.filter((s) => !have.includes(s))];
+  if (licensedSchemes.length === own.length && licensedSchemes.every((s, i) => s === own[i])) return undefined;
+  const block = /^licensedSchemes:\n(?:  - .*\n)*/m;
+  if (!block.test(f.text)) throw new StoreError('R-11-105', `The seed's lock file of ${tenant} has no licensedSchemes block to keep the studio's licences in`);
+  const text = f.text.replace(block, `licensedSchemes:\n${licensedSchemes.map((s) => `  - ${s}\n`).join('')}`);
+  return {
+    file: { ...f, text, docs: f.docs.map((d) => (d.doc === seeded ? { ...d, doc: { ...seeded, licensedSchemes } } : d)) },
+    kept: { bank: tenant, release: String(seeded.release), from: latest.path, licensedSchemes },
+  };
 }
 
 /** Publish the seed as one change set (R-11-25). A second run changes nothing. */
