@@ -1,6 +1,6 @@
 # Narrated demos and training videos
 
-Four recorded videos of the studio and the laptop stack (the north-star video and the runtime's remaining one are further down), each a real browser session on a fresh workspace, driven click by
+Four recorded videos of the studio and the laptop stack (the north-star video and the end-to-end video are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
 an `.srt` subtitle file. They run at a slow pace, in plain words for someone new to payments; the concept video draws every idea
 as a restaurant kitchen. The two console videos, 5a and 5b, show every feature of the studio for one kind of user each; the
@@ -42,24 +42,23 @@ TH_TTS_SPEED=0.85 TH_DEMO_CRF=29 npx tsx demo/run.ts north-star
 demo/north-star/store.sh down
 ```
 
-## The runtime videos
+## The end-to-end video
 
-One video of the runtime with the studio, in `docs/demo/runtime/`, with its `.srt`, voiced at the training pace
-(`TH_TTS_SPEED=0.85`). It runs on the laptop stack (`deploy/laptop`), as do the installation video and the north-star video's store above.
+`4-end-to-end.mp4`, in `docs/demo/` with its `.srt`, voiced at the training pace (`TH_TTS_SPEED=0.85`, `TH_DEMO_CRF=28`), runs on the
+laptop stack (`deploy/laptop`), as does the installation video, for the stack's bank (ADIB by default), on Fluent UI 2:
 
 | Video | What it shows |
 | --- | --- |
-| `runtime-3-full-payment-run.mp4` | One bank's payments end to end: its distribution installed and activated in the service console, the native modules it carries checked by hash, its configuration release (with the laptop's file transfer bindings) put in force, each on a bank approver's consent; a salary file uploaded on the operations console's upload page (`POST /ops/api/upload`, which posts to the File API's `POST /files/ui`), its SIF sent through the File API's outbox to the Central Bank's SFTP folder, the ACK left there and matched back, the payment settled; the synthetic scheme `uae.demo` built in the studio, licensed by the bank (its configurator proposes, its approver approves, I-205), distribution B activated while A drains and is removed, and a demo credit file paid on `uae.demo`; the fraud alerts, ledger accounts, rates badge and audit |
+| `4-end-to-end.mp4` | One salary file, end to end, slowly. The test bench sends it: the bank's run on Temporal, the default engine, beside the reference interpreter, with the business date (Issue I-331); then the same kind of file into the runtime through the File API, as the bank's channel sends one. Each step of the workflow in the studio's debugger (intake, the platform workflow's checks, screening, the reservation and the route, then the WPS leg: the business date and cut-off, the scheme's checks, the SIF rendered, encrypted and sent, the ACK, posting and settlement), then the real payment's timeline in the operations console, its SIF on the Central Bank's SFTP folder, the ACK left there and matched, the payment settled. A business failure: the Central Bank's NAK, the payment rejected with its reason and the line's error in the operations console, and a corrected file accepted. A technical failure: the SFTP partner down, the File API's circuit breaker open, the service console's health, the error dictionary's runbook and the logs; the partner back, the kept SIF resent with a bank approver's consent (Issue I-333), the ACK and the payment settled. A business-rule change: the bank configurator moves the cut-off in the studio, the bank approver approves, the configuration release is put in force with consent, and the same file counts for the next business day. A new hook: the configurator binds the bank's employer AML check after validation, the approver approves and builds distribution B, B is installed and activated and the release put in force with consent, and the hook's step is on the next payment's timeline (Issue I-335) |
 
-Bring the stack up first, with a compose project of your own and the secrets in your shell (`deploy/laptop/README.md`), then,
-from `studio/`, with the same shell:
+Bring the stack up first, with the secrets in your shell (`deploy/laptop/README.md`), then, from `studio/`, with the same shell:
 
 ```bash
 TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 TH_DEMO_BUILD_LOG=<the log of build.sh> npx tsx demo/run.ts install
 ```
 
 ```bash
-TH_TTS_SPEED=0.85 npx tsx demo/run.ts full-run --out ../docs/demo/runtime
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts end-to-end
 ```
 
 `demo/stack.ts` holds what the two stack videos share: the stack's URLs, the sign-in at the bank's development provider, the
@@ -67,21 +66,28 @@ services' APIs for a step that has no screen, and the commands shown in the term
 `TH_LAPTOP_*` secret in their output replaced by stars. The installation video starts on a fresh stack, adds the bank's two studio users and
 publishes the bank's first distribution before the camera, and shows the last lines of the build's log named by `TH_DEMO_BUILD_LOG`
 (the build is not run while recording). Its last chapter stops the stack, removes its volumes and starts it again on PostgreSQL, for
-real, when recording; a dry run leaves the stack as it is unless `TH_DEMO_RESET=1`. The full run starts on a fresh stack: it adds the bank's two studio
-users and publishes the bank's first distribution before the camera, then installs it and everything after on screen. It needs the
-demo scheme's simulator among the workers' simulators: bring the stack up with `TH_LAPTOP_WORKERS_BENCH` set to the default list in
-`compose.yaml` plus `{"port":"uae.demo.port.demo.v1","simulator":"uae.demo.sim.demo-outward.v1","scenario":"accept"}`. Where a step has no screen today it is done as an operator would,
-by the API or a command shown on screen, and the voice says so: the configuration release with the laptop's bindings is built with
-the studio's API, the SIF and the ACK on the SFTP server are shown and left with `docker compose exec`, and a payment's kept files
-are listed by the File API, since its page in the operations console does not show them yet (Issue I-286). A payment on Temporal
-runs in real time; `Director.skip` cuts such a wait from the video and shows a card instead.
+real, when recording; a dry run leaves the stack as it is unless `TH_DEMO_RESET=1`.
+
+The end-to-end video starts the stack fresh when recording (`down -v`, the SFTP server first and its host keys pinned, then
+`up -d --wait`), and so does a dry run with `TH_DEMO_RESET=1`. Before the camera it adds the bank's two studio users, publishes,
+installs and activates the bank's first distribution, and puts its configuration release with the laptop's file-transfer binding in
+force, each with a bank approver's consent, as the installation video shows on screen; the bank's cut-off for salary files starts at
+23:30 Dubai time, so the first payments count for the day they are recorded. Where a step has no screen today it is done as an
+operator would, by the API or a command shown on screen, and the voice says so: the bank's channel sends each file to the File API's
+`POST /files`; the configuration release with the laptop's binding and the bank's next distribution are built with the studio's API;
+the SIF and the Central Bank's ACK or NAK on the SFTP server are shown and left with `docker compose exec`, and the SFTP partner is
+stopped and started with `docker compose stop` and `start`. A payment on Temporal runs in real time, and so does the test bench's run
+(about ten minutes: the Central Bank's simulator answers after ten minutes of business time); `Director.skip` cuts such a wait from
+the video and shows a card instead. A dry run may start at a later scene while the script is worked on (`TH_DEMO_FROM=<n>`), and run
+the bench on DTFx in seconds instead of Temporal (`TH_DEMO_QUICK_BENCH=1`); the video is always recorded whole, on Temporal.
 
 ## Record them again
 
 The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/north-star.ts` (the same stage,
 and its store, `demo/north-star/`), `demo/bank-configurator.ts` and `demo/designer.ts` (with the documents it builds, in
-`demo/designer/docs.ts`); `demo/record.ts` drives the browser, lays the voice at the time each scene starts, and joins them with
-ffmpeg. Each runs the studio's own server on an in-memory fake GitHub seeded from `content-configurations/`, as
+`demo/designer/docs.ts`), and `demo/install.ts` and `demo/end-to-end.ts` (the laptop stack, with `demo/stack.ts`);
+`demo/record.ts` drives the browser, lays the voice at the time each scene starts, and joins them with ffmpeg. Each studio
+production runs the studio's own server on an in-memory fake GitHub seeded from `content-configurations/`, as
 `npm run studio:dev` does. From `studio/`:
 
 ```bash
@@ -100,7 +106,7 @@ key in the recorder's environment the server takes it, and that scene is left ou
 console productions also check their results as they go. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
 video used 28, a smaller file). `test/blackbox/demo-videos.test.ts` runs the three studio
 productions this way, the north-star video where its store is up (one scenario on each engine), and the two stack videos where a laptop stack is up with its
-secrets in the environment (the full run takes up to half an hour: it pays two payments on Temporal).
+secrets in the environment (the end-to-end video takes up to forty minutes: its bench run and six payments run on Temporal in real time).
 
 Needs ffmpeg. Without a voice the videos
 are recorded silent, with captions.

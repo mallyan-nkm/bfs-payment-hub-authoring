@@ -1,0 +1,191 @@
+1
+00:00:00,251 --> 00:00:27,557
+In this video we follow one salary file all the way through TransactHub, slowly. We send it from the test bench, and watch every step of the workflow run. Then two things go wrong: first a business failure, then a technical one, and we see how the consoles show each, and how staff put it right. Last, the bank changes a business rule, and adds a step of its own, and we run the same file again to see the difference. Everything is synthetic: no real customer, no real account.
+
+2
+00:00:29,166 --> 00:00:45,294
+We start in the test bench, as the bank's tester. The tester picks a profile: a salary file on the default engine, Temporal. The bank is A D I B. The business date is today. The bench lets the tester change it, for a file that must count for another day.
+
+3
+00:00:50,580 --> 00:01:04,212
+The data is a synthetic salary file from the bench's library: one employer, one employee, one thousand five hundred dirhams. The bench checks each engine's run against the studio's own interpreter, step by step.
+
+4
+00:01:05,814 --> 00:01:22,091
+Run. The bench exports the bank's package, starts its workers, and runs the file on Temporal, with its own database. A real Temporal server runs in real time, and the Central Bank's simulator answers after ten minutes of business time. So we skip ahead.
+
+5
+00:01:27,621 --> 00:01:42,021
+Passed. Temporal and the interpreter took the same steps, to the same end: settled. Here is the trace, one line per step: the checks, screening, the funds reserved, the rail chosen, the W P S leg, the posting, and the notices.
+
+6
+00:01:43,624 --> 00:02:01,202
+The bench proves the workflow. Now the real thing. The bank's channel sends a salary file to the runtime's File API, the one door for every file. The File API keeps the file with its hash, checks it is new, and starts its payment on the bank's active distribution.
+
+7
+00:02:02,804 --> 00:02:21,535
+Before we look at that payment, let us watch each step of the workflow run, one at a time, in the studio's debugger. We sign in to the studio as the bank's configurator, and start the bench from the bank's own end to end test: the corporate workflow, today's date, a salary file, and a simulator for every partner.
+
+8
+00:02:23,138 --> 00:02:40,332
+Debug step by step. On the left, the workflow and its steps. On the right, what just happened, and the data as it stands. Step into. First the front door: the intake map reads the salary file into the ISO 20022 model, one payment with one line.
+
+9
+00:02:41,934 --> 00:02:51,684
+Then the platform workflow, the same for every scheme. Validate checks the payment is well formed. The duplicate check makes sure this file was not paid before.
+
+10
+00:03:00,837 --> 00:03:09,989
+Screening runs two checks side by side: sanctions, and fraud. Both clear. Then the limits, and the funds are reserved on the employer's account.
+
+11
+00:03:26,184 --> 00:03:34,611
+Route chooses the rail. For a salary file, that is W P S, the Central Bank's wage protection system, enabled for this bank.
+
+12
+00:03:36,215 --> 00:03:46,561
+Now the W P S leg, in the scheme slot. We step into it. First the business date, and the bank's cut-off: the file arrived before the cut-off, so it counts for today.
+
+13
+00:03:57,148 --> 00:04:06,684
+Then the scheme's own checks: the employer is registered, the file's control record matches its lines, and each line's account is a valid I BAN.
+
+14
+00:04:09,333 --> 00:04:17,695
+The leg renders the salary information file, the S I F, in the Central Bank's format, encrypts it for W P S, and sends it.
+
+15
+00:04:28,001 --> 00:04:42,465
+It then waits for the Central Bank's acknowledgement, matched to this file. The simulator answers with an ACK: accepted. Continue runs to the end. The payment is posted, the posting verified, the channel told, and it settles.
+
+16
+00:04:44,072 --> 00:04:54,845
+That was the studio, on its own clock, with simulators. Now the real payment we sent through the File API, in the operations console, signed in as an operator.
+
+17
+00:04:56,446 --> 00:05:13,854
+Its timeline is a list of facts, one per step, each chained to the one before by its hash. The same steps we just watched: intake, the checks, screening, the reservation, the route, the business date and cut-off, the S I F rendered, encrypted, and handed to the File API.
+
+18
+00:05:15,455 --> 00:05:26,697
+The File API delivers the S I F through its outbox, to the Central Bank's folder on the SFTP server. Here it is. The payment now waits for the Central Bank's answer.
+
+19
+00:05:28,301 --> 00:05:41,527
+We play the Central Bank. It leaves an ACK in its answer folder, named after the S I F. The File API picks it up, matches it to the payment by the file's name, and hands it to the payment's run.
+
+20
+00:05:43,128 --> 00:05:59,662
+Settled. The leg shows the Central Bank's response: ACK, and when it came. And the timeline has the last steps: the ACK read, the posting, its verification, and the notices, including the bank's own labour ministry notice, a hook, when the payment closed.
+
+21
+00:06:03,721 --> 00:06:13,363
+Now a business failure. The bank's channel sends another salary file. It passes every check of ours, and its S I F goes to the Central Bank, as before.
+
+22
+00:06:14,964 --> 00:06:24,479
+This time the Central Bank refuses it, with a NAK. The NAK names the line and the error: the salary of line one does not match the control record.
+
+23
+00:06:26,080 --> 00:06:40,288
+In the operations console, the payments list shows it at once: status R J C T, rejected, beside the settled one. The operator can filter by status, or by the leg's outcome, to find every refused file.
+
+24
+00:06:41,890 --> 00:06:54,135
+On the payment's page: the status, and the Central Bank's response, NAK, with the reason, and the error for each line. Nothing was posted: the funds reserved for it were released, and the channel was told.
+
+25
+00:07:04,135 --> 00:07:17,276
+A business failure is put right by the business. The employer corrects the file, and the bank sends it again, as a new file with its own reference. It takes the same path, and this time the Central Bank accepts it.
+
+26
+00:07:22,355 --> 00:07:32,019
+Now a technical failure, which no business person can fix. The Central Bank's SFTP server goes down. On this laptop, we stop its container.
+
+27
+00:07:33,619 --> 00:07:56,787
+A salary file arrives. Its checks pass, and its S I F is rendered and handed to the File API. But the File API cannot reach the SFTP server. It tries again, a few times. After five failures in a row, the circuit breaker for that partner opens: the File API stops calling it for a while, so nothing piles up against a server that is down.
+
+28
+00:07:58,390 --> 00:08:11,851
+The service engineer sees it in the service console. Health is red. The circuit breakers row says which: the file transfer port, the S F T P adapter, its host, open since when, after how many failures.
+
+29
+00:08:13,455 --> 00:08:24,164
+Every error the console shows links to its entry in the error dictionary. The entry says what the code means, whether a retry can help, and the runbook: what to check, and what to do.
+
+30
+00:08:25,766 --> 00:08:45,328
+The engineer brings the partner back: on this laptop, we start the container again. When the breaker's wait is over, it lets one call through. It succeeds, and the breaker closes: its row is green again. The disk row stays red, for a reason of its own: this laptop's disk is nearly full, and the console says so the same way.
+
+31
+00:08:50,405 --> 00:09:08,645
+But the S I F of our payment is not there: the File API gave up delivering it while the partner was down, and the payment still waits for an answer. The engineer resends it. Resend file puts the same bytes the File API kept on the port again. It is never rendered or signed again.
+
+32
+00:09:12,183 --> 00:09:22,849
+A resend changes what leaves the bank, so a bank approver must consent. Once they do, the File API sends the file, and here it is on the SFTP server.
+
+33
+00:09:28,573 --> 00:09:39,645
+The Central Bank answers with an ACK, and the payment goes on to the end. The technical failure cost a delay, and nothing else: no payment was lost, and none was sent twice.
+
+34
+00:09:55,530 --> 00:10:12,191
+The service console's log tells the same story for the engineer. Filtered by the payment, it lists each fact, and who did it: the engineer's request to resend, the approver's consent, the file sent again, the ACK, and the end. Each line links to the payment, and to its trace.
+
+35
+00:10:13,792 --> 00:10:29,216
+Now the bank changes a business rule. Its cut-off for salary files says until what time a file counts for today, and what happens to a file after it. We sign in to the studio as the bank's configurator, and open the bank's configuration.
+
+36
+00:10:30,818 --> 00:10:47,031
+Today the cut-off is half past eleven at night, Dubai time. The configurator moves it to an hour ago, and keeps the rule for a late file: it counts for the next business day. The checks run as we type; every value must stay inside the bounds the platform set.
+
+37
+00:10:52,564 --> 00:11:04,702
+The configurator cannot put a change in force alone. The bank approver, another person, signs in and approves it as a version. That builds a configuration release: values only, never code.
+
+38
+00:11:06,513 --> 00:11:17,159
+On this laptop, every partner of the bank is the stack's own SFTP server, so the approver builds the release with the laptop's bindings, by the studio's API.
+
+39
+00:11:18,762 --> 00:11:32,735
+In the service console, the engineer installs the release, and the bank approver consents. The runtime checks every value against the bounds the distribution declares, and puts it in force. Nothing is redeployed for a value.
+
+40
+00:11:57,342 --> 00:12:03,016
+The same salary file again, with a new file reference. It arrives after the new cut-off.
+
+41
+00:12:04,618 --> 00:12:19,444
+On its page, the leg shows the difference. The cut-off was applied: the file came after it, so it counts for the next business day, tomorrow, not today. Same file, same workflow, a different outcome, from one value the bank changed and approved.
+
+42
+00:12:24,840 --> 00:12:38,664
+Last, the bank adds a step of its own. The shared workflow leaves hook points: places where a bank may plug in its own logic, without changing the recipe. One sits right after validation. It is not bound for this bank.
+
+43
+00:12:41,174 --> 00:12:55,446
+The bank already has a hook for it: an employer A M L check, which screens the employer of a salary file with the bank's own screening service. The configurator binds it to the hook point, from today. A binding is configuration too.
+
+44
+00:13:00,969 --> 00:13:11,315
+The bank approver approves it. A hook is logic, so it travels in the bank's distribution: the approver builds the bank's next distribution, B, signed, with the hook in it.
+
+45
+00:13:15,998 --> 00:13:29,651
+In the service console, B is offered. The engineer installs it, and activates it, and the approver consents to each. New payments now take B. Then the configuration release with the binding is put in force, the same way.
+
+46
+00:15:06,531 --> 00:15:11,672
+The same file once more, with a new reference. It is pinned to B when it is accepted.
+
+47
+00:15:23,057 --> 00:15:35,899
+On its timeline, right after the validation checks, there is a new step: the bank's employer A M L check ran, as the hook, and the employer is clear. Then the payment went on, exactly as before, and settled.
+
+48
+00:15:39,983 --> 00:16:08,698
+That is the whole journey. A salary file sent from the test bench and through the File API, and every step of its workflow. A business failure, shown with its reason and put right by a corrected file. A technical failure, shown by the service console with its runbook, and put right by a resend, with a second person's consent. A business rule changed by the bank and approved, and its effect on the next file. And a hook of the bank's own, added as configuration, running in the timeline.

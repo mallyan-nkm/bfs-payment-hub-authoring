@@ -33,7 +33,7 @@ const CB_SIF = `${SFTP_HOME}/cb/wps/sif`;
 const CB_ACK = `${SFTP_HOME}/cb/wps/ack`;
 /** The run's own minute, so that the file is new to the File API (it refuses a duplicate). */
 const STAMP = (() => { const t = new Date(); return `${String(t.getUTCHours()).padStart(2, '0')}${String(t.getUTCMinutes()).padStart(2, '0')}`; })();
-/** A synthetic salary file of the bank's employer, with no `# file:` line (as demo/full-run.ts makes it). */
+/** A synthetic salary file of the bank's employer, with no `# file:` line (as demo/end-to-end.ts makes it). */
 function salaryFile(): { name: string; stem: string; text: string } {
   const sample = fs.readFileSync(path.join(ROOT, 'studio', 'fixtures', 'samples', 'wps-sif-no-file-line.sif'), 'utf8');
   const stem = `0000001234567261117${STAMP}00`;
@@ -118,7 +118,7 @@ export function scenes(d: Director): Scene[] {
     }
   };
   const ls = (dir: string) => sh(`${C} exec -T sftp sh -c 'ls -1 ${dir} 2>/dev/null || true'`).split('\n').map((l) => l.trim()).filter(Boolean);
-  /** The operator's upload page: the message, the file, Upload; the payment it started (as demo/full-run.ts). */
+  /** The operator's upload page: the message, the file, Upload; the payment it started. */
   const upload = async (message: RegExp, name: string, text: string) => {
     await runtimeSignIn(d, URLS.ops, 'operator', 'upload');
     const file = path.join(work, name);
