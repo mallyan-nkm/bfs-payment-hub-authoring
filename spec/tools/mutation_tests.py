@@ -229,6 +229,11 @@ CASES = [
     ("M104", "ERROR L60", "../content-configurations/banks/dib/configuration-set.yaml",
      "    value: true\n    validFrom: \"2026-11-24\"\n", "    value: false\n    validFrom: \"2026-11-24\"\n",
      "a bank on the rates feed lets a rate typed by hand stand without its asOf"),
+    # L61 (R-05-107, Issue I-185): escalation after a time is off by default and names the role it escalates to
+    ("M105", "ERROR L61", "factory/p/views/p.view.operations.v1.yaml",
+     "escalateAfter: { type: duration, default: P0D,", "escalateAfter: { type: duration, default: PT4H,", "escalation after a time is on before the bank sets it"),
+    ("M106", "ERROR L61", "factory/p/views/p.view.operations.v1.yaml",
+     "bounds: { allowed: [Supervisor, BankApprover] }", "bounds: { allowed: [Supervisor, Auditor] }", "an item escalates to a role no one works items with"),
     # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration
     ("M83", "ERROR L53", "examples/bank/configuration-set.yaml",
      "\nrelease: 1.10.0\n", "\nrelease: 1.10.1\n", "the studio makes a patch release of a bank's configuration"),

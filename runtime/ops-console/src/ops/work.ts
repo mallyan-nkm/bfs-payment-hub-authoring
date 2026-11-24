@@ -17,8 +17,12 @@ export function selectionItems(rows: WorkRow[], selected: Set<string>): { kind: 
   return rows.filter((r) => selected.has(keyOf(r))).map((r) => ({ kind: r.itemKind, id: r.item }));
 }
 
+/** The words for a role an item escalates to (R-05-107). */
+const ROLE_WORDS: Record<string, string> = { Supervisor: 'supervisors', BankApprover: 'bank approvers' };
+
 export function holder(r: WorkRow): string {
-  if (r.escalated) return `Escalated to supervisors (level ${r.level})`;
+  // By hand to the supervisors; by time, after the bank's escalateAfter, to the role the view's escalateTo names (R-05-107).
+  if (r.escalated) return `Escalated to ${ROLE_WORDS[r.escalatedTo ?? 'Supervisor'] ?? r.escalatedTo} (level ${r.level})${r.automatic ? ', after waiting too long' : ''}`;
   return r.assigneeName ?? r.assignee ?? 'Unassigned';
 }
 

@@ -483,8 +483,8 @@ artefacts:
     path: tests/P-RES-002.yaml
   - name: p.view.operations.v1
     kind: operations-view
-    release: 1.7.0
-    hash: sha256:01abc5f997340731613822af4f5e517e92d524d4dc5f21fb800d425858eb5fdc
+    release: 1.8.0
+    hash: sha256:5a1f701d1b640c64111eebc8ff3e38a8fa75320d2b675e1d8bdb0430fe42d3d0
     path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow

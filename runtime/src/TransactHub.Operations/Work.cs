@@ -24,7 +24,10 @@ public sealed record WorkItem(string Kind, string Id)
 }
 
 /// <summary>Who holds an item now, from the facts of its chain.</summary>
-public sealed record WorkState(WorkItem Item, string? Assignee, string? AssigneeName, int Level, bool Escalated, DateTimeOffset? Since, int Facts);
+/// <param name="EscalatedTo">The role an escalated item went to (R-05-107): the supervisors by hand, the view's escalateTo by time.</param>
+/// <param name="Automatic">Whether the item escalated by itself, after the view's escalateAfter.</param>
+/// <param name="EscalatedByTime">Whether it ever escalated by itself: it does so once (R-05-107).</param>
+public sealed record WorkState(WorkItem Item, string? Assignee, string? AssigneeName, int Level, bool Escalated, DateTimeOffset? Since, int Facts, string? EscalatedTo = null, bool Automatic = false, bool EscalatedByTime = false);
 
 /// <summary>
 /// Work management in the operations console (R-05-71): an item is assigned, escalated, reassigned or released, each a fact on the
@@ -66,6 +69,9 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
         string? who = null, name = null;
         var level = 0;
         var escalated = false;
+        string? to = null;
+        var automatic = false;
+        var byTime = false;
         DateTimeOffset? since = null;
         var n = 0;
         foreach (var f in facts)
@@ -74,12 +80,15 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
             var d = JsonNode.Parse(f.DataJson) as JsonObject ?? new JsonObject();
             switch (f.Code)
             {
-                case "assigned" or "reassigned": who = (string?)d["assignee"]; name = (string?)d["assigneeName"]; escalated = false; since = f.At; break;
-                case "escalated": who = null; name = null; level = (int?)d["level"] ?? level + 1; escalated = true; since = f.At; break;
+                case "assigned" or "reassigned": who = (string?)d["assignee"]; name = (string?)d["assigneeName"]; escalated = false; to = null; automatic = false; since = f.At; break;
+                case "escalated":
+                    who = null; name = null; level = (int?)d["level"] ?? level + 1; escalated = true; since = f.At;
+                    to = (string?)d["to"] ?? OperatorRoles.Supervisor; automatic = (bool?)d["automatic"] == true; byTime |= automatic;
+                    break;
                 case "released": who = null; name = null; since = f.At; break;
             }
         }
-        return new WorkState(item, who, name, level, escalated, since, n);
+        return new WorkState(item, who, name, level, escalated, since, n, to, automatic, byTime);
     }
 
     /// <summary>The state of many items at once: one read of the facts of their chains.</summary>
@@ -115,7 +124,9 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
                 if (now.Assignee == to) throw new ActionRefused(409, $"{item.Kind} {item.Id} is already with {to}", OpsCodes.AlreadyDecided);
                 if (to != who.Subject && !supervisor) throw new ActionRefused(403, "Giving an item to someone else is a supervisor's", OpsCodes.Forbidden);
                 if (now.Assignee is not null && now.Assignee != who.Subject && !supervisor) throw new ActionRefused(403, $"{item.Kind} {item.Id} is with {now.Assignee}; only a supervisor takes it from them", OpsCodes.Forbidden);
-                if (now.Escalated && !supervisor) throw new ActionRefused(403, $"{item.Kind} {item.Id} is escalated to the supervisors", OpsCodes.Forbidden);
+                // An escalated item is taken by a person with the role it went to (R-05-107): the supervisors, or the view's escalateTo.
+                if (now.Escalated && !who.Has(tenant, now.EscalatedTo ?? OperatorRoles.Supervisor))
+                    throw new ActionRefused(403, $"{item.Kind} {item.Id} is escalated to the {now.EscalatedTo ?? OperatorRoles.Supervisor} role", OpsCodes.Forbidden);
                 code = now.Assignee is null ? "assigned" : "reassigned";
                 if (code == "reassigned" && string.IsNullOrWhiteSpace(reason)) throw new ActionRefused(400, "Reassigning needs a reason", OpsCodes.RemarksRequired);
                 data["assignee"] = to;
@@ -244,7 +255,25 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
         ["item"] = st.Item.Id, ["itemKind"] = st.Item.Kind, ["tenant"] = tenant, ["scheme"] = scheme, ["payment"] = payment, ["what"] = what,
         ["amount"] = amount, ["currency"] = currency, ["waitingSince"] = since.ToString("O"),
         ["assignee"] = st.Assignee, ["assigneeName"] = st.AssigneeName, ["escalated"] = st.Escalated, ["level"] = st.Level, ["assignedAt"] = st.Since?.ToString("O"),
+        ["escalatedTo"] = st.EscalatedTo, ["automatic"] = st.Automatic,
     };
+
+    /// <summary>
+    /// Every item that waits for a person now, of every tenant, with when it began to wait: a held payment from its hold's opening
+    /// (the read model's last change of it), a waiting action from its request, an alert from when it was raised (R-05-107).
+    /// </summary>
+    public async Task<List<(WorkItem Item, string Tenant, DateTimeOffset Since)>> Waiting(CancellationToken ct = default)
+    {
+        await using var o = OpsDbContext.Open(ops);
+        var tenants = await o.Subjects.AsNoTracking().Select(s => s.Tenant).Distinct().ToListAsync(ct);
+        var alerts = (await new FraudAlerts(store, ops).List(tenants, ct)).Where(FraudAlerts.Open).ToList();
+        var alerted = alerts.Select(a => a.Id).ToHashSet();
+        var held = (await o.Subjects.AsNoTracking().Where(s => s.Hold == "open").Select(s => new { s.Id, s.Tenant, s.UpdatedAt }).ToListAsync(ct)).Where(s => !alerted.Contains(s.Id));
+        var waiting = await o.Actions.AsNoTracking().Where(a => a.Status == "pending-approval").Select(a => new { a.Id, a.Tenant, a.RequestedAt }).ToListAsync(ct);
+        return held.Select(s => (new WorkItem(WorkItem.Payment, s.Id), s.Tenant, s.UpdatedAt))
+            .Concat(waiting.Select(a => (new WorkItem(WorkItem.Action, a.Id), a.Tenant, a.RequestedAt)))
+            .Concat(alerts.Select(a => (new WorkItem(WorkItem.Alert, a.Id), a.Tenant, a.RaisedAt))).ToList();
+    }
 
     static JsonObject Show(WorkState st, int seq) => new()
     {
@@ -270,6 +299,59 @@ public sealed class WorkQueue(StoreOptions store, StoreOptions ops, TimeProvider
             if (DateTimeOffset.UtcNow >= until) return (c, false);
             await Task.Delay(250, ct);
         }
+    }
+}
+
+/// <summary>
+/// Escalation after a time (R-05-107; owner's decision of 24 November 2026, Issue I-185): a dial of the platform's operations view,
+/// <c>escalateAfter</c>, off by default (P0D), which each bank's operations sets in its configuration release, with the role it
+/// escalates to, <c>escalateTo</c> (Supervisor by default). An item that has waited longer than the bank's <c>escalateAfter</c> in force
+/// now, each whole day a business day of the bank's calendar on the day it began to wait as the turnaround limit counts it (R-05-81),
+/// and that is not escalated already, escalates once, by itself: an <c>escalated</c> fact on its chain, a level up, to that role,
+/// marked automatic, by the runtime. It changes no payment and needs no bank approver, as every change of who works on what.
+/// </summary>
+public sealed class WorkEscalation(StoreOptions store, WorkQueue queue, OperationsDials dials, TimeProvider? clock = null)
+{
+    readonly TimeProvider clock = clock ?? TimeProvider.System;
+    public const string Actor = "runtime:operations";
+
+    /// <summary>Escalates every item past its tenant's limit. Returns how many it escalated.</summary>
+    public async Task<int> Sweep(CancellationToken ct = default)
+    {
+        var now = clock.GetUtcNow();
+        var waiting = await queue.Waiting(ct);
+        if (waiting.Count == 0) return 0;
+        var states = await queue.States(waiting.Select(w => w.Item).ToList(), ct);
+        var limits = new Dictionary<string, (OperationsDials.Dial after, string? to)>(StringComparer.Ordinal);
+        var calendars = new Dictionary<string, HoldCalendar>(StringComparer.Ordinal);
+        var n = 0;
+        await using var db = StoreDbContext.Open(store);
+        foreach (var (item, tenant, since) in waiting)
+        {
+            var st = states[item];
+            // Once only: an item escalated (by hand, or by itself before) is not escalated by time again.
+            if (st.Escalated || st.EscalatedByTime) continue;
+            if (!limits.TryGetValue(tenant, out var limit))
+                limits[tenant] = limit = (await dials.For(tenant, null, OperationsDials.EscalateAfter, now, ct), (await dials.Code(tenant, OperationsDials.EscalateTo, now, ct)).Value);
+            if (limit.after.Value <= TimeSpan.Zero) continue;
+            var day = $"{tenant}|{since.UtcDateTime:yyyy-MM-dd}";
+            if (!calendars.TryGetValue(day, out var calendar)) calendars[day] = calendar = await HoldCalendar.Of(db, tenant, since, ct);
+            var iso = OperationsDials.Iso(limit.after.Value);
+            var deadline = HoldCalendar.ExpiresAt(since, iso, calendar);
+            if (now <= deadline) continue;
+            var to = limit.to ?? OperatorRoles.Supervisor;
+            var data = new JsonObject
+            {
+                ["item"] = item.Id, ["itemKind"] = item.Kind, ["tenant"] = tenant, ["by"] = "the runtime",
+                ["why"] = $"waited longer than {iso} (escalateAfter, business days of the bank's calendar) since {since:O}",
+                ["to"] = to, ["level"] = st.Level + 1, ["automatic"] = true, ["after"] = iso, ["parameter"] = limit.after.Parameter,
+                ["source"] = limit.after.Source, ["waitingSince"] = since.ToString("O"), ["deadline"] = deadline.ToString("O"),
+            };
+            if (st.Assignee is not null) data["from"] = st.Assignee;
+            await new FactLog(db, clock).Append(item.Chain, WorkQueue.SubjectKind, new NewFact(WorkQueue.Kind, "escalated", data, Actor: Actor), ct);
+            n++;
+        }
+        return n;
     }
 }
 

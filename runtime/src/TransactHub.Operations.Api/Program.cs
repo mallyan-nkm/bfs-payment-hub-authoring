@@ -72,6 +72,8 @@ builder.Services.AddSingleton(new FixedReports(ops, views));
 builder.Services.AddSingleton(sp => new Erasure(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), clock));
 builder.Services.AddSingleton(sp => new Unmasking(ops, views, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<Projector>(), dials, sp.GetRequiredService<Erasure>(), clock));
 builder.Services.AddSingleton(sp => new Turnaround(store, ops, dials, sp.GetRequiredService<ConsoleRecord>(), sp.GetRequiredService<OperatorAlerts>(), clock));
+// Escalation after a time (R-05-107, Issue I-185): off until the bank sets the platform view's escalateAfter.
+builder.Services.AddSingleton(sp => new WorkEscalation(store, sp.GetRequiredService<WorkQueue>(), dials, clock));
 // The upload page's File API (Operations:FileApi:Url) and the service console its refusals' runbooks are in (Operations:ServiceConsole).
 builder.Services.AddSingleton(FileApiUploads.FromConfiguration(builder.Configuration));
 builder.Services.AddHostedService<ProjectionService>();
@@ -444,13 +446,15 @@ public sealed record Reasoned(string? Remarks);
 public sealed record BreakResolution(string Resolution, string? Remarks);
 
 /// <summary>Keeps the read model up with the outbox: a poll every Operations:PollMilliseconds (default 500).</summary>
-sealed class ProjectionService(Projector p, HoldExpiry expiry, Turnaround tat, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
+sealed class ProjectionService(Projector p, HoldExpiry expiry, Turnaround tat, WorkEscalation escalation, IConfiguration cfg, ILogger<ProjectionService> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         var every = TimeSpan.FromMilliseconds(int.TryParse(cfg["Operations:PollMilliseconds"], out var ms) ? ms : 500);
         var sweepEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:HoldSweepSeconds"], out var hs) ? hs : 30);
         var tatEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:TatSweepSeconds"], out var ts) ? ts : 60);
+        var escalateEvery = TimeSpan.FromSeconds(int.TryParse(cfg["Operations:EscalationSweepSeconds"], out var es) ? es : 60);
+        var escalated = DateTimeOffset.UtcNow;
         var swept = DateTimeOffset.MinValue;
         // The first turnaround sweep comes one interval after the start, once the projection has caught up.
         var tatSwept = DateTimeOffset.UtcNow;
@@ -474,6 +478,14 @@ sealed class ProjectionService(Projector p, HoldExpiry expiry, Turnaround tat, I
                 try { await tat.Sweep(ct); }
                 catch (OperationCanceledException) { break; }
                 catch (Exception e) { log.LogWarning("turnaround: {Error}", e.Message); }
+            }
+            // A work item that waited past the bank's escalateAfter escalates once, by itself, to the view's escalateTo (R-05-107).
+            if (DateTimeOffset.UtcNow - escalated > escalateEvery)
+            {
+                escalated = DateTimeOffset.UtcNow;
+                try { await escalation.Sweep(ct); }
+                catch (OperationCanceledException) { break; }
+                catch (Exception e) { log.LogWarning("escalation: {Error}", e.Message); }
             }
             try { await Task.Delay(every, ct); } catch (OperationCanceledException) { break; }
         }

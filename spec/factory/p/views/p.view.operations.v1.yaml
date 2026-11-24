@@ -1,6 +1,6 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.7.0
+release: 1.8.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
@@ -20,6 +20,10 @@ description: >-
   calendar, its own closing days included, as a hold's expiry is counted (owner's decision of 23 November 2026, R-05-81). Release
   1.7.0 asks a supervisor's second approval to release a payment the fraud engine found suspect: its approval hold follows a step of
   p.screen.fraud.v1, which the action names (when.activity); every other approval hold is approved as before (R-05-94, Issue I-279).
+  Release 1.8.0 (owner's decisions of 24 November 2026) offers the fixed signals pause and resume (R-05-12): an operator pauses a
+  running payment, with remarks, and resumes it; pause only while it is not paused, resume only while it is (R-05-106). And it
+  declares the work queue's escalation after a time (Issue I-185): escalateAfter, off by default (P0D), and the role an item
+  escalates to, escalateTo; an item that waits longer escalates once, by itself, to that role (R-05-107).
 platform: [p.wf.corporate.v1, p.wf.inward.v2, p.wf.refund.v1, p.wf.refund-out.v1]
 parameters:
   # R-05-68, R-05-81: a payment open, or that ended, longer than this after its acceptance is in breach; each whole day is a business
@@ -29,6 +33,10 @@ parameters:
   unmaskWindow: { type: duration, default: P0D, bounds: { min: P0D, max: PT4H }, lookupDate: step-time, description: "How long an unmasked value is shown to the person who asked, from the bank approver's consent. P0D turns unmasking off." }
   # R-05-70: how long a payment is kept after its end before it is due for erasure. P0D: nothing is ever due.
   retentionPeriod: { type: duration, default: P0D, bounds: { min: P0D, max: P36600D }, lookupDate: step-time, description: "How long an ended payment is kept before it is due for erasure. P0D keeps every payment." }
+  # R-05-107 (owner's decision of 24 November 2026, Issue I-185): a work item that waits longer than this, each whole day a business day
+  # of the bank's calendar as the turnaround limit counts it, escalates once, by itself, to the role escalateTo names. P0D: off.
+  escalateAfter: { type: duration, default: P0D, bounds: { min: P0D, max: P30D }, lookupDate: step-time, description: "How long a work item (a held payment, a waiting action, a fraud alert) may wait before it escalates by itself, each whole day a business day of the bank's calendar. P0D: nothing escalates by itself." }
+  escalateTo: { type: code, default: Supervisor, bounds: { allowed: [Supervisor, BankApprover] }, lookupDate: step-time, description: "The role a work item escalates to after escalateAfter: only a person with it takes the item then." }
 subject:
   title: Payment
   groups:
@@ -96,6 +104,11 @@ subject:
     - { action: release, label: Release after repair, role: Operator, secondApprover: Supervisor, remarks: required, when: { hold: repair } }
     - { action: reject, label: Reject, role: Operator, remarks: required, when: { hold: repair } }
     - { action: cancel, label: Cancel, role: Operator, secondApprover: Supervisor, remarks: required }
+    # The fixed signals pause and resume (R-05-12, R-05-106): an operator stops a running payment before its next step, and starts it
+    # again; neither moves money nor decides it, and resume undoes pause, so neither waits for a second approver. Pause is offered
+    # while the payment is not paused, resume while it is; both only while it has no end (R-05-58).
+    - { action: pause, label: Pause the payment, role: Operator, remarks: required }
+    - { action: resume, label: Resume the payment, role: Operator, remarks: required }
     # Only the workflows that screen take re-screen (R-05-61, Issue I-135); a refund order has no screening step.
     - { action: re-screen, label: Screen again, role: Operator, remarks: required, when: { workflow: [p.wf.corporate.v1, p.wf.inward.v2] } }
     # A step that parked (the refund order's posting, R-05-55) is tried once more on an operator's retry.

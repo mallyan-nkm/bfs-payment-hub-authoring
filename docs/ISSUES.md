@@ -1883,6 +1883,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Owner's decision (24 November 2026):** accepted. Escalation after a time is a dial of the platform's view, off by default, with the role it escalates to; each bank's operations sets it. To build in wave 7.
 
+**Done (24 November 2026, R-05-107).** `p.view.operations.v1` 1.8.0 (factory 1.22.0) declares `escalateAfter` (P0D, off) and `escalateTo` (Supervisor or BankApprover, Supervisor by default); lint L61 holds both (mutations M105, M106). The operations host's sweep (`WorkEscalation`, every `Operations:EscalationSweepSeconds`, 60 by default) escalates an item that waited past the bank's limit, counted on the bank's business calendar as the turnaround is, once, by itself, to that role, marked automatic; only a person with that role takes it, and the work queue says so ("Escalated to bank approvers (level 1), after waiting too long"). Still open from this issue: (2) to (4) above, and named teams or levels beyond the one role.
+
 ## I-186. A bank's own reference table built a distribution, not a configuration release
 
 **Issue.** Reference tables travel to the runtime in the bank's configuration release, never in a distribution (R-01-25). But the studio's approval classified a bank's own reference table as bank pack content: approving `b.ref.branches.v1` built a new distribution of the bank (without the table) and no configuration release, so the table reached the runtime only with the next change of the bank's values.
@@ -2587,6 +2589,18 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Allow `effect: pure` for a `validate` or `decide` activity bound to a script with no ports, keep `read` required when it names ports, and add the mutation case and the check to the catalogue in `design/05-workflow-dsl.md` as `spec/CLAUDE.md` asks.
 
 **Done (24 November 2026, R-03-27).** The activity schema takes `effect: pure` beside `read` for a `validate` or `decide` without rule sets (`spec/schemas/activity.schema.json`). Lint L57 holds the rest, in `tools/validate.py` and the studio's `checks.ts`: a pure activity names no port, and a check without rule sets is pure only when it is bound to a script (a builtin or a subflow without rule sets reads, as `p.validate.duplicate.v1` and `p.decide.await-posting-window.v1` do; mutations M97 and M98). Pure needs no idempotency key, as read does not (L54). The interpreter refuses a port call from a pure activity (`ContractViolation` R-03-27) before the declared-port check. R-03-08 says a check of its own may name no rule sets. No factory activity changes: `p.decide.cut-off.v1` and `p.decide.posting-window.v1` read the bank's calendar and the clock and stay `read`. `studio/test/checks.test.ts` ("a scripted check without rule sets may be pure").
+
+## I-370. The laptop stack runs no rates feed, so its trust page offers no feed key
+
+**Issue.** The service console's trust page offers the rates feed's own key, and `rotate-trusted-key` adds it without hand editing (R-09-249), on a host that runs the feed (`Service:FxRates:SigningKeyRef`). The laptop's service host sets no feed signing key and its bank binds no `p.port.fx-rates.v1`, so on the laptop the page says the host runs no feed, and a laptop shows none of the feed's path end to end. The laptop stack was not changed in this wave: it was in use for a recording.
+
+**Recommendation.** Give the laptop's service host a feed signing key made at build, as `build.sh` makes the module signing key (kept beside it, never in a file of the repository), bind the rates port to its simulator in the laptop bank's bindings, and have the insert-only test trust the feed's key through the action, so the laptop shows the whole path.
+
+## I-371. Whether re-screening a payment needs a second approver
+
+**Issue.** `p.view.operations.v1` offers `re-screen` to an Operator with remarks and no second approver, as it did since release 1.3.0; the spec is silent on whether it should need one. Pause and resume now take the same role and no second approver either (R-05-106). A re-screen runs the screening steps again on a running payment: it can only hold or refuse the payment, never release it, because a hold it opens is decided by the hold's own action, with that action's approvals (a suspect payment's release needs a supervisor's, R-05-94). Asking a second approver for it would slow the screening team without guarding money.
+
+**Recommendation.** Keep `re-screen` without a second approver, and say so in the spec beside R-05-106 once the owner agrees; if a bank's compliance asks for one, the view's action takes `secondApprover: Supervisor` in a minor release, with no code change.
 
 ## Not done, and why
 

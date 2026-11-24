@@ -1028,7 +1028,12 @@ OPS_PERSONAL = {"bulk.debtorName", "bulk.initiatingParty.id", "bulk.debtorAccoun
 OPS_HOLDS = {"approve": ("p.hold.approval.v1", "approved"), "decline": ("p.hold.approval.v1", "declined"),
              "release": ("p.hold.repair.v1", "released"), "reject": ("p.hold.repair.v1", "rejected")}
 # R-05-66, R-05-67: the dials the operations console reads from a view, and the attributes of a kept document a report may show.
-OPS_DIALS = {"tatLimit", "unmaskWindow", "retentionPeriod"}
+OPS_DIALS = {"tatLimit", "unmaskWindow", "retentionPeriod", "escalateAfter", "escalateTo"}
+# R-05-107: the escalation dials, the platform's only; escalateTo is a code, the role an item escalates to.
+OPS_CODE_DIALS = {"escalateTo"}
+# L61 (R-05-107, owner's decision of 24 November 2026, Issue I-185): escalation after a time is off by default, and names the role it
+# escalates to among the tenant's roles that work items: a view that declares escalateAfter declares escalateTo, and the reverse.
+OPS_ESCALATION_ROLES = {"Supervisor", "BankApprover"}
 OPS_SCHEME_DIALS = {"tatLimit", "retentionPeriod"}
 OPS_DOCUMENT_ATTRS = {"fileName", "at", "size", "source", "direction", "signed"}
 STEP_SRC = re.compile(r"^step:(?P<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?P<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$")
@@ -1247,8 +1252,18 @@ for path, d in docs:
     # R-05-66: a view declares only the dials the operations console reads, each a duration.
     for k, decl in (d.get("parameters") or {}).items():
         allowed = OPS_DIALS if not scheme_scope else OPS_SCHEME_DIALS
-        if k not in allowed or decl.get("type") != "duration":
-            err("L38", path, "parameter %s is not a dial the operations console reads (%s, each a duration)" % (k, ", ".join(sorted(allowed))))
+        if k not in allowed or decl.get("type") != ("code" if k in OPS_CODE_DIALS else "duration"):
+            err("L38", path, "parameter %s is not a dial the operations console reads (%s, each a duration, escalateTo a code)" % (k, ", ".join(sorted(allowed))))
+    pars = d.get("parameters") or {}
+    if "escalateAfter" in pars or "escalateTo" in pars:
+        after, to = pars.get("escalateAfter") or {}, pars.get("escalateTo") or {}
+        if not after or not to:
+            err("L61", path, "declares %s without %s: an escalation after a time names the role it escalates to" % (("escalateAfter", "escalateTo") if after else ("escalateTo", "escalateAfter")))
+        if after and str(after.get("default")) not in ("P0D", "PT0S"):
+            err("L61", path, "escalateAfter defaults to %s: escalation after a time is off until the bank sets it (P0D)" % after.get("default"))
+        roles = set(((to.get("bounds") or {}).get("allowed")) or [])
+        if to and (not roles or not roles <= OPS_ESCALATION_ROLES or to.get("default") not in roles):
+            err("L61", path, "escalateTo must allow only roles that work items (%s), its default among them" % ", ".join(sorted(OPS_ESCALATION_ROLES)))
 # ------------------------------------------------- published releases never change
 # L41 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
 # (content-configurations/change-sets/ledger/<id>.yaml), and still has that text: a published release is never edited. A path
