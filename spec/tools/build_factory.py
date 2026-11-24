@@ -148,6 +148,9 @@ RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role 
 # Issue I-153, R-02-22 (factory 1.20.0): the salary file's intake map writes the employer's CIF the channel declared at upload as a
 # further organisation id of the debtor, scheme CIF. A field written under batch, a minor; its script at scripts/...@1.5.0.ts.
 RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the channel's upload as the debtor's organisation id, scheme CIF (Issue I-153)")
+# Owner's decision of 2026-11-24 (Issue I-278, R-09-247, factory 1.22.0): requireAsOf, a bank on the rates feed refuses a rate with
+# no asOf like a stale one (fx.RateUndated). A parameter added with a default, a minor; its script at scripts/...@1.3.0.ts.
+RELEASES["p.enrich.fx-rate.v1"] = ("1.3.0", "requireAsOf: a bank on the rates feed refuses a rate with no asOf (fx.RateUndated)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -185,8 +188,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # uae.wps 1.5.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
 # native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
 # salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
-PACK_RELEASES = {"p": "1.20.0", "uae.p": "1.20.0", "uae.wps": "1.20.0", "b": "1.20.0"}
-FACTORY_RELEASE = "1.20.0"
+# 1.22.0 (change set CS-2026-11-24-017; 1.21.0 and CS-2026-11-24-016 are another change's): wave 7B, the owner's decisions of 24
+# November 2026: p.enrich.fx-rate.v1 1.3.0 with requireAsOf (Issue I-278, R-09-247); p.view.operations.v1 1.8.0, written by hand:
+# pause and resume offered, and escalation after a time (Issue I-185); the salary file's intake map 1.6.0, the employer's e-mail
+# (Issues I-153, I-314); and the platform's error dictionary 1.12.0, on 1.11.0.
+PACK_RELEASES = {"p": "1.22.0", "uae.p": "1.22.0", "uae.wps": "1.22.0", "b": "1.22.0"}
+FACTORY_RELEASE = "1.22.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -341,7 +348,10 @@ RATE_LIST = {"rates": {"type": "list", "default": [], "bounds": {"min": 0, "max"
                        "description": "The bank's exchange rates, each {from, to, rate} and, from the rates feed, asOf (the instant the bank's rates service gave it): one unit of from is rate units of to. None, and only a line in its account's own currency converts."},
              # R-09-178 (owner's decision of 2026-11-23, Issue I-189): a rate the feed gave is refused once older than this.
              "maxRateAge": {"type": "duration", "default": "PT24H", "bounds": {"min": "PT1H", "max": "P7D"},
-                            "description": "How old a rate with an asOf may be: an older one is refused (the line is no-rate, facts.fx.code fx.RateStale). A rate with no asOf, set by hand, is not aged."}}
+                            "description": "How old a rate with an asOf may be: an older one is refused (the line is no-rate, facts.fx.code fx.RateStale). A rate with no asOf, set by hand, is not aged unless requireAsOf is set."},
+             # R-09-247 (owner's decision of 2026-11-24, Issue I-278): a bank on the rates feed sets it, so a hand-typed rate is refused too.
+             "requireAsOf": {"type": "boolean", "default": False,
+                             "description": "Whether every rate must carry its asOf: a bank on the rates feed sets it, so that a rate with no asOf, set by hand, is refused like a stale one (the line is no-rate, facts.fx.code fx.RateUndated). False: a rate with no asOf is not aged."}}
 act("p.enrich.fx-rate.v1", "Convert each line at the bank's exchange rate", ["payment.instructedAmount", "payment.debtorAccount", "items[]"],
     ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True, native=True)
 CHARGE_DIALS = {
@@ -1480,6 +1490,14 @@ test("P-FX-004", "A rate older than the bank's staleness limit is refused with f
      {"outcome": "no-rate", "writes": {"facts.fx.stale": "AED/EUR", "facts.fx.code": "fx.RateStale", "facts.fx.maxRateAge": "PT24H"}}, tenant="example-bank")
 test("P-FX-005", "A rate the feed gave within the staleness limit converts, and the line keeps its asOf", "p.enrich.fx-rate.v1", "activity",
      refund_lines(100, currency="GBP"),
+     {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
+# requireAsOf (R-09-247, owner's decision of 24 November 2026, Issue I-278): a bank on the rates feed sets it, so the example bank's
+# typed AED/USD rate, which has no asOf, is refused like a stale one; its feed's AED/GBP rate, dated, still converts.
+test("P-FX-006", "With requireAsOf a rate with no asOf, typed by hand, is refused with fx.RateUndated", "p.enrich.fx-rate.v1", "activity",
+     {**refund_lines(100, currency="USD"), "parameters": {"requireAsOf": True}},
+     {"outcome": "no-rate", "writes": {"facts.fx.undated": "AED/USD", "facts.fx.code": "fx.RateUndated", "facts.fx.requireAsOf": True}}, tenant="example-bank")
+test("P-FX-007", "With requireAsOf a rate the feed gave within the staleness limit still converts", "p.enrich.fx-rate.v1", "activity",
+     {**refund_lines(100, currency="GBP"), "parameters": {"requireAsOf": True}},
      {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
 test("P-CHG-001", "A line is priced on the bank's slab: fixed plus a percentage, then VAT", "p.enrich.charges.v1", "activity", refund_lines(100, 499.75),
      # 5.10 and 0.26 VAT on 100.00; 5.49975, so 5.50 and 0.28 (0.275) on 499.75: the sums of the rounded lines

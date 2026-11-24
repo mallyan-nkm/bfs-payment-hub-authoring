@@ -49,6 +49,8 @@ public sealed class EnrichFxRate : INativeActivity
     public string Name => "p.enrich.fx-rate.v1";
     /// <summary>The staleness limit's default (the activity's 1.2.0, R-09-178) and the code a stale rate's refusal carries.</summary>
     public const string DefaultMaxRateAge = "PT24H", RateStale = "fx.RateStale";
+    /// <summary>The code of a rate refused for want of its asOf where the bank requires one (the activity's 1.3.0, R-09-247, Issue I-278).</summary>
+    public const string RateUndated = "fx.RateUndated";
 
     public NativeResult Run(NativeAttempt a)
     {
@@ -56,29 +58,33 @@ public sealed class EnrichFxRate : INativeActivity
         // The staleness limit (R-09-178, Issue I-189): a rate the feed gave (with its asOf) older than the bank's maxRateAge is refused.
         var limitText = (string?)a.Params["maxRateAge"] is { Length: > 0 } l ? l : DefaultMaxRateAge;
         var limit = System.Xml.XmlConvert.ToTimeSpan(limitText);
+        // requireAsOf (R-09-247, owner's decision of 24 November 2026): a bank on the rates feed refuses a rate with no asOf, one typed
+        // by hand, like a stale one.
+        var requireAsOf = a.Params["requireAsOf"] is JsonValue rv && (rv.TryGetValue<bool>(out var rb) ? rb : string.Equals(rv.ToString(), "true", StringComparison.OrdinalIgnoreCase));
         bool Stale(JsonObject r, out string? asOf)
         {
             asOf = NativeContext.S(r, "asOf") is { Length: > 0 } s ? s : null;
             return asOf is not null && DateTimeOffset.TryParse(asOf, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) && a.Now - at > limit;
         }
-        (decimal rate, string source, string? asOf, bool stale)? RateFor(string from, string to)
+        (decimal rate, string source, string? asOf, bool stale, bool undated)? RateFor(string from, string to)
         {
-            if (from == to) return (1m, "same-currency", null, false);
+            if (from == to) return (1m, "same-currency", null, false, false);
             var direct = rates.FirstOrDefault(r => NativeContext.S(r, "from") == from && NativeContext.S(r, "to") == to);
             if (direct is not null)
             {
                 var ds = Stale(direct, out var d);
-                return (Money.Read(direct["rate"]) ?? 0m, "bank", d, ds);
+                return (Money.Read(direct["rate"]) ?? 0m, "bank", d, ds, requireAsOf && d is null);
             }
             var inverse = rates.FirstOrDefault(r => NativeContext.S(r, "from") == to && NativeContext.S(r, "to") == from && (Money.Read(r["rate"]) ?? 0m) > 0m);
             if (inverse is null) return null;
             var s = Stale(inverse, out var i);
-            return (1m / Money.Read(inverse["rate"])!.Value, "bank-inverse", i, s);
+            return (1m / Money.Read(inverse["rate"])!.Value, "bank-inverse", i, s, requireAsOf && i is null);
         }
         var (lined, items) = Money.Lines(a.View, v => new JsonObject { ["payment"] = v["payment"]?.DeepClone() ?? new JsonObject() });
         var lines = new List<JsonObject>();
         var missing = new List<string>();
         var stale = new List<string>();
+        var undated = new List<string>();
         foreach (var item in items)
         {
             var amt = NativeContext.Node(item, "payment.instructedAmount");
@@ -97,6 +103,12 @@ public sealed class EnrichFxRate : INativeActivity
                 lines.Add(new JsonObject { ["outcome"] = "no-rate", ["from"] = from, ["to"] = to, ["stale"] = true, ["asOf"] = r.asOf, ["code"] = RateStale });
                 continue;
             }
+            if (r.undated)
+            {
+                if (!undated.Contains($"{from}/{to}")) undated.Add($"{from}/{to}");
+                lines.Add(new JsonObject { ["outcome"] = "no-rate", ["from"] = from, ["to"] = to, ["undated"] = true, ["code"] = RateUndated });
+                continue;
+            }
             var value = Money.Read(NativeContext.Node(amt, "value")) ?? 0m;
             var line = new JsonObject
             {
@@ -108,7 +120,7 @@ public sealed class EnrichFxRate : INativeActivity
         }
         var writes = new JsonObject();
         if (lined) writes["items[]"] = WithFact(items, lines, "fx");
-        var outcome = missing.Count > 0 || stale.Count > 0 ? "no-rate" : "converted";
+        var outcome = missing.Count > 0 || stale.Count > 0 || undated.Count > 0 ? "no-rate" : "converted";
         var fx = new JsonObject { ["outcome"] = outcome, ["result"] = outcome, ["lines"] = lines.Count };
         if (missing.Count > 0) fx["missing"] = string.Join(", ", missing);
         if (stale.Count > 0)
@@ -116,6 +128,13 @@ public sealed class EnrichFxRate : INativeActivity
             fx["stale"] = string.Join(", ", stale);
             fx["code"] = RateStale;
             fx["maxRateAge"] = limitText;
+        }
+        if (undated.Count > 0)
+        {
+            fx["undated"] = string.Join(", ", undated);
+            // A stale rate's code stands where the order has both; each line names its own.
+            fx["code"] ??= RateUndated;
+            fx["requireAsOf"] = true;
         }
         if (outcome == "converted")
         {

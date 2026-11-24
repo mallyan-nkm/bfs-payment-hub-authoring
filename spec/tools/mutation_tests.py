@@ -225,6 +225,10 @@ CASES = [
     ("M82", "ERROR L52", "../content-configurations/banks/adib/configuration-set.yaml",
      "\nvalues:\n", "\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: \"2026-11-01\"\n    value:\n      - { from: USD, to: AED, rate: \"3.6725\" }\n",
      "a bank on the rates feed types its rates into its configuration"),
+    # L60 (R-09-247, Issue I-278): a bank on the rates feed requires each rate's asOf, so a hand-typed rate is refused like a stale one
+    ("M104", "ERROR L60", "../content-configurations/banks/dib/configuration-set.yaml",
+     "    value: true\n    validFrom: \"2026-11-24\"\n", "    value: false\n    validFrom: \"2026-11-24\"\n",
+     "a bank on the rates feed lets a rate typed by hand stand without its asOf"),
     # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration
     ("M83", "ERROR L53", "examples/bank/configuration-set.yaml",
      "\nrelease: 1.10.0\n", "\nrelease: 1.10.1\n", "the studio makes a patch release of a bank's configuration"),

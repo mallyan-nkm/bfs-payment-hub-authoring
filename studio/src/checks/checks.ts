@@ -85,6 +85,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
   L56: 'A parameter marked a ledger account is an activity\'s string or code',
   L57: 'A pure activity names no port; a check without rule sets is pure only as a script',
+  L60: 'A bank that binds the rates port requires each rate\'s asOf: its configuration sets p.enrich.fx-rate.v1#requireAsOf to true',
 };
 
 // ---------------------------------------------------------------- walking
@@ -1146,7 +1147,7 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
 }
 
 /**
- * L52 and L53 over a bank's folder on the content branch (R-11-101, R-11-102, Issue I-276). A bank whose port bindings bind
+ * L52, L53 and L60 over a bank's folder on the content branch (R-11-101, R-11-102, R-09-247, Issues I-276, I-278). A bank whose port bindings bind
  * `p.port.fx-rates.v1` takes its rates from the feed, so neither its working configuration set nor its newest released one sets
  * `p.enrich.fx-rate.v1#rates`: typed rates in a newer studio release would win over the feed's until the feed ran again. And the
  * studio never makes a patch release of a bank's configuration, which is the feed's line of numbers.
@@ -1174,11 +1175,16 @@ export function feedRateIssues(files: Map<string, string>, folder: string): Issu
   for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
     if (read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_RATES)))
       out.push({ code: 'L52', severity: 'error', key: p, message: `${p} sets ${FX_RATES}, but the bank binds ${FX_PORT}: its rates come from the feed, and typed rates in a newer release would win over them`, file: p });
+  // L60 (R-09-247, Issue I-278): a bank on the feed requires each rate's asOf, so a rate typed by hand is refused like a stale one.
+  for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
+    if (!read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_REQUIRE && v?.value === true)))
+      out.push({ code: 'L60', severity: 'error', key: p, message: `${p} does not set ${FX_REQUIRE} to true, but the bank binds ${FX_PORT}: a rate typed by hand, with no asOf, would never be refused as stale`, file: p });
   return out;
 }
 
 const FX_PORT = 'p.port.fx-rates.v1';
 const FX_RATES = 'p.enrich.fx-rate.v1#rates';
+const FX_REQUIRE = 'p.enrich.fx-rate.v1#requireAsOf';
 function compareNumbers(a: number[], b: number[]): number {
   for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
   return 0;

@@ -959,7 +959,9 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
 # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration; the feed numbers its releases as the
 # patches after the bank's newest, so the two lines of numbers never meet. A configuration release in configuration-sets/ is a major
 # or a minor (x.y.0), as is every configuration set the factory's examples hold.
-FX_PORT, FX_RATES = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates"
+# L60 (R-09-247, owner's decision of 24 November 2026, Issue I-278): a bank on the feed requires each rate's asOf, so a rate typed by
+# hand is refused like a stale one: its configuration (the same sets as L52) sets p.enrich.fx-rate.v1#requireAsOf to true.
+FX_PORT, FX_RATES, FX_REQUIRE = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates", "p.enrich.fx-rate.v1#requireAsOf"
 
 
 def release_key(r):
@@ -992,6 +994,8 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
         for name, d in sets:
             if any(isinstance(v, dict) and v.get("parameter") == FX_RATES for v in d.get("values") or []):
                 err("L52", "%s/%s" % (where, name), "sets %s, but the bank binds %s: its rates come from the feed, and typed rates in a newer release would win over them" % (FX_RATES, FX_PORT))
+            if not any(isinstance(v, dict) and v.get("parameter") == FX_REQUIRE and v.get("value") is True for v in d.get("values") or []):
+                err("L60", "%s/%s" % (where, name), "does not set %s to true, but the bank binds %s: a rate typed by hand, with no asOf, would never be refused as stale" % (FX_REQUIRE, FX_PORT))
 
 for path, d in docs:
     if d.get("kind") == "configuration-set" and d.get("release") and not str(d.get("release")).endswith(".0"):

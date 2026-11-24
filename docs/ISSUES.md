@@ -2341,6 +2341,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Owner's decision (24 November 2026):** accepted. A bank on the feed sets `requireAsOf`, so a hand-typed rate with no `asOf` is refused like a stale one. To build in wave 7.
 
+**Done (24 November 2026, R-09-247).** `p.enrich.fx-rate.v1` 1.3.0 (factory 1.22.0) declares `requireAsOf` (boolean, default false); with it a rate with no `asOf` is refused like a stale one: the line is no-rate, the order names the pair in `facts.fx.undated` with the code `fx.RateUndated` (`scripts/p.enrich.fx-rate.v1@1.3.0.ts` and the native `EnrichFxRate`, tests P-FX-006 and P-FX-007 on both). The operations console's rates status shows such a rate as stale (`FxRateStatus`). The four real banks bind the feed, so each one's configuration set sets it from 24 November 2026 (adib, enbd and fab 1.9.0, dib 1.10.0), and lint L60 refuses a bank on the feed that does not (mutation M104). A factory test may now set its target's parameters (`given.parameters`), on the studio and in `PlatformNativeTests`.
+
 ## I-279. Releasing a suspect payment needs no second approver
 
 **Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
