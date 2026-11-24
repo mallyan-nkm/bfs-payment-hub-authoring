@@ -66,6 +66,8 @@ describe('the bank pack in content-configurations/banks/adib (WPS, Issue I-86)',
     // The participant list is read from the participant directory (R-11-51, Issue I-130), not set as a value.
     expect(cs.values.find((v: any) => v.parameter === 'uae.wps.table.participant-names.v1#participants').fromReference.table).toBe('uae.p.ref.participant-directory.v1');
     expect(Object.fromEntries(cs.values.filter((v: any) => !v.fromReference).map((v: any) => [v.parameter, v.value]))).toEqual({
+      // The bank binds the rates feed, so each rate needs its asOf (L60, R-09-247).
+      'p.enrich.fx-rate.v1#requireAsOf': true,
       'p.table.rail-choice.v1#enabledRails': ['uae.wps'],
       'p.post.accounting.v1#vatPercent': 5,
       'p.post.accounting.v1#settlementAccount': 'CB-NOSTRO-WPS',
