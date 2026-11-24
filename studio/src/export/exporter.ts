@@ -159,11 +159,11 @@ export function exportPackage(env: StudioEnv, req: ExportRequest): ExportPackage
     if (scopes.has(scopeOf(dict.name))) files[`errors/${dict.name}@${dict.release}.yaml`] = toYaml(dict.doc);
   }
 
-  // Intake maps the front door runs for the schemes in the package are tasks too.
+  // The maps the front door runs for the schemes in the package are tasks too: each start message's intake map, and each deliver
+  // message's correlation map, which reads the key of the payment an answer is for (R-09-212, Issue I-267).
   for (const f of Object.keys(files).filter((k) => k.startsWith('schemes/'))) {
     const scheme = env.store.scheme(f.slice('schemes/'.length, -'.yaml'.length));
-    for (const m of scheme?.messages ?? []) {
-      const map = m.disposition?.start?.intakeMap;
+    for (const map of (scheme?.messages ?? []).flatMap((m: any) => [m.disposition?.start?.intakeMap, m.disposition?.deliver?.correlationMap])) {
       if (map && !blocks.has(map)) {
         const d = env.store.doc(map);
         blocks.set(map, d);
