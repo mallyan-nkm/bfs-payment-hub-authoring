@@ -103,7 +103,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 <div class="wrap">
   <header class="top">
     <h1>TransactHub Studio Guide</h1>
-    <span class="meta">Set up, every feature, a training path, and a full workflow built from scratch. Draft 0.2 of the specification. Synthetic data only.</span>
+    <span class="meta">Set up, every feature, a training path, and a full workflow built from scratch. The studio as it is on Fluent UI 2, 24 November 2026. Synthetic data only.</span>
   </header>
 
   <nav class="toc" aria-label="Contents">
@@ -115,8 +115,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
         <li class="sub"><a href="#get-code">Get the source code</a></li>
         <li class="sub"><a href="#install-dotnet">Install .NET 8</a></li>
         <li class="sub"><a href="#install-java">Install Java 17</a></li>
+        <li class="sub"><a href="#install-temporal">The kit on Temporal</a></li>
         <li><a href="#ideas">3. The ideas you need</a></li>
         <li><a href="#features">4. Every feature</a></li>
+        <li class="sub"><a href="#f-shell">The frame of every page</a></li>
         <li class="sub"><a href="#f-catalogue">Catalogue and artefact pages</a></li>
         <li class="sub"><a href="#f-data">ISO data</a></li>
         <li class="sub"><a href="#f-designer">Workflow designer</a></li>
@@ -127,15 +129,18 @@ section[id], h3[id] { scroll-margin-top: 16px; }
         <li class="sub"><a href="#f-bench">Test bench</a></li>
         <li class="sub"><a href="#f-debug">The debugger</a></li>
         <li class="sub"><a href="#f-kit">Conformance kit</a></li>
+        <li class="sub"><a href="#f-bank">Bank workspace</a></li>
         <li class="sub"><a href="#f-tenant">Tenant</a></li>
         <li class="sub"><a href="#f-export">Export</a></li>
+        <li class="sub"><a href="#f-branch">Content branch</a></li>
         <li class="sub"><a href="#f-governance">Governance</a></li>
         <li class="sub"><a href="#f-cli">Command line and API</a></li>
         <li><a href="#train">5. Training path</a></li>
         <li><a href="#build">6. Build a full workflow</a></li>
         <li><a href="#deploy">7. Export, deploy and run</a></li>
-        <li><a href="#quality">8. Testing the studio itself</a></li>
-        <li><a href="#help">9. Troubleshooting and reference</a></li>
+        <li><a href="#runtime">8. The runtime side</a></li>
+        <li><a href="#quality">9. Testing the studio itself</a></li>
+        <li><a href="#help">10. Troubleshooting and reference</a></li>
       </ol>
     </details>
   </nav>
@@ -152,7 +157,20 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <div class="card"><span class="path">Path B, two hours</span><h4>Learn every feature</h4><p>Work through the rest of the <a href="#train">training path</a>, with the <a href="#features">feature reference</a> open beside it.</p></div>
     <div class="card"><span class="path">Path C, two hours</span><h4>Build a full workflow</h4><p>Build a new scheme, its leg and everything they need, approve it, enable it for a bank, pay a file end to end, then export and deploy it (<a href="#build">part 6</a> and <a href="#deploy">part 7</a>).</p></div>
   </div>
-  <p><b>Prefer to watch first?</b> Narrated videos, recorded from the studio itself, are in the repository, each with an <code>.srt</code> subtitle file beside it. Start with <code>docs/demo/1-concept.mp4</code> (about ten minutes: every idea drawn as a restaurant kitchen, then the same ideas in the studio). Then one video per console: <code>docs/demo/5a-bank-configurator.mp4</code> (the studio as a bank's configurator and approver: the bank workspace, a scheme licensed, the configuration set and its dials, the bank's rules and tables, reference tables, port bindings and the rate feed, hooks, maker and checker, the bench, the audit log and what reaches the runtime) and <code>docs/demo/5b-studio-designer-developer.mp4</code> (the studio as designer and developer: the catalogue, the ISO data, a rule and its examples, the canvas, schemes, ports and simulators, a new activity written with a TypeScript script, tested and used in a leg, the debugger, the assistant, import, the export to four engines, the kit and governance). Part 6 below builds a whole scheme from scratch in writing.</p>
+  <p><b>Prefer to watch first?</b> Narrated videos, recorded from the studio and the runtime on Fluent UI 2, are in <code>docs/demo/</code>, each with an <code>.srt</code> subtitle file beside it (<code>docs/demo/README.md</code> lists them).</p>
+  <div class="table"><table>
+    <thead><tr><th>Video</th><th>Length</th><th>What it shows</th></tr></thead>
+    <tbody>
+      <tr><td><code>docs/demo/1-concept.mp4</code></td><td>9 min</td><td>Every idea drawn as a kitchen, then the same ideas in the studio. Start here.</td></tr>
+      <tr><td><code>docs/demo/2-installation.mp4</code></td><td>13 min</td><td>The laptop stack installed: the studio and one bank's runtime, the consoles in light and dark, the bank's first distribution and configuration release put in force with a bank approver's consent</td></tr>
+      <tr><td><code>docs/demo/3-north-star.mp4</code></td><td>14 min</td><td>The architecture tenet by tenet: ISO 20022 native, platform workflow and scheme leg, four engines, two databases, insert-only and hot update, a bank as configuration</td></tr>
+      <tr><td><code>docs/demo/4-end-to-end.mp4</code></td><td>16 min</td><td>One salary file end to end on the laptop stack: the bench, the debugger, the File API, a business and a technical failure, a rule changed and a new hook put in force</td></tr>
+      <tr><td><code>docs/demo/5a-bank-configurator.mp4</code></td><td>15 min</td><td>The studio as a bank's configurator and approver: the bank workspace, a scheme licensed, dials with bounds and dates, reference tables and a new table, port bindings, hooks, maker and checker, the bench, the audit log</td></tr>
+      <tr><td><code>docs/demo/5b-studio-designer-developer.mp4</code></td><td>18 min</td><td>The studio as designer and developer: the catalogue, a rule and its examples, the canvas, schemes, ports and simulators, a new activity with a TypeScript script tested on the bench and used in a leg, the debugger, the assistant, import, the export to four engines, the kit and governance</td></tr>
+      <tr><td><code>docs/demo/5c-service-console.mp4</code></td><td></td><td>The runtime's service console. Being recorded: it may not be in your copy yet</td></tr>
+    </tbody>
+  </table></div>
+  <p>Part 6 below builds a whole scheme from scratch in writing.</p>
   <p>Every step in part 6 is also an automated browser test (<code>studio/test/blackbox/ui-build.test.ts</code>). If a step here stops matching the app, that test fails first.</p>
   <div class="note">Use synthetic data only. Never type real names, account numbers, IBANs of real people or other personal data into the studio, its tests, its samples or the AI assistant.</div>
 </section>
@@ -160,7 +178,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 <!-- ============================================================ 2 -->
 <section class="part" id="setup">
   <h2>2. Set up and run</h2>
-  <p class="lede">The studio is a Node.js server with a web app. It reads its schemas and conformance kit from the specification repository beside it, and keeps everything else, your own work included, as files on a GitHub branch, read into memory. Nothing is kept on disk. Without .NET and Java, everything works except deploying on a real engine; install them when you reach part 7.</p>
+  <p class="lede">The studio is a Node.js server with a web app. It reads its schemas and conformance kit from the specification repository beside it, and keeps everything else, your own work included, as files on a GitHub branch, read into memory. Nothing is kept on disk. Without .NET and Java, everything works except running on a real engine; install them when you reach part 7.</p>
 
   <h3>What you need</h3>
   <div class="table"><table>
@@ -169,8 +187,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td>Node.js 22 or later, and npm</td><td>The studio, its tests, the command line</td><td><code>node --version</code> shows v22 or later</td></tr>
       <tr><td>Git</td><td>Getting the source code</td><td><code>git --version</code></td></tr>
       <tr><td>A current browser</td><td>The web app</td><td>Any of Chrome, Edge, Firefox, Safari</td></tr>
-      <tr><td>.NET SDK 8 (optional)</td><td>Deploying and running on DTFx (part 7, and step 11 of part 6). <a href="#install-dotnet">How to install it</a></td><td><code>dotnet --version</code> shows 8</td></tr>
-      <tr><td>Java 17 or later (optional)</td><td>The conformance kit on Flowable. <a href="#install-java">How to install it</a></td><td><code>java -version</code> shows 17 or later</td></tr>
+      <tr><td>.NET SDK 8 (optional)</td><td>The kit and a deploy on DTFx and Elsa (part 7, and step 11 of part 6). <a href="#install-dotnet">How to install it</a></td><td><code>dotnet --version</code> shows 8</td></tr>
+      <tr><td>Java 17 or later (optional)</td><td>The conformance kit on Flowable, and Temporal's test server for the kit on Temporal (with Maven). <a href="#install-java">How to install it</a></td><td><code>java -version</code> shows 17 or later</td></tr>
       <tr><td>Python 3.10 or later</td><td>The example bank's Python scripts, and the specification's own checks. The studio uses <code>python3</code>, or <code>python</code> when there is no <code>python3</code></td><td><code>python --version</code> shows 3</td></tr>
     </tbody>
   </table></div>
@@ -197,8 +215,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>Your drafts, releases, scripts, sample files, configuration changes and the audit log are files on a GitHub branch. For training, start the studio on an in-memory fake GitHub seeded from <code>content-configurations/</code>. What you do is gone when you stop it, so you can start again.</p>
   <div class="block"><pre class="cmd">npm run studio:dev</pre></div>
   <p>On the real branch, set the connection first: <code>TH_CONTENT_REPO=&lt;owner&gt;/&lt;repo&gt; TH_CONTENT_BRANCH=main TH_GITHUB_TOKEN=&lt;token&gt; npm start</code>. Without <code>TH_CONTENT_REPO</code>, <code>npm start</code> stops and says so.</p>
-  <p>Open <code>http://localhost:4317</code>.</p>
-  <div class="see">The catalogue, with about 200 documents counted at the foot of the left menu.</div>
+  <p>It starts a fake GitHub in memory, makes a signing key for this run (every release is signed, R-09-23) and turns on the built-in development sign-in. Open <code>http://localhost:4317</code>, click <span class="ui">Sign in</span>, and choose <code>shared.designer</code> from the list of users.</p>
+  <div class="see">The <span class="ui">Workflow designer</span>, the landing page of a designer, with the left menu and about 400 documents counted at its foot. The top bar names you and your roles.</div>
   <div class="table"><table>
     <thead><tr><th>Setting</th><th>What it changes</th><th>Default</th></tr></thead>
     <tbody>
@@ -207,6 +225,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>TH_CONTENT_BRANCH</code></td><td>The content branch</td><td><code>main</code></td></tr>
       <tr><td><code>TH_GITHUB_TOKEN</code></td><td>The token, read at each request and never stored or shown</td><td>Not set</td></tr>
       <tr><td><code>TH_GITHUB_API</code></td><td>The GitHub API base</td><td><code>https://api.github.com</code></td></tr>
+      <tr><td><code>TH_AUTH_DEV</code></td><td>The built-in development sign-in, for local work and tests only. <code>TH_OIDC_ISSUER</code> names a real identity provider instead</td><td><code>1</code> under <code>npm run studio:dev</code></td></tr>
+      <tr><td><code>TH_SIGNING_KEY</code></td><td>A reference to the key that signs every package and distribution the studio releases. Without it nothing is released</td><td>A key made for the run under <code>npm run studio:dev</code></td></tr>
+      <tr><td><code>TH_TRUSTED_SIGNERS</code></td><td>The keys a deploy trusts, or a reference to them</td><td>The run's own key under <code>npm run studio:dev</code></td></tr>
       <tr><td><code>TH_SPEC_ROOT</code></td><td>The specification repository</td><td><code>../spec</code></td></tr>
       <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Turns on the AI assistant and the Ask tab beside every page</td><td>Not set: the assistant explains how to set it</td></tr>
       <tr><td><code>TH_ANTHROPIC_API_KEY</code></td><td>The same key under another name, for hosts that keep <code>ANTHROPIC_API_KEY</code> for themselves</td><td>Not set</td></tr>
@@ -220,9 +241,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="table"><table>
     <thead><tr><th>Command</th><th>Last line</th></tr></thead>
     <tbody>
-      <tr><td><code>npm test</code></td><td>every test passed (about 500)</td></tr>
-      <tr><td><code>npm run studio -- kit</code></td><td><code>57 of 57 conformance scenarios pass on the studio interpreter</code></td></tr>
-      <tr><td><code>npm run studio -- test</code></td><td><code>63 of 63 tests pass</code></td></tr>
+      <tr><td><code>npm test</code></td><td>every test passed (about 550)
+</td></tr>
+      <tr><td><code>npm run studio -- kit</code></td><td><code>59 of 59 conformance scenarios pass on the studio interpreter</code></td></tr>
+      <tr><td><code>npm run studio -- test</code></td><td><code>67 of 67 tests pass</code></td></tr>
       <tr><td><code>npm run studio -- check</code></td><td><code>0 error(s)</code> and some warnings</td></tr>
     </tbody>
   </table></div>
@@ -246,10 +268,10 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>Then check it, and run the conformance kit on DTFx from <code>studio/</code>. The first run builds the DTFx harness, which takes a minute and needs the internet once for its packages.</p>
   <div class="block"><pre class="cmd">dotnet --version</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/dtfx/run-kit.ts</pre></div>
-  <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>57 of 57 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works.</div>
-  <p>The same .NET 8 runs the kit on Elsa Workflows 3, the fourth engine target. Its first run builds the Elsa harness and fetches Elsa's packages:</p>
+  <div class="see"><code>dotnet --version</code> starts with <code>8.</code>, and the kit ends <code>59 of 59 conformance scenarios pass on DTFx</code>. <code>npm run studio -- deploy</code> now works for a DTFx package.</div>
+  <p>The same .NET 8 runs the kit on Elsa Workflows 3. Its first run builds the Elsa harness and fetches Elsa's packages:</p>
   <div class="block"><pre class="cmd">npx tsx engines/elsa/run-kit.ts</pre></div>
-  <div class="see">The kit ends <code>57 of 57 conformance scenarios pass on Elsa</code>. A package exported for the target <code>elsa</code> deploys with the same <code>npm run studio -- deploy</code> command.</div>
+  <div class="see">The kit ends <code>59 of 59 conformance scenarios pass on Elsa</code>. A package exported for the target <code>elsa</code> deploys with the same <code>npm run studio -- deploy</code> command.</div>
   <div class="note">If the build fails with <code>error NU1100: Unable to resolve 'Microsoft.Azure.DurableTask.Core'</code>, NuGet cannot reach a package source. The harness folder names nuget.org in its own <code>nuget.config</code>, so take the latest code with <code>git pull</code>. If it still fails, your network blocks <code>api.nuget.org</code>: on a company network, ask for your proxy settings or an internal NuGet mirror, and add the mirror with <code>dotnet nuget add source &lt;url&gt; -n company</code>.</div>
   <div class="note">On Windows, if the kit or a deploy says <code>An Application Control policy has blocked this file (0x800711C7)</code>, Windows is refusing to load the harness the studio just built, because it is not signed. The cause is either Smart App Control (Windows 11, personal PCs) or an App Control or AppLocker policy set by your organisation. Event Viewer, under Applications and Services Logs, Microsoft, Windows, CodeIntegrity, Operational, names the policy. Ways forward:
   <ul>
@@ -275,7 +297,15 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>The Flowable setup script is a bash script: it downloads Maven into <code>engines/flowable/.bin</code> and builds the Flowable harness, so it needs the internet the first time. On Windows, run it from <b>Git Bash</b>, which comes with Git for Windows. From <code>studio/</code>:</p>
   <div class="block"><pre class="cmd">bash engines/flowable/setup.sh</pre></div>
   <div class="block"><pre class="cmd">npx tsx engines/flowable/run-kit.ts</pre></div>
-  <div class="see"><code>57 of 57 conformance scenarios pass on Flowable</code>.</div>
+  <div class="see"><code>59 of 59 conformance scenarios pass on Flowable</code>.</div>
+
+  <h3 id="install-temporal">The kit on Temporal</h3>
+  <p>Temporal is the default export target. Its binding lives in the runtime (<code>runtime/src/TransactHub.Engine.Temporal</code>), so the kit on Temporal needs the <b>.NET 10</b> SDK, Java 17 or later and Maven. It runs on Temporal's time-skipping test server, fetched from Maven Central. Once, from <code>studio/</code>:</p>
+  <div class="block"><pre class="cmd">bash ../runtime/tools/temporal-test-server/setup.sh</pre></div>
+  <p>Then, each time:</p>
+  <div class="block"><pre class="cmd">npx tsx engines/temporal/run-kit.ts</pre></div>
+  <div class="see"><code>59 of 59 conformance scenarios pass on Temporal</code>.</div>
+  <div class="note">Two scenarios the test server cannot run (a loop of 10,000 items and an attempt's own timeout) run on Temporal's real development server, which the adapter starts in Docker, in real time. Without Docker those two fail. <code>studio/engines/temporal/README.md</code> says more.</div>
 
   <h3>Start again</h3>
   <p>Stop <code>npm run studio:dev</code> and start it again: its fake GitHub is in memory, so you start from the seeded content. There is nothing on disk to delete. The factory content and the example bank are seeded from <code>spec/</code> into <code>content-configurations/</code>, the factory's script-behinds and test samples from <code>studio/scripts/</code> and <code>studio/fixtures/samples/</code>, and the studio never rewrites a published file. A change set's branch, <code>studio/&lt;id&gt;</code>, is deleted once its change set is on the content branch.</p>
@@ -287,19 +317,19 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p class="lede">Read this once. Come back to it when a step mentions a word you do not know; the <a href="#glossary">glossary</a> has the short versions.</p>
 
   <h3 id="tenants">Tenants, users and maker-checker</h3>
-  <p>One studio serves several banks. Each bank is a <b>tenant</b>. The <b>owner</b> tenant holds shared content: the platform and the schemes. A bank reads shared content and never changes it; it sets its own configuration values and writes hooks. You <b>sign in</b> to the studio, with the studio's own identity provider (for local work and training, the built-in development sign-in lists the users). Everything you do is done as that user, in that user's tenant, and the server checks every change against one permission table. To act as another user, <span class="ui">Sign out</span> and sign in as them. The studio's sign-in is separate from the runtime's: a runtime token is never accepted.</p>
+  <p>One studio serves several banks. Each bank is a <b>tenant</b>. The <b>owner</b> tenant holds shared content: the platform and the schemes. A bank reads shared content and never changes it; it sets its own configuration values and writes hooks. You <b>sign in</b> to the studio, with the studio's own identity provider (for local work and training, the built-in development sign-in lists the users). Everything you do is done as that user, in that user's tenant, and the server checks every change against one permission table. To act as another user, <span class="ui">Sign out</span> in the top bar and sign in as them. Each role lands on its own page and sees only the views its work needs in the left menu. The studio's sign-in is separate from the runtime's: a runtime token is never accepted.</p>
   <div class="table"><table>
     <thead><tr><th>User</th><th>Tenant</th><th>Role</th><th>May</th></tr></thead>
     <tbody>
       <tr><td><code>shared.designer</code></td><td>owner</td><td>workflow designer, workflow developer</td><td>Compose workflows and schemes, and build the blocks they use</td></tr>
       <tr><td><code>workflow.designer</code></td><td>owner</td><td>workflow designer</td><td>Compose workflows, subflows and schemes from existing blocks, with no code; lands on the workflow designer</td></tr>
       <tr><td><code>workflow.developer</code></td><td>owner</td><td>workflow developer</td><td>Build activities, scripts, native bindings, ports, rules, tables, simulators, extensions; lands on the artefact editors</td></tr>
-      <tr><td><code>shared.checker</code></td><td>owner</td><td>platform approver</td><td>Approve shared change sets as versions; retire releases; waive</td></tr>
-      <tr><td><code>shared.auditor</code></td><td>owner</td><td>auditor</td><td>Read only</td></tr>
+      <tr><td><code>shared.checker</code></td><td>owner</td><td>platform approver</td><td>Approve shared change sets as versions; retire releases; waive; lands on Governance</td></tr>
+      <tr><td><code>shared.auditor</code></td><td>owner</td><td>auditor</td><td>Read only: the catalogue, the kit and governance</td></tr>
       <tr><td><code>service.operations</code></td><td>owner</td><td>service operations</td><td>Retire releases, import in-flight counts</td></tr>
       <tr><td><code>users.admin</code>, <code>users.approver</code></td><td>owner</td><td>administrator</td><td>Change the users and roles: one proposes, the other approves</td></tr>
       <tr><td><code>example.maker</code></td><td>example-bank</td><td>bank configurator</td><td>The bank's hooks, rules, dials, simulators, bindings and test bench, in scope <code>b</code> only; lands on the bank workspace</td></tr>
-      <tr><td><code>example.checker</code></td><td>example-bank</td><td>bank approver</td><td>Approve the bank's change sets as versions</td></tr>
+      <tr><td><code>example.checker</code></td><td>example-bank</td><td>bank approver</td><td>Approve the bank's change sets as versions: its configuration, its tables, its port bindings, a scheme it licenses</td></tr>
       <tr><td><code>example.auditor</code></td><td>example-bank</td><td>auditor</td><td>Read only</td></tr>
       <tr><td><code>second.maker</code>, <code>second.checker</code></td><td>second-bank</td><td>bank configurator, bank approver</td><td>Only their own bank</td></tr>
     </tbody>
@@ -318,23 +348,30 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     </tbody>
   </table></div>
   <p>A release is <code>major.minor.patch</code>. An interface change is a new major, which is a new name (<code>.v2</code>); an improvement is a minor; a fix is a patch. <b>A published release never changes.</b> A change is a new release, and the studio proposes which one from the interface difference.</p>
-  <p><b>Values and logic.</b> A value a bank may change (a limit, a list of rails) is a parameter with a default and bounds, looked up by date, so it reaches payments already in flight. Logic is pinned when an instance starts and does not change under it.</p>
+  <p><b>Values and logic.</b> A value a bank may change (a limit, a list of rails, a cut-off) is a parameter with a type, a default and bounds. The bank sets it in its configuration set with a <code>validFrom</code> and, if it ends, a <code>validTo</code>; a value outside its bounds, or two periods that overlap, is refused (L14). Values are looked up by date, so they reach payments already in flight. Logic is pinned when an instance starts and does not change under it.</p>
 
   <h3 id="kinds">The kinds of artefact</h3>
   <div class="table"><table>
     <thead><tr><th>Kind</th><th>What it is</th><th>Where you edit it</th></tr></thead>
     <tbody>
       <tr><td>Workflow</td><td>Flow only: steps, branches, loops, waits through composites. Kinds: <i>platform</i>, <i>segment</i>, <i>leg</i>, <i>handler</i>, <i>subflow</i></td><td>Workflow designer</td></tr>
-      <tr><td>Activity</td><td>A block a workflow calls: validate, enrich, map, exchange, decide, hold, post, notify, screen, reserve. It declares what it reads, what it writes, its outcomes, its effect and its policy</td><td>Editors: Activity contract, Map, Composite</td></tr>
+      <tr><td>Activity</td><td>A block a workflow calls, of one of twelve types: <code>map</code>, <code>validate</code>, <code>enrich</code>, <code>screen</code>, <code>decide</code>, <code>reserve</code>, <code>exchange</code>, <code>post</code>, <code>notify</code>, <code>hold</code>, <code>reconcile</code> and <code>protect</code> (encrypt a file for its recipient, or decrypt one received, through a key service). It declares what it reads, what it writes, its outcomes, its effect and its policy</td><td>Editors: Activity contract, Map, Composite</td></tr>
       <tr><td>Rule, rule set, decision table</td><td>Business rules the rule service evaluates. A rule yields findings or decisions; a table has a hit policy</td><td>Editors: Rule, Rule set, Decision table</td></tr>
       <tr><td>Port</td><td>A connection to one party: a scheme, core banking, screening</td><td>Editors: Port</td></tr>
       <tr><td>Simulator</td><td>Stands in for a port's party in tests, with scenarios: accept, reject, no reply, late reply, duplicates and more</td><td>Editors: Simulator</td></tr>
-      <tr><td>Hook</td><td>A bank's own logic at a hook point a platform workflow offers</td><td>Workflow designer, kind hook</td></tr>
+      <tr><td>Hook</td><td>A bank's own logic at a hook point a platform workflow declares, such as <code>p.wf.corporate.v1#before-release</code>. The bank binds it to the point in its configuration set</td><td>Workflow designer, kind hook; bound in Tenant</td></tr>
       <tr><td>Scheme</td><td>A scheme manifest: its messages and its <b>dispatch table</b>, which routes every message</td><td>Editors: Scheme and dispatch table</td></tr>
+      <tr><td>Reference table</td><td>Reference data looked up by date: a calendar, cut-off times, branches, the participant directory. Columns and a key; each edition of its rows has a <code>validFrom</code>, and a new edition is a new minor release (I-150)</td><td>Bank workspace, Calendar, cut-offs and branches</td></tr>
+      <tr><td>Port bindings</td><td>A bank's adapter for each port, with a valid-from date and settings; a credential is only a secret reference</td><td>Bank workspace, Port bindings</td></tr>
+      <tr><td>Bank pack (lock file)</td><td>What a bank takes from the factory, and the schemes it licenses (I-205)</td><td>Bank workspace, Schemes licensed</td></tr>
       <tr><td>Configuration set</td><td>A bank's values, accepted pack releases and hook bindings, with effective dates</td><td>Tenant</td></tr>
       <tr><td>Test</td><td>A target, a level, a bench, what is given and what is expected</td><td>Test bench</td></tr>
     </tbody>
   </table></div>
+
+  <h3 id="effects">Effects, attempts and idempotency keys</h3>
+  <p>Every activity declares its <b>effect</b>: <code>pure</code> (only the context, its parameters and its rule sets), <code>read</code> (it reads outside state), <code>write</code> or <code>external</code>. Every attempt is <b>at least once</b> on every engine: an attempt in flight when its worker stops is run again (R-03-25). So an activity with an outside effect (a write or external effect, a <code>reserve</code>, <code>hold</code> or <code>notify</code>, an <code>exchange</code> that sends) carries an <b>idempotency key</b> built from a business id of the header, whether or not it retries (check L54). Retry is allowed only on an activity that is pure, reads, or carries a key.</p>
+  <p>A <code>validate</code> or <code>decide</code> with no rule sets is a check of its own. It is <code>pure</code> when it is bound to a script and names no port, and <code>read</code> otherwise (check L57, I-342). A pure activity never names a port; the interpreter refuses a port call from one.</p>
 
   <h3 id="path">How a payment runs</h3>
   <p>Learn this path. Most of the exercises follow it, and part 6 builds every piece of it.</p>
@@ -367,6 +404,14 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 
   <h3 id="changesets">Change sets</h3>
   <p>Some drafts refer to one another: a port and its simulator, a composite and its subflow, a scheme and its legs. None can be published first. Approving a draft therefore publishes its <b>change set</b>, which the studio generates: the draft and every draft it refers to or that refers to it. They are checked and tested together, and all publish or none does. Each change set gets an id such as <code>CS-2026-11-17-001</code>, and an export lists the change sets its artefacts came from.</p>
+
+  <h3 id="reach">What reaches the runtime</h3>
+  <p>The studio never runs a payment. What it gives a bank's runtime is built on approval, signed with the studio's key, and published to the content branch, never rewritten:</p>
+  <ul>
+    <li>A <b>distribution</b>: the logic one bank runs (the platform, the schemes it licenses and the bank's own pack), with the parameter contract of every dial. A platform or scheme approval builds one for every bank that takes it; a bank's own pack or licence approval builds that bank's.</li>
+    <li>A <b>configuration release</b>: the bank's values, its reference tables and its port bindings. Each approval that changes one gets a release of its own, numbered per approval: the configuration set's release, or the minor after the bank's newest. It is never a patch (I-340, R-11-115).</li>
+  </ul>
+  <p>On the bank's runtime, a service engineer installs a distribution and puts a configuration release in force; neither happens until a person with the bank approver's role consents (R-09-77). Part 8 points to the runtime's own guides.</p>
 </section>
 
 <!-- ============================================================ 4 -->
@@ -374,9 +419,13 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h2>4. Every feature</h2>
   <p class="lede">A reference to every view in the left menu, then the command line and the HTTP API. Each view lists what it is for, its main controls, and something to try.</p>
 
+  <h3 id="f-shell">The frame of every page</h3>
+  <p>Every screen is built with Microsoft Fluent UI 2 (<code>docs/adr/0003-ui-fluent.md</code>), the same as the runtime's consoles. A deep navy <b>top bar</b> holds the product name, a search box (<span class="ui">Find an artefact by name or path</span>, which opens the catalogue), a badge for the tenant you work for (<i>shared content</i>, or the bank's name), a <i>design time</i> badge, the <b>theme menu</b> (light, dark, or as the system; kept in your browser only), your initials, name and roles, and <span class="ui">Sign out</span>. The <b>left menu</b> lists, with an icon each, only the views your roles may use; at its foot is the number of documents you can see. On a narrow screen the menu folds behind the <span class="ui">Menu</span> button.</p>
+  <p>Choices within a page are Fluent <b>tabs</b>, not buttons: the editors' kinds, the test bench's <span class="ui">Tests</span> and <span class="ui">Ad hoc bench</span>, a run's input, the designer's <span class="ui">Canvas</span>, <span class="ui">Outline</span> and <span class="ui">Expanded form</span>, an artefact page's summary and its YAML, the tabs of governance. Click a tab to switch; the page does not reload. A message after an action (<i>Saved draft …</i>, <i>Refused (403 …)</i>) appears in a coloured bar near the button you pressed. The screenshots in <code>docs/ui/screenshots/</code> show the main views, in light and dark.</p>
+
   <h3 id="f-catalogue">Catalogue and artefact pages</h3>
-  <p>Every artefact the tenant can see, published and draft. Search by name, title or data path, and filter by <span class="ui">Kind</span>, <span class="ui">Scope</span> and <span class="ui">Type</span>. Click a name to open its page.</p>
-  <p>An artefact page shows, as the kind allows: <span class="ui">Contract</span> (reads, writes, outcomes, errors), <span class="ui">Steps and effective policy</span>, <span class="ui">Outline</span>, <span class="ui">Rule</span> with its <span class="ui">Examples</span>, <span class="ui">Gaps and overlaps</span> for a table, <span class="ui">Simulator scenarios</span>, <span class="ui">Simulators for this port</span>, <span class="ui">Message catalogue and dispatch</span> for a scheme, <span class="ui">Uses</span> and <span class="ui">Used by</span>, <span class="ui">Tests that target it</span>, <span class="ui">Releases</span>, <span class="ui">Provenance</span>, <span class="ui">Interface</span>, <span class="ui">Issues</span> and the <span class="ui">Document</span> itself.</p>
+  <p>Every artefact the tenant can see, published and draft. Search by name, title, description or a data path read or written, and filter by <span class="ui">Scope</span>, <span class="ui">Kind</span> and <span class="ui">Type</span>. Click a name to open its page.</p>
+  <p>An artefact page has two tabs. <span class="ui">YAML</span> is the document itself, with its hash and its file on the branch. <span class="ui">Summary</span> shows, as the kind allows: <span class="ui">Issues</span>, <span class="ui">Contract</span> (reads, writes, outcomes, errors), <span class="ui">Interface</span>, <span class="ui">Outline</span>, <span class="ui">Steps and effective policy</span>, <span class="ui">Rule</span> with its <span class="ui">Examples</span>, <span class="ui">Gaps and overlaps</span> for a table, <span class="ui">Simulator scenarios</span>, <span class="ui">Simulators for this port</span>, <span class="ui">Message catalogue and dispatch</span> for a scheme; and beside them <span class="ui">Releases</span> (with maker and checker), <span class="ui">Used by</span>, <span class="ui">Uses</span>, <span class="ui">Provenance</span> and <span class="ui">Tests that target it</span>. Buttons above the tabs take you on: <span class="ui">Run on the bench</span>, <span class="ui">Edit in the form</span>, <span class="ui">See the expanded form</span>, <span class="ui">Clone into a new workflow</span>, <span class="ui">Export</span>, <span class="ui">Open its subflow</span>, <span class="ui">Generated types</span>, <span class="ui">Pins and retirement</span>.</p>
   <p><b>Try.</b> Search <code>iban</code>, open <code>uae.p.validate.iban.v1</code>, and follow <span class="ui">Used by</span> to the WPS leg.</p>
 
   <h3 id="f-data">ISO data</h3>
@@ -396,22 +445,22 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>Where workflows and hooks are built.</p>
   <ul>
     <li><b>New.</b> <span class="ui">Start from</span> Blank, From a template, or Clone a release. <span class="ui">Kind</span> workflow or hook. <span class="ui">Workflow kind</span> platform, leg, segment, handler or subflow. <span class="ui">Name</span>, <span class="ui">Title</span>, then <span class="ui">Create</span>.</li>
-    <li><b>Open.</b> A published workflow, as the starting point of a new release.</li>
-    <li><b>Editing.</b> The <span class="ui">Workflow YAML</span> on the left and the <span class="ui">Canvas</span> on the right edit the same document. On the canvas: <span class="ui">+ Add a step</span>, move up and down, cut, delete, branches, loops, a deadline lane and a finally lane. <span class="ui">Outline</span> lists the steps; <span class="ui">Expanded form</span> shows what engines run.</li>
+    <li><b>Open.</b> Your tenant's drafts, or <span class="ui">New release of a published one</span>: choose it under <span class="ui">Published workflow</span> and click <span class="ui">Open</span>.</li>
+    <li><b>Editing.</b> The <span class="ui">Workflow YAML</span> on the left and the canvas on the right edit the same document. Three tabs above the right side: <span class="ui">Canvas</span>, <span class="ui">Outline</span> (the steps as a list) and <span class="ui">Expanded form</span> (what engines run). On the canvas each step has <span class="ui">+</span> (insert a step here), <span class="ui">↑</span>, <span class="ui">↓</span>, cut and delete; below the steps are <span class="ui">+ Add a step</span>, <span class="ui">Add a deadline lane</span> and <span class="ui">Add a finally lane</span>; a switch has <span class="ui">Add a branch</span>, a step <span class="ui">Add a catch</span>, and a platform workflow <span class="ui">Declare a slot</span> and <span class="ui">Declare a hook point</span>.</li>
     <li><b>Checks.</b> Every static check runs as you type, reported at the authored step.</li>
     <li><b>Interface and release.</b> What changed in the interface, and the release that implies.</li>
-    <li><b>Save and release.</b> <span class="ui">Save draft</span> (no approval needed), then <span class="ui">Request release</span>. An approver for the area who is not a maker signs in and clicks <span class="ui">Approve as version</span>. If other drafts must go with it, the panel lists them first.</li>
+    <li><b>Save and publish.</b> <span class="ui">Save draft</span> (no approval needed), then <span class="ui">Request release</span>. An approver for the area who is not a maker signs in and clicks <span class="ui">Approve as version</span>, here or in <span class="ui">Governance</span>. If other drafts must go with it, the panel lists them first under <i>Change set</i>.</li>
   </ul>
 
   <h3 id="f-editors">Artefact editors</h3>
-  <p>Forms for everything that is not a workflow. Each tab has the same frame: <span class="ui">Open a published … as a new release</span>, <span class="ui">Start new</span>, the form, the <span class="ui">Gates</span> panel, <span class="ui">Save and publish</span>, and the <span class="ui">Document</span> pane, where <span class="ui">Edit the YAML</span> lets you write the document directly.</p>
+  <p>Forms for everything that is not a workflow, one tab per kind. Each tab has the same frame: <span class="ui">Open a published … as a new release</span> (it proposes the next patch release, which you may raise), <span class="ui">Start new</span>, the form, the <span class="ui">Gates</span> panel (schema, static checks, tests, provenance), <span class="ui">Save and publish</span> (<span class="ui">Save draft</span>, <span class="ui">Request release</span>, and for an approver <span class="ui">Approve as version</span>), and the <span class="ui">Document</span> pane, where <span class="ui">Edit the YAML</span> lets you write the document directly and <span class="ui">Done</span> brings it back into the form.</p>
   <div class="table"><table>
     <thead><tr><th>Tab</th><th>What you edit</th><th>Worth knowing</th></tr></thead>
     <tbody>
       <tr><td>Rule</td><td>Patterns, conditions, the finding or decision it yields, parameters, examples</td><td>Examples run on every edit. A threshold needs a passing, a failing and a boundary example</td></tr>
       <tr><td>Rule set</td><td>Mode (validation or decision), stages in order, its rules</td><td>A blocking finding stops the next stage</td></tr>
       <tr><td>Decision table</td><td>Inputs, outputs, rows, hit policy</td><td>Gaps and overlaps are analysed as you edit. A <i>first</i> table needs a catch-all row</td></tr>
-      <tr><td>Activity contract</td><td>Type, level, reads, writes, outcomes, errors, effect, policy, ports, rule sets, binding</td><td>A write that is retried needs an idempotency key</td></tr>
+      <tr><td>Activity contract</td><td>Type (one of the twelve), level, reads, writes, outcomes, errors, effect, idempotency key, policy, ports, rule sets, binding</td><td>An outside effect needs an idempotency key, retried or not (L54). A scripted check with no port may be <code>pure</code> (L57)</td></tr>
       <tr><td>Map</td><td>Direction, source model, field mapping, binding</td><td>An inward map should round-trip</td></tr>
       <tr><td>Simulator</td><td>Port, direction, scenarios and their steps</td><td><span class="ui">Add every missing standard scenario</span>. <span class="ui">Stub</span> downloads a deployable stub</td></tr>
       <tr><td>Composite and subflow</td><td>The composite activity, and below it the subflow that implements it</td><td>The subflow has its own save and publish; a reply time is needed when an await has none</td></tr>
@@ -422,7 +471,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <p>An activity or map bound to a script (<code>implementation.binding: script</code>) shows a <span class="ui">Script-behind</span> section. Save the activity as a draft first, then write the script and <span class="ui">Save the script</span>. A script uses only what is injected (<code>ctx</code>, <code>ports</code>, <code>rules</code>, <code>params</code>, <code>clock</code>, <code>ids</code>, <code>log</code>); a call to the clock, randomness, the network or files is refused. Once the activity is published, its script is fixed.</p>
 
   <h3 id="f-assistant">AI assistant</h3>
-  <p>Drafts a rule, activity, simulator or script from an instruction and public scheme text, using Claude. Set <code>ANTHROPIC_API_KEY</code> for the studio server to turn it on. Choose a <span class="ui">Draft kind</span>, a <span class="ui">Target</span> where it applies, and a <span class="ui">Language</span> for a script. Then pick a prompt from <span class="ui">Start from a template</span>, or write the <span class="ui">Instruction</span> yourself, add the <span class="ui">Source text</span>, and <span class="ui">Ask for a draft</span>.</p>
+  <p>Drafts a rule, activity, simulator or script from an instruction and public scheme text, using Claude. Set <code>ANTHROPIC_API_KEY</code> for the studio server to turn it on. Choose a <span class="ui">Kind</span> of draft,
+ a <span class="ui">Target</span> where it applies, and a <span class="ui">Language</span> for a script. Then pick a prompt from <span class="ui">Start from a template</span>, or write the <span class="ui">Instruction</span> yourself, add the <span class="ui">Source text</span>, and <span class="ui">Ask for a draft</span>.</p>
   <p>A template fills the instruction in the studio's own terms, with the parts you must supply in <code>&lt;angle brackets&gt;</code>. Until every one is filled, the page lists them under <i>Still to fill</i> and the request waits. Each template also says what to paste as source text.</p>
   <div class="table"><table>
     <thead><tr><th>Kind</th><th>Templates</th></tr></thead>
@@ -448,51 +498,68 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <ul>
     <li><span class="ui">Choose a bundle zip</span>, or <span class="ui">Use the training bundle</span> (the factory WPS scheme extracted as <code>uae.wpsx</code>). A platform user imports the shared part; a bank part (scope <code>b</code>, configuration sets) is left for that bank, whose configurator imports it once the shared part is a version.</li>
     <li><span class="ui">Preview</span> shows what the bundle holds; the coverage of the source (every file inventoried or excluded with a reason; a file in neither is an error); what was retired, sent to infrastructure, or left unmapped for the expert; the findings; every check (schemas, the static checks, no personal data, no bank name in shared content, scripts inside the injected interface, every document explained by the source, a changed published block given a new release); and the bundle's tests, run against the bundle itself before anything is saved.</li>
-    <li><span class="ui">Import as drafts</span> saves everything as drafts (an unchanged block is reused, not saved again), with provenance naming the source and its revision. Nothing is published: an approver approves each change set as a version in <span class="ui">Governance</span>. A user who may not author a document of the bundle is refused before anything is saved.</li>
+    <li><span class="ui">Import as drafts, as …</span> saves everything as drafts (an unchanged block is reused, not saved again), with provenance naming the source and its revision. Nothing is published: an approver approves each change set as a version in <span class="ui">Governance</span>. A user who may not author a document of the bundle is refused before anything is saved.</li>
   </ul>
 
   <h3 id="f-bench">Test bench</h3>
-  <p>Two tabs. <span class="ui">Tests</span> lists every test the tenant can see: filter, <span class="ui">Run</span> one or <span class="ui">Run all</span>. <span class="ui">Ad hoc bench</span> runs anything you choose:</p>
+  <p>Two tabs at the top. <span class="ui">Tests</span> lists every test the tenant can see, with its last result: <span class="ui">Filter tests</span>, then <span class="ui">Run</span> or <span class="ui">Debug</span> one, or <span class="ui">Run all</span>. A test saved but not yet approved carries a <i>draft</i> badge. <span class="ui">Ad hoc bench</span> runs anything you choose:</p>
   <ul>
-    <li><span class="ui">Start from a test</span> to load one, or choose the <span class="ui">Target</span>, <span class="ui">Level</span>, <span class="ui">Evaluation date</span> and <span class="ui">Tenant for the run</span>.</li>
-    <li><span class="ui">Add a port</span> for each binding: port, simulator, scenario. <span class="ui">Add a signal</span> for pause, resume, cancel or re-screen at a virtual time.</li>
-    <li>Give the run either <span class="ui">Context as JSON</span> or an <span class="ui">Inbound sample</span>. <span class="ui">Add a sample file</span> saves a new synthetic sample. For a whole payment from the bank's channel, also choose the <span class="ui">Start message</span>.</li>
-    <li>Optionally write what you <span class="ui">Expect</span>, then <span class="ui">Run the bench</span>.</li>
+    <li><span class="ui">Start from a test (optional)</span> to load one, or choose the <span class="ui">Target</span>, <span class="ui">Level</span>, <span class="ui">Evaluation date</span> and <span class="ui">Tenant for the run</span>. A bank's user runs only with its own bank's configuration; a designer may run as <code>owner</code> or as a bank.</li>
+    <li>Under <i>Ports and simulators</i>, <span class="ui">Add a port</span> for each binding: <span class="ui">Port</span>, <span class="ui">Simulator</span>, <span class="ui">Scenario</span>. Under <i>Signals</i>, <span class="ui">Add a signal</span> for pause, resume, cancel or re-screen at a virtual time.</li>
+    <li>Under <i>Input</i>, two tabs: <span class="ui">Context as JSON</span> and <span class="ui">Inbound sample</span>. On <span class="ui">Inbound sample</span>, choose the sample; <span class="ui">Add a sample file</span> saves a new synthetic one. For a whole payment from the bank's channel, also choose the <span class="ui">Start message</span>.</li>
+    <li>Optionally write what you expect, under <i>Expect (optional)</i>.</li>
+    <li>Tick <span class="ui">Run with my drafts</span> to run your tenant's drafts in place of their published releases: an activity and its script can be tried before anyone approves them (I-341). The report then says <i>Draft run</i> and names the drafts. A draft run publishes nothing and never counts as a test's result.</li>
+    <li><span class="ui">Run the bench</span>, or <span class="ui">Debug step by step</span>.</li>
   </ul>
-  <p>The run report: <span class="ui">Checks</span>, <span class="ui">Business trace</span>, <span class="ui">Detail</span> (<span class="ui">Open every composite</span>), <span class="ui">Release trace</span>, <span class="ui">Timeline on the virtual clock</span>, <span class="ui">Instances</span>, <span class="ui">Messages in and out</span>, <span class="ui">Steps and context deltas</span>, <span class="ui">Rule traces</span>, <span class="ui">Bench and bindings</span>, and any duplicate or unmatched messages. <span class="ui">Save the run as a test</span> turns a run into a test, with the assertions you tick.</p>
+  <p>The run report: the outcome, the virtual time and the clock's start; <i>Warnings</i> (each port the run reached that was not on the bench, and the simulator it used instead); <span class="ui">Checks</span>; <span class="ui">Business trace</span>; <span class="ui">Detail</span>, the steps inside composites. Then tabs: <span class="ui">Release trace</span>, <span class="ui">Timeline</span> (on the virtual clock, with <span class="ui">Open every composite</span>), <span class="ui">Instances</span>, <span class="ui">Messages</span> and <span class="ui">Bench and bindings</span>; below them the steps and context deltas, rule traces, and any duplicate or unmatched messages.</p>
+  <p><b>Save the run as a test.</b> Under the report, <i>Save the run as a test (assertions)</i> fills a test from the run: <span class="ui">Test id</span>, <span class="ui">Title</span>, and ticks for the outcome, the reason code, the virtual time, the attempts per step, the business trace, the detail and the messages, each editable. <span class="ui">Save as a test draft as …</span> saves it as a draft. A test saved from a draft run goes into the change set of the drafts it ran, so one approval publishes the activity, its script and its tests together.</p>
 
   <h3 id="f-debug">The debugger</h3>
   <p>On the bench, <span class="ui">Debug step by step</span> runs the same thing end to end, on the studio's virtual clock, and opens the debugger instead of the report. A saved test has a <span class="ui">Debug</span> button beside <span class="ui">Run</span>. Nothing it does touches a running payment.</p>
   <ul>
     <li><b>Where the run is</b>, on the left: the workflow (and, inside it, the leg or hook it is in), and its steps. A shared segment shows its own steps. Each step is ticked with its outcome as the run reaches it, and the current one is outlined.</li>
     <li><b>What happened</b>, on the right, in plain words; then <b>Decisions and rules</b> (the decisions a step took, its findings with reason codes, the rules and tables that ran); <b>Data changed by this event</b>, before and after; and <b>All the data now</b>, with what changed marked.</li>
-    <li><span class="ui">Step into ▶</span> moves one event forward, into a leg or hook when the run goes there. <span class="ui">Step over ⤼</span> moves on at the same level, past a leg or hook at one go. <span class="ui">Step out ⤴</span> goes back up to the workflow that started this one. <span class="ui">Step back</span> and <span class="ui">Restart</span> go backwards: a run is the same every time, so stepping back is exact.</li>
+    <li><span class="ui">Step into ▶</span> moves one event forward, into a leg or hook when the run goes there. <span class="ui">Step over ⤼</span> moves on at the same level, past a leg or hook at one go. <span class="ui">Step out ⤴</span> goes back up to the workflow that started this one. <span class="ui">◀ Step back</span> and <span class="ui">⏮ Restart</span> go backwards: a run is the same every time, so stepping back is exact.</li>
     <li>Click the dot beside a step to set a breakpoint; <span class="ui">Continue ⏭</span> runs to the next one, or to the end. Tick <span class="ui">every event</span> to stop on attempts, replies and the rest too. <span class="ui">The whole run, event by event</span> lists every stop; click one to jump there. <span class="ui">Show the run report</span> gives the usual report.</li>
   </ul>
   <div class="note">The debugger keeps the data after every event. For a very large batch it stops keeping it after a limit and says so; debug a smaller sample to see every step.</div>
 
   <h3 id="f-kit">Conformance kit</h3>
-  <p>The 51 scenarios every engine must reproduce, one per construct of the language: sequence, handlers, switch, parallel, loops, retry, timeouts, awaits, composites, hooks, signals, pins, supersession and more. <span class="ui">Run all 51</span>, filter by <span class="ui">Construct</span>, or run one and read its expected and actual traces.</p>
+  <p>The 59 scenarios every engine must reproduce, by construct of the language: call, handle, switch, parallel, loops, retry, timeouts, awaits, blocks, compensation, deadlines, slots, signals, holds, parking, hooks, handlers, pins, lookups, supersession, claim checks, rules, money and more. <span class="ui">Run all 59</span>, filter by <span class="ui">Construct</span>, tick <span class="ui">Failed only</span>, or run one and read its expected and actual traces. The same kit runs on Temporal, DTFx, Elsa and Flowable from the command line (<a href="#setup">part 2</a>).</p>
+
+  <h3 id="f-bank">Bank workspace</h3>
+  <p>Where a Bank Configurator lands. Everything the bank owns, in scope <code>b</code>, on one page:</p>
+  <ul>
+    <li><span class="ui">Hooks</span> (<span class="ui">New hook</span>), <span class="ui">Rules and rule values</span> (<span class="ui">New rule</span>), <span class="ui">Simulators and scenarios</span> (<span class="ui">New simulator</span>).</li>
+    <li><span class="ui">Port bindings</span>: one row per port the bank binds, with its <span class="ui">Port</span>, <span class="ui">Adapter</span>, <span class="ui">Valid from</span>, <span class="ui">Settings (key=value)</span> and <span class="ui">Secret reference</span>. <span class="ui">Add binding</span>, <span class="ui">Check</span> (L48: a port the bank may bind, an adapter, a valid date; a credential only as a reference) and <span class="ui">Save draft</span>. The Bank Approver approves them as a version; they reach the runtime in the next configuration release.</li>
+    <li><span class="ui">Calendar, cut-offs and branches</span>: the bank's own reference tables. Choose a <span class="ui">Table</span>, give the <span class="ui">New edition valid from</span> date, <span class="ui">Add a row</span>, <span class="ui">Check</span> and <span class="ui">Save as draft</span>; a published edition never changes. <span class="ui">New table</span> starts one of the bank's own: <span class="ui">Name</span> (<code>b.ref.&lt;name&gt;.v1</code>), <span class="ui">Title</span>, <span class="ui">Domain</span>, its columns (id, type, title, required, allowed values, key; <span class="ui">Add a column</span>), then <span class="ui">Start the table</span>, which hands it to the edition editor for its first rows at release 1.0.0 (I-150).</li>
+    <li><span class="ui">Schemes licensed</span>: every scheme of the factory, whether the bank licenses it, and whether its configuration binds it. The configurator clicks <span class="ui">License &lt;scheme&gt;</span>, which proposes the bank's next lock file; the Bank Approver clicks <span class="ui">Approve the licence</span>, which publishes it and builds the bank's next distribution carrying the scheme. A configuration that binds a scheme the bank does not license is refused at approval (I-205).</li>
+    <li><span class="ui">Dials</span> (<span class="ui">Set dials</span>) and <span class="ui">Hook bindings</span> (<span class="ui">Bind hooks</span>) lead to <span class="ui">Tenant</span>. <span class="ui">Test bench by workflow</span> opens the bench on any workflow the bank can configure, with the bank's configuration.</li>
+  </ul>
 
   <h3 id="f-tenant">Tenant</h3>
-  <p>A bank's own settings, for its Bank Configurator and Bank Approver. A Bank Configurator lands on the <span class="ui">Bank workspace</span>: its hooks, rules, dials, simulators, hook bindings, and the test bench for every workflow the bank can configure, run with the bank's configuration. A saved configuration set is a draft until the Bank Approver approves it as a version.</p>
+  <p>A bank's configuration set, for its Bank Configurator and Bank Approver. A saved configuration set is a draft until the Bank Approver approves it as a version in <span class="ui">Governance</span>; that approval builds the bank's next configuration release.</p>
   <ul>
-    <li><span class="ui">Configuration set</span>, <span class="ui">Parameters</span> and <span class="ui">Hook points</span>: what the bank has set and bound now.</li>
-    <li><span class="ui">Edit the configuration set</span>: the YAML, <span class="ui">Bump the release</span>, <span class="ui">Reset</span>, and <span class="ui">Save the configuration set</span>. Values outside their bounds are refused, and a changed set needs a later release.</li>
+    <li><span class="ui">Configuration set</span> (its release, the accepted shared releases, who approved it), <span class="ui">Parameters</span> and <span class="ui">Hook points</span>: what the bank has set and bound now.</li>
+    <li><span class="ui">Edit the configuration set</span>: the <span class="ui">Configuration set YAML</span>, <span class="ui">Reset</span>, and <span class="ui">Save the configuration set</span>. The set is checked on every edit: a value outside its bounds or an overlapping period shows L14, and the save stays off until it is fixed. A changed set needs a later release, a minor or a major: a patch is refused (L53). <span class="ui">Bump the release</span> raises only the patch, so write the next minor in the <code>release</code> line yourself (see <a href="#help">troubleshooting</a>).</li>
     <li><span class="ui">Parameters this bank may set</span>: every parameter with its default and bounds, and <span class="ui">Set a value</span>.</li>
     <li><span class="ui">Compatibility run</span>: before the bank accepts a new shared release, each bound hook point must still exist with a compatible contract and each of its hook tests must pass.</li>
     <li><span class="ui">Tenant export</span>: the shared packs the bank accepted, by hash, its bank pack and its configuration set.</li>
   </ul>
 
   <h3 id="f-export">Export</h3>
-  <p>Builds the package an engine runs. Tick the <span class="ui">Workflows</span>, choose the <span class="ui">Target</span> (temporal, dtfx, flowable or elsa) and the <span class="ui">Tenant</span>, optionally tick <span class="ui">With simulators</span> for a test deployment, then <span class="ui">Preview</span> and <span class="ui">Download the zip</span>.</p>
-  <p>The manifest lists: the <b>workers</b>, one per task queue, each with the tasks it serves; the <b>tasks</b>, each named <code>name@release</code>; the <b>flows</b> in expanded form with their pins; the <b>change sets</b> the artefacts came from; and every file with its hash. Flowable packages carry generated BPMN and a portability report. DTFx and Elsa packages are the same but for their binding: both run the documents with one generic interpreter. A package with simulators is marked not promotable. The same request gives the same bytes.</p>
+  <p>Builds the package an engine runs. Tick the <span class="ui">Workflows</span> (<span class="ui">Filter workflows</span> helps), and under <span class="ui">Target and tenant</span> choose the <span class="ui">Target</span>: <code>temporal</code> (the default), <code>dtfx</code>, <code>flowable</code> or <code>elsa</code>, and the <span class="ui">Tenant</span>. Optionally tick <span class="ui">With simulators, for a test deployment</span>; then <span class="ui">Preview</span> and <span class="ui">Download the zip</span>.</p>
+  <p>The manifest lists: the <b>workers</b>, one per task queue, each with the tasks it serves; the <b>tasks</b>, each named <code>name@release</code>; the <b>flows</b> in expanded form with their pins; the <b>change sets</b> the artefacts came from; and every file with its hash. Every package is signed: <code>release.json</code> states the release and the hash of every file, and <code>release.sig</code> is the studio's signature over it (R-09-23); a deploy refuses a package that does not verify. Flowable packages carry generated BPMN and a portability report. Temporal, DTFx and Elsa packages differ only in their binding: each runs the documents with one generic interpreter. A package with simulators is marked not promotable. The same request gives the same bytes.</p>
+
+  <h3 id="f-branch">Content branch</h3>
+  <p>Below the export, the <span class="ui">Content branch</span> panel shows the studio's only store: the repository, the branch, the folder <code>content-configurations/</code>, its head commit, the publishing mode, the engine package it publishes, and whether a token is present (never the token). <span class="ui">Read the branch again</span> picks up commits made elsewhere. Each change set in progress is its own branch, <code>studio/&lt;id&gt;</code>, with one commit per draft save; approval publishes the change set as one commit on the content branch, or opens a pull request in pull-request mode. Under <i>How the studio publishes</i>, a user with the right role chooses the <span class="ui">Mode</span> (<i>A commit per change set</i> or <i>A pull request per change set</i>), the <span class="ui">Engine package</span> released with each workflow, and an optional <span class="ui">Environment</span>, then <span class="ui">Save settings</span>. The panel then lists the change sets in progress and those published.</p>
+
 
   <h3 id="f-governance">Governance</h3>
   <div class="table"><table>
     <thead><tr><th>Tab</th><th>What it does</th></tr></thead>
     <tbody>
-      <tr><td>Review and approve</td><td>The tenant's drafts with their errors, state, and what each would publish with. A maker requests the release; an approver approves the change set as a version; a maker deletes</td></tr>
+      <tr><td>Review and approve</td><td>The tenant's drafts with their errors, state, and what each would publish with: artefacts, a bank's configuration set (<code>config:&lt;bank&gt;</code>), its tables and port bindings. A maker requests the release; an approver who is not a maker clicks <span class="ui">Approve as version</span>; a maker deletes. An approval that builds a distribution or a configuration release says so</td></tr>
       <tr><td>Users and roles</td><td>The users, the permission table, and the permission check for any user, action, kind and scope</td></tr>
       <tr><td>Pins, retirement, propagation</td><td>Who pins a release, in-flight counts, retiring a release, and which workflows a patch should propagate to</td></tr>
       <tr><td>Supersessions</td><td>Draft a supersession of a release in flight, test it, and hand it over to operations</td></tr>
@@ -513,119 +580,188 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>test [ID...]</code></td><td>The factory and bank tests, or the ones named, with their checks and traces</td></tr>
       <tr><td><code>kit [CK-ID...]</code></td><td>The conformance kit on the studio interpreter</td></tr>
       <tr><td><code>check</code></td><td>Schemas and static checks over every artefact</td></tr>
+      <tr><td><code>seed-content [--write-local]</code></td><td>Publish the factory and the example bank to the content branch, or, with <code>--write-local</code>, regenerate this repository's <code>content-configurations/</code></td></tr>
+      <tr><td><code>bank-pack &lt;bank&gt; [--licensed &lt;scheme&gt; ...] [--release r] [--write]</code></td><td>Write a bank pack's lock file in the repository (the studio's <span class="ui">Schemes licensed</span> does it on the branch)</td></tr>
       <tr><td><code>export &lt;workflow&gt; &lt;target&gt;</code></td><td>Print an export manifest</td></tr>
-      <tr><td><code>export-zip &lt;workflow&gt; &lt;target&gt; &lt;out.zip&gt; [--with-simulators] [--tenant t]</code></td><td>Write an export package</td></tr>
-      <tr><td><code>deploy &lt;package&gt; --workflow &lt;name&gt; [--inbound file [--message m]] [--tenant t] [--config file] [--bench port=simulator:scenario ...]</code></td><td>Deploy on DTFx with a separate worker per queue, and run</td></tr>
+      <tr><td><code>export-zip &lt;workflow&gt; &lt;target&gt; &lt;out.zip&gt; [--with-simulators] [--tenant t]</code></td><td>Write a signed export package</td></tr>
+      <tr><td><code>signing-key &lt;dir&gt;</code></td><td>Make a signing key and its trusted-signers file; an existing key is never overwritten</td></tr>
+      <tr><td><code>import &lt;bundle.zip|dir&gt; [--bank-tenant b] [--apply]</code></td><td>Check an extraction bundle and run its tests; <code>--apply</code> imports it as drafts, on a running studio with <code>--server &lt;url&gt;</code> after <code>login</code>. <code>import-sample &lt;out.zip&gt;</code> writes the training bundle</td>
+</tr>
+      <tr><td><code>login --server &lt;url&gt;</code>, <code>logout</code>, <code>whoami</code></td><td>Sign the command line in to a running studio, by the device flow</td></tr>
+      <tr><td><code>deploy &lt;package&gt; --workflow &lt;name&gt; [--inbound file [--message m]] [--date YYYY-MM-DD] [--tenant t] [--config file] [--value parameter=value ...] [--bench port=simulator:scenario ...]</code></td><td>Verify the package's signature, start a separate worker per queue, and run on the engine the package was exported for: DTFx, Elsa, Temporal, or Flowable (with <code>TH_FLOWABLE_URL</code>)</td></tr>
     </tbody>
   </table></div>
-  <p>Exit codes: 0 when it passes or ends, 1 when it fails, 2 for a mistake in the command line. Everything the web app does goes through the HTTP API under <code>/api</code>; the main routes are <code>/api/drafts</code>, <code>/api/review</code>, <code>/api/publish</code>, <code>/api/change-set</code>, <code>/api/scripts</code>, <code>/api/samples</code>, <code>/api/check</code>, <code>/api/gates</code>, <code>/api/tests</code>, <code>/api/bench/run</code>, <code>/api/kit/run</code>, <code>/api/export</code>, <code>/api/export/download</code> and <code>/api/tenants/&lt;bank&gt;/configuration</code>.</p>
+  <p>Exit codes: 0 when it passes or ends, 1 when it fails, 2 for a mistake in the command line. <code>npm run studio -- help</code> prints the usage.</p>
+  <p>Everything the web app does goes through the HTTP API under <code>/api</code>, signed in as a user. The main routes:</p>
+  <div class="table"><table>
+    <thead><tr><th>Area</th><th>Routes</th></tr></thead>
+    <tbody>
+      <tr><td>Catalogue and data</td><td><code>/api/catalogue</code>, <code>/api/artefacts/&lt;name&gt;</code>, <code>/api/data</code>, <code>/api/model</code>, <code>/api/registry</code>, <code>/api/schemes</code>, <code>/api/sample-messages</code></td></tr>
+      <tr><td>Authoring</td><td><code>/api/new</code>, <code>/api/drafts</code>, <code>/api/scripts</code>, <code>/api/samples</code>, <code>/api/check</code>, <code>/api/gates</code>, <code>/api/expanded</code>, <code>/api/explain</code>, <code>/api/help/fields</code></td></tr>
+      <tr><td>Maker and checker</td><td><code>/api/review</code>, <code>/api/change-set</code>, <code>/api/request-release</code>, <code>/api/publish</code>, <code>/api/audit</code>, <code>/api/audit/verify</code></td></tr>
+      <tr><td>Bench, debugger and kit</td><td><code>/api/tests</code>, <code>/api/tests/&lt;id&gt;/run</code>, <code>/api/tests/run-all</code>, <code>/api/bench/run</code> (with <code>drafts: true</code> for a draft run), <code>/api/debug/run</code>, <code>/api/kit</code>, <code>/api/kit/run</code></td></tr>
+      <tr><td>A bank</td><td><code>/api/tenants/&lt;bank&gt;/configuration</code>, <code>…/settable</code>, <code>…/licensing</code>, <code>…/reference-tables</code>, <code>…/port-bindings</code>, <code>…/compatibility-run</code>, <code>…/export</code></td></tr>
+      <tr><td>Export and releases</td><td><code>/api/export</code>, <code>/api/export/download</code>, <code>/api/packs</code>, <code>/api/distributions</code>, <code>/api/configuration-releases</code>, <code>/api/git</code></td></tr>
+      <tr><td>Import and assistant</td><td><code>/api/import/preview</code>, <code>/api/import/apply</code>, <code>/api/import/prompt</code>, <code>/api/ai/draft</code>, <code>/api/ai/agent</code>, <code>/api/ai/templates</code></td></tr>
+      <tr><td>Governance</td><td><code>/api/users</code>, <code>/api/permit</code>, <code>/api/releases/&lt;name&gt;/pins</code>, <code>/api/retire</code>, <code>/api/propagate</code>, <code>/api/supersessions</code>, <code>/api/conformance/report</code>, <code>/api/test-coverage</code></td></tr>
+    </tbody>
+  </table></div>
+
 </section>
 
 <!-- ============================================================ 5 -->
 <section class="part" id="train">
   <h2>5. Training path</h2>
-  <p class="lede">Twelve exercises in the web app. Unless an exercise says otherwise, sign in as <b>shared.designer</b>.</p>
+  <p class="lede">Seventeen exercises in the web app, on <code>npm run studio:dev</code>. Unless an exercise says otherwise, sign in as <b>shared.designer</b>. Each exercise starts on the view named in its first step: pick it in the left menu. Restart the studio to start again from the seeded content.</p>
 
   <h3>1. Find your way around (10 minutes)</h3>
   <ol class="steps">
-    <li>Open <span class="ui">Catalogue</span> and search <code>iban</code>. Open <code>uae.p.validate.iban.v1</code> and read its contract, its steps and who uses it.</li>
-    <li>Filter <span class="ui">Kind</span> to workflow and open <code>p.wf.corporate.v1</code>. Find the <code>scheme-leg</code> slot and the hook points <code>before-release</code> and <code>on-close</code>.</li>
-    <li>In <span class="ui">ISO data</span>, <span class="ui">Canonical model</span>, open <code>payment</code> then <code>instructedAmount</code>. In <span class="ui">Code registry</span>, look up <code>AM04</code>.</li>
-    <li>Open the <code>uae.wps</code> scheme's message catalogue and read its dispatch table.</li>
+    <li>Type <code>iban</code> in the top bar's search box and press Enter: the <span class="ui">Catalogue</span> opens on what you asked. Open <code>uae.p.validate.iban.v1</code> and read its <span class="ui">Summary</span>: the <span class="ui">Contract</span>, the <span class="ui">Releases</span> and <span class="ui">Used by</span>. Follow <span class="ui">Used by</span> to the WPS leg. Click the <span class="ui">YAML</span> tab to see the document itself.</li>
+    <li>In the catalogue, set <span class="ui">Kind</span> to workflow and open <code>p.wf.corporate.v1</code>. In its <span class="ui">Outline</span>, find the <code>scheme-leg</code> slot and the hook points <code>before-release</code> and <code>on-close</code>.</li>
+    <li>Open <span class="ui">ISO data</span>, tab <span class="ui">Canonical model</span>. Click <span class="ui">Open all</span> and find <code>instructedAmount</code> under <code>payment</code>. On the <span class="ui">Code registry</span> tab, choose the code set <code>ExternalStatusReason1Code</code>, type <code>AM04</code> and click <span class="ui">Look up</span>.</li>
+    <li>Search the catalogue for <code>scheme:uae.wps</code>, open it, and read the dispatch table under <span class="ui">Message catalogue and dispatch</span>.</li>
+    <li>Open the theme menu in the top bar and choose dark, then back to the system's choice.</li>
   </ol>
-  <div class="see"><code>AM04</code> is <i>Insufficient funds</i>. <code>uae.wps.sif</code> starts an outward corporate payment with the leg <code>uae.wps.wf.salary-file-out.v1</code>.</div>
+  <div class="see"><code>AM04</code> is <i>Insufficient funds</i>. <code>uae.wps.sif</code> is <code>start</code>: <i>payment: uae.wps.wf.salary-file-out.v1, intake uae.wps.map.sif-in.v1</i>.</div>
 
   <h3>2. Run a factory test and read the report (15 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Test bench</span>, <span class="ui">Tests</span>, filter for <code>WPS-OUT-001</code> and click <span class="ui">Run</span>.</li>
-    <li>Read the business trace, then <span class="ui">Open every composite</span> to read the detail, then the timeline and the messages.</li>
-    <li>Run <code>WPS-OUT-004</code> (no acknowledgement) and <code>WPS-OUT-002</code> (refused by WPS).</li>
+    <li>Open <span class="ui">Test bench</span>. On the <span class="ui">Tests</span> tab, type <code>WPS-OUT-001</code> in <span class="ui">Filter tests</span> and click <span class="ui">Run</span>.</li>
+    <li>Read the business trace and the detail, then the report's tabs: <span class="ui">Timeline</span> (click <span class="ui">Open every composite</span>), <span class="ui">Instances</span> and <span class="ui">Messages</span>.</li>
+    <li>Run <code>WPS-OUT-003</code> (no acknowledgement) and <code>WPS-OUT-002</code> (refused by WPS).</li>
   </ol>
-  <ul class="trace"><li>business-date:set</li><li>file-checks:pass</li><li>record-checks:pass</li><li>record-iban:pass</li><li>render:mapped</li><li>submit:accepted</li><li class="end">end:settled</li></ul>
-  <div class="see"><code>WPS-OUT-004</code> waits one business day of virtual time and ends <code>pending</code>. <code>WPS-OUT-002</code> ends <code>rejected</code> with reason <code>AM10</code>.</div>
+  <ul class="trace"><li>business-date:set</li><li>cut-off:taken</li><li>corporate:registered</li><li>employer-status:found</li><li>file-checks:pass</li><li>record-checks:pass</li><li>record-iban:pass</li><li>render:mapped</li><li>submit:accepted</li><li class="end">end:settled</li></ul>
+  <div class="see">The detail of <code>submit</code> is <code>encrypt:encrypted</code>, <code>send:accepted</code>, <code>await-ack:received</code>, <code>read-ack:ack</code>: the file is encrypted for WPS before it is sent. <code>WPS-OUT-003</code> waits one day of virtual time (<code>P1D</code>), its <code>await-ack</code> times out, and it ends <code>pending</code>. <code>WPS-OUT-002</code> ends <code>rejected</code> with reason <code>AM10</code>.</div>
 
   <h3>3. Your own run on the ad hoc bench (15 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Ad hoc bench</span>, choose the <span class="ui">Target</span> <code>uae.wps.wf.salary-file-out.v1</code>.</li>
+    <li>Click the <span class="ui">Ad hoc bench</span> tab and choose the <span class="ui">Target</span> <code>uae.wps.wf.salary-file-out.v1</code>.</li>
     <li><span class="ui">Add a port</span> twice: <code>uae.wps.port.wps.v1</code> to <code>uae.wps.sim.wps-outward.v1</code> with scenario <code>reject</code>, and <code>uae.p.port.calendar.v1</code> to <code>uae.p.sim.calendar.v1</code> with <code>accept</code>.</li>
-    <li>Choose <span class="ui">Inbound sample</span> and <code>samples/wps-sif-valid.sif</code>. Leave <span class="ui">Start message</span> empty. <span class="ui">Run the bench</span>.</li>
+    <li>Under <i>Input</i>, click the <span class="ui">Inbound sample</span> tab and choose <code>samples/wps-sif-valid.sif</code>. Leave <span class="ui">Start message</span> at <i>None</i>. <span class="ui">Run the bench</span>.</li>
+    <li>Read <i>Warnings</i>: the ports you did not bind (the party register, the labour ministry, the encryption service) used their default simulators.</li>
     <li>Change the WPS scenario to <code>fail-twice-then-accept</code> and run again; then the sample to <code>samples/wps-sif-bad-control-total.sif</code> with <code>accept</code>.</li>
-    <li>Under the report, <span class="ui">Save the run as a test</span> with an id such as <code>TRAIN-OUT-001</code>.</li>
+    <li>Under the report, in <i>Save the run as a test (assertions)</i>, give the <span class="ui">Test id</span> <code>TRAIN-OUT-001</code> and a <span class="ui">Title</span>, and click <span class="ui">Save as a test draft as shared.designer</span>.</li>
   </ol>
-  <div class="see">Rejected; then three attempts on <code>submit.send</code> and settled; then rejected at the file checks before anything is sent.</div>
+  <div class="see">Rejected at <code>submit</code>; then <i>Retried: submit.send: 3 attempts</i> and settled; then rejected at <code>file-checks</code> before anything is sent. Then <code>Saved the test draft TRAIN-OUT-001#draft as shared.designer.</code>, and the test on the <span class="ui">Tests</span> tab with a <i>draft</i> badge.</div>
 
   <h3>4. A whole payment, end to end (15 minutes)</h3>
   <ol class="steps">
-    <li>Sign in as <code>example.maker</code> (a bank runs with its own configuration only). <span class="ui">Target</span> <code>p.wf.corporate.v1</code>, <span class="ui">Tenant for the run</span> <code>example-bank</code>.</li>
+    <li>Sign out and sign in as <code>example.maker</code>: you land on the <span class="ui">Bank workspace</span>. Open <span class="ui">Test bench</span>, tab <span class="ui">Ad hoc bench</span>, <span class="ui">Target</span> <code>p.wf.corporate.v1</code>. <span class="ui">Tenant for the run</span> offers only <code>example-bank</code>: a bank runs with its own configuration.</li>
     <li>Bind with scenario <code>accept</code>: <code>p.port.core-banking.v1</code>, <code>p.port.sanctions.v1</code>, <code>p.port.fraud.v1</code> (each to the <code>p.sim</code> of the same name), <code>uae.wps.port.wps.v1</code> to <code>uae.wps.sim.wps-outward.v1</code>, and <code>uae.p.port.calendar.v1</code> to <code>uae.p.sim.calendar.v1</code>.</li>
-    <li><span class="ui">Inbound sample</span> <code>samples/wps-sif-valid.sif</code>, <span class="ui">Start message</span> <code>uae.wps.sif</code>. <span class="ui">Run the bench</span>.</li>
+    <li><span class="ui">Inbound sample</span> tab, <code>samples/wps-sif-valid.sif</code>, <span class="ui">Start message</span> <code>uae.wps.sif</code>. <span class="ui">Run the bench</span>.</li>
   </ol>
   <ul class="trace"><li>validate:pass</li><li>duplicate:unique</li><li>hook:done</li><li>sanctions:clear</li><li>fraud:clear</li><li>join:all</li><li>limits:pass</li><li>reserve:reserved</li><li>route:decided</li><li>hook:continue</li><li>leg:settled</li><li>post:posted</li><li>verify:verified</li><li>finally:notify</li><li>finally:publish</li><li>hook:done</li><li class="end">end:settled</li></ul>
-  <div class="see">Seventeen lines ending <code>end:settled</code>. Run it again with <span class="ui">Tenant for the run</span> <code>owner</code>: the owner enables no rail, so <code>route:no-match</code>, <code>undo:reserve</code>, <code>end:rejected</code>.</div>
+  <div class="see">Seventeen lines ending <code>end:settled</code>. Then sign in as <code>shared.designer</code> and run the same bench with <span class="ui">Tenant for the run</span> <code>owner</code>: the owner enables no rail, so <code>route:no-match</code>, <code>undo:reserve</code>, <code>end:rejected</code>.</div>
+
+  <h3>4a. The same payment in the debugger (15 minutes)</h3>
+  <ol class="steps">
+    <li>As <code>example.maker</code>, set up the bench as in exercise 4 and click <span class="ui">Debug step by step</span>. The debugger opens below the bench.</li>
+    <li>Click <span class="ui">Step into ▶</span> a few times: the front door reads the file, then the corporate workflow starts. On the right, <i>Data changed by this event</i> shows each value before and after, and <i>All the data now</i> marks what changed.</li>
+    <li>On the left, click the dot beside <code>route</code> to set a breakpoint, then <span class="ui">Continue ⏭</span>. The run stops at the route step: <i>Decisions and rules</i> shows the decision <code>rail: "uae.wps"</code> and the table <code>p.table.rail-choice.v1</code> that made it.</li>
+    <li>Click <span class="ui">Step into ▶</span> until <i>Where the run is</i> shows the bank's hook <code>b.hook.pre-release-approval.v1</code>, then <span class="ui">Step out ⤴</span>. At the slot, <span class="ui">Step over ⤼</span> passes the whole leg at once.</li>
+    <li>Click <span class="ui">◀ Step back</span> a few times, then <span class="ui">Continue ⏭</span> to the end, and <span class="ui">Show the run report</span>.</li>
+  </ol>
+  <div class="see">The last event is the bank's notify hook at <code>on-close</code>, after the payment ended: a notify hook runs alongside and never delays the payment.</div>
 
   <h3>5. The conformance kit (5 minutes)</h3>
-  <p>Open <span class="ui">Conformance kit</span> and click <span class="ui">Run all 51</span>. Open <code>CK-RETRY-01</code> and read what it proves.</p>
+  <p>Open <span class="ui">Conformance kit</span> and click <span class="ui">Run all 59</span>. Set <span class="ui">Construct</span> to <code>retry</code>, run <code>CK-RETRY-01</code> and read its expected and actual traces.</p>
+  <div class="see"><code>59 of 59 pass</code>.</div>
 
   <h3>6. Author and publish a rule, with maker and checker (25 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, and paste the rule below.</li>
-    <li>Read the <span class="ui">Gates</span>. Change the second example's amount to <code>5</code> and watch it go red; change it back.</li>
-    <li><span class="ui">Save draft</span>, then <span class="ui">Request release</span>. There is no approve button for you: a maker holds no approver right.</li>
-    <li>Sign in as <code>shared.auditor</code>: it may read the draft but not approve it.</li>
-    <li>Sign in as <code>shared.checker</code>, open <span class="ui">Governance</span> and click <span class="ui">Approve as version</span>.</li>
-    <li>Edit the title, keep release <code>1.0.0</code>, save and publish again: refused, a published release never changes. Make it <code>1.0.1</code> and it publishes.</li>
-    <li>In <span class="ui">Governance</span>, <span class="ui">Audit log</span>, find every step and click <span class="ui">Verify the chain</span>.</li>
+    <li>Open <span class="ui">Artefact editors</span>. On the <span class="ui">Rule</span> tab, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, paste the rule below, and click <span class="ui">Done</span>.</li>
+    <li>Read the <span class="ui">Gates</span>: schema, static checks, the two examples, provenance. Change the second example's amount to <code>5</code> and watch it go red; change it back.</li>
+    <li><span class="ui">Save draft</span>, then <span class="ui">Request release</span>. There is no <span class="ui">Approve as version</span> button for you: a maker holds no approver right.</li>
+    <li>Sign in as <code>shared.auditor</code>: it sees only <span class="ui">Catalogue</span>, <span class="ui">Conformance kit</span> and <span class="ui">Governance</span>, may read the draft and may not approve it.</li>
+    <li>Sign in as <code>shared.checker</code>: you land on <span class="ui">Governance</span>. On <span class="ui">Review and approve</span>, click <span class="ui">Approve as version</span> on the rule's row.</li>
+    <li>Sign in as <code>shared.designer</code>. On the <span class="ui">Rule</span> tab, choose the rule under <span class="ui">Open a published rule as a new release</span>: the <span class="ui">Release</span> field proposes <code>1.0.1</code>. Change the title, set the release back to <code>1.0.0</code> and <span class="ui">Save draft</span>: refused, a published release never changes. Make it <code>1.0.1</code>, save, request the release, and have <code>shared.checker</code> approve it.</li>
+    <li>As <code>shared.checker</code>, in <span class="ui">Governance</span>, <span class="ui">Audit log</span>, find every step (<span class="ui">Filter the audit log</span> helps) and click <span class="ui">Verify the chain</span>.</li>
   </ol>
   <details class="yaml"><summary>The training rule</summary><div class="block"><pre>{{TRAINING_RULE}}</pre></div></details>
-  <div class="see"><code>Change set CS-…-001 approved as a version</code>, maker <code>shared.designer</code>, checker <code>shared.checker</code>.</div>
+  <div class="see"><code>Change set CS-…-… approved as a version</code> by <code>shared.checker</code>. The second save of 1.0.0: <code>Refused (409 R-01-11): p.rule.training-amount-positive.v1@1.0.0 is published and immutable. Release a new one.</code> The audit log: <i>The chain verifies: no entry was changed or removed.</i></div>
 
   <h3>7. Tenancy and roles (10 minutes)</h3>
   <ol class="steps">
-    <li>Sign in as <code>example.maker</code>: you land on the bank workspace. Shared content is read only.</li>
-    <li>Try to save a rule named <code>uae.wps.rule.my-copy.v1</code>: refused (403), a bank may author only in scope <code>b</code>. A workflow, a scheme or a port is refused even in scope <code>b</code>.</li>
-    <li>Sign in as <code>example.auditor</code>: it reads, and every change is refused. Nobody of <code>example-bank</code> sees or changes <code>second-bank</code>.</li>
+    <li>Sign in as <code>example.maker</code>: you land on the bank workspace, and the top bar's badge and a strip under it say you work for bank tenant <code>example-bank</code>, in scope <code>b</code> only. Shared content is read only.</li>
+    <li>In <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, write the training rule with the name <code>uae.wps.rule.my-copy.v1</code> and <span class="ui">Save draft</span>: refused, <code>Refused (403 R-06): example.maker works for bank example-bank, only in scope b; uae.wps is shared content</code>. A workflow, a scheme or a port is refused even in scope <code>b</code>.</li>
+    <li>Sign in as <code>example.auditor</code>: it lands on the catalogue, reads, and every change is refused. Nobody of <code>example-bank</code> sees or changes <code>second-bank</code>.</li>
   </ol>
 
   <h3>8. Change a bank's configuration (25 minutes)</h3>
+  <p>Signed in as <code>example.maker</code>, open <span class="ui">Tenant</span>. Read the configuration set's release, the enabled rails, the hook bindings and the limits. Every change below is made in <span class="ui">Configuration set YAML</span> under <span class="ui">Edit the configuration set</span>, then <span class="ui">Save the configuration set</span>. Each save needs a new <b>minor</b> release: write it in the <code>release</code> line yourself (from <code>1.10.0</code>, <code>1.11.0</code>, then <code>1.12.0</code> and so on). <span class="ui">Bump the release</span> raises only the patch, and a patch is refused (L53). After each save, sign in as <code>example.checker</code>, open <span class="ui">Governance</span> and click <span class="ui">Approve as version</span> on the <code>config:example-bank</code> row; then sign in as <code>example.maker</code> again.</p>
   <ol class="steps">
-    <li>Signed in as <code>example.maker</code>, open <span class="ui">Tenant</span>. Read the enabled rails, the hook bindings and the limits. After each save in this exercise, sign in as <code>example.checker</code> and <span class="ui">Approve as version</span> the configuration in <span class="ui">Governance</span>.</li>
-    <li><span class="ui">Bump the release</span> to <code>1.1.0</code>, set <code>p.table.rail-choice.v1#enabledRails</code> to <code>[]</code>, <span class="ui">Save the configuration set</span>. Repeat exercise 4: rejected at the route.</li>
-    <li>Bump to <code>1.2.0</code>, put <code>uae.wps</code> back and delete the <code>p.wf.corporate.v1#before-release</code> binding. Repeat exercise 4: settled, without <code>hook:continue</code>.</li>
-    <li>Try <code>b.rule.internal-limit.v1#internalLimit</code> at <code>2000000</code>: refused, the rule's bound is 1000000.</li>
-    <li>Bump to <code>1.3.0</code>, restore the <code>before-release</code> binding and set <code>b.rule.internal-limit.v1#internalLimit</code> to <code>1200</code>. Run exercise 4 with the sample <code>samples/wps-sif-two-lines.sif</code> (lines of 1000 and 500, total 1500) and also bind <code>p.port.operations-queue.v1</code> to <code>p.sim.operations.v1</code> with <code>decline</code>.</li>
-    <li>Set the limit to <code>900</code>, then to <code>2000</code>, and run again each time.</li>
+    <li>Next minor release, and set the value of <code>p.table.rail-choice.v1#enabledRails</code> to <code>[]</code>. Save, approve, repeat exercise 4: rejected at the route, <code>route:no-match</code>, <code>undo:reserve</code>, <code>end:rejected</code>.</li>
+    <li>Next minor, put <code>uae.wps</code> back and delete the <code>p.wf.corporate.v1#before-release</code> entry under <code>bindings</code>. Save, approve, repeat exercise 4: settled, without <code>hook:continue</code>.</li>
+    <li>Set the 2026 value of <code>b.rule.internal-limit.v1#internalLimit</code> (the one valid from 2026-01-01 to 2026-12-31) to <code>2000000</code>: the checks show L14, outside its bounds <code>{"max":1000000}</code>, and the save stays off.</li>
+    <li>Next minor, restore the <code>before-release</code> binding (hook <code>b.hook.pre-release-approval.v1</code>, release <code>1.0.0</code>, valid from <code>2026-01-01</code>) and set that limit to <code>1200</code>. Save, approve. Run exercise 4 with the sample <code>samples/wps-sif-two-lines.sif</code> (lines of 1000 and 500, total 1500), and also bind <code>p.port.operations-queue.v1</code> to <code>p.sim.operations.v1</code> with <code>decline</code>; then with <code>approve</code>.</li>
+    <li>Set the limit to <code>900</code>, then to <code>2000</code>, each in a new minor, and run again each time.</li>
   </ol>
-  <div class="see">At 1200 every line is within but the total is not: <code>hook:hold</code>, <code>hold:declined</code>, <code>undo:reserve</code>, <code>end:rejected</code>. With <code>approve</code> it settles. At 900 the line of 1000 is held. At 2000 nothing is held.</div>
+  <div class="see">Each save: <code>Saved example-bank/config:example-bank@1.11.0#draft as example.maker, as a draft.</code>; each approval: <code>Change set CS-… approved as a version by example.checker</code>. At 1200 every line is within but the total is not: <code>hook:hold</code>, <code>hold:declined</code>, <code>undo:reserve</code>, <code>end:rejected</code>. With <code>approve</code>: <code>hold:approved</code> and settled. At 900 the line of 1000 is held. At 2000 nothing is held.</div>
+
+  <h3>8a. A bank's own reference table (15 minutes)</h3>
+  <ol class="steps">
+    <li>As <code>example.maker</code>, in the <span class="ui">Bank workspace</span>, find <span class="ui">Calendar, cut-offs and branches</span>. Choose <i>The bank's own closing days</i> under <span class="ui">Table</span> and read its editions: a new edition is the next minor release.</li>
+    <li>Click <span class="ui">New table</span>. <span class="ui">Name</span> <code>training-desks</code> (the form adds <code>b.ref.</code> and <code>.v1</code>), <span class="ui">Title</span> <code>Training desks</code>, <span class="ui">Domain</span> <code>training-desks</code>; one column, id <code>desk</code>, type <code>text</code>, title <code>Desk</code>, ticked as the key. <span class="ui">Start the table</span>.</li>
+    <li>Give <span class="ui">New edition valid from</span> a date, <span class="ui">Add a row</span>, type a synthetic desk name, <span class="ui">Check</span> and <span class="ui">Save as draft</span>.</li>
+    <li>Sign in as <code>example.checker</code> and approve <code>b.ref.training-desks.v1</code> in <span class="ui">Governance</span>.</li>
+  </ol>
+  <div class="see"><code>Saved as draft example-bank/b.ref.training-desks.v1@1.0.0#draft. A bank approver approves it into a configuration release.</code> Its approval builds the bank's next configuration release, a number of its own (I-340): a second table approved under the same configuration set is not refused.</div>
 
   <h3>9. The workflow designer (25 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Workflow designer</span>, open <code>p.wf.corporate.v1</code> and switch between <span class="ui">Canvas</span>, <span class="ui">Outline</span> and <span class="ui">Expanded form</span>.</li>
-    <li>Under <span class="ui">New</span>: From a template, workflow, leg, <span class="ui">Name</span> <code>uae.wps.wf.training-leg.v1</code>, <span class="ui">Title</span> <code>Training leg</code>. <span class="ui">Create</span>.</li>
-    <li>Add a step calling <code>uae.p.enrich.business-date.v1</code>, then one calling <code>uae.wps.validate.nothing.v1</code>, and watch the <span class="ui">Checks</span>: L03, the reference does not resolve. Remove it.</li>
+    <li>In <span class="ui">Workflow designer</span>, under <span class="ui">Open</span>, choose <code>p.wf.corporate.v1 @1.0.0</code> under <span class="ui">Published workflow</span> and click <span class="ui">Open</span>. Switch between the tabs <span class="ui">Canvas</span>, <span class="ui">Outline</span> and <span class="ui">Expanded form</span>.</li>
+    <li>Under <span class="ui">New</span>: <span class="ui">Start from</span> <i>From a template</i>, <span class="ui">Kind</span> workflow, <span class="ui">Workflow kind</span> leg, <span class="ui">Name</span> <code>uae.wps.wf.training-leg.v1</code>, <span class="ui">Title</span> <code>Training leg</code>. <span class="ui">Create</span>. The template fills the WPS slot with a check and a render.</li>
+    <li>On the canvas, click <span class="ui">+ Add a step</span> below the last step, choose <code>call</code> from the palette, and pick <code>uae.p.enrich.business-date.v1</code> under <span class="ui">Block</span> in the step's panel.
+ Then, in the <span class="ui">Workflow YAML</span>, add a step <code>- { id: nothing, call: uae.wps.validate.nothing.v1 }</code> under <code>do</code>, and watch <span class="ui">Checks</span>.</li>
   </ol>
+  <div class="see"><span class="ui">Checks</span> shows L03 at the step <code>nothing</code>: <i>Reference uae.wps.validate.nothing.v1 does not resolve</i>. Remove the step and it clears. <span class="ui">Interface and release</span> says this will be the first release.</div>
   <div class="note">A new leg in an existing scheme starts from real files only when that scheme's dispatch table names it, which is a new release of the scheme. Part 6 builds a new scheme that way.</div>
+
+  <h3>9a. A draft run: try an activity before it is approved (20 minutes)</h3>
+  <ol class="steps">
+    <li>In <span class="ui">Artefact editors</span>, tab <span class="ui">Activity contract</span>, <span class="ui">Start new</span>, <span class="ui">Edit the YAML</span>, paste the activity below, <span class="ui">Done</span>, <span class="ui">Save draft</span>. It is a check written as a script, with no port, so its effect is <code>pure</code> (L57).</li>
+    <li>The <span class="ui">Script-behind</span> section appears below the form. Replace the starter in <span class="ui">Script source</span> with the script below and click <span class="ui">Save the script as shared.designer</span>.</li>
+    <li>In <span class="ui">Test bench</span>, tab <span class="ui">Ad hoc bench</span>, tick <span class="ui">Run with my drafts</span>, choose the <span class="ui">Target</span> <code>p.validate.training-period.v1</code>, and on the <span class="ui">Context as JSON</span> tab write <code>{ "header": { "paymentId": "P-1", "period": "2026-11" } }</code>. <span class="ui">Run the bench</span>.</li>
+    <li>Save the run as a test, id <code>TRAIN-PERIOD-001</code>. Change the period to <code>November</code>, run again, and save that as <code>TRAIN-PERIOD-002</code>.</li>
+    <li>Open <span class="ui">Governance</span>: the activity's row lists <code>TRAIN-PERIOD-001</code> and <code>TRAIN-PERIOD-002</code> as going with it. Click <span class="ui">Request release</span> on it. As <code>shared.checker</code>, click <span class="ui">Approve as version</span> on the same row: one change set publishes the activity with its script and both tests, the tests run with the whole set in place.</li>
+  </ol>
+  <details class="yaml"><summary>Activity p.validate.training-period.v1</summary><div class="block"><pre>{{TRAINING_ACTIVITY}}</pre></div></details>
+  <details class="yaml"><summary>Its script, p.validate.training-period.v1.ts</summary><div class="block"><pre>{{TRAINING_SCRIPT}}</pre></div></details>
+  <div class="see"><i>Draft run. A draft run: made with … draft(s) of owner, not published.</i> and the drafts' names above the report; outcome <code>pass</code>, then <code>reject</code> with <code>DT01</code>. Untick <span class="ui">Run with my drafts</span> and the activity is no longer offered as a <span class="ui">Target</span>: it is only a draft. The approval: <code>Change set CS-… approved as a version by shared.checker: TRAIN-PERIOD-001, TRAIN-PERIOD-002, p.validate.training-period.v1@1.0.0.</code></div>
+
 
   <h3>10. Export a package (10 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Export</span>, tick <code>p.wf.corporate.v1</code>, target <code>dtfx</code>, tenant <code>example-bank</code>. <span class="ui">Preview</span>.</li>
-    <li>Read the workers, tasks, files and change sets in the manifest.</li>
-    <li>Tick <span class="ui">With simulators</span> and <span class="ui">Download the zip</span>.</li>
+    <li>As <code>example.maker</code> (a bank exports its own package), open <span class="ui">Export</span>, tick <code>p.wf.corporate.v1</code>; under <span class="ui">Target and tenant</span>, keep the <span class="ui">Target</span> <code>temporal</code> or choose <code>dtfx</code>, and the <span class="ui">Tenant</span> <code>example-bank</code>. <span class="ui">Preview</span>.</li>
+    <li>Read the <span class="ui">Package</span> (promotable, the target, the flows with their pins) and the tabs <span class="ui">Manifest</span> (workers, change sets), <span class="ui">Tasks</span>, <span class="ui">Files</span> and <span class="ui">Portability</span>.</li>
+    <li>Tick <span class="ui">With simulators, for a test deployment</span>, <span class="ui">Preview</span> again (the package is now not promotable) and <span class="ui">Download the zip</span>. The zip carries <code>release.json</code> and <code>release.sig</code> beside its files: it is signed as it is released.</li>
+
+    <li>Below, read the <span class="ui">Content branch</span> panel: the repository and branch the studio writes to, and the change sets in progress, each on its own branch.</li>
   </ol>
-  <div class="see">Workers <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code>, <code>th-uae-wps</code>. Change sets such as <code>pack:uae.wps@1.0.0</code>.</div>
+  <div class="see">Workers <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code>, <code>th-uae-wps</code>. Change sets such as <code>pack:uae.wps@1.0.0</code> and the ids of the configuration changes you approved.</div>
 
   <h3>11. Governance (20 minutes)</h3>
   <ol class="steps">
-    <li>In <span class="ui">Pins, retirement, propagation</span>, show the pins of <code>uae.p.validate.iban.v1</code>. As <code>shared.checker</code>, try to retire it: refused, a workflow pins it.</li>
-    <li>In <span class="ui">Conformance</span>, add a waiver with a reason.</li>
-    <li>In <span class="ui">Coverage</span>, find the untested outcome <code>returned</code> of the WPS leg.</li>
-    <li>In <span class="ui">Audit log</span>, filter by your user and verify the chain.</li>
+    <li>As <code>shared.checker</code>, in <span class="ui">Governance</span>, tab <span class="ui">Pins, retirement, propagation</span>: give <code>uae.p.validate.iban.v1</code> as the artefact name and click <span class="ui">Show pins</span>. Click <span class="ui">Retire uae.p.validate.iban.v1@1.0.0</span>: refused, a workflow pins it.</li>
+    <li>Tab <span class="ui">Conformance</span>: under <span class="ui">Add a waiver</span>, choose a scenario, give a <span class="ui">Waiver reason</span>, and <span class="ui">Waive</span>.</li>
+    <li>Tab <span class="ui">Coverage</span>: find the untested outcome <code>returned</code> of the WPS leg.</li>
+    <li>Tab <span class="ui">Audit log</span>: filter by your user and <span class="ui">Verify the chain</span>.</li>
   </ol>
+  <div class="see">Pinned by every release of <code>uae.wps.wf.salary-file-out.v1</code>; <i>May retire: no, a pinned release cannot be removed</i>.</div>
 
   <h3>11a. The assistant beside the editor (15 minutes)</h3>
-  <p>Open <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, <span class="ui">Start new</span>. In the panel on the right, <span class="ui">What is happening</span>: click into <span class="ui">Rule kind</span>, then <span class="ui">Level</span>, and read what each means. Watch the explanation and the checklist change as you edit. With a key set, open <span class="ui">Ask</span> and type <i>Build a rule that the days in the pay period are 1 to 31, with a passing, a failing and a boundary example</i>. Read what it wants to change, its checks, and choose <span class="ui">Allow once</span>. Then ask it to shorten the title, choose <span class="ui">Allow always</span>, and use <span class="ui">Undo</span> on that change. Save the draft yourself and publish it with a checker.</p>
+  <p>Open <span class="ui">Artefact editors</span>, <span class="ui">Rule</span>, <span class="ui">Start new</span>. In the panel on the right, tab <span class="ui">What is happening</span>: click into <span class="ui">Rule kind</span>, then <span class="ui">Level</span>, and read what each means. Watch the explanation and the checklist change as you edit. With a key set, click the <span class="ui">Ask</span> tab and type <i>Build a rule that the days in the pay period are 1 to 31, with a passing, a failing and a boundary example</i>. Read what it wants to change, its checks, and choose <span class="ui">Allow once</span>. Then ask it to shorten the title, choose <span class="ui">Allow always</span>, and use <span class="ui">Undo</span> on that change. Save the draft yourself and publish it with a checker.</p>
 
   <h3>12. The AI assistant page (optional, needs a key)</h3>
-  <p>Restart the studio with <code>ANTHROPIC_API_KEY</code> set. In <span class="ui">AI assistant</span>, choose <span class="ui">Draft kind</span> rule and the template <i>Field check</i>. Fill its blanks: name <code>uae.wps.rule.salary-month-valid.v1</code>, level batch, the path <code>ext.uae.wps.salaryMonth</code>, the condition <i>is a month from 01 to 12 followed by a four-digit year</i>, a reject finding, reason code <code>DT01</code>. Watch <i>Still to fill</i> empty and the button come on, then ask. Read the draft, its questions, its clauses and its gates, then save it as a draft and follow maker-checker as in exercise 6.</p>
+  <p>Restart the studio with <code>ANTHROPIC_API_KEY</code> set. In <span class="ui">AI assistant</span>, choose the <span class="ui">Kind</span> rule and, under <span class="ui">Start from a template</span>, <i>Field check</i>. Fill its blanks: name <code>uae.wps.rule.salary-month-valid.v1</code>, level batch, the path <code>ext.uae.wps.salaryMonth</code>, the condition <i>is a month from 01 to 12 followed by a four-digit year</i>, a reject finding, reason code <code>DT01</code>. Watch <i>Still to fill</i> empty and the button come on, then <span class="ui">Ask for a draft</span>. Read the draft, its questions, its clauses and its gates, then save it as a draft and follow maker and checker as in exercise 6.</p>
+
+  <h3>13. Import a scheme from its source (15 minutes)</h3>
+  <ol class="steps">
+    <li>Open <span class="ui">Import</span>. Click <span class="ui">Use the training bundle</span> (the factory's WPS scheme extracted as <code>uae.wpsx</code>), then <span class="ui">Preview</span>.</li>
+    <li>Read the coverage of the source, the findings, every check, and the bundle's own tests, run before anything is saved.</li>
+    <li>Click <span class="ui">Import as drafts, as shared.designer</span>, and find the drafts in <span class="ui">Governance</span>. Under <i>The extraction prompt</i>, <span class="ui">Download the extraction prompt</span> to see what an AI coding agent is given.</li>
+  </ol>
+  <div class="see">The preview's parts: <i>Coverage of the source</i>, <i>Findings</i>, <i>Tests, run against the bundle itself</i>, <i>Checks</i>, <i>Everything in the bundle</i>. Then <i>Imported … as drafts … Nothing is published: 3 change sets wait for an approver.</i></div>
 </section>
 
 <!-- ============================================================ 6 -->
@@ -633,7 +769,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h2>6. Build a full workflow</h2>
   <p class="lede">You will build a new scheme from nothing: its manifest and dispatch table, a port and simulator, maps with a script, a rule, an exchange with its subflow, and a leg that fills the corporate payment workflow's slot. Then you approve it, enable it for a bank, pay a file end to end, and deploy it.</p>
   <div class="note"><code>uae.demo</code> is a synthetic scheme made up for training. It stands for no real scheme, and its file format is invented: one <code>H</code> record (file reference, debtor routing code, currency, count, total) and one <code>D</code> record per credit (IBAN, amount).</div>
-  <p>Sign in as <b>shared.designer</b> until step 8. Each piece is written in the YAML pane of its editor: in the editor, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, replace the text with the document given, click <span class="ui">Done</span>, and read the form and the gates. Publishing always means: <span class="ui">Request release</span>, then sign in as <code>shared.checker</code>, open <span class="ui">Governance</span>, click <span class="ui">Approve as version</span> on the draft, and sign in as <code>shared.designer</code> again.</p>
+  <p>Sign in as <b>shared.designer</b> until step 8. Each piece is written in the YAML pane of its editor: open <span class="ui">Artefact editors</span>, click the tab of its kind, click <span class="ui">Start new</span>, then <span class="ui">Edit the YAML</span>, replace the text with the document given, click <span class="ui">Done</span>, read the form and the gates, and click <span class="ui">Save draft</span>. Publishing always means: <span class="ui">Request release</span> on the same screen, then sign out and sign in as <code>shared.checker</code> (you land on <span class="ui">Governance</span>), click <span class="ui">Approve as version</span> on the draft's row under <span class="ui">Review and approve</span>, and sign in as <code>shared.designer</code> again.</p>
 
   <h3>The pieces and how they connect</h3>
   <pre class="mermaid">flowchart TB
@@ -651,8 +787,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 
   <h3>Step 1. Save the sample files</h3>
   <ol class="steps">
-    <li>Open <span class="ui">Test bench</span>, <span class="ui">Ad hoc bench</span>, and click <span class="ui">Inbound sample</span>.</li>
-    <li>Click <span class="ui">Add a sample file</span>. Name <code>demo-credit-file-valid.csv</code>, paste the content below, <span class="ui">Save the sample</span>.</li>
+    <li>Open <span class="ui">Test bench</span>, click the <span class="ui">Ad hoc bench</span> tab, and under <i>Input</i> the <span class="ui">Inbound sample</span> tab.</li>
+    <li>Click <span class="ui">Add a sample file</span>. <span class="ui">Sample file name</span> <code>demo-credit-file-valid.csv</code>, paste the content below into <span class="ui">Sample content</span>, and click <span class="ui">Save the sample as shared.designer</span>.</li>
     <li>Do the same for <code>demo-credit-file-usd.csv</code> and <code>demo-credit-file-garbage.csv</code>.</li>
   </ol>
   <details class="yaml" open><summary>demo-credit-file-valid.csv</summary><div class="block"><pre>{{VALID}}</pre></div></details>
@@ -663,18 +799,18 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h3>Step 2. A port and its simulator, one change set</h3>
   <ol class="steps">
     <li><span class="ui">Artefact editors</span>, tab <span class="ui">Port</span>: write the port below, <span class="ui">Save draft</span>.</li>
-    <li>Tab <span class="ui">Simulator</span>: write the simulator below, save it as a draft. It carries the eight standard scenarios.</li>
-    <li>Still on the simulator, publish. The panel lists the port as going with it: each refers to the other, so they publish together.</li>
+    <li>Tab <span class="ui">Simulator</span>: write the simulator below, <span class="ui">Save draft</span>. It carries the eight standard scenarios.</li>
+    <li>Still on the simulator, publish it. Under <span class="ui">Save and publish</span>, <i>Change set</i> lists the port as going with it: each refers to the other, so they publish together.</li>
   </ol>
   <details class="yaml"><summary>Port uae.demo.port.demo.v1</summary><div class="block"><pre>{{PORT}}</pre></div></details>
   <details class="yaml"><summary>Simulator uae.demo.sim.demo-outward.v1</summary><div class="block"><pre>{{SIM}}</pre></div></details>
-  <div class="see"><code>Change set CS-…-001 published: uae.demo.port.demo.v1@1.0.0, uae.demo.sim.demo-outward.v1@1.0.0</code>.</div>
+  <div class="see">On the checker's screen: <code>Change set CS-… approved as a version</code>, naming <code>uae.demo.sim.demo-outward.v1@1.0.0</code> and <code>uae.demo.port.demo.v1@1.0.0</code>.</div>
 
   <h3>Step 3. The rule, its rule set and the file checks</h3>
   <ol class="steps">
-    <li>Tab <span class="ui">Rule</span>: write the rule, save, publish. Its two examples run in the gates.</li>
+    <li>Tab <span class="ui">Rule</span>: write the rule, <span class="ui">Save draft</span>, publish. Its two examples run in the gates.</li>
     <li>Tab <span class="ui">Rule set</span>: write the rule set, save, publish.</li>
-    <li>Tab <span class="ui">Activity contract</span>: write the file checks, save, publish.</li>
+    <li>Tab <span class="ui">Activity contract</span>: write the file checks, save, publish. A <code>validate</code> with a rule set reads only the context, so its effect is <code>pure</code>.</li>
   </ol>
   <details class="yaml"><summary>Rule uae.demo.rule.currency-aed.v1</summary><div class="block"><pre>{{RULE}}</pre></div></details>
   <details class="yaml"><summary>Rule set uae.demo.ruleset.file.v1</summary><div class="block"><pre>{{RULESET}}</pre></div></details>
@@ -683,7 +819,7 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h3>Step 4. The intake map and its script-behind</h3>
   <ol class="steps">
     <li>Tab <span class="ui">Map</span>: write the intake map, <span class="ui">Save draft</span>.</li>
-    <li>The <span class="ui">Script-behind</span> section appears because the map is bound to a script. Replace the starter with the script below and <span class="ui">Save the script as shared.designer</span>.</li>
+    <li>The <span class="ui">Script-behind</span> section appears below the form, across the page, because the map is bound to a script. Replace the starter in <span class="ui">Script source</span> with the script below and click <span class="ui">Save the script as shared.designer</span>.</li>
     <li>Publish the map.</li>
   </ol>
   <details class="yaml"><summary>Map uae.demo.map.file-in.v1</summary><div class="block"><pre>{{FILE_IN}}</pre></div></details>
@@ -694,20 +830,20 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <h3>Step 5. The render map, the acknowledgement map and the send</h3>
   <ol class="steps">
     <li>Tab <span class="ui">Map</span>: the render map, save, publish. Then the acknowledgement map, save, publish.</li>
-    <li>Tab <span class="ui">Activity contract</span>: the send, save, publish. It is retried, so it carries an idempotency key.</li>
+    <li>Tab <span class="ui">Activity contract</span>: the send, save, publish. It sends a file to a party, an outside effect, so it carries an idempotency key built from the payment's id (L54): an attempt may run more than once, retried or not.</li>
   </ol>
   <details class="yaml"><summary>Map uae.demo.map.file-out.v1</summary><div class="block"><pre>{{FILE_OUT}}</pre></div></details>
   <details class="yaml"><summary>Map uae.demo.map.ack-in.v1</summary><div class="block"><pre>{{ACK_IN}}</pre></div></details>
   <details class="yaml"><summary>Activity uae.demo.exchange.send-file.v1</summary><div class="block"><pre>{{SEND}}</pre></div></details>
 
   <h3>Step 6. The composite, its subflow, the leg and the scheme: one change set</h3>
-  <p>These four refer to one another: the dispatch table names the leg and the intake map, the leg calls the composite, the composite names its subflow, and the subflow awaits a message from the scheme's catalogue.</p>
+  <p>These four refer to one another: the dispatch table names the leg and the intake map, the leg calls the composite, the composite names its subflow, and the subflow awaits a message from the scheme's catalogue. The subflow first encrypts the file for its recipient with the platform's <code>protect</code> activity <code>p.protect.encrypt-file.v1</code>: a file scheme's file is encrypted before it is sent.</p>
   <ol class="steps">
-    <li>Tab <span class="ui">Composite and subflow</span>: write the composite in the top YAML pane and save it as a draft.</li>
-    <li><span class="ui">Workflow designer</span>, <span class="ui">New</span>: Blank, workflow, <span class="ui">Workflow kind</span> <code>subflow</code>, the name and title below, <span class="ui">Create</span>. Replace the <span class="ui">Workflow YAML</span> with the subflow and save the draft.</li>
-    <li>Again, with <span class="ui">Workflow kind</span> <code>leg</code>: the leg. Watch the canvas draw it and the <span class="ui">Expanded form</span> show <code>submit.send</code>, <code>submit.await-ack</code>, <code>submit.read-ack</code>. Save the draft.</li>
-    <li><span class="ui">Artefact editors</span>, tab <span class="ui">Scheme and dispatch table</span>: write the scheme and save it as a draft. The table reads <i>start: payment outward corporate</i>.</li>
-    <li>Publish the scheme. The panel lists the composite, the subflow and the leg as going with it.</li>
+    <li>Tab <span class="ui">Composite and subflow</span>: write the composite in the top YAML pane and <span class="ui">Save draft</span>.</li>
+    <li><span class="ui">Workflow designer</span>, under <span class="ui">New</span>: <span class="ui">Start from</span> <i>Blank</i>, <span class="ui">Kind</span> workflow, <span class="ui">Workflow kind</span> <code>subflow</code>, the <span class="ui">Name</span> and <span class="ui">Title</span> below, <span class="ui">Create</span>. Wait for the blank starter to appear in the <span class="ui">Workflow YAML</span>, then replace it with the subflow and <span class="ui">Save draft</span>.</li>
+    <li>Again, with <span class="ui">Workflow kind</span> <code>leg</code>: the leg. Watch the canvas draw it, and click the <span class="ui">Expanded form</span> tab: <code>submit.encrypt</code>, <code>submit.send</code>, <code>submit.await-ack</code>, <code>submit.read-ack</code>. <span class="ui">Save draft</span>.</li>
+    <li><span class="ui">Artefact editors</span>, tab <span class="ui">Scheme and dispatch table</span>: write the scheme and <span class="ui">Save draft</span>. The table reads <i>start: payment outward corporate</i>.</li>
+    <li>Publish the scheme. <i>Change set</i> lists the composite, the subflow and the leg as going with it.</li>
   </ol>
   <details class="yaml"><summary>Composite uae.demo.exchange.submit-file.v1</summary><div class="block"><pre>{{SUBMIT}}</pre></div></details>
   <details class="yaml"><summary>Subflow uae.demo.sub.submit-file.v1</summary><div class="block"><pre>{{SUBFLOW}}</pre></div></details>
@@ -718,54 +854,58 @@ section[id], h3[id] { scroll-margin-top: 16px; }
 
   <h3>Step 7. Run the leg on the bench</h3>
   <ol class="steps">
-    <li><span class="ui">Test bench</span>, <span class="ui">Ad hoc bench</span>, <span class="ui">Target</span> <code>uae.demo.wf.credit-file-out.v1</code>.</li>
-    <li>Bind <code>uae.demo.port.demo.v1</code> to <code>uae.demo.sim.demo-outward.v1</code>, <code>accept</code>, and <code>uae.p.port.calendar.v1</code> to <code>uae.p.sim.calendar.v1</code>, <code>accept</code>.</li>
-    <li><span class="ui">Inbound sample</span> <code>samples/demo-credit-file-valid.csv</code>. <span class="ui">Run the bench</span>.</li>
-    <li>Try the scenario <code>reject</code>, then <code>no-reply</code>, then the USD sample. <span class="ui">Save the run as a test</span> for each outcome you want kept.</li>
+    <li><span class="ui">Test bench</span>, tab <span class="ui">Ad hoc bench</span>, <span class="ui">Target</span> <code>uae.demo.wf.credit-file-out.v1</code>, <span class="ui">Tenant for the run</span> <code>owner</code>.</li>
+    <li><span class="ui">Add a port</span> three times, each with <code>accept</code>: <code>uae.demo.port.demo.v1</code> to <code>uae.demo.sim.demo-outward.v1</code>, <code>uae.p.port.calendar.v1</code> to <code>uae.p.sim.calendar.v1</code>, and <code>p.port.encryption.v1</code> to <code>p.sim.encryption.v1</code>.</li>
+    <li><span class="ui">Inbound sample</span> tab, <code>samples/demo-credit-file-valid.csv</code>. <span class="ui">Run the bench</span>.</li>
+    <li>Try the scenario <code>reject</code>, then <code>no-reply</code>, then the USD sample. Under the report, save the run as a test (<span class="ui">Save as a test draft as shared.designer</span>) for each outcome you want kept.</li>
   </ol>
   <ul class="trace"><li>business-date:set</li><li>file-checks:pass</li><li>record-iban[0]:pass</li><li>record-iban[1]:pass</li><li>render:mapped</li><li>submit:accepted</li><li class="end">end:settled</li></ul>
-  <div class="see">Settled. With <code>reject</code>: rejected with <code>AC03</code>. With <code>no-reply</code>: pending after a business day. With the USD sample: rejected at the file checks with <code>AM03</code>, nothing sent.</div>
+  <div class="see">Settled, with the detail <code>submit.encrypt:encrypted</code>, <code>submit.send:accepted</code>, <code>submit.await-ack:received</code>, <code>submit.read-ack:ack</code>. With <code>reject</code>: rejected with <code>AC03</code>. With <code>no-reply</code>: pending after a business day. With the USD sample: rejected at the file checks with <code>AM03</code>, nothing sent.</div>
 
-  <h3>Step 8. As the bank, enable the new rail</h3>
+  <h3>Step 8. As the bank, license the scheme and enable its rail</h3>
+  <p>A bank's distribution carries only the schemes its lock file licenses, so the bank licenses <code>uae.demo</code> first (I-205), then accepts it and enables its rail in its configuration.</p>
   <ol class="steps">
-    <li>Sign in as <code>example.maker</code>, and open <span class="ui">Tenant</span>.</li>
-    <li><span class="ui">Bump the release</span>. In the YAML, add <code>{ scope: uae.demo, release: 1.0.0 }</code> to <code>accepts</code>, and add <code>uae.demo</code> to the value of <code>p.table.rail-choice.v1#enabledRails</code>.</li>
-    <li><span class="ui">Save the configuration set</span>. Sign in as <code>example.checker</code> and <span class="ui">Approve as version</span> it in <span class="ui">Governance</span>; sign in as <code>example.maker</code> again.</li>
+    <li>Sign in as <code>example.maker</code>: you land on the <span class="ui">Bank workspace</span>. Under <span class="ui">Schemes licensed</span>, the row <code>uae.demo</code> says <i>not licensed</i>. Click <span class="ui">License uae.demo</span>.</li>
+    <li>Open <span class="ui">Tenant</span>. In <span class="ui">Configuration set YAML</span>, set <code>release</code> to the next minor (from <code>1.10.0</code> on a fresh studio, <code>1.11.0</code>; <span class="ui">Bump the release</span> raises only the patch, which is refused). Add <code>{ scope: uae.demo, release: 1.0.0 }</code> to <code>accepts</code>, and add <code>uae.demo</code> to the value of <code>p.table.rail-choice.v1#enabledRails</code>. <span class="ui">Save the configuration set</span>.</li>
+    <li>Sign in as <code>example.checker</code>. In the <span class="ui">Bank workspace</span>, under <span class="ui">Schemes licensed</span>, click <span class="ui">Approve the licence</span>.</li>
+    <li>Open <span class="ui">Governance</span> and click <span class="ui">Approve as version</span> on the <code>config:example-bank</code> row. Sign in as <code>example.maker</code> again.</li>
   </ol>
-  <div class="see"><code>Saved … config:example-bank@1.1.0 as example.maker, as a draft</code>, then <code>approved as a version by example.checker</code>. Before this step, a payment in the new scheme is rejected at <code>route:no-match</code>: the bank had not enabled the rail.</div>
+  <div class="see"><code>Proposed lock file … licensing uae.demo</code> and the row <i>proposed</i>; <code>Saved example-bank/config:example-bank@1.11.0#draft as example.maker, as a draft</code>. Then <code>Lock file … approved in change set CS-…; distribution dist/example-bank@… carries …</code>, naming <code>uae.demo</code> among its schemes, and the row <i>licensed</i>. Then <code>Change set CS-… approved as a version by example.checker</code>, which builds the bank's next configuration release. Approve the configuration before the licence and it is refused: a configuration may not bind a scheme the bank does not license. Before this step, a payment in the new scheme is rejected at <code>route:no-match</code>: the bank had not enabled the rail.</div>
 
   <h3>Step 9. Pay a file end to end</h3>
   <ol class="steps">
-    <li><span class="ui">Ad hoc bench</span>, <span class="ui">Target</span> <code>p.wf.corporate.v1</code>, <span class="ui">Tenant for the run</span> <code>example-bank</code>.</li>
-    <li>Bind the five ports of exercise 4, but with the demo port and simulator in place of WPS.</li>
-    <li><span class="ui">Inbound sample</span> <code>samples/demo-credit-file-valid.csv</code>, <span class="ui">Start message</span> <code>uae.demo.credit-file</code>. <span class="ui">Run the bench</span>.</li>
+    <li><span class="ui">Test bench</span>, tab <span class="ui">Ad hoc bench</span>, <span class="ui">Target</span> <code>p.wf.corporate.v1</code>, <span class="ui">Tenant for the run</span> <code>example-bank</code>.</li>
+    <li>Bind six ports, each with <code>accept</code>: the three platform ports of exercise 4 (<code>p.port.core-banking.v1</code>, <code>p.port.sanctions.v1</code>, <code>p.port.fraud.v1</code>) and the three of step 7.</li>
+    <li><span class="ui">Inbound sample</span> tab, <code>samples/demo-credit-file-valid.csv</code>, <span class="ui">Start message</span> <code>uae.demo.credit-file</code>. <span class="ui">Run the bench</span>.</li>
   </ol>
-  <div class="see"><code>route:decided</code>, <code>leg:settled</code>, <code>post:posted</code>, <code>end:settled</code>. Open <span class="ui">Instances</span>: the intake, the corporate workflow, your leg and the bank's hooks each ran.</div>
+  <div class="see"><code>route:decided</code>, <code>leg:settled</code>, <code>post:posted</code>, <code>end:settled</code>. Click the <span class="ui">Instances</span> tab: the intake, the corporate workflow, your leg and the bank's hooks each ran.</div>
 
   <h3>Step 10. Export for the bank</h3>
   <ol class="steps">
-    <li>Still as <code>example.maker</code> (the bank exports its own package): <span class="ui">Export</span>, tick <code>p.wf.corporate.v1</code>, target <code>dtfx</code>, tenant <code>example-bank</code>, tick <span class="ui">With simulators</span>.</li>
+    <li>Still as <code>example.maker</code> (the bank exports its own package): <span class="ui">Export</span>, tick <code>p.wf.corporate.v1</code>, <span class="ui">Target</span> <code>dtfx</code>, <span class="ui">Tenant</span> <code>example-bank</code>, tick <span class="ui">With simulators, for a test deployment</span>.</li>
     <li><span class="ui">Preview</span>, then <span class="ui">Download the zip</span>.</li>
   </ol>
   <div class="see">A worker <code>th-uae-demo</code> serving only <code>uae.demo</code> tasks, beside <code>th-bank</code>, <code>th-p</code>, <code>th-uae-p</code> and <code>th-uae-wps</code>. The change sets you approved, listed by id.</div>
 
   <h3>Step 11. Deploy and run on DTFx</h3>
-  <p>This step needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample you added saved beside it as <code>demo-credit-file-valid.csv</code> (it is <code>content-configurations/samples/demo-credit-file-valid.csv</code> on the branch):</p>
-  <div class="block"><pre class="cmd">npm run studio -- deploy corporate.zip --workflow p.wf.corporate.v1 --message uae.demo.credit-file --inbound demo-credit-file-valid.csv --tenant example-bank --bench p.port.core-banking.v1=p.sim.core-banking.v1:accept --bench p.port.sanctions.v1=p.sim.sanctions.v1:accept --bench p.port.fraud.v1=p.sim.fraud.v1:accept --bench uae.demo.port.demo.v1=uae.demo.sim.demo-outward.v1:accept --bench uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept</pre></div>
-  <div class="see"><code>worker th-uae-demo up</code> with its own pid, <code>configuration example-bank@1.1.0 from the package</code>, <code>outcome settled</code>.</div>
+  <p>This step needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Part 7 explains deploy in full. With the zip saved as <code>corporate.zip</code> and the sample you added saved beside it as <code>demo-credit-file-valid.csv</code> (it is <code>content-configurations/samples/demo-credit-file-valid.csv</code> on the branch). The deploy checks the package's signature against <code>TH_TRUSTED_SIGNERS</code> first: <code>npm run studio:dev</code> printed the file at its start (<i>Signing key … made for this run; its trusted signers: &lt;file&gt;</i>), so set <code>TH_TRUSTED_SIGNERS=file:&lt;file&gt;</code> in the shell you deploy from.</p>
+  <div class="block"><pre class="cmd">npm run studio -- deploy corporate.zip --workflow p.wf.corporate.v1 --message uae.demo.credit-file --inbound demo-credit-file-valid.csv --tenant example-bank --bench p.port.core-banking.v1=p.sim.core-banking.v1:accept --bench p.port.sanctions.v1=p.sim.sanctions.v1:accept --bench p.port.fraud.v1=p.sim.fraud.v1:accept --bench uae.demo.port.demo.v1=uae.demo.sim.demo-outward.v1:accept --bench uae.p.port.calendar.v1=uae.p.sim.calendar.v1:accept --bench p.port.encryption.v1=p.sim.encryption.v1:accept</pre></div>
+  <div class="see"><code>package verified: … signed by key …</code>, <code>worker th-uae-demo up</code> with its own pid, <code>configuration example-bank@1.11.0 from the package</code> (the release you saved in step 8), <code>outcome settled</code>.</div>
+
   <p>You have built a scheme, routed it from its dispatch table into the corporate payment workflow, approved it through maker-checker, enabled it as a bank, and run it on a real engine with a separate worker per queue.</p>
 </section>
 
 <!-- ============================================================ 7 -->
 <section class="part" id="deploy">
   <h2>7. Export, deploy and run</h2>
-  <p class="lede">An export package is everything an engine needs. The deploy runner starts it on DTFx the way production would run it: a separate worker process per task queue, each serving only its own tasks.</p>
+  <p class="lede">An export package is everything an engine needs, signed. The deploy runner checks the signature, then starts the package on the engine it was exported for (DTFx, Elsa, Temporal, or Flowable), the way production would run it: a separate worker process per task queue, each serving only its own tasks. It is a test of a package on one machine; a bank's runtime is <a href="#runtime">part 8</a>.</p>
 
   <h3>What is in a package</h3>
   <div class="table"><table>
     <thead><tr><th>Path</th><th>What it holds</th></tr></thead>
     <tbody>
       <tr><td><code>manifest.yaml</code></td><td>Target, workers, tasks, flows, change sets, every file with its hash; whether it is promotable</td></tr>
+      <tr><td><code>release.json</code>, <code>release.sig</code></td><td>The signed statement of the release (its id, tenant, change set, key id, signing time and the hash of every other file) and the studio's signature over it (R-09-23)</td></tr>
       <tr><td><code>binding.yaml</code></td><td>The engine binding: one queue per scope, for example <code>uae.wps</code> to <code>th-uae-wps</code>. A new scope gets its queue from the same rule</td></tr>
       <tr><td><code>workflows/</code>, <code>activities/</code>, <code>rules/</code>, <code>ports/</code>, <code>hooks/</code>, <code>schemes/</code></td><td>The documents, workflows in expanded form with exact pins</td></tr>
       <tr><td><code>workers/&lt;queue&gt;/</code></td><td>One worker: <code>worker.cjs</code>, its <code>manifest.json</code> of tasks, the artefacts and scripts those tasks need, and with simulators, their simulators</td></tr>
@@ -774,6 +914,11 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>tests/</code>, <code>conformance/</code></td><td>The test pack and the conformance kit</td></tr>
     </tbody>
   </table></div>
+
+  <h3>Keys for the command line</h3>
+  <p>The command line signs what it exports and checks what it deploys, so it needs a signing key and the signers it trusts. Make a pair once, in a folder outside the repository, and set the two lines it prints in your shell:</p>
+  <div class="block"><pre class="cmd">npm run studio -- signing-key ~/th-keys</pre></div>
+  <p>It prints <code>TH_SIGNING_KEY=file:…/signing-key.pem</code> and <code>TH_TRUSTED_SIGNERS=file:…/trusted-signers.json</code>. Never commit the key. A zip downloaded from <code>npm run studio:dev</code> is signed with that run's own key instead: deploy it with the trusted-signers file the run printed at its start.</p>
 
   <h3>Export from the command line</h3>
   <div class="block"><pre class="cmd">npm run studio -- export-zip p.wf.corporate.v1 dtfx corporate.zip --with-simulators --tenant example-bank</pre></div>
@@ -790,7 +935,8 @@ section[id], h3[id] { scroll-margin-top: 16px; }
   <div class="table"><table>
     <thead><tr><th>Line</th><th>Meaning</th></tr></thead>
     <tbody>
-      <tr><td><code>configuration example-bank@1.0.0 from the package</code></td><td>The bank's configuration travels in the package. <code>--config file</code> overrides it</td></tr>
+      <tr><td><code>package verified: … file(s) signed by key …</code></td><td>The signature and every file's hash checked against <code>TH_TRUSTED_SIGNERS</code>. A package that does not verify is not run</td></tr>
+      <tr><td><code>configuration example-bank@1.10.0 from the package</code></td><td>The bank's configuration set travels in the package. <code>--config file</code> overrides it, and <code>--value parameter=value</code> one value</td></tr>
       <tr><td><code>worker th-uae-wps up on 7445 with 9 task(s), pid 3882</code></td><td>Each worker is its own process</td></tr>
       <tr><td><code>intake uae.wps.map.sif-in.v1 on th-uae-wps: mapped</code></td><td>The front door ran the intake map on the worker that owns it</td></tr>
       <tr><td><code>front door: workflow-select chose p.wf.corporate.v1 for payment outward corporate</code></td><td>The platform workflow, chosen from the dispatch table's kind, direction and segment</td></tr>
@@ -801,27 +947,52 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     </tbody>
   </table></div>
   <p>Exit code 0 when the workflow ends, 1 when it fails, 2 for a mistake in the command. Set <code>TH_WORKER_LOG=/tmp/workers.log</code> to see every attempt each worker served.</p>
-  <div class="note">The deploy runner drives DTFx, so it needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>). Temporal packages are built and tested, but the conformance kit has not been run on Temporal yet.</div>
+  <div class="note">A DTFx or Elsa package needs the .NET 8 SDK (<a href="#install-dotnet">install it</a>); a Temporal package needs the .NET 10 SDK, Java and Temporal's test server (<a href="#install-temporal">the kit on Temporal</a>); a Flowable package needs a Flowable REST server at <code>TH_FLOWABLE_URL</code>. The conformance kit passes on all four.</div>
+
 </section>
 
 <!-- ============================================================ 8 -->
+<section class="part" id="runtime">
+  <h2>8. The runtime side</h2>
+  <p class="lede">The studio designs and releases; the runtime runs payments. This guide stops at the studio's edge. Here is where to go next.</p>
+  <ul>
+    <li><b>One bank per runtime.</b> A runtime serves exactly one bank, set at install (<code>TH_BANK</code>), and refuses another bank's distribution, configuration release, payment or file (R-09-76). The studio stays multi-tenant.</li>
+    <li><b>What it takes from the studio.</b> The signed distributions and configuration releases of <a href="#reach">part 3</a>, which the service console installs from the studio's content branch. It verifies each signature before it stores a release and again before it activates one or puts it in force. A bank's values reach the runtime only in a signed configuration release, checked against the bounds of every distribution it has (R-09-110).</li>
+
+    <li><b>Consent.</b> Every change of the system (installing a distribution, putting a configuration release in force, a register change, a troubleshooting action) is asked for by one person and done only when another person with the bank approver's role consents (R-09-77).</li>
+    <li><b>The consoles.</b> The operations console is for operators and supervisors: payments, their timelines, work queues, holds, reports and the bank's registers. The service console is for service engineers: health, content install and activation, configuration releases, backups, the error and event log and its runbooks. Both are on Fluent UI 2, like the studio.</li>
+  </ul>
+  <div class="table"><table>
+    <thead><tr><th>To</th><th>Read</th></tr></thead>
+    <tbody>
+      <tr><td>Run the studio and one bank's runtime on a laptop, in Docker</td><td><code>deploy/laptop/README.md</code>, and the video <code>docs/demo/2-installation.mp4</code></td></tr>
+      <tr><td>Know what the runtime is made of</td><td><code>runtime/README.md</code></td></tr>
+      <tr><td>Package and deploy for real</td><td><code>docs/runtime/PACKAGING-AND-DEPLOYMENT.md</code></td></tr>
+      <tr><td>Use the operations console</td><td><code>runtime/ops-console/README.md</code></td></tr>
+      <tr><td>Watch a payment end to end, and the service console</td><td><code>docs/demo/4-end-to-end.mp4</code>, and <code>docs/demo/5c-service-console.mp4</code> once it is recorded</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ 9 -->
 <section class="part" id="quality">
-  <h2>8. Testing the studio itself</h2>
+  <h2>9. Testing the studio itself</h2>
   <p class="lede">The studio carries its own tests. You need them only to change the studio, but they are also worked examples of every feature.</p>
   <div class="table"><table>
     <thead><tr><th>Command, from <code>studio/</code></th><th>What it runs</th></tr></thead>
     <tbody>
-      <tr><td><code>npm test</code></td><td>The white-box suite in process: store, checks, rule service, sandboxes, simulators, interpreter, export, every API route, the deploy runner</td></tr>
+      <tr><td><code>npm test</code></td><td>The white-box suite in process: the content branch on a fake GitHub, checks, rule service, sandboxes, simulators, interpreter, draft runs, licensing, reference tables, port bindings, signing, export and distributions, every API route, the deploy runner, the theme shared with the runtime's console</td></tr>
       <tr><td><code>npm run test:coverage</code></td><td>The same, with line and branch coverage</td></tr>
-      <tr><td><code>npm run test:blackbox</code></td><td>The studio as separate processes: the HTTP API, the command line, the web app in Chromium, this guide's walk-through, and the end-to-end tests for a new scheme and for WPS by configuration. <code>TH_ENGINES=1</code> adds the kit on DTFx and Flowable</td></tr>
+      <tr><td><code>npm run test:blackbox</code></td><td>The studio as separate processes: the HTTP API, the command line, the web app in Chromium (sign-in, the bench, a draft run, the debugger, the assistant, import, the branch panel), this guide's walk-through (<code>test/blackbox/ui-build.test.ts</code>), and the end-to-end tests for a new scheme and for WPS by configuration. <code>TH_ENGINES=1</code> adds the kit on DTFx, Elsa and Flowable</td></tr>
     </tbody>
   </table></div>
   <p>From <code>spec/</code>, the specification's own checks, after <code>pip install -r tools/requirements.txt</code> once: <code>python tools/validate.py</code>, <code>python tools/expand.py --check</code>, <code>python tools/mutation_tests.py</code>, <code>python tools/build_docs.py</code>. Use <code>python3</code> where that is your command.</p>
 </section>
 
-<!-- ============================================================ 9 -->
+<!-- ============================================================ 10 -->
 <section class="part" id="help">
-  <h2>9. Troubleshooting and reference</h2>
+  <h2>10. Troubleshooting and reference</h2>
+
 
   <h3>When something goes wrong</h3>
   <div class="table"><table>
@@ -830,6 +1001,12 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td>A blank page, or a note that the web app is not built</td><td><code>npm run web:build</code>, then restart</td></tr>
       <tr><td><code>EADDRINUSE</code> on start</td><td>Another studio is running: stop it, or set <code>PORT</code></td></tr>
       <tr><td>A publish is refused</td><td>Read the message. Usual causes: you are the maker, the user is not a checker, the release is already published, a test is red, or a draft in the change set has an error</td></tr>
+      <tr><td><code>Refused (409 R-01-11) … is published and immutable</code></td><td>A published release never changes: give the draft a later release. <span class="ui">Open a published … as a new release</span> proposes one</td></tr>
+      <tr><td><span class="ui">Save the configuration set</span> stays off, with <code>L53 … is a patch</code></td><td>A configuration set is released as a minor or a major. <span class="ui">Bump the release</span> raises only the patch: write the next minor in the <code>release</code> line (from <code>1.10.0</code>, <code>1.11.0</code>)</td></tr>
+      <tr><td>It stays off with <code>L14</code></td><td>A value is outside its bounds, or two periods of one value overlap. The message names the parameter and the bounds</td></tr>
+      <tr><td>A bank's configuration approval is refused for a scheme</td><td>The configuration binds a scheme the bank does not license. Approve the licence in the bank workspace first</td></tr>
+      <tr><td>A draft is not offered as a bench target</td><td>The bench runs published releases unless you tick <span class="ui">Run with my drafts</span></td></tr>
+      <tr><td><code>Set TH_TRUSTED_SIGNERS</code>, or a deploy says the package is not deployed</td><td>A deploy checks the package's signature first. Set <code>TH_TRUSTED_SIGNERS</code> to the signers of the studio that released it (<a href="#deploy">part 7</a>)</td></tr>
       <tr><td><code>L03</code>, a reference does not resolve</td><td>The artefact it names is not published and not in your drafts. Check the spelling, or draft it</td></tr>
       <tr><td><code>L22</code>, a port has no simulator</td><td>Save the simulator as a draft too; they publish together</td></tr>
       <tr><td><code>L33</code>, a start message routes nowhere</td><td>Its kind, direction and segment must select a platform workflow whose slot the leg fills</td></tr>
@@ -852,6 +1029,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td><code>README.md</code></td><td>What runs today, with evidence</td></tr>
       <tr><td><code>studio/README.md</code></td><td>The studio's components, export, workers and deploy</td></tr>
       <tr><td><code>docs/TRAINING.md</code></td><td>The training path as plain text</td></tr>
+      <tr><td><code>docs/demo/README.md</code></td><td>The videos, and how they are recorded</td></tr>
+      <tr><td><code>docs/adr/</code></td><td>The decisions on the studio's stack, its sessions and its user interfaces on Fluent UI 2</td></tr>
+      <tr><td><code>docs/import/EXTRACTION-PROMPT.md</code></td><td>What an AI coding agent is given to extract a scheme from its source</td></tr>
       <tr><td><code>docs/ISSUES.md</code></td><td>Where the specification was silent or contradictory, the decisions taken, and what the studio does</td></tr>
       <tr><td><code>spec/design/</code></td><td>The specification. Start with Part 1 (concepts), Part 5 (the workflow language) and Part 10 (studio functions)</td></tr>
       <tr><td><code>spec/design/annex-a-wps.md</code></td><td>The factory scheme and its dispatch table</td></tr>
@@ -863,6 +1043,9 @@ section[id], h3[id] { scroll-margin-top: 16px; }
     <thead><tr><th>Word</th><th>Meaning</th></tr></thead>
     <tbody>
       <tr><td>Bench</td><td>The simulators a run binds to ports, one scenario each</td></tr>
+      <tr><td>Configuration release</td><td>A bank's values, tables and port bindings, signed, numbered per approval, put in force on its runtime with a bank approver's consent</td></tr>
+      <tr><td>Distribution</td><td>The signed logic one bank runs: the platform, the schemes it licenses and its own pack</td></tr>
+      <tr><td>Draft run</td><td>A bench run with your drafts in place of their published releases</td></tr>
       <tr><td>Business trace</td><td>One line per authored step: <code>step:outcome</code></td></tr>
       <tr><td>Change set</td><td>What one approval publishes: the draft and the drafts it refers to or that refer to it</td></tr>
       <tr><td>Composite</td><td>An activity whose behaviour is a subflow, typically send, await and read</td></tr>
@@ -872,8 +1055,11 @@ section[id], h3[id] { scroll-margin-top: 16px; }
       <tr><td>Expanded form</td><td>A workflow with composite steps replaced by blocks: what engines run</td></tr>
       <tr><td>Front door</td><td>Where messages arrive: intake for start messages, delivery for replies</td></tr>
       <tr><td>Hook</td><td>A bank's own logic at a declared hook point: halt, transform or notify</td></tr>
+      <tr><td>Idempotency key</td><td>What makes a repeated attempt of an activity with an outside effect harmless: a business id of the header</td></tr>
       <tr><td>Leg</td><td>A scheme's part of a payment, filling a platform workflow's slot</td></tr>
       <tr><td>Pin</td><td>The exact release a workflow uses, fixed when an instance starts</td></tr>
+      <tr><td>Reference table</td><td>Reference data in editions by date: a calendar, cut-offs, branches</td></tr>
+
       <tr><td>Slot</td><td>A place in a platform workflow that a leg fills</td></tr>
       <tr><td>Worker</td><td>A process serving one task queue's tasks in a deployment</td></tr>
     </tbody>

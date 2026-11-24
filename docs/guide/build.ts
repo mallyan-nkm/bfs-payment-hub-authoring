@@ -21,8 +21,24 @@ const TRAINING_RULE = {
   provenance: { origin: 'authored', status: 'provisional', clauses: ['Training exercise'] },
 };
 
+// Exercise 9a: a check written as a script, with no port, so it is pure (L57), run on the bench as a draft (I-341).
+const TRAINING_ACTIVITY = {
+  kind: 'activity', name: 'p.validate.training-period.v1', release: '1.0.0', title: 'Training check, the period is a year and a month', type: 'validate',
+  reads: ['header'], writes: ['facts.period'], outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }],
+  effect: 'pure', implementation: { binding: 'script', language: 'typescript', script: 'scripts/p.validate.training-period.v1.ts' },
+  provenance: { origin: 'authored', status: 'provisional', clauses: ['Training exercise'] },
+};
+const TRAINING_SCRIPT = [
+  'export async function run({ ctx }) {',
+  "  const ok = /^\\d{4}-\\d{2}$/.test(String(ctx.header.period ?? ''));",
+  '  ctx.facts = { ...(ctx.facts ?? {}), period: { ok } };',
+  "  return ok ? 'pass' : { outcome: 'reject', reasonCode: 'DT01' };",
+  '}',
+  '',
+].join('\n');
+
 const fill: Record<string, string> = {
-  TRAINING_RULE: toYaml(TRAINING_RULE),
+  TRAINING_RULE: toYaml(TRAINING_RULE), TRAINING_ACTIVITY: toYaml(TRAINING_ACTIVITY), TRAINING_SCRIPT,
   VALID: demo.VALID, USD: demo.USD, GARBAGE: demo.GARBAGE,
   PORT: toYaml(demo.PORT), SIM: toYaml(demo.SIM), RULE: toYaml(demo.RULE), RULESET: toYaml(demo.RULESET), VALIDATE: toYaml(demo.VALIDATE),
   FILE_IN: toYaml(demo.FILE_IN), FILE_IN_SCRIPT: demo.FILE_IN_SCRIPT, FILE_OUT: toYaml(demo.FILE_OUT), ACK_IN: toYaml(demo.ACK_IN), SEND: toYaml(demo.SEND),
