@@ -35,7 +35,7 @@ CASES = [
     ("M03", "ERROR L03", WF,
      "call: p.validate.limits.v1", "call: p.validate.nothing.v1", "a call names an activity that does not exist"),
     ("M04", "ERROR L04", "factory/p/activities/p.reserve.funds.v1.yaml",
-     "release: 1.0.0", "release: 2.0.0", "the release major disagrees with the name"),
+     "release: 1.1.0", "release: 2.1.0", "the release major disagrees with the name"),
     ("M05", "ERROR L05", SAL,
      "      pending: { end: pending }\n", "", "an outcome is left unhandled"),
     ("M06", "ERROR L06", WF,
