@@ -257,8 +257,10 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
             var rows = await db.Releases.AsNoTracking().Where(r => r.Scope == DistributionRegistry.ConfigScope(b.Bank)).OrderByDescending(r => r.StoredAt).ToListAsync(ct);
             if (rows.FirstOrDefault(r => r.Release != b.Release) is { } last) against = Bundle.FromZip(last.Package, ReleaseSignature.ConfigurationRelease);
         }
+        // A distribution's artefacts by kind and name, with their releases; a configuration release's files, which have neither, by path.
+        static string KeyOf(JsonObject a) => (string?)a["kind"] is { Length: > 0 } k ? $"{k}:{(string?)a["name"]}" : (string?)a["path"] ?? "";
         static Dictionary<string, string> Artefacts(Bundle? x) => (x?.Manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
-            .GroupBy(a => $"{(string?)a["kind"]}:{(string?)a["name"]}").ToDictionary(g => g.Key, g => string.Join(", ", g.Select(a => $"{(string?)a["release"]} {(string?)a["sha256"]}")));
+            .GroupBy(KeyOf).ToDictionary(g => g.Key, g => string.Join(", ", g.Select(a => $"{(string?)a["release"]} {(string?)a["sha256"]}".Trim())));
         static Dictionary<string, string> Packs(Bundle? x) => (x?.Manifest["billOfMaterials"]?["packs"] as JsonArray ?? []).OfType<JsonObject>()
             .ToDictionary(a => (string)a["scope"]!, a => $"{(string?)a["release"]}");
         static Dictionary<string, string> Dials(Bundle? x) => ParameterContract.Of(x?.Manifest["parameterContract"]).ToDictionary(d => d.Key, d => CanonicalJson.Of(d.Value));
@@ -486,23 +488,100 @@ public sealed class ContentService(StoreOptions store, StoreOptions ops, IPackag
         return new JsonObject { ["paymentId"] = paymentId, ["distribution"] = stuck.Distribution, ["ended"] = DistributionRegistry.Abandoned };
     }
 
+    /// <summary>
+    /// The bank's configuration values in force at a moment, each with the configuration set it came from, and its hook bindings
+    /// in force (R-09-110, R-09-111, R-06-13): what the workers and the engine hosts read, from the store, at each attempt.
+    /// </summary>
+    public async Task<JsonObject> ValuesInForce(ServiceIdentity who, DateTimeOffset? at = null, CancellationToken ct = default)
+    {
+        var bank = settings.Bank?.Id ?? who.Tenants.Where(t => t != ServiceIdentity.AnyTenant).Order(StringComparer.Ordinal).FirstOrDefault()
+            ?? throw new ServiceRefused(400, ErrorCodes.ActionNotOffered, "This runtime names no bank (TH_BANK)");
+        if (!who.Sees(bank)) throw new ServiceRefused(403, ErrorCodes.Forbidden, $"No tenant {bank} for {who.DisplayName}");
+        var moment = at ?? clock.GetUtcNow();
+        await using var db = StoreDbContext.Open(store);
+        var values = await ConfigurationValues.InForce(db, bank, moment, ct);
+        return new JsonObject
+        {
+            ["bank"] = bank, ["at"] = moment.ToString("O"), ["values"] = new JsonArray(values.Select(v => (JsonNode)v).ToArray()),
+            ["hookBindings"] = await HookBindings.InForce(db, bank, moment, ct),
+        };
+    }
+
+    /// <summary>
+    /// What this runtime trusts (R-09-40, R-09-120 to R-09-123): the signers of content, each in use, retired or revoked; and the
+    /// native modules of each installed distribution, with the SHA-256 of each file, which the install and the native host check.
+    /// </summary>
+    public async Task<JsonObject> Trust(CancellationToken ct = default)
+    {
+        var now = clock.GetUtcNow();
+        var signers = new JsonArray();
+        string? problem = null;
+        try
+        {
+            var t = await TrustedSigners.Load(settings.TrustSetting, settings.Secrets, ct);
+            foreach (var k in t.Keys.Values.OrderBy(k => k.KeyId, StringComparer.Ordinal))
+                signers.Add(new JsonObject
+                {
+                    ["keyId"] = k.KeyId, ["kinds"] = k.Kinds is null ? null : new JsonArray(k.Kinds.Select(x => (JsonNode)x).ToArray()), ["feed"] = k.Feed,
+                    ["retiredAt"] = k.RetiredAt?.ToString("O"),
+                    ["state"] = t.Revoked.ContainsKey(k.KeyId) ? "revoked" : k.RetiredAt is { } r && r <= now ? "retired" : "in use",
+                });
+            foreach (var r in t.Revoked.Values.Where(r => !t.Keys.ContainsKey(r.KeyId)).OrderBy(r => r.KeyId, StringComparer.Ordinal))
+                signers.Add(new JsonObject { ["keyId"] = r.KeyId, ["state"] = "revoked", ["revokedAt"] = r.RevokedAt.ToString("O"), ["reason"] = r.Reason });
+        }
+        catch (Exception e) when (e is SignatureRejected or SecretUnavailable) { problem = e.Message; }
+        var states = await States(ct);
+        await using var db = StoreDbContext.Open(store);
+        var rows = await db.Releases.AsNoTracking().Where(r => r.Scope.StartsWith(DistributionRegistry.DistPrefix)).OrderBy(r => r.StoredAt).Select(r => new { r.Id, r.ManifestJson }).ToListAsync(ct);
+        var distributions = new JsonArray(rows.Select(r =>
+        {
+            var n = NativeOf(JsonNode.Parse(r.ManifestJson));
+            n["releaseId"] = r.Id;
+            n["state"] = states.GetValueOrDefault(r.Id, "installed");
+            return (JsonNode)n;
+        }).ToArray());
+        return new JsonObject { ["signers"] = signers, ["problem"] = problem, ["distributions"] = distributions };
+    }
+
+    /// <summary>A distribution's native section as the console lists it: the contract, and per module its scope, assembly, activities and files with their SHA-256.</summary>
+    public static JsonObject NativeOf(JsonNode? manifest)
+    {
+        var native = manifest?["native"] as JsonObject;
+        return new JsonObject
+        {
+            ["contract"] = native?["contract"]?.ToString(),
+            ["modules"] = new JsonArray((native?["modules"] as JsonArray ?? []).OfType<JsonObject>().Select(m => (JsonNode)new JsonObject
+            {
+                ["scope"] = (string?)m["scope"], ["assembly"] = (string?)m["assembly"],
+                ["activities"] = new JsonArray((m["activities"] as JsonArray ?? []).Select(a => (JsonNode?)a?.ToString()).ToArray()),
+                ["files"] = new JsonArray((m["files"] as JsonArray ?? []).OfType<JsonObject>().Select(f => (JsonNode)new JsonObject { ["name"] = (string?)f["name"], ["sha256"] = (string?)f["sha256"] }).ToArray()),
+            }).ToArray()),
+            ["notCarried"] = native?["notCarried"]?.DeepClone(),
+        };
+    }
+
     /// <summary>The state of every installed release in the console's environment (section 9.12 of Part 9).</summary>
     public async Task<Dictionary<string, string>> States(CancellationToken ct = default, string? environment = null)
     {
         var env = environment ?? settings.Environment;
         var now = StoreTime.Of(clock.GetUtcNow());
         await using var db = StoreDbContext.Open(store);
-        var releases = await db.Releases.AsNoTracking().Select(r => new { r.Id, r.Scope, r.Release }).ToListAsync(ct);
+        var releases = await db.Releases.AsNoTracking().Select(r => new { r.Id, r.Scope, r.Release, r.ManifestJson }).ToListAsync(ct);
         var acts = await db.Activations.AsNoTracking().Where(a => a.Environment == env).ToListAsync(ct);
         var removed = await db.Facts.AsNoTracking().Where(f => f.Kind == ServiceAudit.Kind && f.Code == "removed").Select(f => f.SubjectId).ToListAsync(ct);
         var inForce = (await db.Facts.AsNoTracking().Where(f => f.Kind == DistributionRegistry.InForceKind).Select(f => f.SubjectId).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         var open = await OpenPayments(ct);
         var states = new Dictionary<string, string>(StringComparer.Ordinal);
         var dreg = new DistributionRegistry(db, clock);
+        // A configuration set is the bank's whole set (ConfigurationValues): of the releases put in force, the latest is in force
+        // and the earlier ones are superseded. The rates feed's releases set the rates only, so they supersede each other alone.
+        static string Line(string manifest) => (string?)JsonNode.Parse(manifest)?["feed"] ?? "";
+        var latest = releases.Where(r => r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal) && inForce.Contains(r.Id))
+            .GroupBy(r => (r.Scope, Line(r.ManifestJson))).Select(g => g.MaxBy(r => r.Release, ReleaseOrder.Comparer)!.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var r in releases)
         {
             if (r.Scope.StartsWith(DistributionRegistry.DistPrefix, StringComparison.Ordinal)) { states[r.Id] = await dreg.Refresh(r.Id, env, "service-console", ct) ?? "installed"; continue; }
-            if (r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal)) { states[r.Id] = inForce.Contains(r.Id) ? "in-force" : "awaiting-consent"; continue; }
+            if (r.Scope.StartsWith(DistributionRegistry.ConfigPrefix, StringComparison.Ordinal)) { states[r.Id] = !inForce.Contains(r.Id) ? "awaiting-consent" : latest.Contains(r.Id) ? "in-force" : "superseded"; continue; }
             var mine = acts.Where(a => a.Scope == r.Scope).ToList();
             var active = mine.Where(a => a.EffectiveFrom <= now).OrderByDescending(a => a.EffectiveFrom).ThenByDescending(a => a.Id).FirstOrDefault()?.Release;
             var was = mine.Any(a => a.Release == r.Release && a.EffectiveFrom <= now);

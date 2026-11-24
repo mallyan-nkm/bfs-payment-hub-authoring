@@ -347,9 +347,9 @@ describe('the service console', () => {
     await page.getByRole('button', { name: /Sign in as Example service engineer/ }).click();
     await page.getByTestId('who').filter({ hasText: 'Example service engineer' }).waitFor();
     await page.goto(`${apiUrl}/#/service/trust`);
-    await page.getByRole('heading', { name: 'Trusted signers' }).waitFor();
+    await page.getByRole('heading', { name: 'Signers and native modules' }).waitFor();
     // The run's own key names no kind: it signs every kind.
-    await page.getByTestId('trust-row').first().waitFor();
+    await page.getByTestId('signer-row').first().waitFor();
     expect(await page.getByTestId('trust-kinds').first().textContent()).toBe('every kind');
     const feed = page.getByTestId('feed-key');
     await feed.filter({ hasText: 'not trusted' }).waitFor();
@@ -383,7 +383,7 @@ describe('the service console', () => {
     await page.goto(`${apiUrl}/#/service/trust`);
     await page.reload();
     await page.getByTestId('feed-key').filter({ hasText: 'trusted for configuration releases of the fx-rates feed' }).waitFor();
-    expect(await page.locator(`[data-testid=trust-row][data-key="${entry.keyId}"] [data-testid=trust-kinds]`).textContent()).toBe('configuration, of the fx-rates feed only');
+    expect(await page.locator(`[data-testid=signer-row][data-key="${entry.keyId}"] [data-testid=trust-kinds]`).textContent()).toBe('configuration, of the fx-rates feed only');
     expect(problems).toEqual([]);
     await page.close();
   });

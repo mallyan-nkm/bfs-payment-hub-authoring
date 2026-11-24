@@ -33,6 +33,8 @@ export interface AttemptRequest {
   messages?: { id: string; type: string; payload?: any }[];
   /** The distribution the payment is pinned to, as the engine names it (R-09-130): a native activity runs that distribution's build. */
   distribution?: string;
+  /** The step whose handler the attempt is in, its activity and the outcome handled, as the engine names it (R-09-241, Issue I-290). */
+  handlerOf?: { step: string; activity?: string; outcome?: string };
 }
 
 export type AttemptResponse =
@@ -169,7 +171,8 @@ export class PartyService {
       ctx = { ...inst.ctx, payment: it.payment ?? {}, ext: it.ext ?? {}, facts: it.facts ?? {}, items: [it] };
       item = { index: 0, item: it, parent: inst.ctx };
     }
-    const frame: Frame = { inst, ctx, scope, hookOwner: '', tryStack: [], item };
+    // The attempt's step and the step whose handler it is in, as the engine names them, for a hold the runtime opens (R-09-241).
+    const frame: Frame = { inst, ctx, scope, hookOwner: '', tryStack: [], item, envelope: { step: req.step, handlerOf: req.handlerOf } };
     let settled = false;
     const p = invoke(act, { id: req.step, call: req.activity, policy: req.policy }, frame, scope, req.step, req.level, req.call, req.attempt).then(
       (r) => ({ ok: true as const, r }),

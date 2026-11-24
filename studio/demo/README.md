@@ -1,6 +1,6 @@
 # Narrated demos and training videos
 
-Four recorded videos of the studio and the laptop stack (the north-star video and the end-to-end video are further down), each a real browser session on a fresh workspace, driven click by
+Four recorded videos of the studio and the laptop stack (the north-star video, the end-to-end video and the service console's video are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
 an `.srt` subtitle file. They run at a slow pace, in plain words for someone new to payments; the concept video draws every idea
 as a restaurant kitchen. The two console videos, 5a and 5b, show every feature of the studio for one kind of user each; the
@@ -51,6 +51,15 @@ laptop stack (`deploy/laptop`), as does the installation video, for the stack's 
 | --- | --- |
 | `4-end-to-end.mp4` | One salary file, end to end, slowly. The test bench sends it: the bank's run on Temporal, the default engine, beside the reference interpreter, with the business date (Issue I-331); then the same kind of file into the runtime through the File API, as the bank's channel sends one. Each step of the workflow in the studio's debugger (intake, the platform workflow's checks, screening, the reservation and the route, then the WPS leg: the business date and cut-off, the scheme's checks, the SIF rendered, encrypted and sent, the ACK, posting and settlement), then the real payment's timeline in the operations console, its SIF on the Central Bank's SFTP folder, the ACK left there and matched, the payment settled. A business failure: the Central Bank's NAK, the payment rejected with its reason and the line's error in the operations console, and a corrected file accepted. A technical failure: the SFTP partner down, the File API's circuit breaker open, the service console's health, the error dictionary's runbook and the logs; the partner back, the kept SIF resent with a bank approver's consent (Issue I-333), the ACK and the payment settled. A business-rule change: the bank configurator moves the cut-off in the studio, the bank approver approves, the configuration release is put in force with consent, and the same file counts for the next business day. A new hook: the configurator binds the bank's employer AML check after validation, the approver approves and builds distribution B, B is installed and activated and the release put in force with consent, and the hook's step is on the next payment's timeline (Issue I-335) |
 
+## The service console's video
+
+`5c-service-console.mp4`, in `docs/demo/` with its `.srt`, voiced and paced as the end-to-end video, is the third console video. It
+runs on the laptop stack where the end-to-end video leaves it (distribution B active, its configuration release in force):
+
+| Video | What it shows |
+| --- | --- |
+| `5c-service-console.mp4` | The service console, page by page, as the service engineer and the bank approver use it (`demo/service-console.ts`). Health: every probe (the store, the read model, the package source, the trusted signers, Temporal, the disk, the circuit breakers) and its history, and the laptop's own real problem, its disk nearly full, with the runbook its code links to. Content: the versions offered and their states, Verify, the Difference of the bank's next configuration release (built in the studio before the camera), its install put in force with the approver's consent, the earlier release superseded, the values in force and the hook bindings, a roll back to distribution A and B activated again, and the payments pinned but never started (none, and end-pin). Consents: a drain asked and refused, the standing consent to rate releases asked and given. A problem diagnosed from the console: the native host stopped, a salary file's render step parked, the log naming the error, the host back and the parked step retried with consent (Issue I-338). A kept file resent after the Central Bank's folder lost it, the ACK and the payment settled; the catalogue's requeue, reset and intake actions. The log's filters, the audit trail and its chain; the error dictionary and two runbooks; a signed backup exported, verified and dry-run; the trusted signers and each distribution's native modules by their SHA-256, re-verified; the assistant, off until the bank's data protection officer approves it (Issues I-339, I-350 to I-353) |
+
 Bring the stack up first, with the secrets in your shell (`deploy/laptop/README.md`), then, from `studio/`, with the same shell:
 
 ```bash
@@ -59,6 +68,7 @@ TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 TH_DEMO_BUILD_LOG=<the log of build.sh> npx tsx
 
 ```bash
 TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts end-to-end
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts service-console
 ```
 
 `demo/stack.ts` holds what the two stack videos share: the stack's URLs, the sign-in at the bank's development provider, the
@@ -81,11 +91,18 @@ stopped and started with `docker compose stop` and `start`. A payment on Tempora
 the video and shows a card instead. A dry run may start at a later scene while the script is worked on (`TH_DEMO_FROM=<n>`), and run
 the bench on DTFx in seconds instead of Temporal (`TH_DEMO_QUICK_BENCH=1`); the video is always recorded whole, on Temporal.
 
+The service console's video does not reset the stack. Before the camera it makes sure B is active, refuses whatever waits for a
+consent, revokes the standing consent to rate releases, and builds the bank's next configuration release in the studio by its API
+(the cut-off for salary files moved, the laptop's binding kept), which the video then verifies, compares and installs. It stops and
+starts the native host with `docker compose stop` and `start`, sends one salary file to `POST /files`, removes its SIF from the SFTP
+folder before the resend, and leaves the ACK, each shown in the terminal panel. Each run leaves one more configuration release in
+force, so it can be run again on the same stack.
+
 ## Record them again
 
 The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/north-star.ts` (the same stage,
 and its store, `demo/north-star/`), `demo/bank-configurator.ts` and `demo/designer.ts` (with the documents it builds, in
-`demo/designer/docs.ts`), and `demo/install.ts` and `demo/end-to-end.ts` (the laptop stack, with `demo/stack.ts`);
+`demo/designer/docs.ts`), and `demo/install.ts`, `demo/end-to-end.ts` and `demo/service-console.ts` (the laptop stack, with `demo/stack.ts`);
 `demo/record.ts` drives the browser, lays the voice at the time each scene starts, and joins them with ffmpeg. Each studio
 production runs the studio's own server on an in-memory fake GitHub seeded from `content-configurations/`, as
 `npm run studio:dev` does. From `studio/`:
@@ -105,7 +122,7 @@ key in the recorder's environment the server takes it, and that scene is left ou
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
 console productions also check their results as they go. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
 video used 28, a smaller file). `test/blackbox/demo-videos.test.ts` runs the three studio
-productions this way, the north-star video where its store is up (one scenario on each engine), and the two stack videos where a laptop stack is up with its
+productions this way, the north-star video where its store is up (one scenario on each engine), and the three stack videos where a laptop stack is up with its
 secrets in the environment (the end-to-end video takes up to forty minutes: its bench run and six payments run on Temporal in real time).
 
 Needs ffmpeg. Without a voice the videos

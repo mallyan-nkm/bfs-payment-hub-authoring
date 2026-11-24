@@ -122,7 +122,7 @@ public sealed class FileApiWorker(InboxPoller poller, FileOutbox outbox, IConfig
             try
             {
                 await poller.PollOnce(stoppingToken);
-                foreach (var id in await outbox.Pending(attempts, stoppingToken)) await outbox.Deliver(id, stoppingToken);
+                foreach (var id in await outbox.Pending(attempts, stoppingToken)) await outbox.Deliver(id, attempts, stoppingToken);
                 // The orders reconciliation breaks start once a bank approver consented (R-09-250): through the front door, once each.
                 if (services?.GetService(typeof(BreakOrderStarter)) is BreakOrderStarter orders) await orders.StartPending(stoppingToken);
             }

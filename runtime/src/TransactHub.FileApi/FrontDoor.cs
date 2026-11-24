@@ -492,13 +492,23 @@ public sealed class WorkerIntake(Func<string, string, string?> workerOf, HttpCli
 /// </summary>
 public sealed class HttpEngineHost(Func<string, string?> supervisorOf, string? token = null, HttpClient? http = null) : IEngineHost
 {
+    /// <summary>The engine host did not answer (R-09-244, Issue I-353): a 503, with no exception's text.</summary>
+    public const string EngineUnreachable = "frontdoor.EngineUnreachable";
     readonly HttpClient http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
 
     async Task<JsonObject> Post(string url, JsonObject body, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
         if (token is not null) req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        using var res = await http.SendAsync(req, ct);
+        HttpResponseMessage res;
+        // An engine host that does not answer is a refusal with the dictionary's code, never the exception's text, which names the
+        // runtime's hosts (R-09-244, Issue I-353). The file is kept; the channel sends it again, or an operator resends it.
+        try { res = await http.SendAsync(req, ct); }
+        catch (Exception e) when (e is HttpRequestException || (e is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            throw new FrontDoorRefused(EngineUnreachable, "The engine host does not answer now: the file is kept, and no payment started; send it again later");
+        }
+        using var _res = res;
         var text = await res.Content.ReadAsStringAsync(ct);
         var o = string.IsNullOrWhiteSpace(text) ? new JsonObject() : JsonNode.Parse(text) as JsonObject ?? new JsonObject();
         if (!res.IsSuccessStatusCode) throw new FrontDoorRefused("frontdoor.EngineRefused", $"The engine host answered {(int)res.StatusCode}: {Dispatch.Str(o, "error")}");

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PAGES, RETIRE_NONE, diffSummary, feedKeyAction, hashQuery, keyMaySign, logQuery, rotationParameters, runbookHref, stateTone, when } from '../../src/service/format';
+import { PAGES, RETIRE_NONE, diffSummary, feedKeyAction, hashQuery, keyMaySign, logQuery, rotationParameters, runbookHref, stateTone, stepError, when } from '../../src/service/format';
 import { DEV_USERS } from '../../src/shell/Shell';
 
 // The service console's own logic (R-09-39 to R-09-44): its pages, the runbook link of every error it shows, the log
@@ -11,9 +11,19 @@ import { DEV_USERS } from '../../src/shell/Shell';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe('the service console', () => {
-  it('has the seven pages of Part 9, section 9.12, the trusted signers (R-09-249) and its audit trail (R-05-76)', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'trust', 'logs', 'errors', 'actions', 'backup', 'assistant', 'audit']);
+  it('has the seven pages of Part 9, section 9.12, its signers and native modules, and its audit trail (R-05-76)', () => {
+    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'logs', 'errors', 'actions', 'backup', 'trust', 'assistant', 'audit']);
   });
+
+  it('shows the values in force, the pins with no payment and the native modules, each from its route (R-09-110, R-09-165, R-09-120)', () => {
+    const src = fs.readFileSync(path.join(here, '..', '..', 'src', 'service', 'Service.tsx'), 'utf8');
+    for (const t of ['data-testid="value-row"', 'data-testid="stuck-pin-row"', 'data-testid="signer-row"', 'data-testid="native-file-row"']) expect(src).toContain(t);
+    expect(src).toMatch(/api\.act\('end-pin', /);
+    expect(src).toMatch(/api\.act\('put-in-force', /);
+    const api = fs.readFileSync(path.join(here, '..', '..', 'src', 'service', 'api.ts'), 'utf8');
+    for (const r of ["'/content/stuck-pins'", '`/content/values', "'/trust'"]) expect(api).toContain(r);
+  });
+
 
   it("says what each trusted key may sign, and asks a rotation for the new key's kinds and scope (R-09-249, Issue I-292)", () => {
     expect(keyMaySign({ everyKind: true, kinds: ['workflow-package', 'distribution', 'configuration'] })).toBe('every kind');
@@ -47,12 +57,35 @@ describe('the service console', () => {
     for (const m of errorBadges) expect(m).toMatch(/runbookHref/);
   });
 
+  it('names a step\'s error in the log, with whether it may be retried, when the dictionary has no entry for it (Issue I-350)', () => {
+    // The log item's error, unmasked (its data is masked, and an error object's name with it).
+    expect(stepError({ name: 'NativeHostUnreachable', retryable: true }, [])).toBe('NativeHostUnreachable, retryable');
+    expect(stepError({ name: 'BusinessReject', retryable: false }, [])).toBe('BusinessReject, not retryable');
+    expect(stepError({ name: 'E0042' }, [])).toBe('E0042');
+    // An error the dictionary knows is shown by its runbook link instead.
+    expect(stepError({ name: 'TransientError', retryable: true }, [{ code: 'TransientError' }])).toBe('');
+    expect(stepError(null, [])).toBe('');
+  });
+
+  it('wraps a long probe name or value in its cell, so the page does not scroll sideways (video 5c)', () => {
+    const src = fs.readFileSync(path.join(here, '..', '..', 'src', 'service', 'Service.tsx'), 'utf8');
+    const css = fs.readFileSync(path.join(here, '..', '..', 'src', 'styles.css'), 'utf8');
+    expect(css).toMatch(/table\.grid td\.wrap \{[^}]*white-space: normal/);
+    expect(src).toContain('<TableCell className="mono wrap">{c.name}</TableCell>');
+    expect(src).toMatch(/<TableCell className="mono wrap" title=\{JSON\.stringify\(v\.value\)\}>/);
+  });
+
   it('gives each state its tone', () => {
     expect(stateTone('active')).toBe('pass');
     expect(stateTone('draining')).toBe('warn');
     expect(stateTone('pending-approval')).toBe('warn');
     expect(stateTone('refused')).toBe('fail');
     expect(stateTone('drained')).toBe('');
+    expect(stateTone('in-force')).toBe('pass');
+    expect(stateTone('in use')).toBe('pass');
+    expect(stateTone('superseded')).toBe('');
+    expect(stateTone('awaiting-consent')).toBe('warn');
+    expect(stateTone('revoked')).toBe('fail');
   });
 
   it('sends only the filters that are filled', () => {

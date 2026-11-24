@@ -136,6 +136,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:40fb8c4ab3085886fbd32fa518f0b93aa64678154900585bce2dc7fffc5228b9
     path: activities/p.validate.canonical.v1.yaml
+  - name: p.validate.canonical.v2
+    kind: activity
+    release: 2.0.0
+    hash: sha256:7bd9df0a882dc94492fa8c3ac7bf287cefa3bbdbf2dd290942b578ecc9938e9b
+    path: activities/p.validate.canonical.v2.yaml
   - name: p.validate.duplicate.v1
     kind: activity
     release: 1.0.0
@@ -149,7 +154,7 @@ artefacts:
   - name: p.errors.platform.v1
     kind: error-dictionary
     release: 1.12.0
-    hash: sha256:f10a1beea74a111c0625946c4690c9fa50d3e63b667061b09ae92581ef16e9ce
+    hash: sha256:9efa2cf0f3ce6bc287a0aa251d6763dcdf6633eb3faf0501b6196e408fd5f546
     path: errors/p.errors.platform.v1.yaml
   - name: p.port.channel.v1
     kind: port
@@ -241,6 +246,11 @@ artefacts:
     release: 1.0.0
     hash: sha256:5eaac5779243f7097d1068d2e6532c7c051d77ad6699713d1c83b3deb865556a
     path: rules/p.rule.amount-within-platform-limit.v1.yaml
+  - name: p.rule.batch-currency-present.v1
+    kind: rule
+    release: 1.0.0
+    hash: sha256:968267768d58019ac0768102cb53d63d0a3671a42b36127743a6e3164f6056bd
+    path: rules/p.rule.batch-currency-present.v1.yaml
   - name: p.rule.creditor-account-present.v1
     kind: rule
     release: 1.0.0
@@ -268,8 +278,8 @@ artefacts:
     path: rules/p.rule.end-to-end-id-present.v1.yaml
   - name: p.ruleset.canonical.v1
     kind: ruleset
-    release: 1.0.0
-    hash: sha256:6ca1e287d1f989cebefc5f68b1b6e78af34d202cec7c1e96a5f59010d6026211
+    release: 1.1.0
+    hash: sha256:890815ffcb839400f4414bc919f25087dc41a2c398d107643f416812cf366517
     path: rules/p.ruleset.canonical.v1.yaml
   - name: p.ruleset.limits.v1
     kind: ruleset
@@ -488,8 +498,8 @@ artefacts:
     path: views/p.view.operations.v1.yaml
   - name: p.seg.check-and-screen.v1
     kind: workflow
-    release: 1.0.0
-    hash: sha256:a3c3494b6362b59ad646f42f5989f858297d545285b024337668c37611bcee64
+    release: 1.1.0
+    hash: sha256:6f30c584b762ced4bc267e829df9efa8ea1ee59e8f07febd300cc49bcac21569
     path: workflows/p.seg.check-and-screen.v1.yaml
   - name: p.sub.await-posting-window.v1
     kind: workflow

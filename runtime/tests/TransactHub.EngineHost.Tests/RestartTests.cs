@@ -274,6 +274,53 @@ public partial class EngineHostTests
     [Fact] public Task Flowable_survives_a_restart_of_its_host_on_SqlServer() => Restart("flowable", "sqlserver");
 
     [Fact] public Task Dtfx_serves_many_payments_of_a_distribution_on_one_service() => OneService("dtfx");
+    [Fact] public Task Dtfx_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow() => SideBySide("dtfx");
+
+    /// <summary>
+    /// R-09-238 (Issue I-300): a distribution's DTFx service runs several work items at once, as many as its host's setting allows
+    /// (TH_HOST_SERVICE_CONCURRENCY, default 4): a payment whose worker call is slow holds up no other payment of the distribution.
+    /// With one work item at once, the second payment's first step would wait for the first's slow call.
+    /// </summary>
+    async Task SideBySide(string engine)
+    {
+        await UseStore("postgres");
+        using var worker = new Worker();
+        var (bank, dist, plans, workflow) = await Distribution(engine, "sbs", "PT1M", worker);
+        var slow = $"S1-{bank}";
+        worker.Delay = (payment, step) => payment == slow && step == "a" ? TimeSpan.FromSeconds(25) : TimeSpan.Zero;
+        await using var sup = await Current(engine, bank, plans, dist);
+        try
+        {
+            var fast = $"S2-{bank}";
+            foreach (var p in new[] { slow, fast })
+            {
+                var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = workflow });
+                Assert.True(r.status == 202, r.body.ToJsonString());
+            }
+            var t0 = DateTimeOffset.UtcNow;
+            await Until(() => StepRecorded(fast, "ok"), TimeSpan.FromSeconds(20), $"{fast}'s first step while {slow}'s call is slow");
+            Assert.False(await StepRecorded(slow, "ok"), $"{slow}'s slow call answered within {DateTimeOffset.UtcNow - t0}");
+            await Until(() => StepRecorded(slow, "ok"), TimeSpan.FromMinutes(2), $"{slow}'s first step");
+            foreach (var p in new[] { slow, fast })
+                await Until(async () => (await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.answer", ["id"] = $"answer-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
+            foreach (var p in new[] { slow, fast })
+            {
+                var e = await Ended(sup, p);
+                Assert.True(J.S(e, "outcome") == "done", e.ToJsonString());
+                Assert.Equal(4, (int?)J.Num(J.P(J.P(J.P(e, "observation"), "engine"), "service"), "concurrency"));
+            }
+            await EngineChain(engine, dist);
+        }
+        catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+        {
+            throw new Xunit.Sdk.XunitException($"{x.Message}\n{x.StackTrace}\n--- the supervisor's log ---\n{sup.Log}");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
     [Fact] public Task Elsa_serves_many_payments_of_a_distribution_on_one_service() => OneService("elsa");
     [Fact] public Task Flowable_serves_many_payments_of_a_distribution_from_one_deployment() => OneService("flowable");
 }

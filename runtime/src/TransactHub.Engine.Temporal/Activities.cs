@@ -67,6 +67,8 @@ public sealed class Host
         {
             ["op"] = "attempt", ["instance"] = J.S(a, "instance"), ["activity"] = activity, ["release"] = J.S(a, "release"), ["step"] = step,
             ["call"] = J.Num(a, "call"), ["attempt"] = J.Num(a, "attempt"), ["now"] = J.Num(a, "now"), ["ctx"] = ctx, ["level"] = J.S(a, "level"), ["policy"] = J.Clone(J.P(a, "policy")),
+            // The step whose handler the attempt is in (R-09-241, Issue I-290).
+            ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
         var res = await Party.Call(req);
         var deliveries = J.Clone(J.P(res, "deliveries")) ?? new JsonArray();

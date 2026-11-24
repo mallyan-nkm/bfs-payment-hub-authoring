@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.return-credits.v1
-release: 1.2.0
+release: 1.3.0
 dsl: 1.0.0
 title: Send the returns file and read the acknowledgement
-description: What the return-credits block does underneath. Holds the upload for the bank's upload hold, sends the returns file, waits for the acknowledgement of the returns file for the bank's reply wait (by default thirty calendar days, the source's), and reads it. An ACK accepts the returns file; a NAK refuses it. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17).
+description: What the return-credits block does underneath. Holds the upload for the bank's upload hold, sends the returns file, waits for the acknowledgement of the returns file for the bank's reply wait (by default thirty calendar days, the source's), and reads it. An ACK accepts the returns file; a NAK refuses it. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17). From 1.3.0 the send reads the encryption step's fact and sends the encrypted file where the bank's binding encrypted it, never the plain one (Issue I-293, R-09-232).
 implements:
   activity: uae.wps.exchange.return-credits.v1
 exit:
@@ -17,7 +17,7 @@ do:
     handle:
       refused: { return: rejected }
   - id: send
-    call: uae.wps.exchange.send-returns-file.v1
+    call: uae.wps.exchange.send-returns-file.v2
     handle:
       rejected: { return: rejected }
       unknown: { return: pending }

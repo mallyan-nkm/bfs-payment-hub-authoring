@@ -120,6 +120,11 @@ public sealed class SourceContext
     public List<JsonObject> Steps { get; init; } = new();
     public JsonObject? Hold { get; init; }
     public List<JsonObject> Documents { get; init; } = new();
+    /// <summary>
+    /// The deliveries of the payment's sent files as the File API's outbox recorded them on its chain (R-05-103, R-09-236), in order:
+    /// { kind, outcome (delivered, failed, undelivered), at, attempt, adapter, code, fileName, folder, file }.
+    /// </summary>
+    public List<JsonObject> Deliveries { get; init; } = new();
     /// <summary>Each line: { lineNo, endToEndId, amount, currency, creditorAccount, creditorAgent, ext, facts }.</summary>
     public List<JsonObject> Lines { get; init; } = new();
     /// <summary>The instance a leg's sources are limited to; null for the payment as a whole.</summary>
@@ -131,14 +136,16 @@ public sealed class SourceContext
 /// <c>subject.x</c>, <c>bulk.x</c>, <c>payment.x</c>, <c>ext.&lt;scope&gt;.&lt;field&gt;</c>, <c>header.x</c>,
 /// <c>step:&lt;step path&gt;.&lt;outcome|reasonCode|at|attempt|activity|status.x|writes.x&gt;</c>,
 /// <c>hold.x</c>, <c>message:&lt;kind&gt;.&lt;fileName|at|size|count|direction&gt;</c>,
+/// <c>delivery:&lt;message&gt;.&lt;outcome|at|attempts|adapter|code|fileName|folder&gt;</c> (R-05-103),
 /// <c>lines.count</c>, <c>lines.count(&lt;line source&gt; = | != &lt;value or source&gt;)</c>, <c>lines.sum(&lt;line source&gt;)</c>;
 /// and for a line: <c>line.x</c>, <c>line.ext.&lt;scope&gt;.&lt;field&gt;</c>, <c>line.facts.x</c>.
 /// </summary>
 public static class Sources
 {
-    public static readonly string[] Roots = ["subject", "bulk", "payment", "ext", "header", "step", "hold", "message", "lines", "line"];
+    public static readonly string[] Roots = ["subject", "bulk", "payment", "ext", "header", "step", "hold", "message", "delivery", "lines", "line"];
     static readonly Regex StepRx = new(@"^step:(?<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$");
     static readonly Regex MessageRx = new(@"^message:(?<kind>[a-z0-9.\-]+?)\.(?<attr>fileName|at|size|count|direction)$");
+    static readonly Regex DeliveryRx = new(@"^delivery:(?<kind>[a-z0-9.\-]+?)\.(?<attr>outcome|at|attempts|adapter|code|fileName|folder)$");
     static readonly Regex CountRx = new(@"^lines\.count\((?<left>[^=!]+?)\s*(?<op>!=|=)\s*(?<right>.+)\)$");
     static readonly Regex SumRx = new(@"^lines\.sum\((?<src>.+)\)$");
 
@@ -173,6 +180,11 @@ public static class Sources
             if (m.Groups["attr"].Value == "count") return JsonValue.Create(docs.Count);
             return docs.Count == 0 ? null : Path(docs[^1], m.Groups["attr"].Value);
         }
+        if (source.StartsWith("delivery:", StringComparison.Ordinal))
+        {
+            var m = DeliveryRx.Match(source);
+            return m.Success ? Delivery(c.Deliveries.Where(d => (string?)d["kind"] == m.Groups["kind"].Value).ToList(), m.Groups["attr"].Value) : null;
+        }
         if (source == "lines.count") return JsonValue.Create(c.Lines.Count);
         if (CountRx.Match(source) is { Success: true } cm)
         {
@@ -200,6 +212,26 @@ public static class Sources
             "header" => c.Steps.LastOrDefault(s => c.Instance is null || (string?)s["instance"] == c.Instance)?["header"] is JsonObject h ? Path(h, rest) : null,
             "hold" => c.Hold is null ? null : Path(c.Hold, rest),
             _ => null,
+        };
+    }
+
+    /// <summary>
+    /// The delivery of a message's file (R-05-103): the outcome of its latest fact (<c>delivered</c>, <c>failed</c> while the outbox
+    /// still tries, <c>undelivered</c> once its attempts ended); <c>at</c> when it was last delivered, else nothing; <c>attempts</c> the
+    /// attempts made; <c>code</c> the error of a delivery not made. Nothing is said of a file the outbox has not yet tried.
+    /// </summary>
+    static JsonNode? Delivery(List<JsonObject> ds, string attr)
+    {
+        if (ds.Count == 0) return null;
+        var last = ds[^1];
+        var delivered = ds.LastOrDefault(d => (string?)d["outcome"] == "delivered");
+        return attr switch
+        {
+            "outcome" => JsonValue.Create((string?)last["outcome"]),
+            "at" => delivered?["at"]?.DeepClone(),
+            "attempts" => JsonValue.Create(ds.Count(d => (string?)d["outcome"] is "delivered" or "failed")),
+            "code" => (string?)last["outcome"] == "delivered" ? null : last["code"]?.DeepClone(),
+            _ => last[attr]?.DeepClone(),
         };
     }
 

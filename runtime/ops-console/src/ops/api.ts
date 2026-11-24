@@ -77,6 +77,8 @@ export function client(auth: SignIn) {
     act: (id: string, action: string, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions`, { action, remarks }),
     decide: (id: string, action: string, approve: boolean, remarks?: string) => call<any>('POST', `/payments/${encodeURIComponent(id)}/actions/${action}/decision`, { approve, remarks }),
     pending: () => call<any[]>('GET', '/actions/pending'),
+    // The payments whose file the File API kept and could not deliver (R-05-103, Issue I-337).
+    undelivered: () => call<import('./oversight').UndeliveredList>('GET', '/undelivered'),
     // The reconciliation break queue (R-09-92).
     breaks: (all = false) => call<import('./Breaks').Break[]>('GET', `/breaks${all ? '?all=true' : ''}`),
     resolveBreak: (id: string, resolution: string, remarks?: string) => call<any>('POST', `/breaks/${encodeURIComponent(id)}/resolution`, { resolution, remarks }),

@@ -3,12 +3,13 @@
 export const PAGES = [
   { id: 'health', title: 'Health' },
   { id: 'content', title: 'Content' },
-  // The trusted signers, each with what it may sign (R-09-249, Issue I-292).
-  { id: 'trust', title: 'Trust' },
   { id: 'logs', title: 'Logs' },
   { id: 'errors', title: 'Errors and runbooks' },
   { id: 'actions', title: 'Actions' },
   { id: 'backup', title: 'Backup' },
+  // What the runtime trusts: the signers of content, each with what it may sign and the rates feed's key (R-09-249, Issue I-292), and
+  // each distribution's native modules by their SHA-256 (R-09-120 to R-09-123).
+  { id: 'trust', title: 'Signers and modules' },
   { id: 'assistant', title: 'Assistant' },
   // The console's own audit trail (R-05-76, Issue I-202).
   { id: 'audit', title: 'Audit' },
@@ -17,9 +18,9 @@ export const PAGES = [
 /** The tone of a probe's or a release's state, for its badge. */
 export function stateTone(s: string | undefined): 'pass' | 'warn' | 'fail' | '' {
   switch (s) {
-    case 'ok': case 'active': case 'installed': case 'done': case 'verified': return 'pass';
-    case 'warn': case 'draining': case 'scheduled': case 'pending-approval': case 'offered': return 'warn';
-    case 'fail': case 'refused': case 'removed': return 'fail';
+    case 'ok': case 'active': case 'installed': case 'done': case 'verified': case 'in-force': case 'in use': return 'pass';
+    case 'warn': case 'draining': case 'scheduled': case 'pending-approval': case 'offered': case 'awaiting-consent': return 'warn';
+    case 'fail': case 'refused': case 'removed': case 'revoked': return 'fail';
     default: return '';
   }
 }
@@ -83,4 +84,14 @@ export function feedKeyAction(feed: { previous?: string | null }): { action: str
 /** A short time for tables. */
 export function when(iso: string | undefined): string {
   return iso ? iso.replace('T', ' ').replace(/\.\d+/, '').replace(/\+00:00$/, 'Z') : '—';
+}
+
+/**
+ * A step's error as the log names it when the error dictionary has no entry for it, so no runbook link stands for it (Issue
+ * I-350): its name and whether the engine may retry it, from the log item's unmasked error. Empty when there is none, or when a
+ * linked entry shows it.
+ */
+export function stepError(error: { name?: string; retryable?: boolean | null } | null | undefined, errors: { code: string }[] | undefined): string {
+  if (!error?.name || (errors ?? []).some((x) => x.code === error.name)) return '';
+  return error.retryable == null ? error.name : `${error.name}, ${error.retryable ? 'retryable' : 'not retryable'}`;
 }

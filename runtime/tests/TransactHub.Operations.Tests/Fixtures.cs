@@ -66,7 +66,7 @@ public static class WpsRun
     public const string Tenant = "example-bank";
     public const string FileId = "0000001234567261117083000";
 
-    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack", bool console = false, bool suspect = false)
+    public static async Task<string> Seed(StoreOptions o, string tenant = Tenant, string fileId = FileId, bool hold = true, string ack = "ack", bool console = false, bool suspect = false, string delivery = "delivered")
     {
         await using var db = StoreDbContext.Open(o);
         var store = new PaymentStore(db);
@@ -139,7 +139,30 @@ public static class WpsRun
             await log.Append($"{root}/leg3#ctx", "payload", new NewFact("payload", "commit", new JsonObject { ["token"] = token }, Actor: "claim-check"));
         }
         await Step($"{root}/leg3", "render", "uae.wps.map.sif-out.v1", "mapped");
-        await Step($"{root}/leg3", "submit.send", "uae.wps.exchange.send-salary-file.v1", "accepted");
+        await Step($"{root}/leg3", "submit.send", "uae.wps.exchange.send-salary-file.v2", "accepted");
+        // The File API's outbox tells the payment of its file's delivery (R-09-236, Issue I-337): delivered, or failing until its
+        // attempts end, the Central Bank's SFTP partner down.
+        JsonObject Sent(int attempt) => new()
+        {
+            ["file"] = $"file-{fileId[^6..]}", ["kind"] = "uae.wps.sif-submission", ["fileName"] = $"{fileId}.SIF", ["folder"] = "centralBank/upload/cb/wps/sif",
+            ["adapter"] = "sftp", ["attempt"] = attempt, ["leg"] = "scheme-leg", ["activity"] = "uae.wps.exchange.send-salary-file.v2",
+        };
+        if (delivery == "delivered")
+            await log.Append(accepted.BulkId, "bulk", new NewFact("file.delivered", "sftp", Sent(1), Actor: "file-api"));
+        else
+        {
+            var failed = Sent(1);
+            failed["why"] = "the circuit breaker is open (synthetic)";
+            await log.Append(accepted.BulkId, "bulk", new NewFact("file.delivery-failed", "port.CircuitOpen", failed, Actor: "file-api"));
+            if (delivery == "undelivered")
+            {
+                var end = Sent(1);
+                end.Remove("attempt");
+                end["attempts"] = 1;
+                end["lastCode"] = "port.CircuitOpen";
+                await log.Append(accepted.BulkId, "bulk", new NewFact("file.undelivered", "file.Undelivered", end, Actor: "file-api"));
+            }
+        }
         await Step($"{root}/leg3", "submit.read-ack", "uae.wps.map.ack-in.v1", ack, new JsonObject { ["status"] = new JsonObject { ["code"] = ack == "ack" ? "ACCP" : "RJCT" } });
         await store.KeepMessage(tenant, "uae.wps", Direction.Inward, "uae.wps.sif", $"{fileId}.SIF", "SCR,synthetic\n"u8.ToArray(), accepted.BulkId);
         if (console)

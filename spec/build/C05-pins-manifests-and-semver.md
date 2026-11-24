@@ -93,7 +93,7 @@ Size: 5 SP. Phase 3. Branch: `story/c05-s3-interface-diff-and-semver`.
 
 **Definition of Success**
 
-- Adding an outcome to uae.wps.exchange.send-returns-file.v1 proposes 2.0.0 and a new name ending in v2.
+- Adding an outcome to uae.wps.exchange.send-returns-file.v2 proposes 3.0.0 and a new name ending in v3.
 
 ### C05-S4 Dependency release propagation
 

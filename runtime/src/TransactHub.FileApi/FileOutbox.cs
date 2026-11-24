@@ -11,6 +11,12 @@ namespace TransactHub.FileApi;
 // the folder, the name and the attempt, or `file.delivery-failed` with the reason. A resend (the operations console's `resend`, the
 // service console's `resend-file`) puts the same kept bytes on the port again, never rendered or signed again, and is a fact
 // `file.resent` with who asked; the same action id sends once.
+//
+// The payment a file is sent for is told too (R-09-236, Issue I-337): each delivery and each failed attempt is a fact on the
+// payment's own chain (`file.delivered`, `file.delivery-failed` with the error's code, `port.CircuitOpen` where the partner's breaker
+// is open), and the end of the outbox's attempts is `file.undelivered` (`file.Undelivered`). The operations console reads them: the
+// payment's timeline, its leg's sent time from the delivery and not from the outbox's acceptance, and the list of the payments whose
+// file is kept and undelivered (R-05-103).
 
 /// <summary>A file a workflow sends: whose, where to (a folder of the binding, naming its partner) and its bytes.</summary>
 public sealed record Outbound(string Tenant, string Scheme, string Kind, string Folder, string FileName, byte[] Content, string? PaymentId, string? Leg, string? Activity, string Actor);
@@ -40,6 +46,10 @@ public sealed class BoundTransfers(PortBindings bindings, TransactHub.Security.I
 public sealed class FileOutbox(StoreOptions store, System.Security.Cryptography.ECDsa signingKey, ITransferPorts ports, TimeProvider? clock = null)
 {
     public const string QueuedKind = "file.queued", DeliveredKind = "file.delivered", FailedKind = "file.delivery-failed", ResentKind = "file.resent";
+    /// <summary>The fact on the payment's chain that the outbox's attempts ended and the file was never delivered (R-09-236).</summary>
+    public const string UndeliveredKind = "file.undelivered";
+    /// <summary>The codes of a delivery that failed (the dictionary's 1.11.0): no binding, a transfer that failed, the attempts ended.</summary>
+    public const string NotBoundCode = "file.NotBound", DeliveryFailedCode = "file.DeliveryFailed", UndeliveredCode = "file.Undelivered";
     readonly TimeProvider clock = clock ?? TimeProvider.System;
 
     /// <summary>Keeps the file and queues it for delivery; the same file for the same payment and leg is queued once.</summary>
@@ -65,13 +75,41 @@ public sealed class FileOutbox(StoreOptions store, System.Security.Cryptography.
         return row;
     }
 
-    /// <summary>Delivers a queued file on the bank's binding in force now; a file delivered already is not sent again.</summary>
-    public Task<Delivery> Deliver(string fileId, CancellationToken ct = default) => Send(fileId, again: false, actor: "file-api", actionId: null, ct);
+    /// <summary>
+    /// Delivers a queued file on the bank's binding in force now; a file delivered already is not sent again. Where
+    /// <paramref name="maxAttempts"/> is given and this attempt is its last and fails, the payment is told its file is undelivered.
+    /// </summary>
+    public Task<Delivery> Deliver(string fileId, CancellationToken ct = default) => Send(fileId, again: false, actor: "file-api", actionId: null, maxAttempts: null, ct);
+
+    /// <inheritdoc cref="Deliver(string, CancellationToken)"/>
+    public Task<Delivery> Deliver(string fileId, int maxAttempts, CancellationToken ct = default) => Send(fileId, again: false, actor: "file-api", actionId: null, maxAttempts, ct);
 
     /// <summary>Sends a kept file's bytes again (a resend). An action id given twice sends once.</summary>
-    public Task<Delivery> Resend(string fileId, string actor, string actionId, CancellationToken ct = default) => Send(fileId, again: true, actor, actionId, ct);
+    public Task<Delivery> Resend(string fileId, string actor, string actionId, CancellationToken ct = default) => Send(fileId, again: true, actor, actionId, maxAttempts: null, ct);
 
-    async Task<Delivery> Send(string fileId, bool again, string actor, string? actionId, CancellationToken ct)
+    /// <summary>
+    /// A delivery's fact on the payment's own chain (R-09-236): what the file is, where it went or why it did not, the attempt. Only
+    /// a payment the store holds, or one the front door pinned, is told; the file's own chain holds the same.
+    /// </summary>
+    async Task TellPayment(StoredFileRow file, JsonObject queued, string kind, string? code, JsonObject what, string actor, CancellationToken ct)
+    {
+        if ((string?)queued["payment"] is not { Length: > 0 } pid) return;
+        await using var db = StoreDbContext.Open(store);
+        var known = await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == pid, ct)
+            || await db.Payments.AsNoTracking().AnyAsync(p => p.Id == pid, ct) || await db.Bulks.AsNoTracking().AnyAsync(b => b.Id == pid, ct);
+        if (!known) return;
+        what["file"] = file.Id;
+        what["kind"] = file.Kind;
+        what["fileName"] ??= (string?)queued["fileName"] ?? file.FileName;
+        what["leg"] = (string?)queued["leg"];
+        what["activity"] = file.Activity;
+        await new FactLog(db, clock).Append(pid, "payment", new NewFact(kind, code, what, Actor: actor), ct);
+    }
+
+    static string CodeOf(Exception e) =>
+        e is CircuitOpenException || e.InnerException is CircuitOpenException ? CircuitBreakers.OpenCode : DeliveryFailedCode;
+
+    async Task<Delivery> Send(string fileId, bool again, string actor, string? actionId, int? maxAttempts, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);
         var kept = (await new FileStore(db, signingKey, clock).Read(fileId, ct)) ?? throw new KeyNotFoundException($"No file {fileId} is kept");
@@ -90,7 +128,8 @@ public sealed class FileOutbox(StoreOptions store, System.Security.Cryptography.
         try { (t, b) = ports.For(file.Tenant, clock.GetUtcNow()); }
         catch (PortBindingException e)
         {
-            await log.Append(fileId, FileIntake.FileKind, new NewFact(FailedKind, "file.NotBound", new JsonObject { ["attempt"] = attempt, ["why"] = e.Message }, Actor: actor), ct);
+            await log.Append(fileId, FileIntake.FileKind, new NewFact(FailedKind, NotBoundCode, new JsonObject { ["attempt"] = attempt, ["why"] = e.Message }, Actor: actor), ct);
+            await Failed(file, q, attempt, NotBoundCode, null, e.Message, maxAttempts, actor, ct);
             return new Delivery(fileId, "failed", null, attempt, e.Message);
         }
         var folder = (string?)q["folder"] ?? "";
@@ -102,13 +141,30 @@ public sealed class FileOutbox(StoreOptions store, System.Security.Cryptography.
             {
                 ["adapter"] = b.Adapter, ["folder"] = folder, ["fileName"] = name, ["attempt"] = attempt, ["sha256"] = file.ContentHash, ["resend"] = again,
             }, Actor: actor), ct);
+            await TellPayment(file, q, DeliveredKind, b.Adapter, new JsonObject
+            {
+                ["adapter"] = b.Adapter, ["folder"] = folder, ["fileName"] = name, ["attempt"] = attempt, ["resend"] = again,
+            }, actor, ct);
             return new Delivery(fileId, again ? "resent" : "delivered", b.Adapter, attempt, null);
         }
-        catch (Exception e) when (e is FileTransferException or PortBindingException or IOException or TransactHub.Security.SecretUnavailable)
+        // A partner whose breaker is open (CircuitOpenException is an HttpRequestException): nothing was sent, the attempt failed.
+        catch (Exception e) when (e is FileTransferException or PortBindingException or IOException or TransactHub.Security.SecretUnavailable or HttpRequestException)
         {
-            await log.Append(fileId, FileIntake.FileKind, new NewFact(FailedKind, b.Adapter, new JsonObject { ["adapter"] = b.Adapter, ["attempt"] = attempt, ["why"] = e.Message }, Actor: actor), ct);
+            await log.Append(fileId, FileIntake.FileKind, new NewFact(FailedKind, b.Adapter, new JsonObject { ["adapter"] = b.Adapter, ["attempt"] = attempt, ["why"] = e.Message, ["code"] = CodeOf(e) }, Actor: actor), ct);
+            await Failed(file, q, attempt, CodeOf(e), b.Adapter, e.Message, maxAttempts, actor, ct);
             return new Delivery(fileId, "failed", b.Adapter, attempt, e.Message);
         }
+    }
+
+    /// <summary>A failed attempt, on the payment's chain; and, on the last of the outbox's attempts, that the file is undelivered.</summary>
+    async Task Failed(StoredFileRow file, JsonObject q, int attempt, string code, string? adapter, string why, int? maxAttempts, string actor, CancellationToken ct)
+    {
+        await TellPayment(file, q, FailedKind, code, new JsonObject { ["adapter"] = adapter, ["folder"] = (string?)q["folder"], ["attempt"] = attempt, ["why"] = why }, actor, ct);
+        if (maxAttempts is { } max && attempt >= max)
+            await TellPayment(file, q, UndeliveredKind, UndeliveredCode, new JsonObject
+            {
+                ["adapter"] = adapter, ["folder"] = (string?)q["folder"], ["attempts"] = attempt, ["lastCode"] = code, ["why"] = why,
+            }, actor, ct);
     }
 
     /// <summary>The outbox files not yet delivered, oldest first, with fewer failed attempts than the limit.</summary>

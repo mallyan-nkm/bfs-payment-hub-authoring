@@ -3,7 +3,7 @@ import { Avatar, Button, Card, Nav, NavItem, SearchBox, Tooltip } from '@fluentu
 import {
   AlertRegular, ArrowUploadRegular, BeakerRegular, BookDatabaseRegular, BuildingBankRegular, ChartMultipleRegular, ClipboardTaskListLtrRegular,
   DocumentBulletListClockRegular, HistoryRegular, LockClosedRegular, NavigationRegular, PaymentRegular, PeopleTeamRegular, ServerRegular,
-  ShieldErrorRegular, ShieldTaskRegular, SignOutRegular, TimerRegular, WarningRegular,
+  DocumentErrorRegular, ShieldErrorRegular, ShieldTaskRegular, SignOutRegular, TimerRegular, WarningRegular,
 } from '@fluentui/react-icons';
 import type { DevIdentity, SignIn } from './auth';
 import { Alert, ThemeChoiceContext, ThemeMenu, initials } from '../ui';
@@ -32,6 +32,7 @@ const ICONS: Record<string, ReactElement> = {
   work: <ClipboardTaskListLtrRegular />,
   approvals: <ShieldTaskRegular />,
   alerts: <ShieldErrorRegular />,
+  undelivered: <DocumentErrorRegular />,
   ledger: <BookDatabaseRegular />,
   reports: <ChartMultipleRegular />,
   breaks: <WarningRegular />,

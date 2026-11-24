@@ -135,6 +135,8 @@ export interface Frame {
   label?: (id: string) => string;
   blockStartedAt?: number; // when the innermost composite step began (R-05-43)
   sink?: ItemSink; // an item of a forEach whose items run side by side: its entries, put in item order (R-05-53)
+  /** A deployed worker's attempt: its step and the step whose handler it is in, as the engine named them (R-09-241, Issue I-290). */
+  envelope?: { step?: string; handlerOf?: { step: string; activity?: string; outcome?: string } };
 }
 
 /** What one item of a forEach recorded while items ran side by side; the forEach puts it into the trace in item order (R-05-53). */
@@ -772,7 +774,12 @@ async function execBlock(st: any, frame: Frame) {
   if (outcome === primaryOutcome(act)) return;
   const action = st.handle?.[outcome];
   if (action === undefined) throw new StepFailure(id, `Outcome ${outcome} of ${id} is not handled (L05)`);
-  await runAction(action, frame);
+  await runAction(action, inHandlerOf(frame, id, act, outcome));
+}
+
+/** A step's handler: its attempts name the step, its activity and the outcome it handles, for a hold the runtime opens (R-09-241). */
+function inHandlerOf(frame: Frame, id: string, act: any, outcome: string): Frame {
+  return { ...frame, envelope: { ...frame.envelope, handlerOf: { step: label(frame, id), activity: act?.name, outcome } } };
 }
 
 async function compensateScope(frame: Frame) {
@@ -821,7 +828,7 @@ async function execCall(st: any, frame: Frame) {
     // An outcome nobody handles; lint L05 refuses this at publish.
     throw new StepFailure(id, `Outcome ${outcome} of ${id} is not handled (L05)`);
   }
-  await runAction(action, frame);
+  await runAction(action, inHandlerOf(frame, id, act, outcome));
 }
 
 /** Run one activity with its effective policy. Returns the outcome; trace and record are kept. */
@@ -1029,7 +1036,7 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   if (act.implementation?.binding === 'native' || nativeHere(act) || (act.implementation?.binding === 'builtin' && (act.ports ?? []).some((p: string) => run.onRuntime(p)))) {
     const params: Record<string, any> = {};
     for (const [k, decl] of Object.entries<any>(act.parameters ?? {})) params[k] = run.lookupParam(act.name, k, decl, run.clock.today());
-    const r = await run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level, inst.id, frame.ctx?.header?.paymentId));
+    const r = await run.clock.external(() => runNative(act, view, params, run.clock.iso(), run.cfg.tenant, level, inst.id, frame.ctx?.header?.paymentId, { ...frame.envelope, step: frame.envelope?.step ?? id }));
     // The runtime opened the hold and answered at once (Issue I-98): the decision comes later, as the operator's message.
     if (r.held) return holdDecision(act, io);
     return r;
@@ -1058,7 +1065,8 @@ export function nativeHere(act: any): boolean {
 /** One attempt of a native code-behind on the runtime's native host (R-08-14). */
 /** `instance`: the run instance the attempt is for, so the host can keep a file it receives or sends with its leg (Issue I-97). */
 /** `paymentId`: the payment's id, sent beside the view, since a map that reads the batch only has no header in it (R-09-132, Issue I-285). */
-export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string, instance?: string, paymentId?: string): Promise<ActivityResult> {
+/** `envelope`: the attempt's step and the step whose handler it is in, as the engine named them (R-09-241, Issue I-290). */
+export async function runNative(act: any, view: any, params: Record<string, any>, now: string, tenant?: string, level?: string, instance?: string, paymentId?: string, envelope?: { step?: string; handlerOf?: any }): Promise<ActivityResult> {
   const host = process.env.TH_NATIVE_HOST;
   if (!host) throw new ActivityFailure('NativeHostUnavailable', `${act.name} is native code-behind: it runs in the runtime's native host. Set TH_NATIVE_HOST (for example http://127.0.0.1:7300).`);
   let res: any;
@@ -1074,7 +1082,7 @@ export async function runNative(act: any, view: any, params: Record<string, any>
       // (R-09-122), and refuses it when the worker's distribution is another one (R-09-131). The studio's interpreter names none.
       const workerDistribution = process.env.TH_DISTRIBUTION || undefined;
       const distribution = attemptDistribution() ?? workerDistribution;
-      const body = JSON.stringify({ activity: act.name, release: act.release, ...(distribution ? { distribution } : {}), ...(workerDistribution ? { workerDistribution } : {}), view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}), ...(paymentId ? { paymentId } : {}) });
+      const body = JSON.stringify({ activity: act.name, release: act.release, ...(distribution ? { distribution } : {}), ...(workerDistribution ? { workerDistribution } : {}), view, params, now, ...(tenant ? { tenant } : {}), ...(level ? { level } : {}), ...(instance ? { instance } : {}), ...(paymentId ? { paymentId } : {}), ...(envelope?.step ? { step: envelope.step } : {}), ...(envelope?.handlerOf ? { handlerOf: envelope.handlerOf } : {}) });
       const call = async () => nativeFetch(`${host.replace(/\/$/, '')}/native`, { method: 'POST', headers: { 'content-type': 'application/json', ...traceHeaders(), ...(await nativeAuthHeaders()) }, body });
       let r = await call();
       // A token the host no longer takes is fetched again once.

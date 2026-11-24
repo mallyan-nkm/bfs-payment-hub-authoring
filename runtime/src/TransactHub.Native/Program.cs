@@ -165,6 +165,8 @@ Guarded(app.MapPost("/native", async (HttpRequest req, ClaimsPrincipal user) =>
                     files.Keep("in", "received", NativeContext.S(m, "fileName") is { Length: > 0 } fn ? fn : $"{NativeContext.S(m, "type")}.txt", System.Text.Encoding.UTF8.GetBytes(payload));
                     break;
                 }
+        // The attempt's step and the step whose handler it is in, as the engine named them, for a hold the image opens (R-09-241).
+        TransactHub.Operations.AttemptEnvelope.Current = new JsonObject { ["step"] = (string?)body["step"], ["handlerOf"] = body["handlerOf"]?.DeepClone() };
         var r = act.Run(new NativeAttempt(name, (string?)body["release"], view, body["params"] as JsonObject ?? new JsonObject(), now, tenant, (string?)body["level"]));
         served.AddOrUpdate(name, 1, (_, n) => n + 1);
         table.Served.AddOrUpdate(name, 1, (_, n) => n + 1);

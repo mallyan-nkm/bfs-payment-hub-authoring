@@ -55,15 +55,27 @@ public static class ServiceEndpoints
             });
         }));
 
-        // The trusted signers (R-09-249, Issue I-292): each key's kinds and scope, and the rates feed's own key.
-        api.MapGet("/trust", (HttpContext http, TrustSettings t) => Guard(async () => { Who(http); return Results.Ok(await t.Describe(http.RequestAborted)); }));
-
         // Content (R-09-40).
         api.MapGet("/content/versions", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Versions(http.RequestAborted)); }));
         api.MapGet("/content/releases", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Releases(http.RequestAborted)); }));
         api.MapGet("/content/open-payments", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.OpenPayments(http.RequestAborted)); }));
         // The pins with no payment, each with the action that ends it (Issue I-206, R-09-165).
         api.MapGet("/content/stuck-pins", (string? olderThan, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.StuckPins(DistributionRegistry.Duration(olderThan), http.RequestAborted)); }));
+        // The bank's values and hook bindings in force at a moment (R-09-110, R-09-111), and what the runtime trusts: its signers and
+        // the native modules of each distribution, checked by their SHA-256 (R-09-120 to R-09-123).
+        api.MapGet("/content/values", (DateTimeOffset? at, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.ValuesInForce(Who(http), at, http.RequestAborted))));
+        // With each key's state, kinds and scope, and the rates feed's own key and whether it is trusted (R-09-249, Issue I-292).
+        api.MapGet("/trust", (HttpContext http, ContentService c, TrustSettings t) => Guard(async () =>
+        {
+            Who(http);
+            var r = await c.Trust(http.RequestAborted);
+            try
+            {
+                foreach (var (k, v) in await t.Describe(http.RequestAborted)) r[k] = v?.DeepClone();
+            }
+            catch (Exception e) when (e is TransactHub.Security.SignatureRejected or TransactHub.Security.SecretUnavailable) { r["problem"] ??= e.Message; }
+            return Results.Ok(r);
+        }));
         api.MapGet("/content/diff", (string tag, string? environment, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Diff(tag, environment, http.RequestAborted)); }));
         api.MapPost("/content/verify", (TagAsk b, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.Verify(b.Tag, Who(http), b.Reason, http.RequestAborted))));
         // Installing changes the system: verified now, carried out once a bank approver consents (R-09-77).

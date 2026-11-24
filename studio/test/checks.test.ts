@@ -137,11 +137,26 @@ describe('every attempt is at least once (L54, R-03-25, R-03-26, Issue I-303)', 
     const clock = fire('L54', (find) => { find('p.notify.channel.v1').idempotencyKey = 'concat(header.paymentId, now())'; });
     expect(clock).toHaveLength(1);
     const send = fire('L54', (find) => {
-      const a = find('uae.wps.exchange.send-salary-file.v1');
+      const a = find('uae.wps.exchange.send-salary-file.v2');
       a.effect = 'read';
       delete a.idempotencyKey;
     });
     expect(send.map((i) => i.message)).toEqual([expect.stringMatching(/an exchange that sends/)]);
+  });
+});
+
+describe('a send after an encryption sends the encrypted file, and each sent message names its one send (L58, L59; R-05-101, R-05-102)', () => {
+  it('L58: a send after the subflow encrypts the file reads facts.encryption (Issue I-293)', () => {
+    expect(fire('L58', () => {})).toEqual([]);
+    const plain = fire('L58', (find) => { const a = find('uae.wps.exchange.send-refund-response.v2'); a.reads = a.reads.filter((r: string) => r !== 'facts.encryption'); });
+    expect(plain.map((i) => i.message)).toEqual([expect.stringMatching(/sends uae\.wps\.exchange\.send-refund-response\.v2 after step .*encrypt.* reads no facts\.encryption/)]);
+  });
+  it('L59: every message the bank sends names a send of its scheme, and no send sends two (Issue I-310)', () => {
+    expect(fire('L59', () => {})).toEqual([]);
+    const two = fire('L59', (find) => { find('uae.wps').messages.find((m: any) => m.id === 'uae.wps.dcr').disposition.sentBy = 'uae.wps.exchange.send-refund-request.v2'; });
+    expect(two.map((i) => i.message)).toEqual([expect.stringMatching(/are both sent by uae\.wps\.exchange\.send-refund-request\.v2/)]);
+    const map = fire('L59', (find) => { find('uae.wps').messages.find((m: any) => m.id === 'uae.wps.rfa').disposition.sentBy = 'uae.wps.map.rfa-out.v1'; });
+    expect(map.map((i) => i.message)).toEqual([expect.stringMatching(/uae\.wps\.rfa is sent by uae\.wps\.map\.rfa-out\.v1, which is no send/)]);
   });
 });
 

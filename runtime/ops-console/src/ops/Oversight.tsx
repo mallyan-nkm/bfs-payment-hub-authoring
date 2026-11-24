@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Client } from './api';
 import { show } from './format';
-import { alertOffers, alertState, askedNote, ledgerGroups, ratesWarning, type AlertList, type LedgerBank, type Rates } from './oversight';
+import { alertOffers, alertState, askedNote, ledgerGroups, ratesWarning, undeliveredState, type AlertList, type LedgerBank, type Rates, type UndeliveredList } from './oversight';
 import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 import { Alert, Badge } from '../ui';
 
@@ -54,6 +54,44 @@ export function Alerts({ api, go }: { api: Client; go(h: string): void }) {
             </TableRow>
           );
         })}</TableBody>
+      </Table>
+    </section>
+  );
+}
+
+/**
+ * The payments whose file is kept and undelivered (R-05-103, Issue I-337): their send step said the File API took the file, and the
+ * File API's outbox could not put it on the partner's folder. Each offers the payment's own resend (R-05-58) once the partner answers.
+ */
+export function Undelivered({ api, go }: { api: Client; go(h: string): void }) {
+  const [data, setData] = useState<UndeliveredList | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const load = () => api.undelivered().then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+  const resend = async (payment: string) => {
+    setError(null);
+    try { const r = await api.act(payment, 'resend'); setNote(r?.status === 'pending-approval' ? 'Resend asked: it waits for a second approver' : 'Resend asked'); await load(); } catch (e: any) { setError(e.message); }
+  };
+  return (
+    <section>
+      <h1>Undelivered files</h1>
+      <p className="muted">Files a payment sent that the File API kept but could not deliver to the partner's folder. The payment's send said the file was taken; it never left. Resend it once the partner answers.</p>
+      {note && <p className="muted" data-testid="undelivered-note">{note}</p>}
+      {error && <Alert tone="fail" className="error" role="alert">{error}</Alert>}
+      <p className="muted" data-testid="undelivered-total">{data ? `${data.total} file(s) not delivered, ${data.undelivered} whose attempts ended` : 'Loading…'}</p>
+      <Table size="small" className="grid" aria-label="Undelivered files">
+        <TableHeader><TableRow><TableHeaderCell>Last attempt</TableHeaderCell><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Tenant</TableHeaderCell><TableHeaderCell>File</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Work</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{data?.rows.map((r) => (
+          <TableRow key={`${r.payment}|${r.file}`} data-testid="undelivered-row">
+            <TableCell>{show(r.at, 'datetime')}</TableCell>
+            <TableCell className="mono"><a data-testid="undelivered-link" href={`#${r.link}`} onClick={(e) => { e.preventDefault(); go(`#${r.link}`); }}>{r.payment}</a></TableCell>
+            <TableCell>{r.tenant}</TableCell>
+            <TableCell className="mono small">{r.fileName ?? r.file}{r.kind ? ` (${r.kind})` : ''}</TableCell>
+            <TableCell data-testid="undelivered-state" title={r.why ?? undefined}>{undeliveredState(r)}</TableCell>
+            <TableCell className="actions"><Button type="button" onClick={() => resend(r.payment)}>Resend</Button></TableCell>
+          </TableRow>
+        ))}</TableBody>
       </Table>
     </section>
   );

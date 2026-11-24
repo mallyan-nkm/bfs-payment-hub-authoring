@@ -317,9 +317,9 @@ public sealed partial class Harness : IDisposable
     /// time the attempt takes; an attempt that never answers ends at its own deadline (the
     /// attempt timeout), after the orchestration has already abandoned it.
     /// </summary>
-    public async Task<JsonObject> Attempt(JsonObject a, bool durable)
+    public async Task<JsonObject> Attempt(JsonObject a, bool durable, string? input = null)
     {
-        object? baton = durable ? Service.CurrentBaton : null;
+        object? baton = durable ? (input is not null ? Service.BatonOf(input) : Service.CurrentBaton) : null;
         async Task SleepUntil(long at)
         {
             if (baton is not null) Service.ReleaseBaton(baton);
@@ -342,6 +342,8 @@ public sealed partial class Harness : IDisposable
         {
             ["op"] = "attempt", ["instance"] = J.S(a, "instance"), ["activity"] = activity, ["release"] = J.S(a, "release"), ["step"] = step,
             ["call"] = J.Num(a, "call"), ["attempt"] = J.Num(a, "attempt"), ["now"] = now, ["ctx"] = ctx, ["level"] = J.S(a, "level"), ["policy"] = J.Clone(J.P(a, "policy")),
+            // The step whose handler the attempt is in (R-09-241, Issue I-290).
+            ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
         var res = await party.Call(req);
         Schedule(res);

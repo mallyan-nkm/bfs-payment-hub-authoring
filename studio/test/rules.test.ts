@@ -36,7 +36,7 @@ describe('rule sessions (C06-S2 to S5)', () => {
         n++;
       }
     }
-    expect(n).toBe(74); // 1 for the outward refund order (workflow-select 1.2.0, I-136); 1 for the refund order (workflow-select 1.1.0, I-133); 4 for the suspended employer (Issue I-88); 2 for the participant directory (Issue I-115)
+    expect(n).toBe(77); // 3 for a file that names no currency (p.rule.batch-currency-present.v1, I-294); 1 for the outward refund order (workflow-select 1.2.0, I-136); 1 for the refund order (workflow-select 1.1.0, I-133); 4 for the suspended employer (Issue I-88); 2 for the participant directory (Issue I-115)
   });
   it('stops at a stage with a blocking finding (R-04-14)', () => {
     // a wrong currency (field stage) and a wrong control total (cross-field stage): the cross-field rule never runs
@@ -87,5 +87,14 @@ describe('rule sessions (C06-S2 to S5)', () => {
   it('keeps a trace of the rules fired (C06-S6)', () => {
     const res = runRuleSet('p.ruleset.canonical.v1', { Payment: [{ instructedAmount: { value: -1, currency: 'AED' } }], Header: [{ endToEndId: 'E' }] }, { resolve, evaluationDate: '2026-11-17' });
     expect(res.trace.find((t) => t.rule === 'p.rule.amount-positive.v1')?.fired).toBe(true);
+  });
+  it('refuses a file that names no currency on its batch or on a line (R-09-231, Issue I-294)', () => {
+    const facts = (batch: any, lines: any[]) => ({ Header: [{ endToEndId: 'E' }], Batch: [{ id: 'B1', ...batch }], Item: lines.map((l) => ({ batchId: 'B1', payment: { instructedAmount: { value: 10, ...l } } })) });
+    const codes = (f: any) => runRuleSet('p.ruleset.canonical.v1', f, { resolve, evaluationDate: '2026-11-17' }).findings.map((x: any) => x.reasonCode);
+    expect(codes(facts({}, [{}, { currency: 'AED' }]))).toEqual(['AM03']);
+    expect(codes(facts({ currency: 'AED' }, [{}, {}]))).toEqual([]);
+    expect(codes(facts({}, [{ currency: 'AED' }]))).toEqual([]);
+    expect(env.store.doc('p.validate.canonical.v2').reads).toEqual(['header', 'payment', 'batch', 'items[]']);
+    expect(env.store.doc('p.seg.check-and-screen.v1').do[0].call).toBe('p.validate.canonical.v2');
   });
 });

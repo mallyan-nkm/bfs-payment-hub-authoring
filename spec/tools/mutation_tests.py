@@ -279,6 +279,20 @@ CASES = [
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.post.verify.v1, map: uae.wps.map.psi-in.v1, period: P1D }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a report whose reconcile activity is not a reconcile activity"),
+    # L58 (R-05-101, Issue I-293): a send after an encryption step reads the encryption step's fact
+    ("M99", "ERROR L58", "factory/uae.wps/activities/uae.wps.exchange.send-refund-response.v2.yaml",
+     "  - messages\n  - facts.encryption\n", "  - messages\n", "the refund response's send would send the plain file after the subflow encrypts it"),
+    # L59 (R-05-102, Issue I-310): every message the bank sends names its one exchange, and no exchange sends two
+    ("M100", "ERROR L59", "factory/uae.wps/scheme.yaml",
+     "      sentBy: uae.wps.exchange.send-disbursement-cancellation.v2\n", "      sentBy: uae.wps.exchange.send-refund-request.v2\n",
+     "the refund request's send sends two messages, so its file would have two kinds"),
+    ("M101", "ERROR L59", "factory/uae.wps/scheme.yaml",
+     "      sentBy: uae.wps.exchange.send-returns-file.v2\n", "      sentBy: uae.wps.map.rfa-out.v1\n",
+     "the returns file is said to be sent by its render, which sends nothing"),
+    # L38 (R-05-103, Issue I-337): a view reads the delivery only of a message the bank sends
+    ("M102", "ERROR L38", "factory/uae.wps/views/uae.wps.view.operations.v1.yaml",
+     'source: "delivery:uae.wps.sif-submission.outcome"', 'source: "delivery:uae.wps.ack.outcome"',
+     "a view reads the delivery of the acknowledgement, which the bank receives"),
     # L62 (R-09-250, Issue I-168): a break's order starts by a message of the scheme that starts an order of that kind
     ("M107", "ERROR L62", "factory/uae.wps/scheme.yaml",
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertOffers, alertState, askedNote, ledgerGroups, ratesWarning, type LedgerBank, type Rates } from '../../src/ops/oversight';
+import { alertOffers, alertState, askedNote, deliveryNote, ledgerGroups, ratesWarning, ruleTraceNote, undeliveredState, type LedgerBank, type Rates } from '../../src/ops/oversight';
 
 // The fraud alerts, the ledger accounts and the rates warning in words (R-05-90 to R-05-92). Synthetic values only.
 
@@ -46,5 +46,26 @@ describe('the rates warning (R-05-92)', () => {
   });
   it('names each stale pair and the limit', () => {
     expect(ratesWarning({ stale: true, banks: [bank(true)] })).toBe('Rates stale (example-bank: AED/EUR older than PT24H)');
+  });
+});
+
+describe("a file the File API never delivered (R-05-103, Issue I-337)", () => {
+  it('says whether the File API still tries or its attempts ended, with the error', () => {
+    expect(undeliveredState({ state: 'failing', attempts: 1, code: 'port.CircuitOpen' })).toBe('Not delivered yet: 1 attempt failed (port.CircuitOpen), the File API tries again');
+    expect(undeliveredState({ state: 'undelivered', attempts: 5, code: 'file.DeliveryFailed' })).toBe('Never delivered: the attempts ended after 5 attempts (file.DeliveryFailed)');
+  });
+  it("puts a delivery's facts on the timeline in words, and nothing for any other fact", () => {
+    expect(deliveryNote({ kind: 'file.delivered', code: 'sftp', data: { fileName: 'F1.SIF', folder: 'centralBank/upload/cb/wps/sif', adapter: 'sftp', resend: true } }))
+      .toBe('F1.SIF delivered to centralBank/upload/cb/wps/sif on sftp (resent)');
+    expect(deliveryNote({ kind: 'file.delivery-failed', code: 'port.CircuitOpen', data: { fileName: 'F1.SIF', attempt: 2, why: 'the breaker is open' } }))
+      .toBe('F1.SIF not delivered, attempt 2: the breaker is open');
+    expect(deliveryNote({ kind: 'file.undelivered', code: 'file.Undelivered', data: { fileName: 'F1.SIF', attempts: 5 } }))
+      .toBe("F1.SIF never delivered: the File API's attempts ended after 5; resend it once the partner answers");
+    expect(deliveryNote({ kind: 'step', code: 'accepted', data: {} })).toBeNull();
+  });
+  it("shows a step's rule trace from its fact (R-09-240, Issue I-304)", () => {
+    expect(ruleTraceNote({ kind: 'step', data: { ruleTrace: { worst: 'reject', rules: [{ rule: 'p.rule.batch-currency-present.v1', fired: true }, { rule: 'p.rule.amount-positive.v1', fired: false }] } } }))
+      .toBe('rules: p.rule.batch-currency-present.v1 (worst reject)');
+    expect(ruleTraceNote({ kind: 'step', data: {} })).toBeNull();
   });
 });
