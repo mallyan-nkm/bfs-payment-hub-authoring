@@ -108,16 +108,18 @@ describe('mutation cases', () => {
   it('L26 proposes a major when the outcome list changes (F-22)', () => {
     const { env } = docsOf();
     const prev = env.store.doc('p.reserve.funds.v1');
+    // Releases relative to the one in the factory (1.1.0 since factory 1.23.0).
+    const [ma, mi] = String(prev.release).split('.').map(Number);
     const next = clone(prev);
-    next.release = '1.1.0';
+    next.release = `${ma}.${mi + 1}.0`;
     next.outcomes.push({ name: 'partial' });
     expect(interfaceDiff(prev, next).required).toBe('major');
     expect(semverIssue(prev, next)?.code).toBe('L26');
     const minor = clone(prev);
-    minor.release = '1.0.1';
+    minor.release = `${ma}.${mi}.1`;
     minor.policy.attemptTimeout = 'PT20S';
     expect(interfaceDiff(prev, minor).required).toBe('minor');
-    expect(semverIssue(prev, minor)?.message).toMatch(/Propose 1.1.0/);
+    expect(semverIssue(prev, minor)?.message).toMatch(new RegExp(`Propose ${ma}\\.${mi + 1}\\.0`));
   });
   it('L28 flags a script that reads the system clock', () => {
     void 0;
@@ -142,6 +144,21 @@ describe('every attempt is at least once (L54, R-03-25, R-03-26, Issue I-303)', 
       delete a.idempotencyKey;
     });
     expect(send.map((i) => i.message)).toEqual([expect.stringMatching(/an exchange that sends/)]);
+  });
+});
+
+describe('a builtin a native module answers says so (L40, R-09-282, Issues I-381, I-382)', () => {
+  it('a builtin of the accounting or reservation service says native: true, and native: true goes with a script or a builtin', () => {
+    expect(fire('L40', () => {})).toEqual([]);
+    expect(fire('L40', (find) => { delete find('p.post.accounting.v1').implementation.native; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/p\.post\.accounting\.v1 is a builtin of the accounting service, which a native module answers on the runtime and the image does not; it says native: true/)]);
+    expect(fire('L40', (find) => { delete find('p.reserve.release.v1').implementation.native; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/p\.reserve\.release\.v1 is a builtin of the reservation service/)]);
+    expect(fire('L40', (find) => { delete find('uae.wps.post.return.v1').implementation.native; })).toHaveLength(1);
+    // A builtin the image answers (the payment record) needs no module.
+    expect(fire('L40', (find) => { delete find('p.validate.duplicate.v1').implementation.native; })).toEqual([]);
+    expect(fire('L40', (find) => { find('p.decide.await-posting-window.v1').implementation.native = true; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/its binding is subflow; native: true needs a script or a builtin/)]);
   });
 });
 
