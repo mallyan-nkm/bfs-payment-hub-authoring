@@ -9,12 +9,19 @@ namespace TransactHub.Activities.Wps.Sif;
 /// The Central Bank SIF of a salary file, generated from the bulk as the store holds it (plan W1, W2): the ISO
 /// 20022 payment model, with the WPS fields in SupplementaryData["uae.wps"], instead of the source's wps.Sif_Edr,
 /// Sif_Evp and Sif_Scr tables. The writer is the source's own (ported, golden-tested). The generated file is kept
-/// in the store as a message, with its hash, linked to the bulk.
+/// in the store as a message, with its hash, linked to the bulk, under the id of the scheme message it is when it is sent
+/// (<c>uae.wps.sif-submission</c>), as the File API keeps the sent file (R-09-234, R-09-288, Issue I-363).
 /// </summary>
 public static class CentralBankSif
 {
     public const string Scope = "uae.wps";
-    public const string MessageKind = "uae.wps.sif-out";
+    /// <summary>The scheme message the file is: the kind the File API keeps the sent copy under, so one file has one kind.</summary>
+    public const string MessageKind = TransactHub.Activities.Wps.Native.SendSalaryFile.Message;
+    /// <summary>
+    /// The kind an earlier runtime kept the store's copy under. The store is insert-only, so those rows keep it; the read model takes
+    /// it as <see cref="MessageKind"/> (<c>TransactHub.Operations.DocumentKinds</c>).
+    /// </summary>
+    public const string FormerMessageKind = "uae.wps.sif-out";
 
     public sealed record Generated(CbxSifDocument Document, string FileName, string MessageId);
 

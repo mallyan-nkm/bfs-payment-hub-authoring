@@ -368,7 +368,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         Assert.True((await r.Intake.Receive(A("uae.wps.pif", "000000000031.PIF", Pif("ack")))).Accepted);
         var payment = r.Engines.Started.Single().Payment;
         var outbox = new FileOutbox(r.Store, Key, new BoundTransfers(new PortBindings()));
-        await outbox.Queue(new Outbound(Bank, "uae.wps", "uae.wps.sif-out", "centralBank/upload/cb/wps/sif", "0000001234567261117083100.SIF", "EDR,synthetic\r\n"u8.ToArray(), payment, "scheme-leg", "uae.wps.exchange.send-salary-file.v1", "native-host"));
+        await outbox.Queue(new Outbound(Bank, "uae.wps", "uae.wps.sif-submission", "centralBank/upload/cb/wps/sif", "0000001234567261117083100.SIF", "EDR,synthetic\r\n"u8.ToArray(), payment, "scheme-leg", "uae.wps.exchange.send-salary-file.v1", "native-host"));
         var bindings = new PortBindings();
         bindings.Add($"""
             kind: port-bindings
@@ -724,7 +724,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
                 dbs.Bulks.Add(new BulkRow { Id = "P-12", Tenant = Bank, Scheme = "uae.wps", Direction = "Outward", MessageId = "000000000012", ReleaseId = "dist/test@1", AcceptedAt = DateTimeOffset.UtcNow });
                 await dbs.SaveChangesAsync();
             }
-            using (FileTransferOwner.Use(new FileTransferOwner("P-12", "leg-12", "uae.wps", "uae.wps.sif-out", "uae.wps.exchange.send-salary-file.v2")))
+            using (FileTransferOwner.Use(new FileTransferOwner("P-12", "leg-12", "uae.wps", "uae.wps.sif-submission", "uae.wps.exchange.send-salary-file.v2")))
                 await outbox.Put("centralBank/sif", "000000000012.SIF.gpg", bytes);
             var at12 = Path.Combine(root, "centralBank", "sif", "000000000012.SIF.gpg");
             File.Delete(at12);

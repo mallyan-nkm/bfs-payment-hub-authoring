@@ -2741,6 +2741,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Keep it as `uae.wps.sif-submission` in the next WPS store change, and read both kinds where a reader looks for the old one.
 
+**Done (24 November 2026, R-09-288).** `CentralBankSif` keeps the store's copy under `SendSalaryFile.Message` (`uae.wps.sif-submission`), the id the File API keeps the sent file under. The store is insert-only, so a message or file kept before under `uae.wps.sif-out` stays so; the operations read model takes it as the scheme message (`DocumentKinds`), so the views' `message:` sources, the reports and the gauges find one kind. The laptop's insert-only test checks that no copy of P1's file carries the old word. Evidence: `CentralBankSifTests`, `ProjectionTests.A_SIF_kept_under_the_former_kind_is_read_as_the_scheme_message` and `OperatorApiTests.A_payment_the_front_door_started_opens_under_its_id_with_its_files` (SQL Server and PostgreSQL), `FileApiTests`.
+
 ## I-364. The six v1 sends' native code-behinds stay in the WPS module
 
 **Issue.** Factory 1.21.0 replaces WPS's six other sends with their v2 lines (R-09-232). Their v1 lines' native code-behinds stay in the WPS module, because every real bank's lock file at 1.20.0 pins the subflows that call them.

@@ -100,6 +100,28 @@ public sealed class ProjectionTests(Databases dbs)
         Assert.NotNull(after.LastFactAt);
     }
 
+    /// <summary>
+    /// R-09-288 (Issue I-363): the store keeps its copy of the Central Bank SIF under the scheme message's id, as the File API keeps the
+    /// sent file. A copy an earlier runtime kept under the binding's old word (<c>uae.wps.sif-out</c>) stays as it is, insert-only, and
+    /// the read model takes it as the message: the leg's CB file name is read from it.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_SIF_kept_under_the_former_kind_is_read_as_the_scheme_message(StoreProvider p)
+    {
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store);
+        string kept;
+        await using (var db = StoreDbContext.Open(store))
+            (kept, _) = await new PaymentStore(db).KeepMessage(WpsRun.Tenant, "uae.wps", TransactHub.Model.Direction.Outward, "uae.wps.sif-out", "0000001234567261117083000-CB.SIF", "SCR,synthetic former\n"u8.ToArray(), id);
+        await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        await using (var db = StoreDbContext.Open(store))
+            Assert.Equal("uae.wps.sif-out", (await db.Messages.AsNoTracking().SingleAsync(m => m.Id == kept)).Kind);
+        await using var o = OpsDbContext.Open(ops);
+        Assert.Equal("uae.wps.sif-submission", (await o.Documents.SingleAsync(d => d.Id == kept)).Kind);
+        var leg = await o.Legs.SingleAsync(x => x.SubjectId == id);
+        Assert.Equal("0000001234567261117083000-CB.SIF", (string?)JsonNode.Parse(leg.FieldsJson)!["cbFileName"]);
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task A_WPS_file_shows_its_declared_fields_its_leg_and_its_lines_masked_as_declared(StoreProvider p)
     {
