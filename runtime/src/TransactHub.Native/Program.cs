@@ -30,7 +30,8 @@ using TransactHub.Ports;
 // Side by side (spec R-09-120 to R-09-126): this image holds no native code-behind of any pack. The platform's native activities
 // (p's, Issue I-221), a scheme's (WPS's) and a bank's come in the distribution, each a module built from its code-behind project
 // when the studio built it, each assembly with its SHA-256 in the signed bill of materials. A module references the native
-// contract only (R-09-125): the image answers its core banking, ports and files through INativeServices. An attempt names the distribution its payment is pinned to, as the engine
+// contract only (R-09-125): the image answers its core banking, the platform's ports and files through INativeServices, and since contract
+// 2.0.0 gives it the bound ports it builds its own scheme's adapters on (R-09-261, R-09-263). An attempt names the distribution its payment is pinned to, as the engine
 // sent it (AttemptRouting, R-09-130 to R-09-132), else the worker's TH_DISTRIBUTION; the host loads that distribution's assemblies from the store (TH_STORE_*) into a collectible context of its
 // own, checks their hashes and native contract again, and serves the attempt from it by activity and release. A distribution
 // removed in every environment it was known in is unloaded (checked every TH_NATIVE_REFRESH, 10 seconds by default). An attempt
@@ -103,9 +104,10 @@ Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", 
 // the holds), and the platform's production adapters (R-09-90: screening, notices, outward facts, the business calendar and the
 // directory). No native code-behind is here: each distribution carries its own build of the platform's, a scheme's and a bank's
 // (R-09-122, R-09-126), loaded side by side in a context of its own; a module's activity of the same name is served first.
+// The core-banking activities ask the gate the distribution's platform module contributed on the binding (its posting window, R-09-264).
 IEnumerable<INativeActivity> Platform(IReadOnlyDictionary<string, object> contributed) =>
 [
-    .. PlatformActivities.CoreBanking(coreBanking), .. holds,
+    .. PlatformActivities.CoreBanking(coreBanking, k => contributed.TryGetValue(k, out var v) ? v : null), .. holds,
     .. PlatformPortActivities.All(bindings, ReferenceReaderOn(store)),
 ];
 var registers = RegisterReaderOn(store);
@@ -114,7 +116,8 @@ var registers = RegisterReaderOn(store);
 var devModules = (Environment.GetEnvironmentVariable("TH_NATIVE_DEV_MODULES") ?? "").Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var refreshEvery = TimeSpan.TryParse(Environment.GetEnvironmentVariable("TH_NATIVE_REFRESH"), System.Globalization.CultureInfo.InvariantCulture, out var re) ? re : TimeSpan.FromSeconds(10);
 // The distributions are read from the store (TH_STORE_*, or Store:* as every runtime host names it).
-var modules = new NativeModules(Platform, (dist, _) => new NativeHostServices(dist, keep, files, bindings, coreBanking, registers), store, devModules, refreshEvery);
+var modules = new NativeModules(Platform, (dist, contributed) => new NativeHostServices(dist, keep, files, bindings, coreBanking, registers,
+    contributions: k => contributed().TryGetValue(k, out var v) ? v : null), store, devModules, refreshEvery);
 var development = await modules.For(null);
 var routing = AttemptRouting.FromEnvironment(store);
 app.Lifetime.ApplicationStopping.Register(modules.Dispose);

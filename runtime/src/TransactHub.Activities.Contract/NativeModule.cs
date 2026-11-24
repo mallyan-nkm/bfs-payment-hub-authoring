@@ -7,8 +7,11 @@ namespace TransactHub.Activities.Native;
 /// </summary>
 public static class NativeContract
 {
-    /// <summary>The contract this runtime supports. Keep it the project's <c>Version</c>.</summary>
-    public const string Version = "1.1.0";
+    /// <summary>
+    /// The contract this runtime supports. Keep it the project's <c>Version</c>. 2.0.0 (R-09-262) removed <c>Service&lt;T&gt;</c> and added
+    /// bound ports, so a module built against 1.x is refused (<c>native.ContractUnsupported</c>) and rebuilt.
+    /// </summary>
+    public const string Version = "2.0.0";
 
     /// <summary>The contract assembly's name, which a module references and never carries.</summary>
     public const string AssemblyName = "TransactHub.Activities.Contract";
@@ -23,7 +26,9 @@ public static class NativeContract
 
     /// <summary>Why a version is refused, for a refusal's message.</summary>
     public static string Refusal(string? version) =>
-        $"the distribution's native assemblies were built against native contract {version ?? "(none)"}; this runtime supports {System.Version.Parse(Version).Major}.x up to {Version}";
+        $"the distribution's native assemblies were built against native contract {version ?? "(none)"}; this runtime supports {System.Version.Parse(Version).Major}.x up to {Version}"
+        + (System.Version.TryParse(version, out var v) && v.Major < System.Version.Parse(Version).Major
+            ? $": rebuild every module against {Version} and build a new distribution (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2)" : "");
 }
 
 /// <summary>
@@ -51,15 +56,10 @@ public interface INativeServices
     void KeepRendered(string sha256, string fileName, byte[] content);
 
     /// <summary>
-    /// A service of the runtime image by its type. Contract 1.0.0 gave the image's own types this way; a module that references the
-    /// contract only (R-09-125) has no image type to name, so it uses <see cref="CoreBanking"/>, <see cref="Ports"/> and <see cref="Files"/>.
-    /// </summary>
-    T? Service<T>() where T : class;
-
-    /// <summary>
-    /// Gives the other modules of the same distribution something of this module's, by a key they name (for
-    /// <c>p.enrich.party-register.v1</c>, a <see cref="PartyMatcher"/> under <c>party-matcher:&lt;scheme&gt;</c>). It lives as long as the
-    /// distribution's context.
+    /// Gives the other modules of the same distribution, and the image's services for it, something of this module's, by a key they name
+    /// (<see cref="NativeContributions"/>: for <c>p.enrich.party-register.v1</c>, a <see cref="PartyMatcher"/> under
+    /// <c>party-matcher:&lt;scheme&gt;</c>; for a port's binding, a <see cref="NativeBindingGate"/> under <c>binding-gate:&lt;port&gt;</c>). It lives
+    /// as long as the distribution's context.
     /// </summary>
     void Contribute(string key, object value);
 
@@ -72,8 +72,24 @@ public interface INativeServices
     /// <summary>Since 1.1.0. The other ports the bank binds, as the image's adapters answer them.</summary>
     INativePorts Ports { get; }
 
+    /// <summary>
+    /// Since 2.0.0 (R-09-261, Issue I-315). The bank's binding in force of any port, so a module builds the adapter of its own scheme's
+    /// port: its adapter and settings, and a request sent to its endpoint with its credential, circuit breaker and timeout applied by the image.
+    /// </summary>
+    INativeBoundPorts BoundPorts { get; }
+
     /// <summary>Since 1.1.0. The files the host keeps: what an activity renders, encrypts, receives or decrypts.</summary>
     INativeFiles Files { get; }
+}
+
+/// <summary>The keys under which a module contributes to its distribution (<see cref="INativeServices.Contribute"/>).</summary>
+public static class NativeContributions
+{
+    /// <summary>A scheme's <see cref="PartyMatcher"/>, for the platform's party register lookup.</summary>
+    public static string PartyMatcher(string scheme) => $"party-matcher:{scheme}";
+
+    /// <summary>A <see cref="NativeBindingGate"/> on a port's binding: the image asks it before each call on that port (R-09-264).</summary>
+    public static string BindingGate(string port) => $"binding-gate:{port}";
 }
 
 /// <summary>Names the module of a native assembly.</summary>

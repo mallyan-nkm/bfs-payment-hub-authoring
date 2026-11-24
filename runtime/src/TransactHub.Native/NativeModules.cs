@@ -194,11 +194,11 @@ public sealed class NativeModules : IDisposable
     {
         public string? Distribution => inner.Distribution;
         public void KeepRendered(string sha256, string fileName, byte[] content) => inner.KeepRendered(sha256, fileName, content);
-        public T? Service<T>() where T : class => inner.Service<T>();
         public void Contribute(string key, object value) => contributions[key] = value;
         public object? Contribution(string key) => contributions.TryGetValue(key, out var v) ? v : null;
         public INativeCoreBanking CoreBanking => inner.CoreBanking;
         public INativePorts Ports => inner.Ports;
+        public INativeBoundPorts BoundPorts => inner.BoundPorts;
         public INativeFiles Files => inner.Files;
     }
 

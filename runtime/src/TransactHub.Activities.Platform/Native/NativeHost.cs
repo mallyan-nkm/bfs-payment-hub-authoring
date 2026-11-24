@@ -61,13 +61,13 @@ public sealed class FileProtectionPort(PortBindings bindings, TransactHub.Securi
 
 /// <summary>
 /// The bank's ports as a native module asks them (native contract 1.1.0, R-09-125): each by the image's adapter of the binding in force
-/// for the attempt's tenant at its time. The ports and operations it answers are the contract's (<see cref="INativePorts"/>).
+/// for the attempt's tenant at its time. The ports and operations it answers are the contract's (<see cref="INativePorts"/>): the
+/// platform's only. A scheme's port is answered by the scheme's module on <see cref="NativeBoundPorts"/> (contract 2.0.0, R-09-263).
 /// </summary>
 public sealed class NativePorts(PortBindings bindings, INativeFiles files, RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null, Func<PortBinding, IFileTransfer>? transferOf = null) : INativePorts
 {
     readonly FileProtectionPort protection = new(bindings, secrets);
     readonly BoundAdapters<IPartyRegister> parties = new(bindings, PartyRegisterAdapters.Port, b => PartyRegisterAdapters.Create(b, registers));
-    readonly BoundAdapters<IEmployerRegister> employers = new(bindings, EmployerRegisterAdapters.Port, b => EmployerRegisterAdapters.Create(b, null, secrets));
 
     public NativePortAnswer Ask(NativeAttempt a, string port, string operation, JsonObject request)
     {
@@ -82,16 +82,6 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
                 try { party = r.Lookup(a.Tenant!, S("kind"), S("field"), S("value"), a.Now).GetAwaiter().GetResult(); }
                 catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException or TimeoutException) { throw new NativeFailure("TransientError", $"The party register did not answer: {e.GetType().Name}", true); }
                 return new(b.Adapter, party is null ? new JsonObject { ["found"] = false } : new JsonObject { ["found"] = true, ["key"] = party.Key, ["record"] = party.Record.DeepClone() });
-            }
-            case $"{EmployerRegisterAdapters.Port} status":
-            {
-                var (r, b) = employers.For(a.Tenant, a.Now);
-                EmployerStatusAnswer answer;
-                try { answer = r.Status(S("employer")).GetAwaiter().GetResult(); }
-                catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException) { throw new NativeFailure("TransientError", $"The establishment register did not answer: {e.GetType().Name}", true); }
-                catch (PortBindingException e) { throw new NativePortRefused(port, e.Message); }
-                catch (TransactHub.Security.SecretUnavailable e) { throw new NativeFailure("SecretUnavailable", e.Message, false); }
-                return new(b.Adapter, new JsonObject { ["found"] = answer.Found, ["status"] = answer.Status });
             }
             case $"{OpenPgpEncryption.Port} encrypt":
             {
@@ -150,20 +140,21 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
 }
 
 /// <summary>
-/// What the runtime image gives a distribution's native modules (R-09-122, R-09-125): the host's files, the bank's core banking and
-/// other ports through their bindings in force, and, for a module built against contract 1.0.0, the bindings and the core-banking
-/// resolver by type. Contributions are the distribution table's, so this one keeps none.
+/// What the runtime image gives a distribution's native modules (R-09-122, R-09-125, R-09-261): the host's files, the bank's core banking
+/// and the platform's other ports through their bindings in force, and the bound ports a module builds its own adapters on. It hands out
+/// no type of the image (contract 2.0.0 removed <c>Service&lt;T&gt;</c>, Issue I-226). Contributions are the distribution table's, so this one
+/// keeps none; <paramref name="contributions"/> reads them, for the gate a module contributed on a binding (R-09-264).
 /// </summary>
 public sealed class NativeHostServices(string? distribution, Action<string, string, byte[]> keep, INativeFiles files, PortBindings bindings, CoreBankingResolver coreBanking,
-    RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null) : INativeServices
+    RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null, Func<string, object?>? contributions = null) : INativeServices
 {
     public string? Distribution => distribution;
     public void KeepRendered(string sha256, string fileName, byte[] content) => keep(sha256, fileName, content);
-    public T? Service<T>() where T : class => typeof(T) == typeof(PortBindings) ? bindings as T : typeof(T) == typeof(CoreBankingResolver) ? coreBanking as T : null;
     public void Contribute(string key, object value) => throw new InvalidOperationException("A module contributes through its distribution's table");
-    public object? Contribution(string key) => null;
-    public INativeCoreBanking CoreBanking { get; } = new NativeCoreBanking(coreBanking);
+    public object? Contribution(string key) => contributions?.Invoke(key);
+    public INativeCoreBanking CoreBanking { get; } = new NativeCoreBanking(coreBanking, contributions);
     public INativePorts Ports { get; } = new NativePorts(bindings, files, registers, secrets);
+    public INativeBoundPorts BoundPorts { get; } = new NativeBoundPorts(bindings, secrets);
     public INativeFiles Files => files;
 }
 

@@ -173,34 +173,122 @@ public sealed class FileProtectionAndRegisterTests
         }
     }
 
-    [Fact]
-    public async Task The_register_on_its_gateway_answers_a_status_by_employer_with_its_credential_by_reference()
+    static NativeAttempt EmployerAttempt(string employer, string tenant = "test-bank", DateTimeOffset? at = null) => new("uae.wps.enrich.employer-status.v1", "1.1.0",
+        new JsonObject { ["ext"] = new JsonObject { ["uae"] = new JsonObject { ["wps"] = new JsonObject { ["employerId"] = employer } } } }, new JsonObject(), at ?? Now, tenant, "batch");
+
+    static PortBindings GatewayRegister(string extra = "") => Bound($$"""
+        kind: port-bindings
+        tenant: test-bank
+        bindings:
+          - port: uae.wps.port.labour-ministry.v1
+            adapter: gateway-rest
+            validFrom: 2026-11-22T00:00:00Z
+            settings:
+              baseUrl: https://labour-register.test.invalid/
+              statusPath: /api/establishments/status
+              secretRef: env:TH_TEST_LM_TOKEN
+              credentialHeader: X-Api-Key
+              channel: BANK-CHANNEL
+        {{extra}}
+        """);
+
+    static PortBindings Bound(string yaml)
     {
+        var b = new PortBindings();
+        b.Add(yaml);
+        return b;
+    }
+
+    [Fact]
+    public void The_WPS_modules_register_adapter_calls_its_gateway_through_the_images_bound_port_with_the_credential_by_reference()
+    {
+        // R-09-261, R-09-263 (Issues I-237, I-315): the labour ministry's adapters are the WPS module's; the image gives the binding in
+        // force and sends the module's request to the binding's endpoint with its credential, breaker and timeout. The module sees no secret.
         var handler = new Recording(r => r.Headers.GetValues("X-Ref").Single() switch
         {
             "0000001234567" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{ "status": "SUSPENDED" }""", Encoding.UTF8, "application/json") },
             "0000001234568" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{ "status": "Active" }""", Encoding.UTF8, "application/json") },
+            "0000001234569" => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         });
         var secrets = new SecretResolver([new EnvSecretProvider(k => k == "TH_TEST_LM_TOKEN" ? "token-for-test" : null)]);
-        var reg = EmployerRegisterAdapters.Create(new PortBinding("test-bank", EmployerRegisterAdapters.Port, RestEmployerRegister.Name, From, new Dictionary<string, string>
-        {
-            ["baseUrl"] = "https://labour-register.test.invalid/", ["statusPath"] = "/api/establishments/status", ["secretRef"] = "env:TH_TEST_LM_TOKEN", ["credentialHeader"] = "X-Api-Key",
-        }), new HttpClient(handler), secrets);
-        Assert.Equal(new EmployerStatusAnswer("0000001234567", true, "suspended"), await reg.Status("0000001234567"));
-        Assert.Equal(new EmployerStatusAnswer("0000001234568", true, "active"), await reg.Status("0000001234568"));
-        Assert.Equal(new EmployerStatusAnswer("0000009999999", false, "unknown"), await reg.Status("0000009999999"));
+        var ports = new NativeBoundPorts(GatewayRegister(), secrets, _ => new HttpClient(handler), new CircuitBreakers());
+        var a = EmployerAttempt("0000001234567");
+        var binding = ports.For(a, EmployerRegisterAdapters.Port);
+        Assert.Equal(("gateway-rest", "env:TH_TEST_LM_TOKEN"), (binding.Adapter, binding.Settings["secretRef"]));
+        var reg = EmployerRegisterAdapters.Create(binding, ports, a);
+        Assert.IsType<RestEmployerRegister>(reg);
+        Assert.Equal(new EmployerStatusAnswer("0000001234567", true, "suspended"), reg.Status("0000001234567"));
+        Assert.Equal(new EmployerStatusAnswer("0000001234568", true, "active"), reg.Status("0000001234568"));
+        Assert.Equal(new EmployerStatusAnswer("0000009999999", false, "unknown"), reg.Status("0000009999999"));
         var call = handler.Calls[0];
+        Assert.Equal(HttpMethod.Post, call.Request.Method);
+        Assert.Equal("https://labour-register.test.invalid/api/establishments/status", call.Request.RequestUri!.ToString());
         Assert.Equal("""{"employerId":"0000001234567"}""", call.Body);
         Assert.Equal("token-for-test", call.Request.Headers.GetValues("X-Api-Key").Single());
+        Assert.Equal("BANK-CHANNEL", call.Request.Headers.GetValues("X-Channel").Single());
         Assert.Null(call.Request.Headers.Authorization);
+
+        // The activity on the module's adapter: the status written, an unknown employer not-found, a 5xx a retryable error.
+        var act = new EnrichEmployerStatus(ports);
+        Assert.Equal(("found", "suspended"), (act.Run(a).Outcome, (string?)act.Run(a).Writes["ext.uae.wps.employerStatus"]));
+        Assert.Equal("not-found", act.Run(EmployerAttempt("0000009999999")).Outcome);
+        var down = Assert.Throws<NativeFailure>(() => act.Run(EmployerAttempt("0000001234569")));
+        Assert.Equal(("TransientError", true), (down.Name, down.Retryable));
+        // A tenant with no binding is refused by name; a credential the host cannot read is SecretUnavailable, nothing sent.
+        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => act.Run(EmployerAttempt("0000001234567", "other-bank"))).Name);
+        var calls = handler.Calls.Count;
+        var noSecret = new NativeBoundPorts(GatewayRegister(), new SecretResolver([new EnvSecretProvider(_ => null)]), _ => new HttpClient(handler), new CircuitBreakers());
+        Assert.Equal("SecretUnavailable", Assert.Throws<NativeFailure>(() => new EnrichEmployerStatus(noSecret).Run(a)).Name);
+        Assert.Equal(calls, handler.Calls.Count);
+    }
+
+    [Fact]
+    public void A_module_sends_only_on_the_binding_in_force_below_its_base_url_and_never_sets_the_credential()
+    {
+        var handler = new Recording(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
+        var secrets = new SecretResolver([new EnvSecretProvider(k => k == "TH_TEST_LM_TOKEN" ? "token-for-test" : null)]);
+        var ports = new NativeBoundPorts(GatewayRegister(), secrets, _ => new HttpClient(handler), new CircuitBreakers());
+        var a = EmployerAttempt("0000001234567");
+        var b = ports.For(a, EmployerRegisterAdapters.Port);
+        // A binding a module made up, with a host of its own: refused, nothing sent, the credential never leaves for it.
+        var forged = b with { ValidFrom = b.ValidFrom.AddDays(-1), Settings = new Dictionary<string, string>(b.Settings) { ["baseUrl"] = "https://elsewhere.test.invalid/" } };
+        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => ports.Send(a, forged, new NativeHttpRequest("POST", "/x"))).Name);
+        // The settings a module gives are never used: the image's own copy of the binding in force is.
+        var moved = b with { Settings = new Dictionary<string, string>(b.Settings) { ["baseUrl"] = "https://elsewhere.test.invalid/" } };
+        Assert.Equal(200, ports.Send(a, moved, new NativeHttpRequest("GET", "/ping")).Status);
+        Assert.Equal("labour-register.test.invalid", handler.Calls.Single().Request.RequestUri!.Host);
+        // A path that names a host, or the credential's header, is refused.
+        Assert.Throws<NativePortRefused>(() => ports.Send(a, b, new NativeHttpRequest("GET", "https://elsewhere.test.invalid/x")));
+        Assert.Throws<NativePortRefused>(() => ports.Send(a, b, new NativeHttpRequest("GET", "//elsewhere.test.invalid/x")));
+        Assert.Throws<NativePortRefused>(() => ports.Send(a, b, new NativeHttpRequest("GET", "/x", Headers: new Dictionary<string, string> { ["X-Api-Key"] = "mine" })));
+        Assert.Throws<NativePortRefused>(() => ports.Send(a, b, new NativeHttpRequest("GET", "/x", Headers: new Dictionary<string, string> { ["Authorization"] = "Bearer mine" })));
+        Assert.Single(handler.Calls);
+        // No tenant, no binding.
+        Assert.Equal("NoTenant", Assert.Throws<NativeFailure>(() => ports.For(a with { Tenant = null }, EmployerRegisterAdapters.Port)).Name);
+        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => ports.For(a, "p.port.no-such.v1")).Name);
+    }
+
+    [Fact]
+    public void An_open_breaker_on_the_register_is_the_retryable_breaker_code_and_sends_nothing()
+    {
+        var handler = new Recording(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var secrets = new SecretResolver([new EnvSecretProvider(k => k == "TH_TEST_LM_TOKEN" ? "token-for-test" : null)]);
+        var ports = new NativeBoundPorts(GatewayRegister(), secrets, _ => new HttpClient(handler), new CircuitBreakers());
+        var act = new EnrichEmployerStatus(ports);
+        string? last = null;
+        for (var i = 0; i < 20 && last != CircuitBreakers.OpenCode; i++) last = Assert.Throws<NativeFailure>(() => act.Run(EmployerAttempt("0000001234567"))).Name;
+        Assert.Equal(CircuitBreakers.OpenCode, last);
+        var sent = handler.Calls.Count;
+        var e = Assert.Throws<NativeFailure>(() => act.Run(EmployerAttempt("0000001234567")));
+        Assert.Equal((CircuitBreakers.OpenCode, true), (e.Name, e.Retryable));
+        Assert.Equal(sent, handler.Calls.Count);
     }
 
     [Fact]
     public void The_employer_status_activity_writes_the_status_the_banks_register_gives()
     {
-        var bindings = new PortBindings();
-        bindings.Add("""
+        var bindings = Bound("""
             kind: port-bindings
             tenant: test-bank
             bindings:
@@ -211,13 +299,16 @@ public sealed class FileProtectionAndRegisterTests
                   suspended: "0000001234567"
                   notRegistered: "0000009999999"
             """);
-        var act = new EnrichEmployerStatus(new NativePorts(bindings, new MemoryNativeFiles()));
-        NativeResult Ask(string employer, string tenant = "test-bank") => act.Run(new NativeAttempt(act.Name, "1.1.0",
-            new JsonObject { ["ext"] = new JsonObject { ["uae"] = new JsonObject { ["wps"] = new JsonObject { ["employerId"] = employer } } } }, new JsonObject(), Now, tenant, "batch"));
+        // The WPS module's simulator adapter, on the binding the image's bound ports give (R-09-263).
+        var act = new EnrichEmployerStatus(new NativeBoundPorts(bindings));
+        NativeResult Ask(string employer, string tenant = "test-bank") => act.Run(EmployerAttempt(employer, tenant));
         Assert.Equal(("found", "suspended"), (Ask("0000001234567").Outcome, (string?)Ask("0000001234567").Writes["ext.uae.wps.employerStatus"]));
         Assert.Equal(("found", "active"), (Ask("0000001234568").Outcome, (string?)Ask("0000001234568").Writes["ext.uae.wps.employerStatus"]));
         Assert.Equal(("not-found", "unknown"), (Ask("0000009999999").Outcome, (string?)Ask("0000009999999").Writes["ext.uae.wps.employerStatus"]));
         Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => Ask("0000001234567", "other-bank")).Name);
+        // The image answers no scheme's port: the platform's INativePorts refuses the register's status.
+        var refused = Assert.Throws<NativeFailure>(() => new NativePorts(bindings, new MemoryNativeFiles()).Ask(EmployerAttempt("0000001234567"), EmployerRegisterAdapters.Port, "status", new JsonObject { ["employer"] = "0000001234567" }));
+        Assert.Equal("PortNotBound", refused.Name);
     }
 
     [Fact]

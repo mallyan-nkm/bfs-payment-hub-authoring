@@ -243,7 +243,7 @@ public sealed class FileBulkCoreBankingTests
         var all = new PortBindings();
         all.Add(Bindings);
         all.Add(Bindings.Replace("bulk-bank", "no-transfer-bank").Replace("p.port.file-transfer.v1", "p.port.channel.v1"));
-        var post = PlatformActivities.CoreBanking(new CoreBankingResolver(all, NoWait)).Single(a => a.Name == "p.post.accounting.v1");
+        var post = ModuleGate.PostAccounting(new CoreBankingResolver(all, NoWait));
         JsonObject View(string account) => (JsonObject)JsonNode.Parse($$"""
             { "header": { "paymentId": "P-9", "direction": "inward", "businessDate": "2026-11-24" },
               "payment": { "creditorAccount": { "id": "{{account}}" }, "instructedAmount": { "value": 1000, "currency": "AED" } } }
