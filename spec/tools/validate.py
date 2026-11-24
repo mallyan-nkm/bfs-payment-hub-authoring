@@ -750,6 +750,15 @@ for path, d in docs:
     if d.get("kind") == "activity" and impl.get("native") and impl.get("binding") not in ("script", "builtin"):
         err("L40", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
             % (d["name"], impl.get("binding")))
+# L40, since native contract 2.1.0 (R-09-282, Issues I-381, I-382): the runtime image answers no core-banking activity, so a builtin of a
+# service a module answers on the runtime (the accounting and reservation services: the platform module's, or a scheme's for its own
+# posting) says so, `native: true`, and a promotable distribution that carries it needs that module.
+MODULE_SERVICES = {"accounting", "reservation"}
+for path, d in docs:
+    impl = d.get("implementation") or {}
+    if d.get("kind") == "activity" and impl.get("binding") == "builtin" and impl.get("service") in MODULE_SERVICES and not impl.get("native"):
+        err("L40", path, "%s is a builtin of the %s service, which a native module answers on the runtime and the image does not; it says native: true"
+            % (d["name"], impl.get("service")))
 
 # ------------------------------------------------------- factory packs
 # L34 the factory holds only the packs its inventory lists (R-12-11): every folder under factory/
