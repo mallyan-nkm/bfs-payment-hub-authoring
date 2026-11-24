@@ -58,7 +58,7 @@ npm run test:blackbox                     # API, command line, web app in Chromi
 | `npm test` | 501 pass, 1 skipped (the real-GitHub test), in 54 files |
 | `npx tsc --noEmit -p .` | No errors |
 | `studio -- test` | 63 of 63 |
-| `studio -- kit` | 57 of 57 |
+| `studio -- kit` | 59 of 59 |
 | `studio -- check` | 0 errors, 18 warnings |
 | `studio -- seed-content` | 295 of 295 seeded files current |
 | `npm run test:blackbox` | Not run here |
@@ -113,8 +113,8 @@ npx tsx engines/flowable/run-kit.ts
 
 | Ran here | Result |
 | --- | --- |
-| DTFx | 57 of 57, 419 s |
-| Elsa | 57 of 57, 400 s |
+| DTFx | 59 of 59, 351 s |
+| Elsa | 59 of 59, 354 s |
 | Temporal | Not run: the time-skipping test server did not start here (`setup.sh` not run in this checkout) |
 | Flowable | Not run here; 56 of 56 on 22 November 2026, before CK-PARK-03 (its README) |
 

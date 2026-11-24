@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.9.0
+release: 1.10.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -1034,6 +1034,88 @@ entries:
         - Wait for the next run; the feed runs again on its schedule.
         - Mend the rates service or its binding; a quote is never corrected by hand.
       escalation: Escalate to the bank's treasury systems team with the time of the run and the error.
+  # 1.10.0 (change set CS-2026-11-24-015, on 1.9.0; R-11-108): the File API's refusals that read the scheme's message rules
+  # (R-09-209, R-09-210, R-09-212; Issues I-159, I-164, I-267).
+  - code: file.NotEncrypted
+    title: The scheme says the file arrives encrypted, and it did not
+    category: business
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: The scheme's file rules for the message say its file is encrypted (encrypted true, R-09-209). The file arrived in the clear and was kept as refused; it was never handed on.
+    causes:
+      - The sender did not encrypt the file.
+      - The file was taken from an inbox before the sender's encryption step wrote it.
+    runbook:
+      checks:
+        - Read the refused file's facts on its chain in the operations console.
+        - Check the scheme's file rules for the message in the active distribution.
+      safeActions:
+        - Ask the sender to send the file again, encrypted to the bank's key.
+      escalation: Escalate to the bank's file-transfer support with the file's id and its message.
+  - code: file.Encrypted
+    title: The scheme says the file arrives in the clear, and it was encrypted
+    category: business
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: The scheme's file rules for the message say its file is not encrypted (encrypted false, R-09-209). The file arrived encrypted and was kept as refused; it was never handed on.
+    causes:
+      - The sender encrypted a file the scheme sends in the clear.
+    runbook:
+      checks:
+        - Read the refused file's facts on its chain in the operations console.
+        - Check the scheme's file rules for the message in the active distribution.
+      safeActions:
+        - Ask the sender to send the file again in the clear.
+      escalation: Escalate to the bank's file-transfer support with the file's id and its message.
+  - code: frontdoor.Uncorrelated
+    title: The scheme's correlation map read no key from the file
+    category: business
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: The message is delivered to a running payment, and its scheme names a correlation map (R-09-212). The map read no key of the payment the file answers, so the file is refused rather than guessed onto a payment.
+    causes:
+      - The file's name or content does not follow the scheme's naming (an acknowledgement too short to carry the file id it answers).
+      - The file is not the message its inbox says it is.
+    runbook:
+      checks:
+        - Read the refused file's name and facts in the operations console.
+        - Check which message the inbox names in the bank's file-transfer binding.
+      safeActions:
+        - Find the payment the file answers by its content and ask the sender for a correctly named file; never rename a received file.
+      escalation: Escalate to the scheme's operations desk with the file's id and name.
+  - code: frontdoor.ReportUnreadable
+    title: The scheme's report map could not read the report
+    category: business
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: The message is a report the scheme reconciles on arrival (R-09-210), and its map did not read it into lines. The run is recorded as unreadable and no break is raised from it.
+    causes:
+      - The report is not in the scheme's layout, or a line names no reference.
+    runbook:
+      checks:
+        - Read the reconciliation run's facts and the kept report in the operations console.
+      safeActions:
+        - Ask the scheme for the report again; the report is never edited by hand.
+      escalation: Escalate to the scheme's operations desk with the report's file id.
+  - code: frontdoor.NotAReport
+    title: The message is not a report the scheme reconciles
+    category: technical
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: The File API was asked to read report lines from a message whose disposition is not reconcile (R-09-210).
+    causes:
+      - The installation names the message as a report while the scheme in the active distribution does not, or the reverse.
+    runbook:
+      checks:
+        - Compare the installation's FileApi:Reports settings with the scheme's dispositions in the active distribution.
+      safeActions:
+        - Remove the installation's setting for a report the scheme declares.
+      escalation: Escalate to the runtime's operations team with the message id.
   - code: ops.ActionNotOffered
     title: The action does not apply to this payment now
     category: business

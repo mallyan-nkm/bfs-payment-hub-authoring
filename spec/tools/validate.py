@@ -149,6 +149,11 @@ def refs_of(d):
             for k in ("handler", "sentBy"):
                 if k in disp:
                     out.add(disp[k])
+            # a report's reconcile activity and map, a deliver message's correlation map (R-09-210, R-09-212)
+            if "reconcile" in disp:
+                out.update([disp["reconcile"]["activity"], disp["reconcile"]["map"]])
+            if (disp.get("deliver") or {}).get("correlationMap"):
+                out.add(disp["deliver"]["correlationMap"])
     if kind == "reference-table":
         out |= {c["references"] for c in d.get("columns") or [] if c.get("references")}
     if kind == "test":
@@ -452,6 +457,43 @@ for path, d in docs:
     for m in d["messages"]:
         if "deliver" in m["disposition"] and m["id"] not in awaited:
             err("L10", path, "%s is a deliver message but no workflow of %s awaits it" % (m["id"], d["scope"]))
+    # L55 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267) what a message declares beside its disposition holds: a file
+    # block on a file or mixed wire, with a name pattern that compiles; a reply that answers messages of its own scheme that it
+    # sends out; a report's reconcile activity and map; a deliver message's correlation map, an inward map that reads the message
+    ids = {m["id"]: m for m in d["messages"]}
+    for m in d["messages"]:
+        mid = m["id"]
+        f = m.get("file")
+        if f is not None:
+            if d.get("wire") not in ("file", "mixed"):
+                err("L55", path, "%s declares a file block, but %s's wire is %s, not a file" % (mid, d["scope"], d.get("wire", "unstated")))
+            if "namePattern" in f:
+                try:
+                    re.compile(f["namePattern"])
+                except re.error as e:
+                    err("L55", path, "%s's file name pattern does not compile: %s" % (mid, e))
+        for r in m.get("repliesTo") or []:
+            if m["direction"] != "in":
+                err("L55", path, "%s answers %s but is not a message the bank receives" % (mid, r))
+            if r not in ids:
+                err("L55", path, "%s answers %s, which is no message of %s" % (mid, r, d["scope"]))
+            elif ids[r]["direction"] != "out":
+                err("L55", path, "%s answers %s, which the bank does not send" % (mid, r))
+        rec = m["disposition"].get("reconcile")
+        if rec:
+            if m["direction"] != "in":
+                err("L55", path, "%s is reconciled, but the bank does not receive it" % mid)
+            act = by_name.get(rec["activity"])
+            if not act or act.get("kind") != "activity" or act.get("type") != "reconcile":
+                err("L55", path, "%s's reconcile activity %s is not a reconcile activity" % (mid, rec["activity"]))
+            mp = by_name.get(rec["map"])
+            if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in":
+                err("L55", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
+        cm = (m["disposition"].get("deliver") or {}).get("correlationMap")
+        if cm:
+            mp = by_name.get(cm)
+            if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in" or "messages" not in (mp.get("reads") or []):
+                err("L55", path, "%s's correlation map %s is not an inward map that reads the message" % (mid, cm))
     # L33 a start message routes: its kind, direction and segment select, through workflow-select,
     # one platform workflow, and the leg it names fills that workflow's slot (R-05-42)
     for m in d["messages"]:
@@ -1528,6 +1570,12 @@ for path, d in docs:
             err("L44", path, "%s declares no default" % name)
         elif not within_bounds(decl, decl["default"]):
             err("L44", path, "%s: its default %r is outside its own bounds %r" % (name, decl["default"], decl.get("bounds")))
+        # L56 (R-05-100, Issue I-282) a ledger account is an account: a string or a code of an activity, with its kind
+        if decl.get("role") == "ledger-account":
+            if d.get("kind") != "activity":
+                err("L56", path, "%s is marked a ledger account, but only an activity's parameter names one" % name)
+            if decl["type"] not in ("string", "code"):
+                err("L56", path, "%s is marked a ledger account, but it is of type %s, not a string or a code" % (name, decl["type"]))
 
 # L49 (R-01-25) a reference table: its key and columns agree, its editions run in date order, every row fits its columns,
 # a column that references another table holds that table's keys, and a key is not repeated within an edition.
@@ -1548,6 +1596,38 @@ if kit_size and (ROOT / "design").is_dir():
                 said = int(m.group(1) or m.group(2))
                 if said != kit_size:
                     err("L51", "%s:%d" % (f.relative_to(ROOT), n), "counts %d conformance scenarios, but conformance/kit.yaml holds %d: say \"every scenario of conformance/kit.yaml\"" % (said, kit_size))
+
+# L54 (R-03-25, R-03-26, Issue I-303) every attempt of an activity is at least once on every engine (a crash, an expired lock),
+# so an activity with an outside effect carries an idempotency key whether or not it retries: one whose effect is write or
+# external, one whose type changes something outside it (an exchange that sends, responds or reports; a reserve, hold, notify or
+# screen), and one that names a port whose operations only send. The key derives from business ids, the same on every attempt:
+# it reads the header and not the clock, a new id or the attempt.
+# A screen counts by its effect: a screening lookup may only read (Issue I-316).
+OUTSIDE_TYPES = {"reserve", "hold", "notify"}
+NOT_A_BUSINESS_ID = re.compile(r"\b(?:now|clock|ids|uuid|random|attempt)\b")
+for path, d in docs:
+    if d.get("kind") != "activity":
+        continue
+    why = None
+    if d.get("effect") in ("write", "external"):
+        why = "its effect is %s" % d["effect"]
+    elif d.get("type") in OUTSIDE_TYPES:
+        why = "it is a %s" % d["type"]
+    elif d.get("type") == "exchange" and d.get("mode") in ("send", "respond", "report"):
+        why = "it is an exchange that %ss" % ("report" if d["mode"] == "report" else d["mode"])
+    else:
+        for pn in d.get("ports") or []:
+            ops = (by_name.get(pn) or {}).get("operations") or []
+            if ops and all(o.get("style") == "send" for o in ops):
+                why = "its port %s only sends" % pn
+                break
+    if why is None:
+        continue
+    key = d.get("idempotencyKey")
+    if not key:
+        err("L54", path, "%s has an outside effect (%s) but no idempotency key: every attempt is at least once" % (d.get("name"), why))
+    elif "header." not in key or NOT_A_BUSINESS_ID.search(key):
+        err("L54", path, "%s's idempotency key %r is not the same on every attempt: it must read a business id of the header and not the clock, a new id or the attempt" % (d.get("name"), key))
 
 # ---------------------------------------------------------------- report
 kinds = {}

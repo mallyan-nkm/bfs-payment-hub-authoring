@@ -44,8 +44,25 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             _ => throw new ArgumentOutOfRangeException(nameof(o)),
         };
         b.AddInterceptors(new InsertOnlyGuard(), new StoreWriteTelemetry(o.Provider));
+        // The outbox's commit order is the database's own (R-09-214): the model differs by provider, so it is cached per provider.
+        b.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, ProviderModelCacheKey>();
         return b.Options;
     }
+
+    sealed class ProviderModelCacheKey : Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory
+    {
+        public object Create(DbContext context, bool designTime) => (context.GetType(), context.Database.ProviderName, designTime);
+    }
+
+    /// <summary>
+    /// In a query only: the oldest commit version still in flight (R-09-214): every outbox row below it is committed, and none will
+    /// commit below it. SQL Server's <c>MIN_ACTIVE_ROWVERSION()</c>, PostgreSQL's <c>pg_snapshot_xmin(pg_current_snapshot())</c>.
+    /// </summary>
+    /// <param name="row">A column of the row it is read beside, which the database ignores: a function of no column would be evaluated here.</param>
+    public static long OldestInFlight(long row) => throw new NotSupportedException("OldestInFlight is translated by the database in a query");
+
+    /// <summary>Whether the context runs on SQL Server (the outbox's commit order is its rowversion there, a transaction id otherwise).</summary>
+    public bool OnSqlServer => Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer";
 
     public static StoreDbContext Open(StoreOptions o) => new(Configure(o));
 
@@ -268,7 +285,18 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Id).ValueGeneratedOnAdd();
             e.Property(x => x.Topic).HasMaxLength(Code).IsRequired();
             e.Property(x => x.Key).HasMaxLength(Short).IsRequired();
+            // The commit order (R-09-214, Issue I-281): the database's, read by the event stream below the oldest version in flight.
+            if (OnSqlServer)
+            {
+                e.Property<byte[]>("RowVer").IsRowVersion();
+                e.Property(x => x.CommitVersion).HasComputedColumnSql("CAST([RowVer] AS bigint)", stored: false);
+            }
+            else e.Property(x => x.CommitVersion).HasDefaultValueSql("(pg_current_xact_id()::text::bigint)").ValueGeneratedOnAdd();
+            e.HasIndex(x => new { x.CommitVersion, x.Id });
         });
+        var sql = OnSqlServer ? "CAST(MIN_ACTIVE_ROWVERSION() AS bigint)" : "(pg_snapshot_xmin(pg_current_snapshot())::text::bigint)";
+        m.HasDbFunction(typeof(StoreDbContext).GetMethod(nameof(OldestInFlight))!)
+            .HasTranslation(_ => new Microsoft.EntityFrameworkCore.Query.SqlExpressions.SqlFragmentExpression(sql, typeof(long), null));
 
         // An event stream's position (R-09-153) and the breakers' moves (R-09-156): insert-only, like every table of the store.
         m.Entity<StreamPositionRow>(e =>

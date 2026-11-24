@@ -67,6 +67,52 @@
           "confirmed": {
             "type": "boolean"
           },
+          "repliesTo": {
+            "description": "The messages of this scheme this one answers, each sent out (Issue I-235, R-09-211): a reply's wait is measured from the message it answers.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            }
+          },
+          "file": {
+            "description": "The rules of this message's file, which the File API reads from the active distribution (Issue I-159, R-09-209). A value not declared is the installation's setting.",
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": false,
+            "properties": {
+              "namePattern": {
+                "description": "A regular expression the file's name (without an encryption extension) matches in full.",
+                "type": "string",
+                "minLength": 1
+              },
+              "extensions": {
+                "description": "The extensions the file's name may end in, each with its dot; an encrypted file may add .gpg, .pgp or .asc.",
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^\\.[A-Za-z0-9]+(\\.[A-Za-z0-9]+)*$"
+                }
+              },
+              "maxBytes": {
+                "description": "The largest file taken, in bytes.",
+                "type": "integer",
+                "minimum": 1
+              },
+              "uniqueName": {
+                "description": "Whether a file of this message may come only once under a name.",
+                "type": "boolean"
+              },
+              "encrypted": {
+                "description": "true: the file MUST arrive encrypted; false: it MUST NOT. Not declared: either.",
+                "type": "boolean"
+              }
+            }
+          },
           "disposition": {
             "type": "object",
             "minProperties": 1,
@@ -136,11 +182,39 @@
                       "type": "string",
                       "pattern": "^[a-z0-9][a-z0-9-]*$"
                     }
+                  },
+                  "correlationMap": {
+                    "description": "A map activity (direction in) that reads the keys of the payment the file answers from the file: its name and content (Issue I-267, I-160 (2), R-09-212). Without one the front door matches the keys the sender gives and, failing those, the stem of the file name.",
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
                   }
                 }
               },
               "handler": {
                 "$ref": "urn:th:schema:common#/$defs/artefactName"
+              },
+              "reconcile": {
+                "description": "A scheme's report, reconciled on arrival, not routed (Issue I-164, R-09-210): the map reads the scheme's layout into report lines, the activity reconciles them, and the period says which payments the report covers, so a payment it does not name is a break.",
+                "type": "object",
+                "required": [
+                  "activity",
+                  "map",
+                  "period"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "activity": {
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
+                  },
+                  "map": {
+                    "$ref": "urn:th:schema:common#/$defs/artefactName"
+                  },
+                  "period": {
+                    "description": "The time the report covers, ending at its arrival: an ISO 8601 duration of days, hours or minutes.",
+                    "type": "string",
+                    "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$",
+                    "minLength": 3
+                  }
+                }
               },
               "sentBy": {
                 "description": "Outbound message: the exchange block that sends it.",

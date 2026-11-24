@@ -284,7 +284,14 @@ public class FlowableRestartTests(FlowableServer virtualServer, FlowableLiveServ
             Assert.Equal(baseCalls, worker.Calls.ToList());
             // The journal is closed: the run is not run again.
             await using (var db = StoreDbContext.Open(store.Options))
-                Assert.Equal("closed", (await db.Facts.AsNoTracking().Where(f => f.SubjectId == $"flowable-run:{run}").OrderByDescending(f => f.Seq).FirstAsync()).Code);
+            {
+                var journalFacts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == $"flowable-run:{run}").OrderBy(f => f.Seq).ToListAsync();
+                Assert.Equal("closed", journalFacts[^1].Code);
+                // The journal holds the engine's state and the payload's reference, never the payload (I-302, R-09-206).
+                Assert.All(journalFacts, f => Assert.DoesNotContain("instructedAmount", f.DataJson));
+                Assert.Contains(journalFacts, f => f.DataJson.Contains("#start"));
+                Assert.Contains(await db.Facts.AsNoTracking().Where(f => f.SubjectId.EndsWith("#start") && f.Code == "create").Select(f => f.DataJson).ToListAsync(), d => d.Contains(e2e));
+            }
             var again = await Wait(Start(file, url, mode, run, null));
             Assert.NotEqual(0, again.Code);
             Assert.Contains("ended at", again.Stdout);

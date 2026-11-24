@@ -74,8 +74,8 @@ All four run one interpreter of the expanded workflow, behind one seam (`IEngine
 | Engine | How it is hosted (D3) | Its own state | Kit | On the store |
 | --- | --- | --- | --- | --- |
 | Temporal | Temporal service; workers poll task queues | PostgreSQL, or SQL Server through `runtime/temporal-mssql` | Not run on 23 November 2026 (the test server did not start here) | Yes, both databases |
-| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 57 of 57 (23 November 2026) | Yes, payments data on both databases |
-| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 57 of 57 (23 November 2026) | Yes, both databases |
+| DTFx | A library; workers share the SQL Server task hub | SQL Server only (D7) | 59 of 59 (24 November 2026) | Yes, payments data on both databases |
+| Elsa 3 | Elsa Server; the interpreter runs inside one Elsa activity | Both, through EF Core | 59 of 59 (24 November 2026) | Yes, both databases |
 | Flowable 7 | Flowable REST server; .NET external workers over REST | Both | 56 of 56 on 22 November 2026, before CK-PARK-03 (embedded harness on H2) | Yes, both databases (the REST server, in virtual and in production mode) |
 
 Each installation runs one engine (D1). The source's `IsPatched` ladder is not carried: versions come from releases, not patches.

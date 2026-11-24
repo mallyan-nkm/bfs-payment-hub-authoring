@@ -251,6 +251,12 @@ public sealed class OutboxRow : IInsertOnly
     public string Key { get; set; } = "";
     public string PayloadJson { get; set; } = "{}";
     public DateTimeOffset At { get; set; }
+    /// <summary>
+    /// The database's commit order of the row (R-09-214, Issue I-281), set by the database, never by the store: on SQL Server the row's
+    /// <c>rowversion</c>, on PostgreSQL the id of the transaction that wrote it. A row below the oldest version still in flight
+    /// (<c>MIN_ACTIVE_ROWVERSION()</c>, <c>pg_snapshot_xmin</c>) is committed, and no row can later take a lower one.
+    /// </summary>
+    public long CommitVersion { get; set; }
 }
 
 /// <summary>
@@ -271,6 +277,12 @@ public sealed class StreamPositionRow : IInsertOnly
     /// stream went past it. A later batch publishes any of them that has since committed. Null when there are none.
     /// </summary>
     public string? GapsJson { get; set; }
+    /// <summary>
+    /// In commit order (R-09-214, Issue I-281): the last row published, by its commit version and its number (a keyset). Every row below
+    /// it in that order was published; null in a position written before the stream published in commit order.
+    /// </summary>
+    public long? ThroughVersion { get; set; }
+    public long? ThroughId { get; set; }
     public DateTimeOffset At { get; set; }
 }
 

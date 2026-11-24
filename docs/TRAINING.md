@@ -71,7 +71,7 @@ You should see every test pass (about 160).
 npm run studio -- kit
 ```
 
-The last line should read `57 of 57 conformance scenarios pass on the studio interpreter`.
+The last line should read `59 of 59 conformance scenarios pass on the studio interpreter`.
 
 ```bash
 npm run studio -- test
@@ -455,7 +455,7 @@ npx tsx engines/elsa/run-kit.ts
 engines/flowable/setup.sh && npx tsx engines/flowable/run-kit.ts
 ```
 
-Each ends with `57 of 57 conformance scenarios pass`.
+Each ends with `59 of 59 conformance scenarios pass`.
 
 ---
 

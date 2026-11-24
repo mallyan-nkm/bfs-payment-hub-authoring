@@ -46,6 +46,7 @@ If the spec is wrong, silent or contradicts itself: stop. Write it up as an Issu
 - An `await` and a `return` appear only in a subflow. A designer's workflow calls a composite activity as one step; the wait is in its subflow.
 - A `block` appears only in the expanded form. Engines and the interpreter run the expanded form; nobody edits it.
 - Retry is allowed only on an activity that is pure, read, or carries an idempotency key.
+- Every activity attempt is at least once (a crash, an expired lock). An activity with an outside effect carries an idempotency key whether or not it retries (R-03-25, R-03-26, lint L54).
 
 ### Data
 

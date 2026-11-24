@@ -1616,6 +1616,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **Recommendation.** Give the Bank Configurator an editor for a bank's own tables in the studio (today a table is authored as YAML, like a rule), and add each new kind of reference data as a table, not as a parameter.
 
+**Recommendation done (24 November 2026, R-11-106).** The studio's Reference tables view (Fluent UI 2, `studio/web/src/views/ReferenceTables.tsx`), which already added an edition to a bank's table (R-11-52), now starts a new table of the bank's own: a New table form takes its name (`b.ref.<name>.v1`), title, domain, columns (id, type, title, required, allowed values) and key, checks it as a table (schema and L49) and hands it to the edition editor, which saves the first edition with it as a draft at 1.0.0 for a Bank Approver. A published edition is never edited, as before. `studio/test/bank-calendar.test.ts` starts a synthetic table through the editor's API calls: a key that is no column refused, a row outside its allowed values refused, the draft listed.
+
 ## I-151. What the reference tables still lack
 
 **Issue.** Loading the Central Bank's register of licensed banks, October 2026, as the participant directory left gaps:
@@ -1643,6 +1645,9 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 4. **The read model's lag.** The enquiries read the operations read model, so a payment accepted a moment ago may not be found yet.
 
 **Recommendation.** Register the CIF as a debtor's organisation id with scheme CIF (R-02-21) and have the intake map write it from the channel's upload; let an operations view declare its channel status field (an operations-view schema change with its lint, in the same change as the enquiry that reads it); merge `status.transactions` into the lines in the projection; answer 404 with a retry hint while the read model's lag is above a second.
+
+**(1) Done (24 November 2026, R-02-22).** The debtor's organisation id holds its establishment id (scheme MOL, R-12-27), so its CIF is a further organisation id: the canonical model gives a party `otherOrganisationIds[]` (Pty/Id/OrgId/Othr, repeated), and the salary file's intake map 1.5.0 (factory 1.20.0, `studio/scripts/uae.wps.map.sif-in.v1@1.5.0.ts`) writes the CIF the channel declared at upload (`# cif:`) there with scheme CIF. The store keeps every organisation id of a party as its OrgId/Othr (`CanonicalMapper`, which kept none before, so the MOL id is now in the store too). The runtime's match of the corporate still compares the account only: comparing the CIF and the e-mail is the source's `MatchCorporate`, whose e-mail the model does not carry (Issue I-314). (2) to (4) stay open.
+
 ## I-154. One runtime serves one bank: what the runtime still allows for several
 
 **Issue.** The owner decided on 23 November 2026 that the runtime is not multi-tenant: one runtime serves one bank, and it must be impossible to deploy DIB's package in ADIB. Until then the runtime stored a distribution, a configuration release, a workflow package exported for a tenant, a payment's pin, a kept file, a branch's configuration sets and a backup for any bank a caller had a role in. Per-tenant role grants (R-06-28) let one person hold roles in several banks of one runtime.
@@ -1717,6 +1722,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a `file` block to a scheme manifest's message (`namePattern`, `extensions`, `maxBytes`, `uniqueName`, `encrypted`) in a schema change with its lint and mutation case, and have the File API read it from the active distribution. Until then the rules are the installation's settings (`FileApi:Messages:<message>:MaxBytes|Extensions|NamePattern|UniqueName`, default: any extension, 50 MB, names unique), and `uae.wps` sets none, as it is provisional.
 
+**Done (24 November 2026, R-09-209).** A scheme manifest's message may declare a `file` block (`namePattern`, `extensions`, `maxBytes`, `uniqueName`, `encrypted`; `spec/schemas/scheme.schema.json`, lint L55 with mutation case M94). The File API reads it from the scheme of the bank's active distribution (`MessageEntry.File`, `FileRules.For`): each rule the scheme declares stands, a rule it does not declare is the installation's setting as before, and `encrypted` refuses a file in the clear (`file.NotEncrypted`) or an encrypted one (`file.Encrypted`). `uae.wps` declares none, as it is provisional. `FileApiTests.A_messages_file_rules_are_the_schemes_in_the_active_distribution` declares rules on a test release of the scheme. Found on the way: `OpenPgp.IsEncrypted` threw on a text file that BouncyCastle reads as a packet of an unknown version; it now answers false.
+
 ## I-160. How a received file names its message and its payment
 
 **Issue.** (1) An inbox must say which message its files are, and the banks' bindings do not: DIB's `pickup.folder` holds the channel's salary files and ADIB's `centralBank.ackFolder` and `rtcFolder` the Central Bank's answers, but neither names a message, and neither bank names a labour ministry or core banking partner at all. (2) A message for a running payment is correlated by its keys, but the scheme does not say where a file carries them: the factory's simulators put a `correlation` beside the message, a real PSI or ACK file has only its content and its name.
@@ -1724,6 +1731,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** (1) Have each bank name, in a new binding with a later `validFrom`, each inbox's message (`<partner>.message`, or `<partner>.inbox.<name>.*`) and the partners it lacks (`ministry.*`, `coreBanking.*`); until then the File API polls only the inboxes that name a message, and an installation may name more in `FileApi:Inboxes`. (2) Give each `deliver` disposition a correlation map (an activity of type `map` that reads the key from the file), so the front door reads the key as the scheme says; until then the front door matches the keys the sender gives (`correlation` on `POST /files`) and, failing those, the stem of the file name, which pairs a PIF with its PSI only when both share it.
 
 **On the laptop (23 November 2026, R-09-105).** The laptop's binding of each bank's file transfer (`deploy/laptop/banks/<bank>/file-transfer.yaml`, carried in the bank's signed configuration release that the insert-only test has the studio build and puts in force with consent, R-09-110 to R-09-112) names each inbox's message: the pick-up folder's `uae.wps.sif`, the Central Bank's `uae.wps.ack` and `uae.wps.rtc`. Synthetic folders on the stack's SFTP server; the banks' own bindings still name none, and (2) stays open.
+
+**(2) Done (24 November 2026, R-09-212):** see Issue I-267. A deliver disposition names its correlation map; `uae.wps.ack`'s is `uae.wps.map.ack-correlation.v1`. The PSI and the RSU have none yet (Issue I-311).
 
 ## I-161. The banks' SFTP partners have no pinned host key, and the login's form
 
@@ -1753,6 +1762,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a `reconcile` disposition to a scheme manifest's message (`{ activity, map, period }`) in a schema change with its lint and mutation case, with a `map` that reads the scheme's layout into report lines and a period that lets the match find what the report misses; then release `p.reconcile.scheme-report.v2` with a contract over the lines, and let the File API read both from the active distribution.
 
+**Done, the mechanism only (24 November 2026, R-09-210).** A scheme manifest's inward message may have a `reconcile` disposition (`{ activity, map, period }`; lint L55, mutation case M95). The File API reconciles such a file on arrival and never routes it: its map, run on the distribution's worker, reads the scheme's layout into report lines (`messages.report.lines`, `RuntimeFrontDoor.ReportLines`), and `SchemeReconciliation` records each payment of the bank and scheme accepted in the period before the report's arrival that no line names as a break (`not-in-report`), naming the disposition's activity and period in the run's fact. The installation's `FileApi:Reports:<message>:Scheme` still names a report the scheme does not declare, read in the runtime's own layout. The upload page offers a report message. WPS declares no report and `p.reconcile.scheme-report.v2` is not released: the Central Bank gives no report layout, so writing one would invent a scheme fact (Issue I-312). Tests: `FileApiTests.A_report_the_scheme_declares_is_read_by_its_map_and_reconciled_over_its_period`, `ReconciliationTests.A_payment_of_the_reports_period_the_report_does_not_name_is_a_break` (both databases).
+
 ## I-165. DTFx and Elsa runs do not survive a restart of their host, and Flowable deploys per payment
 
 **Issue.** The engine host runs DTFx and Elsa payments in real time and takes messages after a run started (R-09-93), but each payment still runs in a harness run of its own with an in-memory orchestration service: if the host stops, its open payments stop with it, and nothing resumes them (Flowable's binding resumes from its journal, I-89). DTFx's SQL Server provider would make the orchestration durable on SQL Server only; there is none for PostgreSQL. Elsa's own persistence is a store of its own beside the runtime's. On Flowable each payment still deploys the distribution's BPMN in a tenant of its own run, because external worker jobs are acquired per tenant and one binding per payment would take another payment's jobs from a shared tenant. No test runs a Flowable payment that awaits a message through the host's live path.
@@ -1776,6 +1787,10 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Requeue (R-09-91) runs a dead-lettered step with its full retry policy, a retry gives it one attempt. The kit's stub fails a step only on its first call (`failTimes` counts the first call's attempts), so CK-PARK-03 shows the requeue's path on every engine but not that the second run had the full policy. On Flowable a dead-lettered payment's run waits for a requeue only in production mode with the runtime's live path; elsewhere the binding still ends the run at the dead letter.
 
 **Recommendation.** Let a stub fail a number of attempts across calls (`failAttempts`), and add a scenario whose requeued step fails once more and then succeeds, which a retry would not survive.
+
+**Done (24 November 2026, R-09-208).** A kit stub may fail a number of a step's attempts counted across its calls, `failAttempts` (`studio/src/interp/interpreter.ts`, counted per instance and step on the run, so on every engine through the party service). CK-PARK-04 fails the first three attempts of its step: both attempts of its policy fail and it parks; the requeue runs its full policy, whose first attempt fails once more and whose second succeeds (four attempts in all), which one more attempt (a retry) would not survive. The kit holds 59 scenarios (with CK-AWAIT-08 of wave 6); the counts derived from it are updated (`studio/test/execution.test.ts`, the READMEs, `docs/north-star`, `docs/TRAINING.md`, Annex C's table). CK-PARK-03 and 04 pass on the studio interpreter, DTFx and Elsa.
+
+**Engines (24 November 2026).** The whole kit, 59 scenarios, passes on DTFx (351 s) and Elsa (354 s); CK-PARK-01, 03 and 04 pass on Temporal. On the embedded Flowable harness CK-PARK-01, 03 and 04 do not pass (`no handler waits for signal requeue`): as this issue says, a dead-lettered run there waits for an operator's control only in production mode on the runtime's live path.
 
 ## I-168. A reconciliation break is resolved by status only
 
@@ -2120,6 +2135,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Move `p.post.accounting.v1` and the window gate's use by a binding into the platform module in a later platform release (the image then keeps no copy), or accept the copies and keep a test that each gives the same answers on the same cases.
 
+**Done, the second option for now (24 November 2026, R-09-215).** The copies stay, held to each other: `DuplicatedLogicTests` runs the image's and the platform module's posting window gate on every pair of sixteen starts and ends (valid, blank, malformed, overnight) at 39 times of the day, and the image's and the module's reading of the accounting template on full, minimal and incomplete parameters, refusals included, and expects the same answers. The move (the recommendation's first option, which this batch was asked to prefer) needs the same thing I-237 needs, a module that can read a binding in force and call it through the image's guarded HTTP: the image's posting gate checks the core-banking binding's posting hours, which a module cannot read today. That is Issue I-315. WPS's `PostReturn` reads only five of the template's values by their names and is not a copy of the template's reading; it stays.
+
 ## I-230. The native host's refusals have no entry in the error dictionary
 
 **Issue.** The native host refuses an attempt with a name of its own: `NotNative`, `NotInDistribution`, `DistributionUnknown`, `DistributionRemoved`, `NativeModuleRefused` and, since R-09-131 and R-09-132, `WrongDistribution` and `NotPinned`. None has an entry in the platform's error dictionary (`p.errors.platform.v1`), so no runbook covers them, and `ErrorDictionaryTests` does not look for them: it reads only `NativeFailure`, `StepFailure` and `AttemptFailed` codes. The change that made the last two kept the factory unchanged, so it could not add them.
@@ -2150,6 +2167,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add to the scheme manifest's message an optional `repliesTo` (the message ids it answers), with a lint that each names a message of the same scheme sent `out`, in the next release of `uae.wps` (`uae.wps.ack` answers `uae.wps.sif-submission`), and have the gauge read the pairs from the schemes of the active distribution, the setting only adding to them.
 
+**Done (24 November 2026, R-09-211).** A scheme manifest's message may say which of its scheme's outward messages it answers (`repliesTo`; lint L55: an inward message, naming outward messages of its own scheme, mutation case M92). `uae.wps` 1.5.0 (1.4.0 is wave 6's) says `uae.wps.ack` answers `uae.wps.sif-submission`. The gauge `th.await.oldest` reads the pairs from the schemes of every active distribution (`RuntimeGauges.InForce`, kept per distribution id) and the installation's `Service:Gauges:AwaitedReplies` only adds to them. `GaugesTests.The_awaited_replies_are_the_active_distributions_schemes_and_the_setting_adds_to_them` (both databases). What a sent document is called in the read model is the bank binding's `<operation>.kind` (on the laptop `uae.wps.sif-out`), not the message id: Issue I-310.
+
 ## I-236. The studio interpreter reads a rule's values as of the business date on a word the schema does not have
 
 **Issue.** R-04-10 and `common#parameter.lookupDate` name the two dates `step-time` and `payment-date`. The studio's rule service (`studio/src/rules/service.ts`, `paramFacts` and `runRules`) reads a parameter as of the business date only when its `lookupDate` is `business`, which the schema refuses, so a parameter that declares `payment-date` is read as of the step on the studio interpreter, while the runtime's engine host reads it as of the payment's acceptance (R-09-135). No factory rule declares `payment-date` yet (only the operations views' `tatLimit` does), so no test shows the difference.
@@ -2163,6 +2182,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** R-09-142 says platform code names no scheme. `TransactHub.Ports/EmployerRegister.cs` holds the adapters of `uae.wps.port.labour-ministry.v1`, and names that port, because the WPS native module reaches them through `TransactHub.Ports` (Issue I-220). Its default channel header (`WPS`) is gone: the channel is the bank's binding's setting (`channel`), set in each bank's binding. `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` lists this file as the one exception.
 
 **Recommendation.** Move the labour ministry's adapters into the WPS module (`TransactHub.Activities.Wps`) when the native contract gives a module what it needs to build a bound adapter (I-220), and drop the exception.
+
+**Not moved (24 November 2026): blocked on the native contract, Issue I-315.** The adapters (`simulator` and `gateway-rest`) need, from inside a module, the binding in force for the attempt (its adapter and settings), the image's guarded HTTP (circuit breaker, timeouts, R-09-156) and the resolution of the binding's credential reference. The native contract 1.1.0 gives a module none of these: its ports are answered by the image (`INativePorts`). Moving them needs a contract minor (1.2.0), which changes the version every distribution's manifest, the studio's module builds and their tests name, and was not safe to make in this batch beside the release of factory 1.20.0. The exception in `NeutralityTests` stays, with this issue.
 
 ## I-238. Other values of a UAE cluster in platform code
 
@@ -2193,6 +2214,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Since R-11-76 a bank's lock file can have a release the studio published on the content branch (`banks/<bank>/artefacts/b/pack/<release>.yaml`) beside the seeded `pack.yaml`. The seed replaces `pack.yaml` only by a later release (R-11-35), and does not read the studio's releases: a seed whose `pack.yaml` is at or below the studio's release leaves the studio's in force (the latest release wins), and its new artefacts are not in any lock file in force until the bank licenses again; a seed above it drops a licence the studio added unless the repository's `pack.yaml` names it too. The spec does not say which is the bank's source of truth once the studio has licensed a scheme.
 
 **Recommendation.** Have `seed-content` read the bank's latest lock file on the branch (the studio's included) and keep its `licensedSchemes` in the lock file it writes, refusing a seed whose release is not later than it; or decide that a bank licensed in the studio is no longer seeded from this repository. Until then, after licensing in the studio, write the same list into the repository with `npm run studio -- bank-pack <bank> --licensed <scheme> --release <later> --write`.
+
+**Done (24 November 2026, R-11-105).** `seed-content` reads the bank's latest lock file on the branch. When it is one the studio published (`banks/<bank>/artefacts/b/pack/<release>.yaml`), the seed keeps its `licensedSchemes`, with the seed's own after them, in the `pack.yaml` it writes (and in its ledger), and refuses a seed whose release is not later than it, writing nothing (`studio/src/content/seed.ts`, `keepStudioLicences`; the plan reports what it kept, `seedPlan(env).kept`). While the latest lock file is the seeded one, nothing changes. `studio/test/releases.test.ts` shows both.
 
 ## I-246. An upload from a console in dev sign-in has no token for the File API
 
@@ -2264,17 +2287,24 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the scheme declare a correlation map for each `deliver` disposition, as I-160 (2) recommends, and replace `stemDrop` by it once the Central Bank confirms its naming; until then each bank's binding sets `stemDrop` for its Central Bank inbox.
 
+**Done (24 November 2026, R-09-212, with I-160 (2)).** A `deliver` disposition may name a correlation map (`correlationMap`, an inward map that reads the message; lint L55, mutation case M93). The front door runs it on a received file before it is kept (`RuntimeFrontDoor.CorrelationKeys`) and matches the payment by the keys it answers (`messages.correlation`), before the stem of the file's name; a map that reads no key refuses the file (`frontdoor.Uncorrelated`). `uae.wps` 1.5.0 names `uae.wps.map.ack-correlation.v1` (factory 1.20.0) for the ACK: the AHR record's processed file name, else the ACK's own name split from the back before the Central Bank's twelve-character file id, as the source's `WpsAckNakFile` reads it (a native code-behind on that reader, `MapAckCorrelation`, and a script-behind). It is provisional, as the scheme is. `stemDrop` is retired: the File API no longer reads it and ADIB's laptop binding no longer sets it; ADIB's laptop behaviour (ACK name = SIF stem and the twelve-character id) now comes from the map. Tests: `FileApiTests.An_answer_named_after_the_file_a_payment_sent_reaches_that_payment` (by the AHR record and by the name; a short name refused; an answer to no payment unmatched), `NativeInwardTests.The_acknowledgements_correlation_map_reads_the_salary_file_it_answers`, `PortFileTransferTests` and `LaptopDeploymentTests` (no `stemDrop`). The PSI and the RSU keep matching by the sender's keys and the stem: their layouts name no key the factory knows (Issue I-311).
+
 ## I-268. On the laptop the WPS port is the runtime's, so the scheme's other exchanges have no simulator there
 
 **Issue.** The laptop's bench gives `uae.wps.port.wps.v1` to the runtime (`TH_WORKERS_BENCH`), so the salary file leaves through the File API (R-09-162). The scheme's other sends on that port (the inward receipt confirmation, the returns and refund files) have no native code-behind that puts their file on the port, and on the laptop they find no simulator in the bench: the interpreter falls back to the port's first simulator with a warning. The laptop test runs outward salary files only.
 
 **Recommendation.** Give each WPS send its native code-behind on the port, as for the salary file, in minor releases, and a check that every activity of a port the bench gives to the runtime has one; until then a laptop test of an inward or refund flow names the port's simulator in its bench.
 
+**Done (24 November 2026, R-09-213).** The scheme's other sends on the WPS port have native code-behinds, as the salary file's has: `uae.wps.exchange.send-receipt-confirmation.v1`, `send-disbursement-file.v1`, `send-returns-file.v1`, `send-disbursement-cancellation.v1`, `send-refund-request.v1` and `send-refund-response.v1`, each at 1.1.0 (factory 1.20.0), one code-behind in the WPS module (`SendKeptFile`) that sends the file its render kept on the bank's binding of the port and refuses with nothing rendered. The check: `runtimePortGaps` (`studio/src/checks/runtime-ports.ts`) lists the activities of a port the bench gives to the runtime that have no native code-behind (a composite counts by its subflow); the studio's check of a test reports one under L15, and a worker whose package holds one does not start. `studio/test/runtime-port.test.ts` holds the laptop's bench to it; `PortFileTransferTests` sends a receipt confirmation through the binding. What the native sends cannot send yet is Issue I-313.
+
 ## I-269. No test hands a Flowable payment a message after its run started on the engine host
 
 **Issue.** On the engine host a message for a running payment reached the run on DTFx and Elsa (tests since R-09-93) but not on Temporal: the host signalled the payment's front door workflow with the message as the sender gave it, and a message with no key of the run's was counted unmatched (found by the last change, fixed here: R-09-161, `DistributionWorkers.ForPayment` gives it the payment's conversation and id, and `LiveSignals.EventOf` adds the payment's id beside a sender's keys). The same test on Flowable cannot run on the stored package the test builds: Flowable runs the BPMN the studio exports, and a package without it is refused (`The plan has no BPMN`). Flowable takes the message on the same live path as DTFx and Elsa (`FlowableBinding`, `LiveSignals.EventOf`), so the fix applies, but no test shows it.
 
 **Recommendation.** Give `EngineHostTests.MessageAfterStart` a Flowable variant whose stored package carries the exported BPMN of `p.wf.ask.v1` (an event-based await, as the generator writes it for a REST binding), so that Flowable is held to R-09-161 as the other engines are.
+
+**Done (24 November 2026, R-09-207).** `EngineHostTests.MessageAfterStart` has a Flowable variant (`Flowable_takes_a_message_after_the_run_started_with_a_plan_from_the_store`): its stored package carries the exported BPMN of `p.wf.ask.v1` (an event-based await, as the generator writes it for a REST binding) at `engine/p.wf.ask.v1/flowable/`, the supervisor builds the plan from the store, and the message posted after the first step reaches the run (`w:received`, outcome `done`). The I-165 restart test (`Flowable_survives_a_restart_of_its_host_on_*`) awaits a message on a plan written by the test; this one reads the plan from the store, so the two do not overlap. Both pass on PostgreSQL; the restart test on SQL Server too.
+
 ## I-275. Who consents to the exchange-rate feed's releases
 
 **Issue.** The owner asked that the rates feed publish its rates as a signed configuration release, which goes in force like any configuration (R-09-110, R-09-111): on a bank approver's consent. Rates refresh many times a day. The spec does not say whether each rate release needs its own consent, or whether the bank approver may consent once to a kind of release.
@@ -2323,11 +2353,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** When the store can give one, publish in commit order instead: on SQL Server a `rowversion` read below `MIN_ACTIVE_ROWVERSION()`, on PostgreSQL the transaction id read below `pg_snapshot_xmin(pg_current_snapshot())`; then no gap is passed over at all. Until then, keep the horizon well above the store's longest transaction.
 
+**Done (24 November 2026, R-09-214).** The relay publishes in commit order by default (`EventStreamRelay.CommitOrder`): each outbox row carries the database's commit version (`outbox.CommitVersion`: on SQL Server a computed column over a new `rowversion`, on PostgreSQL the writing transaction's id, `pg_current_xact_id()`; migration `EventStreamCommitOrder` on both), and a pass publishes the rows below the oldest version in flight (`MIN_ACTIVE_ROWVERSION()`, `pg_snapshot_xmin(pg_current_snapshot())`) after the keyset its last position names (`stream_position.ThroughVersion`, `ThroughId`, both added, insert-only). A save in flight holds back only what was written after it, for as long as it takes: no gap is passed over, kept or dropped. A stream that published by number keeps that number as its floor and its open gaps until found or past the horizon, so a running stream changes over without sending anything twice. The model is cached per provider, as it now differs by provider. `EventStreamTests.In_commit_order_a_save_that_commits_after_the_horizon_is_published_and_no_gap_is_kept` holds a save open past the horizon on both databases; the earlier gap tests run by number (`CommitOrder = false`).
+
 ## I-282. The ledger view knows four parameter names
 
 **Issue.** The operations console's ledger view lists the accounts of every accounting activity whose parameters are named `settlementAccount`, `suspenseAccount`, `chargeIncomeAccount` or `vatAccount` (R-05-91). An activity that names a ledger account otherwise (a scheme's charge account, a future nostro per currency) is not shown, and the console cannot know it is an account.
 
 **Recommendation.** Let an activity's parameter say what it is (`role: ledger-account`, with its kind), in its next release, and have the view list every parameter so marked; until then the four names are the platform's convention, held by the accounting templates.
+
+**Done (24 November 2026, R-05-100).** A parameter may say what it is: `role: ledger-account`, with its `ledgerKind` (`spec/schemas/common.schema.json`; lint L56, an activity's string or code, mutation case M96). The accounting activities mark their accounts in their next releases (`p.post.accounting.v1` 1.2.0, `p.post.accounting.v2` 2.1.0, `uae.wps.post.return.v1` 1.2.0; factory 1.20.0). The ledger view (`LedgerAccounts`) lists every parameter so marked by the activities of the bank's active distributions, set or not, by its kind, and keeps the four names for an activity released before. `LedgerAccountTests.The_view_lists_every_parameter_the_active_distribution_marks_as_a_ledger_account` lists a scheme's charge account and a nostro per currency the four names do not know, on both databases.
 
 ## I-285. A native map that reads no header was refused on a runtime as not pinned
 
@@ -2393,11 +2427,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Record the claim check's payload first (its `create` fact) and put only the engine's state and the payload's reference in the journal's `start` command, as the DTFx and Elsa services do; the replay of a start then reads the payload from the claim check.
 
+**Done (24 November 2026, R-09-206).** The binding records a root start's payload in the claim check first, under a reference known before the server names the process (`<label>-<tenant>#start`, a `create` fact that accepts nothing), and journals the `start` command with the engine's state and that reference only; a start scheduled in the binding's queue is held the same way. A start sent again after a restart reads its payload from the claim check, rebuilt with the instances' payloads (`FlowableBinding.StartOf`, `ContextOf`). The payload is then created under the process's own reference and accepted, as before. A journal written before the change, whose `start` carries `ctx`, is still read. `FlowableRestartTests` (all three) check that no fact of the run's journal holds the payload and that the start's payload is a claim-check fact; they fail on the code before.
+
 ## I-303. An activity that was running when its service stopped runs again
 
 **Issue.** A DTFx or Elsa service that starts again runs again an activity attempt that was in flight when it stopped (R-09-197), as Temporal and Flowable hand out again a task whose worker's lock expired. The step's fact is recorded once (StepFacts), but the worker is called twice. The DSL allows retry only on an activity that is pure, read, or carries an idempotency key, and says nothing of a run again after a crash, which no workflow can declare away.
 
 **Recommendation.** State in the spec that every activity attempt is at least once on every engine (a crash, an expired lock), so that an activity with an effect MUST carry an idempotency key whether or not it retries, and add the check to the validator with its mutation case.
+
+**Done (24 November 2026, R-03-25, R-03-26).** The spec says that every activity attempt is at least once on every engine and in the interpreter (R-03-25, in `spec/design/03-activity-contract-and-types.md` and the guard-rails of `spec/CLAUDE.md`), and that an activity with an outside effect carries an idempotency key whether or not it retries (R-03-26): its effect is `write` or `external`, it is a `reserve`, `hold` or `notify` (a `screen` counts by its effect, Issue I-316), an `exchange` that sends, responds or reports, or it names a port whose operations only send. Lint L54 checks it in `spec/tools/validate.py` and in the studio (`checks.ts`), with mutation cases M90 (a notify that says it reads, with no key) and M91 (a key that reads the clock), and `studio/test/checks.test.ts`. The key must read a business id of the header and not the clock, a new id or the attempt. Every activity of the factory and of the bank packs already passes: the schema has required a key on `write` and `external` since R-03-05, and no activity of another type with an outside effect says it only reads, so no factory activity needed a new release.
 
 ## I-304. A rule trace kept in memory is lost when a service starts again
 
@@ -2412,6 +2450,47 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Done (24 November 2026).** Each answer with the page names a fresh nonce: the studio server (`appCsp`, `src/server/http.ts`) and the runtime hosts (`SecurityHeaders.WriteConsolePageAsync`, `UseConsolePage`) put it in the page's `<meta name="th-style-nonce">` and in `style-src 'self' 'nonce-…'`; the page gives it to Fluent's renderer, which sets it on every style element. `unsafe-inline` stays out, and scripts are still the page's own files only (`script-src 'self'`). Checked by `studio/test/security.test.ts` and `SecurityHeadersTests`.
 
 **Recommendation.** Say in R-09-60 and R-11-43 that a page may also apply style elements its own script writes when they carry the nonce of that answer, and never inline script; or, if the owner prefers no style elements at all, build Fluent's styles ahead of time into a stylesheet (Griffel's CSS extraction), which needs a build plugin the studio's Vite build does not have today.
+## I-310. A sent file's kind is the bank binding's word, not the scheme's message
+
+**Issue.** The gauge of the oldest wait for a reply now reads its pairs from the schemes (R-09-211): `uae.wps.ack` answers `uae.wps.sif-submission`. The read model's documents carry the kind the File API kept a sent file under, which is the bank binding's `<operation>.kind` (on the laptop `submit-file.kind: uae.wps.sif-out`), so the pair the scheme declares matches no document of a sent salary file, and the laptop's `Service:Gauges:AwaitedReplies` names `uae.wps.sif`, the channel's inward file's kind. The spec does not say what a sent file's kind is.
+
+**Recommendation.** Have the File API keep a file a port sends under the id of the scheme message its exchange sends (the message whose `disposition.sentBy` names the exchange), and retire `<operation>.kind`; until then a bank's binding names that message id as the kind, and the installation's setting names the pair its kinds need.
+
+## I-311. The PSI and the RSU have no correlation map
+
+**Issue.** A deliver disposition may now name a correlation map (R-09-212), and the ACK's does. The PSI (paired with its PIF by the payment file id) and the RSU (by the refund request file id) have none: their layouts in the factory say no field that carries the key, so the front door still matches them by the sender's keys and, failing those, the stem of the file name.
+
+**Recommendation.** Once the rulebook (D10) gives the PSI's and the RSU's layouts, give each deliver disposition its correlation map, in a release of `uae.wps`; until then the stem stands.
+
+## I-312. No report layout for WPS, and the report activity reads no lines
+
+**Issue.** The scheme manifest can now declare a report (`reconcile`, R-09-210), but no source gives the Central Bank's reconciliation report, so `uae.wps` declares none, no report map exists, and `p.reconcile.scheme-report.v1` still reads `header, status, messages` with a contract that says nothing of lines; the runtime's reconciliation is the File API's intake (`SchemeReconciliation`), named by the disposition's activity.
+
+**Recommendation.** When the Central Bank gives its layout, write its map in a release of `uae.wps` and declare the report; release `p.reconcile.scheme-report.v2` then, with a contract over `messages.report.lines`, so that the studio can test a report as the runtime reads it.
+
+## I-313. Three of WPS's sends have no native render, and every send of the port goes to one folder
+
+**Issue.** Since R-09-213 every send of the WPS port has a native code-behind, which sends the file its render kept. The receipt confirmation, the disbursement file and the returns file are rendered natively by the source's writers (PRC, DIF, RFA); the disbursement cancellation (DCR), the refund request (RFR) and the refund request response (RRR) are not: the source holds no writer for them and the factory's layouts are unconfirmed, so on a runtime their native send finds no kept file and refuses (`FF01`). And the bank's binding of the port names one folder and one kind for its `submit-file` operation (on the laptop `centralBank.sifFolder`, `uae.wps.sif-out`), so every file of the port goes there under the salary file's kind.
+
+**Recommendation.** Write the DCR, RFR and RRR renders natively once the rulebook (D10) gives their layouts, in minor releases; and let a port binding name a folder and a kind per message the port sends (`submit-file.<message>.folder`), or the File API derive the kind from the message (Issue I-310). Until then a laptop or test of the refund cycle names the port's simulator in its bench.
+
+## I-314. The corporate match does not compare the CIF yet, and the e-mail has no place
+
+**Issue.** Since R-02-22 the debtor carries the CIF the channel declared (scheme CIF), but WPS's match of the corporate the party register found (`WpsCorporateMatch`, the source's `MatchCorporate`) compares the account only. The source compared a CIF, an account and an e-mail; the canonical model has no place for the uploader's e-mail, which is personal data, and the spec does not say whether the match needs it.
+
+**Recommendation.** Have the match compare the debtor's CIF organisation id with the register's CIF where both are known (a minor of the WPS module); and decide with the owner whether the e-mail is compared at all, and if so where it is read (the channel's identity, not the payment).
+
+## I-315. A native module cannot build a bound adapter of its own
+
+**Issue.** The labour ministry's adapters (I-237) and the posting window's use by a binding (I-227) stay in the image because a module, which references the native contract only (R-09-125), cannot read the binding in force for an attempt, call its endpoint through the image's guarded HTTP (circuit breaker, timeouts), or have the image resolve the binding's credential reference. Each image answer a module needs is a case of `INativePorts.Ask`, written in the image for one scheme's port.
+
+**Recommendation.** Release native contract 1.2.0 with bound ports: `INativeServices.BoundPorts.For(attempt, port)` giving the binding's adapter and settings, and `Send(attempt, binding, request)` that sends a request to the binding's base URL with its credential applied by the image and its breaker and timeouts, the failures as the contract's `TransientError`, `PortNotBound` and `SecretUnavailable`. Then move the labour ministry's adapters into the WPS module and `p.post.accounting.v1` with the posting window's check into the platform module, drop the image's copies, `NeutralityTests`' exception and `DuplicatedLogicTests`, and update the contract version wherever a manifest, a build or a test names it.
+
+## I-316. Whether a bank's AML screening leaves a case at the service
+
+**Issue.** Lint L54 (R-03-26) first counted every `screen` as an outside effect. DIB's `b.screen.employer-aml.v1` (mined from the source's bank fork) is a screen declared `read`, with no idempotency key, and the source does not say whether its AML service records a case for each request. The factory's screens (sanctions, fraud) are `external` and carry keys. So a screen now counts by its effect, as an enrich does: one that only reads may be `read`.
+
+**Recommendation.** Ask DIB whether its AML service records a case per request. If it does, release `b.screen.employer-aml.v1` 1.1.0 as `external` with an idempotency key on the payment's id; if not, nothing changes.
 
 ## Not done, and why
 

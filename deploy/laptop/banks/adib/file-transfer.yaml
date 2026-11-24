@@ -35,8 +35,6 @@ bindings:
       centralBank.inbox.ack.message: uae.wps.ack
       centralBank.inbox.ack.doneFolder: done
       centralBank.inbox.ack.errorFolder: error
-      # An ACK or NAK is named after the SIF it answers, with the Central Bank's twelve-character file id before its extension.
-      centralBank.inbox.ack.stemDrop: "12"
       centralBank.inbox.rtc.folder: upload/cb/wps/rtc
       centralBank.inbox.rtc.message: uae.wps.rtc
       centralBank.inbox.rtc.doneFolder: done
@@ -48,8 +46,9 @@ bindings:
       result.folder: upload/wps/outbound
   # The WPS port through the File API (R-09-160, R-09-162, Issue I-192): the salary file the outward leg submits leaves through the
   # File API's outbox to the Central Bank's folder of the binding above (centralBank.sifFolder), kept, delivered, audited and resent
-  # there; the ACK and NAK come back on the Central Bank's inbox (centralBank.inbox.ack), correlated to the payment by the file's stem,
-  # the SIF's name before the Central Bank's twelve-character file id (stemDrop, I-160 (2)). A test distribution keeps the port's
+  # there; the ACK and NAK come back on the Central Bank's inbox (centralBank.inbox.ack), correlated to the payment by the scheme's
+  # correlation map (uae.wps 1.5.0, uae.wps.map.ack-correlation.v1, R-09-212): the SIF's name the AHR record gives, or the ACK's
+  # name before the Central Bank's twelve-character file id, as the source reads it (Issue I-267). A test distribution keeps the port's
   # simulator; on this laptop the bench gives the port to the runtime, so this binding answers it.
   - port: uae.wps.port.wps.v1
     adapter: file-transfer

@@ -77,7 +77,9 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
     public async Task<long> Position(string stream, CancellationToken ct = default)
     {
         await using var db = StoreDbContext.Open(store);
-        return await db.StreamPositions.AsNoTracking().Where(s => s.Stream == stream).MaxAsync(s => (long?)s.Through, ct) ?? 0;
+        // By number, or in commit order the last row published (R-09-214): the highest of either a position names.
+        var rows = await db.StreamPositions.AsNoTracking().Where(s => s.Stream == stream).Select(s => new { s.Through, s.ThroughId }).ToListAsync(ct);
+        return rows.Count == 0 ? 0 : rows.Max(r => Math.Max(r.Through, r.ThroughId ?? 0));
     }
 
     /// <summary>The ranges a stream has passed over and still looks for.</summary>
@@ -135,6 +137,7 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
                 await db.SaveChangesAsync(ct);
                 return 0;
             }
+            if (CommitOrder) return await PollInCommitOrder(db, bound, dials, last, now, horizon, ct);
             var through = last is null ? 0 : await db.StreamPositions.AsNoTracking().Where(s => s.Stream == dials.Stream).MaxAsync(s => s.Through, ct);
             var open = GapsOf(last?.GapsJson, "open");
 
@@ -175,6 +178,57 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
             return run.Count + late.Count;
         }
         finally { gate.Release(); }
+    }
+
+    /// <summary>
+    /// Publishes in the database's commit order (R-09-214, Issue I-281), the default. A row is published once it is below the oldest
+    /// commit version still in flight (SQL Server: <c>MIN_ACTIVE_ROWVERSION()</c>; PostgreSQL: <c>pg_snapshot_xmin</c> of the current
+    /// snapshot), in the order of its commit version and number, after the last row the stream published in that order: no row can
+    /// later commit below that bound, so no row is ever passed over, however long its save took, and no gap is kept or dropped. The
+    /// one exception is the past: a stream that published by number before keeps that number as its floor and still looks for its
+    /// open gaps, until each is found or its horizon passes.
+    /// </summary>
+    public bool CommitOrder { get; init; } = true;
+
+
+    async Task<int> PollInCommitOrder(StoreDbContext db, (PortBinding Binding, IEventStream Stream) bound, Dials dials, StreamPositionRow? last, DateTimeOffset now, TimeSpan horizon, CancellationToken ct)
+    {
+        // Where the stream is: its keyset in commit order, and the number below which it published by number (0 for a new stream).
+        var floor = last?.Through ?? 0;
+        var keyV = last?.ThroughVersion ?? long.MinValue;
+        var keyId = last?.ThroughId ?? 0;
+        if (last is not null && last.ThroughVersion is null)
+        {
+            // The first pass in commit order of a stream that published by number: everything above its number is still to come.
+            keyV = long.MinValue;
+            keyId = 0;
+        }
+        var open = GapsOf(last?.GapsJson, "open");
+        var late = new List<OutboxRow>();
+        foreach (var g in open)
+            late.AddRange(await db.Outbox.AsNoTracking().Where(x => x.Id >= g.From && x.Id <= g.To && x.CommitVersion < StoreDbContext.OldestInFlight(x.Id)).OrderBy(x => x.Id).ToListAsync(ct));
+        late = late.OrderBy(x => x.Id).ToList();
+        var found = late.Select(x => x.Id).ToHashSet();
+        var still = open.SelectMany(g => Without(g, found)).ToList();
+        var dropped = still.Where(g => now - g.At > horizon).ToList();
+        still = still.Where(g => now - g.At <= horizon).ToList();
+        var v = keyV;
+        var i = keyId;
+        var rows = await db.Outbox.AsNoTracking()
+            .Where(x => x.Id > floor && x.CommitVersion < StoreDbContext.OldestInFlight(x.Id) && (x.CommitVersion > v || (x.CommitVersion == v && x.Id > i)))
+            .OrderBy(x => x.CommitVersion).ThenBy(x => x.Id).Take(BatchSize).ToListAsync(ct);
+        if (rows.Count == 0 && late.Count == 0 && dropped.Count == 0 && last?.ThroughVersion is not null) return 0;
+        var events = late.Concat(rows).Where(r => r.Topic == Outbox.FactTopic).Select(Of).OfType<PaymentEvent>().ToList();
+        if (events.Count > 0) await bound.Stream.Publish(events, ct);
+        JsonObject? gaps = still.Count == 0 && dropped.Count == 0 ? null : new JsonObject { ["open"] = Json(still) };
+        if (gaps is not null && dropped.Count > 0) gaps["dropped"] = Json(dropped);
+        db.StreamPositions.Add(new StreamPositionRow
+        {
+            Stream = dials.Stream, Through = floor, Events = events.Count, GapsJson = gaps is null ? null : gaps.ToJsonString(), At = StoreTime.Of(now),
+            ThroughVersion = rows.Count > 0 ? rows[^1].CommitVersion : keyV, ThroughId = rows.Count > 0 ? rows[^1].Id : keyId,
+        });
+        await db.SaveChangesAsync(ct);
+        return rows.Count + late.Count;
     }
 
     /// <summary>A range without the numbers that were found in it: the pieces still missing.</summary>

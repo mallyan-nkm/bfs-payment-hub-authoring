@@ -20,10 +20,12 @@ const body = (t: string) => parseYamlAll(t.slice(t.indexOf('\n') + 1)).find((d: 
 describe('every changed factory artefact is a new release; the earlier stays as it was published (R-11-35)', () => {
   it('keeps 1.0.0 of each changed artefact beside its new release, and resolves the latest', () => {
     const env = freshEnv();
-    for (const [name, now] of [['uae.wps.exchange.return-credits.v1', '1.1.0'], ['p.post.accounting.v1', '1.1.0'], ['uae.wps.table.returns.v1', '1.1.0'], ['uae.wps.map.pif-in.v1', '1.1.0']]) {
+    for (const [name, now] of [['uae.wps.exchange.return-credits.v1', '1.1.0'], ['uae.wps.table.returns.v1', '1.1.0'], ['uae.wps.map.pif-in.v1', '1.1.0']]) {
       expect(env.store.releasesOf(name).map((e) => e.release), name).toEqual(['1.0.0', now]);
       expect(env.store.get(name)!.release).toBe(now);
     }
+    // p.post.accounting.v1: 1.1.0, the template's parameters; 1.2.0, its ledger accounts marked (R-05-100).
+    expect(env.store.releasesOf('p.post.accounting.v1').map((e) => e.release)).toEqual(['1.0.0', '1.1.0', '1.2.0']);
     // 1.0.0 is the text of the first publish: no replyWait, which came later (Issue I-41).
     expect(env.store.get('uae.wps.exchange.return-credits.v1', '1.0.0')!.doc.parameters).toBeUndefined();
     expect(env.store.get('uae.wps.exchange.return-credits.v1')!.doc.parameters.replyWaitCalendar.default).toBe('elapsed');
@@ -37,14 +39,15 @@ describe('every changed factory artefact is a new release; the earlier stays as 
       expect(env.store.get(`${n}.v2`)!.release, n).toBe(n === 'uae.wps.wf.agent-payment-in' ? '2.2.0' : '2.0.0');
     }
     // the posting that reads FX and charges is a new major line; payments on v1 keep it (R-12-23)
-    expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.1.0');
-    expect(env.store.get('p.post.accounting.v2')!.release).toBe('2.0.0');
+    // 1.2.0 and 2.1.0: their ledger accounts marked role ledger-account (R-05-100)
+    expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.2.0');
+    expect(env.store.get('p.post.accounting.v2')!.release).toBe('2.1.0');
     // the salary file's send that reads the encryption step's fact is a new major line; v1 stays as published (R-09-182)
     expect(env.store.get('uae.wps.exchange.send-salary-file.v1')!.release).toBe('1.1.0');
     expect(env.store.get('uae.wps.exchange.send-salary-file.v2')!.release).toBe('2.0.0');
     // 1.2.0: the agent's refund cycle (I-133); 1.3.0: the employer's refund order is an outward refund order (R-12-24); 1.4.0: the
-    // salary file is sent by the send v2 (R-09-182)
-    expect(env.store.scheme('uae.wps').release).toBe('1.4.0');
+    // salary file is sent by the send v2 (R-09-182); 1.5.0: the ACK's repliesTo and correlation map (R-09-211, R-09-212)
+    expect(env.store.scheme('uae.wps').release).toBe('1.5.0');
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif-submission').disposition.sentBy).toBe('uae.wps.exchange.send-salary-file.v2');
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.refund-order').disposition.start).toMatchObject({ kind: 'refund', direction: 'outward', leg: 'uae.wps.wf.refund-out.v2' });
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.pif').disposition.start.leg).toBe('uae.wps.wf.agent-payment-in.v2');
@@ -81,7 +84,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/configuration-sets/1.10.0.yaml')).release).toBe('1.10.0');
     expect(body(disk('banks/example-bank/packs/1.17.0.yaml')).release).toBe('1.17.0');
     expect(body(disk('banks/example-bank/packs/1.18.0.yaml')).release).toBe('1.18.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.19.0');
+    expect(body(disk('banks/example-bank/packs/1.19.0.yaml')).release).toBe('1.19.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.20.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);
@@ -140,6 +144,49 @@ describe('the seed adds and never rewrites; the ledger holds what it published (
     for (const s of seedFiles(SPEC_ROOT)) expect(after[`${ROOT}/${s.path}`], s.path).toBe(s.text);
     expect(releaseLedgerIssues(env.store.content!.files)).toEqual([]);
   }, 60000);
+
+  it("keeps the licences of the bank's latest lock file the studio published, and refuses a seed not later than it (R-11-105, Issue I-245)", async () => {
+    const lockAt = (rel: string) => `${ROOT}/banks/example-bank/artefacts/b/pack/${rel}.yaml`;
+    const seeded = seedFiles(SPEC_ROOT).find((f) => f.path === 'banks/example-bank/pack.yaml')!;
+    const seedRelease = String((parseYamlAll(seeded.text)[0] as any).release);
+    const bump = (r: string, d: number) => r.replace(/^(\d+)\.(\d+)\.(\d+)$/, (_, M, m, p) => `${M}.${m}.${Number(p) + d}`);
+    const studioLock = (release: string) => seeded.text.replace(/^#.*\n/gm, '').replace(/^release: .*$/m, `release: ${release}`).replace(/^licensedSchemes:\n(?:  - .*\n)*/m, 'licensedSchemes:\n  - ck.licensed\n  - uae.wps\n');
+    // A lock file the studio published later than the seed's: the seed is refused, and nothing is written.
+    {
+      const full = forkRepo();
+      fake().commitFiles(full, BRANCH, { [lockAt(bump(seedRelease, 1))]: studioLock(bump(seedRelease, 1)) }, 'A licence from the studio');
+      const env = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
+      const before = fake().head(full, BRANCH);
+      await expect(seedContent(env)).rejects.toThrow(/lock file of example-bank is release .* not later than .*the studio published/);
+      expect(fake().head(full, BRANCH)).toBe(before);
+    }
+    // The branch before this release, with a lock file the studio published between the two: the seed keeps its licences.
+    {
+      const full = forkRepo();
+      const files = fake().files(full, BRANCH);
+      const latest = Object.keys(files).filter((p) => p.startsWith(`${ROOT}/change-sets/ledger/`)).sort().pop()!;
+      const led = parseYamlAll(files[latest])[0] as any;
+      const undo: Record<string, string | null> = { [latest]: null };
+      for (const f of led.files) undo[`${ROOT}/${f.path}`] = null;
+      for (const r of led.replaced ?? []) undo[`${ROOT}/${r.path}`] = files[`${ROOT}/${r.keptAt}`];
+      fake().commitFiles(full, BRANCH, undo, 'Before the release');
+      const was = String((parseYamlAll(fake().files(full, BRANCH)[`${ROOT}/banks/example-bank/pack.yaml`].replace(/^#.*\n/gm, ''))[0] as any).release);
+      expect(was).not.toBe(seedRelease);
+      fake().commitFiles(full, BRANCH, { [lockAt(bump(was, 1))]: studioLock(bump(was, 1)) }, 'A licence from the studio');
+      const env = envFor(await ContentStore.open(connection(fake(), full)), { banks: [] });
+      const plan = seedPlan(env);
+      expect(plan.kept).toEqual([{ bank: 'example-bank', release: seedRelease, from: lockAt(bump(was, 1)).slice(ROOT.length + 1), licensedSchemes: ['ck.licensed', 'uae.wps'] }]);
+      const r = await seedContent(env);
+      expect(r.status).toBe('committed');
+      const after = fake().files(full, BRANCH);
+      const lock = parseYamlAll(after[`${ROOT}/banks/example-bank/pack.yaml`].replace(/^#.*\n/gm, ''))[0] as any;
+      expect(lock.release).toBe(seedRelease);
+      expect(lock.licensedSchemes).toEqual(['ck.licensed', 'uae.wps']);
+      // The ledger holds the lock file as it was written, licences kept.
+      const mine = parseYamlAll(after[`${ROOT}/${ledgerPath(r.changeSet!)}`])[0] as any;
+      expect(mine.files.find((f: any) => f.path === 'banks/example-bank/pack.yaml').sha256).toBe(textSha(after[`${ROOT}/banks/example-bank/pack.yaml`]));
+    }
+  }, 120000);
 
   it('engine bindings are released like every other artefact: a published binding release is never replaced (Issue I-83)', async () => {
     const full = forkRepo();

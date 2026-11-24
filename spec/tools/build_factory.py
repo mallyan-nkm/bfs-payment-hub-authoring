@@ -137,6 +137,17 @@ RELEASES = {
     "uae.wps.exchange.send-salary-file.v2": ("2.0.0", "reads facts.encryption and sends the encrypted file where there is one (Issue I-266)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
+# Issue I-268, R-09-213 (factory 1.20.0): the scheme's other sends on the WPS port gain native code-behinds, a minor each.
+for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursement-file", "send-returns-file", "send-disbursement-cancellation", "send-refund-response"):
+    RELEASES["uae.wps.exchange.%s.v1" % _n] = ("1.1.0", "native code-behind: the kept file sent on the bank's binding of the WPS port (Issue I-268)")
+# Issue I-282, R-05-100 (factory 1.20.0): an accounting activity's ledger accounts say what they are (role ledger-account, with
+# their kind), so the ledger view lists them by role, not by name. A parameter's description added to, a minor each.
+RELEASES["p.post.accounting.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+RELEASES["p.post.accounting.v2"] = ("2.1.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+# Issue I-153, R-02-22 (factory 1.20.0): the salary file's intake map writes the employer's CIF the channel declared at upload as a
+# further organisation id of the debtor, scheme CIF. A field written under batch, a minor; its script at scripts/...@1.5.0.ts.
+RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the channel's upload as the debtor's organisation id, scheme CIF (Issue I-153)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -170,8 +181,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # hand-written in factory/p/errors, with signing.OutOfScope (Issue I-277, R-09-184); p.view.operations.v1 1.7.0, written by hand:
 # a suspect payment's release needs a supervisor's second approval (Issue I-279, R-05-94); the salary file's send v2, which sends the
 # encrypted file (Issue I-266, R-09-182), called by the submit block's subflow 1.3.0.
-PACK_RELEASES = {"p": "1.19.0", "uae.p": "1.19.0", "uae.wps": "1.19.0", "b": "1.19.0"}
-FACTORY_RELEASE = "1.19.0"
+# 1.20.0 (change set CS-2026-11-24-015; 1.19.0 and CS-2026-11-24-014 are another change's): the scheme manifest's message rules,
+# uae.wps 1.5.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
+# native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
+# salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
+PACK_RELEASES = {"p": "1.20.0", "uae.p": "1.20.0", "uae.wps": "1.20.0", "b": "1.20.0"}
+FACTORY_RELEASE = "1.20.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -276,8 +291,10 @@ def txn(default, what):
     return {"type": "code", "default": default, "bounds": dict(TXN), "description": "Core-banking transaction code of %s." % what}
 
 
-def account(default, what):
-    return {"type": "string", "default": default, "bounds": dict(ACCT), "description": "The account %s." % what}
+def account(default, what, kind):
+    # Issue I-282, R-05-100: a ledger account says so, with its kind, so the ledger view lists it whatever its name.
+    return {"type": "string", "default": default, "bounds": dict(ACCT), "description": "The account %s." % what,
+            "role": "ledger-account", "ledgerKind": kind}
 
 
 ACCOUNTING = {
@@ -289,10 +306,10 @@ ACCOUNTING = {
     "vatTransactionCode": txn("VAT", "the VAT on a charge"),
     "narration": {"type": "string", "default": "Payment", "bounds": dict(NARR), "description": "Narration of a payment's legs; the payment's reference follows it."},
     "chargeNarration": {"type": "string", "default": "Bank charge", "bounds": dict(NARR), "description": "Narration of the charge and VAT legs."},
-    "settlementAccount": account("GL-SETTLEMENT", "a scheme's payments settle through (the nostro)"),
-    "suspenseAccount": account("GL-SUSPENSE", "refused credits wait in"),
-    "chargeIncomeAccount": account("GL-CHARGES", "charges are credited to"),
-    "vatAccount": account("GL-VAT", "VAT on charges is credited to"),
+    "settlementAccount": account("GL-SETTLEMENT", "a scheme's payments settle through (the nostro)", "settlement"),
+    "suspenseAccount": account("GL-SUSPENSE", "refused credits wait in", "suspense"),
+    "chargeIncomeAccount": account("GL-CHARGES", "charges are credited to", "income"),
+    "vatAccount": account("GL-VAT", "VAT on charges is credited to", "vat"),
     "glAccountTypes": {"type": "list", "default": ["SETTLEMENT", "SUSPENSE", "INCOME", "EXPENSE"], "bounds": {"pattern": "^[A-Z]{2,12}$"},
                        "description": "The kinds of general-ledger account the template's accounts are."},
     "chargeSlabs": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
@@ -459,7 +476,10 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              {"from": "constant SALA", "to": "batch.categoryPurpose"},
              # 1.3.0 (R-12-27): the employer's establishment id as the debtor's organisation id, which the party register is asked by
              {"from": "SCR.employerId", "to": "batch.debtor.organisationId.id"},
-             {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
+             {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"},
+             # 1.5.0 (Issue I-153, R-02-22): the employer's CIF at the bank, as the channel declared it at upload
+             {"from": "upload.cif", "to": "batch.debtor.otherOrganisationIds[].id"},
+             {"from": "constant CIF", "to": "batch.debtor.otherOrganisationIds[].scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
      ["batch", "items[]", W], ["messages"], native=True)
 wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
@@ -469,6 +489,14 @@ wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AH
              {"from": "DER.lineNo", "to": "status.transactions[].lineNo"}, {"from": "DER.errorCode", "to": "status.transactions[].schemeCode"},
              {"from": "DER.description", "to": "status.transactions[].additionalInformation"},
              {"from": "constant RJCT", "to": "status.transactions[].code"}])
+# Issue I-267, I-160 (2), R-09-212: the correlation map of the ACK's deliver disposition. The front door runs it on a received ACK or
+# NAK before it is kept: it reads the stem of the salary file the answer names, as the source's WpsAckNakFile reads it (the file's
+# name split from the back before the Central Bank's file id, or the AHR record's processed file name), and gives it as the key the
+# sent file was recorded by (fileStem). Provisional, as the scheme is: the naming is the source's reading of the SSM.
+wmap("uae.wps.map.ack-correlation.v1", "ACK or NAK file to the salary file it answers", "in", "WPS ACK and NAK: the file name and the AHR record",
+     ["messages"], ["messages"], outcomes=("correlated", "uncorrelated"), native=True,
+     fields=[{"from": "fileName without its last twelve characters before the extension", "to": "messages.correlation.fileStem"},
+             {"from": "AHR.processedFileName", "to": "messages.correlation.fileStem"}])
 wmap("uae.wps.map.pif-in.v1", "Payment file and details to inward batch", "in", "WPS PIF: EDR, EVP and PCR records",
      ["messages"], ["header", "batch", "items[]", W], native=True)
 wmap("uae.wps.map.prc-out.v2", "Receipt confirmation", "out", "WPS PRC: one RDR and one RCR", ["header", "batch", "items[]", W, "status"], ["messages"],
@@ -516,8 +544,10 @@ for nm, ttl, mode in [("send-refund-request", "Submit a refund request to WPS", 
                       ("send-returns-file", "Send the returns file to WPS", "send"),
                       ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
                       ("send-refund-response", "Send the refund request response to WPS", "send")]:
+    # 1.1.0 (Issue I-268, R-09-213): a native code-behind that sends the file its render kept on the bank's binding of the WPS port,
+    # as the salary file's does, so a bench that gives the port to the runtime runs every send of it natively.
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
-        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
+        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP, native=True)
 
 # The salary file's send, v2 (Issue I-266, R-09-182): the send reads the encryption step's fact (facts.encryption), and where the bank's
 # binding of p.port.encryption.v1 encrypted the file it sends that file, not the plain one the render kept. A read added, a new major

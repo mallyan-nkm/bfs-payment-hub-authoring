@@ -183,4 +183,27 @@ public sealed class ClaimCheckTests(Databases dbs)
         Assert.Null(CanonicalMapper.ToBulk(single));
         Assert.Null(CanonicalMapper.ToPayment(new JsonObject(), null, 0));
     }
+
+    /// <summary>
+    /// R-02-21, R-02-22, Issue I-153: the debtor's organisation id (its establishment id, MOL) and its further ids (its CIF at the bank,
+    /// scheme CIF, as the salary file's intake map writes it from the channel's upload) are its OrgId/Othr in the store. Synthetic ids.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_debtors_organisation_ids_its_CIF_among_them_are_kept_with_the_bulk(StoreProvider p)
+    {
+        var file = SalaryFile();
+        var debtor = (JsonObject)file["batch"]!["debtor"]!;
+        debtor["organisationId"] = new JsonObject { ["id"] = "0000001234567", ["scheme"] = "MOL" };
+        debtor["otherOrganisationIds"] = new JsonArray(new JsonObject { ["id"] = "CIF-000123", ["scheme"] = "CIF" });
+        var bulk = CanonicalMapper.ToBulk(file)!;
+        Assert.True(bulk.Debtor.IsOrganisation);
+        Assert.Equal([new GenericId("0000001234567", "MOL"), new GenericId("CIF-000123", "CIF")], bulk.Debtor.OtherIds);
+        var o = dbs.Fresh(p);
+        await using var db = StoreDbContext.Open(o);
+        await db.Database.MigrateAsync();
+        var store = new PaymentStore(db);
+        var accepted = await store.AcceptBulk("example-bank", "uae.wps", Direction.Outward, bulk, "uae.wps@1.0.0");
+        var back = await store.ReadBulk(accepted.BulkId);
+        Assert.Contains(new GenericId("CIF-000123", "CIF"), back!.Debtor.OtherIds);
+    }
 }

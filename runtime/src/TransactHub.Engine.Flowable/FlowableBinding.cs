@@ -172,7 +172,7 @@ public sealed partial class FlowableBinding
         {
             case "start":
                 pendingStarts--;
-                await StartRoot(J.S(d, "label")!, J.S(d, "workflow")!, J.S(d, "release")!, (JsonObject)J.Clone(J.P(d, "ctx"))!);
+                await StartRoot(d);
                 break;
             case "delivery": await FrontDoor((JsonObject)J.Clone(J.P(d, "message"))!); break;
             case "signal": await Signal(J.S(d, "signal")!); break;
@@ -287,14 +287,14 @@ public sealed partial class FlowableBinding
                         var label = J.S(s, "label")!;
                         var release = J.S(s, "workflowRelease")!;
                         pendingStarts++;
-                        Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", new JsonObject { ["label"] = label, ["workflow"] = workflow, ["release"] = release, ["ctx"] = J.Clone(ctx) });
+                        Schedule(start + Duration.Ms(J.S(s, "at") ?? "PT0S"), "start", await StartOf(label, workflow, release, ctx));
                     }
                 }
                 else
                 {
                     var doc = dep.Resolve(workflow, null, 0) ?? throw new InvalidOperationException($"{workflow} does not resolve");
                     pendingStarts++;
-                    Schedule(start, "start", new JsonObject { ["label"] = "root", ["workflow"] = workflow, ["release"] = J.S(doc, "release"), ["ctx"] = J.Clone(ctx) });
+                    Schedule(start, "start", await StartOf("root", workflow, J.S(doc, "release")!, ctx));
                 }
                 foreach (var s in J.A(config, "signals"))
                 {
@@ -358,15 +358,41 @@ public sealed partial class FlowableBinding
         }
     }
 
-    async Task StartRoot(string label, string workflow, string release, JsonObject ctx)
+    /// <summary>
+    /// A root's start as the journal may hold it (Issue I-302, R-09-206): the payload goes into the claim check first, under a
+    /// reference of its own known before the server names the process (<c>&lt;label&gt;-&lt;tenant&gt;#start</c>, a create fact that
+    /// accepts nothing), and the command carries the engine's state and that reference only, as DTFx's and Elsa's history do.
+    /// </summary>
+    async Task<JsonObject> StartOf(string label, string workflow, string release, JsonObject ctx)
     {
+        var (state, payload) = ClaimCheckStore.Split(ctx);
+        var r = StartRef(label);
+        await claim.Create(r, payload);
+        return new JsonObject { ["label"] = label, ["workflow"] = workflow, ["release"] = release, ["state"] = state, ["payloadRef"] = r };
+    }
+
+    string StartRef(string label) => $"{label}-{tenant}#start";
+
+    /// <summary>The context of a start the journal holds by reference: its state and the payload the claim check holds.</summary>
+    JsonObject ContextOf(JsonObject start) =>
+        J.P(start, "payloadRef") is not null ? claim.Full(J.Clone(J.P(start, "state")), J.S(start, "payloadRef")!)
+            // A journal written before I-302 carried the whole context.
+            : (JsonObject)J.Clone(J.P(start, "ctx"))!;
+
+    async Task StartRoot(string label, string workflow, string release, JsonObject ctx) => await StartRoot(await StartOf(label, workflow, release, ctx));
+
+    async Task StartRoot(JsonObject start)
+    {
+        string label = J.S(start, "label")!, workflow = J.S(start, "workflow")!, release = J.S(start, "release")!;
         var key = Safe($"{workflow}@{release}");
         if (!byKey.ContainsKey(key)) throw new InvalidOperationException($"{workflow}@{release} is not in the deployment");
         Tick();
-        await Save(new JsonObject { ["op"] = "start", ["label"] = label, ["workflow"] = workflow, ["release"] = release, ["ctx"] = J.Clone(ctx) });
+        var command = (JsonObject)J.Clone(start)!;
+        command["op"] = "start";
+        await Save(command);
         Mark();
         var started = await rest.StartProcess(key, tenant, businessKey: $"{label}-{tenant}");
-        await RegisterRoot(label, workflow, release, ctx, J.S(started, "id")!);
+        await RegisterRoot(label, workflow, release, ContextOf(start), J.S(started, "id")!);
     }
 
     /// <summary>A root the server has started: the process waits at its first binding task (processStart); it is registered here.</summary>

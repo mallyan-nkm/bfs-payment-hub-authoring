@@ -39,6 +39,10 @@ public static class ErrorCodes
         BackupInvalid = "service.BackupInvalid", ProbeFailed = "service.ProbeFailed", CertificateExpiring = "service.CertificateExpiring", DiskLow = "service.DiskLow";
     public const string AssistantDisabled = "assistant.Disabled", AssistantUnavailable = "assistant.Unavailable";
     public const string SecretUnavailable = "SecretUnavailable";
+    // The File API's refusals that read the scheme's message rules, since the dictionary's 1.10.0 (R-09-209, R-09-210, R-09-212):
+    // a file the scheme says is encrypted or in the clear, a correlation map that read no key, a report its map could not read.
+    public const string FileNotEncrypted = "file.NotEncrypted", FileEncrypted = "file.Encrypted", Uncorrelated = "frontdoor.Uncorrelated",
+        ReportUnreadable = "frontdoor.ReportUnreadable", NotAReport = "frontdoor.NotAReport";
 
     /// <summary>Every runtime code above, for the dictionary test.</summary>
     public static IEnumerable<string> All => typeof(ErrorCodes).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!);

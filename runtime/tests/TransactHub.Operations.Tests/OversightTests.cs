@@ -180,6 +180,46 @@ public sealed class LedgerAccountTests(Databases dbs)
         Assert.DoesNotContain("GL-NOSTRO", await (await host.As("ch-1", $"{Bank}:channel-enquiry").GetAsync("/api/channel/ledger-accounts")).Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await sup.PutAsJsonAsync("/ops/api/ledger-accounts", new { account = "GL-X" })).StatusCode);
     }
+
+    /// <summary>
+    /// R-05-100, Issue I-282: the view lists every parameter an active distribution of the bank marks as a ledger account
+    /// (<c>role: ledger-account</c>, with its kind), whatever its name: here a scheme's charge account and a nostro per currency the
+    /// four names do not know. A parameter not so marked is not an account, and a distribution not active adds nothing.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_view_lists_every_parameter_the_active_distribution_marks_as_a_ledger_account(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        var bank = $"ledger-{Guid.NewGuid():N}"[..14];
+        const string activity = """
+            kind: activity
+            name: x.post.scheme-charge.v1
+            release: 1.1.0
+            parameters:
+              schemeChargeAccount: { type: string, default: GL-0, role: ledger-account, ledgerKind: scheme-charge, description: The scheme's charge account. }
+              nostroUsd: { type: string, default: GL-0, role: ledger-account, ledgerKind: settlement }
+              narration: { type: string, default: Payment }
+            """;
+        var ms = new MemoryStream();
+        using (var z = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        await using (var s = z.CreateEntry("engine/p.wf.corporate.v1/activities/x.post.scheme-charge.v1@1.1.0.yaml").Open())
+            await s.WriteAsync(System.Text.Encoding.UTF8.GetBytes(activity));
+        var bytes = ms.ToArray();
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var reg = new DistributionRegistry(db);
+            await reg.Store(bank, "2026.11.24-1", bytes, new JsonObject { ["bank"] = bank }, FileStore.Sha256Hex(bytes), "test", "test");
+            await reg.Activate(DistributionRegistry.IdOf(bank, "2026.11.24-1"), "test", "test", "test");
+        }
+        await OversightHost.Value(store, bank, "x.post.scheme-charge.v1#schemeChargeAccount", JsonValue.Create("GL-SCH-0001")!, DateTimeOffset.Parse("2026-11-01T00:00:00Z"));
+        var view = await new LedgerAccounts(store).For(bank);
+        var rows = view["accounts"]!.AsArray().Select(r => ((string?)r!["kind"], (string?)r!["parameter"], (string?)r!["account"], (string?)r!["title"])).ToList();
+        Assert.Contains(("scheme-charge", "x.post.scheme-charge.v1#schemeChargeAccount", "GL-SCH-0001", "The scheme's charge account."), rows);
+        Assert.Contains(("settlement", "x.post.scheme-charge.v1#nostroUsd", null, "Settlement (nostro)"), rows);
+        Assert.DoesNotContain(rows, r => r.Item2!.EndsWith("#narration"));
+        // The platform's templates are still listed by their four names, set or not.
+        Assert.Contains(rows, r => r.Item2 == "p.post.accounting.v1#vatAccount");
+    }
 }
 
 /// <summary>The console's "rates stale" warning (R-05-92, R-09-178; Issue I-189). Synthetic rates.</summary>

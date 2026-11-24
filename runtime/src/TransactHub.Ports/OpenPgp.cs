@@ -95,7 +95,8 @@ public static class OpenPgp
             var o = f.NextPgpObject();
             return o is PgpEncryptedDataList || (o is PgpMarker && f.NextPgpObject() is PgpEncryptedDataList);
         }
-        catch (Exception e) when (e is IOException or PgpException or ArgumentException) { return false; }
+        // Any failure to read the bytes as OpenPGP is "not encrypted": a text file can look like the start of a packet of another version.
+        catch (Exception) { return false; }
     }
 
     /// <summary>The key of a public key ring (armoured or binary) that can encrypt: an encryption subkey before the primary.</summary>

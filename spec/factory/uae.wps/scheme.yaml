@@ -1,6 +1,6 @@
 kind: scheme
 scope: uae.wps
-release: 1.4.0
+release: 1.5.0
 title: UAE Wages Protection System
 wire: file
 messages:
@@ -26,9 +26,13 @@ messages:
     title: Acknowledgement from WPS, ACK or NAK
     direction: in
     confirmed: true
+    # Release 1.5.0 (Issue I-235, R-09-211): the acknowledgement answers the salary file the bank submits; the oldest wait for it is
+    # measured from that file.
+    repliesTo: [uae.wps.sif-submission]
     disposition:
-      # The front door reads the acknowledged file's family from the ACK or NAK file's name (Issue I-41).
-      deliver: { correlateBy: file id, families: [sif, rfr, prc, dif, rfa, dcr, rrr] }
+      # The front door reads the acknowledged file's family from the ACK or NAK file's name (Issue I-41). Release 1.5.0 (Issue I-267,
+      # R-09-212): its correlation map reads the salary file the answer names, so no bank's binding trims the stem.
+      deliver: { correlateBy: file id, families: [sif, rfr, prc, dif, rfa, dcr, rrr], correlationMap: uae.wps.map.ack-correlation.v1 }
   - id: uae.wps.pif
     title: Payment information file, one per agent
     direction: in
@@ -143,4 +147,4 @@ provenance:
   origin: factory
   status: provisional
   clauses: [CBUAE WPS responsibility guide 2018]
-  note: File types come from a 2018 guide. Release 1.2.0 builds the agent's refund cycle (RRI, DCR, RRR) from the TransactHub source; the refund request instruction's message id replaces the planned uae.wps.rfr-in. No message is planned now; every scheme fact is still unconfirmed. Release 1.3.0 moves the employer's refund order onto the platform's outward refund order (p.wf.refund-out.v1). Release 1.4.0 sends the salary file by uae.wps.exchange.send-salary-file.v2, which sends the encrypted file where the bank encrypts it (Issue I-266).
+  note: File types come from a 2018 guide. Release 1.2.0 builds the agent's refund cycle (RRI, DCR, RRR) from the TransactHub source; the refund request instruction's message id replaces the planned uae.wps.rfr-in. No message is planned now; every scheme fact is still unconfirmed. Release 1.3.0 moves the employer's refund order onto the platform's outward refund order (p.wf.refund-out.v1). Release 1.4.0 sends the salary file by uae.wps.exchange.send-salary-file.v2, which sends the encrypted file where the bank encrypts it (Issue I-266). Release 1.5.0 says which message the acknowledgement answers (repliesTo) and gives its deliver disposition a correlation map; neither the file rules nor a report are declared, as the rulebook is not here (Issues I-159, I-164).

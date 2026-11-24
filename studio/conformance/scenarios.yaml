@@ -491,6 +491,19 @@ scenarios:
         - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
         - end: done
 
+  # A requeue is not a retry (R-09-208, Issue I-167): the stub fails the step's first three attempts across its calls. Both
+  # attempts of its policy fail and it parks; one more attempt (a retry) would fail again, the requeue's full policy fails once
+  # more and then succeeds.
+  - id: CK-PARK-04
+    stubs: { "step:a": { failAttempts: 3 } }
+    signals: [ { after: PT1H, signal: requeue } ]
+    checks: { attempts: { a: 4 }, notBefore: { step: b, at: PT1H } }
+    workflow:
+      do:
+        - { id: a, call: ck.kit.enrich.task.v1, policy: { retry: { maxAttempts: 2, firstInterval: PT1S }, park: P1D }, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - { id: b, call: ck.kit.enrich.task.v1, handle: { other: { end: failed }, left: { end: failed }, right: { end: failed }, rejected: { end: failed } } }
+        - end: done
+
   - id: CK-HOOK-01
     stubs: { "step:check": { outcomes: [rejected] }, "step:hold": { outcomes: [approved] } }
     bindings: [ { hookPoint: "ck.kit.wf.CK-HOOK-01.v1#gate", hook: b.hook.ck-halt.v1, release: 1.0.0, validFrom: "2026-01-01" } ]

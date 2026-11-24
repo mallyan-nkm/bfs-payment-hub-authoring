@@ -2,7 +2,7 @@
 
 This folder runs the conformance kit, and deployed packages, on **Elsa Workflows 3.10.2** (.NET 8). It uses the same interpreter as the DTFx harness, in `../shared/`, so a workflow means the same thing on both engines.
 
-Result: **57 of 57 conformance scenarios pass on Elsa** (23 November 2026, 400 s; with CK-FOREACH-04 for an item that stops a forEach run side by side, CK-AWAIT-06 and 07, CK-MONEY-01 for exact amounts, CK-HOLD-01 and 02 and CK-PARK-01 and 02 for the operator waits, and CK-PARK-03 for the requeue of a dead-lettered step).
+Result: **59 of 59 conformance scenarios pass on Elsa** (24 November 2026, 354 s; with CK-PARK-04, a requeue told from a retry; with CK-FOREACH-04 for an item that stops a forEach run side by side, CK-AWAIT-06 and 07, CK-MONEY-01 for exact amounts, CK-HOLD-01 and 02 and CK-PARK-01 and 02 for the operator waits, and CK-PARK-03 for the requeue of a dead-lettered step).
 
 ## How to run
 

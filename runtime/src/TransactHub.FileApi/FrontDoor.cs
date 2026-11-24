@@ -24,11 +24,17 @@ namespace TransactHub.FileApi;
 // (runtime/tests/TransactHub.FileApi.Tests/front-door-routes.json).
 
 /// <summary>What a scheme's dispatch table says of one message.</summary>
-public sealed record MessageEntry(string Id, string Scheme, string Direction, JsonObject Disposition)
+public sealed record MessageEntry(string Id, string Scheme, string Direction, JsonObject Disposition, JsonObject? Message = null)
 {
     public JsonObject? Start => Disposition["start"] as JsonObject;
     public JsonObject? Deliver => Disposition["deliver"] as JsonObject;
-    public string Kind => Start is not null ? "start" : Deliver is not null ? "deliver" : Disposition["sentBy"] is not null ? "sent" : "other";
+    /// <summary>A scheme's report, reconciled on arrival (R-09-210, Issue I-164): its map, its activity and the period it covers.</summary>
+    public JsonObject? Reconcile => Disposition["reconcile"] as JsonObject;
+    /// <summary>The rules of the message's file the scheme declares (R-09-209, Issue I-159), or null.</summary>
+    public JsonObject? File => Message?["file"] as JsonObject;
+    /// <summary>The deliver disposition's correlation map (R-09-212, Issue I-267), or null.</summary>
+    public string? CorrelationMap => (string?)Deliver?["correlationMap"];
+    public string Kind => Start is not null ? "start" : Deliver is not null ? "deliver" : Reconcile is not null ? "reconcile" : Disposition["sentBy"] is not null ? "sent" : "other";
 }
 
 /// <summary>Where a start message goes: the header's route, the platform workflow, and the legs in its slots.</summary>
@@ -96,7 +102,7 @@ public sealed class Dispatch
         foreach (var s in schemes)
             foreach (var m in (s["messages"] as JsonArray ?? []).OfType<JsonObject>())
                 if (Str(m, "id") == message)
-                    return new MessageEntry(message, Str(s, "scope"), Str(m, "direction"), m["disposition"] as JsonObject ?? new JsonObject());
+                    return new MessageEntry(message, Str(s, "scope"), Str(m, "direction"), m["disposition"] as JsonObject ?? new JsonObject(), m);
         return null;
     }
 
@@ -264,6 +270,60 @@ public sealed class RuntimeFrontDoor(StoreOptions store, IIntakeRunner intake, I
     {
         var (_, d) = await Active(bank, environment, ct);
         return d.Entry(message) ?? throw new FrontDoorRefused("frontdoor.UnknownMessage", $"No scheme of the active distribution of {bank} names the message {message}");
+    }
+
+    /// <summary>The context and inbound message a map of the front door runs on: a received file, its name and content.</summary>
+    static (JsonObject ctx, JsonObject msg) FileView(MessageEntry entry, string fileName, byte[] content)
+    {
+        var msg = new JsonObject { ["id"] = $"in-{Guid.NewGuid():N}"[..20], ["type"] = entry.Id, ["fileName"] = fileName, ["payload"] = Encoding.UTF8.GetString(content) };
+        var ctx = new JsonObject
+        {
+            ["header"] = new JsonObject { ["scheme"] = entry.Scheme },
+            ["messages"] = new JsonObject { ["inbound"] = new JsonObject { ["id"] = msg["id"]!.DeepClone(), ["type"] = entry.Id, ["fileName"] = fileName } },
+        };
+        return (ctx, msg);
+    }
+
+    /// <summary>
+    /// The keys a received file of a deliver message gives by its scheme's correlation map (R-09-212, Issue I-267, I-160 (2)): the map
+    /// runs on the worker of the active distribution, on the file's name and content, and answers <c>messages.correlation</c>. Null when
+    /// the disposition names no map; refused when the map reads no key, so the file is never guessed onto a payment.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>?> CorrelationKeys(string bank, string environment, MessageEntry entry, string fileName, byte[] content, CancellationToken ct = default)
+    {
+        if (entry.CorrelationMap is not { Length: > 0 } map) return null;
+        var (dist, _) = await Active(bank, environment, ct);
+        var (ctx, msg) = FileView(entry, fileName, content);
+        var (outcome, writes) = await intake.Map(dist, map, ctx, msg, clock.GetUtcNow(), ct);
+        foreach (var (p, v) in writes) SetPath(ctx, p, v?.DeepClone());
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (k, v) in ctx["messages"]?["correlation"] as JsonObject ?? new JsonObject())
+            if (v is JsonValue && v.ToString() is { Length: > 0 } s) keys[k] = s;
+        if (keys.Count == 0) throw new FrontDoorRefused("frontdoor.Uncorrelated", $"The correlation map {map} read no key of the payment this {entry.Id} answers (it answered {outcome})");
+        return keys;
+    }
+
+    /// <summary>
+    /// The lines of a scheme's report as its reconcile map reads them from the scheme's layout (R-09-210, Issue I-164): the map answers
+    /// <c>messages.report.lines</c>, each <c>{ reference, amount, currency, status }</c>.
+    /// </summary>
+    public async Task<List<ReportLine>> ReportLines(string bank, string environment, MessageEntry entry, string fileName, byte[] content, CancellationToken ct = default)
+    {
+        var map = (string?)entry.Reconcile?["map"] ?? throw new FrontDoorRefused("frontdoor.NotAReport", $"{entry.Id} is not a report");
+        var (dist, _) = await Active(bank, environment, ct);
+        var (ctx, msg) = FileView(entry, fileName, content);
+        var (outcome, writes) = await intake.Map(dist, map, ctx, msg, clock.GetUtcNow(), ct);
+        if (outcome != "mapped") throw new FrontDoorRefused("frontdoor.ReportUnreadable", $"The report map {map} answered {outcome}");
+        foreach (var (p, v) in writes) SetPath(ctx, p, v?.DeepClone());
+        var lines = new List<ReportLine>();
+        foreach (var l in (ctx["messages"]?["report"]?["lines"] as JsonArray ?? []).OfType<JsonObject>())
+        {
+            var n = lines.Count + 1;
+            var reference = (string?)l["reference"] ?? throw new FrontDoorRefused("frontdoor.ReportUnreadable", $"Line {n} of the report names no reference");
+            decimal? amount = l["amount"] is JsonNode a && decimal.TryParse(a.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : null;
+            lines.Add(new ReportLine(n, reference, amount, (string?)l["currency"], (string?)l["status"]));
+        }
+        return lines;
     }
 
     /// <summary>

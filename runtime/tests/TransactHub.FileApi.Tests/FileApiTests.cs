@@ -42,6 +42,24 @@ sealed class FakeIntake : IIntakeRunner
     public Task<(string Outcome, JsonObject Writes)> Map(string distribution, string intakeMap, JsonObject context, JsonObject message, DateTimeOffset now, CancellationToken ct = default)
     {
         Calls.Add((intakeMap, message));
+        // The ACK's correlation map, as the native host answers it (R-09-212): the WPS module's own code-behind.
+        if (intakeMap == "uae.wps.map.ack-correlation.v1")
+        {
+            var view = new JsonObject { ["messages"] = new JsonObject { ["inbound"] = message.DeepClone() } };
+            var r = new TransactHub.Activities.Wps.Native.MapAckCorrelation().Run(new TransactHub.Activities.Native.NativeAttempt(intakeMap, "1.0.0", view, new JsonObject(), now));
+            return Task.FromResult((r.Outcome, r.Writes));
+        }
+        // A test report's map (R-09-210): "<reference>;<amount>" per line, read into report lines.
+        if (intakeMap == "t.map.report-in.v1")
+        {
+            var lines = new JsonArray();
+            foreach (var l in ((string)message["payload"]!).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var c = l.Split(';');
+                lines.Add(new JsonObject { ["reference"] = c[0], ["amount"] = c.Length > 1 ? c[1] : null, ["currency"] = "AED" });
+            }
+            return Task.FromResult(("mapped", new JsonObject { ["messages.report"] = new JsonObject { ["lines"] = lines } }));
+        }
         var stem = RuntimeFrontDoor.Stem((string)message["fileName"]!);
         return Task.FromResult((Outcome, new JsonObject { ["header"] = new JsonObject { ["fileId"] = stem, ["kind"] = "not-the-route" }, ["batch"] = new JsonObject { ["count"] = 2 } }));
     }
@@ -70,11 +88,13 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
     static readonly ECDsa Key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
     /// <summary>A distribution of the bank holding the content branch's documents the front door reads, stored and active.</summary>
-    static async Task<string> ActiveDistribution(StoreOptions o)
+    /// <param name="scheme">A scheme manifest of a later release than the branch's, carried beside it (the repository's next release, or a test's).</param>
+    static async Task<string> ActiveDistribution(StoreOptions o, string? scheme = null)
     {
         var art = Path.Combine(SftpTests.Repo(), "content-configurations", "artefacts");
         var ms = new MemoryStream();
         using (var z = new ZipArchive(ms, ZipArchiveMode.Create, true))
+        {
             foreach (var dir in new[] { "uae.wps/scheme", "p/p.table.workflow-select.v1", "uae.wps/uae.wps.wf.agent-payment-in.v2", "uae.wps/uae.wps.wf.salary-file-out.v1", "uae.wps/uae.wps.wf.inward-refuse.v1" })
                 foreach (var f in Directory.EnumerateFiles(Path.Combine(art, dir), "*.yaml"))
                 {
@@ -82,12 +102,20 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
                     await using var s = e.Open();
                     await s.WriteAsync(await File.ReadAllBytesAsync(f));
                 }
+            if (scheme is not null)
+            {
+                await using var s = z.CreateEntry("engine/p.wf.inward.v2/uae.wps/scheme/next.yaml").Open();
+                await s.WriteAsync(Encoding.UTF8.GetBytes(scheme));
+            }
+        }
         var bytes = ms.ToArray();
         await using var db = StoreDbContext.Open(o);
         var reg = new DistributionRegistry(db);
-        await reg.Store(Bank, "2026.11.23-1", bytes, new JsonObject { ["bank"] = Bank }, FileStore.Sha256Hex(bytes), "test", "test");
-        await reg.Activate(DistributionRegistry.IdOf(Bank, "2026.11.23-1"), Env, "test", "test");
-        return DistributionRegistry.IdOf(Bank, "2026.11.23-1");
+        // The front door caches a distribution's dispatch by its id, as a stored distribution never changes: a test scheme is a distribution of its own.
+        var id = scheme is null ? "2026.11.23-1" : $"2026.11.24-{Random.Shared.Next(2, 1_000_000)}";
+        await reg.Store(Bank, id, bytes, new JsonObject { ["bank"] = Bank }, FileStore.Sha256Hex(bytes), "test", "test");
+        await reg.Activate(DistributionRegistry.IdOf(Bank, id), Env, "test", "test");
+        return DistributionRegistry.IdOf(Bank, id);
     }
 
     static IConfiguration Config(Dictionary<string, string?>? more = null) => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -99,10 +127,18 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
 
     sealed record Rig(StoreOptions Store, FileIntake Intake, FakeIntake Map, FakeEngines Engines, string Distribution, PortBindings Bindings);
 
-    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null)
+    /// <summary>The repository's uae.wps scheme manifest (spec/factory), its next release, with what a test adds to it.</summary>
+    static string NextScheme(Func<string, string>? change = null)
+    {
+        var text = File.ReadAllText(Path.Combine(SftpTests.Repo(), "spec", "factory", "uae.wps", "scheme.yaml"));
+        // A test's change is a release of its own, later than any the branch holds, so the dispatch table reads it.
+        return change is null ? text : System.Text.RegularExpressions.Regex.Replace(change(text), @"(?m)^release: .*$", "release: 99.0.0", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
+    }
+
+    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null, string? scheme = null)
     {
         var o = await pg.Fresh();
-        var dist = await ActiveDistribution(o);
+        var dist = await ActiveDistribution(o, scheme);
         var map = new FakeIntake();
         var engines = new FakeEngines();
         bindings ??= new PortBindings();
@@ -298,13 +334,14 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
     }
 
     /// <summary>
-    /// R-09-162, I-160 (2): a payment's outward file names the payment by its stem, and an answer the partner names after it, with a
-    /// file id of its own (an ACK: the SIF's stem and twelve characters), is correlated to the payment by the inbox's <c>stemDrop</c>.
+    /// R-09-162, R-09-212, Issues I-267 and I-160 (2): a payment's outward file names the payment by its stem, and an answer the partner
+    /// names after it, with a file id of its own (an ACK: the SIF's stem and twelve characters), is correlated to the payment by the
+    /// scheme's correlation map (uae.wps 1.5.0, <c>uae.wps.map.ack-correlation.v1</c>). A binding's <c>stemDrop</c> is no longer read.
     /// </summary>
     [Fact]
     public async Task An_answer_named_after_the_file_a_payment_sent_reaches_that_payment()
     {
-        var r = await Make();
+        var r = await Make(scheme: NextScheme());
         Assert.True((await r.Intake.Receive(A("uae.wps.pif", "000000000031.PIF", Pif("ack")))).Accepted);
         var payment = r.Engines.Started.Single().Payment;
         var outbox = new FileOutbox(r.Store, Key, new BoundTransfers(new PortBindings()));
@@ -321,20 +358,75 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
                   centralBank.host: sftp
                   centralBank.inbox.ack.folder: upload/cb/wps/ack
                   centralBank.inbox.ack.message: uae.wps.ack
-                  centralBank.inbox.ack.stemDrop: "12"
             """);
         var box = Assert.Single(Inbox.Of(bindings.InForce(Bank, "p.port.file-transfer.v1", DateTimeOffset.UtcNow)));
-        Assert.Equal(("centralBank/upload/cb/wps/ack", 12), (box.Folder, box.StemDrop));
+        Assert.Equal("centralBank/upload/cb/wps/ack", box.Folder);
+        // Named after the SIF, with the Central Bank's file id: the map reads the SIF's stem from the AHR record, else from the name.
         const string ackName = "0000001234567261117083100S26000000001.ACK";
-        Assert.Equal("0000001234567261117083100", box.KeysOf(ackName)!["fileStem"]);
-        var ack = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", ackName, "AHR,ACCEPTED,0000001234567261117083100.SIF\nATR,ACCEPTED,2\n"u8.ToArray(), "inbox", "inbox:centralBank/upload/cb/wps/ack", box.KeysOf(ackName)));
+        var ack = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", ackName, "AHR,ACCEPTED,0000001234567261117083100.SIF\nATR,ACCEPTED,2\n"u8.ToArray(), "inbox", "inbox:centralBank/upload/cb/wps/ack"));
         Assert.True(ack.Accepted, ack.Detail);
+        Assert.Contains(r.Map.Calls, c => c.Map == "uae.wps.map.ack-correlation.v1");
         var (to, _, msg) = Assert.Single(r.Engines.Delivered);
         Assert.Equal((payment, "uae.wps.ack", ackName), (to, (string?)msg["type"], (string?)msg["fileName"]));
         Assert.StartsWith("AHR,ACCEPTED", (string?)msg["payload"]);
-        // Without the binding's stemDrop the answer's own stem names no payment: it is refused, not guessed.
-        var plain = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", "0000001234567261117083100S26000000002.ACK", "AHR,ACCEPTED,x\n"u8.ToArray(), "inbox", "inbox:test", null));
-        Assert.Equal("frontdoor.Unmatched", plain.Code);
+        // An AHR that names no file: the name split from the back still names the SIF.
+        var byName = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", "0000001234567261117083100S26000000002.NAK", "ATR,REJECTED,1\n"u8.ToArray(), "inbox", "inbox:test"));
+        Assert.True(byName.Accepted, byName.Detail);
+        Assert.Equal(payment, r.Engines.Delivered[^1].Payment);
+        // A name too short to carry the Central Bank's file id, and no AHR: the map reads no key, and the file is refused, not guessed.
+        var none = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", "SHORT.ACK", "ATR,ACCEPTED,0\n"u8.ToArray(), "inbox", "inbox:test"));
+        Assert.Equal("frontdoor.Uncorrelated", none.Code);
+        // An answer for a SIF no payment sent names no payment: refused.
+        var other = await r.Intake.Receive(new Arrival(Bank, Env, "uae.wps.ack", "0000009999999261117083100S26000000003.ACK", "AHR,ACCEPTED,0000009999999261117083100.SIF\n"u8.ToArray(), "inbox", "inbox:test"));
+        Assert.Equal("frontdoor.Unmatched", other.Code);
+    }
+
+    /// <summary>
+    /// R-09-209, Issue I-159: the File API reads a message's file rules from the scheme in the active distribution (its name pattern,
+    /// extensions, largest size, whether a name may come twice, whether it is encrypted); a rule the scheme does not declare is the
+    /// installation's. uae.wps declares none (provisional), so a test scheme of its next release declares them for the PIF.
+    /// </summary>
+    [Fact]
+    public async Task A_messages_file_rules_are_the_schemes_in_the_active_distribution()
+    {
+        string Declare(string block) => NextScheme(t => t.Replace("  - id: uae.wps.pif\n    title: Payment information file, one per agent\n    direction: in\n    confirmed: true\n",
+            $"  - id: uae.wps.pif\n    title: Payment information file, one per agent\n    direction: in\n    confirmed: true\n    file: {block}\n"));
+        var r = await Make(scheme: Declare("{ namePattern: '[0-9]{12}\\.PIF', extensions: [.PIF], maxBytes: 64, uniqueName: false }"));
+        Assert.Equal("file.BadName", (await r.Intake.Receive(A("uae.wps.pif", "12345.PIF", Pif("a")))).Code);
+        Assert.Equal("file.TooLarge", (await r.Intake.Receive(A("uae.wps.pif", "000000000041.PIF", Encoding.UTF8.GetBytes(new string('x', 65))))).Code);
+        Assert.Equal("file.WrongType", (await r.Intake.Receive(A("uae.wps.pif", "000000000041.TXT", Pif("b")))).Code);
+        // Names need not be unique for this message: the same name with other bytes is taken twice.
+        Assert.True((await r.Intake.Receive(A("uae.wps.pif", "000000000041.PIF", Pif("c")))).Accepted);
+        Assert.True((await r.Intake.Receive(A("uae.wps.pif", "000000000041.PIF", Pif("d")))).Accepted);
+        // Encrypted: true refuses a file in the clear before anything else is done with it.
+        var enc = await Make(scheme: Declare("{ encrypted: true }"));
+        Assert.Equal("file.NotEncrypted", (await enc.Intake.Receive(A("uae.wps.pif", "000000000042.PIF", Pif("e")))).Code);
+        Assert.Empty(enc.Engines.Started);
+        // The scheme declares no rule here: the installation's (FileApi:Messages:uae.wps.pif:Extensions = PIF, names unique) stand.
+        var plain = await Make();
+        Assert.True((await plain.Intake.Receive(A("uae.wps.pif", "000000000043.PIF", Pif("f")))).Accepted);
+        Assert.Equal("file.DuplicateName", (await plain.Intake.Receive(A("uae.wps.pif", "000000000043.PIF", Pif("g")))).Code);
+    }
+
+    /// <summary>
+    /// R-09-210, Issue I-164: a message the scheme gives a reconcile disposition is a report: its map reads the scheme's layout into
+    /// lines, it is reconciled on arrival, not routed, and a payment of its period it does not name is a break. WPS declares no report
+    /// (the Central Bank gives no layout), so a test message of a test scheme release declares one.
+    /// </summary>
+    [Fact]
+    public async Task A_report_the_scheme_declares_is_read_by_its_map_and_reconciled_over_its_period()
+    {
+        var scheme = NextScheme(t => t.Replace("legs:\n", "  - id: uae.wps.test-report\n    title: A test report\n    direction: in\n    confirmed: false\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: t.map.report-in.v1, period: P1D }\nlegs:\n"));
+        var r = await Make(scheme: scheme);
+        var got = await r.Intake.Receive(A("uae.wps.test-report", "report-1.txt", "0000NOPAYMENT-1;10.00\n"u8.ToArray()));
+        Assert.True(got.Accepted, got.Detail);
+        Assert.Contains("reconciled: unmatched, 1 break(s)", got.Detail);
+        Assert.Contains(r.Map.Calls, c => c.Map == "t.map.report-in.v1");
+        Assert.Empty(r.Engines.Started);
+        Assert.Empty(r.Engines.Delivered);
+        await using var db = StoreDbContext.Open(r.Store);
+        var run = await db.Facts.AsNoTracking().SingleAsync(f => f.SubjectKind == SchemeReconciliation.SubjectKind && f.Code == "run");
+        Assert.Equal(("p.reconcile.scheme-report.v1", "P1D"), ((string?)JsonNode.Parse(run.DataJson)!["activity"], (string?)JsonNode.Parse(run.DataJson)!["period"]));
     }
 
     [Fact]

@@ -398,6 +398,11 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                     b.Property<DateTimeOffset>("At")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<long>("CommitVersion")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasComputedColumnSql("CAST([RowVer] AS bigint)", false);
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(140)
@@ -407,12 +412,19 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<byte[]>("RowVer")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
                     b.Property<string>("Topic")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CommitVersion", "Id");
 
                     b.ToTable("outbox", (string)null);
                 });
@@ -934,6 +946,12 @@ namespace TransactHub.Store.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(140)");
 
                     b.Property<long>("Through")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ThroughId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ThroughVersion")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");

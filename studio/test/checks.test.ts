@@ -123,3 +123,38 @@ describe('mutation cases', () => {
     expect(lintScript('export async function run() { return String(Date.now()); }').length).toBe(1);
   });
 });
+
+describe('every attempt is at least once (L54, R-03-25, R-03-26, Issue I-303)', () => {
+  it('needs an idempotency key on an activity with an outside effect, read from the header, the same on every attempt', () => {
+    expect(fire('L54', () => {})).toEqual([]);
+    const noKey = fire('L54', (find) => {
+      const a = find('p.notify.channel.v1');
+      a.effect = 'read';
+      delete a.idempotencyKey;
+    });
+    expect(noKey.map((i) => i.message)).toEqual([expect.stringMatching(/p\.notify\.channel\.v1 has an outside effect \(it is a notify\)/)]);
+    const clock = fire('L54', (find) => { find('p.notify.channel.v1').idempotencyKey = 'concat(header.paymentId, now())'; });
+    expect(clock).toHaveLength(1);
+    const send = fire('L54', (find) => {
+      const a = find('uae.wps.exchange.send-salary-file.v1');
+      a.effect = 'read';
+      delete a.idempotencyKey;
+    });
+    expect(send.map((i) => i.message)).toEqual([expect.stringMatching(/an exchange that sends/)]);
+  });
+});
+
+describe("a scheme message's declarations beside its disposition (L55, R-09-209 to R-09-212)", () => {
+  const msg = (find: (n: string) => any, id: string) => find('uae.wps').messages.find((m: any) => m.id === id);
+  it('holds a file block, a reply, a report and a correlation map to what they name', () => {
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.pif').file = { namePattern: '[0-9]{12}\\.PIF', maxBytes: 1000, encrypted: true }; })).toEqual([]);
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.pif').file = { namePattern: '([0-9' }; })).toHaveLength(1);
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.ack').repliesTo = ['uae.wps.pif']; }).map((i) => i.message)).toEqual([expect.stringMatching(/which the bank does not send/)]);
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.ack').repliesTo = ['uae.wps.nothing']; })).toHaveLength(1);
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.ack').repliesTo = ['uae.wps.sif-submission']; })).toEqual([]);
+    expect(fire('L55', (find) => { msg(find, 'uae.wps.psi').disposition.deliver.correlationMap = 'uae.wps.map.sif-out.v1'; }).map((i) => i.message)).toEqual([expect.stringMatching(/not an inward map/)]);
+    const report = (rec: any) => (find: (n: string) => any) => { find('uae.wps').messages.push({ id: 'uae.wps.test-report', title: 'A report', direction: 'in', disposition: { reconcile: rec } }); };
+    expect(fire('L55', report({ activity: 'p.reconcile.scheme-report.v1', map: 'uae.wps.map.psi-in.v1', period: 'P1D' }))).toEqual([]);
+    expect(fire('L55', report({ activity: 'p.post.verify.v1', map: 'uae.wps.map.sif-out.v1', period: 'P1D' }))).toHaveLength(2);
+  });
+});

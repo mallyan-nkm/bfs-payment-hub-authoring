@@ -398,6 +398,11 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                     b.Property<DateTimeOffset>("At")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long>("CommitVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("(pg_current_xact_id()::text::bigint)");
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(140)
@@ -413,6 +418,8 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CommitVersion", "Id");
 
                     b.ToTable("outbox", (string)null);
                 });
@@ -934,6 +941,12 @@ namespace TransactHub.Store.Migrations.PostgreSql.Migrations
                         .HasColumnType("character varying(140)");
 
                     b.Property<long>("Through")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ThroughId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("ThroughVersion")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");

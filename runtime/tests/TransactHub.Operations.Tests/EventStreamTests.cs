@@ -134,7 +134,7 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
         var rows = await db.StreamPositions.AsNoTracking().OrderBy(x => x.Id).ToListAsync();
         Assert.Equal(rows.Select(r => r.Through).Order(), rows.Select(r => r.Through));
         var row = rows[0];
-        db.Attach(row).Property(x => x.Through).CurrentValue = 0;
+        db.Attach(row).Property(x => x.Events).CurrentValue = row.Events + 1;
         await Assert.ThrowsAnyAsync<Exception>(() => db.SaveChangesAsync());
     }
 
@@ -193,7 +193,7 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
         await new FactLog(slow).Append(a, "payment", new NewFact("step", "slow", new JsonObject(), Actor: "engine"));
         await Write(store, [b], 1, "fast");
         var clock = new Later();
-        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock))
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock) { CommitOrder = false })
         {
             // Within the gap timeout the stream waits for the save in flight.
             await relay.CatchUp();
@@ -208,7 +208,7 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
         // The slow save commits after the timeout, while the relay is down; a fact is written after it.
         await tx.CommitAsync();
         await Write(store, [c], 1, "after");
-        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock))
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock) { CommitOrder = false })
         {
             await relay.CatchUp();
             Assert.Empty((await relay.OpenGaps(stream)).Where(g => g.From <= g.To && Covers(g, store, a)));
@@ -216,6 +216,46 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
         var got = SimulatedEventStream.Published.Where(e => e.Subject == a || e.Subject == b || e.Subject == c).Select(e => e.Subject).ToList();
         // Every committed fact once: the late one before anything newer than it was published.
         Assert.Equal([b, a, c], got);
+    }
+
+    /// <summary>
+    /// R-09-214, Issue I-281: in commit order a save in flight holds back only what commits after it, however long it takes (here far
+    /// past the gap horizon): the stream keeps no gap and drops none, and every committed fact goes out once, the slow one first, as it
+    /// was written first. On both databases.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task In_commit_order_a_save_that_commits_after_the_horizon_is_published_and_no_gap_is_kept(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        var stream = $"commit-{Guid.NewGuid():N}"[..20];
+        var a = $"P-{Guid.NewGuid():N}"[..12];
+        var b = $"P-{Guid.NewGuid():N}"[..12];
+        var c = $"P-{Guid.NewGuid():N}"[..12];
+        // The stream starts at the newest fact, so the other tests' rows are not its own.
+        var clock = new Later();
+        using (var start = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream, "      from: latest\n")), clock: clock)) await start.Poll();
+        await using var slow = StoreDbContext.Open(store);
+        await using var tx = await slow.Database.BeginTransactionAsync();
+        await new FactLog(slow).Append(a, "payment", new NewFact("step", "slow", new JsonObject(), Actor: "engine"));
+        await Write(store, [b], 1, "fast");
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream, "      gapHorizonMinutes: \"10\"\n")), clock: clock))
+        {
+            await relay.CatchUp().WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == a || e.Subject == b);
+            // Long past the gap timeout and the horizon: still held, never passed over.
+            clock.By = TimeSpan.FromHours(2);
+            await relay.CatchUp().WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.DoesNotContain(SimulatedEventStream.Published, e => e.Subject == b);
+            Assert.Empty(await relay.OpenGaps(stream));
+            Assert.Empty(await relay.DroppedGaps(stream));
+        }
+        await tx.CommitAsync();
+        await Write(store, [c], 1, "after");
+        using (var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream)), clock: clock)) await relay.CatchUp();
+        var got = SimulatedEventStream.Published.Where(e => e.Subject == a || e.Subject == b || e.Subject == c).Select(e => e.Subject).ToList();
+        Assert.Equal([a, b, c], got);
+        await using var db = StoreDbContext.Open(store);
+        Assert.All(await db.StreamPositions.AsNoTracking().Where(s => s.Stream == stream).ToListAsync(), r => Assert.Null(r.GapsJson));
     }
 
     static bool Covers(EventStreamRelay.Gap g, StoreOptions store, string subject)
@@ -239,7 +279,7 @@ public sealed class EventStreamTests(Databases dbs, EventStreamTests.Kafka kafka
             await tx.RollbackAsync();
         }
         var clock = new Later { By = TimeSpan.FromMinutes(1) };
-        using var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream, "      gapHorizonMinutes: \"10\"\n")), clock: clock);
+        using var relay = new EventStreamRelay(store, Bank, Bound("simulator", Named(stream, "      gapHorizonMinutes: \"10\"\n")), clock: clock) { CommitOrder = false };
         await relay.CatchUp();
         Assert.Contains(SimulatedEventStream.Published, e => e.Subject == b);
         Assert.NotEmpty(await relay.OpenGaps(stream));

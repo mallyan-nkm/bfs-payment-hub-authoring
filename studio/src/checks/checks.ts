@@ -16,6 +16,7 @@ import { literalSecretsInText } from '../secrets/scan.js';
 import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
 import { scopeOf as viewOf } from '../core/scope.js';
+import { runtimePortGaps } from './runtime-ports.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
 // one document as it is edited and on the whole store, and names the step each issue concerns.
@@ -80,6 +81,9 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
   L52: 'A bank that binds the rates port takes its rates from the feed: its configuration sets no p.enrich.fx-rate.v1#rates',
   L53: 'A bank\'s configuration is released as a major or a minor, never a patch: the rates feed numbers its releases as patches',
+  L54: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
+  L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
+  L56: 'A parameter marked a ledger account is an activity\'s string or code',
 };
 
 // ---------------------------------------------------------------- walking
@@ -373,6 +377,11 @@ export class Checker {
         if (!decl?.type) err('L44', `${d.name}#${k} declares no type`);
         else if (decl.default === undefined) err('L44', `${d.name}#${k} declares no default`);
         else if (!withinBounds(decl, decl.default)) err('L44', `${d.name}#${k}: its default ${JSON.stringify(decl.default)} is outside its own bounds ${JSON.stringify(decl.bounds)}`);
+        // L56 (R-05-100, Issue I-282): a ledger account is an activity's string or code.
+        if (decl?.role === 'ledger-account') {
+          if (d.kind !== 'activity') err('L56', `${d.name}#${k} is marked a ledger account, but only an activity's parameter names one`);
+          if (!['string', 'code'].includes(decl.type)) err('L56', `${d.name}#${k} is marked a ledger account, but it is of type ${decl.type}, not a string or a code`);
+        }
       }
     }
     // L29: step ids unique after segments are inlined.
@@ -593,6 +602,34 @@ export class Checker {
     const awaited = new Set<string>();
     for (const w of this.docs) if (w.kind === 'workflow' && scopeOf(w.name) === d.scope) for (const st of allSteps(w)) if (st.await) awaited.add(st.await.message);
     for (const m of d.messages ?? []) if (m.disposition?.deliver && !awaited.has(m.id)) err('L10', `${m.id} is a deliver message but no workflow of ${d.scope} awaits it`);
+    // L55 (R-09-209 to R-09-212): a message's file rules, the messages it answers, its report's activity and map, its correlation map.
+    const ids = new Map<string, any>((d.messages ?? []).map((m: any) => [m.id, m]));
+    const inwardMap = (n: string | undefined, reads?: string) => {
+      const a = n ? this.byName.get(n) : undefined;
+      return !!a && a.kind === 'activity' && a.type === 'map' && a.map?.direction === 'in' && (!reads || (a.reads ?? []).includes(reads));
+    };
+    for (const m of d.messages ?? []) {
+      if (m.file) {
+        if (!['file', 'mixed'].includes(d.wire)) err('L55', `${m.id} declares a file block, but ${d.scope}'s wire is ${d.wire ?? 'unstated'}, not a file`);
+        if (m.file.namePattern !== undefined) {
+          try { new RegExp(m.file.namePattern); } catch (e: any) { err('L55', `${m.id}'s file name pattern does not compile: ${e.message}`); }
+        }
+      }
+      for (const r of m.repliesTo ?? []) {
+        if (m.direction !== 'in') err('L55', `${m.id} answers ${r} but is not a message the bank receives`);
+        if (!ids.has(r)) err('L55', `${m.id} answers ${r}, which is no message of ${d.scope}`);
+        else if (ids.get(r).direction !== 'out') err('L55', `${m.id} answers ${r}, which the bank does not send`);
+      }
+      const rec = m.disposition?.reconcile;
+      if (rec) {
+        if (m.direction !== 'in') err('L55', `${m.id} is reconciled, but the bank does not receive it`);
+        const act = this.byName.get(rec.activity);
+        if (!act || act.kind !== 'activity' || act.type !== 'reconcile') err('L55', `${m.id}'s reconcile activity ${rec.activity} is not a reconcile activity`);
+        if (!inwardMap(rec.map)) err('L55', `${m.id}'s report map ${rec.map} is not an inward map`);
+      }
+      const cm = m.disposition?.deliver?.correlationMap;
+      if (cm && !inwardMap(cm, 'messages')) err('L55', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
+    }
     // L33 (R-05-42): the dispatch table routes a start message. Its kind, direction and segment select
     // one platform workflow through workflow-select, and the leg it names fills that workflow's slot.
     const select = this.docs.find((x) => x.name === 'p.table.workflow-select.v1');
@@ -666,6 +703,21 @@ export class Checker {
     if (d.effect === 'write' && ['reserve', 'post'].includes(d.type) && !d.compensation && !/release|reverse|verify|undo/.test(d.name)) {
       warn('L20', `${d.name} writes and names no compensation (R-03-12 SHOULD)`);
     }
+    // L54 (R-03-25, R-03-26, Issue I-303): every attempt is at least once, so an outside effect needs a key the same on every attempt.
+    {
+      let why: string | undefined;
+      if (['write', 'external'].includes(d.effect)) why = `its effect is ${d.effect}`;
+      else if (['reserve', 'hold', 'notify'].includes(d.type)) why = `it is a ${d.type}`;
+      else if (d.type === 'exchange' && ['send', 'respond', 'report'].includes(d.mode)) why = `it is an exchange that ${d.mode}s`;
+      else for (const pn of d.ports ?? []) {
+        const ops: any[] = this.byName.get(pn)?.operations ?? [];
+        if (ops.length && ops.every((o) => o.style === 'send')) { why = `its port ${pn} only sends`; break; }
+      }
+      const key = d.idempotencyKey;
+      if (why && !key) err('L54', `${d.name} has an outside effect (${why}) but no idempotency key: every attempt is at least once`);
+      else if (why && (typeof key !== 'string' || !key.includes('header.') || /\b(?:now|clock|ids|uuid|random|attempt)\b/.test(key)))
+        err('L54', `${d.name}'s idempotency key is not the same on every attempt: it must read a business id of the header, not the clock, a new id or the attempt`);
+    }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {
       const sc = this.scriptOf(d.name, d.release);
@@ -728,6 +780,8 @@ export class Checker {
   }
 
   private checkTest(d: any, err: (c: string, m: string) => void, warn: (c: string, m: string) => void) {
+    // R-09-213 (Issue I-268): every activity of a port the bench gives to the runtime has a native code-behind there.
+    for (const g of runtimePortGaps(this.docs, d.bench)) err('L15', `The bench gives ${g.port} to the runtime, but ${g.activity}@${g.release} has no native code-behind there`);
     for (const b of d.bench ?? []) {
       const s = this.byName.get(b.simulator);
       if (s?.kind === 'simulator') {

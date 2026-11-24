@@ -75,6 +75,34 @@ public sealed class ReconciliationTests(Databases dbs)
         }
     }
 
+    /// <summary>
+    /// R-09-210, Issue I-164: a report the scheme declares (a reconcile disposition) is read by its map into lines, and its period says
+    /// which payments it covers: a payment of the bank and scheme accepted in the period that no line names is a break.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_payment_of_the_reports_period_the_report_does_not_name_is_a_break(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        await WpsRun.Seed(store);
+        await using var db = StoreDbContext.Open(store);
+        var lines = new List<ReportLine> { new(1, E2e(1), 1000.00m, "AED", null) };
+        var run = await new SchemeReconciliation(db).Run(WpsRun.Tenant, "uae.wps", "file-report-period", lines, null, TimeSpan.FromDays(1), "p.reconcile.scheme-report.v1", "file-api:reconcile");
+        Assert.Equal(("unmatched", 1), ((string?)run["outcome"], (int)run["matched"]!));
+        var b = Assert.Single((JsonArray)run["breaks"]!)!;
+        Assert.Equal(("not-in-report", E2e(2)), ((string?)b["kind"], (string?)b["reference"]));
+        // Without a period the report names what it covers only: the same lines match.
+        var none = await new SchemeReconciliation(db).Run(WpsRun.Tenant, "uae.wps", "file-report-noperiod", lines, null, null, "p.reconcile.scheme-report.v1", "file-api:reconcile");
+        Assert.Equal("matched", (string?)none["outcome"]);
+        // A period that ended before the payments were accepted covers none of them.
+        var past = await new SchemeReconciliation(db, new FixedClock(DateTimeOffset.UtcNow.AddDays(-3))).Run(WpsRun.Tenant, "uae.wps", "file-report-past", [], null, TimeSpan.FromDays(1), "p.reconcile.scheme-report.v1", "file-api:reconcile");
+        Assert.Equal("matched", (string?)past["outcome"]);
+    }
+
+    sealed class FixedClock(DateTimeOffset at) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => at;
+    }
+
     [Fact]
     public void A_report_reads_as_CSV_with_a_header_or_as_JSON_lines_amounts_exact()
     {

@@ -192,7 +192,26 @@
         },
         "description": {
           "type": "string"
+        },
+        "role": {
+          "description": "What the value is, where a console must know it (Issue I-282, R-05-100): ledger-account, an account of the bank's ledger a posting moves money through; the ledger view lists every parameter so marked.",
+          "enum": [
+            "ledger-account"
+          ]
+        },
+        "ledgerKind": {
+          "description": "With role ledger-account: the kind of account, as the ledger view shows it (settlement, suspense, income, vat, or a kind of the activity's own).",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
         }
+      },
+      "dependentRequired": {
+        "role": [
+          "ledgerKind"
+        ],
+        "ledgerKind": [
+          "role"
+        ]
       }
     },
     "parameters": {

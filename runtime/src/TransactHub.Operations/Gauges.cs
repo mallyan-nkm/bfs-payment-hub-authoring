@@ -21,10 +21,49 @@ public sealed class RuntimeGauges
     public static readonly Counter<long> HoldsExpired = Meter.CreateCounter<long>("th.holds.expired", "{hold}", "Holds that reached their expiry with no decision");
 
     /// <summary>
-    /// The awaited replies the gauge watches: none unless the installation names them. Platform code names no scheme (R-09-142); the
-    /// scheme declares no reply to a message it sends yet (Issue I-235), so an installation names each scheme's in its settings.
+    /// The awaited replies the installation adds: none by default. Platform code names no scheme (R-09-142); the gauge reads the pairs
+    /// from the schemes of the active distributions (a message's <c>repliesTo</c>, R-09-211, Issue I-235), and the setting only adds to them.
     /// </summary>
     public static readonly AwaitedReply[] Default = [];
+
+    /// <summary>The awaited replies a scheme manifest declares: for each message sent that another answers, the messages that answer it.</summary>
+    public static IEnumerable<AwaitedReply> Declared(string scheme, System.Text.Json.Nodes.JsonObject manifest) =>
+        (manifest["messages"] as System.Text.Json.Nodes.JsonArray ?? [])
+            .OfType<System.Text.Json.Nodes.JsonObject>()
+            .SelectMany(m => (m["repliesTo"] as System.Text.Json.Nodes.JsonArray ?? []).Select(s => (sent: (string?)s, reply: (string?)m["id"])))
+            .Where(x => x.sent is { Length: > 0 } && x.reply is { Length: > 0 })
+            .GroupBy(x => x.sent!, StringComparer.Ordinal)
+            .Select(g => new AwaitedReply(scheme, g.Key, g.Select(x => x.reply!).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList()));
+
+    /// <summary>The pairs read from one distribution's package, kept by its id: a stored distribution never changes.</summary>
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<AwaitedReply>> declaredOf = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The awaited replies the schemes of every distribution active in some environment declare, then the installation's, each pair
+    /// once (R-09-211).
+    /// </summary>
+    public static async Task<IReadOnlyList<AwaitedReply>> InForce(StoreDbContext db, IReadOnlyList<AwaitedReply> configured, CancellationToken ct = default)
+    {
+        var reg = new DistributionRegistry(db);
+        var all = new List<AwaitedReply>();
+        foreach (var bank in await reg.Banks(ct))
+            foreach (var dist in await reg.Of(bank, ct))
+            {
+                if (!(await reg.StatesOf(dist, ct)).Values.Any(s => s.State == "active")) continue;
+                if (!declaredOf.TryGetValue(dist, out var pairs))
+                {
+                    var (b, id) = DistributionRegistry.Split(dist);
+                    var row = await new ReleaseRegistry(db).Get(DistributionRegistry.Scope(b), id, ct);
+                    pairs = row is null ? [] : UploadCatalogue.Schemes(row.Package).SelectMany(kv => Declared(kv.Key, kv.Value)).ToList();
+                    declaredOf[dist] = pairs;
+                }
+                all.AddRange(pairs);
+            }
+        all.AddRange(configured);
+        return all.GroupBy(r => (r.Scheme, r.Sent))
+            .Select(g => new AwaitedReply(g.Key.Scheme, g.Key.Sent, g.SelectMany(r => r.Replies).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList()))
+            .OrderBy(r => r.Scheme, StringComparer.Ordinal).ThenBy(r => r.Sent, StringComparer.Ordinal).ToList();
+    }
 
     /// <summary>
     /// The awaited replies an installation names (<c>Service:Gauges:AwaitedReplies</c>): a JSON array of <c>{ scheme, sent, replies }</c>,
@@ -63,6 +102,9 @@ public sealed class RuntimeGauges
         active = this;
     }
 
+    /// <summary>The awaited replies the last refresh watched: the active distributions' schemes', then the installation's.</summary>
+    public IReadOnlyList<AwaitedReply> Watched { get; private set; } = [];
+
     /// <summary>The values as the last refresh read them, for tests.</summary>
     public (IReadOnlyList<Measurement<long>> open, IReadOnlyList<Measurement<double>> awaitAge, IReadOnlyList<Measurement<double>> holdAge) Current => (last.Open, last.AwaitAge, last.HoldAge);
 
@@ -74,7 +116,8 @@ public sealed class RuntimeGauges
             .Select(kv => new Measurement<long>(kv.Value, new KeyValuePair<string, object?>("th.distribution", kv.Key))).ToList();
         await using var o = OpsDbContext.Open(ops);
         var awaitAge = new List<Measurement<double>>();
-        foreach (var r in replies)
+        Watched = await InForce(db, replies, ct);
+        foreach (var r in Watched)
         {
             var kinds = r.Replies.Append(r.Sent).ToArray();
             var docs = await o.Documents.AsNoTracking().Where(d => d.Scheme == r.Scheme && d.SubjectId != null && kinds.Contains(d.Kind))
