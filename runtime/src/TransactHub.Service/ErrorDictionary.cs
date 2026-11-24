@@ -46,6 +46,10 @@ public static class ErrorCodes
     public const string FileNotEncrypted = "file.NotEncrypted", FileEncrypted = "file.Encrypted", Uncorrelated = "frontdoor.Uncorrelated",
         ReportUnreadable = "frontdoor.ReportUnreadable", NotAReport = "frontdoor.NotAReport";
 
+    // Since the dictionary's 1.12.0 (R-11-117): a rate with no asOf where the bank requires one (R-09-247), and a break's order the
+    // scheme names no message for (R-09-250).
+    public const string FxRateUndated = "fx.RateUndated", BreakNoOrderMessage = "ops.BreakNoOrderMessage";
+
     /// <summary>Every runtime code above, for the dictionary test.</summary>
     public static IEnumerable<string> All => typeof(ErrorCodes).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!);
 
