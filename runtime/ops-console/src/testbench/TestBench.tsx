@@ -50,12 +50,13 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
   const [dbs, setDbs] = useState<string[]>();
   const [tenant, setTenant] = useState<string>();
   const [bench, setBench] = useState<string>();
+  const [date, setDate] = useState<string>();
   const [job, setJob] = useState<any>();
   const [err, setErr] = useState<string>();
   const p = profiles?.find((x) => x.name === profile);
 
   useEffect(() => { if (profiles?.length && !profile) setProfile((profiles.find((x) => (x.engines ?? []).length === 0) ?? profiles[0]).name); }, [profiles]);
-  useEffect(() => { setEngines(undefined); setDbs(undefined); setTenant(undefined); setBench(undefined); }, [profile]);
+  useEffect(() => { setEngines(undefined); setDbs(undefined); setTenant(undefined); setBench(undefined); setDate(undefined); }, [profile]);
   useEffect(() => {
     if (!shown) return;
     let stop = false;
@@ -72,7 +73,7 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
   }, [shown]);
 
   // A profile that names no engines runs on the default engine (R-09-79), as the service resolves it.
-  const eff = { engines: engines ?? p?.engines ?? defaults, dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench };
+  const eff = { engines: engines ?? p?.engines ?? defaults, dbs: dbs ?? p?.databases ?? [], tenant: tenant ?? p?.tenant, bench: bench ?? p?.bench, date: date ?? p?.clock?.date ?? '' };
   const toggle = (list: string[], x: string) => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
   const run = async () => {
     setErr(undefined);
@@ -82,6 +83,8 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
     if (dbs) req.databases = dbs;
     if (tenant) req.tenant = tenant;
     if (bench) req.bench = bench;
+    // The business date (Issue I-331): the profile's by default; a tester may move it on or after the bank's values.
+    if (date) req.clock = { ...(p?.clock ?? {}), date };
     try {
       const j = await api.call('/runs', req);
       setJob(j);
@@ -103,6 +106,8 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
           <fieldset><legend>Tenant</legend><Select value={eff.tenant} onChange={(e) => setTenant(e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant}>{t.tenant}</option>)}</Select></fieldset>
           <fieldset><legend>Simulators</legend><Select data-testid="bench" value={eff.bench} onChange={(e) => setBench(e.target.value)}>{benches && Object.keys(benches).map((b) => <option key={b}>{b}</option>)}</Select>
             <ul className="muted">{benches?.[eff.bench]?.ports.map((x: string) => <li key={x} className="mono">{x}</li>)}</ul></fieldset>
+          <fieldset><legend>Business date</legend><Input type="date" data-testid="business-date" value={eff.date} onChange={(e) => setDate(e.target.value || undefined)} />
+            <p className="muted">The run starts at {p?.clock?.time ?? '06:00'} UTC that day; a bank's values apply from their own date.</p></fieldset>
         </div>
       </Card>
       <Card className="card">

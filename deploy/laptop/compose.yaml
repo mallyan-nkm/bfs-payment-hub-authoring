@@ -538,7 +538,8 @@ services:
       FLOWABLE_REST_APP_ADMIN_PASSWORD: ${TH_LAPTOP_FLOWABLE_PASSWORD:-}
       FLOWABLE_ASYNC_EXECUTOR_ACTIVATE: "true"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/flowable-rest/actuator/health || curl -fs http://127.0.0.1:8080/flowable-rest/actuator/health"]
+      # Flowable REST 7.1 answers its health endpoint to its admin only (401 otherwise, Issue I-332); the image's wget is BusyBox's.
+      test: ["CMD-SHELL", "wget -q -O /dev/null \"http://th-laptop:$${FLOWABLE_REST_APP_ADMIN_PASSWORD}@127.0.0.1:8080/flowable-rest/actuator/health\""]
       interval: 10s
       timeout: 5s
       retries: 30

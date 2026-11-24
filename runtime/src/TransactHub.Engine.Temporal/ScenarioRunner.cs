@@ -53,6 +53,16 @@ public sealed class ScenarioRunner
     public Task<JsonObject> Run(WorkflowEnvironment env) => Run(env, null);
 
     /// <summary>
+    /// The task queue a run's own workers poll for a queue of its plan (R-09-216, Issue I-331). A bank's distribution's copy
+    /// carries the distribution (R-09-55); any other run, a test bench's or a kit's, carries its run id. On a shared Temporal
+    /// server the test bench's runs, one another's and the engine host's long-running workers all poll the same namespace:
+    /// with the plan's bare queue names one run's workflow and activity tasks were taken by another process, which read a
+    /// payload it did not hold (an empty salary file, FF01) and routed no answer of the run's simulators.
+    /// </summary>
+    public static string RunQueue(string queue, string? distribution, string run) =>
+        distribution is not null ? $"{queue}@{distribution}" : $"{queue}@run-{run}";
+
+    /// <summary>
     /// Told the front door workflow's id once it has started: the runtime's front door hands a message for this payment to it
     /// (FrontDoorWorkflow.Deliver), which routes it to the run it belongs to (R-09-85).
     /// </summary>
@@ -89,8 +99,10 @@ public sealed class ScenarioRunner
         // A bank's distribution runs as its own copy beside the others (R-09-55): its task queues carry the distribution, and
         // its workers carry it as their build id, so two distributions never take each other's tasks.
         var distribution = J.S(input, "distribution");
+        var runId = Guid.NewGuid().ToString("N")[..8];
         // A long-running host keeps distributions apart by its version's build id, on the same task queues (worker versioning).
-        string Q(string q) => distribution is null || hosted is not null ? q : $"{q}@{distribution}";
+        // Any other run polls task queues of its own (R-09-216, Issue I-331).
+        string Q(string q) => hosted is not null ? q : RunQueue(q, distribution, runId);
         string queueOf(string activity)
         {
             if (queues is null || activity == Interp.ClaimCheck) return Q(HostQueue);
@@ -102,7 +114,6 @@ public sealed class ScenarioRunner
 
         var serverNow = (await env.GetCurrentTimeAsync()).ToUniversalTime();
         var offset = start - new DateTimeOffset(serverNow, TimeSpan.Zero).ToUnixTimeMilliseconds();
-        var runId = Guid.NewGuid().ToString("N")[..8];
         var frontDoorId = distribution is null ? $"front-door-{runId}" : $"front-door-{runId}@{distribution}";
 
         var taskQueues = new HashSet<string> { Q(HostQueue) };

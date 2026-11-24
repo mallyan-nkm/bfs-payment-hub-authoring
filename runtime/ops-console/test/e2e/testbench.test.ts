@@ -93,12 +93,18 @@ describe('the Test bench section of the runtime web app', () => {
     await page.getByTestId('default-engine').first().waitFor();
     expect(await page.getByTestId('engine-temporal').isChecked()).toBe(true);
     expect(await page.locator('label', { has: page.getByTestId('default-engine') }).innerText()).toMatch(/temporal\s+default/);
+    // The business date is the profile's by default (Issue I-331).
+    expect(await page.getByTestId('business-date').inputValue()).toBe('2026-11-24');
     // A profile with no engine of its own, and DTFx ticked for this run: it runs on DTFx beside the interpreter.
     await page.getByTestId('profile').selectOption('wps-reference');
     expect(await page.getByTestId('engine-dtfx').isChecked()).toBe(false);
     await page.getByTestId('engine-dtfx').check();
     await page.getByTestId('sample').selectOption('wps-sif-happy');
+    // A tester moves the business date for this run; the request carries it (Issue I-331).
+    await page.getByTestId('business-date').fill('2026-11-25');
+    const sent = page.waitForRequest((r: any) => r.method() === 'POST' && /\/testbench\/api\/runs$/.test(r.url()));
     await page.getByTestId('run').click();
+    expect(JSON.parse((await sent).postData()).clock).toEqual({ date: '2026-11-25' });
     await page.getByTestId('result').waitFor();
     await page.getByTestId('status').filter({ hasText: /passed|failed/ }).waitFor({ timeout: 540000 });
     expect(await page.getByTestId('status').innerText(), await page.getByTestId('result').innerText()).toBe('passed');
