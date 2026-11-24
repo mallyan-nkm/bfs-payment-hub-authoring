@@ -109,7 +109,7 @@ public sealed class CoreBankingPostingTests
     {
         var rec = new Recorder { Available = 5000m };
         var r = Resolver(rec);
-        var reserve = new ReserveFunds(r, ModuleGate.Contributions).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
+        var reserve = ModuleGate.Reserve(r).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
         Assert.Equal("reserved", reserve.Outcome);
         var (balReq, balBody) = rec.Requests[0];
         Assert.Equal("https://core-banking.dib.invalid/api/v1/accounts/balance-enquiry", balReq.RequestUri!.ToString());
@@ -127,7 +127,7 @@ public sealed class CoreBankingPostingTests
         Assert.Equal("0010000000001", (string)j["entries"]![0]!["account"]!);
 
         // Not enough available: the reservation is refused, with the balance it saw.
-        var short_ = new ReserveFunds(Resolver(new Recorder { Available = 100m }), ModuleGate.Contributions).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
+        var short_ = ModuleGate.Reserve(Resolver(new Recorder { Available = 100m })).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
         Assert.Equal("insufficient", short_.Outcome);
         Assert.Equal("AM04", short_.ReasonCode);
         Assert.Equal(100m, (decimal)short_.Writes["facts.reservation"]!["available"]!);
@@ -146,7 +146,7 @@ public sealed class CoreBankingPostingTests
 
         // An unknown posting is not reversed blind; an operator decides.
         var view = new JsonObject { ["header"] = new JsonObject { ["paymentId"] = "P-1" }, ["facts"] = new JsonObject { ["posting"] = lost.Writes["facts.posting"]!.DeepClone() } };
-        var e = Assert.Throws<NativeFailure>(() => new ReversePosting(Resolver(), ModuleGate.Contributions).Run(At("p.post.reverse.v1", view, new JsonObject(), OnGateway)));
+        var e = Assert.Throws<NativeFailure>(() => ModuleGate.Reverse(Resolver()).Run(At("p.post.reverse.v1", view, new JsonObject(), OnGateway)));
         Assert.Equal("BusinessReject", e.Name);
     }
 
@@ -156,8 +156,8 @@ public sealed class CoreBankingPostingTests
         var r = Resolver();
         var post = ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
         var view = new JsonObject { ["header"] = new JsonObject { ["paymentId"] = "P-1" }, ["facts"] = new JsonObject { ["posting"] = post.Writes["facts.posting"]!.DeepClone() } };
-        Assert.Equal("verified", new VerifyPosting().Run(At("p.post.verify.v1", view, new JsonObject(), OnSimulator)).Outcome);
-        var rev = new ReversePosting(r, ModuleGate.Contributions).Run(At("p.post.reverse.v1", view, new JsonObject(), OnSimulator));
+        Assert.Equal("verified", new TransactHub.Activities.Platform.Native.VerifyPosting().Run(At("p.post.verify.v1", view, new JsonObject(), OnSimulator)).Outcome);
+        var rev = ModuleGate.Reverse(r).Run(At("p.post.reverse.v1", view, new JsonObject(), OnSimulator));
         Assert.Equal("reversed", rev.Outcome);
         var batches = r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot();
         Assert.Equal("P-1:AE070331234567890123456:REV", batches[1].Reference);
@@ -165,7 +165,7 @@ public sealed class CoreBankingPostingTests
             l => Assert.Equal(("credit", "9990000000001", "REV"), (l.Kind, l.Account, l.TxnCode)),
             l => Assert.Equal(("debit", "AE070331234567890123456", "REV"), (l.Kind, l.Account, l.TxnCode)));
         var nothing = new JsonObject { ["facts"] = new JsonObject { ["posting"] = new JsonObject { ["outcome"] = "rejected" } } };
-        Assert.Equal("mismatch", new VerifyPosting().Run(At("p.post.verify.v1", nothing, new JsonObject(), OnSimulator)).Outcome);
+        Assert.Equal("mismatch", new TransactHub.Activities.Platform.Native.VerifyPosting().Run(At("p.post.verify.v1", nothing, new JsonObject(), OnSimulator)).Outcome);
     }
 
     [Fact]

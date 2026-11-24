@@ -20,6 +20,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- A module as a build against an earlier minor of the native contract leaves it (R-09-276), shared with the store's tests. -->
+  <ItemGroup>
+    <Compile Include="..\TransactHub.Store.Tests\ContractBuilds.cs" Link="ContractBuilds.cs" />
+  </ItemGroup>
+
   <!-- The native host as the image builds it: no scheme's native code. The WPS module reaches it only in a distribution. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.Native\TransactHub.Native.csproj" />

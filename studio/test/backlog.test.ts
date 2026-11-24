@@ -110,7 +110,8 @@ describe('C17 roles, maker-checker, audit and isolation', () => {
 describe('C19 retirement, propagation and supersession; C18 configuration', () => {
   it('refuses to retire a pinned release (C19-S3)', () => {
     const env = freshEnv();
-    expect(() => gov.retire(env, 'service.operations', 'p.reserve.funds.v1', '1.0.0')).toThrow(/pinned by .*p.wf.corporate.v1/);
+    // The release the lock files pin (1.1.0 since factory 1.23.0, R-09-283).
+    expect(() => gov.retire(env, 'service.operations', 'p.reserve.funds.v1', env.store.releasesOf('p.reserve.funds.v1').at(-1)!.release)).toThrow(/pinned by .*p.wf.corporate.v1/);
   });
   it('proposes patch releases of the workflows that pin a patched rule (C05-S4)', async () => {
     const env = freshEnv();

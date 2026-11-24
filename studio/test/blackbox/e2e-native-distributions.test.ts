@@ -209,7 +209,7 @@ describe.each(['temporal', 'dtfx'] as const)('two builds of a WPS native activit
     expect(mb.billOfMaterials.artefacts.find((x: any) => x.kind === 'native-assembly' && x.scope === 'uae.wps').assemblySha256).toBe(shaOf(mb));
     // The platform's native activities travel the same way, as the platform module (R-09-126), referencing the contract only.
     const platformOf = (m: any) => m.native.modules.find((x: any) => x.scope === 'p');
-    expect(ma.native.contract).toBe('2.0.0');
+    expect(ma.native.contract).toBe('2.1.0');
     expect(platformOf(ma).assembly).toBe('TransactHub.Activities.Platform.Native');
     expect(platformOf(ma).activities.some((x: string) => x.startsWith('p.decide.posting-window.v1@'))).toBe(true);
     expect(mb.billOfMaterials.artefacts.find((x: any) => x.kind === 'native-assembly' && x.scope === 'p').assemblySha256).toBe(platformOf(mb).files[0].sha256);

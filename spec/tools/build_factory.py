@@ -169,6 +169,12 @@ RELEASES["p.enrich.fx-rate.v1"] = ("1.3.0", "requireAsOf: a bank on the rates fe
 # debtor's contact e-mail (Dbtr/CtctDtls/EmailAdr), which WPS's corporate match compares (R-09-248). A field written under batch, a
 # minor; its script at scripts/...@1.6.0.ts.
 RELEASES["uae.wps.map.sif-in.v1"] = ("1.6.0", "the employer's e-mail from the channel's upload as the debtor's contact e-mail (Issues I-153, I-314)")
+# Issues I-381, I-382, R-09-278, R-09-282 (factory 1.23.0, native contract 2.1.0): the builtin posting, the reservation, its release, the
+# reversal and the check of a posting say that the platform module answers them on the runtime (implementation.native: true beside
+# binding builtin). The image keeps none of them. A field added to the implementation, a minor. WPS's own posting is Issue I-387.
+RELEASES["p.post.accounting.v1"] = ("1.3.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-381)")
+for _n in ("p.reserve.funds.v1", "p.reserve.release.v1", "p.post.reverse.v1", "p.post.verify.v1"):
+    RELEASES[_n] = ("1.1.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-382)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -211,8 +217,15 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # pause and resume offered, and escalation after a time (Issue I-185); the salary file's intake map 1.6.0, the employer's e-mail
 # (Issues I-153, I-314); the UAE cluster's default currency, uae.p.enrich.default-currency.v1 (R-02-24); and the platform's error
 # dictionary 1.12.0, on 1.11.0.
-PACK_RELEASES = {"p": "1.22.0", "uae.p": "1.22.0", "uae.wps": "1.22.0", "b": "1.22.0"}
-FACTORY_RELEASE = "1.22.0"
+# 1.21.0 (change set CS-2026-11-24-016): wave 7A. The canonical checks refuse a file that names no currency (p.validate.canonical.v2,
+# the check-and-screen segment 1.1.0, Issue I-294); the scheme's other sends read the encryption step's fact (their v2 lines, the
+# six subflows' next minors, the scheme's catalogue 1.6.0, Issue I-293); the salary file's send v1 retired; the platform's error
+# dictionary 1.11.0, on 1.10.0.
+# 1.23.0 (change set CS-2026-11-24-018; 1.21.0, 1.22.0 and change sets 016 and 017 are other changes'): native contract 2.1.0 (R-09-276
+# to R-09-283; Issues I-381, I-382, I-383): p.post.accounting.v1 1.3.0, p.reserve.funds.v1, p.reserve.release.v1, p.post.reverse.v1
+# and p.post.verify.v1 1.1.0, each with implementation.native: true beside its builtin (lint L40).
+PACK_RELEASES = {"p": "1.23.0", "uae.p": "1.23.0", "uae.wps": "1.23.0", "b": "1.23.0"}
+FACTORY_RELEASE = "1.23.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -307,9 +320,9 @@ act("p.decide.rail.v1", "Choose the rail and record the reason",
 act("p.reserve.funds.v1", "Reserve funds in the hub",
     ["payment.debtorAccount", "payment.instructedAmount", "batch.controlSum"], ["facts.reservation"],
     ["reserved", "insufficient"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.reserve.release.v1", service="reservation")
+    comp="p.reserve.release.v1", service="reservation", native=True)
 act("p.reserve.release.v1", "Release a reservation", ["facts.reservation"], ["facts.reservation"],
-    ["released"], "write", ports=["p.port.core-banking.v1"], policy=STD, service="reservation")
+    ["released"], "write", ports=["p.port.core-banking.v1"], policy=STD, service="reservation", native=True)
 # The accounting template's values (R-06-21): transaction codes, narration, accounts, charge slabs and VAT. A bank sets
 # its own; each is bounded. The defaults are placeholders that name no bank and no real account.
 TXN = {"pattern": "^[A-Z0-9]{2,10}$"}
@@ -348,7 +361,7 @@ ACCOUNTING = {
 }
 act("p.post.accounting.v1", "Post with an accounting template", ["header", "payment", "facts.route", "facts.reservation"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING)
+    comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING, native=True)
 # The order's posting (R-12-23, Issue I-136): a new major line, so payments on v1 keep it. It reads what the platform's own steps
 # found (facts.fx, the converted amount of each line and of the order; facts.charges, each line's charge and VAT) and prices nothing
 # itself: its template has no slabs. Each line posts its converted amount between the line's account and the settlement account (a
@@ -360,9 +373,9 @@ act("p.post.accounting.v2", "Post an order's converted amounts, charges and VAT 
     ["header", "payment", "items[]", "facts.fx", "facts.charges"], ["facts.posting"], ["posted", "rejected", "unknown"], "write",
     level="batch", ports=["p.port.core-banking.v1"], policy=STD, comp="p.post.reverse.v1", params=ACCOUNTING_V2, script=True, native=True)
 act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"], ["facts.postingVerified"],
-    ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
+    ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting", native=True)
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
-    ports=["p.port.core-banking.v1"], policy=STD, service="accounting")
+    ports=["p.port.core-banking.v1"], policy=STD, service="accounting", native=True)
 # FX and charges on an order (R-12-20, Issue I-133): platform activities, never a scheme's. The rates and the charge slabs are the
 # bank's values (dials), effective-dated in its configuration releases; the factory's defaults are empty, so an order in a currency
 # other than its account's has no rate and an order bears no charge until the bank sets its own. Exact decimals (R-02-17): the

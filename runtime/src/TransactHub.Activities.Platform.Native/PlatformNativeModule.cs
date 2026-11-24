@@ -14,7 +14,8 @@ namespace TransactHub.Activities.Platform.Native;
 /// here reaches a payment only through a platform release and a new distribution (scenario 5); a payment pinned to an older
 /// distribution keeps that one's build. The runtime image keeps the ports, their adapters and the store, behind the native contract.
 /// Since contract 2.0.0 it also answers the builtin posting, <c>p.post.accounting.v1</c>, and gates the core-banking binding's posting
-/// window for the image (R-09-264, Issue I-227): the image keeps no copy of either.
+/// window for the image (R-09-264, Issue I-227): the image keeps no copy of either. Since contract 2.1.0 it answers the reservation, its
+/// release, the reversal and the check of a posting too (R-09-278, Issue I-382), so the image keeps no core-banking activity.
 /// </summary>
 public sealed class PlatformNativeModule : INativeModule
 {
@@ -22,11 +23,12 @@ public sealed class PlatformNativeModule : INativeModule
 
     public IReadOnlyList<INativeActivity> Activities(INativeServices services)
     {
-        // The posting window of the bank's core-banking binding, asked by the image before each call on it (R-09-264).
+        // The posting window of the bank's core-banking binding, asked by the image before each call on it (R-09-264, R-09-279).
         services.Contribute(NativeContributions.BindingGate(PostingGate.Port), (NativeBindingGate)PostingGate.Check);
         return
         [
             new EnrichFxRate(), new EnrichCharges(), new DecidePostingWindow(), new PostAccountingV1(services.CoreBanking), new PostAccountingV2(services.CoreBanking),
+            new ReserveFunds(services.CoreBanking), new ReleaseReservation(), new ReversePosting(services.CoreBanking), new VerifyPosting(),
             new EnrichPartyRegister(services.Ports, services.Contribution), new EncryptFile(services.Files, services.Ports), new DecryptFile(services.Files, services.Ports),
         ];
     }

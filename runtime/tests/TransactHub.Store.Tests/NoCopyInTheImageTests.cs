@@ -14,41 +14,61 @@ public static class ModuleGate
     public static readonly Func<string, object?> Contributions = k =>
         k == NativeContributions.BindingGate(CoreBankingResolver.Port) ? (NativeBindingGate)Module.PostingGate.Check : null;
 
+    /// <summary>The image's core banking as the platform module of a distribution gets it, gated by the module.</summary>
+    public static INativeCoreBanking CoreBanking(CoreBankingResolver r) => new NativeCoreBanking(r, Contributions);
+
     /// <summary><c>p.post.accounting.v1</c>, the platform module's, on the image's core banking gated by the module.</summary>
-    public static INativeActivity PostAccounting(CoreBankingResolver r) => new Module.PostAccountingV1(new NativeCoreBanking(r, Contributions));
+    public static INativeActivity PostAccounting(CoreBankingResolver r) => new Module.PostAccountingV1(CoreBanking(r));
+
+    /// <summary><c>p.reserve.funds.v1</c>, the platform module's since contract 2.1.0 (R-09-278).</summary>
+    public static INativeActivity Reserve(CoreBankingResolver r) => new Module.ReserveFunds(CoreBanking(r));
+
+    /// <summary><c>p.post.reverse.v1</c>, the platform module's since contract 2.1.0 (R-09-278).</summary>
+    public static INativeActivity Reverse(CoreBankingResolver r) => new Module.ReversePosting(CoreBanking(r));
 }
 
 /// <summary>
 /// Issue I-227, R-09-264 (in place of R-09-215's DuplicatedLogicTests): the accounting template's reading, <c>p.post.accounting.v1</c> and
 /// the posting window gate were written twice, in the image and in the platform module, because a module may not reference the image.
-/// Since native contract 2.0.0 they are the platform module's only: the image keeps no copy, and its core-banking calls ask the gate the
-/// module contributed, refusing a binding with a posting window when no gate is contributed.
+/// Since native contract 2.0.0 they are the platform module's only, and since 2.1.0 (R-09-278, R-09-279, Issue I-382) so are the
+/// reservation, its release, the reversal and the check of a posting: the image keeps the core-banking adapters and no core-banking
+/// activity, names no setting of a posting window, and calls core banking only through the gate a module contributed.
 /// </summary>
 public sealed class NoCopyInTheImageTests
 {
+    static readonly string[] CoreBankingActivities = ["p.post.accounting.v1", "p.post.accounting.v2", "p.post.reverse.v1", "p.post.verify.v1", "p.reserve.funds.v1", "p.reserve.release.v1"];
+
     [Fact]
-    public void The_image_keeps_no_copy_of_the_posting_window_gate_the_accounting_template_or_the_builtin_posting()
+    public void The_image_keeps_no_core_banking_activity_no_copy_of_the_gate_and_names_no_setting_of_a_posting_window()
     {
         var image = typeof(CoreBankingResolver).Assembly;
         var names = image.GetTypes().Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
-        foreach (var copy in new[] { "PostingWindow", "PostingWindowState", "PostingWindowResult", "PostingGate", "AccountingTemplate", "PostingTemplate", "ChargeSlab", "PostAccounting" })
+        foreach (var copy in new[] { "PostingWindow", "PostingWindowState", "PostingWindowResult", "PostingGate", "AccountingTemplate", "PostingTemplate", "ChargeSlab", "PostAccounting",
+                     "ReserveFunds", "ReleaseReservation", "ReversePosting", "VerifyPosting", "CoreBankingActivity", "PlatformActivities" })
             Assert.DoesNotContain(copy, names);
-        // The image's core-banking activities do not include the posting: the platform module serves it.
-        var r = new CoreBankingResolver(new PortBindings());
-        Assert.DoesNotContain(PlatformActivities.CoreBanking(r), a => a.Name.StartsWith("p.post.accounting.", StringComparison.Ordinal));
-        Assert.Equal(["p.post.reverse.v1", "p.post.verify.v1", "p.reserve.funds.v1", "p.reserve.release.v1"], PlatformActivities.CoreBanking(r).Select(a => a.Name).Order(StringComparer.Ordinal));
+        // No activity of the image answers core banking: every INativeActivity it holds is a hold or a production adapter.
+        var activities = image.GetTypes().Where(t => typeof(INativeActivity).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface).ToList();
+        Assert.DoesNotContain(activities, t => t.Namespace == typeof(CoreBankingResolver).Namespace);
         // The platform module carries them, and contributes its gate to the distribution.
         var module = typeof(Module.PostingGate).Assembly;
         Assert.Contains(module.GetTypes(), t => t.Name == "PostingWindow");
         var services = new Recorder();
         var served = new Module.PlatformNativeModule().Activities(services).Select(a => a.Name).ToList();
-        Assert.Contains("p.post.accounting.v1", served);
-        Assert.Contains("p.decide.posting-window.v1", served);
+        foreach (var a in CoreBankingActivities.Append("p.decide.posting-window.v1")) Assert.Contains(a, served);
         Assert.IsType<NativeBindingGate>(services.Contributed[NativeContributions.BindingGate(CoreBankingResolver.Port)]);
-        // No source of the image evaluates a window: the gate's settings are named once, for the refusal below.
-        var src = Path.Combine(RuntimeRoot(), "src", "TransactHub.Activities.Platform");
-        foreach (var f in Directory.EnumerateFiles(src, "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains("/bin/") && !f.Contains("/obj/")))
-            Assert.DoesNotContain("PostingWindow.Evaluate", File.ReadAllText(f));
+        // No source of the image evaluates a window or names its settings (R-09-279), and none names a core-banking activity of the platform.
+        var src = Path.Combine(RuntimeRoot(), "src");
+        foreach (var project in new[] { "TransactHub.Activities.Platform", "TransactHub.Native", "TransactHub.Ports", "TransactHub.Store", "TransactHub.Operations" })
+            foreach (var f in Directory.EnumerateFiles(Path.Combine(src, project), "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains("/bin/") && !f.Contains("/obj/")))
+            {
+                var text = File.ReadAllText(f);
+                Assert.DoesNotContain("PostingWindow.Evaluate", text);
+                Assert.False(text.Contains("postingWindowStart", StringComparison.Ordinal) || text.Contains("postingWindowEnd", StringComparison.Ordinal), $"{f} names a setting of the posting window");
+                // The operations console's ledger view reads the postings' facts by their activity (Ledger.Templates): it answers no activity.
+                if (project != "TransactHub.Operations")
+                    foreach (var a in CoreBankingActivities)
+                        Assert.False(text.Contains($"\"{a}\"", StringComparison.Ordinal), $"{f} names {a}, which is the platform module's");
+            }
     }
 
     static string RuntimeRoot()
@@ -71,27 +91,29 @@ public sealed class NoCopyInTheImageTests
         """)!;
 
     [Fact]
-    public void The_images_core_banking_calls_ask_the_modules_gate_and_refuse_a_windowed_binding_when_none_is_contributed()
+    public void The_images_core_banking_asks_the_modules_gate_and_calls_nothing_when_no_gate_is_contributed()
     {
         var r = new CoreBankingResolver(Windowed());
         var open = DateTimeOffset.Parse("2026-11-24T06:00:00Z");     // 10:00 in the UAE
         var closed = DateTimeOffset.Parse("2026-11-24T20:00:00Z");   // 00:00 in the UAE
-        NativeAttempt At(DateTimeOffset now) => new("p.reserve.funds.v1", "1.0.0", Outward, new JsonObject(), now, "t");
+        NativeAttempt At(DateTimeOffset now) => new("p.reserve.funds.v1", "1.1.0", Outward, new JsonObject(), now, "t");
         // Gated by the platform module's contribution: open, the balance is asked; closed, a retryable error and core banking is not called.
-        Assert.Equal("reserved", new ReserveFunds(r, ModuleGate.Contributions).Run(At(open)).Outcome);
-        var e = Assert.Throws<NativeFailure>(() => new ReserveFunds(r, ModuleGate.Contributions).Run(At(closed)));
+        Assert.Equal("reserved", ModuleGate.Reserve(r).Run(At(open)).Outcome);
+        var e = Assert.Throws<NativeFailure>(() => ModuleGate.Reserve(r).Run(At(closed)));
         Assert.Equal(("TransientError", true), (e.Name, e.Retryable));
-        // With no gate contributed (a distribution without the platform module), a windowed binding is never called ungated.
-        var ungated = Assert.Throws<NativeFailure>(() => new ReserveFunds(r).Run(At(open)));
-        Assert.Equal(("PortNotBound", false), (ungated.Name, ungated.Retryable));
-        Assert.Contains("no module of the distribution gates it", ungated.Message);
-        Assert.Throws<NativeFailure>(() => new NativeCoreBanking(r).For(At(open)));
         // A module's posting through the contract is gated the same way.
-        Assert.Equal("TransientError", Assert.Throws<NativeFailure>(() => new NativeCoreBanking(r, ModuleGate.Contributions).For(At(closed))).Name);
-        // A binding with no window is called with or without a gate.
+        Assert.Equal("TransientError", Assert.Throws<NativeFailure>(() => ModuleGate.CoreBanking(r).For(At(closed))).Name);
+        // With no gate contributed (a table without the platform module), core banking is not called, whatever the binding names (R-09-279).
         var plain = new PortBindings();
         plain.Add("kind: port-bindings\ntenant: t\nbindings:\n  - port: p.port.core-banking.v1\n    adapter: simulator\n    validFrom: 2026-01-01T00:00:00Z\n    settings:\n      currency: AED\n");
-        Assert.Equal("reserved", new ReserveFunds(new CoreBankingResolver(plain)).Run(At(closed)).Outcome);
+        foreach (var bindings in new[] { Windowed(), plain })
+        {
+            var ungated = Assert.Throws<NativeFailure>(() => new Module.ReserveFunds(new NativeCoreBanking(new CoreBankingResolver(bindings))).Run(At(open)));
+            Assert.Equal(("PortNotBound", false), (ungated.Name, ungated.Retryable));
+            Assert.Contains("No module of the distribution gates p.port.core-banking.v1", ungated.Message);
+        }
+        // A binding with no window is called at any hour through the gate.
+        Assert.Equal("reserved", ModuleGate.Reserve(new CoreBankingResolver(plain)).Run(At(closed)).Outcome);
     }
 
     /// <summary>A module's view of the host, recording what it contributes.</summary>

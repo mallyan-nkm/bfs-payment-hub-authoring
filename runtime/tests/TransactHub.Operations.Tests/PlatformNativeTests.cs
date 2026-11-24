@@ -70,8 +70,9 @@ public sealed class PlatformNativeTests
                   currency: AED
             {(refuse ? "      rejectAccount: AE070331234567890123456\n" : "")}
             """, "parity");
-        // The platform module's posting on the image's core banking, as the native host gives it (native contract 1.1.0, R-09-125).
-        return new PostAccountingV2(new NativeCoreBanking(new CoreBankingResolver(bindings)));
+        // The platform module's posting on the image's core banking, as the native host gives it (native contract 1.1.0, R-09-125), gated by
+        // the posting window gate the module contributes to its distribution (R-09-264, R-09-279).
+        return new PostAccountingV2(new NativeCoreBanking(new CoreBankingResolver(bindings), k => k == NativeContributions.BindingGate(PostingGate.Port) ? (NativeBindingGate)PostingGate.Check : null));
     }
 
     /// <summary>A dotted path into the writes as the context would hold them: "facts.posting.entries.0.amount".</summary>

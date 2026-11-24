@@ -123,21 +123,8 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
             S("scheme") is { Length: > 0 } sc ? sc : string.Join('.', port.Split('.').Take(2)), a.Activity,
             // the scheme message the send says the file is (R-09-234, Issue I-310): its kind, and its folder where the binding names one
             S("message") is { Length: > 0 } msg ? msg : null);
-        try
-        {
-            var sent = PortFileTransfer.Send(bindings, a.Tenant!, port, operation, file, a.Now, transferOf, secrets).GetAwaiter().GetResult();
-            return new(PortFileTransfer.Name, new JsonObject { ["sent"] = true, ["via"] = sent.Adapter, ["folder"] = sent.Folder, ["fileName"] = sent.FileName, ["kind"] = sent.Kind, ["bytes"] = content.Length });
-        }
-        catch (PortBindingException e) { throw new NativePortRefused(port, e.Message); }
-        catch (TransactHub.Security.SecretUnavailable e) { throw new NativeFailure("SecretUnavailable", e.Message, false); }
-        catch (Exception e) when (e is CircuitOpenException || e.InnerException is CircuitOpenException)
-        {
-            throw new NativeFailure(CircuitBreakers.OpenCode, $"{port} {operation}: the file was not sent: {e.Message}", true);
-        }
-        catch (Exception e) when (e is FileTransferException or HttpRequestException or IOException or TaskCanceledException)
-        {
-            throw new NativeFailure("TransientError", $"{port} {operation}: the file was not taken: {e.Message}", true);
-        }
+        var sent = NativeBoundPorts.PutFile(bindings, a, port, operation, file, transferOf, secrets);
+        return new(PortFileTransfer.Name, new JsonObject { ["sent"] = true, ["via"] = sent.Via, ["folder"] = sent.Folder, ["fileName"] = sent.FileName, ["kind"] = sent.Kind, ["bytes"] = sent.Bytes });
     }
 }
 
@@ -148,15 +135,15 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
 /// keeps none; <paramref name="contributions"/> reads them, for the gate a module contributed on a binding (R-09-264).
 /// </summary>
 public sealed class NativeHostServices(string? distribution, Action<string, string, byte[]> keep, INativeFiles files, PortBindings bindings, CoreBankingResolver coreBanking,
-    RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null, Func<string, object?>? contributions = null) : INativeServices
+    RegisterReader? registers = null, TransactHub.Security.ISecretResolver? secrets = null, Func<string, object?>? contributions = null, Func<PortBinding, IFileTransfer>? transferOf = null) : INativeServices
 {
     public string? Distribution => distribution;
     public void KeepRendered(string sha256, string fileName, byte[] content) => keep(sha256, fileName, content);
     public void Contribute(string key, object value) => throw new InvalidOperationException("A module contributes through its distribution's table");
     public object? Contribution(string key) => contributions?.Invoke(key);
     public INativeCoreBanking CoreBanking { get; } = new NativeCoreBanking(coreBanking, contributions);
-    public INativePorts Ports { get; } = new NativePorts(bindings, files, registers, secrets);
-    public INativeBoundPorts BoundPorts { get; } = new NativeBoundPorts(bindings, secrets);
+    public INativePorts Ports { get; } = new NativePorts(bindings, files, registers, secrets, transferOf);
+    public INativeBoundPorts BoundPorts { get; } = new NativeBoundPorts(bindings, secrets, transferOf: transferOf);
     public INativeFiles Files => files;
 }
 

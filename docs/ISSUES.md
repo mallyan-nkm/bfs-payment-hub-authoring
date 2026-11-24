@@ -2696,6 +2696,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Keep `re-screen` without a second approver, and say so in the spec beside R-05-106 once the owner agrees; if a bank's compliance asks for one, the view's action takes `secondApprover: Supervisor` in a minor release, with no code change.
 
+**Owner's decision (24 November 2026):** no. Re-screening a payment needs no second approver: it only checks again and decides nothing.
+
 ## I-372. WPS names no message that starts a break's exception request or return
 
 **Issue.** A break may start an exception request or a return by the message the scheme's report names for it (R-09-250). WPS declares no report (the Central Bank gives no layout, Issue I-164) and no inward message that starts a request or a return for a break, with an intake map that reads the break's order document. So no WPS break is offered either resolution; an installation that names a report of its own (`FileApi:Reports:<message>:Scheme`) has no disposition to name them in.
@@ -2738,17 +2740,47 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** In the next platform release, say in the activity that the runtime's platform module implements it (`implementation.native: true` beside `binding: builtin`, with lint L40 extended to take it), and drop `MODULE_BUILTINS`. Until then a studio that builds promotable distributions sets `TH_NATIVE_MODULES`, as the laptop and every bank's studio already do.
 
+**Done (24 November 2026, R-09-282, factory 1.23.0).** `p.post.accounting.v1` 1.3.0 says `implementation.native: true` beside `binding: builtin`, and so do the four activities I-382 moved (1.1.0). Lint L40 takes it both ways, in `tools/validate.py` and the studio's `checks.ts`: `native: true` goes with a script or a builtin, and a platform builtin of a service the platform module answers and the image does not (`accounting`, `reservation`) says `native: true` (mutations M109, M110). WPS's own posting is Issue I-387. `MODULE_BUILTINS` and `isModuleBuiltin` are gone: the studio reads the modules a distribution needs from `isNative` alone, and refuses a promotable distribution without them (`studio/test/native-modules.test.ts`, "builds a promotable distribution without MODULE_BUILTINS"; `studio/test/checks.test.ts`, "a builtin a native module answers says so").
+
 ## I-382. The reservation and the reversal stay in the image, gated by the platform module
 
 **Issue.** The image still answers `p.reserve.funds.v1`, `p.reserve.release.v1`, `p.post.reverse.v1` and `p.post.verify.v1` (the builtin reservation service and the posting's reversal and check). They call core banking, so they ask the gate the platform module contributes (R-09-264); in a table with no platform module (a development host whose `TH_NATIVE_DEV_MODULES` names none) a core-banking binding with a posting window is refused for them. The image names the two settings of a window (`CoreBankingCalls.GateSettings`) only to refuse that case.
 
 **Recommendation.** Move these four into the platform module at its next release too, with a balance enquiry on `INativeCoreBankingBinding` (a contract minor, 2.1.0), so that the image keeps the core-banking adapters and no core-banking activity; then the image need not name the window's settings at all.
 
+**Done (24 November 2026, native contract 2.1.0, R-09-276 to R-09-279).** `INativeCoreBankingBinding.Balance(branch, account)` gives a `NativeBalance`. `ReserveFunds`, `ReleaseReservation`, `ReversePosting` and `VerifyPosting` are the platform module's (`TransactHub.Activities.Platform.Native/CoreBankingActivities.cs`), on the image's core banking; `PlatformActivities`, `CoreBankingActivity` and `CoreBankingCalls.GateSettings` are gone from the image (`Posting/CoreBankingCalls.cs` keeps the calls). The image names no setting of a window: it calls core banking only through the gate a module contributed, and with none every call is refused (`PortNotBound`), which is stricter than before (a binding with no window was called ungated; Issue I-386). The runtime takes 2.0 and 2.1 modules; a distribution's `native.contract` is the latest minor of its modules (`NativeAssemblies.Check`), and a 2.0 runtime refuses a 2.1 module (`native.ContractUnsupported`; `NativeContract.Supports(version, own)`). Tests: `NativeInstallTests.The_platform_modules_reservation_posting_and_reversal_run_from_the_build_the_store_keeps` (SQL Server and PostgreSQL), `ContractTwoOneTests` (a 2.0 module beside a 2.1 one; the reservation, posting and reversal served from the distribution's module, none by the image), `NoCopyInTheImageTests`, `CoreBankingPostingTests`. A distribution built before this change does not run the four on a 2.1 image (Issue I-384).
+
 ## I-383. Bound ports carry JSON over HTTP only
 
 **Issue.** `INativeBoundPorts.Send` sends a JSON body and reads any body back; it is what the labour ministry's register needs. A scheme port on another wire (a file over SFTP, a message queue, a SOAP service with a signed envelope) still needs an adapter in the image, reached through `INativePorts` (a kept file on a port bound to `file-transfer` already is).
 
 **Recommendation.** When a scheme's port needs another wire, add it to the bound ports as a contract minor (a body of bytes with its content type, then a file put through the binding's transfer), rather than an image case for the port.
+
+**Done (24 November 2026, native contract 2.1.0, R-09-280, R-09-281).** `NativeHttpRequest.Content` (`NativeContent`: a content type and bytes) is sent as it is, in place of a JSON body, with the credential, breaker and timeout the image keeps; a request with both bodies, or a content type that is not one, is refused before anything is sent. `INativeBoundPorts.Put(attempt, binding, NativeFilePut)` puts a file through the binding's transfer: a binding in force of adapter `file-transfer`, onto the bank's `p.port.file-transfer.v1` binding at the folder `<operation>.folder` names (the File API's outbox on a runtime), answering `NativeFileSent`. The image's kept-file case of `INativePorts` now sends through the same code (`NativeBoundPorts.PutFile`). Tests: `BoundPortsWireTests`. WPS's sends still use the kept-file case (Issue I-385).
+
+## I-384. A distribution built at contract 2.0 does not run the reservation on a 2.1 image
+
+**Issue.** Contract 2.1.0 is a minor, so a 2.0 module loads and runs (R-09-276). But the reservation, its release, the reversal and the check of a posting moved from the image into the platform module (R-09-278): a distribution built before factory 1.23.0 carries a platform module that does not serve them, and the 2.1 image no longer answers them. A payment pinned to such a distribution that reaches `p.reserve.funds.v1` is refused at that step (`native.NotNative`), not when the distribution is installed. No bank is live, so nothing is pinned to one yet.
+
+**Recommendation.** Rebuild each bank's distribution from a studio of factory 1.23.0 before the runtime images move to 2.1.0 (`docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 3.3). Before a bank is live, let the release API and the native host refuse at install and at load a distribution whose bill of materials carries an activity the image does not answer and no module of it serves, with its own code in the platform's error dictionary, so the gap is found before a payment.
+
+## I-385. WPS's sends still use the image's kept-file case
+
+**Issue.** Since contract 2.1.0 a module puts a file through a binding's transfer itself (`INativeBoundPorts.Put`, R-09-281). WPS's sends (`uae.wps.exchange.send-salary-file.v1` and `.v2` and the other sends of Issue I-268) still send a kept file through `INativePorts.Ask` on a port bound to `file-transfer`, a case the image keeps for any port. Both paths run the same code (`NativeBoundPorts.PutFile`), so nothing is wrong, but two ways remain in the contract.
+
+**Recommendation.** At WPS's next release move its sends to `BoundPorts.Put` (the module reads the kept file through `INativeFiles` and puts it), and at the contract's next major remove the kept-file case from `INativePorts`, so a port's wire is the module's alone.
+
+## I-386. A host with no platform module calls core banking for no one
+
+**Issue.** Since contract 2.1.0 the image names no setting of a posting window (R-09-279), so it can no longer tell a binding with a window from one without: with no gate contributed it refuses every core-banking call. Before, a binding with no window was called ungated. A development host whose `TH_NATIVE_DEV_MODULES` names the WPS module and not the platform's (or a distribution that carries WPS's module and not the platform's) cannot post WPS's return, `uae.wps.post.return.v1`. The studio's black-box tests and the laptop name both modules, and every promotable distribution that posts carries the platform module (R-09-282), so none is affected.
+
+**Recommendation.** Keep the refusal (nothing reaches core banking ungated). Say in the runtime's README and in `TH_NATIVE_DEV_MODULES`' description that a host which calls core banking names the platform module; and let the studio refuse a promotable distribution that carries a module whose activities name `p.port.core-banking.v1` without the platform module.
+
+## I-387. WPS's return posting is a builtin its module answers, and does not say so
+
+**Issue.** `uae.wps.post.return.v1` is a builtin of the accounting service (`binding: builtin`, `service: accounting`), and on the runtime only the WPS module answers it (`PostReturn`); the image never did. Lint L40 asks `native: true` of the platform's builtins only (R-09-282), because marking WPS's would change how a scheme copied from WPS behaves: the import's training bundle (`uae.wpsx`, `studio/test/import.test.ts`) copies it, has no module of its own, and its promotable distribution would then be refused. So a distribution that carries WPS needs the WPS module for its other native activities, but nothing says the return's posting is one of them, and a scheme copied from WPS carries a posting nothing on the runtime answers.
+
+**Recommendation.** At WPS's next release mark `uae.wps.post.return.v1` `native: true`, extend L40 to every scope, and have the import refuse (or rewrite as a script-behind) a builtin of the accounting or reservation service in an imported scheme that brings no module, with a finding that says why.
 
 ## I-360. A distribution's Elsa service runs one operation at a time
 

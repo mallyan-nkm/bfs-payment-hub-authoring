@@ -35,7 +35,7 @@ CASES = [
     ("M03", "ERROR L03", WF,
      "call: p.validate.limits.v1", "call: p.validate.nothing.v1", "a call names an activity that does not exist"),
     ("M04", "ERROR L04", "factory/p/activities/p.reserve.funds.v1.yaml",
-     "release: 1.0.0", "release: 2.0.0", "the release major disagrees with the name"),
+     "release: 1.1.0", "release: 2.1.0", "the release major disagrees with the name"),
     ("M05", "ERROR L05", SAL,
      "      pending: { end: pending }\n", "", "an outcome is left unhandled"),
     ("M06", "ERROR L06", WF,
@@ -304,6 +304,11 @@ CASES = [
     # L56 (R-05-100, Issue I-282): a parameter marked a ledger account is an activity's string or code
     ("M96", "ERROR L56", "factory/p/activities/p.post.accounting.v2.yaml",
      "  vatAccount:\n    type: string\n", "  vatAccount:\n    type: integer\n", "a ledger account that is a number"),
+    # L40 since native contract 2.1.0 (R-09-282, Issues I-381, I-382): a builtin of a service a module answers says native: true
+    ("M109", "ERROR L40", "factory/p/activities/p.post.accounting.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n", "the builtin posting does not say the platform module answers it"),
+    ("M110", "ERROR L40", "factory/p/activities/p.reserve.funds.v1.yaml",
+     "  service: reservation\n  native: true\n", "  service: reservation\n", "the reservation does not say the platform module answers it"),
 ]
 
 
