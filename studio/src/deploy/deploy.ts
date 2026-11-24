@@ -133,16 +133,22 @@ async function waitHealthy(url: string, ms = 15000) {
 function listening(child: ChildProcess, queue: string, ms = 15000): Promise<number> {
   return new Promise((resolve, reject) => {
     let out = '';
-    const done = (f: () => void) => { clearTimeout(timer); child.stdout?.off('data', onData); child.off('exit', onExit); f(); };
+    // What the worker wrote to stderr before it listened: a worker that exits says why there, so the error carries it.
+    let err = '';
+    const done = (f: () => void) => { clearTimeout(timer); child.stdout?.off('data', onData); child.stderr?.off('data', onErr); child.off('close', onExit); f(); };
     const onData = (d: Buffer) => {
       out += d;
       const m = /^worker \S+ on (\d+):/m.exec(out);
       if (m) done(() => resolve(Number(m[1])));
     };
-    const onExit = (code: number | null) => done(() => reject(new Error(`Worker ${queue} exited ${code} before it listened: ${out.slice(-500)}`)));
-    const timer = setTimeout(() => done(() => reject(new Error(`Worker ${queue} did not say which port it listens on`))), ms);
+    const onErr = (d: Buffer) => { err += d; };
+    const said = () => [out.trim() && `stdout: ${out.trim().slice(-500)}`, err.trim() && `stderr: ${err.trim().slice(-1500)}`].filter(Boolean).join('\n') || 'no output';
+    const onExit = (code: number | null) => done(() => reject(new Error(`Worker ${queue} exited ${code} before it listened: ${said()}`)));
+    const timer = setTimeout(() => done(() => reject(new Error(`Worker ${queue} did not say which port it listens on: ${said()}`))), ms);
     child.stdout?.on('data', onData);
-    child.on('exit', onExit);
+    child.stderr?.on('data', onErr);
+    // close, not exit: it comes once the worker's output is read to its end, so the error has all the worker said.
+    child.on('close', onExit);
   });
 }
 

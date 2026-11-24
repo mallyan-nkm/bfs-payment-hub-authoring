@@ -69,4 +69,17 @@ describe('every activity of a port the bench gives to the runtime has a native c
     delete without.find((d: any) => d.name === 'uae.wps.exchange.send-receipt-confirmation.v2').implementation.native;
     expect(runtimePortGaps(without, bench)).toEqual([{ port: 'uae.wps.port.wps.v1', activity: 'uae.wps.exchange.send-receipt-confirmation.v2', release: '2.0.0' }]);
   });
+
+  it('counts no builtin activity: the runtime answers a builtin on a port given to it (R-08-15), as the holds on the operations queue', async () => {
+    const { runtimePortGaps } = await import('../src/checks/runtime-ports.js');
+    const docs = freshEnv().store.current().map((e) => e.doc);
+    const holds = docs.filter((d: any) => d.kind === 'activity' && (d.ports ?? []).includes('p.port.operations-queue.v1'));
+    expect(holds.map((d: any) => d.name)).toEqual(expect.arrayContaining(['p.hold.approval.v1', 'p.hold.repair.v1']));
+    expect(holds.every((d: any) => d.implementation?.binding === 'builtin')).toBe(true);
+    expect(runtimePortGaps(docs, [{ port: 'p.port.operations-queue.v1', simulator: 'runtime' }])).toEqual([]);
+    // A script-behind on that port with no native code-behind is still a gap.
+    const scripted = clone(docs);
+    scripted.find((d: any) => d.name === 'p.hold.approval.v1').implementation = { binding: 'script', language: 'typescript', script: 'scripts/p.hold.approval.v1.ts' };
+    expect(runtimePortGaps(scripted, [{ port: 'p.port.operations-queue.v1', simulator: 'runtime' }]).map((g) => g.activity)).toContain('p.hold.approval.v1');
+  });
 });

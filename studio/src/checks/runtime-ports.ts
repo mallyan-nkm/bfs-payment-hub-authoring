@@ -1,7 +1,8 @@
 // A port the bench gives to the runtime (simulator `runtime`, R-08-15) is answered by the bank's port binding through the runtime's
 // native host, so every activity that calls it must have a native code-behind there (Issue I-268, R-09-213): one that has none would
 // find no simulator in the bench and fall back to the port's first simulator. A composite's subflow calls the activities that do the
-// work, so a composite is not counted.
+// work, so a composite is not counted. Nor is a builtin: on a port the bench gives to the runtime the runtime's native host answers it
+// (R-08-15), as it opens the holds of the operations queue (Issue I-98, I-395).
 
 export interface BenchEntry { port: string; simulator: string; scenario?: string }
 
@@ -17,7 +18,7 @@ export function runtimePortGaps(activities: Iterable<any>, bench: BenchEntry[] |
   }
   const out: { port: string; activity: string; release: string }[] = [];
   for (const a of latest.values()) {
-    if (a.implementation?.binding === 'subflow' || a.implementation?.native === true) continue;
+    if (['subflow', 'builtin', 'native'].includes(a.implementation?.binding) || a.implementation?.native === true) continue;
     for (const p of a.ports ?? []) if (ports.has(p)) out.push({ port: p, activity: a.name, release: a.release ?? '' });
   }
   return out.sort((x, y) => (x.activity < y.activity ? -1 : x.activity > y.activity ? 1 : 0));
