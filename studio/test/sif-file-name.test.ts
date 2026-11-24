@@ -46,6 +46,23 @@ describe('the salary file\'s name from the File API (Issue I-195, R-05-85)', () 
     expect(r.reasonCode).toBe('FF01');
   });
 
+  it('release 1.5.0 writes the CIF the channel declared at upload as the debtor\'s further organisation id, scheme CIF (R-02-22, Issue I-153)', async () => {
+    const party = new PartyService({ store: env.store, scripts: env.scripts, evaluationDate: '2026-11-23', tenant: 'example-bank', bench: [] } as any);
+    let calls = 0;
+    const run = async (release: string, payload: string) => {
+      const message = { id: `in-F-2-${calls + 1}`, type: 'uae.wps.sif', payload, fileName: NAME };
+      const ctx = { header: { conversation: 'conv-P-2', paymentId: 'P-2', scheme: 'uae.wps', direction: 'outward' }, messages: { inbound: { id: message.id, type: message.type } } };
+      return (await party.attempt({ instance: `intake-P-2-${release}-${++calls}`, activity: 'uae.wps.map.sif-in.v1', release, step: 'intake', call: 1, attempt: 1, now: Date.parse('2026-11-23T08:30:00Z'), ctx, messages: [message] } as any)) as any;
+    };
+    const r = await run('1.5.0', `# cif: CIF-0000123\n${SAMPLE}`);
+    expect(r.outcome).toBe('mapped');
+    expect(r.writes['batch.debtor.otherOrganisationIds']).toEqual([{ id: 'CIF-0000123', scheme: 'CIF' }]);
+    expect([r.writes['batch.debtor.organisationId.id'], r.writes['batch.debtor.organisationId.scheme']]).toEqual(['0000001234567', 'MOL']);
+    // No CIF declared: none written. And 1.4.0, pinned by a payment in flight, writes none.
+    expect(JSON.stringify((await run('1.5.0', SAMPLE)).writes)).not.toContain('otherOrganisationIds');
+    expect(JSON.stringify((await run('1.4.0', `# cif: CIF-0000123\n${SAMPLE}`)).writes)).not.toContain('otherOrganisationIds');
+  });
+
   it('release 1.3.0, pinned by a payment in flight, still reads only the file line', async () => {
     const r: any = await intake('1.3.0', NAME);
     expect(r.outcome).toBe('unmappable');

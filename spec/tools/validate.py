@@ -1602,7 +1602,8 @@ if kit_size and (ROOT / "design").is_dir():
 # external, one whose type changes something outside it (an exchange that sends, responds or reports; a reserve, hold, notify or
 # screen), and one that names a port whose operations only send. The key derives from business ids, the same on every attempt:
 # it reads the header and not the clock, a new id or the attempt.
-OUTSIDE_TYPES = {"reserve", "hold", "notify", "screen"}
+# A screen counts by its effect: a screening lookup may only read (Issue I-316).
+OUTSIDE_TYPES = {"reserve", "hold", "notify"}
 NOT_A_BUSINESS_ID = re.compile(r"\b(?:now|clock|ids|uuid|random|attempt)\b")
 for path, d in docs:
     if d.get("kind") != "activity":

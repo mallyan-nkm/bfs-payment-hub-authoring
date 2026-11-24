@@ -707,7 +707,7 @@ export class Checker {
     {
       let why: string | undefined;
       if (['write', 'external'].includes(d.effect)) why = `its effect is ${d.effect}`;
-      else if (['reserve', 'hold', 'notify', 'screen'].includes(d.type)) why = `it is a ${d.type}`;
+      else if (['reserve', 'hold', 'notify'].includes(d.type)) why = `it is a ${d.type}`;
       else if (d.type === 'exchange' && ['send', 'respond', 'report'].includes(d.mode)) why = `it is an exchange that ${d.mode}s`;
       else for (const pn of d.ports ?? []) {
         const ops: any[] = this.byName.get(pn)?.operations ?? [];

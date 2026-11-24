@@ -40,7 +40,8 @@ describe('a script-behind or builtin the native host implements too (R-08-16)', 
     // FX, charges and the posting that reads them too (R-12-25, Issue I-136).
     // The party register lookup too (R-12-27): the runtime reads its own register.
     // The salary file's render and send too (R-09-162, Issue I-192): the file leaves on the bank's binding of the WPS port.
-    expect(native).toEqual(['p.decide.posting-window.v1', 'p.enrich.charges.v1', 'p.enrich.fx-rate.v1', 'p.enrich.party-register.v1', 'p.post.accounting.v2', 'p.protect.decrypt-file.v1', 'p.protect.encrypt-file.v1', 'uae.wps.enrich.employer-status.v1', 'uae.wps.exchange.send-salary-file.v1', 'uae.wps.exchange.send-salary-file.v2', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2', 'uae.wps.map.sif-out.v1']);
+    // WPS's other sends on its port and the ACK's correlation map too (R-09-213, R-09-212, Issues I-268, I-267).
+    expect(native).toEqual(['p.decide.posting-window.v1', 'p.enrich.charges.v1', 'p.enrich.fx-rate.v1', 'p.enrich.party-register.v1', 'p.post.accounting.v2', 'p.protect.decrypt-file.v1', 'p.protect.encrypt-file.v1', 'uae.wps.enrich.employer-status.v1', 'uae.wps.exchange.send-disbursement-cancellation.v1', 'uae.wps.exchange.send-disbursement-file.v1', 'uae.wps.exchange.send-receipt-confirmation.v1', 'uae.wps.exchange.send-refund-request.v1', 'uae.wps.exchange.send-refund-response.v1', 'uae.wps.exchange.send-returns-file.v1', 'uae.wps.exchange.send-salary-file.v1', 'uae.wps.exchange.send-salary-file.v2', 'uae.wps.map.ack-correlation.v1', 'uae.wps.map.ack-in.v1', 'uae.wps.map.dif-out.v2', 'uae.wps.map.pif-in.v1', 'uae.wps.map.prc-out.v2', 'uae.wps.map.rfa-out.v1', 'uae.wps.map.rtc-in.v2', 'uae.wps.map.sif-out.v1']);
   });
 
   it('runs the script or the builtin unless the run gives the activity to the runtime', async () => {
