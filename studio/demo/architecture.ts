@@ -133,7 +133,7 @@ export function scenes(d: Director): Scene[] {
     },
     {
       say: 'One conformance kit, fifty-seven scenarios, proves they behave the same. On the twenty-third of November, DTFx and Elsa passed all fifty-seven. Each installation runs one engine. Temporal is the default, running on SQL Server through a plugin the team keeps.',
-      do: async () => { await light('tmp', 'e1'); await pill('kit', 'Conformance kit: 57 scenarios, one kit for every engine', { x: 380, y: 520, c: 'test' }); },
+      do: async () => { await light('tmp', 'e1'); await pill('kit', 'Conformance kit: 58 scenarios, one kit for every engine', { x: 380, y: 520, c: 'test' }); },
     },
     {
       say: 'One gap to know about. On DTFx and Elsa, the long-running host runs each payment in a run of its own, and that run does not yet survive a restart of its host. Flowable deploys per payment. Temporal has neither limit. This is Issue I 165.',

@@ -50,6 +50,7 @@ scenarios:
   - { id: CK-PARK-01, construct: park, title: "A step that failed parks; an operator's retry gives it one more attempt and the workflow carries on", expect: [a:stuck, "operator:retry", a:ok, b:ok, "end:done"], attempts: { a: 2 } }
   - { id: CK-PARK-02, construct: park, title: A parked step that no operator retries fails at the end of its park time, expect: [a:stuck, "end:failed"], virtualElapsed: PT4H }
   - { id: CK-PARK-03, construct: park, title: "A step whose attempts are spent is dead-lettered; an operator's requeue runs it again with its full retry policy (R-09-91)", expect: [a:stuck, "operator:requeue", a:ok, b:ok, "end:done"], attempts: { a: 3 } }
+  - { id: CK-PARK-04, construct: park, title: "A requeue is not a retry: a dead-lettered step whose next attempt fails too is run again with its full retry policy and succeeds, where one more attempt would not (R-09-91, R-09-208)", expect: [a:stuck, "operator:requeue", a:ok, b:ok, "end:done"], attempts: { a: 4 } }
   - { id: CK-HOOK-01, construct: hook, title: A halt hook that returns hold runs the hold block the hook point names, expect: [a:ok, "hook:hold", hold:approved, b:ok, "end:done"] }
   - { id: CK-HOOK-02, construct: hook, title: A transform hook that writes outside its contract fails and the hook point's failure mode applies, expect: [a:ok, "hook:failed", b:ok, "end:done"] }
   - { id: CK-HOOK-03, construct: hook, title: A notify hook that fails does not change the flow, expect: [a:ok, "hook:failed", "end:done"] }

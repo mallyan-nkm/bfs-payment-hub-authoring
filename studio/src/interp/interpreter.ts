@@ -38,6 +38,7 @@ export interface Supersession { artefact: string; replaces: string; with: string
 export interface StubSpec {
   outcomes?: string[]; // per call; the last repeats
   failTimes?: number; // transient failures before the first success
+  failAttempts?: number; // transient failures of the step's first attempts, counted across its calls: a retry, a requeue (I-167)
   hangTimes?: number; // attempts that never answer
   latency?: string; // time each attempt takes
   writes?: Record<string, any>;
@@ -990,7 +991,7 @@ export async function invoke(act: any, st: any, frame: Frame, scope: Scope, id: 
   const view = viewFor(frame, act);
   const io = makeIO(act, frame, scope, id, view, level, callNo);
   const stub = run.cfg.stubs?.[`step:${id}`] ?? run.cfg.stubs?.[act.name];
-  if (stub) return runStub(stub, act, frame, scope, callNo, attempt);
+  if (stub) return runStub(stub, act, frame, scope, callNo, attempt, id);
   // R-08-16: a run that gives this activity to the runtime calls the native host, not the script.
   const script = nativeHere(act) ? undefined : run.cfg.scripts.find(act.name, act.release);
   if (script) {
@@ -1118,7 +1119,10 @@ async function toReply(r: SimResponse, io: ActivityIO) {
   return { status: r.message.status, reasonCode: r.message.reasonCode, malformed: r.message.malformed, data: r.message.payload };
 }
 
-async function runStub(stub: StubSpec, act: any, frame: Frame, scope: Scope, callNo: number, attempt: number): Promise<ActivityResult> {
+/** The attempts each step of each instance made on a stub, across its calls (I-167): what failAttempts counts. */
+const stubAttempts = new WeakMap<object, Map<string, number>>();
+
+async function runStub(stub: StubSpec, act: any, frame: Frame, scope: Scope, callNo: number, attempt: number, stepId = ''): Promise<ActivityResult> {
   const run = frame.inst.run;
   const clock = run.clock;
   if (stub.emit && attempt === 1) {
@@ -1129,6 +1133,14 @@ async function runStub(stub: StubSpec, act: any, frame: Frame, scope: Scope, cal
   if (stub.error) throw new ActivityFailure(stub.error, `stub error ${stub.error}`, false);
   if (callNo === 1 && attempt <= (stub.hangTimes ?? 0)) return scope.never();
   if (callNo === 1 && attempt <= (stub.hangTimes ?? 0) + (stub.failTimes ?? 0)) throw new TransientFailure();
+  if (stub.failAttempts) {
+    let counts = stubAttempts.get(run);
+    if (!counts) stubAttempts.set(run, (counts = new Map()));
+    const k = `${frame.inst.id}|${stepId}`;
+    const n = (counts.get(k) ?? 0) + 1;
+    counts.set(k, n);
+    if (n <= stub.failAttempts) throw new TransientFailure();
+  }
   const outs = stub.outcomes ?? [primaryOutcome(act)];
   const outcome = outs[Math.min(callNo - 1, outs.length - 1)];
   const writes: Record<string, any> = {};

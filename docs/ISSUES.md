@@ -1775,6 +1775,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Let a stub fail a number of attempts across calls (`failAttempts`), and add a scenario whose requeued step fails once more and then succeeds, which a retry would not survive.
 
+**Done (24 November 2026, R-09-208).** A kit stub may fail a number of a step's attempts counted across its calls, `failAttempts` (`studio/src/interp/interpreter.ts`, counted per instance and step on the run, so on every engine through the party service). CK-PARK-04 fails the first three attempts of its step: both attempts of its policy fail and it parks; the requeue runs its full policy, whose first attempt fails once more and whose second succeeds (four attempts in all), which one more attempt (a retry) would not survive. The kit holds 58 scenarios; the counts derived from it are updated (`studio/test/execution.test.ts`, the READMEs, `docs/north-star`, `docs/TRAINING.md`, Annex C's table). CK-PARK-03 and 04 pass on the studio interpreter, DTFx and Elsa.
+
 ## I-168. A reconciliation break is resolved by status only
 
 **Issue.** The break queue resolves a break by an explanation or by adopting the scheme's status (R-09-92). An amount or currency that differs, or a payment the bank has no record of, has no resolution that changes the system: posting a correction, returning funds or starting an investigation are business processes the platform has no workflow for.

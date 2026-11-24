@@ -34,7 +34,7 @@ The machine-readable list is `conformance/kit.yaml`, and it is the one place tha
 | Composition | CK-SLOT-01 and 02, CK-HANDLER-01 | Slots and legs; handlers without durable state |
 | Composite steps | CK-BLOCK-01 to 03 | Blocks and returns; the reply time of the calling step; the business trace and the detail |
 | Signals | CK-SIGNAL-01 to 03 | Pause, resume, cancel, re-screen |
-| Operator waits | CK-HOLD-01 and 02, CK-PARK-01 to 03 | A hold as an engine await on the operator's decision, two days long, and its expiry (R-05-56); a failed step parked, retried by an operator, and failing at the end of its park (R-05-55); a step whose attempts are spent, requeued by an operator (R-09-91) |
+| Operator waits | CK-HOLD-01 and 02, CK-PARK-01 to 04 | A hold as an engine await on the operator's decision, two days long, and its expiry (R-05-56); a failed step parked, retried by an operator, and failing at the end of its park (R-05-55); a step whose attempts are spent, requeued by an operator (R-09-91), and a requeue told from a retry by a stub that fails the step's attempts across its calls (`failAttempts`, R-09-208) |
 | Hooks | CK-HOOK-01 to 04 | Halt, transform, notify, unbound |
 | Versions | CK-PIN-01 and 02, CK-LOOKUP-01, CK-SUP-01 | Exact pins, lookup by date, supersession |
 | Record | CK-CLAIM-01, CK-DELTA-01, CK-TRACE-01 | Claim-check, deltas, rule trace |
@@ -57,7 +57,7 @@ The machine-readable list is `conformance/kit.yaml`, and it is the one place tha
 | Hook | CK-HOOK-01 to 04 |
 | Finally, deadline | CK-FINALLY-01, CK-DEADLINE-01 |
 | Signals | CK-SIGNAL-01 to 03 |
-| Hold, park (operator waits) | CK-HOLD-01, CK-HOLD-02, CK-PARK-01, CK-PARK-02 |
+| Hold, park (operator waits) | CK-HOLD-01, CK-HOLD-02, CK-PARK-01 to CK-PARK-04 |
 | Policy | CK-RETRY-01 and 02, CK-TIMEOUT-01 and 02, CK-POLICY-01 |
 | Handler | CK-HANDLER-01 |
 | Exact amounts (not a construct; every target is held to it) | CK-MONEY-01 |

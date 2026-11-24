@@ -75,11 +75,11 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
 });
 
 describe('the conformance kit on the studio interpreter (C23, C09)', () => {
-  it('passes all 57 scenarios (CK-PARK-03, R-09-91)', async () => {
+  it('passes all 58 scenarios (CK-PARK-03, CK-PARK-04, R-09-91, R-09-208)', async () => {
     const env = freshEnv();
     const res = await runKit(env);
     const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
     expect(red).toEqual([]);
-    expect(res.length).toBe(57);
+    expect(res.length).toBe(58);
   });
 });
