@@ -2,7 +2,7 @@
 
 The complete guide, with every feature, setting up and deploying, this training path, and a full workflow built from scratch in the web app, is `docs/guide/studio-guide.html` (built from `docs/guide/template.html` by `docs/guide/build.ts`). This file is the training path as plain text. To watch before you start: the concept video, `docs/demo/1-concept.mp4` (the ideas, as a kitchen, then the same ideas in the studio), and the two console videos in `docs/demo/`: `5a-bank-configurator.mp4` (the studio as a bank's configurator and approver) and `5b-studio-designer-developer.mp4` (the studio as designer and developer, with an activity written as a script).
 
-**The videos are out of date.** They were recorded before the Aani scheme (`uae.aani`) was removed from the studio in plan phase P6 (Issue I-37 in `docs/ISSUES.md`), and they still show it. `uae.wps` is now the only scheme. Where a video and this file differ, follow this file. The videos need re-recording.
+The videos were recorded in November 2026 on the studio as it is now, on Fluent UI 2, with `uae.wps` the only scheme of the factory. `docs/demo/README.md` lists them all, with the runtime's: `2-installation.mp4` (the laptop stack), `3-north-star.mp4` (the architecture) and `4-end-to-end.mp4` (a salary file end to end). Where this file and the guide differ, follow the guide: its training path and its full workflow were checked step by step against the studio in the browser on 24 November 2026.
 
 This guide teaches the studio by doing. Work through the exercises in order: each builds on the one before. Every step says what to click or type and what you should see. Allow about four hours for the whole guide; Part A and the first five exercises take about an hour.
 
