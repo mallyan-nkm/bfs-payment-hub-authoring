@@ -354,7 +354,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       <h4>Expect (optional)</h4>
       <Textarea className="code-input" rows={4} value={expect} onChange={(e) => setExpect(e.target.value)} spellCheck={false} placeholder='{ "outcome": "settled", "attempts": { "send": 3 } }' aria-label="Expectation JSON" />
       <ErrorBox error={error} />
-      <Checkbox className="check" checked={withDrafts} onChange={(e) => setWithDrafts(e.target.checked)} label="Run with my drafts (a draft run: nothing is published)" />
+      <Checkbox className="check" checked={withDrafts} onChange={(e) => setWithDrafts(e.target.checked)} label="Run with my drafts" />
       <div className="row-actions">
         <Button appearance="primary" disabled={!target || busy} onClick={() => runBench()}>{busy ? 'Running…' : 'Run the bench'}</Button>
         <Button disabled={!target || busy} onClick={() => runBench(true)}>Debug step by step</Button>

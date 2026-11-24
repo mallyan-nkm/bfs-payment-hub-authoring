@@ -230,6 +230,7 @@ export const FIELD_HELP: Record<string, FieldHelp> = {
   'Start message': { means: 'For a whole payment: the scheme message the sample is. The scheme\'s dispatch table says which workflow it starts.' },
   'Expectation JSON': { means: 'What the run must show, as JSON. Optional.', example: '{ "outcome": "settled" }' },
   'Load from test': { means: 'Fill the bench from a saved test.' },
+  'Run with my drafts': { means: 'A draft run: the target and every call come from your drafts first, then from what is published. The run is marked as a draft run and publishes nothing.', mistake: 'Only published releases go into a distribution or an export: approve the change set to publish.' },
   'Test id': { means: 'A unique id for the test.', example: 'T-TRAIN-MONTH-13' },
   'Test title': { means: 'What the test shows, in plain words.' },
   'Expected outcome': { means: 'The outcome the run must end with.' },
