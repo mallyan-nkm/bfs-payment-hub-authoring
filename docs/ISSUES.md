@@ -1717,6 +1717,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a `file` block to a scheme manifest's message (`namePattern`, `extensions`, `maxBytes`, `uniqueName`, `encrypted`) in a schema change with its lint and mutation case, and have the File API read it from the active distribution. Until then the rules are the installation's settings (`FileApi:Messages:<message>:MaxBytes|Extensions|NamePattern|UniqueName`, default: any extension, 50 MB, names unique), and `uae.wps` sets none, as it is provisional.
 
+**Done (24 November 2026, R-09-209).** A scheme manifest's message may declare a `file` block (`namePattern`, `extensions`, `maxBytes`, `uniqueName`, `encrypted`; `spec/schemas/scheme.schema.json`, lint L55 with mutation case M94). The File API reads it from the scheme of the bank's active distribution (`MessageEntry.File`, `FileRules.For`): each rule the scheme declares stands, a rule it does not declare is the installation's setting as before, and `encrypted` refuses a file in the clear (`file.NotEncrypted`) or an encrypted one (`file.Encrypted`). `uae.wps` declares none, as it is provisional. `FileApiTests.A_messages_file_rules_are_the_schemes_in_the_active_distribution` declares rules on a test release of the scheme. Found on the way: `OpenPgp.IsEncrypted` threw on a text file that BouncyCastle reads as a packet of an unknown version; it now answers false.
+
 ## I-160. How a received file names its message and its payment
 
 **Issue.** (1) An inbox must say which message its files are, and the banks' bindings do not: DIB's `pickup.folder` holds the channel's salary files and ADIB's `centralBank.ackFolder` and `rtcFolder` the Central Bank's answers, but neither names a message, and neither bank names a labour ministry or core banking partner at all. (2) A message for a running payment is correlated by its keys, but the scheme does not say where a file carries them: the factory's simulators put a `correlation` beside the message, a real PSI or ACK file has only its content and its name.
@@ -1724,6 +1726,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** (1) Have each bank name, in a new binding with a later `validFrom`, each inbox's message (`<partner>.message`, or `<partner>.inbox.<name>.*`) and the partners it lacks (`ministry.*`, `coreBanking.*`); until then the File API polls only the inboxes that name a message, and an installation may name more in `FileApi:Inboxes`. (2) Give each `deliver` disposition a correlation map (an activity of type `map` that reads the key from the file), so the front door reads the key as the scheme says; until then the front door matches the keys the sender gives (`correlation` on `POST /files`) and, failing those, the stem of the file name, which pairs a PIF with its PSI only when both share it.
 
 **On the laptop (23 November 2026, R-09-105).** The laptop's binding of each bank's file transfer (`deploy/laptop/banks/<bank>/file-transfer.yaml`, carried in the bank's signed configuration release that the insert-only test has the studio build and puts in force with consent, R-09-110 to R-09-112) names each inbox's message: the pick-up folder's `uae.wps.sif`, the Central Bank's `uae.wps.ack` and `uae.wps.rtc`. Synthetic folders on the stack's SFTP server; the banks' own bindings still name none, and (2) stays open.
+
+**(2) Done (24 November 2026, R-09-212):** see Issue I-267. A deliver disposition names its correlation map; `uae.wps.ack`'s is `uae.wps.map.ack-correlation.v1`. The PSI and the RSU have none yet (Issue I-311).
 
 ## I-161. The banks' SFTP partners have no pinned host key, and the login's form
 
@@ -1752,6 +1756,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Reconciliation (R-09-92) runs when a scheme's report file arrives through the File API, but the scheme manifest names no report message, and the WPS sources describe no reconciliation report of the Central Bank. Which messages are reports is therefore the installation's setting (`FileApi:Reports:<message>:Scheme`), and the report is read in a layout of the runtime's own: CSV with a header naming `reference` (the end-to-end id) and any of `amount`, `currency` and `status`, or JSON lines. A payment the store has that the report does not name is not a break, since a report names no period. `p.reconcile.scheme-report.v1` reads `header, status, messages` and its contract says nothing of lines; the runtime's code-behind is the File API's intake, not a native activity an engine calls.
 
 **Recommendation.** Add a `reconcile` disposition to a scheme manifest's message (`{ activity, map, period }`) in a schema change with its lint and mutation case, with a `map` that reads the scheme's layout into report lines and a period that lets the match find what the report misses; then release `p.reconcile.scheme-report.v2` with a contract over the lines, and let the File API read both from the active distribution.
+
+**Done, the mechanism only (24 November 2026, R-09-210).** A scheme manifest's inward message may have a `reconcile` disposition (`{ activity, map, period }`; lint L55, mutation case M95). The File API reconciles such a file on arrival and never routes it: its map, run on the distribution's worker, reads the scheme's layout into report lines (`messages.report.lines`, `RuntimeFrontDoor.ReportLines`), and `SchemeReconciliation` records each payment of the bank and scheme accepted in the period before the report's arrival that no line names as a break (`not-in-report`), naming the disposition's activity and period in the run's fact. The installation's `FileApi:Reports:<message>:Scheme` still names a report the scheme does not declare, read in the runtime's own layout. The upload page offers a report message. WPS declares no report and `p.reconcile.scheme-report.v2` is not released: the Central Bank gives no report layout, so writing one would invent a scheme fact (Issue I-312). Tests: `FileApiTests.A_report_the_scheme_declares_is_read_by_its_map_and_reconciled_over_its_period`, `ReconciliationTests.A_payment_of_the_reports_period_the_report_does_not_name_is_a_break` (both databases).
 
 ## I-165. DTFx and Elsa runs do not survive a restart of their host, and Flowable deploys per payment
 
@@ -2152,6 +2158,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add to the scheme manifest's message an optional `repliesTo` (the message ids it answers), with a lint that each names a message of the same scheme sent `out`, in the next release of `uae.wps` (`uae.wps.ack` answers `uae.wps.sif-submission`), and have the gauge read the pairs from the schemes of the active distribution, the setting only adding to them.
 
+**Done (24 November 2026, R-09-211).** A scheme manifest's message may say which of its scheme's outward messages it answers (`repliesTo`; lint L55: an inward message, naming outward messages of its own scheme, mutation case M92). `uae.wps` 1.5.0 (1.4.0 is wave 6's) says `uae.wps.ack` answers `uae.wps.sif-submission`. The gauge `th.await.oldest` reads the pairs from the schemes of every active distribution (`RuntimeGauges.InForce`, kept per distribution id) and the installation's `Service:Gauges:AwaitedReplies` only adds to them. `GaugesTests.The_awaited_replies_are_the_active_distributions_schemes_and_the_setting_adds_to_them` (both databases). What a sent document is called in the read model is the bank binding's `<operation>.kind` (on the laptop `uae.wps.sif-out`), not the message id: Issue I-310.
+
 ## I-236. The studio interpreter reads a rule's values as of the business date on a word the schema does not have
 
 **Issue.** R-04-10 and `common#parameter.lookupDate` name the two dates `step-time` and `payment-date`. The studio's rule service (`studio/src/rules/service.ts`, `paramFacts` and `runRules`) reads a parameter as of the business date only when its `lookupDate` is `business`, which the schema refuses, so a parameter that declares `payment-date` is read as of the step on the studio interpreter, while the runtime's engine host reads it as of the payment's acceptance (R-09-135). No factory rule declares `payment-date` yet (only the operations views' `tatLimit` does), so no test shows the difference.
@@ -2267,6 +2275,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **What is built (R-09-162).** A file a payment sends records its stem as the payment's key (`frontdoor.correlation`, `fileStem`); an inbox of the bank's file-transfer binding may say how many characters the partner adds to that stem (`<partner>.inbox.<name>.stemDrop`), and a file taken from it is correlated by its stem without them. ADIB's laptop binding sets `centralBank.inbox.ack.stemDrop: "12"`. No platform code names the scheme.
 
 **Recommendation.** Have the scheme declare a correlation map for each `deliver` disposition, as I-160 (2) recommends, and replace `stemDrop` by it once the Central Bank confirms its naming; until then each bank's binding sets `stemDrop` for its Central Bank inbox.
+
+**Done (24 November 2026, R-09-212, with I-160 (2)).** A `deliver` disposition may name a correlation map (`correlationMap`, an inward map that reads the message; lint L55, mutation case M93). The front door runs it on a received file before it is kept (`RuntimeFrontDoor.CorrelationKeys`) and matches the payment by the keys it answers (`messages.correlation`), before the stem of the file's name; a map that reads no key refuses the file (`frontdoor.Uncorrelated`). `uae.wps` 1.5.0 names `uae.wps.map.ack-correlation.v1` (factory 1.20.0) for the ACK: the AHR record's processed file name, else the ACK's own name split from the back before the Central Bank's twelve-character file id, as the source's `WpsAckNakFile` reads it (a native code-behind on that reader, `MapAckCorrelation`, and a script-behind). It is provisional, as the scheme is. `stemDrop` is retired: the File API no longer reads it and ADIB's laptop binding no longer sets it; ADIB's laptop behaviour (ACK name = SIF stem and the twelve-character id) now comes from the map. Tests: `FileApiTests.An_answer_named_after_the_file_a_payment_sent_reaches_that_payment` (by the AHR record and by the name; a short name refused; an answer to no payment unmatched), `NativeInwardTests.The_acknowledgements_correlation_map_reads_the_salary_file_it_answers`, `PortFileTransferTests` and `LaptopDeploymentTests` (no `stemDrop`). The PSI and the RSU keep matching by the sender's keys and the stem: their layouts name no key the factory knows (Issue I-311).
 
 ## I-268. On the laptop the WPS port is the runtime's, so the scheme's other exchanges have no simulator there
 
@@ -2415,6 +2425,24 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** The DTFx and Elsa services keep the rule traces a worker reports (R-03-*) in the claim check's memory (`RuleTraces`), not in the store. A payment taken back after a restart (R-09-197) loses the traces of the steps it ran before the restart, so its observation's `ruleTraceSteps` is short. The step facts are kept.
 
 **Recommendation.** Record a step's rule trace as a fact on the payment's chain with its step fact, and read it from there for the observation and the operations console.
+
+## I-310. A sent file's kind is the bank binding's word, not the scheme's message
+
+**Issue.** The gauge of the oldest wait for a reply now reads its pairs from the schemes (R-09-211): `uae.wps.ack` answers `uae.wps.sif-submission`. The read model's documents carry the kind the File API kept a sent file under, which is the bank binding's `<operation>.kind` (on the laptop `submit-file.kind: uae.wps.sif-out`), so the pair the scheme declares matches no document of a sent salary file, and the laptop's `Service:Gauges:AwaitedReplies` names `uae.wps.sif`, the channel's inward file's kind. The spec does not say what a sent file's kind is.
+
+**Recommendation.** Have the File API keep a file a port sends under the id of the scheme message its exchange sends (the message whose `disposition.sentBy` names the exchange), and retire `<operation>.kind`; until then a bank's binding names that message id as the kind, and the installation's setting names the pair its kinds need.
+
+## I-311. The PSI and the RSU have no correlation map
+
+**Issue.** A deliver disposition may now name a correlation map (R-09-212), and the ACK's does. The PSI (paired with its PIF by the payment file id) and the RSU (by the refund request file id) have none: their layouts in the factory say no field that carries the key, so the front door still matches them by the sender's keys and, failing those, the stem of the file name.
+
+**Recommendation.** Once the rulebook (D10) gives the PSI's and the RSU's layouts, give each deliver disposition its correlation map, in a release of `uae.wps`; until then the stem stands.
+
+## I-312. No report layout for WPS, and the report activity reads no lines
+
+**Issue.** The scheme manifest can now declare a report (`reconcile`, R-09-210), but no source gives the Central Bank's reconciliation report, so `uae.wps` declares none, no report map exists, and `p.reconcile.scheme-report.v1` still reads `header, status, messages` with a contract that says nothing of lines; the runtime's reconciliation is the File API's intake (`SchemeReconciliation`), named by the disposition's activity.
+
+**Recommendation.** When the Central Bank gives its layout, write its map in a release of `uae.wps` and declare the report; release `p.reconcile.scheme-report.v2` then, with a contract over `messages.report.lines`, so that the studio can test a report as the runtime reads it.
 
 ## Not done, and why
 
