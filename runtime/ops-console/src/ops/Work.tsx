@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Client, WorkQueue } from './api';
 import { show } from './format';
 import { bulkSummary, FILTERS, holder, keyOf, selectionItems } from './work';
+import { Button, Checkbox, Input, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
+import { Alert } from '../ui';
 
 // The work queue (R-05-71): the payments that wait for a person and the actions that wait for a second approver, with who holds
 // each. A selection is taken, escalated, released or given to someone in one go; the API applies each item's own rules and records
@@ -49,40 +51,40 @@ export function Work({ api, go }: { api: Client; go(h: string): void }) {
   return (
     <section>
       <h1>Work queue</h1>
-      <div className="tabs" role="tablist" aria-label="Queue">
+      <TabList className="tabs" aria-label="Queue" selectedValue={filter} onTabSelect={(_, d) => { setFilter(d.value as typeof filter); setSelected(new Set()); }}>
         {FILTERS.map((f) => (
-          <button key={f.id} role="tab" aria-selected={filter === f.id} className={filter === f.id ? 'active' : ''} onClick={() => { setFilter(f.id); setSelected(new Set()); }}>
+          <Tab key={f.id} value={f.id}>
             {f.label} <span className="muted">({data?.counts?.[f.id] ?? '…'})</span>
-          </button>
+          </Tab>
         ))}
-      </div>
+      </TabList>
       <form className="filters" aria-label="Bulk change" onSubmit={(e) => e.preventDefault()}>
-        <label><span>Reason</span><input name="work-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
-        <label><span>Give to (supervisor)</span><input name="work-assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="the person's id" /></label>
-        <button type="button" disabled={!selected.size} onClick={() => bulk('assign')}>{assignee ? 'Give to' : 'Take'} ({selected.size})</button>
-        <button type="button" disabled={!selected.size} onClick={() => bulk('escalate')}>Escalate</button>
-        <button type="button" disabled={!selected.size} onClick={() => bulk('release')}>Release</button>
+        <label><span>Reason</span><Input name="work-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
+        <label><span>Give to (supervisor)</span><Input name="work-assignee" value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="the person's id" /></label>
+        <Button type="button" disabled={!selected.size} onClick={() => bulk('assign')}>{assignee ? 'Give to' : 'Take'} ({selected.size})</Button>
+        <Button type="button" disabled={!selected.size} onClick={() => bulk('escalate')}>Escalate</Button>
+        <Button type="button" disabled={!selected.size} onClick={() => bulk('release')}>Release</Button>
       </form>
       {note && <p className="muted" data-testid="work-note">{note}</p>}
-      {error && <p className="error">{error}</p>}
+      {error && <Alert tone="fail" className="error">{error}</Alert>}
       <p className="muted" data-testid="work-total">{data ? `${data.total} item(s)` : 'Loading…'}</p>
-      <table className="grid" aria-label="Work queue">
-        <thead><tr><th /><th>Waiting</th><th>Payment</th><th>Tenant</th><th>Scheme</th><th>Why</th><th className="num">Amount</th><th>With</th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid" aria-label="Work queue">
+        <TableHeader><TableRow><TableHeaderCell /><TableHeaderCell>Waiting</TableHeaderCell><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Tenant</TableHeaderCell><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Why</TableHeaderCell><TableHeaderCell className="num">Amount</TableHeaderCell><TableHeaderCell>With</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {data?.rows.map((r) => (
-            <tr key={keyOf(r)} data-testid="work-row">
-              <td><input type="checkbox" aria-label={`Select ${r.payment}`} checked={selected.has(keyOf(r))} onChange={() => toggle(keyOf(r))} /></td>
-              <td>{show(r.waitingSince, 'datetime')}</td>
-              <td className="mono"><a href={`#/payments/${encodeURIComponent(r.payment)}`} onClick={(e) => { e.preventDefault(); go(`#/payments/${encodeURIComponent(r.payment)}`); }}>{r.payment}</a></td>
-              <td>{r.tenant}</td>
-              <td>{r.scheme ?? '—'}</td>
-              <td>{r.what}</td>
-              <td className="num">{r.amount != null ? `${show(r.amount, 'amount')} ${r.currency ?? ''}` : '—'}</td>
-              <td data-testid="work-holder">{holder(r)}</td>
-            </tr>
+            <TableRow key={keyOf(r)} data-testid="work-row">
+              <TableCell><Checkbox aria-label={`Select ${r.payment}`} checked={selected.has(keyOf(r))} onChange={() => toggle(keyOf(r))} /></TableCell>
+              <TableCell>{show(r.waitingSince, 'datetime')}</TableCell>
+              <TableCell className="mono"><a href={`#/payments/${encodeURIComponent(r.payment)}`} onClick={(e) => { e.preventDefault(); go(`#/payments/${encodeURIComponent(r.payment)}`); }}>{r.payment}</a></TableCell>
+              <TableCell>{r.tenant}</TableCell>
+              <TableCell>{r.scheme ?? '—'}</TableCell>
+              <TableCell>{r.what}</TableCell>
+              <TableCell className="num">{r.amount != null ? `${show(r.amount, 'amount')} ${r.currency ?? ''}` : '—'}</TableCell>
+              <TableCell data-testid="work-holder">{holder(r)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </section>
   );
 }

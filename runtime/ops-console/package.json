@@ -15,6 +15,8 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@fluentui/react-components": "9.75.1",
+    "@fluentui/react-icons": "2.0.345",
     "@types/node": "^22.20.5",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",

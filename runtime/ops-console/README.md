@@ -4,7 +4,7 @@ Where operators see and act on running payments (R-05-48 to R-05-50, R-06-24). I
 
 | Part | Where |
 | --- | --- |
-| The web app (React 18, Vite, plain CSS, as the studio's) | `runtime/ops-console/` |
+| The web app (React 18, Vite and Fluent UI 2 with the studio's brand theme, docs/adr/0003-ui-fluent.md) | `runtime/ops-console/` |
 | The shared shell: sign-in and sections, for the test bench too | `src/shell/` |
 | The console's API, which serves the built app at `/` | `runtime/src/TransactHub.Operations.Api` |
 | The read model, its projection, the views, the actions, the holds | `runtime/src/TransactHub.Operations` |

@@ -93,6 +93,7 @@ var consoleDir = app.Configuration["Operations:Console"] ?? Find("runtime/ops-co
 var consoleFiles = consoleDir is not null && Directory.Exists(consoleDir) ? new PhysicalFileProvider(Path.GetFullPath(consoleDir)) : null;
 if (consoleFiles is not null)
 {
+    app.UseConsolePage(consoleFiles);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = consoleFiles });
     app.UseStaticFiles(new StaticFileOptions { FileProvider = consoleFiles });
 }
@@ -408,8 +409,7 @@ if (consoleFiles is { } files)
     app.MapFallback(async ctx =>
     {
         if (ctx.Request.Path.StartsWithSegments("/ops/api")) { ctx.Response.StatusCode = 404; return; }
-        ctx.Response.ContentType = "text/html";
-        await ctx.Response.SendFileAsync(files.GetFileInfo("index.html"));
+        await SecurityHeaders.WriteConsolePageAsync(ctx, files.GetFileInfo("index.html"));
     }).AllowAnonymous();
 }
 

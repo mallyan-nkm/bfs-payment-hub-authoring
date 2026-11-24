@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BenchClient } from './api';
+import { Button, Card, Checkbox, Input, Select, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
+import { Badge } from '../ui';
 
 // The Test bench section of the runtime's web app (runtime/testbench/README.md): pick a profile, send data, watch each
 // engine run, see each beside the studio interpreter with the diff; build and validate test data; run suites; history.
@@ -22,11 +24,11 @@ export function TestBenchSection({ api, path, go }: { api: BenchClient; path: st
   return (
     <section>
       <h1>Test bench</h1>
-      <nav className="tabs" aria-label="Test bench">
+      <TabList className="tabs" aria-label="Test bench" selectedValue={page} onTabSelect={(_, d) => { const id = String(d.value); location.hash = `#/testbench${id ? '/' + id : ''}`; }}>
         {PAGES.map(([id, title]) => (
-          <a key={id} className={`tab ${page === id ? 'active' : ''}`} href={`#/testbench${id ? '/' + id : ''}`} data-testid={`nav-${id || 'run'}`}>{title}</a>
+          <Tab key={id} value={id} data-testid={`nav-${id || 'run'}`}>{title}</Tab>
         ))}
-      </nav>
+      </TabList>
       {page === '' && <RunView api={api} data={data} setData={setData} shown={path[0] === 'runs' ? path[1] : undefined} go={go} />}
       {page === 'data' && <DataView api={api} onUse={(d) => { setData(d); go('#/testbench'); }} />}
       {page === 'suite' && <SuiteView api={api} />}
@@ -89,37 +91,37 @@ function RunView({ api, data, setData, shown, go }: { api: BenchClient; data?: D
 
   return (
     <div>
-      <div className="card">
+      <Card className="card">
         <h2>1. Profile</h2>
-        <select data-testid="profile" value={profile} onChange={(e) => setProfile(e.target.value)}>
+        <Select data-testid="profile" value={profile} onChange={(e) => setProfile(e.target.value)}>
           {profiles?.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
-        </select>
+        </Select>
         <p className="muted">{p?.title}</p>
         <div className="filters">
-          <fieldset><legend>Engines</legend>{ENGINES.map((e) => <label key={e}><input type="checkbox" data-testid={`engine-${e}`} checked={eff.engines.includes(e)} onChange={() => setEngines(toggle(eff.engines, e))} /> {e}{defaults.includes(e) && <span className="badge" data-testid="default-engine"> default{e === 'temporal' && health?.temporal && health.temporal !== 'test-server' ? ` (${health.temporal})` : ''}</span>}</label>)}<label><input type="checkbox" checked disabled /> interpreter (reference)</label></fieldset>
-          <fieldset><legend>Database</legend>{DATABASES.map((d) => <label key={d}><input type="checkbox" checked={eff.dbs.includes(d)} onChange={() => setDbs(toggle(eff.dbs, d))} /> {d}</label>)}</fieldset>
-          <fieldset><legend>Tenant</legend><select value={eff.tenant} onChange={(e) => setTenant(e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant}>{t.tenant}</option>)}</select></fieldset>
-          <fieldset><legend>Simulators</legend><select data-testid="bench" value={eff.bench} onChange={(e) => setBench(e.target.value)}>{benches && Object.keys(benches).map((b) => <option key={b}>{b}</option>)}</select>
+          <fieldset><legend>Engines</legend>{ENGINES.map((e) => <Checkbox key={e} data-testid={`engine-${e}`} checked={eff.engines.includes(e)} onChange={() => setEngines(toggle(eff.engines, e))} label={<>{e}{defaults.includes(e) && <Badge className="badge" data-testid="default-engine"> default{e === 'temporal' && health?.temporal && health.temporal !== 'test-server' ? ` (${health.temporal})` : ''}</Badge>}</>} />)}<Checkbox checked disabled label={<>interpreter (reference)</>} /></fieldset>
+          <fieldset><legend>Database</legend>{DATABASES.map((d) => <Checkbox key={d} checked={eff.dbs.includes(d)} onChange={() => setDbs(toggle(eff.dbs, d))} label={<>{d}</>} />)}</fieldset>
+          <fieldset><legend>Tenant</legend><Select value={eff.tenant} onChange={(e) => setTenant(e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant}>{t.tenant}</option>)}</Select></fieldset>
+          <fieldset><legend>Simulators</legend><Select data-testid="bench" value={eff.bench} onChange={(e) => setBench(e.target.value)}>{benches && Object.keys(benches).map((b) => <option key={b}>{b}</option>)}</Select>
             <ul className="muted">{benches?.[eff.bench]?.ports.map((x: string) => <li key={x} className="mono">{x}</li>)}</ul></fieldset>
         </div>
-      </div>
-      <div className="card">
+      </Card>
+      <Card className="card">
         <h2>2. Data</h2>
         <div className="filters">
           <label>Library sample{' '}
-            <select data-testid="sample" value={data?.mode === 'sample' ? data.sample : ''} onChange={(e) => e.target.value && setData({ mode: 'sample', sample: e.target.value })}>
+            <Select data-testid="sample" value={data?.mode === 'sample' ? data.sample : ''} onChange={(e) => e.target.value && setData({ mode: 'sample', sample: e.target.value })}>
               <option value="">choose…</option>
               {library?.map((s) => <option key={s.id} value={s.id}>{s.id}: {s.title} (expect {s.expect})</option>)}
-            </select>
+            </Select>
           </label>
           <label>Upload a file <input type="file" data-testid="upload" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setData({ mode: 'text', text: await f.text(), name: f.name }); }} /></label>
         </div>
-        <textarea data-testid="paste" className="mono" rows={5} style={{ width: '100%' }} placeholder="…or paste a scheme file, an ISO 20022 message or a canonical JSON payment"
+        <Textarea data-testid="paste" className="mono" rows={5} style={{ width: '100%' }} placeholder="…or paste a scheme file, an ISO 20022 message or a canonical JSON payment"
           value={data?.mode === 'text' ? data.text : ''} onChange={(e) => setData({ mode: 'text', text: e.target.value, name: 'pasted' })} />
         {data && <p className="muted">Data: {data.mode === 'sample' ? `the sample ${data.sample}` : `${data.name}, ${data.text.length} characters`}</p>}
-      </div>
+      </Card>
       <p>
-        <button className="primary" data-testid="run" onClick={run} disabled={!data || !profile || (job && job.status !== 'done')}>Run</button>
+        <Button appearance="primary" data-testid="run" onClick={run} disabled={!data || !profile || (job && job.status !== 'done')}>Run</Button>
         {err && <span className="error" data-testid="run-error"> {err}</span>}
       </p>
       {job && <Result api={api} job={job} />}
@@ -153,26 +155,26 @@ function Result({ api, job }: { api: BenchClient; job: any }) {
   const columns = useMemo(() => (r ? [...(r.reference ? [{ label: 'interpreter (reference)', run: r.reference }] : []), ...(r.runs ?? []).map((x: any) => ({ label: `${x.engine} · ${x.database}`, run: x }))] : []), [r]);
   const passed = r?.passed;
   return (
-    <div className="card" data-testid="result">
-      <h2>Run <span className="mono">{job.id}</span> <span data-testid="status" className={`badge ${job.status === 'done' ? (passed ? 'pass' : 'fail') : 'warn'}`}>{job.status === 'done' ? (passed ? 'passed' : 'failed') : job.status}</span></h2>
+    <Card className="card" data-testid="result">
+      <h2>Run <span className="mono">{job.id}</span> <Badge data-testid="status" className={`badge ${job.status === 'done' ? (passed ? 'pass' : 'fail') : 'warn'}`}>{job.status === 'done' ? (passed ? 'passed' : 'failed') : job.status}</Badge></h2>
       {job.status !== 'done' && <ul className="summary" data-testid="progress">{Object.entries(states).map(([k, v]) => <li key={k}><b>{k}</b> {v}</li>)}</ul>}
       {r && (
         <>
           <div className="table-wrap">
-            <table className="grid" data-testid="summary">
-              <thead><tr><th>Run</th><th>Outcome</th><th>Same as the interpreter</th><th>Time</th><th>Store</th></tr></thead>
-              <tbody>
+            <Table size="small" className="grid" data-testid="summary">
+              <TableHeader><TableRow><TableHeaderCell>Run</TableHeaderCell><TableHeaderCell>Outcome</TableHeaderCell><TableHeaderCell>Same as the interpreter</TableHeaderCell><TableHeaderCell>Time</TableHeaderCell><TableHeaderCell>Store</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>
                 {columns.map((c) => (
-                  <tr key={c.label} data-testid={`row-${c.label.split(' ')[0]}`}>
-                    <td>{c.label}</td>
-                    <td>{c.run.error ? <span className="error">error: {String(c.run.error).split('\n')[0]}</span> : c.run.outcome}{c.run.retried && <span className="muted" title={c.run.retried}> (run twice, I-93)</span>}</td>
-                    <td>{c.run.comparison ? (c.run.comparison.same ? <span className="badge pass">yes</span> : <span className="badge fail">no</span>) : ''}</td>
-                    <td>{ms(c.run.timings?.totalMs ?? c.run.elapsedMs)}</td>
-                    <td>{store(c.run)}</td>
-                  </tr>
+                  <TableRow key={c.label} data-testid={`row-${c.label.split(' ')[0]}`}>
+                    <TableCell>{c.label}</TableCell>
+                    <TableCell>{c.run.error ? <span className="error">error: {String(c.run.error).split('\n')[0]}</span> : c.run.outcome}{c.run.retried && <span className="muted" title={c.run.retried}> (run twice, I-93)</span>}</TableCell>
+                    <TableCell>{c.run.comparison ? (c.run.comparison.same ? <Badge className="badge pass">yes</Badge> : <Badge className="badge fail">no</Badge>) : ''}</TableCell>
+                    <TableCell>{ms(c.run.timings?.totalMs ?? c.run.elapsedMs)}</TableCell>
+                    <TableCell>{store(c.run)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           <div className="cards">
             {columns.map((c) => {
@@ -186,14 +188,14 @@ function Result({ api, job }: { api: BenchClient; job: any }) {
           </div>
           {(r.failures ?? []).length > 0 && <ul className="error" data-testid="failures">{r.failures.map((f: string) => <li key={f}>{f}</li>)}</ul>}
           <div className="action-buttons">
-            <button onClick={() => api.openReport(job.id)}>Open the report</button>
-            <input placeholder="case id, e.g. TB-BANK-001" value={caseId} onChange={(e) => setCaseId(e.target.value)} data-testid="case-id" />
-            <button data-testid="save-case" disabled={!caseId} onClick={async () => { try { setSaved((await api.call(`/runs/${job.id}/case`, { id: caseId })).saved); } catch (e: any) { setSaved(e.message); } }}>Save as regression case</button>
+            <Button onClick={() => api.openReport(job.id)}>Open the report</Button>
+            <Input placeholder="case id, e.g. TB-BANK-001" value={caseId} onChange={(e) => setCaseId(e.target.value)} data-testid="case-id" />
+            <Button data-testid="save-case" disabled={!caseId} onClick={async () => { try { setSaved((await api.call(`/runs/${job.id}/case`, { id: caseId })).saved); } catch (e: any) { setSaved(e.message); } }}>Save as regression case</Button>
             {saved && <span data-testid="saved">{saved}</span>}
           </div>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -221,53 +223,53 @@ function DataView({ api, onUse }: { api: BenchClient; onUse(d: DataChoice): void
   };
   return (
     <div>
-      <div className="card">
+      <Card className="card">
         <h2>Library</h2>
         <div className="table-wrap">
-          <table className="grid" data-testid="library">
-            <thead><tr><th>Sample</th><th>Scheme</th><th>Direction</th><th>Scenario</th><th>Expect</th><th>Bench</th><th>Profiles</th><th></th></tr></thead>
-            <tbody>{library?.map((s) => (
-              <tr key={s.id}><td title={s.title} className="mono">{s.id}</td><td>{s.scheme}</td><td>{s.direction}</td><td>{s.scenario}</td><td>{s.expect}</td><td>{s.bench}</td><td>{(s.profiles ?? []).join(', ')}</td>
-                <td><button onClick={() => onUse({ mode: 'sample', sample: s.id })}>Use</button></td></tr>
-            ))}</tbody>
-          </table>
+          <Table size="small" className="grid" data-testid="library">
+            <TableHeader><TableRow><TableHeaderCell>Sample</TableHeaderCell><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Direction</TableHeaderCell><TableHeaderCell>Scenario</TableHeaderCell><TableHeaderCell>Expect</TableHeaderCell><TableHeaderCell>Bench</TableHeaderCell><TableHeaderCell>Profiles</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{library?.map((s) => (
+              <TableRow key={s.id}><TableCell title={s.title} className="mono">{s.id}</TableCell><TableCell>{s.scheme}</TableCell><TableCell>{s.direction}</TableCell><TableCell>{s.scenario}</TableCell><TableCell>{s.expect}</TableCell><TableCell>{s.bench}</TableCell><TableCell>{(s.profiles ?? []).join(', ')}</TableCell>
+                <TableCell><Button onClick={() => onUse({ mode: 'sample', sample: s.id })}>Use</Button></TableCell></TableRow>
+            ))}</TableBody>
+          </Table>
         </div>
-      </div>
-      <div className="card">
+      </Card>
+      <Card className="card">
         <h2>Builder</h2>
         <div className="filters">
-          <label>Template <select data-testid="template" value={recipe.template} onChange={(e) => set('template', e.target.value)}>{templates?.templates.map((t: string) => <option key={t}>{t}</option>)}</select></label>
-          <label>Bank <select value={recipe.tenant} onChange={(e) => set('tenant', e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant} value={t.tenant}>{t.tenant} {t.routingCode ? `(${t.routingCode})` : '(no routing code)'}</option>)}</select></label>
-          <label>Lines <input type="number" min={1} max={100000} value={recipe.lines} onChange={(e) => set('lines', e.target.value)} /></label>
-          <label>Amounts from <input type="number" value={recipe.min ?? ''} placeholder="500" onChange={(e) => set('min', e.target.value)} /> to <input type="number" value={recipe.max ?? ''} placeholder="5000" onChange={(e) => set('max', e.target.value)} /></label>
-          <label>Value date <input value={recipe.valueDate} onChange={(e) => set('valueDate', e.target.value)} /></label>
-          <label>Currency <input value={recipe.currency} size={4} onChange={(e) => set('currency', e.target.value)} /></label>
-          <label>Employer id <input value={recipe.employerId ?? ''} placeholder="generated" onChange={(e) => set('employerId', e.target.value || undefined)} /></label>
-          <label>Seed <input type="number" value={recipe.seed} onChange={(e) => set('seed', e.target.value)} /></label>
+          <label>Template <Select data-testid="template" value={recipe.template} onChange={(e) => set('template', e.target.value)}>{templates?.templates.map((t: string) => <option key={t}>{t}</option>)}</Select></label>
+          <label>Bank <Select value={recipe.tenant} onChange={(e) => set('tenant', e.target.value)}>{templates?.tenants.map((t: any) => <option key={t.tenant} value={t.tenant}>{t.tenant} {t.routingCode ? `(${t.routingCode})` : '(no routing code)'}</option>)}</Select></label>
+          <label>Lines <Input type="number" min={1} max={100000} value={recipe.lines} onChange={(e) => set('lines', e.target.value)} /></label>
+          <label>Amounts from <Input type="number" value={recipe.min ?? ''} placeholder="500" onChange={(e) => set('min', e.target.value)} /> to <Input type="number" value={recipe.max ?? ''} placeholder="5000" onChange={(e) => set('max', e.target.value)} /></label>
+          <label>Value date <Input value={recipe.valueDate} onChange={(e) => set('valueDate', e.target.value)} /></label>
+          <label>Currency <Input style={{ width: '7ch' }} value={recipe.currency} onChange={(e) => set('currency', e.target.value)} /></label>
+          <label>Employer id <Input value={recipe.employerId ?? ''} placeholder="generated" onChange={(e) => set('employerId', e.target.value || undefined)} /></label>
+          <label>Seed <Input type="number" value={recipe.seed} onChange={(e) => set('seed', e.target.value)} /></label>
         </div>
         <fieldset><legend>Inject an error on purpose</legend>
           {templates && Object.entries<string>(templates.injections).map(([k, v]) => (
-            <label key={k} title={v}><input type="checkbox" checked={recipe.inject.includes(k)} onChange={() => set('inject', recipe.inject.includes(k) ? recipe.inject.filter((x: string) => x !== k) : [...recipe.inject, k])} /> {k}</label>
+            <Checkbox key={k} title={v} checked={recipe.inject.includes(k)} onChange={() => set('inject', recipe.inject.includes(k) ? recipe.inject.filter((x: string) => x !== k) : [...recipe.inject, k])} label={<>{k}</>} />
           ))}
         </fieldset>
         {/* Build waits for a template: before the bench's templates arrive the recipe names none, and the bench refuses it. */}
-        <p><button className="primary" data-testid="build" disabled={!recipe.template} onClick={build}>Build</button>{built?.suggestedBench && <span className="muted"> use with the bench {built.suggestedBench}</span>}</p>
-        <textarea data-testid="built" className="mono" rows={10} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} placeholder="The built data appears here; edit it as you like." />
+        <p><Button appearance="primary" data-testid="build" disabled={!recipe.template} onClick={build}>Build</Button>{built?.suggestedBench && <span className="muted"> use with the bench {built.suggestedBench}</span>}</p>
+        <Textarea data-testid="built" className="mono" rows={10} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} placeholder="The built data appears here; edit it as you like." />
         <div className="action-buttons">
-          <button data-testid="validate" disabled={!text} onClick={() => validate(false)}>Validate the format</button>
-          <button disabled={!text} onClick={() => validate(true)}>Validate with the scheme's rules (interpreter)</button>
-          <button disabled={!text} data-testid="use-built" onClick={() => onUse({ mode: 'text', text, name: built?.name ?? 'built' })}>Use in a run</button>
-          <input placeholder="sample id" value={sampleId} onChange={(e) => setSampleId(e.target.value)} />
-          <button disabled={!text || !sampleId} onClick={async () => { try { setMsg((await api.call('/data/samples', { id: sampleId, text, name: built?.name ?? 'sample', tags: { scenario: recipe.inject.join(', ') || 'happy path', bench: built?.suggestedBench, build: recipe } })).saved); } catch (e: any) { setMsg(e.message); } }}>Save to the library</button>
+          <Button data-testid="validate" disabled={!text} onClick={() => validate(false)}>Validate the format</Button>
+          <Button disabled={!text} onClick={() => validate(true)}>Validate with the scheme's rules (interpreter)</Button>
+          <Button disabled={!text} data-testid="use-built" onClick={() => onUse({ mode: 'text', text, name: built?.name ?? 'built' })}>Use in a run</Button>
+          <Input placeholder="sample id" value={sampleId} onChange={(e) => setSampleId(e.target.value)} />
+          <Button disabled={!text || !sampleId} onClick={async () => { try { setMsg((await api.call('/data/samples', { id: sampleId, text, name: built?.name ?? 'sample', tags: { scenario: recipe.inject.join(', ') || 'happy path', bench: built?.suggestedBench, build: recipe } })).saved); } catch (e: any) { setMsg(e.message); } }}>Save to the library</Button>
         </div>
         {msg && <p data-testid="data-msg">{msg}</p>}
         {validation && (
           <div data-testid="validation">
-            <p><span className={`badge ${validation.valid ? 'pass' : 'fail'}`}>{validation.valid ? 'Valid' : 'Not valid'}</span>{validation.rules ? ` the interpreter: ${validation.rules.outcome ?? validation.rules.error}` : ''}</p>
+            <p><Badge className={`badge ${validation.valid ? 'pass' : 'fail'}`}>{validation.valid ? 'Valid' : 'Not valid'}</Badge>{validation.rules ? ` the interpreter: ${validation.rules.outcome ?? validation.rules.error}` : ''}</p>
             <ul>{[...validation.format, ...validation.synthetic].map((f: any, i: number) => <li key={i}>{f.code} {f.where}: {f.message}</li>)}</ul>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -284,22 +286,22 @@ function SuiteView({ api }: { api: BenchClient }) {
   };
   return (
     <div>
-      <div className="card">
+      <Card className="card">
         <h2>Regression cases</h2>
         <div className="table-wrap">
-          <table className="grid"><thead><tr><th>Suite</th><th>Case</th><th>Profile</th><th>Expect</th><th>File</th></tr></thead>
-            <tbody>{cases?.map((c) => <tr key={c.file}><td>{c.suite}</td><td title={c.title} className="mono">{c.id}</td><td>{c.profile}</td><td>{c.expect}</td><td className="mono">{c.file}</td></tr>)}</tbody></table>
+          <Table size="small" className="grid"><TableHeader><TableRow><TableHeaderCell>Suite</TableHeaderCell><TableHeaderCell>Case</TableHeaderCell><TableHeaderCell>Profile</TableHeaderCell><TableHeaderCell>Expect</TableHeaderCell><TableHeaderCell>File</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{cases?.map((c) => <TableRow key={c.file}><TableCell>{c.suite}</TableCell><TableCell title={c.title} className="mono">{c.id}</TableCell><TableCell>{c.profile}</TableCell><TableCell>{c.expect}</TableCell><TableCell className="mono">{c.file}</TableCell></TableRow>)}</TableBody></Table>
         </div>
         <div className="action-buttons">
-          <label>Database <select value={dbs} onChange={(e) => setDbs(e.target.value)}><option value="">as each case's profile</option>{DATABASES.map((d) => <option key={d}>{d}</option>)}</select></label>
-          <button onClick={() => start('shipped')}>Run the shipped suite</button>
-          <button onClick={() => start('saved')}>Run my saved cases</button>
+          <label>Database <Select value={dbs} onChange={(e) => setDbs(e.target.value)}><option value="">as each case's profile</option>{DATABASES.map((d) => <option key={d}>{d}</option>)}</Select></label>
+          <Button onClick={() => start('shipped')}>Run the shipped suite</Button>
+          <Button onClick={() => start('saved')}>Run my saved cases</Button>
         </div>
-      </div>
+      </Card>
       {job && (
-        <div className="card"><h2>Suite <span className="mono">{job.id}</span>: {job.status === 'done' ? (job.result?.passed ? 'passed' : 'failed') : job.status}</h2>
+        <Card className="card"><h2>Suite <span className="mono">{job.id}</span>: {job.status === 'done' ? (job.result?.passed ? 'passed' : 'failed') : job.status}</h2>
           <ul>{(job.progress ?? []).filter((l: string) => l.startsWith('case ')).map((l: string, i: number) => <li key={i}>{l}</li>)}</ul>
-        </div>
+        </Card>
       )}
     </div>
   );
@@ -308,16 +310,16 @@ function SuiteView({ api }: { api: BenchClient }) {
 function HistoryView({ api, go }: { api: BenchClient; go(h: string): void }) {
   const runs = useLoad<any[]>(() => api.call('/runs'));
   return (
-    <div className="card"><h2>History</h2>
+    <Card className="card"><h2>History</h2>
       <div className="table-wrap">
-        <table className="grid" data-testid="history"><thead><tr><th>Run</th><th>Profile</th><th>Input</th><th>By</th><th>Result</th></tr></thead>
-          <tbody>{runs?.map((r) => (
-            <tr key={r.id} className="clickable" onClick={() => go(`#/testbench/runs/${r.id}`)}>
-              <td className="mono">{r.id}</td><td>{r.profile}</td><td>{r.input}</td><td>{r.actor ?? ''}</td>
-              <td>{r.status !== 'done' ? r.status : <span className={`badge ${r.passed ? 'pass' : 'fail'}`}>{r.passed ? 'passed' : 'failed'}</span>}</td>
-            </tr>
-          ))}</tbody></table>
+        <Table size="small" className="grid" data-testid="history"><TableHeader><TableRow><TableHeaderCell>Run</TableHeaderCell><TableHeaderCell>Profile</TableHeaderCell><TableHeaderCell>Input</TableHeaderCell><TableHeaderCell>By</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>{runs?.map((r) => (
+            <TableRow key={r.id} className="clickable" onClick={() => go(`#/testbench/runs/${r.id}`)}>
+              <TableCell className="mono">{r.id}</TableCell><TableCell>{r.profile}</TableCell><TableCell>{r.input}</TableCell><TableCell>{r.actor ?? ''}</TableCell>
+              <TableCell>{r.status !== 'done' ? r.status : <Badge className={`badge ${r.passed ? 'pass' : 'fail'}`}>{r.passed ? 'passed' : 'failed'}</Badge>}</TableCell>
+            </TableRow>
+          ))}</TableBody></Table>
       </div>
-    </div>
+    </Card>
   );
 }

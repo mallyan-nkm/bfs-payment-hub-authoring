@@ -44,6 +44,43 @@ public sealed class SecurityHeadersTests
     }
 
     [Fact]
+    public async Task The_console_page_allows_style_elements_only_by_a_nonce_new_on_every_answer_and_named_in_the_page()
+    {
+        // ADR 0003: Fluent UI writes its styles into style elements; the page names the nonce they carry. Scripts stay 'self'.
+        var dir = Directory.CreateTempSubdirectory("th-console-page-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "index.html"), "<!doctype html><head><meta name=\"th-style-nonce\" content=\"\" /></head><title>console</title>");
+            var files = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dir.FullName);
+            var b = WebApplication.CreateBuilder();
+            b.WebHost.UseTestServer();
+            var app = b.Build();
+            app.UseRuntimeSecurityHeaders(app.Configuration);
+            app.UseConsolePage(files);
+            app.MapFallback(ctx => SecurityHeaders.WriteConsolePageAsync(ctx, files.GetFileInfo("index.html")));
+            await app.StartAsync();
+            await using var _ = app;
+            var c = app.GetTestClient();
+            static string Nonce(string csp) => System.Text.RegularExpressions.Regex.Match(csp, "style-src 'self' 'nonce-([^']+)'").Groups[1].Value;
+            var answers = new List<(string csp, string html)>();
+            foreach (var p in new[] { "/", "/index.html", "/payments/x" })
+            {
+                var r = await c.GetAsync(p);
+                answers.Add((r.Headers.GetValues("Content-Security-Policy").Single(), await r.Content.ReadAsStringAsync()));
+            }
+            foreach (var (csp, html) in answers)
+            {
+                Assert.NotEqual("", Nonce(csp));
+                Assert.Contains($"<meta name=\"th-style-nonce\" content=\"{Nonce(csp)}\" />", html);
+                Assert.Contains("script-src 'self';", csp);
+                Assert.DoesNotContain("unsafe-inline", csp);
+            }
+            Assert.Equal(3, answers.Select(a => Nonce(a.csp)).Distinct().Count());
+        }
+        finally { dir.Delete(true); }
+    }
+
+    [Fact]
     public async Task A_console_host_limits_changes_per_client_address_and_a_machine_host_does_not()
     {
         var (app, c) = await Host(new() { ["RateLimits:WritesPerMinute"] = "3" });

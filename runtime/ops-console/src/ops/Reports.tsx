@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Client, ReportGroup, Dashboard, FixedReport } from './api';
+import { Button, Card, Input, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
+import { Alert } from '../ui';
 
 // Reports, the dashboard and the CSV export (R-05-59, Issue I-68). Everything here comes from the read model and the
 // operations views: the totals, by scheme, status and day; for each scheme the measures and filters its view declares; a
@@ -13,13 +15,13 @@ function money(g: { amounts: { currency: string; amount: number }[] }) {
 
 function Groups({ title, groups, label }: { title: string; groups: ReportGroup[]; label?: string }) {
   return (
-    <div className="card">
+    <Card className="card">
       <h3>{title}</h3>
-      <table className="grid" aria-label={title}>
-        <thead><tr><th>{label ?? 'Value'}</th><th>Payments</th><th>Lines</th><th>Amount</th></tr></thead>
-        <tbody>{groups.map((g) => <tr key={g.key}><td className="mono">{g.key}</td><td>{g.payments}</td><td>{g.lines}</td><td>{money(g)}</td></tr>)}</tbody>
-      </table>
-    </div>
+      <Table size="small" className="grid" aria-label={title}>
+        <TableHeader><TableRow><TableHeaderCell>{label ?? 'Value'}</TableHeaderCell><TableHeaderCell>Payments</TableHeaderCell><TableHeaderCell>Lines</TableHeaderCell><TableHeaderCell>Amount</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{groups.map((g) => <TableRow key={g.key}><TableCell className="mono">{g.key}</TableCell><TableCell>{g.payments}</TableCell><TableCell>{g.lines}</TableCell><TableCell>{money(g)}</TableCell></TableRow>)}</TableBody>
+      </Table>
+    </Card>
   );
 }
 
@@ -52,19 +54,19 @@ export function Reports({ api }: { api: Client }) {
     <section>
       <h1>Reports</h1>
       <div className="filters">
-        <label><span>Scheme</span><input name="scheme" value={filter.scheme} onChange={(e) => setFilter({ ...filter, scheme: e.target.value })} placeholder="all" /></label>
-        <label><span>From</span><input name="from" type="date" value={filter.from} onChange={(e) => setFilter({ ...filter, from: e.target.value })} /></label>
-        <label><span>To</span><input name="to" type="date" value={filter.to} onChange={(e) => setFilter({ ...filter, to: e.target.value })} /></label>
-        <button className="primary" onClick={load}>Show</button>
-        <button onClick={download}>Export CSV</button>
+        <label><span>Scheme</span><Input name="scheme" value={filter.scheme} onChange={(e) => setFilter({ ...filter, scheme: e.target.value })} placeholder="all" /></label>
+        <label><span>From</span><Input name="from" type="date" value={filter.from} onChange={(e) => setFilter({ ...filter, from: e.target.value })} /></label>
+        <label><span>To</span><Input name="to" type="date" value={filter.to} onChange={(e) => setFilter({ ...filter, to: e.target.value })} /></label>
+        <Button appearance="primary" onClick={load}>Show</Button>
+        <Button onClick={download}>Export CSV</Button>
       </div>
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <Alert tone="fail" className="error" role="alert">{error}</Alert>}
       {dash && (
         <>
           <div className="cards" aria-label="Totals">
-            <div className="card"><h3>Payments</h3><p className="big" data-testid="report-payments">{dash.payments}</p></div>
-            <div className="card"><h3>Lines</h3><p className="big">{dash.lines}</p></div>
-            <div className="card"><h3>Amount</h3><p className="big">{money(dash)}</p></div>
+            <Card className="card"><h3>Payments</h3><p className="big" data-testid="report-payments">{dash.payments}</p></Card>
+            <Card className="card"><h3>Lines</h3><p className="big">{dash.lines}</p></Card>
+            <Card className="card"><h3>Amount</h3><p className="big">{money(dash)}</p></Card>
           </div>
           {dash.cut && <p className="muted">The report is cut short at its limit: narrow the dates.</p>}
           <div className="cards">
@@ -74,35 +76,35 @@ export function Reports({ api }: { api: Client }) {
             <Groups title="Holds" groups={dash.holds} label="Hold" />
           </div>
           {dash.schemes.map((s) => (
-            <div key={s.view} className="card" aria-label={`Scheme ${s.scheme}`}>
+            <Card key={s.view} className="card" aria-label={`Scheme ${s.scheme}`}>
               <h2>{s.title}</h2>
               <p className="muted">{s.payments} payment(s), from the view {s.view}</p>
-              <table className="grid" aria-label={`Measures of ${s.scheme}`}>
-                <thead><tr>{s.measures.map((m) => <th key={m.id}>{m.label}</th>)}</tr></thead>
-                <tbody><tr>{s.measures.map((m) => <td key={m.id}>{m.format === 'amount' ? m.total.toLocaleString('en', { minimumFractionDigits: 2 }) : m.total}</td>)}</tr></tbody>
-              </table>
+              <Table size="small" className="grid" aria-label={`Measures of ${s.scheme}`}>
+                <TableHeader><TableRow>{s.measures.map((m) => <TableHeaderCell key={m.id}>{m.label}</TableHeaderCell>)}</TableRow></TableHeader>
+                <TableBody><TableRow>{s.measures.map((m) => <TableCell key={m.id}>{m.format === 'amount' ? m.total.toLocaleString('en', { minimumFractionDigits: 2 }) : m.total}</TableCell>)}</TableRow></TableBody>
+              </Table>
               <div className="cards">
                 {s.dimensions.map((d) => (
-                  <div key={d.id} className="card">
+                  <Card key={d.id} className="card">
                     <h3>{d.label}</h3>
                     <ul className="plain">{d.values.map((v) => <li key={v.value}><span className="mono">{v.value}</span>: {v.payments}</li>)}</ul>
-                  </div>
+                  </Card>
                 ))}
               </div>
-            </div>
+            </Card>
           ))}
         </>
       )}
-      <div className="card">
+      <Card className="card">
         <h2>Summary</h2>
         <label><span>Group by</span>{' '}
-          <select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value)}>
+          <Select aria-label="Group by" value={by} onChange={(e) => setBy(e.target.value)}>
             {(meta?.dimensions ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
             {(meta?.fields ?? []).map((f) => <option key={f.key} value={f.key}>{f.scheme ? `${f.scheme}: ` : ''}{f.label}</option>)}
-          </select>
+          </Select>
         </label>
         {summary && <Groups title={`By ${by}`} groups={summary.groups} />}
-      </div>
+      </Card>
       <FixedReports api={api} q={q} onError={setError} />
     </section>
   );
@@ -127,19 +129,19 @@ function FixedReports({ api, q, onError }: { api: Client; q(): Record<string, st
   };
   if (!list?.length) return null;
   return (
-    <div className="card">
+    <Card className="card">
       <h2>Fixed reports</h2>
-      <table className="grid" aria-label="Fixed reports">
-        <thead><tr><th>Report</th><th>Scheme</th><th>One row per</th><th>Columns</th><th /></tr></thead>
-        <tbody>{list.map((r) => (
-          <tr key={`${r.view}/${r.id}`}>
-            <td>{r.title}</td><td>{r.scheme ?? 'all'}</td><td>{r.rows === 'subject' ? 'file' : r.rows === 'lines' ? 'line' : 'upload'}</td>
-            <td className="small">{r.columns.map((c) => c.label).join(', ')}</td>
-            <td><button onClick={() => download(r)} aria-label={`Download ${r.title}`}>CSV</button></td>
-          </tr>
-        ))}</tbody>
-      </table>
+      <Table size="small" className="grid" aria-label="Fixed reports">
+        <TableHeader><TableRow><TableHeaderCell>Report</TableHeaderCell><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>One row per</TableHeaderCell><TableHeaderCell>Columns</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{list.map((r) => (
+          <TableRow key={`${r.view}/${r.id}`}>
+            <TableCell>{r.title}</TableCell><TableCell>{r.scheme ?? 'all'}</TableCell><TableCell>{r.rows === 'subject' ? 'file' : r.rows === 'lines' ? 'line' : 'upload'}</TableCell>
+            <TableCell className="small">{r.columns.map((c) => c.label).join(', ')}</TableCell>
+            <TableCell><Button onClick={() => download(r)} aria-label={`Download ${r.title}`}>CSV</Button></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
       {last && <p className="muted" data-testid="fixed-report-note">{last}</p>}
-    </div>
+    </Card>
   );
 }

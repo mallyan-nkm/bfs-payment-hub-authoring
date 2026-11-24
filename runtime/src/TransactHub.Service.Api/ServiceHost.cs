@@ -203,6 +203,7 @@ public sealed class ServiceHost
         var files = consoleDir is not null && Directory.Exists(consoleDir) ? new PhysicalFileProvider(Path.GetFullPath(consoleDir)) : null;
         if (files is not null)
         {
+            app.UseConsolePage(files);
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
             app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
         }
@@ -213,8 +214,7 @@ public sealed class ServiceHost
             app.MapFallback(async ctx =>
             {
                 if (ctx.Request.Path.StartsWithSegments("/service/api") || ctx.Request.Path.StartsWithSegments("/ops/api")) { ctx.Response.StatusCode = 404; return; }
-                ctx.Response.ContentType = "text/html";
-                await ctx.Response.SendFileAsync(files.GetFileInfo("index.html"));
+                await SecurityHeaders.WriteConsolePageAsync(ctx, files.GetFileInfo("index.html"));
             }).AllowAnonymous();
         return app;
     }

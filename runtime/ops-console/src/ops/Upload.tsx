@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Client } from './api';
 import { messageChoices, uploadAnswer, type UploadAnswer, type UploadTarget } from './upload';
+import { Button, Select } from '@fluentui/react-components';
+import { Alert, Badge } from '../ui';
 
 // The upload page (R-05-73, R-05-74, Issue I-201): a person puts a file in by hand. The tenant is the runtime's bank, the message
 // one the active distribution receives; the file goes to the File API's POST /files/ui with the person's own sign-in, so the File
@@ -32,27 +34,27 @@ export function Upload({ api, go }: { api: Client; go(h: string): void }) {
     <section>
       <h1>Upload a file</h1>
       <p className="note">The file goes to the File API as your upload: it checks it, keeps it, and starts its payment on the distribution active in {offer?.environment ?? 'this environment'}, as for any file that comes in.</p>
-      {error && <p className="error" role="alert">{error}</p>}
-      {offer && !offer.fileApi && <p className="error" role="alert">This console has no File API to post to (Operations:FileApi:Url).</p>}
+      {error && <Alert tone="fail" className="error" role="alert">{error}</Alert>}
+      {offer && !offer.fileApi && <Alert tone="fail" className="error" role="alert">This console has no File API to post to (Operations:FileApi:Url).</Alert>}
       {target && !target.distribution && <p className="muted">No distribution of {target.tenant} is active in {target.environment}: nothing can be uploaded.</p>}
       <div className="filters">
         <label><span>Tenant</span>
-          <select name="tenant" aria-label="Tenant" value={tenant} onChange={(e) => setTenant(e.target.value)}>
+          <Select name="tenant" aria-label="Tenant" value={tenant} onChange={(e) => setTenant(e.target.value)}>
             {offer?.targets.map((t) => <option key={t.tenant} value={t.tenant}>{t.tenant}</option>)}
-          </select>
+          </Select>
         </label>
         <label><span>Message</span>
-          <select name="message" aria-label="Message" value={message} onChange={(e) => setMessage(e.target.value)}>
+          <Select name="message" aria-label="Message" value={message} onChange={(e) => setMessage(e.target.value)}>
             {choices.map((m) => <option key={m.id} value={m.id}>{m.title} ({m.id}{m.kind === 'deliver' ? ', to a running payment' : ''})</option>)}
-          </select>
+          </Select>
         </label>
         <label><span>File</span><input type="file" name="file" aria-label="File" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>
-        <button className="primary" disabled={!file || !message || !tenant || busy || !offer?.fileApi} onClick={send}>Upload</button>
+        <Button appearance="primary" disabled={!file || !message || !tenant || busy || !offer?.fileApi} onClick={send}>Upload</Button>
       </div>
       {target?.distribution && <p className="muted small">Active distribution: <span className="mono">{target.distribution}</span></p>}
       {answer && (
         <p role="status" data-testid="upload-answer">
-          <span className={`badge ${answer.outcome === 'refused' ? 'fail' : answer.outcome === 'started' ? 'pass' : 'warn'}`}>{answer.outcome}</span>{' '}
+          <Badge className={`badge ${answer.outcome === 'refused' ? 'fail' : answer.outcome === 'started' ? 'pass' : 'warn'}`}>{answer.outcome}</Badge>{' '}
           {answer.text}{' '}
           {answer.code && <a href={answer.runbook} data-testid="error-link">Runbook for {answer.code}</a>}
           {answer.payment && <> <a href={`#/payments/${encodeURIComponent(answer.payment)}`} onClick={(e) => { e.preventDefault(); go(`#/payments/${encodeURIComponent(answer.payment!)}`); }} data-testid="upload-payment">Payment {answer.payment}</a></>}

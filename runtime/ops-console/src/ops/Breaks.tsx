@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Client } from './api';
 import { show, tone } from './format';
+import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
+import { Badge } from '../ui';
 
 // The reconciliation break queue (R-09-92): the breaks the scheme reports' runs recorded, each resolved once. An explanation is
 // recorded at once; adopting the scheme's status changes the system and waits for a bank approver, another person (R-09-77).
@@ -44,37 +46,37 @@ export function Breaks({ api, go }: { api: Client; go(h: string): void }) {
   return (
     <section>
       <h1>Reconciliation breaks</h1>
-      <label><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Show resolved breaks too</label>
+      <Checkbox checked={all} onChange={(e) => setAll(e.target.checked)} label={<>Show resolved breaks too</>} />
       {msg && <p className="muted" role="status">{msg}</p>}
       {rows?.length === 0 && <p className="muted">No break is open.</p>}
-      <table className="grid" aria-label="Reconciliation breaks">
-        <thead><tr><th>State</th><th>Break</th><th>Reference</th><th>Payment</th><th>Report</th><th>Since</th><th>Resolve</th></tr></thead>
-        <tbody>{rows?.map((b) => (
-          <tr key={b.break}>
-            <td><span className={`badge ${tone(b.state === 'resolved' ? 'settled' : b.state === 'open' ? 'review' : 'pending')}`}>{b.state}</span></td>
-            <td>{describeBreak(b)}</td>
-            <td className="mono">{b.reference}</td>
-            <td className="mono">{b.payment ? <a href={`#/payments/${encodeURIComponent(b.payment)}`} onClick={(e) => { e.preventDefault(); go(`#/payments/${encodeURIComponent(b.payment!)}`); }}>{b.payment}</a> : '—'}</td>
-            <td className="mono">{b.file}</td>
-            <td>{show(b.history[0]?.at, 'datetime')}</td>
-            <td>
+      <Table size="small" className="grid" aria-label="Reconciliation breaks">
+        <TableHeader><TableRow><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Break</TableHeaderCell><TableHeaderCell>Reference</TableHeaderCell><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Report</TableHeaderCell><TableHeaderCell>Since</TableHeaderCell><TableHeaderCell>Resolve</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{rows?.map((b) => (
+          <TableRow key={b.break}>
+            <TableCell><Badge className={`badge ${tone(b.state === 'resolved' ? 'settled' : b.state === 'open' ? 'review' : 'pending')}`}>{b.state}</Badge></TableCell>
+            <TableCell>{describeBreak(b)}</TableCell>
+            <TableCell className="mono">{b.reference}</TableCell>
+            <TableCell className="mono">{b.payment ? <a href={`#/payments/${encodeURIComponent(b.payment)}`} onClick={(e) => { e.preventDefault(); go(`#/payments/${encodeURIComponent(b.payment!)}`); }}>{b.payment}</a> : '—'}</TableCell>
+            <TableCell className="mono">{b.file}</TableCell>
+            <TableCell>{show(b.history[0]?.at, 'datetime')}</TableCell>
+            <TableCell>
               {(resolutionsFor(b).length > 0 || (b.state === 'pending-consent' && approver)) && (
-                <input aria-label={`Reason for ${b.break}`} placeholder="Reason (required)" value={remarks[b.break] ?? ''} onChange={(e) => setRemarks({ ...remarks, [b.break]: e.target.value })} />
+                <Input aria-label={`Reason for ${b.break}`} placeholder="Reason (required)" value={remarks[b.break] ?? ''} onChange={(e) => setRemarks({ ...remarks, [b.break]: e.target.value })} />
               )}
               {resolutionsFor(b).map((r) => (
-                <button key={r} onClick={() => run(api.resolveBreak(b.break, r, remarks[b.break]))}>{r === 'explain' ? 'Explain' : 'Adopt the scheme\'s status'}</button>
+                <Button key={r} onClick={() => run(api.resolveBreak(b.break, r, remarks[b.break]))}>{r === 'explain' ? 'Explain' : 'Adopt the scheme\'s status'}</Button>
               ))}
               {b.state === 'pending-consent' && (approver
                 ? <>
                     <span className="muted">{b.pending?.by} asks to {b.pending?.resolution}: {b.pending?.why}</span>
-                    <button className="primary" onClick={() => run(api.consentBreak(b.break, true, remarks[b.break]))}>Consent</button>
-                    <button onClick={() => run(api.consentBreak(b.break, false, remarks[b.break]))}>Refuse</button>
+                    <Button appearance="primary" onClick={() => run(api.consentBreak(b.break, true, remarks[b.break]))}>Consent</Button>
+                    <Button onClick={() => run(api.consentBreak(b.break, false, remarks[b.break]))}>Refuse</Button>
                   </>
                 : <span className="muted">Waits for a bank approver</span>)}
-            </td>
-          </tr>
-        ))}</tbody>
-      </table>
+            </TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
     </section>
   );
 }
