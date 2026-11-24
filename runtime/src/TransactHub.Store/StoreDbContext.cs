@@ -44,8 +44,18 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             _ => throw new ArgumentOutOfRangeException(nameof(o)),
         };
         b.AddInterceptors(new InsertOnlyGuard(), new StoreWriteTelemetry(o.Provider));
+        // The outbox's commit order is the database's own (R-09-214): the model differs by provider, so it is cached per provider.
+        b.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, ProviderModelCacheKey>();
         return b.Options;
     }
+
+    sealed class ProviderModelCacheKey : Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory
+    {
+        public object Create(DbContext context, bool designTime) => (context.GetType(), context.Database.ProviderName, designTime);
+    }
+
+    /// <summary>Whether the context runs on SQL Server (the outbox's commit order is its rowversion there, a transaction id otherwise).</summary>
+    public bool OnSqlServer => Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer";
 
     public static StoreDbContext Open(StoreOptions o) => new(Configure(o));
 
@@ -268,6 +278,14 @@ public sealed class StoreDbContext(DbContextOptions<StoreDbContext> options) : D
             e.Property(x => x.Id).ValueGeneratedOnAdd();
             e.Property(x => x.Topic).HasMaxLength(Code).IsRequired();
             e.Property(x => x.Key).HasMaxLength(Short).IsRequired();
+            // The commit order (R-09-214, Issue I-281): the database's, read by the event stream below the oldest version in flight.
+            if (OnSqlServer)
+            {
+                e.Property<byte[]>("RowVer").IsRowVersion();
+                e.Property(x => x.CommitVersion).HasComputedColumnSql("CAST([RowVer] AS bigint)", stored: false);
+            }
+            else e.Property(x => x.CommitVersion).HasDefaultValueSql("(pg_current_xact_id()::text::bigint)").ValueGeneratedOnAdd();
+            e.HasIndex(x => new { x.CommitVersion, x.Id });
         });
 
         // An event stream's position (R-09-153) and the breakers' moves (R-09-156): insert-only, like every table of the store.
