@@ -33,8 +33,8 @@ Run in this repository while writing these docs, on Linux with Node 22, .NET 10 
 | `cd studio && npm run studio -- kit` | 59 of 59 on the studio interpreter |
 | `cd studio && npm run studio -- check` | 0 errors, 18 warnings |
 | `cd studio && npm run studio -- seed-content` | 295 of 295 seeded files current |
-| `cd studio && npx tsx engines/dtfx/run-kit.ts` | 57 of 57 on DTFx |
-| `cd studio && npx tsx engines/elsa/run-kit.ts` | 57 of 57 on Elsa |
+| `cd studio && npx tsx engines/dtfx/run-kit.ts` | 59 of 59 on DTFx |
+| `cd studio && npx tsx engines/elsa/run-kit.ts` | 59 of 59 on Elsa |
 | `cd studio && npx tsx engines/temporal/run-kit.ts` | Not run: the test server did not start here |
 
 The runtime's `dotnet test`, the black-box suites, the Flowable kit, the laptop stack and Temporal on SQL Server were not run for this page; CI runs them (below), and `runtime/temporal-mssql/README.md` has the plugin's proof.

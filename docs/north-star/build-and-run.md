@@ -113,8 +113,8 @@ npx tsx engines/flowable/run-kit.ts
 
 | Ran here | Result |
 | --- | --- |
-| DTFx | 57 of 57, 419 s |
-| Elsa | 57 of 57, 400 s |
+| DTFx | 59 of 59, 351 s |
+| Elsa | 59 of 59, 354 s |
 | Temporal | Not run: the time-skipping test server did not start here (`setup.sh` not run in this checkout) |
 | Flowable | Not run here; 56 of 56 on 22 November 2026, before CK-PARK-03 (its README) |
 

@@ -38,8 +38,8 @@ Run in this repository on 23 November 2026, unless the row says otherwise.
 | Factory and bank test cases on the studio interpreter | 63 of 63 (`npm run studio -- test`) |
 | Static checks over the content (`npm run studio -- check`) | 0 errors, 18 warnings |
 | Conformance kit, studio interpreter | 59 of 59 |
-| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 57 of 57 |
-| Conformance kit, Elsa 3.10.2 | 57 of 57 |
+| Conformance kit, DTFx (DurableTask.Core 3.11.3) | 59 of 59 |
+| Conformance kit, Elsa 3.10.2 | 59 of 59 |
 | Conformance kit, Temporal (time-skipping test server) and Flowable 7.1.0 with generated BPMN | Not run for this page (Temporal's test server did not start here); CI runs both (`engines.yml`, job `kit`) |
 | White-box suite (`cd studio && npm test`) | 501 pass, 1 skipped (the real-GitHub test), in 54 files |
 | Black-box suites (`npm run test:blackbox`) | Not run for this page; CI runs them (`.github/workflows/engines.yml`). They cover the HTTP API, the command line, the web app in Chromium, and end to end a new scheme, WPS by configuration, WPS on Temporal, DTFx, Elsa and Flowable with the store, the WPS parity suite, the source slice, refund orders, distributions, the party register, the hot update and Flowable in production mode |

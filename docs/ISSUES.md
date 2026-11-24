@@ -1790,6 +1790,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-09-208).** A kit stub may fail a number of a step's attempts counted across its calls, `failAttempts` (`studio/src/interp/interpreter.ts`, counted per instance and step on the run, so on every engine through the party service). CK-PARK-04 fails the first three attempts of its step: both attempts of its policy fail and it parks; the requeue runs its full policy, whose first attempt fails once more and whose second succeeds (four attempts in all), which one more attempt (a retry) would not survive. The kit holds 59 scenarios (with CK-AWAIT-08 of wave 6); the counts derived from it are updated (`studio/test/execution.test.ts`, the READMEs, `docs/north-star`, `docs/TRAINING.md`, Annex C's table). CK-PARK-03 and 04 pass on the studio interpreter, DTFx and Elsa.
 
+**Engines (24 November 2026).** The whole kit, 59 scenarios, passes on DTFx (351 s) and Elsa (354 s); CK-PARK-01, 03 and 04 pass on Temporal. On the embedded Flowable harness CK-PARK-01, 03 and 04 do not pass (`no handler waits for signal requeue`): as this issue says, a dead-lettered run there waits for an operator's control only in production mode on the runtime's live path.
+
 ## I-168. A reconciliation break is resolved by status only
 
 **Issue.** The break queue resolves a break by an explanation or by adopting the scheme's status (R-09-92). An amount or currency that differs, or a payment the bank has no record of, has no resolution that changes the system: posting a correction, returning funds or starting an investigation are business processes the platform has no workflow for.
