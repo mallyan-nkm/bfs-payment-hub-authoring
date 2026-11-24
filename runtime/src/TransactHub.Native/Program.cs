@@ -100,15 +100,15 @@ var signingKey = signingRef is { Length: > 0 }
     : ECDsa.Create(ECCurve.NamedCurves.nistP256);
 var files = new HostFiles(store, signingKey);
 Action<string, string, byte[]> keep = (sha, name, content) => files.Keep("out", "rendered", name, content, sha);
-// What the image answers itself: the builtin services the runtime gives a port (R-08-15: accounting and reservation on core banking,
-// the holds), and the platform's production adapters (R-09-90: screening, notices, outward facts, the business calendar and the
-// directory). No native code-behind is here: each distribution carries its own build of the platform's, a scheme's and a bank's
-// (R-09-122, R-09-126), loaded side by side in a context of its own; a module's activity of the same name is served first.
-// The core-banking activities ask the gate the distribution's platform module contributed on the binding (its posting window, R-09-264).
+// What the image answers itself: the holds (R-05-56) and the platform's production adapters (R-09-90: screening, notices, outward
+// facts, the business calendar and the directory). No native code-behind is here: each distribution carries its own build of the
+// platform's, a scheme's and a bank's (R-09-122, R-09-126), loaded side by side in a context of its own; a module's activity of the same
+// name is served first. Since native contract 2.1.0 no core-banking activity is here either (R-09-278): the posting, the reservation, its
+// release, the reversal and the check of a posting are the platform module's, on the image's core banking (INativeServices.CoreBanking),
+// gated by what the distribution's modules contributed (R-09-279).
 IEnumerable<INativeActivity> Platform(IReadOnlyDictionary<string, object> contributed) =>
 [
-    .. PlatformActivities.CoreBanking(coreBanking, k => contributed.TryGetValue(k, out var v) ? v : null), .. holds,
-    .. PlatformPortActivities.All(bindings, ReferenceReaderOn(store)),
+    .. holds, .. PlatformPortActivities.All(bindings, ReferenceReaderOn(store)),
 ];
 var registers = RegisterReaderOn(store);
 // TH_NATIVE_DEV_MODULES: module build folders (native-module.json and its assemblies) served to attempts that name no

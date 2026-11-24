@@ -5,7 +5,7 @@ namespace TransactHub.Activities.Platform.Native;
 
 // The posting window gate, written once (R-09-264, Issues I-227, I-315): p.decide.posting-window.v1 evaluates it on the bank's window
 // parameters, and PostingGate on a core-banking binding's posting hours, which the module contributes to its distribution so that every
-// call on core banking (the image's reservation and reversal, the platform's and a scheme's postings) is gated by it. The image keeps no copy.
+// call on core banking (the platform's reservation, reversal and postings, and a scheme's postings) is gated by it. The image keeps no copy.
 
 /// <summary>The gate's three results.</summary>
 public enum PostingWindowState

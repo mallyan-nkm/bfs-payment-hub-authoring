@@ -128,7 +128,7 @@ public static class ModuleBuilds
     public sealed record Module(string Scope, string Assembly, byte[] Build, string[] Activities, byte[]? Carried = null);
 
     /// <summary>A distribution with the WPS module only, as the studio builds it, reduced to what the native host reads.</summary>
-    public static (JsonObject Manifest, byte[] Package) Distribution(string bank, string id, byte[] module, string contract = "2.0.0", byte[]? carried = null, string ackRelease = AckInRelease) =>
+    public static (JsonObject Manifest, byte[] Package) Distribution(string bank, string id, byte[] module, string contract = TransactHub.Activities.Native.NativeContract.Version, byte[]? carried = null, string ackRelease = AckInRelease) =>
         Distribution(bank, id, contract, new Module("uae.wps", Assembly, module, [$"{AckIn}@{ackRelease}"], carried));
 
     /// <summary>A distribution as the studio builds it, reduced to what the native host reads: its manifest and its package.</summary>

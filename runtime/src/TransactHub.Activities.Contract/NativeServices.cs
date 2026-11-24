@@ -27,11 +27,18 @@ public interface INativeCoreBanking
     /// The binding in force for the attempt's tenant at its time. It refuses an attempt with no tenant (<c>NoTenant</c>) and a tenant with
     /// no binding (<c>PortNotBound</c>). Since 2.0.0 the image then asks the gate a module of the distribution contributed on the binding
     /// (<see cref="NativeContributions.BindingGate"/> of <c>p.port.core-banking.v1</c>: the platform module's posting window, R-09-264), which
-    /// fails as a retryable <c>TransientError</c> while the window is closed; a binding that names a posting window with no gate contributed
-    /// is refused (<c>PortNotBound</c>), never called ungated.
+    /// fails as a retryable <c>TransientError</c> while the window is closed. Since 2.1.0 (R-09-279) the image names no setting of a window:
+    /// it calls core banking only through a gate a module of the distribution contributed, and with none contributed every call is
+    /// refused (<c>PortNotBound</c>), never made ungated.
     /// </summary>
     INativeCoreBankingBinding For(NativeAttempt a);
 }
+
+/// <summary>
+/// Since 2.1.0. What core banking said of an account (R-09-277): the amount available, its currency and the account's status, as the
+/// binding's adapter reads them. The status is core banking's own word (<c>ACTIVE</c>, <c>DORMANT</c>, ...); the binding says which it posts to.
+/// </summary>
+public sealed record NativeBalance(decimal Available, string Currency, string Status);
 
 /// <summary>One core-banking binding, for one attempt.</summary>
 public interface INativeCoreBankingBinding
@@ -50,6 +57,13 @@ public interface INativeCoreBankingBinding
 
     /// <summary>Posts the batch and classifies the reply: <paramref name="primary"/> when posted, else <c>rejected</c> or <c>unknown</c>.</summary>
     NativePosted Post(NativePostingBatch batch, string primary);
+
+    /// <summary>
+    /// Since 2.1.0 (R-09-277, Issue I-382). A balance enquiry on an account at a branch, by the binding's adapter; it posts nothing. A party
+    /// that does not answer is a retryable <c>TransientError</c>, a credential that cannot be read <c>SecretUnavailable</c>, a binding the
+    /// adapter cannot use <c>BusinessReject</c>.
+    /// </summary>
+    NativeBalance Balance(string branch, string account);
 }
 
 /// <summary>An answer of a port: the adapter that gave it and what it said.</summary>

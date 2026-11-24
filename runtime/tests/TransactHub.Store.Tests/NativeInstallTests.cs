@@ -23,14 +23,17 @@ public sealed class NativeInstallTests(Databases dbs)
     static byte[] Wps => File.ReadAllBytes(typeof(TransactHub.Activities.Wps.Native.WpsNativeModule).Assembly.Location);
 
     /// <summary>A distribution with a native module, signed as the studio signs it; each argument breaks one thing.</summary>
-    static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = "2.0.0", string name = Asm, string? stray = null)
+    static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = TransactHub.Activities.Native.NativeContract.Version, string name = Asm, string? stray = null,
+        string scope = "uae.wps", string[]? activities = null)
     {
-        var path = $"activities/native/uae.wps/{name}.dll.base64";
+        var path = $"activities/native/{scope}/{name}.dll.base64";
         var files = new Dictionary<string, string> { ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n", [path] = Convert.ToBase64String(assembly) + "\n" };
         if (stray is not null) files[stray] = Convert.ToBase64String(assembly) + "\n";
         var real = Sha(assembly);
         var artefacts = new JsonArray(new JsonObject { ["path"] = "binding.yaml", ["sha256"] = Sha(Encoding.UTF8.GetBytes(files["binding.yaml"])) },
-            new JsonObject { ["scope"] = "uae.wps", ["kind"] = "native-assembly", ["name"] = $"{name}.dll", ["path"] = path, ["sha256"] = Sha(Encoding.UTF8.GetBytes(files[path])), ["assemblySha256"] = claimedSha ?? real });
+            new JsonObject { ["scope"] = scope, ["kind"] = "native-assembly", ["name"] = $"{name}.dll", ["path"] = path, ["sha256"] = Sha(Encoding.UTF8.GetBytes(files[path])), ["assemblySha256"] = claimedSha ?? real });
+        foreach (var a in activities ?? ["uae.wps.map.ack-in.v1@1.2.0"])
+            artefacts.Add(new JsonObject { ["scope"] = scope, ["kind"] = "activity", ["name"] = a.Split('@')[0], ["release"] = a.Split('@')[1] });
         var bom = new JsonObject { ["packs"] = new JsonArray(), ["artefacts"] = artefacts };
         var pc = new JsonObject { ["format"] = "th-parameter-contract/1", ["parameters"] = new JsonArray() };
         var native = new JsonObject
@@ -38,7 +41,7 @@ public sealed class NativeInstallTests(Databases dbs)
             ["contract"] = contract,
             ["modules"] = new JsonArray(new JsonObject
             {
-                ["scope"] = "uae.wps", ["assembly"] = name, ["activities"] = new JsonArray("uae.wps.map.ack-in.v1@1.2.0"),
+                ["scope"] = scope, ["assembly"] = name, ["activities"] = new JsonArray((activities ?? ["uae.wps.map.ack-in.v1@1.2.0"]).Select(a => (JsonNode)a).ToArray()),
                 ["files"] = new JsonArray(new JsonObject { ["path"] = path, ["name"] = $"{name}.dll", ["sha256"] = claimedSha ?? real }),
             }),
         };
@@ -86,10 +89,24 @@ public sealed class NativeInstallTests(Databases dbs)
         var (old, oldBody) = await Post(c, Distribution(s.Key, "2026.11.23-9", BuiltAgainstContract1(), contract: "1.1.0"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, old);
         Assert.Contains(NativeAssemblies.ContractUnsupported, oldBody);
-        Assert.Contains("rebuild every module against 2.0.0", oldBody);
+        Assert.Contains($"rebuild every module against {TransactHub.Activities.Native.NativeContract.Version}", oldBody);
         var (oldClaims, oldClaimsBody) = await Post(c, Distribution(s.Key, "2026.11.23-10", BuiltAgainstContract1()));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, oldClaims);
-        Assert.Contains("was built against native contract 1.1.0, its manifest says 2.0.0", oldClaimsBody);
+        Assert.Contains($"was built against native contract 1.1.0, its manifest says {TransactHub.Activities.Native.NativeContract.Version}", oldClaimsBody);
+
+        // Contract 2.1.0 is a minor (R-09-276): a module built against 2.0 is installed, under a 2.0 manifest or a 2.1 one; a module built
+        // against 2.1 under a manifest that names 2.0, and a later minor than the runtime's, are refused.
+        var wps20 = TransactHub.Tests.Support.ContractBuilds.BuiltAgainst(Wps, "2.0.0");
+        var (two0, two0Body) = await Post(c, Distribution(s.Key, "2026.11.24-41", wps20, contract: "2.0.0"));
+        Assert.True(two0 == HttpStatusCode.Created, two0Body);
+        var (two0on21, two0on21Body) = await Post(c, Distribution(s.Key, "2026.11.24-42", wps20, contract: "2.1.0"));
+        Assert.True(two0on21 == HttpStatusCode.Created, two0on21Body);
+        var (under, underBody) = await Post(c, Distribution(s.Key, "2026.11.24-43", Wps, contract: "2.0.0"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, under);
+        Assert.Contains("was built against native contract 2.1.0, its manifest says 2.0.0", underBody);
+        var (later, laterBody) = await Post(c, Distribution(s.Key, "2026.11.24-44", Wps, contract: "2.2.0"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, later);
+        Assert.Contains(NativeAssemblies.ContractUnsupported, laterBody);
 
         // An assembly that does not reference the contract, one the image keeps, and one the manifest does not list.
         var (bare, bareBody) = await Post(c, Distribution(s.Key, "2026.11.23-5", File.ReadAllBytes(typeof(Xunit.FactAttribute).Assembly.Location)));
@@ -107,6 +124,100 @@ public sealed class NativeInstallTests(Databases dbs)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, reaching);
         Assert.Contains("references TransactHub.Ports, which is the runtime image's", reachingBody);
         Assert.Contains(NativeAssemblies.ImageReference, reachingBody);
+    }
+
+    /// <summary>One distribution's load context, as the native host makes it: the module from its bytes, the contract from the image's.</summary>
+    sealed class ModuleContext(IReadOnlyDictionary<string, byte[]> carried) : System.Runtime.Loader.AssemblyLoadContext("th-test-platform-module", isCollectible: true)
+    {
+        protected override Assembly? Load(AssemblyName n) =>
+            n.Name is { } name && !NativeAssemblies.Shared.Contains(name) && carried.TryGetValue(name, out var bytes) ? LoadFromStream(new MemoryStream(bytes)) : null;
+    }
+
+    /// <summary>What the image gives a distribution's modules: its core banking, gated by what they contribute.</summary>
+    sealed class Services(TransactHub.Activities.Platform.Posting.CoreBankingResolver resolver) : TransactHub.Activities.Native.INativeServices
+    {
+        readonly Dictionary<string, object> contributed = new(StringComparer.Ordinal);
+        public string? Distribution => $"dist/{Bank}@2026.11.24-45";
+        public void KeepRendered(string sha256, string fileName, byte[] content) { }
+        public void Contribute(string key, object value) => contributed[key] = value;
+        public object? Contribution(string key) => contributed.GetValueOrDefault(key);
+        public TransactHub.Activities.Native.INativeCoreBanking CoreBanking => new TransactHub.Activities.Platform.Posting.NativeCoreBanking(resolver, Contribution);
+        public TransactHub.Activities.Native.INativeFiles Files { get; } = new TransactHub.Activities.Native.MemoryNativeFiles();
+        public TransactHub.Activities.Native.INativePorts Ports => new TransactHub.Activities.Native.NativePorts(new TransactHub.Ports.PortBindings(), Files);
+        public TransactHub.Activities.Native.INativeBoundPorts BoundPorts => new TransactHub.Activities.Native.NativeBoundPorts(new TransactHub.Ports.PortBindings());
+    }
+
+    /// <summary>
+    /// R-09-278 (Issue I-382), on SQL Server and PostgreSQL: the platform module as this repository builds it is installed by the release
+    /// API, read back from the store, checked again and loaded in a context of its own, as the native host loads it; its reservation, its
+    /// posting, the check of the posting, the reversal and the release run on the image's core banking (the simulator binding), gated by
+    /// the posting window gate the module contributes. The image answers none of them.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_platform_modules_reservation_posting_and_reversal_run_from_the_build_the_store_keeps(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        var options = dbs.Fresh(p);
+        await using var host = new ApiHost(options, s);
+        var platform = File.ReadAllBytes(typeof(TransactHub.Activities.Platform.Native.PlatformNativeModule).Assembly.Location);
+        string[] served = ["p.reserve.funds.v1@1.1.0", "p.reserve.release.v1@1.1.0", "p.post.accounting.v1@1.3.0", "p.post.verify.v1@1.1.0", "p.post.reverse.v1@1.1.0"];
+        var (st, body) = await Post(host.Client(), Distribution(s.Key, "2026.11.24-45", platform, scope: "p", name: "TransactHub.Activities.Platform.Native", activities: served));
+        Assert.True(st == HttpStatusCode.Created, body);
+
+        await using var db = StoreDbContext.Open(options);
+        var row = await new ReleaseRegistry(db).Get(DistributionRegistry.Scope(Bank), "2026.11.24-45") ?? throw new Xunit.Sdk.XunitException("not stored");
+        var files = NativeAssemblies.Unzip(row.Package);
+        var module = Assert.Single(NativeAssemblies.Check((JsonObject)JsonNode.Parse(row.ManifestJson)!, f => files.TryGetValue(f, out var x) ? x : null, files.Keys));
+        Assert.Equal(served, module.Activities);
+        var ctx = new ModuleContext(module.Files);
+        try
+        {
+            var asm = ctx.LoadFromAssemblyName(new AssemblyName(module.Assembly));
+            Assert.NotSame(typeof(TransactHub.Activities.Platform.Native.PlatformNativeModule).Assembly, asm);
+            var entry = (TransactHub.Activities.Native.INativeModule)Activator.CreateInstance(asm.GetCustomAttribute<TransactHub.Activities.Native.NativeModuleAttribute>()!.Module)!;
+            var bindings = new TransactHub.Ports.PortBindings();
+            bindings.Add($"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.core-banking.v1\n    adapter: simulator\n    validFrom: 2026-01-01T00:00:00Z\n    settings:\n      openingBalance: \"5000\"\n      currency: AED\n      postingWindowStart: \"07:00\"\n      postingWindowEnd: \"22:00\"\n");
+            var resolver = new TransactHub.Activities.Platform.Posting.CoreBankingResolver(bindings);
+            var table = entry.Activities(new Services(resolver)).ToDictionary(a => a.Name);
+            foreach (var a in served) Assert.Contains(a.Split('@')[0], table.Keys);
+
+            var now = DateTimeOffset.Parse("2026-11-24T06:00:00Z");   // 10:00 in the UAE, inside the binding's window
+            var view = (JsonObject)JsonNode.Parse("""
+                { "header": { "paymentId": "P-DB-1", "direction": "outward", "businessDate": "2026-11-24" },
+                  "payment": { "debtorAccount": { "id": "0010000000001" }, "instructedAmount": { "value": 3500, "currency": "AED" } }, "batch": { "controlSum": 3500 } }
+                """)!;
+            var template = (JsonObject)JsonNode.Parse("""
+                { "template": "default", "transactionCode": "PAY", "reversalTransactionCode": "REV", "narration": "Payment", "settlementAccount": "9990000000001", "chargeSlabs": [], "vatPercent": 0 }
+                """)!;
+            TransactHub.Activities.Native.NativeResult Run(string activity, JsonObject? p = null, DateTimeOffset? at = null) =>
+                table[activity].Run(new(activity, served.First(x => x.StartsWith(activity + "@")).Split('@')[1], view, p ?? new JsonObject(), at ?? now, Bank));
+            void Take(TransactHub.Activities.Native.NativeResult r)
+            {
+                var facts = view["facts"] as JsonObject ?? (JsonObject)(view["facts"] = new JsonObject());
+                foreach (var (k, v) in r.Writes) facts[k["facts.".Length..]] = v?.DeepClone();
+            }
+
+            var reserved = Run("p.reserve.funds.v1");
+            Assert.Equal("reserved", reserved.Outcome);
+            Assert.Equal(5000m, (decimal)reserved.Writes["facts.reservation"]!["available"]!);
+            Take(reserved);
+            var posted = Run("p.post.accounting.v1", template);
+            Assert.Equal("posted", posted.Outcome);
+            Take(posted);
+            Assert.Equal("verified", Run("p.post.verify.v1").Outcome);
+            var reversed = Run("p.post.reverse.v1");
+            Assert.Equal("reversed", reversed.Outcome);
+            Take(reversed);
+            Assert.Equal("released", Run("p.reserve.release.v1").Outcome);
+            var batches = resolver.Built.Select(x => x.CoreBanking).OfType<TransactHub.Ports.SimulatedCoreBanking>().Single().Snapshot();
+            Assert.Equal(["P-DB-1", "P-DB-1:REV"], batches.Select(b => b.Reference));
+            Assert.Equal(["credit", "debit"], batches[1].Legs.Select(l => l.Kind));
+            Assert.All(batches[1].Legs, l => Assert.Equal("REV", l.TxnCode));
+            // The window is the module's gate: outside it the reservation is a retryable error and core banking is not asked.
+            var closed = Assert.Throws<TransactHub.Activities.Native.NativeFailure>(() => Run("p.reserve.funds.v1", at: DateTimeOffset.Parse("2026-11-24T20:00:00Z")));
+            Assert.Equal(("TransientError", true), (closed.Name, closed.Retryable));
+        }
+        finally { ctx.Unload(); }
     }
 
     [Fact]
