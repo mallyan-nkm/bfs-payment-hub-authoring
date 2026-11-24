@@ -32,9 +32,9 @@ export interface Issue {
 }
 
 /**
- * The builtin services a native module answers on the runtime and the runtime image does not, since native contract 2.1.0 (R-09-278,
- * R-09-282): the accounting service (the platform module's postings, a scheme's own posting) and the reservation service. A builtin of one
- * says `native: true` (lint L40), so a distribution that carries it needs its module.
+ * The builtin services the platform module answers on the runtime and the runtime image does not, since native contract 2.1.0 (R-09-278,
+ * R-09-282): the accounting service and the reservation service. A platform builtin of one says `native: true` (lint L40), so a
+ * distribution that carries it needs the platform module. A scheme's own builtin of one is Issue I-387.
  */
 export const MODULE_SERVICES = ['accounting', 'reservation'];
 
@@ -76,7 +76,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
-  L40: 'An activity the native host implements as well keeps a script-behind or a builtin; a builtin of a service a native module answers says native: true',
+  L40: 'An activity the native host implements as well keeps a script-behind or a builtin; a platform builtin of a service the platform module answers says native: true',
   L41: 'A published release never changes once seeded',
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
   L43: 'A leg fills the slot contract of a platform workflow, reads only what it gives and writes only what it lets it write',
@@ -734,13 +734,13 @@ export class Checker {
         err('L57', `${d.name} is a ${d.type} without rule sets that is pure, but it is bound to a ${binding ?? 'nothing'}, not a script: say effect read`);
     }
     // L40 (R-08-16; R-09-282, Issues I-381, I-382): native: true goes with a script or a builtin; and since native contract 2.1.0 the image
-    // answers no core-banking activity, so a builtin of a service a module answers on the runtime says native: true.
+    // answers no core-banking activity, so a platform builtin of a service the platform module answers says native: true (a scheme's, I-387).
     {
       const impl = d.implementation ?? {};
       if (impl.native === true && !['script', 'builtin'].includes(impl.binding))
         err('L40', `${d.name} says the native host implements it too, but its binding is ${impl.binding}; native: true needs a script or a builtin`);
-      if (impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service) && impl.native !== true)
-        err('L40', `${d.name} is a builtin of the ${impl.service} service, which a native module answers on the runtime and the image does not; it says native: true`);
+      if (/^(p|[a-z0-9-]+\.p)\./.test(d.name ?? '') && impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service) && impl.native !== true)
+        err('L40', `${d.name} is a builtin of the ${impl.service} service, which the platform module answers on the runtime and the image does not; it says native: true`);
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {

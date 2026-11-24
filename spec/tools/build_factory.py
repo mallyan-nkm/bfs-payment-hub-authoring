@@ -149,12 +149,11 @@ RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role 
 # further organisation id of the debtor, scheme CIF. A field written under batch, a minor; its script at scripts/...@1.5.0.ts.
 RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the channel's upload as the debtor's organisation id, scheme CIF (Issue I-153)")
 # Issues I-381, I-382, R-09-278, R-09-282 (factory 1.23.0, native contract 2.1.0): the builtin posting, the reservation, its release, the
-# reversal and the check of a posting say that a module answers them on the runtime (implementation.native: true beside binding builtin):
-# the platform module's, and the return's posting the WPS module's. The image keeps none of them. A field added to the implementation, a minor.
+# reversal and the check of a posting say that the platform module answers them on the runtime (implementation.native: true beside
+# binding builtin). The image keeps none of them. A field added to the implementation, a minor. WPS's own posting is Issue I-387.
 RELEASES["p.post.accounting.v1"] = ("1.3.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-381)")
 for _n in ("p.reserve.funds.v1", "p.reserve.release.v1", "p.post.reverse.v1", "p.post.verify.v1"):
     RELEASES[_n] = ("1.1.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-382)")
-RELEASES["uae.wps.post.return.v1"] = ("1.3.0", "the WPS module answers it on the runtime: native: true beside builtin (Issue I-381, lint L40)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -194,7 +193,7 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
 # 1.23.0 (change set CS-2026-11-24-018; 1.21.0, 1.22.0 and change sets 016 and 017 are other changes'): native contract 2.1.0 (R-09-276
 # to R-09-283; Issues I-381, I-382, I-383): p.post.accounting.v1 1.3.0, p.reserve.funds.v1, p.reserve.release.v1, p.post.reverse.v1
-# and p.post.verify.v1 1.1.0 and uae.wps.post.return.v1 1.3.0, each with implementation.native: true beside its builtin (lint L40).
+# and p.post.verify.v1 1.1.0, each with implementation.native: true beside its builtin (lint L40).
 PACK_RELEASES = {"p": "1.23.0", "uae.p": "1.23.0", "uae.wps": "1.23.0", "b": "1.23.0"}
 FACTORY_RELEASE = "1.23.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
@@ -636,7 +635,7 @@ act("uae.wps.decide.returns.v2", "Find the employee credits to return", ["items[
     ["none", "returns", "unverified"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
 act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the returns file", ["header", "batch", "facts.returns"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.post.reverse.v1", service="accounting", p=WP, native=True,
+    comp="p.post.reverse.v1", service="accounting", p=WP,
     params={"template": {"type": "code", "default": "wps-return",
                          "description": "Accounting template for a return. The bank sets the accounts the returned amount moves between."},
             **{k: copy.deepcopy(ACCOUNTING[k]) for k in ("transactionCode", "reversalTransactionCode", "narration", "settlementAccount", "suspenseAccount")}})

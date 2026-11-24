@@ -49,8 +49,8 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     // studio lists it with no list of its own (MODULE_BUILTINS is gone, Issue I-381).
     for (const a of ['p.post.accounting.v1@1.3.0', 'p.reserve.funds.v1@1.1.0', 'p.reserve.release.v1@1.1.0', 'p.post.reverse.v1@1.1.0', 'p.post.verify.v1@1.1.0'])
       expect(p.activities).toContain(a);
-    // The WPS module answers the return's posting, a builtin of the accounting service.
-    expect(m.activities).toContain('uae.wps.post.return.v1@1.3.0');
+    // WPS's own posting is not marked yet (Issue I-387).
+    expect(m.activities.some((a: string) => a.startsWith('uae.wps.post.return.v1@'))).toBe(false);
     // Each prebuilt folder was verified against the signers the studio trusts (R-09-127).
     expect(m.signature).toEqual({ keyId: MODULE_KEY_ID });
     const f = m.files[0];

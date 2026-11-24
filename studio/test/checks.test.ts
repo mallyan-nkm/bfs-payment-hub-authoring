@@ -151,10 +151,11 @@ describe('a builtin a native module answers says so (L40, R-09-282, Issues I-381
   it('a builtin of the accounting or reservation service says native: true, and native: true goes with a script or a builtin', () => {
     expect(fire('L40', () => {})).toEqual([]);
     expect(fire('L40', (find) => { delete find('p.post.accounting.v1').implementation.native; }).map((i) => i.message))
-      .toEqual([expect.stringMatching(/p\.post\.accounting\.v1 is a builtin of the accounting service, which a native module answers on the runtime and the image does not; it says native: true/)]);
+      .toEqual([expect.stringMatching(/p\.post\.accounting\.v1 is a builtin of the accounting service, which the platform module answers on the runtime and the image does not; it says native: true/)]);
     expect(fire('L40', (find) => { delete find('p.reserve.release.v1').implementation.native; }).map((i) => i.message))
       .toEqual([expect.stringMatching(/p\.reserve\.release\.v1 is a builtin of the reservation service/)]);
-    expect(fire('L40', (find) => { delete find('uae.wps.post.return.v1').implementation.native; })).toHaveLength(1);
+    // A scheme's own builtin of the accounting service is not asked yet (Issue I-387).
+    expect(fire('L40', (find) => { find('uae.wps.post.return.v1').implementation.native = undefined; })).toEqual([]);
     // A builtin the image answers (the payment record) needs no module.
     expect(fire('L40', (find) => { delete find('p.validate.duplicate.v1').implementation.native; })).toEqual([]);
     expect(fire('L40', (find) => { find('p.decide.await-posting-window.v1').implementation.native = true; }).map((i) => i.message))
