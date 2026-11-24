@@ -2343,6 +2343,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Record the claim check's payload first (its `create` fact) and put only the engine's state and the payload's reference in the journal's `start` command, as the DTFx and Elsa services do; the replay of a start then reads the payload from the claim check.
 
+**Done (24 November 2026, R-09-206).** The binding records a root start's payload in the claim check first, under a reference known before the server names the process (`<label>-<tenant>#start`, a `create` fact that accepts nothing), and journals the `start` command with the engine's state and that reference only; a start scheduled in the binding's queue is held the same way. A start sent again after a restart reads its payload from the claim check, rebuilt with the instances' payloads (`FlowableBinding.StartOf`, `ContextOf`). The payload is then created under the process's own reference and accepted, as before. A journal written before the change, whose `start` carries `ctx`, is still read. `FlowableRestartTests` (all three) check that no fact of the run's journal holds the payload and that the start's payload is a claim-check fact; they fail on the code before.
+
 ## I-303. An activity that was running when its service stopped runs again
 
 **Issue.** A DTFx or Elsa service that starts again runs again an activity attempt that was in flight when it stopped (R-09-197), as Temporal and Flowable hand out again a task whose worker's lock expired. The step's fact is recorded once (StepFacts), but the worker is called twice. The DSL allows retry only on an activity that is pure, read, or carries an idempotency key, and says nothing of a run again after a crash, which no workflow can declare away.

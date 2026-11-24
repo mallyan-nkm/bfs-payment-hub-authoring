@@ -179,7 +179,10 @@ public sealed partial class FlowableBinding
     async Task Resume(JsonObject s)
     {
         var storeOpts = StoreFromEnvironment()!;
-        if (claim is DurableClaimCheck durable) await durable.Resume(insts.Values.Select(i => i.Ref));
+        // The payloads of starts not yet registered too: the pending start's and the scheduled ones' (I-302).
+        var startRefs = queue.UnorderedItems.Where(x => x.Element.Kind == "start").Select(x => J.S(x.Element.Data, "payloadRef"))
+            .Append(J.S(J.P(s, "pending"), "payloadRef")).OfType<string>();
+        if (claim is DurableClaimCheck durable) await durable.Resume(insts.Values.Select(i => i.Ref).Concat(startRefs));
         if (J.P(s, "live") is JsonObject live && LiveSignals.Source is not null)
             liveFeed = new StoreSignals.Feed(storeOpts, TimeProvider.System, J.S(live, "subject")!, J.S(live, "kind")!, "flowable", J.S(live, "instance")!);
         // A step answered again after the restart is not recorded twice (R-05-50).
@@ -228,10 +231,10 @@ public sealed partial class FlowableBinding
                     var existing = await rest.ProcessInstances(tenant, $"{label}-{tenant}");
                     if (existing.Count > 0 && J.S(existing[0], "id") is string pid)
                     {
-                        await RegisterRoot(label, J.S(p, "workflow")!, J.S(p, "release")!, (JsonObject)J.Clone(J.P(p, "ctx"))!, pid);
+                        await RegisterRoot(label, J.S(p, "workflow")!, J.S(p, "release")!, ContextOf(p), pid);
                         log.Add($"replayed the start of {label}: the server had started it as {pid}");
                     }
-                    else await StartRoot(label, J.S(p, "workflow")!, J.S(p, "release")!, (JsonObject)J.Clone(J.P(p, "ctx"))!);
+                    else await StartRoot(p);
                     break;
                 }
             }
