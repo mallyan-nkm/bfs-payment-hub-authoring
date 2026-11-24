@@ -44,6 +44,24 @@ public static class UploadCatalogue
         return out_.OrderBy(m => m.Id, StringComparer.Ordinal).ToList();
     }
 
+    /// <summary>The activities of a package, by name: the latest release of each.</summary>
+    public static IReadOnlyDictionary<string, JsonObject> Activities(byte[] package)
+    {
+        var acts = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        using var zip = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read);
+        foreach (var e in zip.Entries.Where(e => e.FullName.EndsWith(".yaml", StringComparison.Ordinal)))
+        {
+            using var r = new StreamReader(e.Open(), Encoding.UTF8);
+            var text = r.ReadToEnd();
+            if (!text.Contains("kind: activity")) continue;
+            JsonObject? doc;
+            try { doc = Yaml.ToJson(text) as JsonObject; } catch { continue; }
+            if ((string?)doc?["kind"] != "activity" || (string?)doc["name"] is not { Length: > 0 } name) continue;
+            if (!acts.TryGetValue(name, out var had) || ReleaseOrder.Compare((string?)doc["release"], (string?)had["release"]) > 0) acts[name] = doc;
+        }
+        return acts;
+    }
+
     /// <summary>The scheme manifests of a package, by scope: the latest release of each.</summary>
     public static IReadOnlyDictionary<string, JsonObject> Schemes(byte[] package)
     {

@@ -83,6 +83,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L53: 'A bank\'s configuration is released as a major or a minor, never a patch: the rates feed numbers its releases as patches',
   L54: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
   L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
+  L56: 'A parameter marked a ledger account is an activity\'s string or code',
 };
 
 // ---------------------------------------------------------------- walking
@@ -376,6 +377,11 @@ export class Checker {
         if (!decl?.type) err('L44', `${d.name}#${k} declares no type`);
         else if (decl.default === undefined) err('L44', `${d.name}#${k} declares no default`);
         else if (!withinBounds(decl, decl.default)) err('L44', `${d.name}#${k}: its default ${JSON.stringify(decl.default)} is outside its own bounds ${JSON.stringify(decl.bounds)}`);
+        // L56 (R-05-100, Issue I-282): a ledger account is an activity's string or code.
+        if (decl?.role === 'ledger-account') {
+          if (d.kind !== 'activity') err('L56', `${d.name}#${k} is marked a ledger account, but only an activity's parameter names one`);
+          if (!['string', 'code'].includes(decl.type)) err('L56', `${d.name}#${k} is marked a ledger account, but it is of type ${decl.type}, not a string or a code`);
+        }
       }
     }
     // L29: step ids unique after segments are inlined.

@@ -178,8 +178,8 @@ artefacts:
     path: activities/uae.wps.map.sif-out.v1.yaml
   - name: uae.wps.post.return.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:5ee92f88ccbc21ea53fe902ce579c8ab0eadbb5e7cc3a748b400f58ebc1bb94b
+    release: 1.2.0
+    hash: sha256:c46ed8b1b0592a4caeaf45523375096d8ae7babbbe55f74e9b15450f1a2ef3d4
     path: activities/uae.wps.post.return.v1.yaml
   - name: uae.wps.validate.payment-file.v1
     kind: activity

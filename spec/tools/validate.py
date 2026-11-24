@@ -1570,6 +1570,12 @@ for path, d in docs:
             err("L44", path, "%s declares no default" % name)
         elif not within_bounds(decl, decl["default"]):
             err("L44", path, "%s: its default %r is outside its own bounds %r" % (name, decl["default"], decl.get("bounds")))
+        # L56 (R-05-100, Issue I-282) a ledger account is an account: a string or a code of an activity, with its kind
+        if decl.get("role") == "ledger-account":
+            if d.get("kind") != "activity":
+                err("L56", path, "%s is marked a ledger account, but only an activity's parameter names one" % name)
+            if decl["type"] not in ("string", "code"):
+                err("L56", path, "%s is marked a ledger account, but it is of type %s, not a string or a code" % (name, decl["type"]))
 
 # L49 (R-01-25) a reference table: its key and columns agree, its editions run in date order, every row fits its columns,
 # a column that references another table holds that table's keys, and a key is not repeated within an edition.

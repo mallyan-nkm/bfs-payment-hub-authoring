@@ -78,13 +78,13 @@ artefacts:
     path: activities/p.notify.publish-fact.v1.yaml
   - name: p.post.accounting.v1
     kind: activity
-    release: 1.1.0
-    hash: sha256:4b0b6ba3688612cab242c93751d03e85f5224b2eff9476a2248fa84d4afc1e4f
+    release: 1.2.0
+    hash: sha256:d64c24ccf19e32a44d0eedba40e12c3fe7b6e6cac1555578be0dea03c7ab23d0
     path: activities/p.post.accounting.v1.yaml
   - name: p.post.accounting.v2
     kind: activity
-    release: 2.0.0
-    hash: sha256:e1640ec681906b5efd5f1281a17dd2a50a4a26835ad88204048559d119b75d89
+    release: 2.1.0
+    hash: sha256:a5c878dbc6a654191e0ca536fbd796794e4b0388833abb11914baf04165ef485
     path: activities/p.post.accounting.v2.yaml
   - name: p.post.reverse.v1
     kind: activity

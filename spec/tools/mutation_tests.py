@@ -265,6 +265,9 @@ CASES = [
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.post.verify.v1, map: uae.wps.map.psi-in.v1, period: P1D }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a report whose reconcile activity is not a reconcile activity"),
+    # L56 (R-05-100, Issue I-282): a parameter marked a ledger account is an activity's string or code
+    ("M96", "ERROR L56", "factory/p/activities/p.post.accounting.v2.yaml",
+     "  vatAccount:\n    type: string\n", "  vatAccount:\n    type: integer\n", "a ledger account that is a number"),
 ]
 
 

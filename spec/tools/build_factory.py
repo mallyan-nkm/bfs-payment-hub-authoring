@@ -140,6 +140,11 @@ RELEASES = {
 # Issue I-268, R-09-213 (factory 1.20.0): the scheme's other sends on the WPS port gain native code-behinds, a minor each.
 for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursement-file", "send-returns-file", "send-disbursement-cancellation", "send-refund-response"):
     RELEASES["uae.wps.exchange.%s.v1" % _n] = ("1.1.0", "native code-behind: the kept file sent on the bank's binding of the WPS port (Issue I-268)")
+# Issue I-282, R-05-100 (factory 1.20.0): an accounting activity's ledger accounts say what they are (role ledger-account, with
+# their kind), so the ledger view lists them by role, not by name. A parameter's description added to, a minor each.
+RELEASES["p.post.accounting.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+RELEASES["p.post.accounting.v2"] = ("2.1.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -283,8 +288,10 @@ def txn(default, what):
     return {"type": "code", "default": default, "bounds": dict(TXN), "description": "Core-banking transaction code of %s." % what}
 
 
-def account(default, what):
-    return {"type": "string", "default": default, "bounds": dict(ACCT), "description": "The account %s." % what}
+def account(default, what, kind):
+    # Issue I-282, R-05-100: a ledger account says so, with its kind, so the ledger view lists it whatever its name.
+    return {"type": "string", "default": default, "bounds": dict(ACCT), "description": "The account %s." % what,
+            "role": "ledger-account", "ledgerKind": kind}
 
 
 ACCOUNTING = {
@@ -296,10 +303,10 @@ ACCOUNTING = {
     "vatTransactionCode": txn("VAT", "the VAT on a charge"),
     "narration": {"type": "string", "default": "Payment", "bounds": dict(NARR), "description": "Narration of a payment's legs; the payment's reference follows it."},
     "chargeNarration": {"type": "string", "default": "Bank charge", "bounds": dict(NARR), "description": "Narration of the charge and VAT legs."},
-    "settlementAccount": account("GL-SETTLEMENT", "a scheme's payments settle through (the nostro)"),
-    "suspenseAccount": account("GL-SUSPENSE", "refused credits wait in"),
-    "chargeIncomeAccount": account("GL-CHARGES", "charges are credited to"),
-    "vatAccount": account("GL-VAT", "VAT on charges is credited to"),
+    "settlementAccount": account("GL-SETTLEMENT", "a scheme's payments settle through (the nostro)", "settlement"),
+    "suspenseAccount": account("GL-SUSPENSE", "refused credits wait in", "suspense"),
+    "chargeIncomeAccount": account("GL-CHARGES", "charges are credited to", "income"),
+    "vatAccount": account("GL-VAT", "VAT on charges is credited to", "vat"),
     "glAccountTypes": {"type": "list", "default": ["SETTLEMENT", "SUSPENSE", "INCOME", "EXPENSE"], "bounds": {"pattern": "^[A-Z]{2,12}$"},
                        "description": "The kinds of general-ledger account the template's accounts are."},
     "chargeSlabs": {"type": "list", "default": [], "bounds": {"min": 0, "max": 1000000},
