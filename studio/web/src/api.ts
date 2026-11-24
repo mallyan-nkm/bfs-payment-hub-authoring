@@ -106,6 +106,8 @@ export interface Check { what: string; expected: any; actual: any; passed: boole
 export interface TestRunReport {
   id: string; title?: string; target: string; level: string; passed: boolean; checks: Check[]; error?: string; outcome?: string;
   trace: string[]; detail?: string[]; releaseTrace: string[]; elapsed: string; warnings: string[]; record?: RunRecord;
+  /** A draft run (R-09-230): made with the tenant's drafts, which it names. */
+  draftRun?: { drafts: string[]; note: string };
 }
 export interface RunRecord {
   status: string; instances: InstanceView[]; timeline: any[]; messages: any[]; unmatched: any[]; duplicates: any[];

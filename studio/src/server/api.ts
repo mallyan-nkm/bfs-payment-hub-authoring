@@ -7,6 +7,7 @@ import { analyseTable, runExamples } from '../rules/service.js';
 import { effectivePolicy } from '../interp/policy.js';
 import { missingStandardScenarios } from '../sim/runtime.js';
 import { runTest, runAllTests, sampleNames, type TestRunReport } from '../testing/runner.js';
+import { draftTest, withDrafts } from '../testing/draft-run.js';
 import { runKit, loadKit } from '../conformance/kit.js';
 import { exportPackage, signedZip, type Target } from '../export/exporter.js';
 import { ZipRefused } from '../export/zip.js';
@@ -493,24 +494,32 @@ let lastRun: TestRunReport[] = [];
 
 route('GET', '/api/tests', (env, req) => {
   const tenant = tenantOf(req);
-  return env.store.byKind('test').filter((t) => t.tenant === OWNER_TENANT || t.tenant === tenant).map((t) => {
+  const published = env.store.byKind('test').filter((t) => t.tenant === OWNER_TENANT || t.tenant === tenant).map((t) => {
     const r = lastRun.find((x) => x.id === t.name);
-    return { id: t.name, title: t.doc.title, target: t.doc.target, level: t.doc.level, tenant: t.doc.tenant, scope: t.scope, bench: t.doc.bench ?? [], lastResult: r ? (r.passed ? 'pass' : 'fail') : undefined };
-  }).sort((a, b) => a.id.localeCompare(b.id));
+    return { id: t.name, title: t.doc.title, target: t.doc.target, level: t.doc.level, tenant: t.doc.tenant, scope: t.scope, bench: t.doc.bench ?? [], lastResult: r ? (r.passed ? 'pass' : 'fail') : undefined } as any;
+  });
+  // The tenant's draft tests, marked: they run as a draft run, with the tenant's drafts (R-09-230, Issue I-341).
+  const drafts = env.store.drafts(tenant).filter((t) => t.kind === 'test' && !published.some((p) => p.id === t.name))
+    .map((t) => ({ id: t.name, title: t.doc.title, target: t.doc.target, level: t.doc.level, tenant: t.doc.tenant, scope: t.scope, bench: t.doc.bench ?? [], draft: true }));
+  return [...published, ...drafts].sort((a, b) => a.id.localeCompare(b.id));
 });
 
 route('GET', '/api/tests/:id', (env, req, { id }) => {
-  const t = env.store.test(id);
+  const t = env.store.test(id) ?? draftTest(env, tenantOf(req), id);
   // Another bank's test is not this tenant's to read (R-06-01).
   if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenantOf(req))) throw new HttpError(404, `No test ${id}`);
   return { test: t.doc, yaml: toYaml(t.doc) };
 });
 
 route('POST', '/api/tests/:id/run', async (env, req, { id }) => {
-  const t = env.store.test(id);
-  if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenantOf(req))) throw new HttpError(404, `No test ${id}`);
-  mayRun(env, req, 'bench', id);
   const tenant = tenantOf(req);
+  const published = env.store.test(id);
+  // A draft test, or a run asked for with drafts, is a draft run: the tenant's drafts in place of their releases (R-09-230).
+  const t = published ?? draftTest(env, tenant, id);
+  if (!t || (t.tenant !== OWNER_TENANT && t.tenant !== tenant)) throw new HttpError(404, `No test ${id}`);
+  mayRun(env, req, 'bench', id);
+  const draft = !published || req.body?.drafts === true ? withDrafts(env, tenant) : undefined;
+  if (draft) env = draft.env;
   const override = req.body?.override && typeof req.body.override === 'object' ? req.body.override : {};
   // An override names no other tenant, and no target this tenant may not see (R-06-01, R-11-30).
   if (override.tenant !== undefined && override.tenant !== (tenant === OWNER_TENANT ? override.tenant : tenant)) throw new TenantRefusal(String(override.tenant), `${req.user} works for tenant ${tenant}, not ${override.tenant} (R-06-01)`);
@@ -520,6 +529,7 @@ route('POST', '/api/tests/:id/run', async (env, req, { id }) => {
   }
   const test = { ...t.doc, ...override, ...(tenant !== OWNER_TENANT ? { tenant } : {}) };
   const r = await runTest(env, test, runConfigOf(req.body?.config));
+  if (draft) return { ...r, draftRun: draft.draftRun };
   lastRun = [...lastRun.filter((x) => x.id !== id), r];
   return r;
 });
@@ -553,9 +563,15 @@ async function benchRun(env: StudioEnv, req: Req, debug: boolean) {
   const tenant = tenantOf(req);
   mayRun(env, req, 'bench', String(b.target ?? 'bench'));
   if (tenant !== OWNER_TENANT) b.tenant = tenant;
+  // With `drafts: true`, a draft run: the target and every call resolved from the tenant's drafts first (R-09-230, Issue I-341).
+  const draft = b.drafts === true ? withDrafts(env, tenant) : undefined;
+  if (draft) env = draft.env;
   const e = b.target ? env.store.latest(b.target, tenant) ?? env.store.latest(b.target) : undefined;
   const target = e && (e.tenant === OWNER_TENANT || e.tenant === tenant) ? e.doc : undefined;
-  if (!target) throw new HttpError(404, `No ${b.target}`);
+  if (!target) {
+    const drafted = !draft && b.target && env.store.drafts(tenant).some((d) => d.name === b.target);
+    throw new HttpError(404, drafted ? `No published ${b.target}: it is a draft. Run it with your drafts (a draft run).` : `No ${b.target}`);
+  }
   const level = b.level ?? (target.kind === 'activity' ? 'activity' : target.kind === 'hook' ? 'hook' : target.wfKind === 'handler' ? 'handler' : target.wfKind === 'leg' ? 'leg' : target.wfKind === 'platform' ? (b.inbound ? 'end-to-end' : 'leg') : 'activity');
   const test = {
     kind: 'test', id: 'BENCH-RUN', title: 'Bench run', target: b.target, level, evaluationDate: b.evaluationDate ?? '2026-11-17',
@@ -563,7 +579,8 @@ async function benchRun(env: StudioEnv, req: Req, debug: boolean) {
     given: { ...(b.context ? { context: b.context } : {}), ...(b.inbound ? { inbound: b.inbound } : {}), ...(b.message ? { message: b.message } : {}), ...(b.signals?.length ? { signals: b.signals } : {}) },
     expect: b.expect ?? {},
   };
-  return runTest(env, test, { ...(b.supersessions ? { supersessions: b.supersessions } : {}), ...(debug ? { debug: true } : {}) });
+  const r = await runTest(env, test, { ...(b.supersessions ? { supersessions: b.supersessions } : {}), ...(debug ? { debug: true } : {}) });
+  return draft ? { ...r, draftRun: draft.draftRun } : r;
 }
 
 route('GET', '/api/simulators', (env, req) => env.store.byKind('simulator').filter((s) => (s.tenant === OWNER_TENANT || s.tenant === tenantOf(req)) && (!req.query.port || s.doc.port === req.query.port)).map((s) => ({ name: s.name, port: s.doc.port, direction: s.doc.direction, scenarios: (s.doc.scenarios ?? []).map((x: any) => x.name), missingStandard: missingStandardScenarios(s.doc) })));
