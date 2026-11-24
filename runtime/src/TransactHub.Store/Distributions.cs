@@ -222,7 +222,10 @@ public sealed class DistributionRegistry(StoreDbContext db, TimeProvider? clock 
         foreach (var p in pins.Where(p => !ended.Contains(p.SubjectId) && p.At <= before).OrderBy(p => p.At))
         {
             var id = p.SubjectId;
-            if (await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectKind == "payload" && f.Code == "create" && f.DataJson.Contains(id), ct)) continue;
+            // It started when an engine's run took it: its payload was created or accepted for it, or an engine wrote on its own chain
+            // (a bulk's steps, its instance's ids). A salary file's run on Temporal does only the latter two (Issue I-339).
+            if (await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectKind == "payload" && (f.Code == "create" || f.Code == "accepted") && f.DataJson.Contains(id), ct)) continue;
+            if (await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == id && (f.Kind == "step" || f.Kind == "engine"), ct)) continue;
             var last = await db.Facts.AsNoTracking().Where(f => f.SubjectId == id).OrderByDescending(f => f.Seq).Select(f => f.Kind).FirstOrDefaultAsync(ct);
             var d = JsonNode.Parse(p.DataJson);
             stuck.Add(new StuckPin(id, p.Code!, (string?)d?["bank"] ?? "", (string?)d?["environment"] ?? "", p.At, last));

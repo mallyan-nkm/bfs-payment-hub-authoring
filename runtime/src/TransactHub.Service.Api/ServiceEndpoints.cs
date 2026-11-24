@@ -61,6 +61,10 @@ public static class ServiceEndpoints
         api.MapGet("/content/open-payments", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.OpenPayments(http.RequestAborted)); }));
         // The pins with no payment, each with the action that ends it (Issue I-206, R-09-165).
         api.MapGet("/content/stuck-pins", (string? olderThan, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.StuckPins(DistributionRegistry.Duration(olderThan), http.RequestAborted)); }));
+        // The bank's values and hook bindings in force at a moment (R-09-110, R-09-111), and what the runtime trusts: its signers and
+        // the native modules of each distribution, checked by their SHA-256 (R-09-120 to R-09-123).
+        api.MapGet("/content/values", (DateTimeOffset? at, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.ValuesInForce(Who(http), at, http.RequestAborted))));
+        api.MapGet("/trust", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Trust(http.RequestAborted)); }));
         api.MapGet("/content/diff", (string tag, string? environment, HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Diff(tag, environment, http.RequestAborted)); }));
         api.MapPost("/content/verify", (TagAsk b, HttpContext http, ContentService c) => Guard(async () => Results.Ok(await c.Verify(b.Tag, Who(http), b.Reason, http.RequestAborted))));
         // Installing changes the system: verified now, carried out once a bank approver consents (R-09-77).

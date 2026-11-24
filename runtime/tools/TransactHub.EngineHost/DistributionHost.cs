@@ -98,6 +98,10 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
         try
         {
             var obs = await run();
+            // The rule traces of the payment's steps, read from its chain (R-09-240, Issue I-304): a payment the service took back
+            // after a restart has those of the steps it ran before, which the service's memory lost.
+            try { obs["ruleTraces"] = await TransactHub.Engines.Durable.StepFacts.RuleTraces(Store, paymentId); }
+            catch (Exception e) { Console.Error.WriteLine($"{paymentId}: its rule traces were not read: {e.GetType().Name}"); }
             var outcome = Outcome(obs);
             await using (var db = StoreDbContext.Open(Store))
             {
@@ -287,6 +291,24 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
     /// <summary>A short key of its own for a payment's run: the store's subject ids are at most 64 characters.</summary>
     static string Key(string s) => EngineHistory.Key(s);
 
+    /// <summary>The host's setting of its service's work items at once (R-09-238): 1 to 64, default 4; anything else is refused.</summary>
+    public static int ServiceConcurrency(string? setting = null)
+    {
+        setting ??= System.Environment.GetEnvironmentVariable("TH_HOST_SERVICE_CONCURRENCY");
+        if (string.IsNullOrWhiteSpace(setting)) return 4;
+        return int.TryParse(setting, out var n) && n >= EngineHistory.MinConcurrency && n <= EngineHistory.MaxConcurrency ? n
+            : throw new InvalidOperationException($"TH_HOST_SERVICE_CONCURRENCY is {setting}: a distribution's service runs from {EngineHistory.MinConcurrency} to {EngineHistory.MaxConcurrency} work items at once");
+    }
+
+    /// <summary>The host's setting of how many history facts its service writes between checkpoints (R-09-239): 50 to 100000, default 500.</summary>
+    public static int CheckpointEvery(string? setting = null)
+    {
+        setting ??= System.Environment.GetEnvironmentVariable("TH_HOST_HISTORY_CHECKPOINT_EVERY");
+        if (string.IsNullOrWhiteSpace(setting)) return 500;
+        return int.TryParse(setting, out var n) && n >= 50 && n <= 100_000 ? n
+            : throw new InvalidOperationException($"TH_HOST_HISTORY_CHECKPOINT_EVERY is {setting}: a service checkpoints its history every 50 to 100000 facts");
+    }
+
     /// <summary>A payment's root instance on the service: its own, so that its payload's chain is the payment's own.</summary>
     static string RootOf(string paymentId) => $"root-{Key(paymentId)}";
 
@@ -304,6 +326,11 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
         {
             ["TH_OPERATOR_PATIENCE_SECONDS"] = ((long)patience.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["TH_HARNESS_REAL_TIME"] = "1",
+            // How many work items the service runs at once, its payments side by side (R-09-238, Issue I-300): the host's
+            // TH_HOST_SERVICE_CONCURRENCY, from 1 to 64, default 4. A setting refused out of its bounds stops the host.
+            ["TH_SERVICE_CONCURRENCY"] = ServiceConcurrency().ToString(System.Globalization.CultureInfo.InvariantCulture),
+            // How often the service compacts its history into a checkpoint of its open payments (R-09-239, Issue I-301).
+            ["TH_HISTORY_CHECKPOINT_EVERY"] = CheckpointEvery().ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
         if (Engine == "flowable")
         {

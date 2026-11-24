@@ -54,6 +54,8 @@ bindings:
     adapter: file-transfer
     validFrom: 2026-11-23T00:00:00Z
     settings:
+      # Every file the port sends goes to the Central Bank's folder; a bank may name one per message the port sends
+      # (submit-file.<message>.folder, R-09-235, Issue I-313). The File API keeps each as the scheme message its send sends
+      # (uae.wps.sif-submission for the salary file, R-09-234, Issue I-310): the binding names no kind.
       submit-file.folder: centralBank.sifFolder
-      submit-file.kind: uae.wps.sif-out
       submit-file.inbox: centralBank.inbox.ack

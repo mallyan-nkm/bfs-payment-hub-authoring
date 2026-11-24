@@ -1,6 +1,6 @@
 kind: operations-view
 name: uae.wps.view.operations.v1
-release: 1.6.0
+release: 1.7.0
 title: WPS operations view
 description: >-
   What an operator sees of a WPS file and its legs: the salary file to WPS (SIF, its acknowledgement), the payment file
@@ -150,7 +150,14 @@ legs:
       - { id: employerStatusCheck, label: Labour ministry asked, group: checks, source: "step:employer-status.outcome", format: status, oldScreen: "SIF Detail report, MOHRE Update Status (the lookup)" }
       - { id: rendered, label: SIF rendered, group: gateway, source: "step:render.outcome", format: status }
       - { id: encryption, label: SIF encrypted for WPS, group: gateway, source: "step:submit.encrypt.outcome", format: status }
-      - { id: sentToCbAt, label: Sent to the Central Bank at, group: gateway, source: "step:submit.send.at", format: datetime, oldScreen: "SIF Summary 360, Central Bank Gateway Details, Sent to CB DateTime" }
+      # Release 1.7.0 (R-05-103, Issue I-337): the file's delivery as the File API recorded it on the payment's chain. The send step
+      # ends accepted when the outbox takes the file; the sent time is when it reached the Central Bank's folder, and a file that never
+      # left says so.
+      - { id: sentToCbAt, label: Sent to the Central Bank at, group: gateway, source: "delivery:uae.wps.sif-submission.at", format: datetime, oldScreen: "SIF Summary 360, Central Bank Gateway Details, Sent to CB DateTime" }
+      - { id: delivery, label: Delivered to the Central Bank, group: gateway, source: "delivery:uae.wps.sif-submission.outcome", format: status }
+      - { id: deliveryAttempts, label: Delivery attempts, group: gateway, source: "delivery:uae.wps.sif-submission.attempts", format: count }
+      - { id: deliveryError, label: Delivery error, group: gateway, source: "delivery:uae.wps.sif-submission.code", format: code }
+      - { id: outboxTookAt, label: Taken by the File API at, group: gateway, source: "step:submit.send.at", format: datetime }
       - { id: sendOutcome, label: Upload, group: gateway, source: "step:submit.send.outcome", format: status, oldScreen: "Integration 360, Channel Interactions, Status of the upload" }
       - { id: sendAttempts, label: Upload attempts, group: gateway, source: "step:submit.send.attempt", format: count, oldScreen: "Integration 360, Channel Interactions, Retry" }
       - { id: cbFileName, label: CB file name, group: gateway, source: "message:uae.wps.sif-submission.fileName", oldScreen: "SIF Summary 360, Central Bank Gateway Details, CB File Name" }

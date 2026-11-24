@@ -3,6 +3,7 @@ import type { Client, Detail as D, FieldDecl, Offer, Section, View } from './api
 import { documentRow, grouped, show, tone } from './format';
 import { Breadcrumb, BreadcrumbButton, BreadcrumbDivider, BreadcrumbItem, Button, Card, Link, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 import { Alert, Badge } from '../ui';
+import { deliveryNote, ruleTraceNote } from './oversight';
 
 // A payment or bulk: its fields from the platform's and its scheme's views, each leg it has with that leg's declared
 // fields, the lines of a bulk, its timeline (every fact of its chain), its documents, holds and actions, and the actions
@@ -178,6 +179,8 @@ export function Detail({ api, views, id, go }: { api: Client; views: View[]; id:
               {t.data?.reasonCode && <span className="mono">{t.data.reasonCode}</span>}{' '}
               {t.data?.reason && <span>{t.data.reason}</span>}{' '}
               {t.data?.remarks && <span>“{t.data.remarks}”</span>}{' '}
+              {deliveryNote(t) && <span data-testid="delivery-note">{deliveryNote(t)}</span>}{' '}
+              {ruleTraceNote(t) && <span className="muted" data-testid="rule-trace">{ruleTraceNote(t)}</span>}{' '}
               <span className="muted">by {t.actor}</span>
               {/* The trace the fact was written in (R-09-69): a link to the installation's trace view, else the id. */}
               {t.traceId && (t.trace

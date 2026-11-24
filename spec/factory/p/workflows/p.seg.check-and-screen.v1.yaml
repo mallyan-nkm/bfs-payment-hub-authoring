@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: segment
 name: p.seg.check-and-screen.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: Check and screen
-description: The shared check and screen stages for outward payments. Inlined into a platform workflow at publish.
+description: The shared check and screen stages for outward payments. Inlined into a platform workflow at publish. From 1.1.0 its canonical checks read the batch and its lines too, and refuse a file that names no currency on its batch or on each line (Issue I-294, R-09-231).
 hookPoints:
   - name: after-validate
     type: halt
@@ -21,7 +21,7 @@ hookPoints:
     policy: { timeout: PT10S, onFailure: fail-open }
 do:
   - id: validate
-    call: p.validate.canonical.v1
+    call: p.validate.canonical.v2
     handle:
       repair:
         - id: repair

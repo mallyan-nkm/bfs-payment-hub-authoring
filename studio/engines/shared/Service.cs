@@ -31,6 +31,15 @@ public static class EngineHistory
     /// <summary>Set by a runtime build of a harness when the deployment names a store: the history of an engine's distribution.</summary>
     public static Func<string, string, IEngineHistory>? Open;
 
+    /// <summary>
+    /// How many work items a distribution's service runs at once (R-09-238, Issue I-300): <c>TH_SERVICE_CONCURRENCY</c>, which its
+    /// host sets from its own setting, from 1 to 64; 1 where it names none.
+    /// </summary>
+    public static int ServiceConcurrency() =>
+        int.TryParse(Environment.GetEnvironmentVariable("TH_SERVICE_CONCURRENCY"), out var n) ? Math.Clamp(n, MinConcurrency, MaxConcurrency) : 1;
+
+    public const int MinConcurrency = 1, MaxConcurrency = 64;
+
     /// <summary>A short key of its own for a payment's run, as the engine host makes it: the store's subject ids are at most 64 characters.</summary>
     public static string Key(string s) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s))).ToLowerInvariant()[..24];
 }

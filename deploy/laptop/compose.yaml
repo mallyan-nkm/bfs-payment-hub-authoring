@@ -262,6 +262,10 @@ services:
       Service__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
       # The replies the gauge watches are the installation's to name, not the platform's (R-09-142, Issue I-235).
       Service__Gauges__AwaitedReplies: '[{"scheme":"uae.wps","sent":"uae.wps.sif","replies":["uae.wps.ack"]}]'
+      # The runtime's own hosts on the health page (R-09-244, Issue I-352).
+      Service__Hosts__NativeHost: http://native:7300/health
+      Service__Hosts__Workers: http://workers:7700/health
+      Service__Hosts__EngineHost: enginehost:7600
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro
@@ -408,9 +412,9 @@ services:
       TH_RUNTIME_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
       # The salary file's render, send and acknowledgement run in the native host (R-09-162, Issue I-192): the SIF is written by the
       # source's writer and kept, and leaves on the bank's binding of the WPS port, the File API's outbox to the Central Bank's folder.
-      # Both sends: v1 for a distribution that pins it, v2 (R-09-182, I-266) for the factory's leg since 2.0.0.
+      # The send v2 (R-09-182, I-266), which the factory's leg has called since 1.19.0; v1 is retired (R-09-233, Issue I-293).
       TH_NATIVE_HOST: http://native:7300
-      TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.exchange.send-salary-file.v2,uae.wps.map.ack-in.v1
+      TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v2,uae.wps.map.ack-in.v1
       TH_NATIVE_TOKEN: file:/var/lib/transacthub/tokens/th-front-door.jwt
       # The Central Bank's ACK or NAK the File API received and its front door delivered: the map that reads it gets its content
       # from the File API, which kept it (R-09-162).

@@ -230,6 +230,26 @@ public sealed class SideBySideTests(Store store)
         Assert.Equal("native.DistributionUnknown", (string?)(await Post(c, Ack("dist/example-bank@2026.11.23-99")))["name"]);
     }
 
+    /// <summary>
+    /// A native host that starts loads the active distribution's modules before any attempt asks for them, so the first attempt
+    /// after a restart is not slowed by the load and the check of every hash (R-09-122): on the laptop that first attempt took
+    /// longer than its activity's start-to-close timeout, and a retried step parked again (video 5c, Issue I-354).
+    /// </summary>
+    [Fact]
+    public async Task A_host_that_starts_loads_the_active_distribution_before_any_attempt()
+    {
+        var a = await Install("2026.11.24-71", store.BuildA);
+        await using (var db = StoreDbContext.Open(store.Options)) await new DistributionRegistry(db).Activate(a, Env, "test.engineer", "active before the host starts");
+        await using var host = new Host(store.Options);
+        var c = host.CreateClient();
+        JsonObject? loaded = null;
+        for (var until = DateTime.UtcNow.AddSeconds(30); DateTime.UtcNow < until && loaded is null; await Task.Delay(250))
+            loaded = ((await c.GetFromJsonAsync<JsonObject>("/modules"))!["loaded"] as JsonArray)!.OfType<JsonObject>().FirstOrDefault(x => (string?)x["distribution"] == a);
+        Assert.NotNull(loaded);
+        Assert.Equal(ModuleBuilds.Sha(store.BuildA), (string?)loaded!["modules"]![0]!["sha256"]);
+        Assert.Empty(loaded["served"]!.AsObject());
+    }
+
     [Fact]
     public void The_contract_is_versioned_and_the_runtime_takes_its_major_up_to_its_own_minor()
     {

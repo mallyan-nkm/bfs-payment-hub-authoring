@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.report-disbursement.v1
-release: 1.1.0
+release: 1.2.0
 dsl: 1.0.0
 title: Report disbursement and read the acknowledgement
-description: What the report-disbursement block does underneath. Sends the disbursement file, waits for the acknowledgement of the disbursement file for as long as the calling step allows, and reads it. An ACK accepts the report; a NAK refuses it. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17).
+description: What the report-disbursement block does underneath. Sends the disbursement file, waits for the acknowledgement of the disbursement file for as long as the calling step allows, and reads it. An ACK accepts the report; a NAK refuses it. The file is encrypted for WPS before it is sent, and a file the encryption service refuses is never sent (Issue I-117, R-12-17). From 1.2.0 the send reads the encryption step's fact and sends the encrypted file where the bank's binding encrypted it, never the plain one (Issue I-293, R-09-232).
 implements:
   activity: uae.wps.exchange.report-disbursement.v1
 exit:
@@ -15,7 +15,7 @@ do:
     handle:
       refused: { return: rejected }
   - id: send
-    call: uae.wps.exchange.send-disbursement-file.v1
+    call: uae.wps.exchange.send-disbursement-file.v2
     handle:
       rejected: { return: rejected }
       unknown: { return: pending }

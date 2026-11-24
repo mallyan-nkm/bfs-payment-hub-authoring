@@ -150,6 +150,47 @@ public sealed class ProjectionTests(Databases dbs)
         Assert.True(await o.FieldValues.AnyAsync(v => v.SubjectId == id && v.Field == "uae.wps.view.operations.v1:subject:totalAmount" && v.Number == 1500m));
     }
 
+    /// <summary>
+    /// R-05-103, R-09-236 (Issue I-337): a payment whose file the File API took but never delivered says so. The leg's sent time is the
+    /// delivery's, not the outbox's acceptance; the delivery, its attempts and its error are the leg's fields; the facts are on the
+    /// payment's timeline; the payment is listed among those whose file is undelivered until a delivery puts it on the partner's folder.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_file_the_File_API_never_delivered_shows_on_the_payment_its_leg_and_the_undelivered_list(StoreProvider p)
+    {
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, delivery: "undelivered");
+        var projector = new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero };
+        await projector.CatchUp();
+        JsonNode LegFields()
+        {
+            using var o = OpsDbContext.Open(ops);
+            return JsonNode.Parse(o.Legs.Single(x => x.SubjectId == id).FieldsJson)!;
+        }
+        var lf = LegFields();
+        Assert.Null(lf["sentToCbAt"]);
+        Assert.NotNull((string?)lf["outboxTookAt"]);
+        Assert.Equal(("undelivered", "port.CircuitOpen", 1), ((string?)lf["delivery"], (string?)lf["deliveryError"], (int?)lf["deliveryAttempts"]));
+        await using (var o = OpsDbContext.Open(ops))
+            Assert.Equal(["file.delivery-failed", "file.undelivered"], await o.Timeline.AsNoTracking().Where(x => x.SubjectId == id && x.Kind.StartsWith("file.")).OrderBy(x => x.Seq).Select(x => x.Kind).ToListAsync());
+        var list = new UndeliveredFiles(ops);
+        var row = Assert.Single(await list.List([WpsRun.Tenant]));
+        Assert.Equal((id, UndeliveredFiles.Undelivered, "uae.wps.sif-submission", "port.CircuitOpen", 1), (row.Payment, row.State, row.Kind, row.Code, row.Attempts));
+        Assert.Empty(await list.List(["another-bank"]));
+        // The partner answers and a resend delivers the kept file: the leg's sent time is the delivery's, and the list is empty.
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append(id, "bulk", new NewFact("file.delivered", "sftp", new JsonObject
+            {
+                ["file"] = row.File, ["kind"] = "uae.wps.sif-submission", ["fileName"] = row.FileName, ["adapter"] = "sftp", ["attempt"] = 2, ["resend"] = true,
+            }, Actor: "operator-1"));
+        await projector.CatchUp();
+        lf = LegFields();
+        Assert.Equal(("delivered", 2), ((string?)lf["delivery"], (int?)lf["deliveryAttempts"]));
+        Assert.NotNull((string?)lf["sentToCbAt"]);
+        Assert.Null(lf["deliveryError"]);
+        Assert.Empty(await list.List([WpsRun.Tenant]));
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task The_initiator_the_posting_s_charges_and_the_duration_reach_the_console_and_the_initiator_masked(StoreProvider p)
     {

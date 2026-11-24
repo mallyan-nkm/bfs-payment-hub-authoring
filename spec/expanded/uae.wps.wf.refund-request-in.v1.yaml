@@ -49,7 +49,7 @@ do:
             refused:
               return: rejected
         - id: return-funds.send
-          call: uae.wps.exchange.send-disbursement-cancellation.v1
+          call: uae.wps.exchange.send-disbursement-cancellation.v2
           handle:
             rejected:
               return: rejected
@@ -91,7 +91,7 @@ do:
             refused:
               return: rejected
         - id: answer.send
-          call: uae.wps.exchange.send-refund-response.v1
+          call: uae.wps.exchange.send-refund-response.v2
           handle:
             rejected:
               return: rejected

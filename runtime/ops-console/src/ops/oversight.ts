@@ -12,6 +12,39 @@ export interface LedgerBank { tenant: string; asOf: string; readOnly: boolean; a
 export interface RateRow { pair: string; rate: number | string; asOf?: string | null; age?: string | null; stale: boolean; standing: boolean }
 export interface RatesBank { tenant: string; at: string; limit: string; limitSource: 'bank' | 'default'; stale: boolean; stalePairs: string[]; oldest?: string | null; rates: RateRow[]; code?: string | null }
 export interface Rates { stale: boolean; banks: RatesBank[] }
+/** A payment's kept file the File API could not deliver (R-05-103, Issue I-337). */
+export interface UndeliveredRow {
+  payment: string; tenant: string; scheme: string; file: string; kind?: string | null; fileName?: string | null; state: 'failing' | 'undelivered';
+  attempts: number; code?: string | null; why?: string | null; adapter?: string | null; at: string; status?: string | null; link: string;
+}
+export interface UndeliveredList { total: number; undelivered: number; rows: UndeliveredRow[] }
+
+/** An undelivered file's state in words: the outbox still tries, or its attempts ended. */
+export function undeliveredState(r: Pick<UndeliveredRow, 'state' | 'attempts' | 'code'>): string {
+  const tries = `${r.attempts} attempt${r.attempts === 1 ? '' : 's'}`;
+  return r.state === 'undelivered' ? `Never delivered: the attempts ended after ${tries}${r.code ? ` (${r.code})` : ''}` : `Not delivered yet: ${tries} failed${r.code ? ` (${r.code})` : ''}, the File API tries again`;
+}
+
+/** A step's rule trace on the timeline in words (R-09-240): the rules that fired and the worst finding. Null for none. */
+export function ruleTraceNote(t: { kind: string; data?: any }): string | null {
+  const rt = t.kind === 'step' ? t.data?.ruleTrace : null;
+  if (!rt) return null;
+  const fired = (rt.rules ?? []).filter((r: any) => r.fired).map((r: any) => r.rule);
+  return `rules: ${fired.length ? fired.join(', ') : 'none fired'}${rt.worst ? ` (worst ${rt.worst})` : ''}`;
+}
+
+/**
+ * What a timeline entry of a file's delivery says (R-09-236): where the file went, or why it did not. Null for any other fact.
+ * The send step says the outbox took the file; these say whether it left.
+ */
+export function deliveryNote(t: { kind: string; code?: string | null; data?: any }): string | null {
+  const d = t.data ?? {};
+  const name = d.fileName ? `${d.fileName} ` : '';
+  if (t.kind === 'file.delivered') return `${name}delivered${d.folder ? ` to ${d.folder}` : ''}${d.adapter ? ` on ${d.adapter}` : ''}${d.resend ? ' (resent)' : ''}`;
+  if (t.kind === 'file.delivery-failed') return `${name}not delivered, attempt ${d.attempt ?? '?'}${d.why ? `: ${d.why}` : ''}`;
+  if (t.kind === 'file.undelivered') return `${name}never delivered: the File API's attempts ended${d.attempts ? ` after ${d.attempts}` : ''}; resend it once the partner answers`;
+  return null;
+}
 
 /** An alert's state in words: what its payment is now, and whether the alert is still work. */
 export function alertState(a: Pick<Alert, 'state' | 'closed'>): string {

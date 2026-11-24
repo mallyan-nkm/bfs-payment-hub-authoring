@@ -117,16 +117,40 @@ public static class Probes
         catch (Exception e) when (e is PackageRejected or HttpRequestException or SecretUnavailable) { return ("fail", e.Message, ErrorCodes.SourceUnreachable, null); }
     });
 
-    public static IProbe Http(string name, string group, string url, string? dashboard, HttpClient http, bool version = false) => new FuncProbe(name, group, dashboard, async ct =>
+    public static IProbe Http(string name, string group, string url, string? dashboard, HttpClient http, bool version = false, string failCode = ErrorCodes.ProbeFailed) => new FuncProbe(name, group, dashboard, async ct =>
     {
-        using var r = await http.GetAsync(url, ct);
+        HttpResponseMessage response;
+        // A host that does not answer fails the probe with its code (R-09-244, Issue I-352), not the health page.
+        try { response = await http.GetAsync(url, ct); }
+        catch (Exception e) when (e is HttpRequestException || (e is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            return ("fail", $"{name} does not answer", failCode, null);
+        }
+        using var r = response;
         string? v = null;
         if (version && r.IsSuccessStatusCode)
         {
             try { var j = JsonNode.Parse(await r.Content.ReadAsStringAsync(ct)); v = (string?)j?["version"] ?? (string?)j?["build"]; } catch { /* no version */ }
         }
-        return r.IsSuccessStatusCode ? ("ok", $"HTTP {(int)r.StatusCode}", null, v) : ("fail", $"HTTP {(int)r.StatusCode}", ErrorCodes.ProbeFailed, v);
+        return r.IsSuccessStatusCode ? ("ok", $"HTTP {(int)r.StatusCode}", null, v) : ("fail", $"HTTP {(int)r.StatusCode}", failCode, v);
     });
+
+    /// <summary>
+    /// The runtime's own hosts (R-09-244, Issue I-352): the native host's and the activity workers' health (<c>Service:Hosts:NativeHost</c>,
+    /// <c>Service:Hosts:Workers</c>, URLs; the native host's from <c>TH_NATIVE_HOST</c> where it names none) and the engine host
+    /// (<c>Service:Hosts:EngineHost</c>, host and port, as its health check only connects: its routes need a token). Each fails
+    /// with its own code and runbook.
+    /// </summary>
+    public static IEnumerable<IProbe> RuntimeHosts(IConfiguration cfg, HttpClient http)
+    {
+        var dash = cfg["Service:Dashboards:Engines"];
+        var native = cfg["Service:Hosts:NativeHost"] ?? (cfg["TH_NATIVE_HOST"] is { Length: > 0 } n ? $"{n.TrimEnd('/')}/health" : null);
+        if (native is { Length: > 0 }) yield return Http("native-host", "hosts", native, dash, http, failCode: ErrorCodes.NativeHostDown);
+        foreach (var w in (cfg["Service:Hosts:Workers"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            yield return Http($"workers:{new Uri(w).Authority}", "hosts", w, dash, http, failCode: ErrorCodes.WorkersDown);
+        foreach (var e in (cfg["Service:Hosts:EngineHost"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            yield return Tcp($"engine-host:{e}", "hosts", e, dash, ErrorCodes.EngineHostDown);
+    }
 
     public static IProbe Tcp(string name, string group, string hostPort, string? dashboard, string failCode = ErrorCodes.ProbeFailed) => new FuncProbe(name, group, dashboard, async ct =>
     {

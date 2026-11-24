@@ -87,7 +87,7 @@ Screens inventoried: Banking Ops `features/reports/wps` (SIF Summary report, SIF
 | System Rejected | mapped | uae.wps:subject:systemRejected | `lines.count(line.facts.validation.worst != pass)` | |
 | Own A/Cs | mapped | uae.wps:subject:ownBankAccounts | `lines.count(line.creditorAgent.memberId = bulk.debtorAgent.memberId)` | The bank's own routing code is the employer's agent's |
 | Other Bank A/C | mapped | uae.wps:subject:otherBankAccounts | `lines.count(line.creditorAgent.memberId != bulk.debtorAgent.memberId)` | |
-| Sent to CB DateTime | mapped | uae.wps:uae.wps.wf.salary-file-out.v1:sentToCbAt | `step:submit.send.at` | |
+| Sent to CB DateTime | mapped | uae.wps:uae.wps.wf.salary-file-out.v1:sentToCbAt | `delivery:uae.wps.sif-submission.at` | When the File API delivered the file to the Central Bank's folder, not when its outbox took it (R-05-103, Issue I-337) |
 | CB File Name | mapped, empty | uae.wps:uae.wps.wf.salary-file-out.v1:cbFileName | `message:uae.wps.sif-submission.fileName` | I-97 |
 | CB Response | mapped | uae.wps:uae.wps.wf.salary-file-out.v1:cbResponse | `step:submit.read-ack.outcome` | |
 | ACK/NAK File Name | mapped, empty | uae.wps:uae.wps.wf.salary-file-out.v1:ackFileName | `message:uae.wps.ack.fileName` | I-97 |

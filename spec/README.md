@@ -23,15 +23,15 @@ The Designer Studio is where a payments workflow designer sees the whole ISO 200
 | What | Count |
 | --- | --- |
 | Design parts and annexes | 12 and 3 |
-| Numbered requirements | 543 |
+| Numbered requirements | 560 |
 | Schemas | 18 |
-| Factory artefacts in `p`, `uae.p`, `uae.wps` | 243 |
+| Factory artefacts in `p`, `uae.p`, `uae.wps` | 245 |
 | Example bank artefacts | 21 |
 | Composite activities, each with a subflow | 9 |
 | Test cases in the packs | 67 |
 | Conformance scenarios | 59 |
-| Checks in `tools/validate.py` | 48 (L00 to L57) |
-| Mutation cases that prove them | 93 |
+| Checks in `tools/validate.py` | 50 (L00 to L59) |
+| Mutation cases that prove them | 94 |
 | Build components, stories, story points | 25, 125, 502 |
 <!-- /COUNTS -->
 

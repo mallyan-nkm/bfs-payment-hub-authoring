@@ -1039,6 +1039,8 @@ OPS_SCHEME_DIALS = {"tatLimit", "retentionPeriod"}
 OPS_DOCUMENT_ATTRS = {"fileName", "at", "size", "source", "direction", "signed"}
 STEP_SRC = re.compile(r"^step:(?P<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?P<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$")
 MSG_SRC = re.compile(r"^message:(?P<kind>[a-z0-9.\-]+?)\.(?:fileName|at|size|count|direction)$")
+# R-05-103 (Issue I-337): the delivery of a file the bank sends, as the File API recorded it on the payment's chain
+DELIVERY_SRC = re.compile(r"^delivery:(?P<kind>[a-z0-9.\-]+?)\.(?:outcome|at|attempts|adapter|code|fileName|folder)$")
 
 
 def flow_steps(wf, seen=()):
@@ -1106,6 +1108,7 @@ for path, d in docs:
         platform = []
         leg_names = set(sch.get("legs") or [])
         catalogue = {m["id"] for m in sch.get("messages") or []}
+        sent = {m["id"] for m in sch.get("messages") or [] if m.get("direction") == "out"}
     else:
         platform = d.get("platform") or []
         if own != "p" or not platform:
@@ -1113,7 +1116,7 @@ for path, d in docs:
         for w in platform:
             if (by_name.get(w) or {}).get("wfKind") != "platform":
                 err("L38", path, "%s is not a platform workflow" % w)
-        leg_names, catalogue = set(), set()
+        leg_names, catalogue, sent = set(), set(), set()
     platform_steps = {}
     for w in platform:
         platform_steps.update(flow_steps(by_name.get(w)))
@@ -1160,6 +1163,12 @@ for path, d in docs:
                     m = MSG_SRC.match(src)
                     if not m or m.group("kind") not in catalogue:
                         problem = "reads a message that is not in the scheme's catalogue"
+                elif src.startswith("delivery:"):
+                    m = DELIVERY_SRC.match(src)
+                    if not m:
+                        problem = "is not a delivery source (delivery:<message>.<outcome|at|attempts|adapter|code|fileName|folder>)"
+                    elif m.group("kind") not in sent:
+                        problem = "reads the delivery of %s, which is no message the scheme's catalogue says the bank sends" % m.group("kind")
                 elif src.startswith("lines."):
                     if not re.match(r"^lines\.(count|count\(.+\)|sum\(line\..+\))$", src):
                         problem = "is not lines.count, lines.count(<line source> = <value>) or lines.sum(<line source>)"
@@ -1649,6 +1658,52 @@ for path, d in docs:
     binding = (d.get("implementation") or {}).get("binding")
     if d.get("type") in ("validate", "decide") and not d.get("ruleSets") and binding != "script":
         err("L57", path, "%s is a %s without rule sets that is pure, but it is bound to a %s, not a script: say effect read" % (d.get("name"), d["type"], binding or "nothing"))
+
+
+# L58 (R-05-101, Issue I-293): on a scheme whose wire is a file, a step that sends or reports a file after a protect step that
+# encrypts it (one that writes facts.encryption) reads facts.encryption, so that it sends the file the encryption made and never
+# the plain one the render kept.
+def reads_path(a, p):
+    return any(r == p or p.startswith(r + ".") for r in a.get("reads") or [])
+
+
+scheme_wires = {s["scope"]: s.get("wire") for _, s in docs if s.get("kind") == "scheme"}
+for path, d in docs:
+    if d.get("kind") != "workflow" or scheme_wires.get(scope_of(d["name"])) != "file":
+        continue
+    encrypted = None
+    for st in all_steps(d):
+        a = by_name.get(st.get("call")) if "call" in st else None
+        if not a or a.get("kind") != "activity":
+            continue
+        if a.get("type") == "protect" and "facts.encryption" in (a.get("writes") or []):
+            encrypted = st.get("id", "?")
+        elif encrypted and a.get("type") == "exchange" and a.get("mode") in ("send", "report") and \
+                (a.get("implementation") or {}).get("binding") != "subflow" and not reads_path(a, "facts.encryption"):
+            err("L58", path, "step %s sends %s after step %s encrypts the file, but %s reads no facts.encryption: it would send the plain file" % (
+                st.get("id", "?"), a["name"], encrypted, a["name"]))
+
+# L59 (R-05-102, Issue I-310): on a scheme whose wire is a file, every message the bank sends names the exchange that sends it
+# (disposition.sentBy): an exchange of its own scheme, of mode send or report, that is not a composite; and no exchange sends two
+# messages. The File API keeps a sent file under the id of the message its exchange sends, so each send has one.
+for path, d in docs:
+    if d.get("kind") != "scheme" or d.get("wire") != "file":
+        continue
+    senders = {}
+    for m in d["messages"]:
+        if m.get("direction") != "out":
+            continue
+        by = (m.get("disposition") or {}).get("sentBy")
+        a = by_name.get(by) if by else None
+        if not by:
+            err("L59", path, "%s is a message the bank sends, but it names no exchange that sends it (sentBy)" % m["id"])
+            continue
+        if not a or a.get("kind") != "activity" or a.get("type") != "exchange" or a.get("mode") not in ("send", "report") or \
+                composite(a) or scope_of(by) != d["scope"]:
+            err("L59", path, "%s is sent by %s, which is no send or report exchange of %s that sends one file" % (m["id"], by, d["scope"]))
+        if by in senders:
+            err("L59", path, "%s and %s are both sent by %s: the file it sends would have two kinds" % (senders[by], m["id"], by))
+        senders[by] = m["id"]
 
 # ---------------------------------------------------------------- report
 kinds = {}

@@ -6,18 +6,18 @@ packs:
   - scope: p
     packType: shared
     counts:
-      activity: 28
+      activity: 29
       error-dictionary: 1
       port: 15
       reference-table: 1
-      rule: 7
+      rule: 8
       ruleset: 2
       table: 3
       simulator: 15
       test: 21
       operations-view: 1
       workflow: 8
-    total: 102
+    total: 104
     artefacts:
       - name: p.decide.await-posting-window.v1
         kind: activity
@@ -71,6 +71,8 @@ packs:
         kind: activity
       - name: p.validate.canonical.v1
         kind: activity
+      - name: p.validate.canonical.v2
+        kind: activity
       - name: p.validate.duplicate.v1
         kind: activity
       - name: p.validate.limits.v1
@@ -112,6 +114,8 @@ packs:
       - name: p.rule.amount-positive.v1
         kind: rule
       - name: p.rule.amount-within-platform-limit.v1
+        kind: rule
+      - name: p.rule.batch-currency-present.v1
         kind: rule
       - name: p.rule.creditor-account-present.v1
         kind: rule
@@ -306,17 +310,17 @@ packs:
         kind: activity
       - name: uae.wps.exchange.return-refund.v1
         kind: activity
-      - name: uae.wps.exchange.send-disbursement-cancellation.v1
+      - name: uae.wps.exchange.send-disbursement-cancellation.v2
         kind: activity
-      - name: uae.wps.exchange.send-disbursement-file.v1
+      - name: uae.wps.exchange.send-disbursement-file.v2
         kind: activity
-      - name: uae.wps.exchange.send-receipt-confirmation.v1
+      - name: uae.wps.exchange.send-receipt-confirmation.v2
         kind: activity
-      - name: uae.wps.exchange.send-refund-request.v1
+      - name: uae.wps.exchange.send-refund-request.v2
         kind: activity
-      - name: uae.wps.exchange.send-refund-response.v1
+      - name: uae.wps.exchange.send-refund-response.v2
         kind: activity
-      - name: uae.wps.exchange.send-returns-file.v1
+      - name: uae.wps.exchange.send-returns-file.v2
         kind: activity
       - name: uae.wps.exchange.send-salary-file.v2
         kind: activity

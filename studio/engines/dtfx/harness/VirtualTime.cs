@@ -41,8 +41,27 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     readonly List<string> creationOrder = new();
     readonly LinkedList<(long seq, TaskMessage msg)> activityQueue = new();
     long msgSeq;
-    object? baton; // the work item that runs now; null when free
+    // The work items that run now (the baton): at most Concurrency of them. A kit run holds one, so a run is deterministic.
+    readonly HashSet<object> holders = new(ReferenceEqualityComparer.Instance);
     int batonWaiters;
+    /// <summary>
+    /// How many work items run at once (R-09-238, Issue I-300): 1 in a kit run, in message order, so a run is deterministic; a
+    /// service of the runtime's engine host may run more, of different instances side by side (an instance's episodes stay one at a
+    /// time, in its own message order), bounded by its host's setting. Above 1 the activities do not wait for an earlier episode.
+    /// </summary>
+    public int Concurrency { get; set; } = 1;
+    /// <summary>With more than one work item at once: each activity work item by its input, so the activity finds its own slot.</summary>
+    readonly Dictionary<string, List<TaskActivityWorkItem>> activityHolders = new(StringComparer.Ordinal);
+    readonly Dictionary<string, string> activityKeys = new(StringComparer.Ordinal); // work item id -> its input
+    readonly HashSet<string> claimed = new(StringComparer.Ordinal);
+
+    void Unclaim(TaskActivityWorkItem wi)
+    {
+        if (!activityKeys.Remove(wi.Id, out var key)) return;
+        claimed.Remove(wi.Id);
+        if (activityHolders.TryGetValue(key, out var l)) { l.Remove(wi); if (l.Count == 0) activityHolders.Remove(key); }
+    }
+    bool Free => holders.Count < Concurrency && batonWaiters == 0;
     TaskCompletionSource changed = NewSignal();
     /// <summary>
     /// Where the service writes each change before it makes it, when it serves a distribution on the runtime (Issue I-165): a
@@ -142,7 +161,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
             Task sig;
             lock (gate)
             {
-                if (baton is null) { baton = holder; batonWaiters--; return; }
+                if (holders.Count < Concurrency) { holders.Add(holder); batonWaiters--; return; }
                 sig = changed.Task;
             }
             await sig;
@@ -153,7 +172,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     {
         lock (gate)
         {
-            if (ReferenceEquals(baton, holder)) baton = null;
+            holders.Remove(holder);
             Signal();
         }
     }
@@ -161,7 +180,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     // ------------------------------------------------------------------ IOrchestrationService
 
     public int TaskOrchestrationDispatcherCount => 1;
-    public int MaxConcurrentTaskOrchestrationWorkItems => 1;
+    public int MaxConcurrentTaskOrchestrationWorkItems => Math.Max(1, Concurrency);
     public BehaviorOnContinueAsNew EventBehaviourForContinueAsNew => BehaviorOnContinueAsNew.Carryover;
     public int TaskActivityDispatcherCount => 1;
     public int MaxConcurrentTaskActivityWorkItems => 2000; // sleeping activities hold a slot each
@@ -186,10 +205,10 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
             Task sig;
             lock (gate)
             {
-                if (baton is null && batonWaiters == 0)
+                if (Free)
                 {
                     var (s, r) = BestOrchestration();
-                    if (r is not null && s < BestActivity())
+                    if (r is not null && (Concurrency > 1 || s < BestActivity()))
                     {
                         var wi = new TaskOrchestrationWorkItem
                         {
@@ -200,7 +219,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
                         };
                         r.Locked = true;
                         Episodes++;
-                        baton = wi;
+                        holders.Add(wi);
                         lockedCounts[r.Id] = r.Pending.Count;
                         // The history as stored when the episode began: the dispatcher adds the new messages to this runtime state.
                         lockedHistory[r.Id] = (r.History is null ? 0 : wi.OrchestrationRuntimeState.Events.Count, wi.OrchestrationRuntimeState.OrchestrationInstance?.ExecutionId);
@@ -261,7 +280,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
                 }
             }
             rec.Locked = false;
-            if (ReferenceEquals(baton, workItem)) baton = null;
+            holders.Remove(workItem);
             clock.Exit(taken.Count);
             Signal();
         }
@@ -275,7 +294,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
             var rec = instances[workItem.InstanceId];
             rec.Locked = false;
             lockedCounts.Remove(rec.Id);
-            if (ReferenceEquals(baton, workItem)) baton = null;
+            holders.Remove(workItem);
             Signal();
         }
         return Task.CompletedTask;
@@ -292,12 +311,18 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
             Task sig;
             lock (gate)
             {
-                if (baton is null && batonWaiters == 0 && activityQueue.Count > 0 && BestActivity() < BestOrchestration().seq)
+                if (Free && activityQueue.Count > 0 && (Concurrency > 1 || BestActivity() < BestOrchestration().seq))
                 {
                     var (s, m) = activityQueue.First!.Value;
                     activityQueue.RemoveFirst();
                     var wi = new TaskActivityWorkItem { Id = s.ToString(), TaskMessage = m, LockedUntilUtc = DateTime.MaxValue };
-                    baton = wi;
+                    holders.Add(wi);
+                    if (Concurrency > 1 && InputOf(m) is string key)
+                    {
+                        if (!activityHolders.TryGetValue(key, out var l)) activityHolders[key] = l = new List<TaskActivityWorkItem>();
+                        l.Add(wi);
+                        activityKeys[wi.Id] = key;
+                    }
                     ActivityRuns++;
                     return wi;
                 }
@@ -315,7 +340,8 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
         lock (gate)
         {
             Enqueue(responseMessage, activity: workItem.Id);
-            if (ReferenceEquals(baton, workItem) || baton is ActivityBaton ab && ab.WorkItemId == workItem.Id) baton = null;
+            holders.RemoveWhere(h => ReferenceEquals(h, workItem) || h is ActivityBaton ab && ab.WorkItemId == workItem.Id);
+            Unclaim(workItem);
             clock.Exit();
             Signal();
         }
@@ -327,7 +353,8 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
         lock (gate)
         {
             activityQueue.AddFirst((long.Parse(workItem.Id), workItem.TaskMessage));
-            if (ReferenceEquals(baton, workItem)) baton = null;
+            Unclaim(workItem);
+            holders.Remove(workItem);
             Signal();
         }
         return Task.CompletedTask;
@@ -339,7 +366,31 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     public sealed class ActivityBaton { public string WorkItemId = ""; }
 
     /// <summary>The work item that holds the baton now. An activity reads it when it starts, as it is then the holder.</summary>
-    public object? CurrentBaton { get { lock (gate) return baton; } }
+    public object? CurrentBaton { get { lock (gate) return holders.Count == 1 ? holders.First() : null; } }
+
+    /// <summary>
+    /// The slot an activity holds as it starts: with one work item at once the baton's holder; with more, its own work item, found by
+    /// the activity's input (each activity work item is queued by its input as it is locked).
+    /// </summary>
+    public object? BatonOf(string input)
+    {
+        lock (gate)
+        {
+            if (Concurrency <= 1) return holders.Count == 1 ? holders.First() : null;
+            if (!activityHolders.TryGetValue(input, out var l)) return null;
+            var h = l.FirstOrDefault(w => !claimed.Contains(w.Id));
+            if (h is not null) claimed.Add(h.Id);
+            return h;
+        }
+    }
+
+    /// <summary>The input of a scheduled activity as its activity receives it: the first of the serialised parameters.</summary>
+    static string? InputOf(TaskMessage m)
+    {
+        if (m.Event is not TaskScheduledEvent ts || ts.Input is null) return null;
+        try { return Newtonsoft.Json.Linq.JArray.Parse(ts.Input).FirstOrDefault()?.ToObject<string>(); }
+        catch (JsonException) { return null; }
+    }
 
     // ------------------------------------------------------------------ the history (Issue I-165)
 

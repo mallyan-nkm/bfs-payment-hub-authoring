@@ -79,7 +79,7 @@ do:
             refused:
               return: rejected
         - id: confirm-receipt.send
-          call: uae.wps.exchange.send-receipt-confirmation.v1
+          call: uae.wps.exchange.send-receipt-confirmation.v2
           handle:
             rejected:
               return: rejected
@@ -168,7 +168,7 @@ do:
             refused:
               return: rejected
         - id: report-disbursement.send
-          call: uae.wps.exchange.send-disbursement-file.v1
+          call: uae.wps.exchange.send-disbursement-file.v2
           handle:
             rejected:
               return: rejected
@@ -231,7 +231,7 @@ do:
                   refused:
                     return: rejected
               - id: return-credits.send
-                call: uae.wps.exchange.send-returns-file.v1
+                call: uae.wps.exchange.send-returns-file.v2
                 handle:
                   rejected:
                     return: rejected

@@ -123,7 +123,7 @@ public sealed class InterpreterOrchestration : TaskOrchestration<string, string,
 public sealed class PartyActivity : AsyncTaskActivity<string, string>
 {
     public static Harness H = null!;
-    protected override async Task<string> ExecuteAsync(TaskContext context, string input) => J.Str(await H.Attempt((JsonObject)J.Parse(input)!, durable: true));
+    protected override async Task<string> ExecuteAsync(TaskContext context, string input) => J.Str(await H.Attempt((JsonObject)J.Parse(input)!, durable: true, input));
 }
 
 public sealed class ClaimCheckActivity : AsyncTaskActivity<string, string>

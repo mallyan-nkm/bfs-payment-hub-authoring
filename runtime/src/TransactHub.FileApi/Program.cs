@@ -100,7 +100,7 @@ static int StatusOf(string? code) => code switch
     "file.Duplicate" or "file.DuplicateName" => 409,
     "file.TooLarge" => 413,
     "ops.IntakePaused" => 423,
-    "frontdoor.NoActiveDistribution" or "frontdoor.NoEngineHost" or "frontdoor.NoWorker" or "frontdoor.EngineRefused" => 503,
+    "frontdoor.NoActiveDistribution" or "frontdoor.NoEngineHost" or "frontdoor.NoWorker" or "frontdoor.EngineRefused" or HttpEngineHost.EngineUnreachable => 503,
     _ => 422,
 };
 

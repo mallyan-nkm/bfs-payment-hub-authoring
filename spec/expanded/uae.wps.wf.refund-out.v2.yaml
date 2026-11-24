@@ -47,7 +47,7 @@ do:
             refused:
               return: rejected
         - id: request.send
-          call: uae.wps.exchange.send-refund-request.v1
+          call: uae.wps.exchange.send-refund-request.v2
           handle:
             rejected:
               return: rejected

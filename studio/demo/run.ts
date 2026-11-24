@@ -5,7 +5,7 @@ import { STUDIO } from '../test/blackbox/server.js';
 import '../test/support/signing-env.js';
 import { record, type Production } from './record.js';
 
-// Records one production: npx tsx demo/run.ts concept|north-star|bank-configurator|designer|install|end-to-end [--out dir]
+// Records one production: npx tsx demo/run.ts concept|north-star|bank-configurator|designer|install|end-to-end|service-console [--out dir]
 // (A separate entry point: the productions import record.ts, so record.ts must not wait on them.)
 
 const PRODUCTIONS: Record<string, () => Promise<Production>> = {
@@ -22,6 +22,8 @@ const PRODUCTIONS: Record<string, () => Promise<Production>> = {
   install: () => import('./install.js') as any,
   // Video 4, end to end on the laptop stack: the test bench, each step, two failures, a rule change and a new hook.
   'end-to-end': () => import('./end-to-end.js') as any,
+  // Video 5c, the service console on the laptop stack, page by page, with a parked step diagnosed and retried.
+  'service-console': () => import('./service-console.js') as any,
 };
 const which = process.argv[2];
 if (!which || !PRODUCTIONS[which]) {
