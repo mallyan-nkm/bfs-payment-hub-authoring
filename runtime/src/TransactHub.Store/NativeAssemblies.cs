@@ -48,6 +48,12 @@ public static class NativeAssemblies
     /// <summary>The error dictionary's code of a module that references the image's runtime software (R-09-125, Issue I-220).</summary>
     public const string ImageReference = "package.NativeImageReference";
 
+    /// <summary>
+    /// The error dictionary's code of a distribution whose modules were built against a native contract this runtime does not take: another
+    /// major (a module of contract 1.x on a 2.0.0 runtime, R-09-262) or a later minor. Its modules are rebuilt and a new distribution built.
+    /// </summary>
+    public const string ContractUnsupported = "native.ContractUnsupported";
+
     /// <summary>The prefix of the runtime's own assemblies: a module references none of them but the contract.</summary>
     public const string RuntimePrefix = "TransactHub.";
 
@@ -65,7 +71,7 @@ public static class NativeAssemblies
         }
         var contract = native["contract"]?.ToString();
         var modules = native["modules"] as JsonArray ?? [];
-        if (modules.Count > 0 && !NativeContract.Supports(contract)) throw new NativeAssembliesRefused($"It is refused: {NativeContract.Refusal(contract)}");
+        if (modules.Count > 0 && !NativeContract.Supports(contract)) throw new NativeAssembliesRefused($"{ContractUnsupported}: it is refused: {NativeContract.Refusal(contract)}", ContractUnsupported);
         var bom = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "native-assembly").ToDictionary(a => (string?)a["path"] ?? "", StringComparer.Ordinal);
         var listed = new HashSet<string>(StringComparer.Ordinal);
@@ -98,7 +104,9 @@ public static class NativeAssemblies
             }
             if (!files.TryGetValue(assembly, out var main)) throw new NativeAssembliesRefused($"The native module of {scope} does not carry its assembly {assembly}.dll");
             var built = ContractOf(main) ?? throw new NativeAssembliesRefused($"{assembly}.dll does not reference the native contract ({NativeContract.AssemblyName})");
-            if (!NativeContract.Supports(built) || !SameMinor(built, contract))
+            if (!NativeContract.Supports(built))
+                throw new NativeAssembliesRefused($"{ContractUnsupported}: {assembly}.dll was built against native contract {built}, its manifest says {contract}: {NativeContract.Refusal(built)}", ContractUnsupported);
+            if (!SameMinor(built, contract))
                 throw new NativeAssembliesRefused($"{assembly}.dll was built against native contract {built}, its manifest says {contract}: {NativeContract.Refusal(built)}");
             // A module references the contract and nothing else of the runtime's (R-09-125): not the platform, the ports, the store.
             foreach (var (asm, bytes) in files)

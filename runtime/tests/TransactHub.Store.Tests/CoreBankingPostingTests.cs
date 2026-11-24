@@ -64,7 +64,7 @@ public sealed class CoreBankingPostingTests
     public void A_payment_file_credit_posts_through_the_simulator_while_the_example_bank_is_bound_to_it()
     {
         var r = Resolver();
-        var res = new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
+        var res = ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
         Assert.Equal("posted", res.Outcome);
         var fact = res.Writes["facts.posting"]!;
         Assert.Equal("simulator", (string)fact["adapter"]!);
@@ -76,7 +76,7 @@ public sealed class CoreBankingPostingTests
             d => Assert.Equal(("debit", "9990000000001", 1500m, "PAY"), (d.Kind, d.Account, d.Amount, d.TxnCode)),
             c => Assert.Equal(("credit", "AE070331234567890123456", 1500m, "PAY"), (c.Kind, c.Account, c.Amount, c.TxnCode)));
         // A retry is the same posting: the same reference, posted once.
-        new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
+        ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
         Assert.Single(r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot());
     }
 
@@ -84,7 +84,7 @@ public sealed class CoreBankingPostingTests
     public async Task From_the_switch_the_same_credit_goes_to_the_gateway_with_the_binding_s_settings_on_the_wire()
     {
         var rec = new Recorder();
-        var res = new PostAccounting(Resolver(rec)).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
+        var res = ModuleGate.PostAccounting(Resolver(rec)).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
         Assert.Equal("posted", res.Outcome);
         Assert.Equal("gateway-rest", (string)res.Writes["facts.posting"]!["adapter"]!);
         Assert.Equal("H-1", (string)res.Writes["facts.posting"]!["hostReference"]!);
@@ -109,7 +109,7 @@ public sealed class CoreBankingPostingTests
     {
         var rec = new Recorder { Available = 5000m };
         var r = Resolver(rec);
-        var reserve = new ReserveFunds(r).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
+        var reserve = new ReserveFunds(r, ModuleGate.Contributions).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
         Assert.Equal("reserved", reserve.Outcome);
         var (balReq, balBody) = rec.Requests[0];
         Assert.Equal("https://core-banking.dib.invalid/api/v1/accounts/balance-enquiry", balReq.RequestUri!.ToString());
@@ -118,7 +118,7 @@ public sealed class CoreBankingPostingTests
 
         var view = Outward(3500m);
         view["facts"] = new JsonObject { ["reservation"] = reserve.Writes["facts.reservation"]!.DeepClone() };
-        var post = new PostAccounting(r).Run(At("p.post.accounting.v1", view, Template(), OnSimulator, tenant: "dib"));
+        var post = ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", view, Template(), OnSimulator, tenant: "dib"));
         Assert.Equal("posted", post.Outcome);
         var j = (JsonObject)JsonNode.Parse(rec.Requests[1].body)!;
         Assert.Equal("IBSSYSTEM", (string?)j["serviceCode"]);
@@ -127,7 +127,7 @@ public sealed class CoreBankingPostingTests
         Assert.Equal("0010000000001", (string)j["entries"]![0]!["account"]!);
 
         // Not enough available: the reservation is refused, with the balance it saw.
-        var short_ = new ReserveFunds(Resolver(new Recorder { Available = 100m })).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
+        var short_ = new ReserveFunds(Resolver(new Recorder { Available = 100m }), ModuleGate.Contributions).Run(At("p.reserve.funds.v1", Outward(3500m), new JsonObject(), OnSimulator, tenant: "dib"));
         Assert.Equal("insufficient", short_.Outcome);
         Assert.Equal("AM04", short_.ReasonCode);
         Assert.Equal(100m, (decimal)short_.Writes["facts.reservation"]!["available"]!);
@@ -136,17 +136,17 @@ public sealed class CoreBankingPostingTests
     [Fact]
     public void A_declined_posting_is_rejected_and_one_that_may_have_reached_core_banking_is_unknown_never_retried_blind()
     {
-        var declined = new PostAccounting(Resolver(new Recorder { PostingCode = "E-104" })).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
+        var declined = ModuleGate.PostAccounting(Resolver(new Recorder { PostingCode = "E-104" })).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
         Assert.Equal("rejected", declined.Outcome);
         Assert.Equal("E-104", (string)declined.Writes["facts.posting"]!["code"]!);
 
-        var lost = new PostAccounting(Resolver(new Recorder { Throw = true })).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
+        var lost = ModuleGate.PostAccounting(Resolver(new Recorder { Throw = true })).Run(At("p.post.accounting.v1", Credit(), Template(), OnGateway, level: "item"));
         Assert.Equal("unknown", lost.Outcome);
         Assert.Equal("HttpRequestException", (string)lost.Writes["facts.posting"]!["error"]!);
 
         // An unknown posting is not reversed blind; an operator decides.
         var view = new JsonObject { ["header"] = new JsonObject { ["paymentId"] = "P-1" }, ["facts"] = new JsonObject { ["posting"] = lost.Writes["facts.posting"]!.DeepClone() } };
-        var e = Assert.Throws<NativeFailure>(() => new ReversePosting(Resolver()).Run(At("p.post.reverse.v1", view, new JsonObject(), OnGateway)));
+        var e = Assert.Throws<NativeFailure>(() => new ReversePosting(Resolver(), ModuleGate.Contributions).Run(At("p.post.reverse.v1", view, new JsonObject(), OnGateway)));
         Assert.Equal("BusinessReject", e.Name);
     }
 
@@ -154,10 +154,10 @@ public sealed class CoreBankingPostingTests
     public void A_posting_is_reversed_leg_by_leg_under_the_reversal_code_and_verified_by_the_host_s_reference()
     {
         var r = Resolver();
-        var post = new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
+        var post = ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, level: "item"));
         var view = new JsonObject { ["header"] = new JsonObject { ["paymentId"] = "P-1" }, ["facts"] = new JsonObject { ["posting"] = post.Writes["facts.posting"]!.DeepClone() } };
         Assert.Equal("verified", new VerifyPosting().Run(At("p.post.verify.v1", view, new JsonObject(), OnSimulator)).Outcome);
-        var rev = new ReversePosting(r).Run(At("p.post.reverse.v1", view, new JsonObject(), OnSimulator));
+        var rev = new ReversePosting(r, ModuleGate.Contributions).Run(At("p.post.reverse.v1", view, new JsonObject(), OnSimulator));
         Assert.Equal("reversed", rev.Outcome);
         var batches = r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot();
         Assert.Equal("P-1:AE070331234567890123456:REV", batches[1].Reference);
@@ -173,7 +173,7 @@ public sealed class CoreBankingPostingTests
     {
         var r = Resolver();
         var slabs = new JsonArray(new JsonObject { ["upTo"] = 1000, ["charge"] = 5 }, new JsonObject { ["upTo"] = 100000, ["charge"] = 10 });
-        var res = new PostAccounting(r).Run(At("p.post.accounting.v1", Outward(3500m), Template(p => p["chargeSlabs"] = slabs), OnSimulator));
+        var res = ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Outward(3500m), Template(p => p["chargeSlabs"] = slabs), OnSimulator));
         Assert.Equal("posted", res.Outcome);
         var legs = r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot().Single().Legs;
         Assert.Equal(6, legs.Count);
@@ -195,7 +195,7 @@ public sealed class CoreBankingPostingTests
         Assert.Equal("*********0001", (string?)entries[0]["account"]);
         Assert.DoesNotContain(entries, e => ((string?)e["account"])!.Contains("0010000000001"));
         // No slab, no charge.
-        Assert.Equal(0m, AccountingTemplate.From(Template()).ChargeFor(3500m));
+        Assert.Equal(0m, TransactHub.Activities.Platform.Native.PostingTemplate.From(Template()).ChargeFor(3500m));
     }
 
     [Fact]
@@ -205,9 +205,9 @@ public sealed class CoreBankingPostingTests
         bindings.Add("kind: port-bindings\ntenant: t\nbindings:\n  - port: p.port.core-banking.v1\n    adapter: simulator\n    validFrom: 2026-01-01T00:00:00Z\n    settings:\n      postingWindowStart: \"07:00\"\n      postingWindowEnd: \"22:00\"\n");
         var r = new CoreBankingResolver(bindings);
         // 06:00Z is 10:00 in the UAE: open.
-        Assert.Equal("posted", new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: "t", level: "item")).Outcome);
+        Assert.Equal("posted", ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: "t", level: "item")).Outcome);
         // 20:00Z is 00:00 in the UAE: closed, a retryable error, nothing posted.
-        var e = Assert.Throws<NativeFailure>(() => new PostAccounting(r).Run(At("p.post.accounting.v1", Credit("AE070331234567890123999"), Template(), DateTimeOffset.Parse("2026-11-24T20:00:00Z"), tenant: "t", level: "item")));
+        var e = Assert.Throws<NativeFailure>(() => ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit("AE070331234567890123999"), Template(), DateTimeOffset.Parse("2026-11-24T20:00:00Z"), tenant: "t", level: "item")));
         Assert.Equal(("TransientError", true), (e.Name, e.Retryable));
         Assert.Single(r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot());
     }
@@ -224,7 +224,7 @@ public sealed class CoreBankingPostingTests
     [InlineData("07:00", "25:00", "2026-11-24 14:00", "ConfigInvalid", null)]
     public void The_posting_window_is_the_source_s_call_hours_gate(string start, string end, string now, string state, string? id)
     {
-        var w = PostingWindow.Evaluate(start, end, DateTime.Parse(now, System.Globalization.CultureInfo.InvariantCulture));
+        var w = TransactHub.Activities.Platform.Native.PostingWindow.Evaluate(start, end, DateTime.Parse(now, System.Globalization.CultureInfo.InvariantCulture));
         Assert.Equal(state, w.State.ToString());
         Assert.Equal(id, w.WindowId);
     }
@@ -233,10 +233,10 @@ public sealed class CoreBankingPostingTests
     public void No_tenant_no_binding_and_a_missing_template_value_are_refused_by_name_not_defaulted()
     {
         var r = Resolver();
-        Assert.Equal("NoTenant", Assert.Throws<NativeFailure>(() => new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: null, level: "item"))).Name);
-        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: "no-such-bank", level: "item"))).Name);
-        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), DateTimeOffset.Parse("2026-11-20T00:00:00Z"), tenant: "dib", level: "item"))).Name);
-        var missing = Assert.Throws<NativeFailure>(() => new PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(p => p.Remove("settlementAccount")), OnSimulator, level: "item")));
+        Assert.Equal("NoTenant", Assert.Throws<NativeFailure>(() => ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: null, level: "item"))).Name);
+        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), OnSimulator, tenant: "no-such-bank", level: "item"))).Name);
+        Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(), DateTimeOffset.Parse("2026-11-20T00:00:00Z"), tenant: "dib", level: "item"))).Name);
+        var missing = Assert.Throws<NativeFailure>(() => ModuleGate.PostAccounting(r).Run(At("p.post.accounting.v1", Credit(), Template(p => p.Remove("settlementAccount")), OnSimulator, level: "item")));
         Assert.Contains("settlementAccount", missing.Message);
     }
 
@@ -245,13 +245,13 @@ public sealed class CoreBankingPostingTests
     {
         var r = Resolver();
         var view = (JsonObject)JsonNode.Parse("""{ "header": { "paymentId": "P-3", "businessDate": "2026-11-24" }, "batch": { "currency": "AED" }, "facts": { "returns": { "returns": "yes", "count": 1, "amount": 500 } } }""")!;
-        var res = new PostReturn(new NativeCoreBanking(r)).Run(At("uae.wps.post.return.v1", view, Template(p => p["template"] = "wps-return"), OnSimulator));
+        var res = new PostReturn(new NativeCoreBanking(r, ModuleGate.Contributions)).Run(At("uae.wps.post.return.v1", view, Template(p => p["template"] = "wps-return"), OnSimulator));
         Assert.Equal("posted", res.Outcome);
         var batch = r.Built.Select(x => x.CoreBanking).OfType<SimulatedCoreBanking>().Single().Snapshot().Single();
         Assert.Equal("P-3:return", batch.Reference);
         Assert.Equal([("debit", "9990000000002", 500m), ("credit", "9990000000001", 500m)], batch.Legs.Select(l => (l.Kind, l.Account, l.Amount)));
         view["facts"]!["returns"]!.AsObject().Remove("amount");
-        Assert.Equal("BusinessReject", Assert.Throws<NativeFailure>(() => new PostReturn(new NativeCoreBanking(r)).Run(At("uae.wps.post.return.v1", view, Template(), OnSimulator))).Name);
+        Assert.Equal("BusinessReject", Assert.Throws<NativeFailure>(() => new PostReturn(new NativeCoreBanking(r, ModuleGate.Contributions)).Run(At("uae.wps.post.return.v1", view, Template(), OnSimulator))).Name);
     }
 
     [Fact]

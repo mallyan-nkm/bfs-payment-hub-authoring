@@ -2125,6 +2125,9 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Rebuild and reinstall every distribution of a bank once its runtime takes this change, before it takes payments (no bank is in production yet). If a runtime must keep such a distribution, keep the earlier image for it until it drains; do not relax the check.
 
+
+**Superseded (24 November 2026, R-09-262).** The owner decided to break the native contract once, while no bank is live: contract 2.0.0 refuses every module built against 1.x (`native.ContractUnsupported`), so no earlier distribution is kept either way. Every module is rebuilt against 2.0.0 and every distribution built again; the steps are `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 3.2.
+
 ## I-225. The laptop's module builds are signed by a key their own image build makes
 
 **Issue.** The laptop image (`deploy/laptop/Dockerfile`, `build.sh --local`) has no module builder's key, so its build step makes a P-256 key, holds it in that step's environment, signs the platform and WPS modules with it and writes its public key to `/opt/th/native-module-signers.json`, which the laptop's studio trusts. That proves the folder was not changed after the image was built, not who built it.
@@ -2139,6 +2142,9 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Remove `Service<T>` at the contract's next major (2.0.0), with every other change that breaks a module, and let the runtime refuse 1.x modules then.
 
+
+**Done (24 November 2026, R-09-262).** Native contract 2.0.0 removes `Service<T>` from `INativeServices`, from the image's `NativeHostServices` and from the native host's scoped services. A module that used it reaches core banking through `CoreBanking` and a port through `Ports` or `BoundPorts`. The runtime refuses 1.x modules at install and at load (`native.ContractUnsupported`), and the studio refuses a 1.x module build. `SideBySideTests.The_contract_is_versioned_and_the_runtime_takes_its_major_up_to_its_own_minor` (no `Service` method), `ContractTwoTests.A_module_built_against_contract_1_is_refused_with_its_own_code_and_a_rebuilt_one_runs`, `NativeInstallTests` (both databases), `studio/test/native-modules.test.ts`.
+
 ## I-227. Two small pieces of logic are written twice for the contract's sake
 
 **Issue.** The posting window gate (`PostingWindow`) is in the image, where it checks a core-banking binding's posting hours, and in the platform module, for `p.decide.posting-window.v1`. The accounting template's reading is in the image (`AccountingTemplate`, for `p.post.accounting.v1`), in the platform module (`PostingTemplate`) and in WPS's `PostReturn`. A module may not reference the image, so each carries its own copy.
@@ -2146,6 +2152,9 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Move `p.post.accounting.v1` and the window gate's use by a binding into the platform module in a later platform release (the image then keeps no copy), or accept the copies and keep a test that each gives the same answers on the same cases.
 
 **Done, the second option for now (24 November 2026, R-09-215).** The copies stay, held to each other: `DuplicatedLogicTests` runs the image's and the platform module's posting window gate on every pair of sixteen starts and ends (valid, blank, malformed, overnight) at 39 times of the day, and the image's and the module's reading of the accounting template on full, minimal and incomplete parameters, refusals included, and expects the same answers. The move (the recommendation's first option, which this batch was asked to prefer) needs the same thing I-237 needs, a module that can read a binding in force and call it through the image's guarded HTTP: the image's posting gate checks the core-banking binding's posting hours, which a module cannot read today. That is Issue I-315. WPS's `PostReturn` reads only five of the template's values by their names and is not a copy of the template's reading; it stays.
+
+
+**Done, the first option (24 November 2026, R-09-264).** `p.post.accounting.v1` is the platform module's (`PostAccountingV1`), reading the accounting template with the one `PostingTemplate` (charge slabs and VAT per cent added), and the posting window gate is the platform module's only (`PostingWindow`, `PostingGate`). The module contributes its gate to its distribution as a `NativeBindingGate` under `binding-gate:p.port.core-banking.v1`; the image asks it before every core-banking call for that distribution (the reservation, the reversal, and every module's posting through `INativeCoreBanking`, WPS's `PostReturn` among them), and refuses a binding that names a posting window when no gate is contributed (`PortNotBound`), so nothing is called ungated. The image keeps no `PostingWindow`, `AccountingTemplate`, `ChargeSlab` or `PostAccounting`. `DuplicatedLogicTests` is removed and `NoCopyInTheImageTests` holds the image to having none. A promotable distribution that carries `p.post.accounting.v1` needs the platform module; the studio refuses one without it (`MODULE_BUILTINS`, Issue I-381).
 
 ## I-230. The native host's refusals have no entry in the error dictionary
 
@@ -2194,6 +2203,9 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Move the labour ministry's adapters into the WPS module (`TransactHub.Activities.Wps`) when the native contract gives a module what it needs to build a bound adapter (I-220), and drop the exception.
 
 **Not moved (24 November 2026): blocked on the native contract, Issue I-315.** The adapters (`simulator` and `gateway-rest`) need, from inside a module, the binding in force for the attempt (its adapter and settings), the image's guarded HTTP (circuit breaker, timeouts, R-09-156) and the resolution of the binding's credential reference. The native contract 1.1.0 gives a module none of these: its ports are answered by the image (`INativePorts`). Moving them needs a contract minor (1.2.0), which changes the version every distribution's manifest, the studio's module builds and their tests name, and was not safe to make in this batch beside the release of factory 1.20.0. The exception in `NeutralityTests` stays, with this issue.
+
+
+**Done (24 November 2026, R-09-263).** The adapters (`simulator`, `gateway-rest`) are the WPS module's, in `TransactHub.Activities.Wps/Native/EmployerStatus.cs`, built on the binding in force the native contract's bound ports give (R-09-261): the REST adapter builds its request (`POST {statusPath}`, `X-Ref`, the bank's `X-Channel`) and the image sends it to the binding's `baseUrl` with its credential, breaker and timeout. `TransactHub.Ports/EmployerRegister.cs` and the image's `INativePorts` case are gone, and `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` has no exception left. `LabourMinistryTests` (the module on the contract alone), `FileProtectionAndRegisterTests` (through the image's bound ports, a recorded gateway), `ContractTwoTests.A_module_builds_its_own_bound_adapter_and_the_image_sends_its_request_with_the_credential_it_keeps` (through the native host, a register on this machine).
 
 ## I-238. Other values of a UAE cluster in platform code
 
@@ -2562,6 +2574,9 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Release native contract 1.2.0 with bound ports: `INativeServices.BoundPorts.For(attempt, port)` giving the binding's adapter and settings, and `Send(attempt, binding, request)` that sends a request to the binding's base URL with its credential applied by the image and its breaker and timeouts, the failures as the contract's `TransientError`, `PortNotBound` and `SecretUnavailable`. Then move the labour ministry's adapters into the WPS module and `p.post.accounting.v1` with the posting window's check into the platform module, drop the image's copies, `NeutralityTests`' exception and `DuplicatedLogicTests`, and update the contract version wherever a manifest, a build or a test names it.
 
+
+**Done (24 November 2026, R-09-261 to R-09-264), as native contract 2.0.0, not 1.2.0.** The owner chose to make the breaking change once, while no bank is live, with I-226. `INativeServices.BoundPorts` (`INativeBoundPorts`) gives `For(attempt, port)`, the binding in force (`NativeBinding`), and `Send(attempt, binding, request)` (`NativeHttpRequest`, `NativeHttpResponse`): the image sends on its own copy of the binding in force, refuses another (`PortNotBound`), a path that names a host or a header that carries the credential (`NativePortRefused`), applies `secretRef` as a bearer token or in `credentialHeader`, and goes through the endpoint's circuit breaker within `timeoutSeconds`; failures are `TransientError`, `port.CircuitOpen`, `SecretUnavailable`, `NoTenant` and `PortNotBound`. A module's gate on a binding is the new `NativeBindingGate`, keyed by `NativeContributions.BindingGate`. The labour ministry's adapters moved (I-237), and `p.post.accounting.v1` with the posting window (I-227). Every manifest, the studio's module builds (`NATIVE_CONTRACT`), the black-box tests, the laptop's module build and signing (which read the contract project's `Version`) and the docs name 2.0.0; the migration is `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 3.2.
+
 ## I-316. Whether a bank's AML screening leaves a case at the service
 
 **Issue.** Lint L54 (R-03-26) first counted every `screen` as an outside effect. DIB's `b.screen.employer-aml.v1` (mined from the source's bank fork) is a screen declared `read`, with no idempotency key, and the source does not say whether its AML service records a case for each request. The factory's screens (sanctions, fraud) are `external` and carry keys. So a screen now counts by its effect, as an enrich does: one that only reads may be `read`.
@@ -2609,6 +2624,52 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** A break may start an exception request or a return by the message the scheme's report names for it (R-09-250). WPS declares no report (the Central Bank gives no layout, Issue I-164) and no inward message that starts a request or a return for a break, with an intake map that reads the break's order document. So no WPS break is offered either resolution; an installation that names a report of its own (`FileApi:Reports:<message>:Scheme`) has no disposition to name them in.
 
 **Recommendation.** Ask the scheme operator, with the reconciliation layout (C in `docs/OWNER-ACTIONS.md`), how a bank raises an exception or returns funds for a line it disputes; then add the report and those messages, with intake maps that read `th-break-order/1`, in a minor of the WPS scheme. Do not write them before the answer: they would be scheme facts.
+
+## I-380. `native.ContractUnsupported` has no entry in the error dictionary yet
+
+**Issue.** Contract 2.0.0 refuses a 1.x module with its own code, `native.ContractUnsupported` (R-09-262), at install (the release API's package refusal) and at load (the native host's refusal). The code is in `ErrorCodes` (`NativeContractUnsupported`), so `ErrorDictionaryTests.Every_runtime_code_has_an_entry_with_a_runbook` fails until the platform's error dictionary has an entry; this change was asked not to release the factory while two other changes release 1.21.0 and 1.22.0.
+
+**Recommendation.** Add the entry to the next release of `p.errors.platform.v1` (in `spec/factory/p/errors/`, then `seed-content --write-local`):
+
+```yaml
+  - code: native.ContractUnsupported
+    title: 'A native module was built against a contract this runtime does not take'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+      - package
+    meaning: 'The distribution''s native modules were built against a native contract of another major than the runtime''s, or a later minor (R-09-262). Since native contract 2.0.0 every module built against 1.x is refused, at install by the release API and again when the native host loads the distribution.'
+    causes:
+      - 'The distribution was built before the runtime took native contract 2.0.0.'
+      - 'A module build made ahead of time was made against another contract than the runtime image''s.'
+    runbook:
+      checks:
+        - 'Read the refusal: it names the module, the contract it was built against and the contract the runtime supports.'
+        - 'Read the native host''s contract (GET /health, contract) and the distribution''s manifest (native.contract).'
+      safeActions:
+        - 'Do not retry. Rebuild every module against the runtime''s contract (the studio with TH_NATIVE_MODULES=build, or runtime/tools/native-module/build.sh), build a new distribution of the bank, install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2).'
+        - 'Remove the refused distribution once nothing is pinned to it.'
+      escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
+```
+
+## I-381. A promotable distribution now needs the platform module
+
+**Issue.** `p.post.accounting.v1` is a builtin (`implementation.binding: builtin`, `service: accounting`) with no script-behind, and since R-09-264 only the platform module answers it on the runtime. So a promotable distribution built with no module builds (`TH_NATIVE_MODULES` unset), which was taken before with `native.notCarried`, is now refused by the studio, as one with an activity bound `native` is. The factory's activity does not say that a module answers it: the studio lists it in `MODULE_BUILTINS` (`studio/src/export/native-modules.ts`).
+
+**Recommendation.** In the next platform release, say in the activity that the runtime's platform module implements it (`implementation.native: true` beside `binding: builtin`, with lint L40 extended to take it), and drop `MODULE_BUILTINS`. Until then a studio that builds promotable distributions sets `TH_NATIVE_MODULES`, as the laptop and every bank's studio already do.
+
+## I-382. The reservation and the reversal stay in the image, gated by the platform module
+
+**Issue.** The image still answers `p.reserve.funds.v1`, `p.reserve.release.v1`, `p.post.reverse.v1` and `p.post.verify.v1` (the builtin reservation service and the posting's reversal and check). They call core banking, so they ask the gate the platform module contributes (R-09-264); in a table with no platform module (a development host whose `TH_NATIVE_DEV_MODULES` names none) a core-banking binding with a posting window is refused for them. The image names the two settings of a window (`CoreBankingCalls.GateSettings`) only to refuse that case.
+
+**Recommendation.** Move these four into the platform module at its next release too, with a balance enquiry on `INativeCoreBankingBinding` (a contract minor, 2.1.0), so that the image keeps the core-banking adapters and no core-banking activity; then the image need not name the window's settings at all.
+
+## I-383. Bound ports carry JSON over HTTP only
+
+**Issue.** `INativeBoundPorts.Send` sends a JSON body and reads any body back; it is what the labour ministry's register needs. A scheme port on another wire (a file over SFTP, a message queue, a SOAP service with a signed envelope) still needs an adapter in the image, reached through `INativePorts` (a kept file on a port bound to `file-transfer` already is).
+
+**Recommendation.** When a scheme's port needs another wire, add it to the bound ports as a contract minor (a body of bytes with its content type, then a file put through the binding's transfer), rather than an image case for the port.
 
 ## Not done, and why
 

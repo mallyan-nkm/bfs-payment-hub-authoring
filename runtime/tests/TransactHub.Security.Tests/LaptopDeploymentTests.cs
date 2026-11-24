@@ -115,6 +115,30 @@ public sealed class LaptopDeploymentTests
     }
 
     /// <summary>
+    /// R-09-262: the laptop image's modules are built and signed against the native contract the image carries, 2.0.0, read from the
+    /// contract project's Version by runtime/tools/native-module/build.sh, never written in the laptop's files; both builds of the image
+    /// (in Docker, and --local) build the platform's and WPS's modules that way.
+    /// </summary>
+    [Fact]
+    public void The_laptops_module_builds_name_the_native_contract_the_image_carries()
+    {
+        var csproj = File.ReadAllText(Path.Combine(Root(), "runtime", "src", "TransactHub.Activities.Contract", "TransactHub.Activities.Contract.csproj"));
+        Assert.Equal(TransactHub.Activities.Native.NativeContract.Version, Regex.Match(csproj, "<Version>([^<]+)</Version>").Groups[1].Value);
+        Assert.Equal("2.0.0", TransactHub.Activities.Native.NativeContract.Version);
+        var tool = File.ReadAllText(Path.Combine(Root(), "runtime", "tools", "native-module", "build.sh"));
+        Assert.Contains("TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj", tool);
+        Assert.Contains("\"contract\": \"$contract\"", tool);
+        var build = File.ReadAllText(Path.Combine(Laptop, "build.sh"));
+        foreach (var text in new[] { Dockerfile, build })
+        {
+            Assert.Contains("runtime/tools/native-module/build.sh p runtime/src/TransactHub.Activities.Platform.Native", text);
+            Assert.Contains("runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps", text);
+        }
+        foreach (var f in Directory.EnumerateFiles(Laptop, "*", SearchOption.AllDirectories).Where(f => !f.Contains("/.build/") && !f.Contains("node_modules")))
+            Assert.DoesNotMatch(@"contract[""']?\s*[:=]\s*[""']?1\.\d+\.\d+", File.ReadAllText(f));
+    }
+
+    /// <summary>
     /// R-09-187 (Issue I-238): the front door's one-off run reads the bank's values from the release API (<c>GET /values</c>) as of the
     /// payment's date, not the bank folder's configuration set, and runs the message and file its caller names, with no scheme's default.
     /// </summary>
