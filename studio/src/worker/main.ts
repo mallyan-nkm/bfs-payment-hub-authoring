@@ -8,6 +8,7 @@ import { PartyService, type AttemptRequest } from '../conformance/party.js';
 import { FolderSequences, SimulatorInstance } from '../sim/runtime.js';
 import { attrs, contextFrom, inSpan, initTelemetry, log, meters, shutdownTelemetry, SpanKind } from '../telemetry/telemetry.js';
 import { resolveSecret } from '../secrets/secrets.js';
+import { runtimePortGaps } from '../checks/runtime-ports.js';
 
 // A deployed activity worker (Part 9; R-09-04, R-09-05). One process per task queue. It serves only
 // the tasks its manifest lists, registered as <name>@<release>, and refuses any other. It holds
@@ -52,6 +53,15 @@ const store = Store.fromDirs(dirs);
 if (environment.configurationSet) {
   const cs = typeof environment.configurationSet === 'string' ? parseYaml(environment.configurationSet) : environment.configurationSet;
   store.add(cs, 'environment', 'spec', false, 'published', cs.tenant);
+}
+// R-09-213 (Issue I-268): a port the bench gives to the runtime is answered natively; a worker whose package holds an activity of it
+// with no native code-behind would answer that activity from the port's first simulator, so it does not start.
+{
+  const gaps = runtimePortGaps(store.current().map((e) => e.doc), environment.bench);
+  if (gaps.length) {
+    console.error(`The bench gives ${[...new Set(gaps.map((g) => g.port))].join(', ')} to the runtime, but ${gaps.map((g) => `${g.activity}@${g.release}`).join(', ')} ha${gaps.length === 1 ? 's' : 've'} no native code-behind there (R-09-213)`);
+    process.exit(1);
+  }
 }
 const party = new PartyService({
   store,

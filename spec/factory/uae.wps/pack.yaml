@@ -58,33 +58,33 @@ artefacts:
     path: activities/uae.wps.exchange.return-refund.v1.yaml
   - name: uae.wps.exchange.send-disbursement-cancellation.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:095c33336c8b5f1b0321cf6a3a9fd38b62d86ff2a539d0ebbfd8f69c32c22fb1
+    release: 1.1.0
+    hash: sha256:0cceccd29b6f7f19eef146e483582e363b62ec31b4b21bcdafc2565d710b1e6a
     path: activities/uae.wps.exchange.send-disbursement-cancellation.v1.yaml
   - name: uae.wps.exchange.send-disbursement-file.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:ba87c4c193a6cd1a0075000f8b94cdcc39746cc77f671c265d542c61cd23b646
+    release: 1.1.0
+    hash: sha256:331d213b9832286217ed87d11ee7f81be6db4e073376f6de03aa59518dd2a582
     path: activities/uae.wps.exchange.send-disbursement-file.v1.yaml
   - name: uae.wps.exchange.send-receipt-confirmation.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:363ebfbbf1b32af788a8447585b39b644b670ec0a3e25b49d3cc86745528ef95
+    release: 1.1.0
+    hash: sha256:d6303ef83659cd1e09e9a2a3fb84fa4da5716681501cd30891b784738adb36ee
     path: activities/uae.wps.exchange.send-receipt-confirmation.v1.yaml
   - name: uae.wps.exchange.send-refund-request.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:e8639a1e6c91dfb6a758b6462903921b926dce0a62dcb5a29a8e49efecdf61a9
+    release: 1.1.0
+    hash: sha256:69c87cb4925b45c710f7b18ab4c33e9a567e0edac1bd98fc0ca5555b64442c2b
     path: activities/uae.wps.exchange.send-refund-request.v1.yaml
   - name: uae.wps.exchange.send-refund-response.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:c92888fc85126d6eb94ca2ef3d4e28b5d4c1f5e99b1ae6f8eb41a11d2acb74b1
+    release: 1.1.0
+    hash: sha256:a544a3e66fd6ebffeba4c6d796dc1291375c04830767ec7d575728901a27b240
     path: activities/uae.wps.exchange.send-refund-response.v1.yaml
   - name: uae.wps.exchange.send-returns-file.v1
     kind: activity
-    release: 1.0.0
-    hash: sha256:654873529e5a33fff433697c01c123c826bf437f9e6fc874a0fe5707d0bb97e8
+    release: 1.1.0
+    hash: sha256:754d12a6de711979e83e194966328b73e4f894691850c3ce3fde941e9eea4227
     path: activities/uae.wps.exchange.send-returns-file.v1.yaml
   - name: uae.wps.exchange.send-salary-file.v2
     kind: activity

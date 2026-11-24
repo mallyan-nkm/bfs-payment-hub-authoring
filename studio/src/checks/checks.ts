@@ -16,6 +16,7 @@ import { literalSecretsInText } from '../secrets/scan.js';
 import { parseYamlAll } from '../core/yaml.js';
 import type { StudioEnv } from '../env.js';
 import { scopeOf as viewOf } from '../core/scope.js';
+import { runtimePortGaps } from './runtime-ports.js';
 
 // Static checks (C04). A port of the reference validator (spec/tools/validate.py) that runs on
 // one document as it is edited and on the whole store, and names the step each issue concerns.
@@ -773,6 +774,8 @@ export class Checker {
   }
 
   private checkTest(d: any, err: (c: string, m: string) => void, warn: (c: string, m: string) => void) {
+    // R-09-213 (Issue I-268): every activity of a port the bench gives to the runtime has a native code-behind there.
+    for (const g of runtimePortGaps(this.docs, d.bench)) err('L15', `The bench gives ${g.port} to the runtime, but ${g.activity}@${g.release} has no native code-behind there`);
     for (const b of d.bench ?? []) {
       const s = this.byName.get(b.simulator);
       if (s?.kind === 'simulator') {

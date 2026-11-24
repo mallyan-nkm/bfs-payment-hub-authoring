@@ -105,6 +105,33 @@ public sealed class PortFileTransferTests
         Assert.Equal("centralBank/upload/cb/wps/sif", (string?)s.Writes["messages.sent"]!["folder"]);
     }
 
+    /// <summary>
+    /// R-09-213, Issue I-268: the scheme's other sends on the WPS port have native code-behinds as the salary file's does: the receipt
+    /// confirmation the native render kept goes out on the bank's binding of the port; nothing rendered is refused, nothing sent.
+    /// </summary>
+    [Fact]
+    public void The_schemes_other_sends_put_the_kept_file_on_the_banks_binding_of_the_port()
+    {
+        var files = new MemoryNativeFiles();
+        var transfer = new Recording();
+        var ports = new NativePorts(Bindings(), files, transferOf: _ => transfer);
+        var sha = files.Keep("out", "rendered", "PRC000261118103000.PRC", "RDR,synthetic\r\n"u8.ToArray());
+        Assert.Equal(6, SendKeptFile.Sends.Count);
+        var send = SendKeptFile.All(ports).Single(s => s.Name == "uae.wps.exchange.send-receipt-confirmation.v1");
+        var ctx = View();
+        ctx["messages"] = new JsonObject { ["rendered"] = new JsonObject { ["fileName"] = "PRC000261118103000.PRC", ["sha256"] = sha } };
+        var s = send.Run(new NativeAttempt(send.Name, "1.1.0", ctx, new JsonObject(), Now, "test-bank"));
+        Assert.Equal("accepted", s.Outcome);
+        var (path, owner) = Assert.Single(transfer.Puts);
+        Assert.Equal("centralBank/upload/cb/wps/sif/PRC000261118103000.PRC", path);
+        Assert.Equal("uae.wps.exchange.send-receipt-confirmation.v1", owner!.Activity);
+        var none = View();
+        none["messages"] = new JsonObject();
+        var r = send.Run(new NativeAttempt(send.Name, "1.1.0", none, new JsonObject(), Now, "test-bank"));
+        Assert.Equal(("rejected", "FF01"), (r.Outcome, r.ReasonCode));
+        Assert.Single(transfer.Puts);
+    }
+
     [Fact]
     public void A_file_the_host_does_not_hold_or_a_folder_the_bank_does_not_bind_is_refused_and_nothing_is_sent()
     {

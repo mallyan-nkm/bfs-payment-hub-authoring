@@ -137,6 +137,9 @@ RELEASES = {
     "uae.wps.exchange.send-salary-file.v2": ("2.0.0", "reads facts.encryption and sends the encrypted file where there is one (Issue I-266)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
+# Issue I-268, R-09-213 (factory 1.20.0): the scheme's other sends on the WPS port gain native code-behinds, a minor each.
+for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursement-file", "send-returns-file", "send-disbursement-cancellation", "send-refund-response"):
+    RELEASES["uae.wps.exchange.%s.v1" % _n] = ("1.1.0", "native code-behind: the kept file sent on the bank's binding of the WPS port (Issue I-268)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -528,8 +531,10 @@ for nm, ttl, mode in [("send-refund-request", "Submit a refund request to WPS", 
                       ("send-returns-file", "Send the returns file to WPS", "send"),
                       ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
                       ("send-refund-response", "Send the refund request response to WPS", "send")]:
+    # 1.1.0 (Issue I-268, R-09-213): a native code-behind that sends the file its render kept on the bank's binding of the WPS port,
+    # as the salary file's does, so a bench that gives the port to the runtime runs every send of it natively.
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
-        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
+        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP, native=True)
 
 # The salary file's send, v2 (Issue I-266, R-09-182): the send reads the encryption step's fact (facts.encryption), and where the bank's
 # binding of p.port.encryption.v1 encrypted the file it sends that file, not the plain one the render kept. A read added, a new major

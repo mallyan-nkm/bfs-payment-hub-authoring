@@ -55,3 +55,18 @@ describe('a port bound to the runtime (R-08-15)', () => {
     expect(attempts).toEqual([]);
   });
 });
+
+describe('every activity of a port the bench gives to the runtime has a native code-behind (R-09-213, Issue I-268)', () => {
+  it('finds none missing for the laptop bench, which gives the WPS port to the runtime, and names one that is', async () => {
+    const { runtimePortGaps } = await import('../src/checks/runtime-ports.js');
+    const fs = await import('node:fs');
+    const compose = fs.readFileSync(new URL('../../deploy/laptop/compose.yaml', import.meta.url), 'utf8');
+    const bench = JSON.parse(/TH_WORKERS_BENCH: \$\{TH_LAPTOP_WORKERS_BENCH:-(\[.*\])\}/.exec(compose)![1]);
+    expect(bench).toContainEqual({ port: 'uae.wps.port.wps.v1', simulator: 'runtime' });
+    const docs = freshEnv().store.current().map((e) => e.doc);
+    expect(runtimePortGaps(docs, bench)).toEqual([]);
+    const without = clone(docs);
+    delete without.find((d: any) => d.name === 'uae.wps.exchange.send-receipt-confirmation.v1').implementation.native;
+    expect(runtimePortGaps(without, bench)).toEqual([{ port: 'uae.wps.port.wps.v1', activity: 'uae.wps.exchange.send-receipt-confirmation.v1', release: '1.1.0' }]);
+  });
+});
