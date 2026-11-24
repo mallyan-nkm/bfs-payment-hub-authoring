@@ -82,4 +82,12 @@ describe('the conformance kit on the studio interpreter (C23, C09)', () => {
     expect(red).toEqual([]);
     expect(res.length).toBe(59);
   });
+  it("counts a scenario's business elapsed time on its own calendar, the bank's holiday included (R-09-246, Issue I-291)", async () => {
+    const env = freshEnv();
+    const [r] = await runKit(env, ['CK-AWAIT-08']);
+    const check = r.checks.find((c) => c.what === 'virtual elapsed on the business calendar')!;
+    // Friday 27 November 2026 plus one business day: Monday 30 November is the bank's holiday, so Tuesday, four days on.
+    expect(check).toMatchObject({ expected: 4 * 86_400_000, actual: 4 * 86_400_000, passed: true });
+    expect(r.passed).toBe(true);
+  });
 });

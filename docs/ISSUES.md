@@ -2401,6 +2401,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Count `virtualElapsedBusiness` on the scenario's calendar (`businessCalendarIn` over the scenario's documents and the store's tables, as the run counts it).
 
+**Done (24 November 2026, R-09-246).** The kit counts `virtualElapsedBusiness` on the scenario's own calendar (`scenarioCalendar` in `studio/src/conformance/kit.ts`: `businessCalendarIn` over the scenario's documents and the store's calendar tables, on its evaluation date), for every target, since every engine's runner compares through `runScenario`. CK-AWAIT-08 now checks one business day over the bank's holiday, which is four plain days.
+
 ## I-292. The trusted signers of a bank do not show what each key may sign
 
 **Issue.** R-09-184 lets a trusted signer name its kinds and scope. The service console shows the trusted keys and their rotation, not their kinds or scope, and no laptop or bank folder holds the feed's entry: each installation adds it by hand to the document `TH_TRUSTED_SIGNERS` names.
