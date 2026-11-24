@@ -28,6 +28,8 @@ const PARTY = {
   organisationId: { id: ['Max35Text', false, 'The organisation\'s id (OrgId/Othr/Id)'], scheme: ['Max35Text', false, 'The scheme that issued the id (OrgId/Othr/SchmeNm/Prtry)'] },
   // R-02-22 (Issue I-153): the organisation's further ids, each an OrgId/Othr of its own, for example its CIF at the bank (scheme CIF).
   'otherOrganisationIds[]': { id: ['Max35Text', false, 'A further id of the organisation (OrgId/Othr/Id)'], scheme: ['Max35Text', false, 'The scheme that issued it (OrgId/Othr/SchmeNm/Prtry), CIF for the bank\'s customer number'] },
+  // Pty/CtctDtls (R-02-23, Issues I-153, I-314): the party's contact e-mail, as a channel declared it. Personal data.
+  contactDetails: { emailAddress: ['Max2048Text', true, 'The party\'s e-mail address (CtctDtls/EmailAdr), as the channel declared it'] },
 };
 const ACCOUNT = {
   iban: ['IBAN2007Identifier', true, 'International bank account number'], other: ['Max34Text', true],

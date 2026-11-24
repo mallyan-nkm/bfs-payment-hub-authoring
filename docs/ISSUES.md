@@ -1648,6 +1648,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **(1) Done (24 November 2026, R-02-22).** The debtor's organisation id holds its establishment id (scheme MOL, R-12-27), so its CIF is a further organisation id: the canonical model gives a party `otherOrganisationIds[]` (Pty/Id/OrgId/Othr, repeated), and the salary file's intake map 1.5.0 (factory 1.20.0, `studio/scripts/uae.wps.map.sif-in.v1@1.5.0.ts`) writes the CIF the channel declared at upload (`# cif:`) there with scheme CIF. The store keeps every organisation id of a party as its OrgId/Othr (`CanonicalMapper`, which kept none before, so the MOL id is now in the store too). The runtime's match of the corporate still compares the account only: comparing the CIF and the e-mail is the source's `MatchCorporate`, whose e-mail the model does not carry (Issue I-314). (2) to (4) stay open.
 
+**(1) Done in full (24 November 2026, R-02-23, R-09-248).** The match compares the CIF and the e-mail where both are known, and the e-mail is the debtor's `contactDetails.emailAddress` (Issue I-314). (2) to (4) stay open.
+
 ## I-154. One runtime serves one bank: what the runtime still allows for several
 
 **Issue.** The owner decided on 23 November 2026 that the runtime is not multi-tenant: one runtime serves one bank, and it must be impossible to deploy DIB's package in ADIB. Until then the runtime stored a distribution, a configuration release, a workflow package exported for a tenant, a payment's pin, a kept file, a branch's configuration sets and a backup for any bank a caller had a role in. Per-tenant role grants (R-06-28) let one person hold roles in several banks of one runtime.
@@ -2545,6 +2547,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Since R-02-22 the debtor carries the CIF the channel declared (scheme CIF), but WPS's match of the corporate the party register found (`WpsCorporateMatch`, the source's `MatchCorporate`) compares the account only. The source compared a CIF, an account and an e-mail; the canonical model has no place for the uploader's e-mail, which is personal data, and the spec does not say whether the match needs it.
 
 **Recommendation.** Have the match compare the debtor's CIF organisation id with the register's CIF where both are known (a minor of the WPS module); and decide with the owner whether the e-mail is compared at all, and if so where it is read (the channel's identity, not the payment).
+
+**Done (24 November 2026, R-09-248, R-02-23; owner's decision of 24 November 2026, docs/OWNER-ACTIONS.md A8).** The match compares the debtor's organisation id of scheme CIF with the register's `cif` (114) and the debtor's contact e-mail with the register's `emails` (165), each where both are known (`WpsCorporateMatch`). The e-mail has a place in the canonical model: a party's `contactDetails.emailAddress` (Pty/CtctDtls/EmailAdr), personal data, kept in the payment record and never in a step's facts; the salary file's intake map 1.6.0 (factory 1.22.0) writes the one the channel declared at upload (`# email:`). A channel that declares neither is matched on the account only, as before.
 
 ## I-315. A native module cannot build a bound adapter of its own
 

@@ -63,6 +63,23 @@ describe('the salary file\'s name from the File API (Issue I-195, R-05-85)', () 
     expect(JSON.stringify((await run('1.4.0', `# cif: CIF-0000123\n${SAMPLE}`)).writes)).not.toContain('otherOrganisationIds');
   });
 
+  it('release 1.6.0 writes the e-mail the channel declared at upload as the debtor\'s contact e-mail, beside its CIF (R-02-23, Issues I-153, I-314)', async () => {
+    const party = new PartyService({ store: env.store, scripts: env.scripts, evaluationDate: '2026-11-24', tenant: 'example-bank', bench: [] } as any);
+    let calls = 0;
+    const run = async (release: string, payload: string) => {
+      const message = { id: `in-F-3-${calls + 1}`, type: 'uae.wps.sif', payload, fileName: NAME };
+      const ctx = { header: { conversation: 'conv-P-3', paymentId: 'P-3', scheme: 'uae.wps', direction: 'outward' }, messages: { inbound: { id: message.id, type: message.type } } };
+      return (await party.attempt({ instance: `intake-P-3-${release}-${++calls}`, activity: 'uae.wps.map.sif-in.v1', release, step: 'intake', call: 1, attempt: 1, now: Date.parse('2026-11-24T08:30:00Z'), ctx, messages: [message] } as any)) as any;
+    };
+    const r = await run('1.6.0', `# cif: CIF-0000123\n# email: payroll@example.invalid\n${SAMPLE}`);
+    expect(r.outcome).toBe('mapped');
+    expect(r.writes['batch.debtor.contactDetails.emailAddress'] ?? r.writes['batch.debtor.contactDetails']?.emailAddress ?? r.writes['batch.debtor']?.contactDetails?.emailAddress ?? r.writes.batch?.debtor?.contactDetails?.emailAddress).toBe('payroll@example.invalid');
+    expect(JSON.stringify(r.writes)).toContain('CIF-0000123');
+    // No e-mail declared: none written. And 1.5.0, pinned by a payment in flight, writes none.
+    expect(JSON.stringify((await run('1.6.0', SAMPLE)).writes)).not.toContain('contactDetails');
+    expect(JSON.stringify((await run('1.5.0', `# email: payroll@example.invalid\n${SAMPLE}`)).writes)).not.toContain('contactDetails');
+  });
+
   it('release 1.3.0, pinned by a payment in flight, still reads only the file line', async () => {
     const r: any = await intake('1.3.0', NAME);
     expect(r.outcome).toBe('unmappable');

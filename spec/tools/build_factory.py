@@ -151,6 +151,10 @@ RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the chann
 # Owner's decision of 2026-11-24 (Issue I-278, R-09-247, factory 1.22.0): requireAsOf, a bank on the rates feed refuses a rate with
 # no asOf like a stale one (fx.RateUndated). A parameter added with a default, a minor; its script at scripts/...@1.3.0.ts.
 RELEASES["p.enrich.fx-rate.v1"] = ("1.3.0", "requireAsOf: a bank on the rates feed refuses a rate with no asOf (fx.RateUndated)")
+# Issues I-153, I-314, R-02-23 (factory 1.22.0): the salary file's intake map writes the e-mail the channel declared at upload as the
+# debtor's contact e-mail (Dbtr/CtctDtls/EmailAdr), which WPS's corporate match compares (R-09-248). A field written under batch, a
+# minor; its script at scripts/...@1.6.0.ts.
+RELEASES["uae.wps.map.sif-in.v1"] = ("1.6.0", "the employer's e-mail from the channel's upload as the debtor's contact e-mail (Issues I-153, I-314)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
