@@ -49,7 +49,9 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     // 1.2.0: the agent's refund cycle (I-133); 1.3.0: the employer's refund order is an outward refund order (R-12-24); 1.4.0: the
     // salary file is sent by the send v2 (R-09-182); 1.5.0: the ACK's repliesTo and correlation map (R-09-211, R-09-212)
     // 1.6.0: the scheme's other sends are their v2 lines, which read the encryption step's fact (R-09-232)
-    expect(env.store.scheme('uae.wps').release).toBe('1.6.0');
+    // 1.7.0: the salary file names the kind an earlier runtime kept it under (formerKinds, R-09-302, Issue I-402)
+    expect(env.store.scheme('uae.wps').release).toBe('1.7.0');
+    expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif-submission').formerKinds).toEqual(['uae.wps.sif-out']);
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.prc').disposition.sentBy).toBe('uae.wps.exchange.send-receipt-confirmation.v2');
     // the canonical checks that read the batch are a new major line (R-09-231)
     expect(env.store.get('p.validate.canonical.v2')!.release).toBe('2.0.0');
@@ -95,7 +97,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.21.0.yaml')).release).toBe('1.21.0');
     expect(body(disk('banks/example-bank/packs/1.22.0.yaml')).release).toBe('1.22.0');
     expect(body(disk('banks/example-bank/packs/1.23.0.yaml')).release).toBe('1.23.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.24.0');
+    expect(body(disk('banks/example-bank/packs/1.24.0.yaml')).release).toBe('1.24.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.25.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);

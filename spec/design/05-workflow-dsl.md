@@ -289,6 +289,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L60 | A bank whose port bindings bind the rates port `p.port.fx-rates.v1` sets `p.enrich.fx-rate.v1#requireAsOf` to true in its configuration (its `configuration-set.yaml` and its newest release in `configuration-sets/`), so a rate typed by hand, with no `asOf`, is refused like a stale one (R-09-247, Issue I-278) | Yes |
 | L61 | An operations view that declares the work queue's escalation after a time declares both of its dials: `escalateAfter`, a duration whose default is P0D (off until the bank sets it), and `escalateTo`, a code whose allowed values are roles that work items (Supervisor, BankApprover), its default among them; only the platform's view declares them (R-05-107, Issue I-185) | Yes |
 | L62 | A scheme report's reconcile disposition that names the messages a break's order starts by (`resolutions`) names, for `exception-request`, an inward message of its own scheme that starts a request (kind `request`), and for `return` one that starts a return (kind `return`) (R-09-250, Issue I-168) | Yes |
+| L63 | A scheme message's former kinds (`formerKinds`), the kinds an earlier runtime kept it under, are names of its own scheme; none is the id of a message of the scheme, and no two messages name one (R-09-302, Issue I-402) | Yes |
 
 ## 5.8 Examples
 

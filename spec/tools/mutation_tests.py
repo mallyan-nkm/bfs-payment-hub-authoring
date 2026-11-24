@@ -298,6 +298,14 @@ CASES = [
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: uae.wps.map.psi-in.v1, period: P1D, resolutions: { return: uae.wps.sif } }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a break's return starts by a message that starts an outward payment, not a return"),
+    # L63 (R-09-302, Issue I-402): a message's former kinds are its own scheme's names, no message's id, and one message's each
+    ("M112", "ERROR L63", "factory/uae.wps/scheme.yaml",
+     "formerKinds: [uae.wps.sif-out]", "formerKinds: [uae.wps.ack]", "the salary file names the acknowledgement's id as its former kind"),
+    ("M113", "ERROR L63", "factory/uae.wps/scheme.yaml",
+     "formerKinds: [uae.wps.sif-out]", "formerKinds: [p.sif-out]", "a former kind that is not a name of the scheme"),
+    ("M114", "ERROR L63", "factory/uae.wps/scheme.yaml",
+     "    repliesTo: [uae.wps.sif-submission]\n", "    repliesTo: [uae.wps.sif-submission]\n    formerKinds: [uae.wps.sif-out]\n",
+     "the acknowledgement and the salary file name one former kind"),
     # L56 (R-02-24): a default currency is a country cluster's, an ISO 4217 code; the platform names none
     ("M108", "ERROR L56", "factory/uae.p/activities/uae.p.enrich.default-currency.v1.yaml",
      "default: AED", "default: Dirham", "a cluster's default currency that is not an ISO 4217 code"),

@@ -122,6 +122,45 @@ public sealed class ProjectionTests(Databases dbs)
         Assert.Equal("0000001234567261117083000-CB.SIF", (string?)JsonNode.Parse(leg.FieldsJson)!["cbFileName"]);
     }
 
+    /// <summary>
+    /// R-09-302 (Issue I-402): the read model learns a former kind from the scheme's content, not from platform code. With no scheme
+    /// that declares it, a document is read under the kind it was kept under; the published scheme declares the SIF's.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_former_kind_is_read_as_the_message_only_where_the_scheme_declares_it(StoreProvider p)
+    {
+        Assert.Equal("uae.wps.sif-submission", Views.FormerKinds["uae.wps.sif-out"]);
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store);
+        string kept;
+        await using (var db = StoreDbContext.Open(store))
+            (kept, _) = await new PaymentStore(db).KeepMessage(WpsRun.Tenant, "uae.wps", TransactHub.Model.Direction.Outward, "uae.wps.sif-out", "0000001234567261117083000-CB.SIF", "SCR,synthetic former\n"u8.ToArray(), id);
+        await new Projector(store, ops, new ViewCatalog(Views.All)) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        await using var o = OpsDbContext.Open(ops);
+        Assert.Equal("uae.wps.sif-out", (await o.Documents.SingleAsync(d => d.Id == kept)).Kind);
+    }
+
+    /// <summary>R-09-302: the former kinds are read from every release of a scheme manifest in the folder, and one kind names one message.</summary>
+    [Fact]
+    public void The_catalogue_reads_former_kinds_from_the_scheme_manifests_and_refuses_one_kind_for_two_messages()
+    {
+        var dir = Directory.CreateTempSubdirectory("th-former-kinds-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "1.0.0.yaml"), "kind: scheme\nscope: x.demo\nrelease: 1.0.0\nmessages:\n  - id: x.demo.file-out\n    direction: out\n");
+            File.WriteAllText(Path.Combine(dir, "1.1.0.yaml"), "kind: scheme\nscope: x.demo\nrelease: 1.1.0\nmessages:\n  - id: x.demo.file-submission\n    direction: out\n    formerKinds: [x.demo.file-out, x.demo.old]\n  - id: x.demo.reply\n    direction: in\n");
+            var c = ViewCatalog.FromFolder(dir);
+            Assert.Equal("x.demo.file-submission", c.CurrentKind("x.demo.file-out"));
+            Assert.Equal("x.demo.file-submission", c.CurrentKind("x.demo.old"));
+            Assert.Equal("x.demo.reply", c.CurrentKind("x.demo.reply"));
+            Assert.Equal(2, c.FormerKinds.Count);
+            File.WriteAllText(Path.Combine(dir, "1.2.0.yaml"), "kind: scheme\nscope: x.demo\nrelease: 1.2.0\nmessages:\n  - id: x.demo.reply\n    direction: in\n    formerKinds: [x.demo.old]\n");
+            var e = Assert.Throws<InvalidOperationException>(() => ViewCatalog.FromFolder(dir));
+            Assert.Contains("x.demo.old", e.Message);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task A_WPS_file_shows_its_declared_fields_its_leg_and_its_lines_masked_as_declared(StoreProvider p)
     {

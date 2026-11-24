@@ -19,7 +19,7 @@ public static class CentralBankSif
     public const string MessageKind = TransactHub.Activities.Wps.Native.SendSalaryFile.Message;
     /// <summary>
     /// The kind an earlier runtime kept the store's copy under. The store is insert-only, so those rows keep it; the read model takes
-    /// it as <see cref="MessageKind"/> (<c>TransactHub.Operations.DocumentKinds</c>).
+    /// it as <see cref="MessageKind"/>, as the scheme manifest declares (the message's <c>formerKinds</c>, R-09-302).
     /// </summary>
     public const string FormerMessageKind = "uae.wps.sif-out";
 

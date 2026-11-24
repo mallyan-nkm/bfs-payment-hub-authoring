@@ -29,23 +29,63 @@ public sealed class ViewCatalog
     readonly List<OperationsView> views = new();
     public IReadOnlyList<OperationsView> All => views;
 
-    public ViewCatalog(IEnumerable<OperationsView> vs) => views.AddRange(vs);
+    readonly Dictionary<string, string> formerKinds = new(StringComparer.Ordinal);
 
-    /// <summary>Every <c>operations-view</c> document under a folder, newest release of each name.</summary>
+    public ViewCatalog(IEnumerable<OperationsView> vs, IReadOnlyDictionary<string, string>? formerKinds = null)
+    {
+        views.AddRange(vs);
+        foreach (var (was, now) in formerKinds ?? new Dictionary<string, string>()) this.formerKinds[was] = now;
+    }
+
+    /// <summary>
+    /// The kinds an earlier runtime kept a document under, each with the scheme message it is now, as the schemes declare them (a
+    /// message's <c>formerKinds</c>, R-09-302, Issue I-402). Platform code names no scheme (R-09-142): the map is the schemes' content.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> FormerKinds => formerKinds;
+
+    /// <summary>
+    /// The kind a document is read as (R-09-288): the scheme message's id for a kind a scheme declares as one of its messages' former
+    /// kinds, otherwise the kind as kept. The store is insert-only, so a document kept before keeps its kind in the store.
+    /// </summary>
+    public string CurrentKind(string kind) => formerKinds.TryGetValue(kind, out var now) ? now : kind;
+
+    /// <summary>
+    /// Every <c>operations-view</c> document under a folder, newest release of each name; and the former kinds the <c>scheme</c>
+    /// documents under it declare, from every release of each scheme (a former kind, once declared, stays the message's).
+    /// </summary>
     public static ViewCatalog FromFolder(string folder)
     {
         var found = new Dictionary<string, OperationsView>();
+        var former = new Dictionary<string, string>(StringComparer.Ordinal);
         if (Directory.Exists(folder))
             foreach (var f in Directory.EnumerateFiles(folder, "*.yaml", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
             {
                 JsonObject? d;
                 try { d = Yaml.ToJson(File.ReadAllText(f)) as JsonObject; } catch { continue; }
-                if ((string?)d?["kind"] != "operations-view" || d["name"] is null) continue;
+                var kind = (string?)d?["kind"];
+                if (kind == "scheme" && d is not null)
+                {
+                    foreach (var (was, now) in FormerKindsOf(d))
+                    {
+                        if (former.TryGetValue(was, out var said) && said != now)
+                            throw new InvalidOperationException($"{f}: the former kind {was} is declared for {said} and for {now}");
+                        former[was] = now;
+                    }
+                    continue;
+                }
+                if (kind != "operations-view" || d?["name"] is null) continue;
                 var v = new OperationsView(d);
                 if (!found.TryGetValue(v.Name, out var have) || Compare(v.Release, have.Release) > 0) found[v.Name] = v;
             }
-        return new ViewCatalog(found.Values.OrderBy(v => v.Name, StringComparer.Ordinal));
+        return new ViewCatalog(found.Values.OrderBy(v => v.Name, StringComparer.Ordinal), former);
     }
+
+    /// <summary>The former kinds a scheme manifest declares: each message's <c>formerKinds</c>, with the message's id.</summary>
+    public static IEnumerable<(string Former, string Message)> FormerKindsOf(JsonObject manifest) =>
+        (manifest["messages"] as JsonArray ?? []).OfType<JsonObject>()
+            .Where(m => (string?)m["id"] is { Length: > 0 })
+            .SelectMany(m => (m["formerKinds"] as JsonArray ?? []).Select(k => (string?)k).Where(k => k is { Length: > 0 })
+                .Select(k => (k!, (string)m["id"]!)));
 
     static int Compare(string a, string b) =>
         a.Split('.').Select(int.Parse).Zip(b.Split('.').Select(int.Parse), (x, y) => x.CompareTo(y)).FirstOrDefault(c => c != 0);

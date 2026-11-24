@@ -2896,6 +2896,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Move the map out of the platform's code: have WPS's store module (`TransactHub.Activities.Wps.Store`) contribute the former kinds of its messages, or read them from the scheme's catalogue (a `formerKinds` list on a message), so the read model names no scheme.
 
+**Done (24 November 2026, R-09-302).** A scheme message may name the kinds an earlier runtime kept it under (`formerKinds`, schema `scheme`); lint L63 holds each to a name of its own scheme, no message's id and one message's only (mutations M112 to M114, in the validator and the studio's checks). `uae.wps` 1.7.0 (factory 1.25.0, change set CS-2026-11-24-020) names `uae.wps.sif-out` as the salary file's. The operations read model's catalogue reads the former kinds from every release of every scheme manifest in its content folder (`ViewCatalog.FormerKinds`), beside the views, and `DocumentKinds` is gone, so no platform code names the scheme. The store is insert-only, so old rows keep their kind and are read as the message. Evidence: `NeutralityTests`, `ProjectionTests` (three cases, SQL Server and PostgreSQL), `studio/test/checks.test.ts`.
+
 ## Not done, and why
 
 | Story | Why |

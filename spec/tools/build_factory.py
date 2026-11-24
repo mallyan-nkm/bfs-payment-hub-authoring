@@ -230,8 +230,10 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # 1.24.0 (change set CS-2026-11-24-019): WPS's return posting 1.3.0 says the WPS module answers it (lint L40 in every scope; R-09-296,
 # Issue I-387); the platform's error dictionary 1.13.0, hand-written in factory/p/errors, 1.12.0's entries and native.ActivityUnserved
 # (R-09-291, R-09-292, Issue I-384).
-PACK_RELEASES = {"p": "1.24.0", "uae.p": "1.24.0", "uae.wps": "1.24.0", "b": "1.24.0"}
-FACTORY_RELEASE = "1.24.0"
+# 1.25.0 (change set CS-2026-11-24-020): the scheme's catalogue 1.7.0 names the salary file's former kind (formerKinds, lint L63;
+# R-09-302, Issue I-402), so the operations read model takes it from the scheme and no platform code names it.
+PACK_RELEASES = {"p": "1.25.0", "uae.p": "1.25.0", "uae.wps": "1.25.0", "b": "1.25.0"}
+FACTORY_RELEASE = "1.25.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 

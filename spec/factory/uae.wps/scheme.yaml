@@ -1,6 +1,6 @@
 kind: scheme
 scope: uae.wps
-release: 1.6.0
+release: 1.7.0
 title: UAE Wages Protection System
 wire: file
 messages:
@@ -19,6 +19,9 @@ messages:
     title: Salary information file submitted to WPS
     direction: out
     confirmed: true
+    # Release 1.7.0 (Issue I-402, R-09-302): an earlier runtime kept the store's copy of this file under the binding's old word; the
+    # operations read model reads a document kept so as this message.
+    formerKinds: [uae.wps.sif-out]
     disposition:
       # From release 1.4.0 the send that reads the encryption step's fact (Issue I-266, R-09-182).
       sentBy: uae.wps.exchange.send-salary-file.v2

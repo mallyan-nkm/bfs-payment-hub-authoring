@@ -179,6 +179,19 @@ describe('a send after an encryption sends the encrypted file, and each sent mes
   });
 });
 
+describe('a message names the kinds an earlier runtime kept it under (L63, R-09-302, Issue I-402)', () => {
+  const sif = (find: (n: string) => any) => find('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif-submission');
+  it('the salary file names its former kind, and a former kind is its scheme\'s name, no message\'s id, and one message\'s', () => {
+    expect(fire('L63', () => {})).toEqual([]);
+    expect(fire('L63', (find) => { sif(find).formerKinds = ['uae.wps.ack']; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/uae\.wps\.sif-submission's former kind uae\.wps\.ack is the id of a message of uae\.wps/)]);
+    expect(fire('L63', (find) => { sif(find).formerKinds = ['p.sif-out']; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/former kind p\.sif-out is not a name of uae\.wps/)]);
+    expect(fire('L63', (find) => { find('uae.wps').messages.find((m: any) => m.id === 'uae.wps.ack').formerKinds = ['uae.wps.sif-out']; }).map((i) => i.message))
+      .toEqual([expect.stringMatching(/uae\.wps\.sif-submission and uae\.wps\.ack both name the former kind uae\.wps\.sif-out/)]);
+  });
+});
+
 describe('a scripted check without rule sets may be pure (L57, R-03-27, Issue I-342)', () => {
   const CHECK = {
     kind: 'activity', name: 'b.validate.pay-period-check.v1', release: '1.0.0', title: 'The pay period is in order', type: 'validate', reads: ['header'], writes: ['facts.payPeriod'],

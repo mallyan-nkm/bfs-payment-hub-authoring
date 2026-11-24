@@ -483,7 +483,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 var pinned = await s.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == subject && f.Kind == DistributionRegistry.PinKind, ct);
                 subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId ?? (pinned ? subject : null);
             }
-            o.Documents.Add(new OpsDocument { Id = m.Id, SubjectId = subject, Tenant = m.Tenant, Scheme = m.Scheme, Kind = DocumentKinds.Current(m.Kind), Direction = m.Direction.ToLowerInvariant(), FileName = m.FileName, Size = m.Size, ContentHash = m.ContentHash, At = m.At });
+            o.Documents.Add(new OpsDocument { Id = m.Id, SubjectId = subject, Tenant = m.Tenant, Scheme = m.Scheme, Kind = views.CurrentKind(m.Kind), Direction = m.Direction.ToLowerInvariant(), FileName = m.FileName, Size = m.Size, ContentHash = m.ContentHash, At = m.At });
             if (subject is not null) touched.Add(subject);
         }
 
@@ -498,7 +498,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId ?? subject;
             o.Documents.Add(new OpsDocument
             {
-                Id = f.Id, SubjectId = subject, Tenant = f.Tenant, Scheme = f.Scheme, Kind = DocumentKinds.Current(f.Kind), Direction = f.Direction, FileName = f.FileName,
+                Id = f.Id, SubjectId = subject, Tenant = f.Tenant, Scheme = f.Scheme, Kind = views.CurrentKind(f.Kind), Direction = f.Direction, FileName = f.FileName,
                 Size = (int)Math.Min(f.Size, int.MaxValue), ContentHash = f.ContentHash, At = f.At, Source = "file", Leg = f.Leg, SigningKeyId = f.SigningKeyId,
             });
             if (subject is not null) touched.Add(subject);

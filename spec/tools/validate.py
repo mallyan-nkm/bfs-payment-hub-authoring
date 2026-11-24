@@ -504,6 +504,18 @@ for path, d in docs:
             mp = by_name.get(cm)
             if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in" or "messages" not in (mp.get("reads") or []):
                 err("L55", path, "%s's correlation map %s is not an inward map that reads the message" % (mid, cm))
+    # L63 (R-09-302, Issue I-402): a message's former kinds are names of its own scheme, none is the id of a message of the scheme,
+    # and no two messages name one: the operations read model reads a document kept under one as that one message.
+    former = {}
+    for m in d["messages"]:
+        for k in m.get("formerKinds") or []:
+            if not k.startswith(d["scope"] + "."):
+                err("L63", path, "%s's former kind %s is not a name of %s" % (m["id"], k, d["scope"]))
+            if k in ids:
+                err("L63", path, "%s's former kind %s is the id of a message of %s" % (m["id"], k, d["scope"]))
+            if k in former and former[k] != m["id"]:
+                err("L63", path, "%s and %s both name the former kind %s" % (former[k], m["id"], k))
+            former.setdefault(k, m["id"])
     # L33 a start message routes: its kind, direction and segment select, through workflow-select,
     # one platform workflow, and the leg it names fills that workflow's slot (R-05-42)
     for m in d["messages"]:

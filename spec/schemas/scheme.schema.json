@@ -77,6 +77,16 @@
               "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
             }
           },
+          "formerKinds": {
+            "description": "The kinds an earlier runtime kept this message under (Issue I-402, R-09-302). The store is insert-only, so a message or file kept so keeps its kind; the operations read model reads it as this message. Each is in the scheme's scope and is no message's id (lint L63).",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+            }
+          },
           "file": {
             "description": "The rules of this message's file, which the File API reads from the active distribution (Issue I-159, R-09-209). A value not declared is the installation's setting.",
             "type": "object",

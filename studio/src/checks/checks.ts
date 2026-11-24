@@ -655,6 +655,17 @@ export class Checker {
       const cm = m.disposition?.deliver?.correlationMap;
       if (cm && !inwardMap(cm, 'messages')) err('L55', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
     }
+    // L63 (R-09-302, Issue I-402): a message's former kinds are names of its own scheme, none is a message's id, and no two messages
+    // name one: the operations read model reads a document kept under one as that one message.
+    const former = new Map<string, string>();
+    for (const m of d.messages ?? []) {
+      for (const k of m.formerKinds ?? []) {
+        if (!String(k).startsWith(`${d.scope}.`)) err('L63', `${m.id}'s former kind ${k} is not a name of ${d.scope}`);
+        if (ids.has(k)) err('L63', `${m.id}'s former kind ${k} is the id of a message of ${d.scope}`);
+        if (former.has(k) && former.get(k) !== m.id) err('L63', `${former.get(k)} and ${m.id} both name the former kind ${k}`);
+        if (!former.has(k)) former.set(k, m.id);
+      }
+    }
     // L59 (R-05-102, Issue I-310): on a file scheme every message the bank sends names its one exchange, a send or report of its own
     // scheme that is not a composite, and no exchange sends two messages: the File API keeps the file as the message's id.
     if (d.wire === 'file') {
