@@ -69,6 +69,82 @@ public sealed class OperatorActionTests(Databases dbs)
         }
     }
 
+    /// <summary>
+    /// R-09-240 (Issue I-304): a step's rule trace is kept with its step fact on the payment's chain, so it is not lost when the engine's
+    /// service starts again: the rules that fired, the findings' codes and the worst, never the facts the rules were given (personal
+    /// data) or their bindings. The observation and the console's timeline read it from there.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_steps_rule_trace_is_kept_on_the_payments_chain_without_the_facts_it_was_given(StoreProvider p)
+    {
+        var (store, ops) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, hold: false);
+        var root = $"root-{Guid.NewGuid():N}"[..20];
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append($"{root}#ctx", "payload", new NewFact("payload", "accepted", new JsonObject { ["bulk"] = id }, Actor: "claim-check"));
+        var trace = JsonNode.Parse("""
+            { "worst": "reject", "facts": { "Payment": [ { "creditorAccount": { "iban": "AE070331234567890123456" } } ] }, "parameters": { "maxAmount": 1000 },
+              "findings": [ { "rule": "p.rule.batch-currency-present.v1", "severity": "reject", "path": "batch.currency", "reasonCode": "AM03", "message": "synthetic" } ],
+              "decisions": [],
+              "trace": [ { "rule": "p.rule.batch-currency-present.v1", "release": "1.0.0", "stage": "cross-field", "fired": true, "activations": 1, "bindings": [ { "b": { "currency": "" } } ] },
+                         { "rule": "p.rule.amount-positive.v1", "release": "1.0.0", "stage": "field", "fired": false, "activations": 0 } ] }
+            """)!;
+        var steps = new TransactHub.Engines.Durable.StepFacts(store);
+        await steps.Record(new JsonObject { ["instance"] = root, ["step"] = "validate", ["activity"] = "p.validate.canonical.v2", ["release"] = "2.0.0", ["call"] = 1, ["attempt"] = 1, ["ctx"] = new JsonObject { ["header"] = new JsonObject { ["scheme"] = "uae.wps" } } },
+            new JsonObject { ["kind"] = "result", ["outcome"] = "reject", ["reasonCode"] = "AM03", ["ruleTrace"] = trace });
+        JsonArray traces = new();
+        for (var i = 0; i < 100 && traces.Count == 0; i++) { traces = await TransactHub.Engines.Durable.StepFacts.RuleTraces(store, id); if (traces.Count == 0) await Task.Delay(100); }
+        var kept = Assert.Single(traces)!;
+        Assert.Equal(("validate", "p.validate.canonical.v2"), ((string?)kept["step"], (string?)kept["activity"]));
+        Assert.Equal("reject", (string?)kept["trace"]!["worst"]);
+        Assert.Equal(["p.rule.batch-currency-present.v1"], kept["trace"]!["rules"]!.AsArray().Where(r => (bool)r!["fired"]!).Select(r => (string)r!["rule"]!));
+        Assert.Equal("AM03", (string?)kept["trace"]!["findings"]![0]!["reasonCode"]);
+        var text = kept.ToJsonString();
+        Assert.DoesNotContain("AE07", text);
+        Assert.DoesNotContain("bindings", text);
+        Assert.DoesNotContain("maxAmount", text);
+        // The console's timeline has it with the step.
+        await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
+        await using var o = OpsDbContext.Open(ops);
+        var entry = await o.Timeline.AsNoTracking().SingleAsync(x => x.SubjectId == id && x.Kind == "step" && x.Step == "validate" && x.Activity == "p.validate.canonical.v2");
+        Assert.Equal("reject", (string?)JsonNode.Parse(entry.DataJson)!["ruleTrace"]!["worst"]);
+    }
+
+    /// <summary>
+    /// R-09-241 (Issue I-290): after parallel branches that both hold (sanctions pending, fraud suspect), each hold names the step whose
+    /// handler it is in, as the engine says it, not the latest step with a reason, which is the other branch's for one of them. An
+    /// attempt that names no handler keeps the latest step with a reason (R-05-94).
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task Holds_after_parallel_branches_each_name_the_step_whose_handler_they_are_in(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, suspect: true);
+        // The sanctions branch answered pending after the fraud branch's suspect (synthetic): the latest step with a reason is sanctions.
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append(id, "bulk", new NewFact("step", "pending", new JsonObject
+            {
+                ["instance"] = "root", ["step"] = "sanctions", ["activity"] = "p.screen.sanctions.v1", ["outcome"] = "pending", ["reasonCode"] = "SANC",
+            }, Actor: "engine"));
+        NativeResult HoldIn(string activity, string step, string handledStep, string handledActivity, string outcome)
+        {
+            AttemptEnvelope.Current = new JsonObject { ["step"] = step, ["handlerOf"] = new JsonObject { ["step"] = handledStep, ["activity"] = handledActivity, ["outcome"] = outcome } };
+            try { return new StoreHold(store, activity, activity.Contains("repair") ? "repair" : "approval", "facts.approval", ["approved", "declined"]).Run(Attempt()); }
+            finally { AttemptEnvelope.Current = null; }
+        }
+        // The fraud review's hold (a hold of its own activity line, so it is not the seeded one).
+        Assert.Equal("held", HoldIn("p.hold.repair.v1", "fraud-review", "fraud", "p.screen.fraud.v1", "suspect").Outcome);
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var opened = await db.Facts.AsNoTracking().Where(f => f.SubjectId == id && f.Kind == "hold" && f.Code == "opened").OrderBy(f => f.Seq).ToListAsync();
+            var last = JsonNode.Parse(opened[^1].DataJson)!;
+            Assert.Equal(("p.screen.fraud.v1", "fraud", "fraud-review"), ((string?)last["after"], (string?)last["afterStep"], (string?)last["step"]));
+            Assert.Equal("FRAD at fraud (p.screen.fraud.v1)", (string?)last["reason"]);
+            // The latest step with a reason is the sanctions branch's: an attempt that names no handler would have named it.
+            Assert.Equal("p.screen.sanctions.v1", (await HoldCause.Before(db, id, int.MaxValue))!.Activity);
+        }
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task A_hold_whose_expiry_passed_is_expired_and_its_decision_goes_to_the_engine(StoreProvider p)
     {

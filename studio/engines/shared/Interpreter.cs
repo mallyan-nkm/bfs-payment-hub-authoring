@@ -100,6 +100,12 @@ public sealed class Frame
     public Func<string, string>? Label;
     public long? BlockStartedAt; // when the innermost composite step began (R-05-43)
     public ItemSink? Sink; // an item of a forEach whose items run side by side: its entries, put in item order (R-05-53)
+    /// <summary>
+    /// The step whose handler this frame runs in, with its activity and the outcome handled (R-09-241, Issue I-290): every attempt
+    /// of a step in the handler names it, so a hold the runtime opens records the step that led to it, not the latest step with a
+    /// reason, which after parallel branches may be the other branch's.
+    /// </summary>
+    public JsonObject? HandlerOf;
 
     public Frame With(Action<Frame> change)
     {
@@ -871,8 +877,12 @@ public sealed partial class Interp
         if (outcome == PrimaryOutcome(act)) return;
         var handle = J.P(st, "handle");
         if (!J.Has(handle, outcome)) throw new StepFailure(id, $"Outcome {outcome} of {id} is not handled (L05)");
-        await RunAction(J.P(handle, outcome), frame);
+        await RunAction(J.P(handle, outcome), InHandlerOf(frame, id, act, outcome));
     }
+
+    /// <summary>The frame of a step's handler: its attempts name the step, its activity and the outcome it handles (R-09-241).</summary>
+    Frame InHandlerOf(Frame frame, string id, JsonObject act, string outcome) =>
+        frame.With(f => f.HandlerOf = new JsonObject { ["step"] = Label(frame, id), ["activity"] = J.S(act, "name"), ["outcome"] = outcome });
 
     async Task CompensateScope(Frame frame)
     {
@@ -917,7 +927,7 @@ public sealed partial class Interp
         }
         var handle = J.P(st, "handle");
         if (!J.Has(handle, outcome)) throw new StepFailure(id, $"Outcome {outcome} of {id} is not handled (L05)");
-        await RunAction(J.P(handle, outcome), frame);
+        await RunAction(J.P(handle, outcome), InHandlerOf(frame, id, act, outcome));
     }
 
     static bool IsStatePath(string p) => StateParts.Contains(p.Split('.')[0].Replace("[]", ""));
@@ -1039,6 +1049,7 @@ public sealed partial class Interp
                     ["item"] = frame.Item, ["level"] = level, ["policy"] = J.Clone(J.P(st, "policy")),
                     ["deadline"] = limitAt == long.MaxValue ? null : limitAt,
                 };
+                if (frame.HandlerOf is not null) input["handlerOf"] = J.Clone(frame.HandlerOf);
                 var task = eng.Activity($"{J.S(act, "name")}@{release}", input);
                 var cts = new CancellationTokenSource();
                 var waits = new List<Task> { task, frame.Scope.CancelledTask };

@@ -122,7 +122,7 @@ public sealed class FileApiWorker(InboxPoller poller, FileOutbox outbox, IConfig
             try
             {
                 await poller.PollOnce(stoppingToken);
-                foreach (var id in await outbox.Pending(attempts, stoppingToken)) await outbox.Deliver(id, stoppingToken);
+                foreach (var id in await outbox.Pending(attempts, stoppingToken)) await outbox.Deliver(id, attempts, stoppingToken);
             }
             catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "The File API's poll failed"); }
             try { await Task.Delay(every, stoppingToken); } catch (OperationCanceledException) { return; }

@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.10.0
+release: 1.11.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -1116,6 +1116,65 @@ entries:
       safeActions:
         - Remove the installation's setting for a report the scheme declares.
       escalation: Escalate to the runtime's operations team with the message id.
+  # 1.11.0 (change set CS-2026-11-24-016, on 1.10.0; R-09-236): a file the File API's outbox could not deliver, recorded on the
+  # file's chain and on its payment's (Issue I-337).
+  - code: file.NotBound
+    title: The bank binds no file transfer to deliver the file on
+    category: technical
+    retryable: true
+    raisedBy:
+      - file-api
+    meaning: The File API's outbox kept the file, but the bank's configuration in force binds no p.port.file-transfer.v1, so the file was not delivered. The outbox tries again on its next round.
+    causes:
+      - The bank's configuration release in force has no file-transfer binding, or it took effect later than now.
+    runbook:
+      checks:
+        - Read the bank's port bindings in force in the service console.
+        - Read the payment's timeline in the operations console for its file's delivery facts.
+      safeActions:
+        - Put in force a configuration release that binds the file transfer; the outbox delivers the kept file then.
+      actions:
+        - resend-file
+      escalation: Escalate to the bank's configuration owner with the file's id and the payment's.
+  - code: file.DeliveryFailed
+    title: A delivery of a kept file to its partner failed
+    category: technical
+    retryable: true
+    raisedBy:
+      - file-api
+    meaning: The File API's outbox tried to put a kept file on the partner's folder and the transfer failed; nothing reached the partner. The failure is on the file's chain and its payment's, and the outbox tries again until its attempts end (FileApi:DeliveryAttempts).
+    causes:
+      - The partner's SFTP server or folder does not answer, or refuses the login or the host key.
+      - The folder the bank's binding names does not exist at the partner.
+    runbook:
+      checks:
+        - Read the file's delivery facts in the operations console's payment timeline or the File API's GET /files/{id}.
+        - Read the service console's health, circuit-breakers, for the partner.
+      safeActions:
+        - Wait for the next attempt once the partner answers again.
+        - Resend the kept file once the partner answers; the same bytes go again, never rendered or signed again.
+      actions:
+        - resend-file
+      escalation: Escalate to the bank's file-transfer support with the partner, the folder and the error.
+  - code: file.Undelivered
+    title: The outbox's attempts to deliver a kept file ended, and it was never delivered
+    category: technical
+    retryable: false
+    raisedBy:
+      - file-api
+    meaning: Every delivery attempt of a kept file failed, and the outbox will not try again by itself. The payment's send step said the file was taken, but the partner never received it, so no answer will come for it. The operations console lists the payment among those whose file is undelivered.
+    causes:
+      - The partner was down for longer than the outbox's attempts last.
+      - The bank's binding names a folder or a login the partner does not have.
+    runbook:
+      checks:
+        - Open the payment in the operations console and read its file's delivery facts.
+        - Read the service console's health, circuit-breakers, for the partner.
+      safeActions:
+        - Resend the kept file once the partner answers again.
+      actions:
+        - resend-file
+      escalation: Escalate to the bank's file-transfer support and the partner's operations desk with the file's id and the error.
   - code: ops.ActionNotOffered
     title: The action does not apply to this payment now
     category: business

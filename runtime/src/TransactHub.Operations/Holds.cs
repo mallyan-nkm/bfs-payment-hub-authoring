@@ -49,7 +49,10 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
             else
             {
                 holdId = Guid.NewGuid().ToString("N");
-                var cause = await HoldCause.Before(db, subjectId, int.MaxValue);
+                // The step that led to the hold: the one whose handler the hold is in, as the engine names it (R-09-241, Issue I-290);
+                // for an engine that names none, the latest step before it with a reason (R-05-94).
+                var cause = AttemptEnvelope.Current?["handlerOf"] is JsonObject handler
+                    ? await HoldCause.Of(db, subjectId, handler) : await HoldCause.Before(db, subjectId, int.MaxValue);
                 var reason = cause?.Reason;
                 db.ExceptionItems.Add(new ExceptionItemRow
                 {
@@ -58,7 +61,7 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
                 });
                 await db.SaveChangesAsync();
                 await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("hold", "opened",
-                    new JsonObject { ["hold"] = holdId, ["kind"] = kind, ["activity"] = activity, ["reason"] = reason, ["after"] = cause?.Activity, ["expiry"] = expiry, ["expiryCalendar"] = business ? "business" : null, ["expiresAt"] = expiresAt, ["calendar"] = calendar?.Table }, Actor: "runtime"));
+                    new JsonObject { ["hold"] = holdId, ["kind"] = kind, ["activity"] = activity, ["reason"] = reason, ["after"] = cause?.Activity, ["afterStep"] = cause?.Step, ["step"] = (string?)AttemptEnvelope.Current?["step"], ["expiry"] = expiry, ["expiryCalendar"] = business ? "business" : null, ["expiresAt"] = expiresAt, ["calendar"] = calendar?.Table }, Actor: "runtime"));
             }
         }
         // Held: the engine awaits the decision until the hold's expiry (R-05-56). No connection is held while it waits.
@@ -88,12 +91,44 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
 }
 
 /// <summary>
+/// What the engine said of the attempt the image runs now (R-09-241, Issue I-290): its step and the step whose handler it is in
+/// (<c>handlerOf</c>: step, activity, outcome), set by the native host for the attempt's thread. Not part of the native contract: the
+/// holds are the image's own activities.
+/// </summary>
+public static class AttemptEnvelope
+{
+    static readonly AsyncLocal<JsonObject?> current = new();
+    public static JsonObject? Current { get => current.Value; set => current.Value = value; }
+}
+
+/// <summary>
 /// The step that led to a hold (R-05-94, Issue I-279): of the payment's last twenty steps before it, the latest that answered with a
 /// reason code or an outcome that holds (reject, repair, hold, hit, rejected, unknown, unverified). A step that answered its primary
 /// outcome names no reason code, so a step of a parallel branch that cleared is passed over. Its words are the hold's reason.
 /// </summary>
 public sealed record HoldCause(string? Step, string? Activity, string Reason)
 {
+    /// <summary>
+    /// The step whose handler the hold is in, as the engine named it (R-09-241, Issue I-290): its latest fact on the chain gives the
+    /// reason code; a step whose fact is not yet on the chain is named by what the engine said, its activity and the outcome handled.
+    /// After parallel branches that both hold, each hold names its own branch's step.
+    /// </summary>
+    public static async Task<HoldCause> Of(StoreDbContext db, string subjectId, JsonObject handler, CancellationToken ct = default)
+    {
+        var step = (string?)handler["step"];
+        var activity = (string?)handler["activity"];
+        var outcome = (string?)handler["outcome"];
+        var facts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step").OrderByDescending(f => f.Seq).Take(200).ToListAsync(ct);
+        foreach (var s in facts)
+        {
+            var d = JsonNode.Parse(s.DataJson) as JsonObject;
+            if ((string?)d?["step"] != step || (activity is not null && (string?)d?["activity"] != activity)) continue;
+            var rc = (string?)d?["reasonCode"];
+            return new HoldCause(step, (string?)d?["activity"] ?? activity, $"{rc ?? s.Code} at {step} ({(string?)d?["activity"] ?? activity})");
+        }
+        return new HoldCause(step, activity, $"{outcome ?? "held"} at {step} ({activity})");
+    }
+
     public static async Task<HoldCause?> Before(StoreDbContext db, string subjectId, int seq, CancellationToken ct = default)
     {
         var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step" && f.Seq < seq).OrderByDescending(f => f.Seq).Take(20).ToListAsync(ct);

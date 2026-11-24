@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.answer-refund.v1
-release: 1.0.0
+release: 1.1.0
 dsl: 1.0.0
 title: Send the refund request response and read the acknowledgement
-description: What the answer-refund block does underneath. The RRR is encrypted for WPS, sent, and its acknowledgement awaited for the calling step's reply time and read. A file the encryption service refuses is never sent (R-12-17).
+description: What the answer-refund block does underneath. The RRR is encrypted for WPS, sent, and its acknowledgement awaited for the calling step's reply time and read. A file the encryption service refuses is never sent (R-12-17). From 1.1.0 the send reads the encryption step's fact and sends the encrypted file where the bank's binding encrypted it, never the plain one (Issue I-293, R-09-232).
 implements:
   activity: uae.wps.exchange.answer-refund.v1
 exit:
@@ -15,7 +15,7 @@ do:
     handle:
       refused: { return: rejected }
   - id: send
-    call: uae.wps.exchange.send-refund-response.v1
+    call: uae.wps.exchange.send-refund-response.v2
     handle:
       rejected: { return: rejected }
       unknown: { return: pending }

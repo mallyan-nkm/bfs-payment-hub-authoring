@@ -16,6 +16,8 @@ namespace TransactHub.Operations;
 public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog views, TimeProvider? clock = null)
 {
     public const string Name = "operations";
+    /// <summary>The File API's facts of a sent file's delivery on the payment's chain (R-09-236, Issue I-337).</summary>
+    public const string DeliveredKind = "file.delivered", DeliveryFailedKind = "file.delivery-failed", UndeliveredKind = "file.undelivered";
     readonly TimeProvider clock = clock ?? TimeProvider.System;
     public TimeSpan GapTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public int BatchSize { get; init; } = 500;
@@ -558,7 +560,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 leg.LastStep = (string?)last["step"];
                 leg.LastOutcome = (string?)last["outcome"] ?? (string?)last["code"];
                 leg.UpdatedAt = DateTimeOffset.Parse((string)last["at"]!);
-                var lc = new SourceContext { Subject = c.Subject, Bulk = c.Bulk, Payment = c.Payment, Ext = c.Ext, Steps = c.Steps, Hold = c.Hold, Documents = c.Documents, Lines = c.Lines, Instance = group.Key };
+                var lc = new SourceContext { Subject = c.Subject, Bulk = c.Bulk, Payment = c.Payment, Ext = c.Ext, Steps = c.Steps, Hold = c.Hold, Documents = c.Documents, Deliveries = c.Deliveries, Lines = c.Lines, Instance = group.Key };
                 var lf = ViewEval.Fields(decl["fields"] as JsonArray, lc, erased: erased);
                 leg.FieldsJson = CanonicalJson.Of(lf);
                 foreach (var (k, val) in lf) values.Add(($"{sview!.Name}:{leg.Leg}:{k}", val));
@@ -663,11 +665,26 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 d["code"] = t.Code;
                 return d;
             }).ToList();
+            // The File API's deliveries of the payment's sent files, on its chain (R-09-236, R-05-103), those of this batch too.
+            string[] deliveryKinds = [DeliveredKind, DeliveryFailedKind, UndeliveredKind];
+            var deliveries = (await o.Timeline.AsNoTracking().Where(x => x.SubjectId == subj.Id && deliveryKinds.Contains(x.Kind)).ToListAsync(ct))
+                .Concat(o.Timeline.Local.Where(x => x.SubjectId == subj.Id && deliveryKinds.Contains(x.Kind)))
+                .DistinctBy(x => (x.StreamId, x.Seq)).OrderBy(x => x.Seq)
+                .Select(t =>
+                {
+                    var d = JsonNode.Parse(t.DataJson) as JsonObject ?? new JsonObject();
+                    return new JsonObject
+                    {
+                        ["kind"] = (string?)d["kind"], ["outcome"] = t.Kind == DeliveredKind ? "delivered" : t.Kind == UndeliveredKind ? "undelivered" : "failed",
+                        ["at"] = t.At.ToString("O"), ["attempt"] = d["attempt"]?.DeepClone() ?? d["attempts"]?.DeepClone(), ["adapter"] = (string?)d["adapter"],
+                        ["code"] = t.Kind == DeliveredKind ? null : t.Code, ["fileName"] = (string?)d["fileName"], ["folder"] = (string?)d["folder"], ["file"] = (string?)d["file"],
+                    };
+                }).ToList();
             var hold = await o.Holds.AsNoTracking().Where(x => x.SubjectId == subj.Id).OrderByDescending(x => x.OpenedAt).FirstOrDefaultAsync(ct);
             var docs = await o.Documents.AsNoTracking().Where(x => x.SubjectId == subj.Id).OrderBy(x => x.At).ToListAsync(ct);
             return new SourceContext
             {
-                Subject = subject, Bulk = bulk, Payment = payment, Ext = ext, Steps = stepObjs, Lines = lines,
+                Subject = subject, Bulk = bulk, Payment = payment, Ext = ext, Steps = stepObjs, Lines = lines, Deliveries = deliveries,
                 Hold = hold is null ? null : new JsonObject
                 {
                     ["id"] = hold.Id, ["kind"] = hold.Kind, ["status"] = hold.Status, ["reason"] = hold.Reason, ["decision"] = hold.Decision,

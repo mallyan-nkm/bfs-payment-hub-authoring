@@ -9,7 +9,7 @@ import { Reports } from './ops/Reports';
 import { Breaks } from './ops/Breaks';
 import { Work } from './ops/Work';
 import { Upload } from './ops/Upload';
-import { Alerts, Ledger, RatesBadge } from './ops/Oversight';
+import { Alerts, Ledger, RatesBadge, Undelivered } from './ops/Oversight';
 import { AuditTrail } from './shell/AuditTrail';
 import { Consents, Retention, Turnaround } from './ops/Controls';
 import { show } from './ops/format';
@@ -116,6 +116,8 @@ function App({ auth, hosts }: { auth: SignIn; hosts: Hosts }) {
     { id: 'approvals', title: 'Approvals', render: (_p, ctx) => <Approvals api={api} go={ctx.go} /> },
     // The fraud alerts (R-05-90) and, for supervisors, the bank's ledger accounts, read-only (R-05-91).
     { id: 'alerts', title: 'Fraud alerts', render: (_p, ctx) => <Alerts api={api} go={ctx.go} /> },
+    // The payments whose file the File API kept and could not deliver (R-05-103), with the payment's resend.
+    { id: 'undelivered', title: 'Undelivered files', render: (_p, ctx) => <Undelivered api={api} go={ctx.go} /> },
     { id: 'ledger', title: 'Ledger accounts', render: () => <Ledger api={api} /> },
     { id: 'reports', title: 'Reports', render: () => <Reports api={api} /> },
     // Reconciliation breaks (R-09-92): a bank approver consents to a resolution that changes the system.

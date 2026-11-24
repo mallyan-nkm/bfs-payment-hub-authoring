@@ -338,6 +338,17 @@ export class Checker {
         else if (a.type === 'exchange' && ['send', 'report'].includes(a.mode) && a.implementation?.binding !== 'subflow' && !encrypted)
           err('L46', `Step ${stepLabel(st)} sends ${a.name} on a file scheme before any protect step encrypts it`, stepLabel(st));
       }
+      // L58 (R-05-101, Issue I-293): a send after a protect step that encrypts the file (one that writes facts.encryption) reads
+      // facts.encryption, so it sends the file the encryption made, never the plain one.
+      let encryptedBy: string | undefined;
+      for (const st of allSteps(d)) {
+        const a = st.call ? this.byName.get(st.call) : undefined;
+        if (a?.kind !== 'activity') continue;
+        if (a.type === 'protect' && (a.writes ?? []).includes('facts.encryption')) encryptedBy = stepLabel(st);
+        else if (encryptedBy && a.type === 'exchange' && ['send', 'report'].includes(a.mode) && a.implementation?.binding !== 'subflow'
+          && !(a.reads ?? []).some((r: string) => r === 'facts.encryption' || 'facts.encryption'.startsWith(r + '.')))
+          err('L58', `Step ${stepLabel(st)} sends ${a.name} after step ${encryptedBy} encrypts the file, but ${a.name} reads no facts.encryption: it would send the plain file`, stepLabel(st));
+      }
     }
     if (d.kind === 'workflow' && d.wfKind === 'handler') {
       for (const st of allSteps(d)) {
@@ -630,6 +641,21 @@ export class Checker {
       }
       const cm = m.disposition?.deliver?.correlationMap;
       if (cm && !inwardMap(cm, 'messages')) err('L55', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
+    }
+    // L59 (R-05-102, Issue I-310): on a file scheme every message the bank sends names its one exchange, a send or report of its own
+    // scheme that is not a composite, and no exchange sends two messages: the File API keeps the file as the message's id.
+    if (d.wire === 'file') {
+      const senders = new Map<string, string>();
+      for (const m of d.messages ?? []) {
+        if (m.direction !== 'out') continue;
+        const by = m.disposition?.sentBy;
+        if (!by) { err('L59', `${m.id} is a message the bank sends, but it names no exchange that sends it (sentBy)`); continue; }
+        const a = this.byName.get(by);
+        if (!a || a.kind !== 'activity' || a.type !== 'exchange' || !['send', 'report'].includes(a.mode) || a.implementation?.binding === 'subflow' || scopeOf(by) !== d.scope)
+          err('L59', `${m.id} is sent by ${by}, which is no send or report exchange of ${d.scope} that sends one file`);
+        if (senders.has(by)) err('L59', `${senders.get(by)} and ${m.id} are both sent by ${by}: the file it sends would have two kinds`);
+        senders.set(by, m.id);
+      }
     }
     // L33 (R-05-42): the dispatch table routes a start message. Its kind, direction and segment select
     // one platform workflow through workflow-select, and the leg it names fills that workflow's slot.

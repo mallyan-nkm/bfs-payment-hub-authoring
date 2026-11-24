@@ -134,71 +134,25 @@ public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null, str
 }
 
 /// <summary>
-/// <c>uae.wps.exchange.send-salary-file.v1</c> 1.1.0 on the runtime (R-09-162, Issue I-192): the salary file the render step kept
+/// <c>uae.wps.exchange.send-salary-file.v2</c> (2.0.0, R-09-182, Issue I-266) on the runtime: the salary file the render step kept
 /// (<c>messages.rendered</c>, by its SHA-256) is sent on the bank's binding of the WPS port. A bank that binds the port to the File API
 /// (adapter <c>file-transfer</c>) sends it through the File API's outbox to the Central Bank's folder, where it is kept, delivered,
 /// audited and resent on an operator's action; the acknowledgement comes back on the File API's inbox and is awaited by the next step.
-/// The file is taken: <c>accepted</c>. A request the port refuses is <c>rejected</c>; a binding that cannot be reached now is a
-/// retryable <c>TransientError</c>.
-/// <para>
-/// <c>uae.wps.exchange.send-salary-file.v2</c> (2.0.0, R-09-182, Issue I-266) reads the encryption step's fact too: where the bank's
-/// binding of <c>p.port.encryption.v1</c> encrypted the file (<c>facts.encryption</c> names the encrypted file's name and SHA-256, which
-/// the host kept), that file is sent, never the plain one; an encryption that names a file the host does not hold refuses the send,
-/// and nothing goes out. Where the encryption names no file (a test distribution's simulator), the rendered file is sent, as v1 does.
-/// </para>
+/// It reads the encryption step's fact: where the bank's binding of <c>p.port.encryption.v1</c> encrypted the file
+/// (<c>facts.encryption</c> names the encrypted file's name and SHA-256, which the host kept), that file is sent, never the plain one;
+/// an encryption that names a file the host does not hold refuses the send, and nothing goes out. Where the encryption names no file
+/// (a test distribution's simulator), the rendered file is sent. The file is the scheme's message <c>uae.wps.sif-submission</c>
+/// (R-09-234). The file is taken: <c>accepted</c>. A request the port refuses is <c>rejected</c>; a binding that cannot be reached now
+/// is a retryable <c>TransientError</c>. Its v1 line, which read no encryption fact, is retired (R-09-233, Issue I-293).
 /// </summary>
-public sealed class SendSalaryFile(INativePorts ports, string name = SendSalaryFile.V1) : INativeActivity
+public sealed class SendSalaryFile(INativePorts ports) : INativeActivity
 {
     public const string Port = "uae.wps.port.wps.v1";
     public const string Operation = "submit-file";
-    public const string V1 = "uae.wps.exchange.send-salary-file.v1", V2 = "uae.wps.exchange.send-salary-file.v2";
-    public string Name => name;
+    public const string V2 = "uae.wps.exchange.send-salary-file.v2";
+    /// <summary>The scheme message the salary file is when it is sent: the message whose <c>sentBy</c> names v2.</summary>
+    public const string Message = "uae.wps.sif-submission";
+    public string Name => V2;
 
-    static NativeResult Rejected(string code, string why) =>
-        new("rejected", code, new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = code, ["additionalInformation"] = why } });
-
-    public NativeResult Run(NativeAttempt a)
-    {
-        var rendered = NativeContext.Node(a.View, "messages.rendered");
-        var sha = NativeContext.S(rendered, "sha256");
-        var fileName = NativeContext.S(rendered, "fileName");
-        if (sha.Length == 0 || fileName.Length == 0) return Rejected("FF01", "No salary file was rendered to send");
-        var encrypted = false;
-        if (name == V2 && NativeContext.Node(a.View, "facts.encryption") is JsonObject enc)
-        {
-            var outcome = NativeContext.S(enc, "outcome");
-            if (outcome == "refused") return Rejected("NARR", "The encryption service refused the file: it is not sent");
-            var encSha = NativeContext.S(enc, "sha256");
-            if (outcome == "encrypted" && encSha.Length > 0)
-            {
-                // The plain file the encryption read must be the one rendered: an encryption of another file is not this file's.
-                if (NativeContext.S(enc, "plainSha256") is { Length: > 0 } plain && !string.Equals(plain, sha, StringComparison.OrdinalIgnoreCase))
-                    return Rejected("NARR", "The encrypted file is not the rendered salary file's: nothing is sent");
-                sha = encSha;
-                fileName = NativeContext.S(enc, "fileName") is { Length: > 0 } n ? n : fileName + ".gpg";
-                encrypted = true;
-            }
-        }
-        NativePortAnswer answer;
-        try
-        {
-            answer = ports.Ask(a, Port, Operation, new JsonObject
-            {
-                ["sha256"] = sha, ["fileName"] = fileName, ["paymentId"] = Ctx.S(a.View, "header.paymentId"), ["scheme"] = "uae.wps", ["leg"] = "scheme-leg",
-            });
-        }
-        catch (NativePortRefused e)
-        {
-            return new NativeResult("rejected", "NARR", new JsonObject { ["status"] = new JsonObject { ["code"] = "RJCT", ["reasonCode"] = "NARR", ["additionalInformation"] = e.Message } });
-        }
-        return new NativeResult("accepted", null, new JsonObject
-        {
-            ["status"] = new JsonObject { ["code"] = "ACCP" },
-            ["messages.sent"] = new JsonObject
-            {
-                ["by"] = Name, ["at"] = a.Now.ToString("O", CultureInfo.InvariantCulture), ["fileName"] = fileName, ["sha256"] = sha, ["via"] = answer.Adapter,
-                ["folder"] = answer.Body["folder"]?.DeepClone(), ["encrypted"] = encrypted,
-            },
-        });
-    }
+    public NativeResult Run(NativeAttempt a) => SchemeSend.Run(ports, a, V2, "salary file", Message, readsEncryption: true);
 }

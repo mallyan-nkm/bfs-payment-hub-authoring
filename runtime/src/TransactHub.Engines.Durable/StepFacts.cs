@@ -90,6 +90,41 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
         return null;
     }
 
+    /// <summary>
+    /// A rule trace as the payment's chain keeps it (R-09-240): which rule of which release fired, at which stage and how often, the
+    /// findings' codes and paths and the decisions' names, and the worst finding. Never the facts the rules were given, their
+    /// bindings or the parameters' values: they can hold personal data, and the chain holds none.
+    /// </summary>
+    public static JsonObject? RuleTrace(JsonNode? t)
+    {
+        if (t is not JsonObject o) return null;
+        var rules = new JsonArray(J.A(o, "trace").OfType<JsonObject>().Select(r => (JsonNode?)new JsonObject
+        {
+            ["rule"] = J.S(r, "rule"), ["release"] = J.S(r, "release"), ["stage"] = J.S(r, "stage"), ["fired"] = J.Truthy(J.P(r, "fired")), ["activations"] = J.Num(r, "activations"),
+        }).ToArray());
+        var findings = new JsonArray(J.A(o, "findings").OfType<JsonObject>().Select(f => (JsonNode?)new JsonObject
+        {
+            ["rule"] = J.S(f, "rule"), ["severity"] = J.S(f, "severity"), ["path"] = J.S(f, "path"), ["reasonCode"] = J.S(f, "reasonCode"),
+        }).ToArray());
+        var decisions = new JsonArray(J.A(o, "decisions").OfType<JsonObject>().Select(d => (JsonNode?)new JsonObject { ["rule"] = J.S(d, "rule"), ["name"] = J.S(d, "name") }).ToArray());
+        return new JsonObject { ["worst"] = J.S(o, "worst"), ["stoppedAtStage"] = J.S(o, "stoppedAtStage"), ["rules"] = rules, ["findings"] = findings, ["decisions"] = decisions };
+    }
+
+    /// <summary>
+    /// The rule traces of a payment's steps, from its chain (R-09-240): each step, its instance, call and attempt, and its trace, in
+    /// the order they were recorded. What an observation reads after a restart, and the operations console shows on the timeline.
+    /// </summary>
+    public static async Task<JsonArray> RuleTraces(StoreOptions options, string subjectId, CancellationToken ct = default)
+    {
+        await using var db = StoreDbContext.Open(options);
+        var rows = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step").OrderBy(f => f.Seq).Select(f => f.DataJson).ToListAsync(ct);
+        var all = new JsonArray();
+        foreach (var r in rows)
+            if (JsonNode.Parse(r) is JsonObject d && d["ruleTrace"] is JsonObject t)
+                all.Add(new JsonObject { ["instance"] = J.S(d, "instance"), ["step"] = J.S(d, "step"), ["activity"] = J.S(d, "activity"), ["call"] = J.Num(d, "call"), ["attempt"] = J.Num(d, "attempt"), ["item"] = J.Num(d, "item"), ["trace"] = t.DeepClone() });
+        return all;
+    }
+
     public async Task Record(JsonObject req, JsonObject res)
     {
         var instance = J.S(req, "instance") ?? "";
@@ -126,6 +161,9 @@ public sealed class StepFacts(StoreOptions options, TimeProvider? clock = null)
                 }
             }
             else if (kind == "error") data["error"] = new JsonObject { ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone() };
+            // The step's rule trace, with its step fact (R-09-240, Issue I-304): kept in the store, so a payment a service took back
+            // after a restart keeps the traces of the steps it ran before.
+            if (kind == "result" && RuleTrace(J.P(res, "ruleTrace")) is { } trace) data["ruleTrace"] = trace;
             var code = kind == "result" ? J.S(res, "outcome") ?? "result" : kind;
             if (await AlreadyRecorded(subject.id, data, code)) return;
             await writer.Append(subject.id, subject.kind, new NewFact("step", code, data, Actor: "engine"));

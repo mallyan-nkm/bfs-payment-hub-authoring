@@ -57,6 +57,18 @@ public static class OversightEndpoints
             catch (ActionRefused e) { return Results.Json(new { error = e.Message, code = e.Code }, statusCode: e.Status); }
         });
 
+        // ------------------------------------------------------------------ the payments whose file is undelivered (R-05-103)
+        // A file the File API kept and could not deliver: the send said it was taken, the delivery says it never left (Issue I-337).
+        var undelivered = new UndeliveredFiles(ops);
+        api.MapGet("/undelivered", async (HttpContext http) =>
+        {
+            if (Who(http) is not { } who) return Problem(401, "Sign in");
+            var tenants = await Tenants(who, ops, OperatorRoles.Operator);
+            if (Q(http, "tenant") is { } t) { if (!tenants.Contains(t)) return Problem(403, $"No role for tenant {t}"); tenants = [t]; }
+            var rows = await undelivered.List(tenants, http.RequestAborted);
+            return Results.Ok(new { total = rows.Count, undelivered = rows.Count(r => r.State == UndeliveredFiles.Undelivered), rows = rows.Select(UndeliveredFiles.Show) });
+        });
+
         // ------------------------------------------------------------------ the bank's ledger accounts (R-05-91)
         api.MapGet("/ledger-accounts", async (HttpContext http, LedgerAccounts ledger) =>
         {

@@ -43,6 +43,9 @@ public static class ErrorCodes
     // a file the scheme says is encrypted or in the clear, a correlation map that read no key, a report its map could not read.
     public const string FileNotEncrypted = "file.NotEncrypted", FileEncrypted = "file.Encrypted", Uncorrelated = "frontdoor.Uncorrelated",
         ReportUnreadable = "frontdoor.ReportUnreadable", NotAReport = "frontdoor.NotAReport";
+    // A file the File API's outbox could not deliver, on the file's chain and its payment's, since the dictionary's 1.11.0
+    // (R-09-236, Issue I-337): no binding, a transfer that failed, the outbox's attempts ended.
+    public const string FileNotBound = "file.NotBound", DeliveryFailed = "file.DeliveryFailed", Undelivered = "file.Undelivered";
 
     /// <summary>Every runtime code above, for the dictionary test.</summary>
     public static IEnumerable<string> All => typeof(ErrorCodes).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!);

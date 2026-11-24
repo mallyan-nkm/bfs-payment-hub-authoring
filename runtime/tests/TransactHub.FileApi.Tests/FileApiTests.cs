@@ -467,6 +467,69 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         finally { Directory.Delete(root, true); }
     }
 
+    /// <summary>A partner that is down until told otherwise: the first attempts fail as an open breaker, then a transfer error.</summary>
+    sealed class DownPartner : ITransferPorts, IFileTransfer
+    {
+        public bool Down = true;
+        public int Calls;
+        public readonly SimulatedFileTransfer Files = new();
+        public string Adapter => "sftp";
+        public (IFileTransfer Transfer, PortBinding Binding) For(string tenant, DateTimeOffset at) =>
+            (this, new PortBinding(tenant, FileTransferAdapters.Port, "sftp", at, new Dictionary<string, string>()));
+        public Task Put(string folder, string name, byte[] content, CancellationToken ct = default)
+        {
+            if (!Down) return Files.Put(folder, name, content, ct);
+            return ++Calls == 1
+                ? throw new CircuitOpenException(new BreakerKey(Bank, FileTransferAdapters.Port, "sftp", "centralBank"), DateTimeOffset.UtcNow.AddMinutes(1))
+                : throw new FileTransferException("the partner refused the connection (synthetic)");
+        }
+        public Task<byte[]?> Get(string folder, string name, CancellationToken ct = default) => Files.Get(folder, name, ct);
+        public Task<bool> Delete(string folder, string name, CancellationToken ct = default) => Files.Delete(folder, name, ct);
+        public Task<IReadOnlyList<string>> List(string folder, CancellationToken ct = default) => Files.List(folder, ct);
+    }
+
+    /// <summary>
+    /// R-09-236 (Issue I-337): the payment a file is sent for is told each attempt of its delivery, on its own chain: a failed attempt
+    /// with its code (<c>port.CircuitOpen</c> where the partner's breaker is open, <c>file.DeliveryFailed</c> otherwise), the end of the
+    /// outbox's attempts (<c>file.undelivered</c>, <c>file.Undelivered</c>) and, once the partner answers, the delivery itself. A file of
+    /// no payment the store holds tells no one.
+    /// </summary>
+    [Fact]
+    public async Task The_payment_is_told_each_failed_delivery_of_its_file_the_end_of_the_attempts_and_the_delivery()
+    {
+        var o = await pg.Fresh();
+        const string payment = "uae-wps-undelivered-1";
+        await using (var db = StoreDbContext.Open(o))
+            await new FactLog(db).Append(payment, "payment", new NewFact("status", "ACCP", new JsonObject { ["synthetic"] = true }));
+        var partner = new DownPartner();
+        var outbox = new FileOutbox(o, Key, partner);
+        var row = await outbox.Queue(new Outbound(Bank, "uae.wps", "uae.wps.sif-submission", "centralBank/upload/cb/wps/sif", "0000001234567261124090001.SIF", "EDR,synthetic\r\n"u8.ToArray(), payment, "scheme-leg", "uae.wps.exchange.send-salary-file.v2", "native-host"));
+        Assert.Equal("failed", (await outbox.Deliver(row.Id, 2)).Result);
+        Assert.Equal("failed", (await outbox.Deliver(row.Id, 2)).Result);
+        Assert.Empty(await outbox.Pending(2)); // the outbox's attempts ended
+        async Task<List<FactRow>> Told()
+        {
+            await using var db = StoreDbContext.Open(o);
+            return await db.Facts.AsNoTracking().Where(f => f.SubjectId == payment && f.Kind.StartsWith("file.")).OrderBy(f => f.Seq).ToListAsync();
+        }
+        var told = await Told();
+        Assert.Equal([("file.delivery-failed", "port.CircuitOpen"), ("file.delivery-failed", "file.DeliveryFailed"), ("file.undelivered", "file.Undelivered")], told.Select(f => (f.Kind, f.Code)));
+        var first = JsonNode.Parse(told[0].DataJson)!;
+        Assert.Equal((row.Id, "uae.wps.sif-submission", "0000001234567261124090001.SIF", "sftp", 1), ((string?)first["file"], (string?)first["kind"], (string?)first["fileName"], (string?)first["adapter"], (int?)first["attempt"]));
+        Assert.Equal(2, (int?)JsonNode.Parse(told[2].DataJson)!["attempts"]);
+        // The partner answers: a resend delivers the kept bytes, and the payment is told.
+        partner.Down = false;
+        Assert.Equal("resent", (await outbox.Resend(row.Id, "operator-1", "resend-1")).Result);
+        var last = (await Told())[^1];
+        Assert.Equal(("file.delivered", "sftp"), (last.Kind, last.Code));
+        Assert.Equal("centralBank/upload/cb/wps/sif", (string?)JsonNode.Parse(last.DataJson)!["folder"]);
+        // A file of no payment the store holds tells no one.
+        var stray = await outbox.Queue(new Outbound(Bank, "uae.wps", "uae.wps.prc", "centralBank/prc", "000000000002.PRC", "RDR\r\n"u8.ToArray(), "P-unknown", "leg-1", null, "native-host"));
+        await outbox.Deliver(stray.Id, 5);
+        await using (var db = StoreDbContext.Open(o))
+            Assert.False(await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == "P-unknown"));
+    }
+
     [Fact]
     public async Task A_laptop_inbox_folder_is_polled_and_each_file_taken_once()
     {

@@ -148,6 +148,20 @@ RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role 
 # Issue I-153, R-02-22 (factory 1.20.0): the salary file's intake map writes the employer's CIF the channel declared at upload as a
 # further organisation id of the debtor, scheme CIF. A field written under batch, a minor; its script at scripts/...@1.5.0.ts.
 RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the channel's upload as the debtor's organisation id, scheme CIF (Issue I-153)")
+# Issue I-294, R-09-231 (factory 1.21.0): the canonical checks refuse a file whose batch and lines name no currency. The check reads
+# the batch and its lines too, a read added, so a new major line, p.validate.canonical.v2, which the check-and-screen segment calls
+# from its 1.1.0; its rule set gains the rule, a minor; p.validate.canonical.v1 stays for the inward legs, whose payment names its own.
+RELEASES["p.validate.canonical.v2"] = ("2.0.0", "reads the batch and its lines, so that a file that names no currency is refused (Issue I-294)")
+RELEASES["p.ruleset.canonical.v1"] = ("1.1.0", "p.rule.batch-currency-present.v1: a file whose batch and lines name no currency (Issue I-294)")
+# Issue I-293, R-09-232 (factory 1.21.0): the scheme's other sends read the encryption step's fact and send the encrypted file, as the
+# salary file's send v2 does. A read added, a new major line each at 2.0.0, which the six subflows call from their next minor; the
+# v1 lines went with the subflows that called them and stay on the content branch at 1.1.0 as published.
+for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursement-file", "send-returns-file", "send-disbursement-cancellation", "send-refund-response"):
+    RELEASES["uae.wps.exchange.%s.v2" % _n] = ("2.0.0", "reads facts.encryption and sends the encrypted file where there is one (Issue I-293)")
+# Issue I-293, R-09-233 (factory 1.21.0): uae.wps.exchange.send-salary-file.v1 is retired from the factory. No workflow of the
+# factory has called it since 1.19.0, and no distribution in force pins it: its release entry, its native code-behind and the
+# laptop's worker list go; its 1.0.0 and 1.1.0 stay on the content branch as published (R-11-35).
+del RELEASES["uae.wps.exchange.send-salary-file.v1"]
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -185,8 +199,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # uae.wps 1.5.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
 # native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
 # salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
-PACK_RELEASES = {"p": "1.20.0", "uae.p": "1.20.0", "uae.wps": "1.20.0", "b": "1.20.0"}
-FACTORY_RELEASE = "1.20.0"
+# 1.21.0 (change set CS-2026-11-24-016): wave 7A. The canonical checks refuse a file that names no currency (p.validate.canonical.v2,
+# the check-and-screen segment 1.1.0, Issue I-294); the scheme's other sends read the encryption step's fact (their v2 lines, the
+# six subflows' next minors, the scheme's catalogue 1.6.0, Issue I-293); the salary file's send v1 retired; the platform's error
+# dictionary 1.11.0, on 1.10.0.
+PACK_RELEASES = {"p": "1.21.0", "uae.p": "1.21.0", "uae.wps": "1.21.0", "b": "1.21.0"}
+FACTORY_RELEASE = "1.21.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -253,6 +271,10 @@ STD = {"attemptTimeout": "PT10S", "totalTimeout": "PT1M",
 
 # platform
 act("p.validate.canonical.v1", "Validate the canonical payment", ["header", "payment"], ["facts.validation"],
+    ["pass", "repair", "reject"], "pure", rule_sets=["p.ruleset.canonical.v1"])
+# Issue I-294 (R-09-231): the canonical checks of a file read its batch and lines too, so that one whose batch and lines name no
+# currency is refused at its checks, before anything else runs. Called by the check-and-screen segment from its 1.1.0.
+act("p.validate.canonical.v2", "Validate the canonical payment or file", ["header", "payment", "batch", "items[]"], ["facts.validation"],
     ["pass", "repair", "reject"], "pure", rule_sets=["p.ruleset.canonical.v1"])
 act("p.validate.duplicate.v1", "Duplicate check",
     ["header.endToEndId", "payment.instructedAmount", "payment.debtorAccount", "payment.creditorAccount"],
@@ -538,15 +560,19 @@ act("uae.wps.validate.payment-file.v1", "Inward payment file checks", ["batch", 
     ["pass", "reject"], "pure", level="batch", rule_sets=["uae.wps.ruleset.payment-file.v1"], p=WP)
 # The salary file's send v1 went with the subflow that called it (Issue I-266): its v2 below replaces it, and v1 stays on the
 # content branch at 1.1.0 as published, for the distributions that pinned it.
-for nm, ttl, mode in [("send-refund-request", "Submit a refund request to WPS", "send"),
-                      ("send-receipt-confirmation", "Send the receipt confirmation", "report"),
-                      ("send-disbursement-file", "Send the disbursement file", "report"),
-                      ("send-returns-file", "Send the returns file to WPS", "send"),
-                      ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
-                      ("send-refund-response", "Send the refund request response to WPS", "send")]:
-    # 1.1.0 (Issue I-268, R-09-213): a native code-behind that sends the file its render kept on the bank's binding of the WPS port,
-    # as the salary file's does, so a bench that gives the port to the runtime runs every send of it natively.
-    act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
+# The scheme's other sends' v1 lines (1.1.0, Issue I-268, R-09-213: a native code-behind each, which the runtime keeps for the
+# distributions that pin them) went with the subflows that called them in factory 1.21.0 (Issue I-293): their v2 lines below
+# replace them, and each v1 stays on the content branch at 1.1.0 as published.
+
+# Their v2 lines (Issue I-293, R-09-232): each reads the encryption step's fact and sends the encrypted file where the bank's binding
+# encrypted it, as the salary file's v2 does; each subflow calls its v2 from its next minor, and the v1 lines leave the factory.
+for nm, ttl, mode in [("send-refund-request", "Submit a refund request to WPS, encrypted where the bank encrypts it", "send"),
+                      ("send-receipt-confirmation", "Send the receipt confirmation, encrypted where the bank encrypts it", "report"),
+                      ("send-disbursement-file", "Send the disbursement file, encrypted where the bank encrypts it", "report"),
+                      ("send-returns-file", "Send the returns file to WPS, encrypted where the bank encrypts it", "send"),
+                      ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS, encrypted where the bank encrypts it", "send"),
+                      ("send-refund-response", "Send the refund request response to WPS, encrypted where the bank encrypts it", "send")]:
+    act("uae.wps.exchange.%s.v2" % nm, ttl, ["header", "messages", "facts.encryption"], ["status", "messages"],
         ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP, native=True)
 
 # The salary file's send, v2 (Issue I-266, R-09-182): the send reads the encryption step's fact (facts.encryption), and where the bank's
@@ -708,10 +734,24 @@ rule("p.rule.creditor-town-country.v1", "Creditor address carries town and count
      [m("Payment", "p", "p.creditor.postalAddress != null and (isBlank(p.creditor.postalAddress.townName) or isBlank(p.creditor.postalAddress.country))")],
      "payment.creditor.postalAddress", "BE04", pay(creditor={"postalAddress": {"townName": "Dubai", "country": "AE"}}),
      pay(creditor={"postalAddress": {"addressLine": ["PO Box 1, Dubai"]}}), sev="warn")
+# Issue I-294 (R-09-231): a file names its currency on its batch or on each of its lines (CanonicalMapper.ToPayment gives a line the
+# batch's); one that names it on neither is refused. A line that names its own is not refused for a batch that names none.
+def file_ccy(ccy, line):
+    return {"Batch": {"id": "B1", **({"currency": ccy} if ccy else {})},
+            "Item": [{"batchId": "B1", "payment": {"instructedAmount": {"value": 100, **({"currency": line} if line else {})}}}]}
+
+
+rule("p.rule.batch-currency-present.v1", "A file names its currency on its batch or on each line", "cross-field",
+     [m("Batch", "b", "isBlank(b.currency)"),
+      {"query": {"as": "unpriced", "match": {"fact": "Item", "where": "item.batchId == b.id and isBlank(item.payment.instructedAmount.currency)"}, "collect": True}},
+      {"having": "count(unpriced) > 0"}],
+     "batch.currency", "AM03", file_ccy("AED", None), file_ccy(None, None), level="batch",
+     more=[("each line names its own", file_ccy(None, "AED"), False)])
 ruleset("p.ruleset.canonical.v1", "Canonical payment checks", "validation",
         ["p.rule.amount-positive.v1", "p.rule.currency-present.v1", "p.rule.debtor-account-present.v1",
-         "p.rule.creditor-account-present.v1", "p.rule.end-to-end-id-present.v1", "p.rule.creditor-town-country.v1"],
-        stages=["field"])
+         "p.rule.creditor-account-present.v1", "p.rule.end-to-end-id-present.v1", "p.rule.creditor-town-country.v1",
+         "p.rule.batch-currency-present.v1"],
+        stages=["field", "cross-field"])
 rule("p.rule.amount-within-platform-limit.v1", "Amount is within the platform limit", "policy",
      [m("Payment", "p"), par("maxAmount"), {"having": "p.instructedAmount.value > maxAmount.value"}],
      "payment.instructedAmount.value", "AM02",

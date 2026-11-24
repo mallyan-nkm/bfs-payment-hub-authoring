@@ -130,7 +130,9 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
         var content = files.Get(S("sha256")) ?? throw new NativePortRefused(port, $"The host holds no file {S("sha256")} to send");
         var name = S("fileName").Length > 0 ? S("fileName") : throw new NativePortRefused(port, "The request names no fileName");
         var file = new PortFile(name, content, S("paymentId") is { Length: > 0 } p ? p : null, S("leg") is { Length: > 0 } l ? l : null,
-            S("scheme") is { Length: > 0 } sc ? sc : string.Join('.', port.Split('.').Take(2)), a.Activity);
+            S("scheme") is { Length: > 0 } sc ? sc : string.Join('.', port.Split('.').Take(2)), a.Activity,
+            // the scheme message the send says the file is (R-09-234, Issue I-310): its kind, and its folder where the binding names one
+            S("message") is { Length: > 0 } msg ? msg : null);
         try
         {
             var sent = PortFileTransfer.Send(bindings, a.Tenant!, port, operation, file, a.Now, transferOf, secrets).GetAwaiter().GetResult();

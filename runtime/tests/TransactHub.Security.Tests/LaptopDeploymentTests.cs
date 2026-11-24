@@ -201,7 +201,11 @@ public sealed class LaptopDeploymentTests
         var workers = Service("workers");
         Assert.Contains("{\"port\":\"uae.wps.port.wps.v1\",\"simulator\":\"runtime\"}", workers);
         Assert.Contains("TH_NATIVE_HOST: http://native:7300", workers);
-        Assert.Contains("TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.exchange.send-salary-file.v2,uae.wps.map.ack-in.v1", workers);
+        // The send v1 is retired (R-09-233, Issue I-293): no distribution of the laptop pins it, and no worker gives it to the host.
+        Assert.Contains("TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v2,uae.wps.map.ack-in.v1", workers);
+        Assert.DoesNotContain("send-salary-file.v1", workers);
+        // A sent file is kept as its scheme message (R-09-234, Issue I-310): the binding names no kind.
+        Assert.DoesNotContain("submit-file.kind", adib);
         Assert.Contains("TH_FILE_API_URL: http://file-api:8080", workers);
         Assert.Matches(@"TH_NATIVE_TOKEN: file:\S+", workers);
         Assert.Contains("'TH_NATIVE_TOKEN', 'TH_FILE_API_URL', 'TH_FILE_API_TOKEN'", File.ReadAllText(Path.Combine(Laptop, "bin", "workers.mts")));

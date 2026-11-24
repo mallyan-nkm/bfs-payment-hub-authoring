@@ -371,7 +371,7 @@ async function main() {
   check('P1\'s file is kept once, with its signature, linked to the payment', kept.status === 200 && kept.data.some((f: any) => f.fileName === f1.name && f.direction === 'in' && f.verified === true), kept.data);
 
   log('7b. outbound: P1\'s salary file went out through the File API\'s outbox onto the SFTP server, and the consoles\' resend sends it again');
-  const sentFiles = (kept.data as any[]).filter((f: any) => f.direction === 'out' && f.kind === 'uae.wps.sif-out');
+  const sentFiles = (kept.data as any[]).filter((f: any) => f.direction === 'out' && f.kind === 'uae.wps.sif-submission');
   const out = sentFiles[0];
   check(`the File API kept P1's outward salary file once, signed, linked to the payment (${out?.fileName})`, sentFiles.length === 1 && out.verified === true && out.fileName.toUpperCase() === `${f1.stem}.SIF`, kept.data);
   const hist = await call(FILES, channel, 'GET', `/files/${encodeURIComponent(out.id)}`);
