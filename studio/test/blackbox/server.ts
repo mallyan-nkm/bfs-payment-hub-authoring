@@ -81,7 +81,10 @@ export async function signIn(base: string, user: string): Promise<Signed> {
   const cookie = () => [...jar].filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('; ');
   const login = await fetch(`${base}/auth/login`, { redirect: 'manual' });
   take(login);
-  const authorize = new URL(login.headers.get('location')!);
+  const location = login.headers.get('location');
+  // A refused sign-in (a rate limit, R-11-41) has no location: say what the studio answered rather than "Invalid URL".
+  if (!location) throw new Error(`The studio did not start a sign-in for ${user}: ${login.status} ${await login.text()}`);
+  const authorize = new URL(location);
   const form = new URLSearchParams(authorize.searchParams);
   form.set('user', user);
   const code = await fetch(`${authorize.origin}${authorize.pathname}`, { method: 'POST', body: form, redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' } });

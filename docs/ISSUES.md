@@ -2782,6 +2782,22 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** At WPS's next release mark `uae.wps.post.return.v1` `native: true`, extend L40 to every scope, and have the import refuse (or rewrite as a script-behind) a builtin of the accounting or reservation service in an imported scheme that brings no module, with a finding that says why.
 
+## I-395. A worker refused a builtin on a port the bench gives to the runtime
+
+**Issue.** R-09-213 says a bench that gives a port to the runtime must not reach an activity of that port with no native code-behind. The check (`runtimePortGaps`, `studio/src/checks/runtime-ports.ts`) counted every activity of the port that was not a composite and did not say `native: true`, builtins too. But R-08-15 sends a builtin on such a port to the runtime's native host, which answers it through the bank's binding (the interpreter does so). So a worker whose bench gave `p.port.operations-queue.v1` to the runtime refused to start for `p.hold.approval.v1` and `p.hold.repair.v1`, the holds the native host opens (I-98), and the deploy runner said only "Worker th-p exited 1 before it listened", because it read the worker's stdout and not its stderr. `runtime/ops-console/test/e2e/wps-hold.test.ts` failed 3 of 3 for it.
+
+**Recommendation.** Say in R-09-213 that a builtin on a port given to the runtime is answered there (R-08-15) and is not a gap; only an activity with a script-behind or a reference binding is.
+
+**Done (24 November 2026).** `runtimePortGaps` counts no builtin (and no `binding: native`); a script-behind on the port is still a gap (`studio/test/runtime-port.test.ts`, "counts no builtin activity"). The deploy runner's error for a worker that exits before it listens, or does not say its port, gives the worker's stdout and stderr. The wording of R-09-213 is left for the owner.
+
+## I-396. The browser walk-through built a promotable distribution with no module build
+
+**Issue.** Since native contract 2.0.0 a promotable distribution needs the platform module (I-381), and since factory 1.23.0 `p.protect.encrypt-file.v1` and `p.protect.decrypt-file.v1` say so. The black-box studio of `studio/test/blackbox/ui-build.test.ts` had no `TH_NATIVE_MODULES`, so the bank approver's approval of the licence in step 8 was refused (409 distribution, "set TH_NATIVE_MODULES"), the scheme's rail was never enabled, and steps 9 and 11 failed after it. Step 6 failed too once L58 reached the branch: the test's synthetic demo send read no `facts.encryption`. The black-box harness's `signIn` read `/auth/login`'s location without a check, so a refused sign-in (a rate limit, R-11-41) showed as "Invalid URL".
+
+**Recommendation.** Give every black-box studio that approves a bank's distribution a module build, as the unit tests' setup does; decide whether `startServer` should do so by default once no black-box test installs a studio-built distribution on a real native host (a synthetic module there would not load).
+
+**Done in part (24 November 2026).** `ui-build.test.ts` gives its studio the signed synthetic module build of `test/support/native-modules.ts`; the demo send reads `facts.encryption`; `signIn` says what the studio answered when it starts no sign-in. The other black-box tests that approve distributions are not changed here.
+
 ## I-360. A distribution's Elsa service runs one operation at a time
 
 **Issue.** R-09-238 lets a distribution's DTFx service run several work items at once. The Elsa service runs every operation on its clock's thread (`studio/engines/elsa/harness/Serve.cs`, commands and deliveries scheduled on `Clock`), so one slow worker call still delays every other payment of the distribution.

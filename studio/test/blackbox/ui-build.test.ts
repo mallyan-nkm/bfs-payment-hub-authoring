@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { toYaml } from '../../src/core/yaml.js';
 import { ACK_IN, FILE_IN, FILE_IN_SCRIPT, FILE_OUT, GARBAGE, LEG, PORT, RULE, RULESET, SCHEME, SEND, SIM, SUBFLOW, SUBMIT, USD, VALID, VALIDATE, nextMinor } from './demo-scheme.js';
 import { client, signInPage, startServer, STUDIO, type Server } from './server.js';
+import { MODULE_SIGNERS, syntheticModules } from '../support/native-modules.js';
 
 // Black box, in the browser: the walk-through of the user guide's "Build a full workflow", done only
 // in the web app. A shared designer builds the synthetic scheme `uae.demo` and its leg; a platform
@@ -23,7 +24,9 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'th-ui-build-'));
 
 beforeAll(async () => {
   if (!fs.existsSync(path.join(STUDIO, 'web', 'dist', 'index.html'))) spawnSync('npm', ['run', 'web:build'], { cwd: STUDIO });
-  server = await startServer();
+  // A bank's distribution is promotable, so it carries the platform's native module (the encryption and decryption code-behinds,
+  // R-09-120): the studio is given a signed synthetic module build, as the unit tests are (test/support/native-modules.ts).
+  server = await startServer({ TH_NATIVE_MODULES: syntheticModules(), TH_NATIVE_MODULE_SIGNERS: MODULE_SIGNERS });
   browser = await require('playwright').chromium.launch();
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
