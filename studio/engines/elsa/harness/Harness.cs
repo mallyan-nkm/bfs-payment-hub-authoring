@@ -16,6 +16,8 @@ public static class Program
     public static async Task<int> Main(string[] args)
     {
         if (args.Length == 0) { Console.Out.WriteLine("ElsaHarness: give the input file"); return 2; }
+        // `serve <plan>`: one service for a distribution on the runtime's engine host, kept in the store (Issue I-165).
+        if (args.Length == 2 && args[0] == "serve") return await Harness.ServeMain(args[1]);
         var input = (JsonObject)J.Parse(await File.ReadAllTextAsync(args[0]))!;
         var h = new Harness(input);
         int code;
@@ -59,7 +61,7 @@ public sealed class Instance
     public int LateResults;
 }
 
-public sealed class Harness : IDisposable
+public sealed partial class Harness : IDisposable
 {
     readonly JsonObject input;
     readonly JsonObject built;
@@ -215,14 +217,19 @@ public sealed class Harness : IDisposable
         inst.Executions++;
         inst.Completed = false;
         var journal = new JsonObject { ["id"] = id, ["input"] = J.Clone(inp), ["startAt"] = Clock.Now, ["entries"] = new JsonArray() };
+        // On the runtime's engine host, the execution is on the distribution's history before Elsa runs it (Issue I-165).
+        history?.Append("instance", new JsonObject { ["id"] = id, ["execution"] = inst.Executions, ["input"] = J.Clone(inp), ["startAt"] = Clock.Now, ["parent"] = parent?.Id, ["parentOp"] = parentOp });
         elsaRuns++;
         After(inst, elsa.Start($"{id}#{inst.Executions}", journal));
     }
 
     /// <summary>Resume an instance's bookmark with results or events. One that has ended takes nothing.</summary>
-    void Deliver(Instance inst, JsonArray entries)
+    /// <param name="from">The send this delivers (instance, execution and operation), so that a rebuilt service sends it once.</param>
+    void Deliver(Instance inst, JsonArray entries, string? from = null)
     {
         if (inst.Completed || inst.State is null) { dropped += entries.Count; return; }
+        // What reaches the instance is on the history before it does: a rebuilt service gives Elsa the same journal (Issue I-165).
+        history?.Append("deliver", new JsonObject { ["id"] = inst.Id, ["execution"] = inst.Executions, ["entries"] = J.Clone(entries), ["from"] = from });
         elsaRuns++;
         After(inst, elsa.Resume(inst.State, entries));
     }
@@ -235,6 +242,9 @@ public sealed class Harness : IDisposable
         inst.Awaiting = J.S(j, "awaiting");
         inst.Cancelled = new HashSet<int>(J.A(j, "cancelled").Select(x => (int)J.D(x)!.Value));
         var immediate = new JsonArray();
+        // The operations handed out, on the history before they are carried out (Issue I-165).
+        if (history is not null && J.A(j, "pending").Count > 0)
+            history.Append("dispatch", new JsonObject { ["id"] = inst.Id, ["execution"] = inst.Executions, ["ops"] = J.Clone(J.P(j, "pending")) });
         foreach (var op in J.A(j, "pending")) Dispatch(inst, (JsonObject)op!, immediate);
         if (immediate.Count > 0) Clock.Schedule(Clock.Now, () => Deliver(inst, Stamp(immediate)));
         if (!J.Truthy(J.P(j, "done"))) return;
@@ -302,10 +312,11 @@ public sealed class Harness : IDisposable
             {
                 var target = J.S(op, "target")!;
                 var ev = new JsonObject { ["event"] = J.S(op, "name"), ["data"] = J.Clone(J.P(op, "input")) };
+                var from = $"{inst.Id}#{inst.Executions}#{id}";
                 Clock.Schedule(Clock.Now, () =>
                 {
                     var t = Find(target);
-                    if (t is not null) Deliver(t, Stamp(new JsonArray(ev)));
+                    if (t is not null) Deliver(t, Stamp(new JsonArray(ev)), from);
                 });
                 break;
             }
@@ -504,6 +515,21 @@ public sealed class Harness : IDisposable
         }
     }
 
+    /// <summary>One instance's part of an observation, from the output the interpreter gave it.</summary>
+    JsonObject InstanceObservation(string label, JsonObject o, long start, IEnumerable<string> storedKeys)
+    {
+        var keys = new SortedSet<string>(J.Strings(J.P(o, "engineStateKeys")));
+        foreach (var k in storedKeys) keys.Add(k);
+        return new JsonObject
+        {
+            ["label"] = label, ["trace"] = J.Clone(J.P(o, "trace")), ["detail"] = J.Clone(J.P(o, "detail")), ["releaseTrace"] = J.Clone(J.P(o, "releaseTrace")),
+            ["steps"] = J.Clone(J.P(o, "steps")), ["attempts"] = J.Clone(J.P(o, "attempts")), ["ruleTraceSteps"] = J.Clone(J.P(o, "ruleTraceSteps")),
+            ["engineStateKeys"] = J.Arr(keys), ["startedAt"] = (long)(J.Num(o, "startedAt") ?? start) - start,
+            ["endedAt"] = J.Num(o, "endedAt") is double e ? (long)e - start : null, ["failed"] = J.S(o, "failed"),
+            ["ctx"] = Store.Full(J.P(o, "state"), J.S(o, "payloadRef") ?? ""),
+        };
+    }
+
     async Task<JsonObject> Observe(long start)
     {
         var outputs = instances.Where(i => i.Output is not null).Select(i => i.Output!).ToList();
@@ -517,19 +543,7 @@ public sealed class Harness : IDisposable
         }
         var storedForbidden = Forbidden.Where(stored.Contains).ToList();
 
-        JsonObject Inst(string label, JsonObject o)
-        {
-            var keys = new SortedSet<string>(J.Strings(J.P(o, "engineStateKeys")));
-            foreach (var k in storedForbidden) keys.Add(k);
-            return new JsonObject
-            {
-                ["label"] = label, ["trace"] = J.Clone(J.P(o, "trace")), ["detail"] = J.Clone(J.P(o, "detail")), ["releaseTrace"] = J.Clone(J.P(o, "releaseTrace")),
-                ["steps"] = J.Clone(J.P(o, "steps")), ["attempts"] = J.Clone(J.P(o, "attempts")), ["ruleTraceSteps"] = J.Clone(J.P(o, "ruleTraceSteps")),
-                ["engineStateKeys"] = J.Arr(keys), ["startedAt"] = (long)(J.Num(o, "startedAt") ?? start) - start,
-                ["endedAt"] = J.Num(o, "endedAt") is double e ? (long)e - start : null, ["failed"] = J.S(o, "failed"),
-                ["ctx"] = Store.Full(J.P(o, "state"), J.S(o, "payloadRef") ?? ""),
-            };
-        }
+        JsonObject Inst(string label, JsonObject o) => InstanceObservation(label, o, start, storedForbidden);
         var obsInstances = new JsonArray();
         if (J.Truthy(J.P(spec, "handler")))
         {
