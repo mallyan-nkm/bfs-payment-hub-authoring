@@ -94,7 +94,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.20.0.yaml')).release).toBe('1.20.0');
     expect(body(disk('banks/example-bank/packs/1.21.0.yaml')).release).toBe('1.21.0');
     expect(body(disk('banks/example-bank/packs/1.22.0.yaml')).release).toBe('1.22.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.23.0');
+    expect(body(disk('banks/example-bank/packs/1.23.0.yaml')).release).toBe('1.23.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.24.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);
