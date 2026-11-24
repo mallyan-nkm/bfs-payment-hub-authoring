@@ -168,10 +168,19 @@ public sealed class EventLog(StoreOptions store, StoreOptions ops, LogBuffer log
     /// A fact's field as a word: its text, or an object's code. A service action's fact carries its result and its error as objects
     /// (Issue I-336), and a cast of an object to text throws.
     /// </summary>
+    /// <summary>
+    /// A step's error as its fact names it, by its code or name and whether it may be retried: a code, never personal data, so shown
+    /// unmasked beside the masked data, also when the error dictionary has no entry for it (Issue I-350).
+    /// </summary>
+    static JsonObject? StepError(JsonNode? e) => Word(e) is { } name
+        ? new JsonObject { ["name"] = name, ["retryable"] = (e as JsonObject)?["retryable"] is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null }
+        : null;
+
     static string? Word(JsonNode? n) => n switch
     {
         JsonValue v when v.TryGetValue<string>(out var s) => s,
-        JsonObject o => Word(o["code"]),
+        // An error as an engine's step fact names it: by its code, or by its name beside whether it may be retried (Issue I-350).
+        JsonObject o => Word(o["code"]) ?? Word(o["name"]),
         _ => null,
     };
 
@@ -208,7 +217,7 @@ public sealed class EventLog(StoreOptions store, StoreOptions ops, LogBuffer log
                 ["source"] = "fact", ["at"] = r.At.ToString("O"), ["level"] = isError ? "Error" : "Information", ["subject"] = r.SubjectId, ["subjectKind"] = r.SubjectKind,
                 ["tenant"] = s?.Tenant, ["scheme"] = scheme, ["seq"] = r.Seq, ["kind"] = r.Kind, ["code"] = r.Code, ["actor"] = r.Actor,
                 ["step"] = Word(data["step"]), ["activity"] = Word(data["activity"]), ["instance"] = Word(data["instance"]),
-                ["data"] = Masked.Json(data), ["errors"] = Links(errors),
+                ["data"] = Masked.Json(data), ["errors"] = Links(errors), ["error"] = StepError(data["error"]),
                 ["payment"] = s is null ? null : $"#/payments/{Uri.EscapeDataString(r.SubjectId)}",
                 ["traceId"] = r.TraceId,
                 ["trace"] = TraceLinks.Of(r.TraceId),

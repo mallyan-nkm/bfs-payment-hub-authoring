@@ -1,0 +1,191 @@
+1
+00:00:01,780 --> 00:00:30,346
+This video walks through the service console, page by page. The service console is where the runtime's service engineers look after the runtime: its health, the content it runs, its logs, its errors and their runbooks, its troubleshooting actions, its backup, and what it trusts. Every change an engineer asks for waits for the consent of a bank approver, another person. We use the laptop stack, where video four left it. Everything is synthetic: no real customer and no real account.
+
+2
+00:00:31,964 --> 00:00:48,454
+We sign in at the bank's identity provider, as the example service engineer. The console has nine pages, in this bar: health, content, logs, errors and runbooks, actions, backup, signers and modules, the assistant, and the audit trail. The first is health.
+
+3
+00:00:50,056 --> 00:01:06,269
+At the top, the overall state, and when the probes last ran. Check now runs every probe again. Each row is one probe: its group, its state, what it found, and its history, one dot per run, oldest first. Hover a dot to see its time, and how long the probe took.
+
+4
+00:01:07,878 --> 00:01:23,686
+The store: the runtime's database, here SQL Server, answers. The read model, which the operations console reads: how many rows of the outbox it is behind, how old the oldest is, and how many facts it has applied. Here it is up to date.
+
+5
+00:01:25,292 --> 00:01:41,846
+The package source: the signed versions on GitHub that this runtime may install. The trusted signers: how many keys are in use, retired or revoked; a key that is about to retire turns this row amber. And Temporal, the bank's engine: it accepts connections.
+
+6
+00:01:43,448 --> 00:01:57,400
+The circuit breakers of the runtime's ports: one is known, the file transfer to the Central Bank, and none is open. In video four we saw it open while the SFTP partner was down, and close again when it came back.
+
+7
+00:01:59,003 --> 00:02:13,019
+One row is not green, and it is a real problem, not a staged one: the disk. This laptop's disk is nearly full, below the probe's warning level. The row carries its error code, and the code links to its entry in the error dictionary.
+
+8
+00:02:14,624 --> 00:02:34,058
+The entry says what the code means, that it is technical, and that a retry will not help. Its likely causes: logs or database files that grow, old packages kept. And the runbook: read the free space on the health page; free space at the host; never delete rows from the store. And whom to escalate to, with what.
+
+9
+00:02:35,672 --> 00:02:56,493
+Content. Everything the runtime runs arrives as a signed version on GitHub, and is verified against the trusted signers before it is stored. For a bank there are two kinds: its distribution, which carries the logic, and its configuration release, which carries values and bindings only. This runtime serves one bank, A D I B.
+
+10
+00:02:58,102 --> 00:03:17,409
+Offered on GitHub, each version with its state here. Distribution A, the first, is drained: no new payment takes it, and none of its payments is open. Distribution B, the one with the bank's hook, is active. The configuration releases: one is in force, the earlier ones are superseded, and a new one is offered.
+
+11
+00:03:19,011 --> 00:03:36,077
+The new configuration release was built by the bank's approver in the studio, after the bank's configurator changed a value. Before installing it, the engineer verifies it. Verify asks why, as every button here does, and the answer is recorded with the engineer's name.
+
+12
+00:03:37,679 --> 00:03:54,277
+Verified: its signature is a trusted signer's, and every file matches its hash. Now the Difference: what this release changes against the one in force. One file changed, the configuration set, and in it one value: the bank's cut-off for salary files.
+
+13
+00:03:55,882 --> 00:04:07,253
+Install. The engineer gives the reason, the change request's number. Installing changes what the runtime does, so it does not happen yet: it waits for the consent of a bank approver.
+
+14
+00:04:13,218 --> 00:04:26,210
+The bank approver signs in to the same console. On the actions page, under waiting for a bank approver's consent, is the install: who asked, when, and why. The approver approves it, with a reason of their own.
+
+15
+00:04:38,199 --> 00:04:54,241
+Done. The runtime checked every value against the bounds that each installed distribution declares, and put the release in force. Under installed, it is in force now, and the release that was in force before is superseded. Nothing was redeployed for a value.
+
+16
+00:04:55,856 --> 00:05:15,098
+Below, the values in force: what the workers and the engine hosts read at each attempt. Each value names the configuration set it came from, and the day it took effect. Here is the new cut-off, from the new set, from today. And the bank's hook binding in force: its employer A M L check, after validation.
+
+17
+00:05:16,704 --> 00:05:30,784
+A distribution changes the logic, so it can be rolled back. Say distribution B misbehaves. The engineer asks to roll back: the release that was active before, A, becomes active again, now. This too waits for the approver.
+
+18
+00:05:55,960 --> 00:06:10,210
+Distribution A is active again, and new payments take it. B is draining: no new payment takes it, and the payments already pinned to it run to their end on it, on the logic they started with. The open payments column counts them.
+
+19
+00:06:11,811 --> 00:06:25,720
+B is fine after all, so the engineer activates it again, and the approver consents. B is active, and A drains. Drain and remove are the other buttons here: remove is refused while a payment pinned to the release is open.
+
+20
+00:07:04,816 --> 00:07:23,653
+Last on this page: payments pinned but never started. The front door pins each payment to a distribution when it accepts it. If its start then never reaches an engine, the pin keeps the distribution from draining. Here there is none. If there were, end pin would end it as abandoned, with the approver's consent.
+
+21
+00:07:25,261 --> 00:07:40,770
+Every action that changes the system works the same way. The engineer asks, with a reason. A bank approver, another person, consents or refuses. The one who asked can never consent. Here the engineer asks to drain distribution B.
+
+22
+00:07:55,976 --> 00:08:08,178
+The engineer sees it waiting, with no button to approve it. The approver signs in, reads the reason, and refuses it: no drain is planned this week. A refusal is recorded too, with its reason.
+
+23
+00:08:24,546 --> 00:08:43,809
+One consent can stand. The bank's exchange-rate feed publishes a configuration release with the day's rates, many times a day. The approver may give a standing consent to those releases: they then go in force without a consent each. Every other release still waits for one. The engineer asks for it, for the bank.
+
+24
+00:08:50,396 --> 00:08:59,058
+The approver gives it. From now on the feed's rate releases go in force on this standing consent, until an approver revokes it, the same way.
+
+25
+00:09:13,801 --> 00:09:28,884
+Now a problem, diagnosed from the console. On this laptop we stop the native host, the service that runs the compiled activities, such as the one that renders the Central Bank's salary file. Then the bank's channel sends a salary file.
+
+26
+00:09:31,290 --> 00:09:50,213
+Someone at the bank says the file never reached the Central Bank. The engineer opens the log, and filters it by the payment. Newest first: the checks passed; then the render step failed, and its attempts were spent; and the step parked. A step that parks waits, for a business day, for an operator to retry it.
+
+27
+00:09:54,654 --> 00:10:08,606
+The log names the error: the native host was unreachable, and the error is retryable. So the step itself is fine: something it needs is down. The engineer checks the native host, and on this laptop starts it again.
+
+28
+00:10:19,685 --> 00:10:33,125
+Now the parked step can go on. On the actions page, retry an attempt gives the parked step one more attempt. Re-drive runs it again with its whole retry policy. The engineer asks for a retry of this payment.
+
+29
+00:10:44,509 --> 00:10:54,343
+A retry touches a running payment, so the approver consents. The control goes to the payment's engine through its engine host, which records that it delivered it.
+
+30
+00:11:05,468 --> 00:11:21,405
+Back in the log. The retry was asked, approved, done, and delivered to the engine. Then the render step ran again, and passed: the salary information file was rendered, encrypted and handed to the File API, which put it on the Central Bank's folder.
+
+31
+00:11:27,721 --> 00:11:38,643
+One more turn. The Central Bank says its folder lost the file. On this laptop we delete it from the S F T P folder. The payment still waits for the Central Bank's answer.
+
+32
+00:11:40,247 --> 00:11:54,071
+Resend a file puts the same bytes the runtime kept on the file transfer port again. It is never rendered or signed again, so what the Central Bank receives is exactly what it would have received. The engineer asks for it.
+
+33
+00:12:02,281 --> 00:12:09,235
+The approver consents, and the file is back on the Central Bank's folder, with the same name and the same content.
+
+34
+00:12:22,478 --> 00:12:32,483
+The Central Bank answers with an ACK, and the payment runs to its end: settled. A step that failed and a file that was lost cost a delay, and nothing else.
+
+35
+00:12:47,968 --> 00:13:09,237
+The catalogue, at the foot of the actions page, lists every troubleshooting action: what it does, whether it is built, and whether it needs an approver. Among them: requeue a dead-letter job, on Flowable; reset an activity, on Temporal; release or expire a hold; pause and resume intake for a scheme; drain or restart a worker; and rebuild the read model.
+
+36
+00:13:10,851 --> 00:13:30,477
+The log has more filters: an error code, a leg, a scheme, the tenant, a payment, a trace, and a time from and to. Filtered by the error code we just met, it lists every step that failed with it, for any payment. Each line links to its payment in the operations console, and, when the runtime traces, to its trace.
+
+37
+00:13:32,079 --> 00:13:50,469
+The audit page is the console's own record: every request, consent, refusal and result, newest first, with who, what and why. Each fact is chained to the one before it by its hash, and the line at the top says the chains verify. A fact changed afterwards would break its chain, and show here.
+
+38
+00:13:52,072 --> 00:13:58,194
+Filtered by person, the bank approver: each consent and refusal of this video, with its reason.
+
+39
+00:14:04,231 --> 00:14:19,655
+Errors and runbooks: the whole error dictionary. Each code with its scope, the platform's or a scheme's, its title, whether it is business or technical, whether a retry can help, and its I S O 20022 reason code where it has one.
+
+40
+00:14:21,256 --> 00:14:41,352
+Search for transient. A temporary failure, that the engine retries. Its runbook: check the port's health, and the attempts on the payment's timeline; wait for the retries; and if they are spent, retry the attempt once the party answers again, the action we just used. Each troubleshooting action the runbook offers links to the actions page.
+
+41
+00:14:42,955 --> 00:14:55,158
+A business error reads the same way. Insufficient funds: business, not retryable, I S O reason A M zero four. Its runbook says not to retry: the operator decides the payment.
+
+42
+00:14:56,760 --> 00:15:12,098
+Backup. A signed backup holds the ids of the releases, their activations, the configuration values, the bindings with secret references only, never a value, the role map and the trusted signers. The engineer exports one, with a reason.
+
+43
+00:15:18,564 --> 00:15:38,531
+A backup is checked before it is used. Choose the file and verify it: its signature and every entry's hash hold. Then a dry run of a restore: what it would install and set, changing nothing. A real restore goes only into an empty or a test runtime, after a dry run, and only with an approver's consent.
+
+44
+00:15:42,637 --> 00:16:01,731
+Signers and modules: what this runtime trusts. The trusted signers: each key by its id, in use, retired or revoked, and what it may sign. Every version is verified against them before it is stored. A new key is added, and an old one retired, with the action rotate a trusted key, with consent.
+
+45
+00:16:03,337 --> 00:16:25,011
+A distribution's native modules are its compiled activities: the platform's, and the W P S scheme's. Each file is in the signed bill of materials with its S H A two five six. The runtime checks every hash when it installs the distribution, and the native host checks them again when it loads it. A file that does not match is refused.
+
+46
+00:16:26,620 --> 00:16:38,033
+Re-verify checks a stored distribution again, against the signers trusted now. It changes nothing, so it needs no approver, and its result is recorded on the release's chain.
+
+47
+00:16:45,414 --> 00:17:07,835
+Last, the assistant. It reads the runbooks, the logs and a payment's facts, with personal data masked before anything is sent to the model, and it may propose an action, which a person confirms on the actions page. On this runtime it is off, and it stays off until the bank's data protection officer approves it. Until then, the engineer uses the runbooks directly.
+
+48
+00:17:09,451 --> 00:17:40,335
+That is the service console. Health, with every probe, and a real problem with its runbook. Content: verified, compared, installed, put in force, rolled back and activated again. Consents asked by an engineer and given or refused by an approver, and a standing one for rates. A parked step found in the log and retried, a lost file resent, and the payment settled. The log, the audit chain, the error dictionary, the backup, what the runtime trusts, and the assistant, waiting for its approval.

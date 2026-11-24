@@ -45,10 +45,11 @@ describe.skipIf(!storeUp())('north-star video, dry run', () => {
 
 // The runtime videos that drive the laptop stack (deploy/laptop) run only where a stack is up, with its secrets in the
 // environment (studio/demo/README.md). The end-to-end video runs the test bench's file and six payments on Temporal in real time,
-// and starts the stack fresh only with TH_DEMO_RESET=1, so it is given forty minutes.
+// and starts the stack fresh only with TH_DEMO_RESET=1, so it is given forty minutes. The service console's video starts where the
+// end-to-end video ends (a second distribution active), and runs one payment with a parked step, so it is given fifteen.
 const up = await stackUp();
 describe.skipIf(!up)('runtime videos on the laptop stack, dry run', () => {
-  for (const [which, limit] of [['install', 300_000], ['end-to-end', 2_400_000]] as const) {
+  for (const [which, limit] of [['install', 300_000], ['end-to-end', 2_400_000], ['service-console', 900_000]] as const) {
     it(`${which}: every scene runs`, async () => {
       const out = await dry(which, limit);
       expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);

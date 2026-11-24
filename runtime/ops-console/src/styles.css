@@ -100,6 +100,8 @@ table.grid { border-collapse: collapse; width: 100%; background: var(--surface);
 table.grid th, table.grid td { padding: 6px 8px; text-align: left; vertical-align: top; white-space: nowrap; height: auto; }
 table.grid th { font-weight: var(--fontWeightSemibold); color: var(--text-2); background: var(--surface-2); }
 table.grid td.num, table.grid th.num { text-align: right; }
+/* A long name or value wraps in its cell rather than widening the page (a disk probe's path, a value in force). */
+table.grid td.wrap { white-space: normal; overflow-wrap: anywhere; min-width: 160px; max-width: 520px; }
 tr.clickable { cursor: pointer; }
 table.grid .fui-Button { min-height: 24px; height: auto; padding: 1px 8px; font-size: var(--fontSizeBase200); }
 .fui-Badge.badge { margin-right: 4px; vertical-align: 1px; }

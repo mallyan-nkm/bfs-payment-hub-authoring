@@ -16,6 +16,7 @@ public sealed class ServiceApiTests(Databases dbs)
     [
         ("GET", "/service/api/me", null), ("GET", "/service/api/health", null),
         ("GET", "/service/api/content/versions", null), ("GET", "/service/api/content/releases", null), ("GET", "/service/api/content/open-payments", null),
+        ("GET", "/service/api/content/values", null), ("GET", "/service/api/trust", null),
         ("GET", "/service/api/content/diff?tag=release/p.wf.demo.v1/1.0.0/temporal", null),
         ("POST", "/service/api/content/verify", new { tag = "release/p.wf.demo.v1/1.0.0/temporal", reason = "check" }),
         ("POST", "/service/api/content/install", new { tag = "release/p.wf.demo.v1/1.0.0/temporal", reason = "install" }),
@@ -123,6 +124,16 @@ public sealed class ServiceApiTests(Databases dbs)
 
         var leg = await J.Of(await c.GetAsync($"/service/api/logs?payment={bulk}&code=TransientError"));
         Assert.Equal("TransientError", (string?)leg["items"]![0]!["errors"]![0]!["code"]);
+        // An engine's step fact names its error as an object, by its name and whether it may be retried: it is found by its code
+        // and linked to its runbook as well (video 5c, Issue I-350).
+        await using (var db = TransactHub.Store.StoreDbContext.Open(api.Store))
+            await new TransactHub.Store.FactLog(db).Append(bulk, "bulk", new TransactHub.Store.NewFact("step", "error", new JsonObject { ["instance"] = "root/leg2", ["step"] = "render", ["activity"] = "uae.wps.map.sif-out.v1", ["error"] = new JsonObject { ["name"] = "TransientError", ["retryable"] = true } }, Actor: "engine"));
+        var named = await J.Of(await c.GetAsync($"/service/api/logs?payment={bulk}&code=TransientError"));
+        Assert.Contains(named["items"]!.AsArray(), i => (string?)i!["code"] == "error" && (string?)i["errors"]![0]!["code"] == "TransientError");
+        // The error's name is a code, not personal data: the item carries it unmasked, with whether it may be retried.
+        var stepError = named["items"]!.AsArray().First(i => (string?)i!["code"] == "error")!["error"]!;
+        Assert.Equal("TransientError", (string?)stepError["name"]);
+        Assert.True((bool)stepError["retryable"]!);
         // Time filters, and the tenant bound: an engineer of one tenant sees only its payments.
         Assert.Equal(0, (int)(await J.Of(await c.GetAsync($"/service/api/logs?payment={bulk}&to=2000-01-01T00:00:00Z")))["count"]!);
         var mine = api.As("se-2", "example-bank:ServiceEngineer");
