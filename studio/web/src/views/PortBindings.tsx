@@ -61,7 +61,7 @@ export function PortBindings() {
     }
   };
   return (
-    <div className="port-bindings">
+    <div className="port-bindings" data-testid="port-bindings">
       <p className="small">
         {d.released ? <>Released: <code>{d.released.release}</code>. </> : <>Not released from the studio yet: the runtime reads {d.runtime.map((r: any) => <code key={r.file}>{r.file.split('/').pop()}</code>).reduce((a: any, b: any) => [a, ', ', b])}. </>}
         {d.draft ? <Badge tone="warn">draft {d.draft.release}</Badge> : <>Editing release <code>{base.release}</code>.</>}
