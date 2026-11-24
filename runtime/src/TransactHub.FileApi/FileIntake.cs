@@ -228,7 +228,7 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
                 try { lines = await frontDoor.ReportLines(a.Tenant, a.Environment, entry, plainFileName, plain ?? a.Content, ct); }
                 catch (FrontDoorRefused e) { why = e.Message; }
                 var period = (string?)rec["period"] is { Length: > 0 } p ? System.Xml.XmlConvert.ToTimeSpan(p) : (TimeSpan?)null;
-                r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, lines, why, period, (string?)rec["activity"] ?? SchemeReconciliation.Activity, "file-api:reconcile", ct);
+                r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, lines, why, period, (string?)rec["activity"] ?? SchemeReconciliation.Activity, "file-api:reconcile", entry.Id, ct);
             }
             else r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, plain ?? a.Content, "file-api:reconcile", ct);
             await log.Append(row.Id, FileKind, new NewFact("file.reconciled", (string?)r["outcome"], new JsonObject { ["run"] = r["run"]?.DeepClone(), ["breaks"] = (r["breaks"] as JsonArray)?.Count ?? 0 }, Actor: "file-api:reconcile"), ct);

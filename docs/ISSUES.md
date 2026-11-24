@@ -1802,6 +1802,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Owner's decision (24 November 2026):** accepted. Build the resolutions as recommended: a break may start an exception request on `p.wf.request.v1` or a return, each with the bank approver's consent where it changes the system. To build in wave 7.
 
+**Done (24 November 2026, R-09-250).** A break may be resolved by `exception-request` or `return`, each waiting for a bank approver's consent (`BreakQueue`). The scheme's report names the message that starts each (`reconcile.resolutions` in the scheme manifest, lint L62, mutation M107); the console offers only those it names. On consent the File API's `BreakOrderStarter` starts the order once, through its own intake and front door, from the break's order document (`th-break-order/1`), and records `order-started` or `order-refused` on the run's chain; the break queue shows it. WPS names no such message, so no WPS break is offered either yet (Issue I-372).
+
 ## I-169. The Flowable production black-box test expected a minute the run does not keep
 
 **Issue.** `studio/test/blackbox/e2e-wps-flowable-production.test.ts` ("on SqlServer: settles in real time ...") looked for the binding's timer line with fixed minutes: `placed at 2026-11-17T06:02:..`, written `2026-11-18T06:00:..`. Business time is the wall clock shifted to 06:00 on the plan's evaluation date, so those minutes hold only while the acknowledgement wait starts within the first wall minute of the run; on a slower run (SQL Server's journal writes, I-137, or a loaded machine) the wait starts later, both minutes move, and the line no longer matches although the binding placed it. The binding's code (`PlaceTimers`) places the timer as specified: two minutes after the wait began, from the bank's value, not the written day. Run again here (23 November 2026) both cases passed with the old pattern too (the waits began at 06:00:10 and 06:00:07), so the failure was not reproduced; the only paths that leave no line at all are a reschedule the server refuses and a timer already at its due, neither seen.
@@ -2601,6 +2603,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** `p.view.operations.v1` offers `re-screen` to an Operator with remarks and no second approver, as it did since release 1.3.0; the spec is silent on whether it should need one. Pause and resume now take the same role and no second approver either (R-05-106). A re-screen runs the screening steps again on a running payment: it can only hold or refuse the payment, never release it, because a hold it opens is decided by the hold's own action, with that action's approvals (a suspect payment's release needs a supervisor's, R-05-94). Asking a second approver for it would slow the screening team without guarding money.
 
 **Recommendation.** Keep `re-screen` without a second approver, and say so in the spec beside R-05-106 once the owner agrees; if a bank's compliance asks for one, the view's action takes `secondApprover: Supervisor` in a minor release, with no code change.
+
+## I-372. WPS names no message that starts a break's exception request or return
+
+**Issue.** A break may start an exception request or a return by the message the scheme's report names for it (R-09-250). WPS declares no report (the Central Bank gives no layout, Issue I-164) and no inward message that starts a request or a return for a break, with an intake map that reads the break's order document. So no WPS break is offered either resolution; an installation that names a report of its own (`FileApi:Reports:<message>:Scheme`) has no disposition to name them in.
+
+**Recommendation.** Ask the scheme operator, with the reconciliation layout (C in `docs/OWNER-ACTIONS.md`), how a bank raises an exception or returns funds for a line it disputes; then add the report and those messages, with intake maps that read `th-break-order/1`, in a minor of the WPS scheme. Do not write them before the answer: they would be scheme facts.
 
 ## Not done, and why
 

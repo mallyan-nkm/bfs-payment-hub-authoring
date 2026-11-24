@@ -43,7 +43,8 @@ builder.Services.AddSingleton(new Reports(ops, views));
 var consoleRecord = new ConsoleRecord(store, clock);
 builder.Services.AddSingleton(consoleRecord);
 // The reconciliation break queue (R-09-92): the breaks the scheme reports' runs recorded, resolved with consent where they change the system.
-builder.Services.AddSingleton(new BreakQueue(store, clock));
+// A break may start an exception request or a return (R-09-250), as the message the scheme's report names in the active distribution.
+builder.Services.AddSingleton(new BreakQueue(store, clock, BreakQueue.FromActiveDistribution(store, builder.Configuration["Operations:Environment"])));
 // The bank's registers (R-05-62): the kinds the runtime ships and any in Operations:Registers, kept in the store.
 builder.Services.AddSingleton(new TransactHub.Operations.Registers.RegisterService(store, TransactHub.Operations.Registers.RegisterCatalog.Load(builder.Configuration["Operations:Registers"]), clock));
 // Work management, saved filters, the console's dials, unmasking, turnaround, retention and the fixed reports (R-05-66 to R-05-71).

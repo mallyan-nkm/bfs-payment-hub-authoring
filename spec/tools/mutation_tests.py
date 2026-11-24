@@ -279,6 +279,11 @@ CASES = [
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.post.verify.v1, map: uae.wps.map.psi-in.v1, period: P1D }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a report whose reconcile activity is not a reconcile activity"),
+    # L62 (R-09-250, Issue I-168): a break's order starts by a message of the scheme that starts an order of that kind
+    ("M107", "ERROR L62", "factory/uae.wps/scheme.yaml",
+     "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: uae.wps.map.psi-in.v1, period: P1D, resolutions: { return: uae.wps.sif } }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "a break's return starts by a message that starts an outward payment, not a return"),
     # L56 (R-05-100, Issue I-282): a parameter marked a ledger account is an activity's string or code
     ("M96", "ERROR L56", "factory/p/activities/p.post.accounting.v2.yaml",
      "  vatAccount:\n    type: string\n", "  vatAccount:\n    type: integer\n", "a ledger account that is a number"),

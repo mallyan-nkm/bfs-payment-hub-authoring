@@ -25,6 +25,48 @@ public sealed class ReconciliationTests(Databases dbs)
         $"{E2e(1)},1000.00,AED,settled"));        // the scheme says settled; the store has it received
 
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_break_may_start_an_exception_request_or_a_return_the_scheme_names_each_with_a_bank_approvers_consent(StoreProvider p)
+    {
+        // R-09-250 (owner's decision of 24 November 2026, Issue I-168): the scheme's report names the message of each order; one it does
+        // not name is not offered. A synthetic report's breaks; the File API's start of the order is FileApiTests'.
+        var (store, _) = await dbs.Pair(p);
+        await WpsRun.Seed(store);
+        await using (var db = StoreDbContext.Open(store))
+            await new SchemeReconciliation(db).Run(WpsRun.Tenant, "uae.wps", "file-report-orders", SchemeReport.Parse(Report()), null, null, SchemeReconciliation.Activity, "file-api:reconcile", "uae.wps.test-report");
+        var asked = new List<string?>();
+        var q = new BreakQueue(store, null, (tenant, scheme, report, ct) =>
+        {
+            asked.Add(report);
+            return Task.FromResult<JsonObject?>(new JsonObject { ["exception-request"] = "uae.wps.test-exception" });
+        });
+        var op = Operator("op-1", WpsRun.Tenant);
+        var list = await q.List(op);
+        string Id(string kind) => (string)list.First(b => (string?)b!["kind"] == kind)!["break"]!;
+        Assert.Equal(["explain", "exception-request"], list.First(b => (string?)b!["kind"] == "amount")!["offered"]!.AsArray().Select(x => (string)x!));
+        Assert.Contains("uae.wps.test-report", asked);
+        Assert.Equal(BreakQueue.NoOrderMessage, (await Assert.ThrowsAsync<ActionRefused>(() => q.Resolve(op, Id("amount"), "return", "return it"))).Code);
+        var r = await q.Resolve(op, Id("amount"), "exception-request", "the scheme reports 499.00 against 500.00");
+        Assert.Equal(("pending-consent", OperatorRoles.BankApprover), ((string?)r["status"], (string?)r["needs"]));
+        Assert.Empty(await BreakOrder.Pending(store));
+        Assert.Equal(403, (await Assert.ThrowsAsync<ActionRefused>(() => q.Consent(op, Id("amount"), true, "mine"))).Status);
+        // Refused: open again, and nothing to start.
+        await q.Consent(Operator("ap-1", WpsRun.Tenant, OperatorRoles.BankApprover), Id("amount"), false, "ask finance first");
+        Assert.Empty(await BreakOrder.Pending(store));
+        await q.Resolve(op, Id("amount"), "exception-request", "finance agrees");
+        var done = await q.Consent(Operator("ap-1", WpsRun.Tenant, OperatorRoles.BankApprover), Id("amount"), true, "checked");
+        Assert.Equal(("resolved", "uae.wps.test-exception"), ((string?)done["status"], (string?)done["order"]));
+        var pending = Assert.Single(await BreakOrder.Pending(store));
+        Assert.Equal(("amount", "uae.wps.test-exception"), ((string?)pending.Break["kind"], (string?)pending.Resolved["order"]!["message"]));
+        var doc = BreakOrder.Of(pending.Run, pending.Break, pending.Resolved);
+        Assert.Equal((BreakOrder.Format, "exception-request", "500", "499.00"), ((string?)doc["format"], (string?)doc["resolution"], ((string?)doc["expected"])?.TrimEnd('0').TrimEnd('.'), (string?)doc["reported"]));
+        Assert.Equal("to-start", (string?)(await q.List(op, all: true)).First(b => (string?)b!["kind"] == "amount")!["order"]!["state"]);
+        await BreakOrder.Record(store, pending.Run, (string)pending.Break["break"]!, false, new JsonObject { ["code"] = "frontdoor.NoActiveDistribution", ["why"] = "none active" });
+        Assert.Empty(await BreakOrder.Pending(store));
+        var shown = (await q.List(op, all: true)).First(b => (string?)b!["kind"] == "amount")!;
+        Assert.Equal(("refused", "frontdoor.NoActiveDistribution"), ((string?)shown["order"]!["state"], (string?)shown["order"]!["code"]));
+    }
+
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task A_scheme_report_is_matched_and_its_breaks_are_resolved_once_with_consent_where_they_change_the_system(StoreProvider p)
     {
         var (store, _) = await dbs.Pair(p);

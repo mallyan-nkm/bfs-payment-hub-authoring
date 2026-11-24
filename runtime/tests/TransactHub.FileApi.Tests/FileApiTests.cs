@@ -429,6 +429,42 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         Assert.Equal(("p.reconcile.scheme-report.v1", "P1D"), ((string?)JsonNode.Parse(run.DataJson)!["activity"], (string?)JsonNode.Parse(run.DataJson)!["period"]));
     }
 
+    /// <summary>
+    /// R-09-250 (owner's decision of 24 November 2026, Issue I-168): a break of a report may start a return, as the message the report's
+    /// reconcile disposition names, once a bank approver who did not ask consents; the File API starts it through its own intake and the
+    /// front door, from the break's order document, once. WPS declares no such message, so a test scheme release declares one.
+    /// </summary>
+    [Fact]
+    public async Task A_break_starts_a_return_through_the_front_door_once_a_bank_approver_consents()
+    {
+        var scheme = NextScheme(t => t.Replace("legs:\n",
+            "  - id: uae.wps.test-report\n    title: A test report\n    direction: in\n    confirmed: false\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: t.map.report-in.v1, period: P1D, resolutions: { return: uae.wps.test-break-return } }\n" +
+            "  - id: uae.wps.test-break-return\n    title: A return a break starts\n    direction: in\n    confirmed: false\n    disposition:\n      start: { kind: return, direction: inward, leg: uae.wps.wf.agent-payment-in.v2, refuseLeg: uae.wps.wf.inward-refuse.v1, intakeMap: t.map.break-order-in.v1 }\nlegs:\n"));
+        var r = await Make(scheme: scheme);
+        Assert.True((await r.Intake.Receive(A("uae.wps.test-report", "report-9.txt", "0000NOPAYMENT-9;10.00\n"u8.ToArray()))).Accepted);
+        var q = new TransactHub.Operations.BreakQueue(r.Store, null, TransactHub.Operations.BreakQueue.FromActiveDistribution(r.Store, Env));
+        TransactHub.Operations.OperatorIdentity Who(string sub, params string[] roles) => new(sub, sub, new Dictionary<string, IReadOnlySet<string>> { [Bank] = new HashSet<string>(roles) });
+        var op = Who("op-1", "Operator");
+        var b = (await q.List(op)).Single()!;
+        var id = (string)b["break"]!;
+        Assert.Equal(["explain", "return"], b["offered"]!.AsArray().Select(x => (string)x!));
+        Assert.Equal("ops.BreakNoOrderMessage", (await Assert.ThrowsAsync<TransactHub.Operations.ActionRefused>(() => q.Resolve(op, id, "exception-request", "the amount differs"))).Code);
+        Assert.Equal("pending-consent", (string?)(await q.Resolve(op, id, "return", "the scheme reports a credit we hold no payment for"))["status"]);
+        var starter = new BreakOrderStarter(r.Store, r.Intake, Env, Bank);
+        Assert.Equal(0, await starter.StartPending());
+        Assert.Equal("resolved", (string?)(await q.Consent(Who("ba-1", "BankApprover"), id, true, "agreed with finance (synthetic)"))["status"]);
+        Assert.Equal(1, await starter.StartPending());
+        Assert.Equal(0, await starter.StartPending());
+        var started = Assert.Single(r.Engines.Started);
+        Assert.Equal(("p.wf.inward.v2", "return"), (started.Route.Workflow, (string?)started.Route.Route["kind"]));
+        var call = r.Map.Calls.Single(c => c.Map == "t.map.break-order-in.v1");
+        var doc = JsonNode.Parse((string)call.Message["payload"]!)!;
+        Assert.Equal(("th-break-order/1", "return", id, "not-in-store"), ((string?)doc["format"], (string?)doc["resolution"], (string?)doc["break"], (string?)doc["breakKind"]));
+        var shown = (await q.List(op, all: true)).Single()!;
+        Assert.Equal(("started", started.Payment), ((string?)shown["order"]!["state"], (string?)shown["order"]!["payment"]));
+        Assert.Empty(shown["offered"]!.AsArray());
+    }
+
     [Fact]
     public async Task The_outbox_delivers_on_the_banks_binding_records_each_delivery_and_resends_the_kept_bytes()
     {

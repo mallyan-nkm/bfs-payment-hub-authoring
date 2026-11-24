@@ -489,6 +489,16 @@ for path, d in docs:
             mp = by_name.get(rec["map"])
             if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in":
                 err("L55", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
+            # L62 (R-09-250, owner's decision of 24 November 2026, Issue I-168): a report's break may start an order, by a message of
+            # its own scheme that the bank receives and that starts an order of that kind: a request for an exception, a return.
+            for res, want in (("exception-request", "request"), ("return", "return")):
+                om = (rec.get("resolutions") or {}).get(res)
+                if om is None:
+                    continue
+                target = ids.get(om)
+                start = ((target or {}).get("disposition") or {}).get("start") or {}
+                if not target or target["direction"] != "in" or start.get("kind") != want:
+                    err("L62", path, "%s's %s resolution names %s, which is no message of %s the bank receives that starts a %s" % (mid, res, om, d["scope"], want))
         cm = (m["disposition"].get("deliver") or {}).get("correlationMap")
         if cm:
             mp = by_name.get(cm)

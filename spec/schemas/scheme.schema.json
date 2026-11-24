@@ -213,6 +213,22 @@
                     "type": "string",
                     "pattern": "^P(\\d+D)?(T(\\d+H)?(\\d+M)?)?$",
                     "minLength": 3
+                  },
+                  "resolutions": {
+                    "description": "The messages of this scheme that start an order to resolve a break of this report (R-09-250, Issue I-168): exception-request names an inward message that starts a request (kind request, on p.wf.request.v1), return one that starts a return (kind return). Each is started from the break's order document (th-break-order/1) once a bank approver consents. A scheme that names none is not offered them (lint L62).",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "exception-request": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+                      },
+                      "return": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+                      }
+                    }
                   }
                 }
               },
