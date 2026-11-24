@@ -2133,6 +2133,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Move `p.post.accounting.v1` and the window gate's use by a binding into the platform module in a later platform release (the image then keeps no copy), or accept the copies and keep a test that each gives the same answers on the same cases.
 
+**Done, the second option for now (24 November 2026, R-09-215).** The copies stay, held to each other: `DuplicatedLogicTests` runs the image's and the platform module's posting window gate on every pair of sixteen starts and ends (valid, blank, malformed, overnight) at 39 times of the day, and the image's and the module's reading of the accounting template on full, minimal and incomplete parameters, refusals included, and expects the same answers. The move (the recommendation's first option, which this batch was asked to prefer) needs the same thing I-237 needs, a module that can read a binding in force and call it through the image's guarded HTTP: the image's posting gate checks the core-banking binding's posting hours, which a module cannot read today. That is Issue I-315. WPS's `PostReturn` reads only five of the template's values by their names and is not a copy of the template's reading; it stays.
+
 ## I-230. The native host's refusals have no entry in the error dictionary
 
 **Issue.** The native host refuses an attempt with a name of its own: `NotNative`, `NotInDistribution`, `DistributionUnknown`, `DistributionRemoved`, `NativeModuleRefused` and, since R-09-131 and R-09-132, `WrongDistribution` and `NotPinned`. None has an entry in the platform's error dictionary (`p.errors.platform.v1`), so no runbook covers them, and `ErrorDictionaryTests` does not look for them: it reads only `NativeFailure`, `StepFailure` and `AttemptFailed` codes. The change that made the last two kept the factory unchanged, so it could not add them.
@@ -2178,6 +2180,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** R-09-142 says platform code names no scheme. `TransactHub.Ports/EmployerRegister.cs` holds the adapters of `uae.wps.port.labour-ministry.v1`, and names that port, because the WPS native module reaches them through `TransactHub.Ports` (Issue I-220). Its default channel header (`WPS`) is gone: the channel is the bank's binding's setting (`channel`), set in each bank's binding. `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` lists this file as the one exception.
 
 **Recommendation.** Move the labour ministry's adapters into the WPS module (`TransactHub.Activities.Wps`) when the native contract gives a module what it needs to build a bound adapter (I-220), and drop the exception.
+
+**Not moved (24 November 2026): blocked on the native contract, Issue I-315.** The adapters (`simulator` and `gateway-rest`) need, from inside a module, the binding in force for the attempt (its adapter and settings), the image's guarded HTTP (circuit breaker, timeouts, R-09-156) and the resolution of the binding's credential reference. The native contract 1.1.0 gives a module none of these: its ports are answered by the image (`INativePorts`). Moving them needs a contract minor (1.2.0), which changes the version every distribution's manifest, the studio's module builds and their tests name, and was not safe to make in this batch beside the release of factory 1.20.0. The exception in `NeutralityTests` stays, with this issue.
 
 ## I-238. Other values of a UAE cluster in platform code
 
@@ -2473,6 +2477,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Since R-02-22 the debtor carries the CIF the channel declared (scheme CIF), but WPS's match of the corporate the party register found (`WpsCorporateMatch`, the source's `MatchCorporate`) compares the account only. The source compared a CIF, an account and an e-mail; the canonical model has no place for the uploader's e-mail, which is personal data, and the spec does not say whether the match needs it.
 
 **Recommendation.** Have the match compare the debtor's CIF organisation id with the register's CIF where both are known (a minor of the WPS module); and decide with the owner whether the e-mail is compared at all, and if so where it is read (the channel's identity, not the payment).
+
+## I-315. A native module cannot build a bound adapter of its own
+
+**Issue.** The labour ministry's adapters (I-237) and the posting window's use by a binding (I-227) stay in the image because a module, which references the native contract only (R-09-125), cannot read the binding in force for an attempt, call its endpoint through the image's guarded HTTP (circuit breaker, timeouts), or have the image resolve the binding's credential reference. Each image answer a module needs is a case of `INativePorts.Ask`, written in the image for one scheme's port.
+
+**Recommendation.** Release native contract 1.2.0 with bound ports: `INativeServices.BoundPorts.For(attempt, port)` giving the binding's adapter and settings, and `Send(attempt, binding, request)` that sends a request to the binding's base URL with its credential applied by the image and its breaker and timeouts, the failures as the contract's `TransientError`, `PortNotBound` and `SecretUnavailable`. Then move the labour ministry's adapters into the WPS module and `p.post.accounting.v1` with the posting window's check into the platform module, drop the image's copies, `NeutralityTests`' exception and `DuplicatedLogicTests`, and update the contract version wherever a manifest, a build or a test names it.
 
 ## Not done, and why
 
