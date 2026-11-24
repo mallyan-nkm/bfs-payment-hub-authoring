@@ -76,6 +76,9 @@ builder.Services.AddSingleton(sp => new InboxPoller(ports, sp.GetRequiredService
         try { return Inbox.Of(bindings.InForce(g.Key, FileTransferAdapters.Port, DateTimeOffset.UtcNow)); }
         catch (PortBindingException) { return []; }
     }).Concat(Inbox.Of(cfg)).ToList(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<ILoggerFactory>().CreateLogger("inbox"), cfg["TH_BANK"]));
+// The orders reconciliation breaks start (R-09-250, Issue I-168): only where the front door starts payments.
+if (frontDoor is not null)
+    builder.Services.AddSingleton(sp => new BreakOrderStarter(store, sp.GetRequiredService<FileIntake>(), environment, cfg["TH_BANK"] is { Length: > 0 } b ? b : null, sp.GetRequiredService<TimeProvider>()));
 if (cfg["FileApi:Worker"] != "off") builder.Services.AddHostedService<FileApiWorker>();
 await builder.Services.AddRuntimeAuth(cfg, secrets, FileApiAuth.Roles);
 builder.Services.AddTransactHubTelemetry("transacthub-file-api");

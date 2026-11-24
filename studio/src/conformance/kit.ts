@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { clone, contentHash } from '../core/canonical.js';
-import { addDuration, DEFAULT_CALENDAR, durationMs } from '../core/duration.js';
+import { addDuration, DEFAULT_CALENDAR, durationMs, type BusinessCalendar } from '../core/duration.js';
+import { businessCalendarIn } from '../core/reference.js';
 import { getPath } from '../core/paths.js';
 import { parseYaml, parseYamlAll } from '../core/yaml.js';
 import { Run, runInbound, runWorkflow, startInstance, type Instance, type RunConfig } from '../interp/interpreter.js';
@@ -240,7 +241,7 @@ export async function runScenario(env: StudioEnv, kit: KitContent, sc: any, expe
       if (!e?.replay) throw e;
       obs = replayObservation(expectedEntry);
     }
-    compareObservation(sc, expectedEntry, obs, res);
+    compareObservation(sc, expectedEntry, obs, res, scenarioCalendar(b));
   } catch (e: any) {
     res.error = String(e?.message ?? e);
   }
@@ -251,8 +252,18 @@ function replayObservation(exp: any): KitObservation {
   return { target: 'reference', instances: [{ label: 'root', trace: exp.expect ?? [], detail: exp.detail ?? [], releaseTrace: exp.expect ?? [], steps: [], attempts: exp.attempts ?? {}, ruleTraceSteps: [], engineStateKeys: [], startedAt: 0 }], messages: [], unmatched: exp.unmatched ?? 0, duplicates: exp.duplicates ?? 0, earlyKept: 0, durableInstances: exp.durableInstances ?? 0, startMs: 0 };
 }
 
+/**
+ * The business calendar a scenario's run counts (R-09-246, Issue I-291): the calendar tables of its documents and the store's, as
+ * the interpreter resolves them on the scenario's evaluation date, the bank's own first and its closing days included (R-09-183);
+ * Saturday and Sunday only where the scenario has no calendar.
+ */
+export function scenarioCalendar(b: BuiltScenario): BusinessCalendar {
+  const date = String(b.config.evaluationDate ?? '');
+  return businessCalendarIn(Object.values(b.documents), date) ?? DEFAULT_CALENDAR;
+}
+
 /** Compare a target's observation with the expected trace and checks (R-C-04). */
-export function compareObservation(sc: any, expectedEntry: any, obs: KitObservation, res: KitResult) {
+export function compareObservation(sc: any, expectedEntry: any, obs: KitObservation, res: KitResult, calendar: BusinessCalendar = DEFAULT_CALENDAR) {
   const root = obs.instances[0];
   if (!root) throw new Error('The scenario did not start');
   res.elapsed = (root.endedAt ?? root.startedAt) - root.startedAt;
@@ -265,7 +276,7 @@ export function compareObservation(sc: any, expectedEntry: any, obs: KitObservat
   res.checks.push({ what: 'trace', expected: res.expected, actual, passed: traceOk, ...(traceOk ? {} : { at: firstDiff >= 0 ? `entry ${firstDiff + 1}: expected ${res.expected[firstDiff]}, got ${actual[firstDiff] ?? 'nothing'}` : 'length' }) } as any);
   // R-05-38: the comparison includes the detail, the steps inside composite steps.
   if (expectedEntry?.detail) res.checks.push({ what: 'detail', expected: expectedEntry.detail, actual: root.detail, passed: JSON.stringify(expectedEntry.detail) === JSON.stringify(root.detail) });
-  if (!replay) checkExtras(sc, expectedEntry, obs, res);
+  if (!replay) checkExtras(sc, expectedEntry, obs, res, calendar);
   if (root.failed) res.notes!.push(`failed: ${root.failed}`);
   res.passed = res.checks.every((c) => c.passed);
 }
@@ -332,7 +343,7 @@ function equalWithFreeOrder(expected: string[], actual: string[], free?: number[
   return expected.every((x, i) => used.has(i) || x === actual[i]);
 }
 
-function checkExtras(sc: any, exp: any, obs: KitObservation, res: KitResult) {
+function checkExtras(sc: any, exp: any, obs: KitObservation, res: KitResult, calendar: BusinessCalendar) {
   const root = obs.instances[0];
   const add = (what: string, expected: any, actual: any, passed: boolean) => res.checks.push({ what, expected, actual, passed });
   const c = { ...(exp ?? {}), ...(sc.checks ?? {}) };
@@ -356,7 +367,8 @@ function checkExtras(sc: any, exp: any, obs: KitObservation, res: KitResult) {
     add('virtual elapsed', c.virtualElapsed, res.elapsed, res.elapsed === ms);
   }
   if (sc.checks?.virtualElapsedBusiness) {
-    const ms = addDuration(obs.startMs, sc.checks.virtualElapsedBusiness, DEFAULT_CALENDAR) - obs.startMs;
+    // Counted on the scenario's own calendar, as the run counts it (R-09-246, Issue I-291), not Saturday and Sunday only.
+    const ms = addDuration(obs.startMs, sc.checks.virtualElapsedBusiness, calendar) - obs.startMs;
     add('virtual elapsed on the business calendar', ms, res.elapsed, res.elapsed === ms);
   }
   if (c.unmatched !== undefined) add('unmatched messages', c.unmatched, obs.unmatched, obs.unmatched === c.unmatched);

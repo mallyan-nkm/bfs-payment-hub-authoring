@@ -489,6 +489,16 @@ for path, d in docs:
             mp = by_name.get(rec["map"])
             if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in":
                 err("L55", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
+            # L62 (R-09-250, owner's decision of 24 November 2026, Issue I-168): a report's break may start an order, by a message of
+            # its own scheme that the bank receives and that starts an order of that kind: a request for an exception, a return.
+            for res, want in (("exception-request", "request"), ("return", "return")):
+                om = (rec.get("resolutions") or {}).get(res)
+                if om is None:
+                    continue
+                target = ids.get(om)
+                start = ((target or {}).get("disposition") or {}).get("start") or {}
+                if not target or target["direction"] != "in" or start.get("kind") != want:
+                    err("L62", path, "%s's %s resolution names %s, which is no message of %s the bank receives that starts a %s" % (mid, res, om, d["scope"], want))
         cm = (m["disposition"].get("deliver") or {}).get("correlationMap")
         if cm:
             mp = by_name.get(cm)
@@ -750,6 +760,16 @@ for path, d in docs:
     if d.get("kind") == "activity" and impl.get("native") and impl.get("binding") not in ("script", "builtin"):
         err("L40", path, "%s says the native host implements it too, but its binding is %s; native: true needs a script or a builtin"
             % (d["name"], impl.get("binding")))
+# L40, since native contract 2.1.0 (R-09-282, Issues I-381, I-382): the runtime image answers no core-banking activity, so a platform
+# builtin of a service the platform module answers on the runtime (the accounting and reservation services) says so, `native: true`, and a
+# promotable distribution that carries it needs the platform module. A scheme's own builtin is Issue I-387.
+MODULE_SERVICES = {"accounting", "reservation"}
+for path, d in docs:
+    impl = d.get("implementation") or {}
+    platform = d.get("name", "").split(".")[0] == "p" or re.match(r"^[a-z0-9-]+\.p\.", d.get("name", "")) is not None
+    if d.get("kind") == "activity" and platform and impl.get("binding") == "builtin" and impl.get("service") in MODULE_SERVICES and not impl.get("native"):
+        err("L40", path, "%s is a builtin of the %s service, which the platform module answers on the runtime and the image does not; it says native: true"
+            % (d["name"], impl.get("service")))
 
 # ------------------------------------------------------- factory packs
 # L34 the factory holds only the packs its inventory lists (R-12-11): every folder under factory/
@@ -959,7 +979,9 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
 # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration; the feed numbers its releases as the
 # patches after the bank's newest, so the two lines of numbers never meet. A configuration release in configuration-sets/ is a major
 # or a minor (x.y.0), as is every configuration set the factory's examples hold.
-FX_PORT, FX_RATES = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates"
+# L60 (R-09-247, owner's decision of 24 November 2026, Issue I-278): a bank on the feed requires each rate's asOf, so a rate typed by
+# hand is refused like a stale one: its configuration (the same sets as L52) sets p.enrich.fx-rate.v1#requireAsOf to true.
+FX_PORT, FX_RATES, FX_REQUIRE = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates", "p.enrich.fx-rate.v1#requireAsOf"
 
 
 def release_key(r):
@@ -992,6 +1014,8 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
         for name, d in sets:
             if any(isinstance(v, dict) and v.get("parameter") == FX_RATES for v in d.get("values") or []):
                 err("L52", "%s/%s" % (where, name), "sets %s, but the bank binds %s: its rates come from the feed, and typed rates in a newer release would win over them" % (FX_RATES, FX_PORT))
+            if not any(isinstance(v, dict) and v.get("parameter") == FX_REQUIRE and v.get("value") is True for v in d.get("values") or []):
+                err("L60", "%s/%s" % (where, name), "does not set %s to true, but the bank binds %s: a rate typed by hand, with no asOf, would never be refused as stale" % (FX_REQUIRE, FX_PORT))
 
 for path, d in docs:
     if d.get("kind") == "configuration-set" and d.get("release") and not str(d.get("release")).endswith(".0"):
@@ -1024,7 +1048,12 @@ OPS_PERSONAL = {"bulk.debtorName", "bulk.initiatingParty.id", "bulk.debtorAccoun
 OPS_HOLDS = {"approve": ("p.hold.approval.v1", "approved"), "decline": ("p.hold.approval.v1", "declined"),
              "release": ("p.hold.repair.v1", "released"), "reject": ("p.hold.repair.v1", "rejected")}
 # R-05-66, R-05-67: the dials the operations console reads from a view, and the attributes of a kept document a report may show.
-OPS_DIALS = {"tatLimit", "unmaskWindow", "retentionPeriod"}
+OPS_DIALS = {"tatLimit", "unmaskWindow", "retentionPeriod", "escalateAfter", "escalateTo"}
+# R-05-107: the escalation dials, the platform's only; escalateTo is a code, the role an item escalates to.
+OPS_CODE_DIALS = {"escalateTo"}
+# L61 (R-05-107, owner's decision of 24 November 2026, Issue I-185): escalation after a time is off by default, and names the role it
+# escalates to among the tenant's roles that work items: a view that declares escalateAfter declares escalateTo, and the reverse.
+OPS_ESCALATION_ROLES = {"Supervisor", "BankApprover"}
 OPS_SCHEME_DIALS = {"tatLimit", "retentionPeriod"}
 OPS_DOCUMENT_ATTRS = {"fileName", "at", "size", "source", "direction", "signed"}
 STEP_SRC = re.compile(r"^step:(?P<path>[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]+)*?)\.(?P<attr>outcome|reasonCode|at|attempt|activity|instance|status(\..+)?|writes\..+)$")
@@ -1252,8 +1281,18 @@ for path, d in docs:
     # R-05-66: a view declares only the dials the operations console reads, each a duration.
     for k, decl in (d.get("parameters") or {}).items():
         allowed = OPS_DIALS if not scheme_scope else OPS_SCHEME_DIALS
-        if k not in allowed or decl.get("type") != "duration":
-            err("L38", path, "parameter %s is not a dial the operations console reads (%s, each a duration)" % (k, ", ".join(sorted(allowed))))
+        if k not in allowed or decl.get("type") != ("code" if k in OPS_CODE_DIALS else "duration"):
+            err("L38", path, "parameter %s is not a dial the operations console reads (%s, each a duration, escalateTo a code)" % (k, ", ".join(sorted(allowed))))
+    pars = d.get("parameters") or {}
+    if "escalateAfter" in pars or "escalateTo" in pars:
+        after, to = pars.get("escalateAfter") or {}, pars.get("escalateTo") or {}
+        if not after or not to:
+            err("L61", path, "declares %s without %s: an escalation after a time names the role it escalates to" % (("escalateAfter", "escalateTo") if after else ("escalateTo", "escalateAfter")))
+        if after and str(after.get("default")) not in ("P0D", "PT0S"):
+            err("L61", path, "escalateAfter defaults to %s: escalation after a time is off until the bank sets it (P0D)" % after.get("default"))
+        roles = set(((to.get("bounds") or {}).get("allowed")) or [])
+        if to and (not roles or not roles <= OPS_ESCALATION_ROLES or to.get("default") not in roles):
+            err("L61", path, "escalateTo must allow only roles that work items (%s), its default among them" % ", ".join(sorted(OPS_ESCALATION_ROLES)))
 # ------------------------------------------------- published releases never change
 # L41 (R-11-35, R-11-36) every file a seed published is recorded, with the SHA-256 of its text, in its change set's ledger
 # (content-configurations/change-sets/ledger/<id>.yaml), and still has that text: a published release is never edited. A path
@@ -1566,6 +1605,7 @@ for path, d in docs:
 
 # L44 (R-11-39) the parameter contract: every parameter declares its type and a default, and the default lies within its
 # own bounds; a distribution carries every dial with its type and bounds, and a configuration release is checked against it.
+DEFAULT_CURRENCIES = {}
 for path, d in docs:
     params = d.get("parameters")
     if not isinstance(params, dict):
@@ -1585,6 +1625,20 @@ for path, d in docs:
                 err("L56", path, "%s is marked a ledger account, but only an activity's parameter names one" % name)
             if decl["type"] not in ("string", "code"):
                 err("L56", path, "%s is marked a ledger account, but it is of type %s, not a string or a code" % (name, decl["type"]))
+        # L56 (R-02-24; the owner's decision of 24 November 2026) a default currency is a country cluster's: a code parameter of an
+        # artefact in a cluster's platform scope (<cluster>.p), an ISO 4217 code by its bounds and its default; one per cluster. The
+        # platform p names no currency.
+        if decl.get("role") == "default-currency":
+            sc = scope_of(d.get("name") or "")
+            if not re.match(r"^[a-z0-9]+\.p$", sc or ""):
+                err("L56", path, "%s is marked a default currency, but only a country cluster's platform scope (<cluster>.p) declares one" % name)
+            if decl["type"] != "code" or (decl.get("bounds") or {}).get("pattern") != "^[A-Z]{3}$" or not re.match(r"^[A-Z]{3}$", str(decl.get("default"))):
+                err("L56", path, "%s is marked a default currency, but it is not a code bound to an ISO 4217 code (pattern ^[A-Z]{3}$) with such a default" % name)
+            DEFAULT_CURRENCIES.setdefault(sc, []).append(name)
+
+for sc, names in sorted(DEFAULT_CURRENCIES.items()):
+    if len(names) > 1:
+        err("L56", "factory/%s" % sc, "the cluster declares %d default currencies (%s): it declares one" % (len(names), ", ".join(sorted(names))))
 
 # L49 (R-01-25) a reference table: its key and columns agree, its editions run in date order, every row fits its columns,
 # a column that references another table holds that table's keys, and a key is not repeated within an edition.

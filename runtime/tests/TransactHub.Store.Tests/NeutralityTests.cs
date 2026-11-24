@@ -109,18 +109,39 @@ public sealed class NeutralityTests
         // A simulator's or a file bulk's currency is its binding's required setting: a binding that names none is refused.
         var b = new TransactHub.Ports.PortBinding("t", "p.port.core-banking.v1", "simulator", DateTimeOffset.UnixEpoch, new Dictionary<string, string>());
         Assert.Contains("'currency'", Assert.Throws<TransactHub.Ports.PortBindingException>(() => new TransactHub.Ports.SimulatedCoreBanking(b).Balance("", "1").GetAwaiter().GetResult()).Message);
-        // R-11-104: every bank folder's core-banking binding names the currency its accounts are kept in.
+        // R-11-104, R-02-24: every bank's core-banking binding has the currency its accounts are kept in, its own or, where it names
+        // none, the default of its country cluster (uae.p's AED), which its configuration release gives it; never the platform's.
         var banks = Path.Combine(root, "..", "content-configurations", "banks");
         foreach (var dir in Directory.EnumerateDirectories(banks).Order(StringComparer.Ordinal))
         {
-            var file = Path.Combine(dir, "core-banking.yaml");
-            if (!File.Exists(file)) continue;
-            var bound = new TransactHub.Ports.PortBindings();
-            bound.Add(File.ReadAllText(file));
+            if (!File.Exists(Path.Combine(dir, "core-banking.yaml"))) continue;
             var tenant = Path.GetFileName(dir);
+            var bankCurrency = BankCurrency.Of(dir);
+            Assert.Equal("AED", bankCurrency);
+            var bound = TransactHub.Ports.PortBindings.FromDirectory(dir, bankCurrency);
             foreach (var at in new[] { DateTimeOffset.Parse("2026-11-24T00:00:00Z"), DateTimeOffset.Parse("2027-06-01T00:00:00Z") })
-                Assert.True(bound.InForce(tenant, "p.port.core-banking.v1", at).Settings.ContainsKey("currency"), $"{tenant}'s core-banking binding names no currency");
+                Assert.True(bound.InForce(tenant, "p.port.core-banking.v1", at).Settings.ContainsKey("currency"), $"{tenant}'s core-banking binding has no currency");
         }
+    }
+
+    [Fact]
+    public void The_default_currency_is_the_country_clusters_a_bank_may_set_its_own_and_the_platform_names_none()
+    {
+        // R-02-24 (owner's decision of 24 November 2026): the cluster declares it, by role; the platform's packs declare none.
+        var factory = Path.Combine(Root(), "..", "spec", "factory");
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(factory, "p"), "*.yaml", SearchOption.AllDirectories))
+            Assert.DoesNotContain("role: default-currency", File.ReadAllText(f));
+        Assert.Contains("role: default-currency", File.ReadAllText(Path.Combine(factory, "uae.p", "activities", "uae.p.enrich.default-currency.v1.yaml")));
+        // A binding that names its own currency keeps it; one that names none takes the bank's default; a file bulk's is localCurrency.
+        var own = new TransactHub.Ports.PortBinding("t", "p.port.core-banking.v1", "gateway-rest", DateTimeOffset.UnixEpoch, new Dictionary<string, string> { ["currency"] = "USD" });
+        Assert.Equal("USD", TransactHub.Ports.PortBindings.WithDefaultCurrency(own, "AED").Settings["currency"]);
+        var none = own with { Settings = new Dictionary<string, string>() };
+        Assert.Equal("AED", TransactHub.Ports.PortBindings.WithDefaultCurrency(none, "AED").Settings["currency"]);
+        Assert.Equal("AED", TransactHub.Ports.PortBindings.WithDefaultCurrency(none with { Adapter = "file-bulk" }, "AED").Settings["localCurrency"]);
+        // A bank with no cluster default and no value of its own gets none, and a core banking that needs one refuses.
+        var empty = Directory.CreateTempSubdirectory("th-bank-").FullName;
+        try { Assert.Null(BankCurrency.Of(empty)); }
+        finally { Directory.Delete(empty, true); }
     }
 
     [Fact]

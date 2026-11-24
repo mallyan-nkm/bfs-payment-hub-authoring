@@ -56,8 +56,8 @@ Generated from `factory/inventory.yaml`.
 | Port | 15 | `p.port.channel.v1`, `p.port.core-banking.v1`, `p.port.decryption.v1`, `p.port.encryption.v1`, `p.port.event-stream.v1`, `p.port.facts-out.v1`, `p.port.file-transfer.v1`, `p.port.fraud.v1`, `p.port.fx-rates.v1`, `p.port.liquidity.v1`, `p.port.notification.v1`, `p.port.operations-queue.v1`, `p.port.party-register.v1`, `p.port.payment-record.v1`, `p.port.sanctions.v1` |
 | Simulator | 15 | `p.sim.channel.v1`, `p.sim.core-banking.v1`, `p.sim.decryption.v1`, `p.sim.encryption.v1`, `p.sim.event-stream.v1`, `p.sim.facts-out.v1`, `p.sim.file-transfer.v1`, `p.sim.fraud.v1`, `p.sim.fx-rates.v1`, `p.sim.liquidity.v1`, `p.sim.notification.v1`, `p.sim.operations.v1`, `p.sim.party-register.v1`, `p.sim.payment-record.v1`, `p.sim.sanctions.v1` |
 | Workflow | 8 | `p.seg.check-and-screen.v1`, `p.sub.await-posting-window.v1`, `p.wf.commercial.v1`, `p.wf.corporate.v1`, `p.wf.inward.v2`, `p.wf.refund-out.v1`, `p.wf.refund.v1`, `p.wf.request.v1` |
-| Test | 21 | `P-CHG-001`, `P-CHG-002`, `P-DEC-001`, `P-DEC-002`, `P-ENC-001`, `P-ENC-002`, `P-FX-001`, `P-FX-002`, `P-FX-003`, `P-FX-004`, `P-FX-005`, `P-POST-001`, `P-POST-002`, `P-POST-003`, `P-POST-004`, `P-REG-001`, `P-REG-002`, `P-REG-003`, `P-REG-004`, `P-RES-001`, `P-RES-002` |
-| Total | 104 | |
+| Test | 23 | `P-CHG-001`, `P-CHG-002`, `P-DEC-001`, `P-DEC-002`, `P-ENC-001`, `P-ENC-002`, `P-FX-001`, `P-FX-002`, `P-FX-003`, `P-FX-004`, `P-FX-005`, `P-FX-006`, `P-FX-007`, `P-POST-001`, `P-POST-002`, `P-POST-003`, `P-POST-004`, `P-REG-001`, `P-REG-002`, `P-REG-003`, `P-REG-004`, `P-RES-001`, `P-RES-002` |
+| Total | 106 | |
 <!-- /INVENTORY:p -->
 
 ## D.5 Artefacts in `uae.p`
@@ -65,12 +65,13 @@ Generated from `factory/inventory.yaml`.
 <!-- INVENTORY:uae.p -->
 | Kind | Count | Artefacts |
 | --- | --- | --- |
-| Activity | 3 | `uae.p.enrich.business-date.v1`, `uae.p.enrich.participant.v1`, `uae.p.validate.iban.v1` |
+| Activity | 4 | `uae.p.enrich.business-date.v1`, `uae.p.enrich.default-currency.v1`, `uae.p.enrich.participant.v1`, `uae.p.validate.iban.v1` |
 | Rule | 5 | `uae.p.rule.currency-aed.v1`, `uae.p.rule.iban-checksum.v1`, `uae.p.rule.iban-country.v1`, `uae.p.rule.iban-length.v1`, `uae.p.rule.routing-code-format.v1` |
 | Ruleset | 1 | `uae.p.ruleset.iban.v1` |
 | Port | 2 | `uae.p.port.calendar.v1`, `uae.p.port.participant-directory.v1` |
 | Simulator | 2 | `uae.p.sim.calendar.v1`, `uae.p.sim.participant-directory.v1` |
-| Total | 18 | |
+| Test | 3 | `UAEP-CUR-001`, `UAEP-CUR-002`, `UAEP-CUR-003` |
+| Total | 22 | |
 <!-- /INVENTORY:uae.p -->
 
 ## D.6 Open points

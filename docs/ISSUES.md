@@ -1648,6 +1648,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **(1) Done (24 November 2026, R-02-22).** The debtor's organisation id holds its establishment id (scheme MOL, R-12-27), so its CIF is a further organisation id: the canonical model gives a party `otherOrganisationIds[]` (Pty/Id/OrgId/Othr, repeated), and the salary file's intake map 1.5.0 (factory 1.20.0, `studio/scripts/uae.wps.map.sif-in.v1@1.5.0.ts`) writes the CIF the channel declared at upload (`# cif:`) there with scheme CIF. The store keeps every organisation id of a party as its OrgId/Othr (`CanonicalMapper`, which kept none before, so the MOL id is now in the store too). The runtime's match of the corporate still compares the account only: comparing the CIF and the e-mail is the source's `MatchCorporate`, whose e-mail the model does not carry (Issue I-314). (2) to (4) stay open.
 
+**(1) Done in full (24 November 2026, R-02-23, R-09-248).** The match compares the CIF and the e-mail where both are known, and the e-mail is the debtor's `contactDetails.emailAddress` (Issue I-314). (2) to (4) stay open.
+
 ## I-154. One runtime serves one bank: what the runtime still allows for several
 
 **Issue.** The owner decided on 23 November 2026 that the runtime is not multi-tenant: one runtime serves one bank, and it must be impossible to deploy DIB's package in ADIB. Until then the runtime stored a distribution, a configuration release, a workflow package exported for a tenant, a payment's pin, a kept file, a branch's configuration sets and a backup for any bank a caller had a role in. Per-tenant role grants (R-06-28) let one person hold roles in several banks of one runtime.
@@ -1800,6 +1802,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Owner's decision (24 November 2026):** accepted. Build the resolutions as recommended: a break may start an exception request on `p.wf.request.v1` or a return, each with the bank approver's consent where it changes the system. To build in wave 7.
 
+**Done (24 November 2026, R-09-250).** A break may be resolved by `exception-request` or `return`, each waiting for a bank approver's consent (`BreakQueue`). The scheme's report names the message that starts each (`reconcile.resolutions` in the scheme manifest, lint L62, mutation M107); the console offers only those it names. On consent the File API's `BreakOrderStarter` starts the order once, through its own intake and front door, from the break's order document (`th-break-order/1`), and records `order-started` or `order-refused` on the run's chain; the break queue shows it. WPS names no such message, so no WPS break is offered either yet (Issue I-372).
+
 ## I-169. The Flowable production black-box test expected a minute the run does not keep
 
 **Issue.** `studio/test/blackbox/e2e-wps-flowable-production.test.ts` ("on SqlServer: settles in real time ...") looked for the binding's timer line with fixed minutes: `placed at 2026-11-17T06:02:..`, written `2026-11-18T06:00:..`. Business time is the wall clock shifted to 06:00 on the plan's evaluation date, so those minutes hold only while the acknowledgement wait starts within the first wall minute of the run; on a slower run (SQL Server's journal writes, I-137, or a loaded machine) the wait starts later, both minutes move, and the line no longer matches although the binding placed it. The binding's code (`PlaceTimers`) places the timer as specified: two minutes after the wait began, from the bank's value, not the written day. Run again here (23 November 2026) both cases passed with the old pattern too (the waits began at 06:00:10 and 06:00:07), so the failure was not reproduced; the only paths that leave no line at all are a reschedule the server refuses and a timer already at its due, neither seen.
@@ -1880,6 +1884,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Decide with each bank's operations whether an item escalates by itself after a time (a dial of the platform's view) and to whom, and project the queue into the read model when a bank's open items pass a thousand.
 
 **Owner's decision (24 November 2026):** accepted. Escalation after a time is a dial of the platform's view, off by default, with the role it escalates to; each bank's operations sets it. To build in wave 7.
+
+**Done (24 November 2026, R-05-107).** `p.view.operations.v1` 1.8.0 (factory 1.22.0) declares `escalateAfter` (P0D, off) and `escalateTo` (Supervisor or BankApprover, Supervisor by default); lint L61 holds both (mutations M105, M106). The operations host's sweep (`WorkEscalation`, every `Operations:EscalationSweepSeconds`, 60 by default) escalates an item that waited past the bank's limit, counted on the bank's business calendar as the turnaround is, once, by itself, to that role, marked automatic; only a person with that role takes it, and the work queue says so ("Escalated to bank approvers (level 1), after waiting too long"). Still open from this issue: (2) to (4) above, and named teams or levels beyond the one role.
 
 ## I-186. A bank's own reference table built a distribution, not a configuration release
 
@@ -2209,6 +2215,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-09-185, R-09-187, R-11-104).** No platform or engine host code gives `AED` as a default: a currency is the payment's own or its batch's (`CanonicalMapper.ToPayment` takes the batch's), the caller's (the channel's charges preview now needs `currency`), or a binding's required setting (`currency` of the core banking simulator and of a gateway whose reply names none, `localCurrency` of the file bulk adapter, each by `PortBinding.Required`); a posting with no currency is refused (`BusinessReject`). `Money.Aed` is gone. Each bank folder's core-banking binding names its currency (`currency: AED`, the bank's setting). `NeutralityTests.No_platform_or_engine_host_code_defaults_a_currency` holds the platform's code to it and every bank folder's binding. `deploy/laptop/bin/run-pinned.mts` reads the bank's values from the release API (`GET /values`) as of the payment's date and gives them to the run, the distribution's own configuration set giving its bindings, and it needs its caller to name the message and the file; `LaptopDeploymentTests.The_one_off_run_reads_the_values_in_force_from_the_release_API_and_names_its_message`. The WPS module and the test bench's WPS data builder keep the scheme's currency, which is theirs.
 
+**Changed (24 November 2026, R-02-24; owner's decision of 24 November 2026: "the currency default should be by country").** The default currency is the country cluster's: `uae.p.enrich.default-currency.v1#currency`, AED, marked `role: default-currency` and bound to an ISO 4217 code (lint L56); a bank of the cluster inherits it and may set its own value. The platform still names none. The front door (the studio's, the deploy runner's and the runtime's `DefaultCurrency`) gives it to a payment that names no currency after its intake map, and the canonical checks still refuse one that ends with none; a bank's configuration release gives it to a core-banking binding that names none (`withDefaultCurrency`). So the five bank folders' `currency: AED` lines, which only repeated the cluster's default, are gone; a bank whose accounts differ names its own. The bank's cluster is the one its lock file depends on (Issue I-373 for what is left).
+
 ## I-239. An activation that loses a race is refused, not tried again
 
 **Issue.** Two activations of one bank and environment at once cannot both win (R-09-137): the store's unique key on the activation's number refuses the second, as `distribution.ActivationRaced`, and nothing of it is recorded. The service console shows the refusal to the bank approver who consented, whose action then fails; the person must ask again. A workflow package's dated activations (`ReleaseRegistry.Activate`) are numbered again and tried up to five times instead, as they are not a switch-over.
@@ -2353,6 +2361,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Owner's decision (24 November 2026):** accepted. A bank on the feed sets `requireAsOf`, so a hand-typed rate with no `asOf` is refused like a stale one. To build in wave 7.
 
+**Done (24 November 2026, R-09-247).** `p.enrich.fx-rate.v1` 1.3.0 (factory 1.22.0) declares `requireAsOf` (boolean, default false); with it a rate with no `asOf` is refused like a stale one: the line is no-rate, the order names the pair in `facts.fx.undated` with the code `fx.RateUndated` (`scripts/p.enrich.fx-rate.v1@1.3.0.ts` and the native `EnrichFxRate`, tests P-FX-006 and P-FX-007 on both). The operations console's rates status shows such a rate as stale (`FxRateStatus`). The four real banks bind the feed, so each one's configuration set sets it from 24 November 2026 (adib, enbd and fab 1.9.0, dib 1.10.0), and lint L60 refuses a bank on the feed that does not (mutation M104). A factory test may now set its target's parameters (`given.parameters`), on the studio and in `PlatformNativeTests`.
+
 ## I-279. Releasing a suspect payment needs no second approver
 
 **Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
@@ -2415,11 +2425,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Count `virtualElapsedBusiness` on the scenario's calendar (`businessCalendarIn` over the scenario's documents and the store's tables, as the run counts it).
 
+**Done (24 November 2026, R-09-246).** The kit counts `virtualElapsedBusiness` on the scenario's own calendar (`scenarioCalendar` in `studio/src/conformance/kit.ts`: `businessCalendarIn` over the scenario's documents and the store's calendar tables, on its evaluation date), for every target, since every engine's runner compares through `runScenario`. CK-AWAIT-08 now checks one business day over the bank's holiday, which is four plain days.
+
 ## I-292. The trusted signers of a bank do not show what each key may sign
 
 **Issue.** R-09-184 lets a trusted signer name its kinds and scope. The service console shows the trusted keys and their rotation, not their kinds or scope, and no laptop or bank folder holds the feed's entry: each installation adds it by hand to the document `TH_TRUSTED_SIGNERS` names.
 
 **Recommendation.** Show each key's kinds and scope on the service console's trust page, and have the rotation action ask for them, with the feed's key offered as `kinds: [configuration]`, `scope: { feed: fx-rates }`.
+
+**Done (24 November 2026, R-09-249).** The service console has a Trust page (`GET /service/api/trust`, `TrustSettings`): each key with its state, what it may sign (its kinds, or every kind) and its scope; and, where the host runs the rates feed, the feed's own key (the public half of `Service:FxRates:SigningKeyRef`) and whether it is trusted for the feed. `rotate-trusted-key` asks for the new key's kinds and scope, never widens a key it leaves them out for, and with `feed: fx-rates` adds the feed's own key as `kinds: [configuration]`, `scope: { feed: fx-rates }`, no PEM pasted (target `none` retires nothing; the page offers it as "Trust the feed's key", retiring the feed's key before it). Each waits for a bank approver's consent. The laptop's and each bank's installation now add the feed's entry from the console instead of by hand; the laptop stack itself is not changed here (Issue I-370).
 
 ## I-293. The scheme's other sends still read no encryption fact
 
@@ -2572,6 +2586,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the match compare the debtor's CIF organisation id with the register's CIF where both are known (a minor of the WPS module); and decide with the owner whether the e-mail is compared at all, and if so where it is read (the channel's identity, not the payment).
 
+**Done (24 November 2026, R-09-248, R-02-23; owner's decision of 24 November 2026, docs/OWNER-ACTIONS.md A8).** The match compares the debtor's organisation id of scheme CIF with the register's `cif` (114) and the debtor's contact e-mail with the register's `emails` (165), each where both are known (`WpsCorporateMatch`). The e-mail has a place in the canonical model: a party's `contactDetails.emailAddress` (Pty/CtctDtls/EmailAdr), personal data, kept in the payment record and never in a step's facts; the salary file's intake map 1.6.0 (factory 1.22.0) writes the one the channel declared at upload (`# email:`). A channel that declares neither is matched on the account only, as before.
+
 ## I-315. A native module cannot build a bound adapter of its own
 
 **Issue.** The labour ministry's adapters (I-237) and the posting window's use by a binding (I-227) stay in the image because a module, which references the native contract only (R-09-125), cannot read the binding in force for an attempt, call its endpoint through the image's guarded HTTP (circuit breaker, timeouts), or have the image resolve the binding's credential reference. Each image answer a module needs is a case of `INativePorts.Ask`, written in the image for one scheme's port.
@@ -2668,6 +2684,25 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Recommendation.** Load the distributions that can take attempts when the host starts, before an attempt asks.
 
 **Done (24 November 2026, R-09-122).** The native host's refresh, which already unloads removed distributions, also loads each distribution active or draining in some environment, once, and its first tick comes as the host starts (`NativeModules.Preload`, `runtime/src/TransactHub.Native/NativeModules.cs`); a refusal is left to the attempt that asks. `SideBySideTests.A_host_that_starts_loads_the_active_distribution_before_any_attempt` failed before. The host's health still answers before the load ends; a recommendation for a readiness that waits for it stays open.
+## I-370. The laptop stack runs no rates feed, so its trust page offers no feed key
+
+**Issue.** The service console's trust page offers the rates feed's own key, and `rotate-trusted-key` adds it without hand editing (R-09-249), on a host that runs the feed (`Service:FxRates:SigningKeyRef`). The laptop's service host sets no feed signing key and its bank binds no `p.port.fx-rates.v1`, so on the laptop the page says the host runs no feed, and a laptop shows none of the feed's path end to end. The laptop stack was not changed in this wave: it was in use for a recording.
+
+**Recommendation.** Give the laptop's service host a feed signing key made at build, as `build.sh` makes the module signing key (kept beside it, never in a file of the repository), bind the rates port to its simulator in the laptop bank's bindings, and have the insert-only test trust the feed's key through the action, so the laptop shows the whole path.
+
+## I-371. Whether re-screening a payment needs a second approver
+
+**Issue.** `p.view.operations.v1` offers `re-screen` to an Operator with remarks and no second approver, as it did since release 1.3.0; the spec is silent on whether it should need one. Pause and resume now take the same role and no second approver either (R-05-106). A re-screen runs the screening steps again on a running payment: it can only hold or refuse the payment, never release it, because a hold it opens is decided by the hold's own action, with that action's approvals (a suspect payment's release needs a supervisor's, R-05-94). Asking a second approver for it would slow the screening team without guarding money.
+
+**Recommendation.** Keep `re-screen` without a second approver, and say so in the spec beside R-05-106 once the owner agrees; if a bank's compliance asks for one, the view's action takes `secondApprover: Supervisor` in a minor release, with no code change.
+
+**Owner's decision (24 November 2026):** no. Re-screening a payment needs no second approver: it only checks again and decides nothing.
+
+## I-372. WPS names no message that starts a break's exception request or return
+
+**Issue.** A break may start an exception request or a return by the message the scheme's report names for it (R-09-250). WPS declares no report (the Central Bank gives no layout, Issue I-164) and no inward message that starts a request or a return for a break, with an intake map that reads the break's order document. So no WPS break is offered either resolution; an installation that names a report of its own (`FileApi:Reports:<message>:Scheme`) has no disposition to name them in.
+
+**Recommendation.** Ask the scheme operator, with the reconciliation layout (C in `docs/OWNER-ACTIONS.md`), how a bank raises an exception or returns funds for a line it disputes; then add the report and those messages, with intake maps that read `th-break-order/1`, in a minor of the WPS scheme. Do not write them before the answer: they would be scheme facts.
 
 ## I-380. `native.ContractUnsupported` has no entry in the error dictionary yet
 
@@ -2705,17 +2740,47 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** In the next platform release, say in the activity that the runtime's platform module implements it (`implementation.native: true` beside `binding: builtin`, with lint L40 extended to take it), and drop `MODULE_BUILTINS`. Until then a studio that builds promotable distributions sets `TH_NATIVE_MODULES`, as the laptop and every bank's studio already do.
 
+**Done (24 November 2026, R-09-282, factory 1.23.0).** `p.post.accounting.v1` 1.3.0 says `implementation.native: true` beside `binding: builtin`, and so do the four activities I-382 moved (1.1.0). Lint L40 takes it both ways, in `tools/validate.py` and the studio's `checks.ts`: `native: true` goes with a script or a builtin, and a platform builtin of a service the platform module answers and the image does not (`accounting`, `reservation`) says `native: true` (mutations M109, M110). WPS's own posting is Issue I-387. `MODULE_BUILTINS` and `isModuleBuiltin` are gone: the studio reads the modules a distribution needs from `isNative` alone, and refuses a promotable distribution without them (`studio/test/native-modules.test.ts`, "builds a promotable distribution without MODULE_BUILTINS"; `studio/test/checks.test.ts`, "a builtin a native module answers says so").
+
 ## I-382. The reservation and the reversal stay in the image, gated by the platform module
 
 **Issue.** The image still answers `p.reserve.funds.v1`, `p.reserve.release.v1`, `p.post.reverse.v1` and `p.post.verify.v1` (the builtin reservation service and the posting's reversal and check). They call core banking, so they ask the gate the platform module contributes (R-09-264); in a table with no platform module (a development host whose `TH_NATIVE_DEV_MODULES` names none) a core-banking binding with a posting window is refused for them. The image names the two settings of a window (`CoreBankingCalls.GateSettings`) only to refuse that case.
 
 **Recommendation.** Move these four into the platform module at its next release too, with a balance enquiry on `INativeCoreBankingBinding` (a contract minor, 2.1.0), so that the image keeps the core-banking adapters and no core-banking activity; then the image need not name the window's settings at all.
 
+**Done (24 November 2026, native contract 2.1.0, R-09-276 to R-09-279).** `INativeCoreBankingBinding.Balance(branch, account)` gives a `NativeBalance`. `ReserveFunds`, `ReleaseReservation`, `ReversePosting` and `VerifyPosting` are the platform module's (`TransactHub.Activities.Platform.Native/CoreBankingActivities.cs`), on the image's core banking; `PlatformActivities`, `CoreBankingActivity` and `CoreBankingCalls.GateSettings` are gone from the image (`Posting/CoreBankingCalls.cs` keeps the calls). The image names no setting of a window: it calls core banking only through the gate a module contributed, and with none every call is refused (`PortNotBound`), which is stricter than before (a binding with no window was called ungated; Issue I-386). The runtime takes 2.0 and 2.1 modules; a distribution's `native.contract` is the latest minor of its modules (`NativeAssemblies.Check`), and a 2.0 runtime refuses a 2.1 module (`native.ContractUnsupported`; `NativeContract.Supports(version, own)`). Tests: `NativeInstallTests.The_platform_modules_reservation_posting_and_reversal_run_from_the_build_the_store_keeps` (SQL Server and PostgreSQL), `ContractTwoOneTests` (a 2.0 module beside a 2.1 one; the reservation, posting and reversal served from the distribution's module, none by the image), `NoCopyInTheImageTests`, `CoreBankingPostingTests`. A distribution built before this change does not run the four on a 2.1 image (Issue I-384).
+
 ## I-383. Bound ports carry JSON over HTTP only
 
 **Issue.** `INativeBoundPorts.Send` sends a JSON body and reads any body back; it is what the labour ministry's register needs. A scheme port on another wire (a file over SFTP, a message queue, a SOAP service with a signed envelope) still needs an adapter in the image, reached through `INativePorts` (a kept file on a port bound to `file-transfer` already is).
 
 **Recommendation.** When a scheme's port needs another wire, add it to the bound ports as a contract minor (a body of bytes with its content type, then a file put through the binding's transfer), rather than an image case for the port.
+
+**Done (24 November 2026, native contract 2.1.0, R-09-280, R-09-281).** `NativeHttpRequest.Content` (`NativeContent`: a content type and bytes) is sent as it is, in place of a JSON body, with the credential, breaker and timeout the image keeps; a request with both bodies, or a content type that is not one, is refused before anything is sent. `INativeBoundPorts.Put(attempt, binding, NativeFilePut)` puts a file through the binding's transfer: a binding in force of adapter `file-transfer`, onto the bank's `p.port.file-transfer.v1` binding at the folder `<operation>.folder` names (the File API's outbox on a runtime), answering `NativeFileSent`. The image's kept-file case of `INativePorts` now sends through the same code (`NativeBoundPorts.PutFile`). Tests: `BoundPortsWireTests`. WPS's sends still use the kept-file case (Issue I-385).
+
+## I-384. A distribution built at contract 2.0 does not run the reservation on a 2.1 image
+
+**Issue.** Contract 2.1.0 is a minor, so a 2.0 module loads and runs (R-09-276). But the reservation, its release, the reversal and the check of a posting moved from the image into the platform module (R-09-278): a distribution built before factory 1.23.0 carries a platform module that does not serve them, and the 2.1 image no longer answers them. A payment pinned to such a distribution that reaches `p.reserve.funds.v1` is refused at that step (`native.NotNative`), not when the distribution is installed. No bank is live, so nothing is pinned to one yet.
+
+**Recommendation.** Rebuild each bank's distribution from a studio of factory 1.23.0 before the runtime images move to 2.1.0 (`docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 3.3). Before a bank is live, let the release API and the native host refuse at install and at load a distribution whose bill of materials carries an activity the image does not answer and no module of it serves, with its own code in the platform's error dictionary, so the gap is found before a payment.
+
+## I-385. WPS's sends still use the image's kept-file case
+
+**Issue.** Since contract 2.1.0 a module puts a file through a binding's transfer itself (`INativeBoundPorts.Put`, R-09-281). WPS's sends (`uae.wps.exchange.send-salary-file.v1` and `.v2` and the other sends of Issue I-268) still send a kept file through `INativePorts.Ask` on a port bound to `file-transfer`, a case the image keeps for any port. Both paths run the same code (`NativeBoundPorts.PutFile`), so nothing is wrong, but two ways remain in the contract.
+
+**Recommendation.** At WPS's next release move its sends to `BoundPorts.Put` (the module reads the kept file through `INativeFiles` and puts it), and at the contract's next major remove the kept-file case from `INativePorts`, so a port's wire is the module's alone.
+
+## I-386. A host with no platform module calls core banking for no one
+
+**Issue.** Since contract 2.1.0 the image names no setting of a posting window (R-09-279), so it can no longer tell a binding with a window from one without: with no gate contributed it refuses every core-banking call. Before, a binding with no window was called ungated. A development host whose `TH_NATIVE_DEV_MODULES` names the WPS module and not the platform's (or a distribution that carries WPS's module and not the platform's) cannot post WPS's return, `uae.wps.post.return.v1`. The studio's black-box tests and the laptop name both modules, and every promotable distribution that posts carries the platform module (R-09-282), so none is affected.
+
+**Recommendation.** Keep the refusal (nothing reaches core banking ungated). Say in the runtime's README and in `TH_NATIVE_DEV_MODULES`' description that a host which calls core banking names the platform module; and let the studio refuse a promotable distribution that carries a module whose activities name `p.port.core-banking.v1` without the platform module.
+
+## I-387. WPS's return posting is a builtin its module answers, and does not say so
+
+**Issue.** `uae.wps.post.return.v1` is a builtin of the accounting service (`binding: builtin`, `service: accounting`), and on the runtime only the WPS module answers it (`PostReturn`); the image never did. Lint L40 asks `native: true` of the platform's builtins only (R-09-282), because marking WPS's would change how a scheme copied from WPS behaves: the import's training bundle (`uae.wpsx`, `studio/test/import.test.ts`) copies it, has no module of its own, and its promotable distribution would then be refused. So a distribution that carries WPS needs the WPS module for its other native activities, but nothing says the return's posting is one of them, and a scheme copied from WPS carries a posting nothing on the runtime answers.
+
+**Recommendation.** At WPS's next release mark `uae.wps.post.return.v1` `native: true`, extend L40 to every scope, and have the import refuse (or rewrite as a script-behind) a builtin of the accounting or reservation service in an imported scheme that brings no module, with a finding that says why.
 
 ## I-360. A distribution's Elsa service runs one operation at a time
 
@@ -2752,6 +2817,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Factory 1.21.0 replaces WPS's six other sends with their v2 lines (R-09-232). Their v1 lines' native code-behinds stay in the WPS module, because every real bank's lock file at 1.20.0 pins the subflows that call them.
 
 **Recommendation.** Retire them as the salary file's v1 was (R-09-233), once no distribution in force pins a 1.20.0 lock file.
+
+## I-373. A default currency is bound by the form of an ISO 4217 code, not by the list
+
+**Issue.** The country cluster's default currency (R-02-24) is bound by the pattern `^[A-Z]{3}$`, the form of an ISO 4217 alphabetic code; the studio has no registry of the active ISO 4217 codes, so a well-formed code that is not a currency (`XYZ`) passes the bounds. A bank's cluster is read from the scopes its lock file depends on; a bank that depends on two clusters gets no default, and its bindings must name their currency.
+
+**Recommendation.** Add the ISO 4217 list to the studio's code registries (`studio/registries/iso-external-codes.yaml`, versioned like the other external code sets, R-02-11) and bound the parameter by it (`allowed`); and say in the bank's lock file which country it is in, when a bank in two countries appears.
 
 ## I-390. On the engine host, an attempt's timeout does not end a worker's call that outlives it
 

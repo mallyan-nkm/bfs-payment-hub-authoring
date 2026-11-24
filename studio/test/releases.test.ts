@@ -24,8 +24,9 @@ describe('every changed factory artefact is a new release; the earlier stays as 
       expect(env.store.releasesOf(name).map((e) => e.release), name).toEqual(['1.0.0', now]);
       expect(env.store.get(name)!.release).toBe(now);
     }
-    // p.post.accounting.v1: 1.1.0, the template's parameters; 1.2.0, its ledger accounts marked (R-05-100).
-    expect(env.store.releasesOf('p.post.accounting.v1').map((e) => e.release)).toEqual(['1.0.0', '1.1.0', '1.2.0']);
+    // p.post.accounting.v1: 1.1.0, the template's parameters; 1.2.0, its ledger accounts marked (R-05-100); 1.3.0, the platform module
+    // answers it, native: true (R-09-282).
+    expect(env.store.releasesOf('p.post.accounting.v1').map((e) => e.release)).toEqual(['1.0.0', '1.1.0', '1.2.0', '1.3.0']);
     // 1.0.0 is the text of the first publish: no replyWait, which came later (Issue I-41).
     expect(env.store.get('uae.wps.exchange.return-credits.v1', '1.0.0')!.doc.parameters).toBeUndefined();
     expect(env.store.get('uae.wps.exchange.return-credits.v1')!.doc.parameters.replyWaitCalendar.default).toBe('elapsed');
@@ -40,7 +41,7 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     }
     // the posting that reads FX and charges is a new major line; payments on v1 keep it (R-12-23)
     // 1.2.0 and 2.1.0: their ledger accounts marked role ledger-account (R-05-100)
-    expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.2.0');
+    expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.3.0');
     expect(env.store.get('p.post.accounting.v2')!.release).toBe('2.1.0');
     // the salary file's send that reads the encryption step's fact is a new major line; v1 stays as published (R-09-182)
     expect(env.store.get('uae.wps.exchange.send-salary-file.v1')!.release).toBe('1.1.0');
@@ -91,7 +92,9 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.18.0.yaml')).release).toBe('1.18.0');
     expect(body(disk('banks/example-bank/packs/1.19.0.yaml')).release).toBe('1.19.0');
     expect(body(disk('banks/example-bank/packs/1.20.0.yaml')).release).toBe('1.20.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.21.0');
+    expect(body(disk('banks/example-bank/packs/1.21.0.yaml')).release).toBe('1.21.0');
+    expect(body(disk('banks/example-bank/packs/1.22.0.yaml')).release).toBe('1.22.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.23.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);

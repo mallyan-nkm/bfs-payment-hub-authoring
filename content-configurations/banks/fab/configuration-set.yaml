@@ -3,13 +3,18 @@
 # The bank does not run WPS in the source, so only the platform is configured: no routing code, no WPS dial.
 kind: configuration-set
 tenant: fab
-release: 1.8.0
+release: 1.9.0
 title: Bank configuration (platform only)
 accepts:
   - { scope: p, release: 1.8.0 }
   - { scope: uae.p, release: 1.8.0 }
   - { scope: uae.wps, release: 1.8.0 }
 values:
+  # The bank takes its rates from the rates feed (platform-adapters.yaml binds p.port.fx-rates.v1), so every rate must carry its
+  # asOf and a rate typed by hand is refused like a stale one (owner's decision of 24 November 2026, Issue I-278, R-09-247; lint L60).
+  - parameter: p.enrich.fx-rate.v1#requireAsOf
+    value: true
+    validFrom: "2026-11-24"
   # The rails the bank runs among the factory's: none. The source has no deployment of the bank: no customer overlay and no
   # licence. Its only workflows are IPI drafts; the factory has no IPI scheme (D6).
   - parameter: p.table.rail-choice.v1#enabledRails

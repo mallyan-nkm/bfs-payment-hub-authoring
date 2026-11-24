@@ -30,7 +30,7 @@ public sealed class BankFolderConfigurationTests
     [Fact]
     public void The_bank_folder_binds_core_banking_for_its_tenant_and_no_other()
     {
-        var bindings = PortBindings.FromDirectory(Folder());
+        var bindings = PortBindings.FromDirectory(Folder(), BankCurrency.Of(Folder()));
         var b = bindings.InForce(Tenant, Port, From);
         Assert.Equal(GatewayRestCoreBanking.Name, b.Adapter);
         Assert.IsType<GatewayRestCoreBanking>(CoreBankingAdapters.Create(b, new HttpClient(new Recorder())));
@@ -43,7 +43,7 @@ public sealed class BankFolderConfigurationTests
     [Fact]
     public async Task The_bank_settings_the_source_read_from_CoreBanking_reach_the_wire()
     {
-        var b = PortBindings.FromDirectory(Folder()).InForce(Tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
+        var b = PortBindings.FromDirectory(Folder(), BankCurrency.Of(Folder())).InForce(Tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
         var rec = new Recorder();
         // The gateway credential, by reference: a synthetic value for the test (R-06-22).
         var token = "synthetic-" + Guid.NewGuid().ToString("N");
@@ -106,7 +106,7 @@ public sealed class BankFolderConfigurationTests
     [InlineData("p.port.decryption.v1", "gnupg", "key", "DibWpsInbound")]
     public void The_bank_folder_binds_its_file_transfer_and_decryption_with_secrets_by_reference_only(string port, string adapter, string setting, string value)
     {
-        var b = PortBindings.FromDirectory(Folder()).InForce(Tenant, port, From);
+        var b = PortBindings.FromDirectory(Folder(), BankCurrency.Of(Folder())).InForce(Tenant, port, From);
         Assert.Equal(adapter, b.Adapter);
         Assert.Equal(value, b.Settings[setting]);
         Assert.StartsWith("env:TH_DIB_", b.Settings["secretRef"]);

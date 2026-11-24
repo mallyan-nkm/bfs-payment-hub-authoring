@@ -56,7 +56,7 @@ public sealed class BankConfigurationTests
     [Fact]
     public void The_example_bank_switches_core_banking_by_a_binding_alone()
     {
-        var bindings = PortBindings.FromDirectory(ExampleBank);
+        var bindings = PortBindings.FromDirectory(ExampleBank, BankCurrency.Of(ExampleBank));
         var before = bindings.InForce("example-bank", Port, DateTimeOffset.Parse("2026-11-30T23:59:59Z"));
         var after = bindings.InForce("example-bank", Port, DateTimeOffset.Parse("2026-12-01T00:00:00Z"));
         Assert.Equal(SimulatedCoreBanking.Name, before.Adapter);
@@ -68,7 +68,7 @@ public sealed class BankConfigurationTests
     [Fact]
     public async Task What_the_source_hard_coded_for_the_bank_travels_in_the_binding()
     {
-        var b = PortBindings.FromDirectory(ExampleBank).InForce("example-bank", Port, DateTimeOffset.Parse("2026-12-15T00:00:00Z"));
+        var b = PortBindings.FromDirectory(ExampleBank, BankCurrency.Of(ExampleBank)).InForce("example-bank", Port, DateTimeOffset.Parse("2026-12-15T00:00:00Z"));
         var rec = new Recorder();
         var cb = CoreBankingAdapters.Create(b, new HttpClient(rec));
         var batch = new PostingBatch("B0001", new DateOnly(2026, 12, 15), [

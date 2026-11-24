@@ -288,4 +288,47 @@ public sealed class RegisterTests(Databases dbs)
         Assert.Equal("mismatch", Ask(Mol, "AE070331234567890999999", "xx.other").Outcome);
         Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => act.Run(new NativeAttempt(act.Name, "1.0.0", new JsonObject(), new JsonObject(), now, "other-bank", "batch"))).Name);
     }
+
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task WPS_compares_the_CIF_and_the_e_mail_the_channel_declared_where_the_register_knows_them(StoreProvider p)
+    {
+        // R-09-248 (Issues I-314, I-153): the debtor's organisation id of scheme CIF (R-02-22) and its e-mail (R-02-23), as the intake
+        // map writes them from the channel's upload, against the register's cif and emails. Synthetic corporates only.
+        var (store, _) = await dbs.Pair(p);
+        var clock = new Clock(new DateTimeOffset(2026, 11, 24, 8, 0, 0, TimeSpan.Zero));
+        var regs = Service(store, clock);
+        var bare = Corporate("C-0004", "0000004444444");
+        bare.Remove("cif");
+        bare.Remove("emails");
+        var c = await regs.Draft(Bank, "corporate", "operator:maker-1", "console", [new RegisterInput(Corporate()), new RegisterInput(bare)]);
+        await regs.Decide(c!.Id, "operator:approver-1", true);
+        var bindings = new PortBindings();
+        bindings.Add($"kind: port-bindings\ntenant: {Bank}\nbindings:\n  - port: p.port.party-register.v1\n    adapter: register\n    validFrom: 2026-01-01T00:00:00Z\n");
+        RegisterReader reader = async (tenant, kind, field, value, at, ct) => await regs.FindBy(tenant, kind, field, value, at, ct);
+        var act = new TransactHub.Activities.Platform.Native.EnrichPartyRegister(new NativePorts(bindings, new MemoryNativeFiles(), reader),
+            key => key == $"party-matcher:{WpsCorporateMatch.Scheme}" ? (PartyMatcher)WpsCorporateMatch.Match : null);
+        var now = clock.Now.AddMinutes(1);
+        NativeResult Ask(string mol, string? cif, string? email)
+        {
+            var debtor = new JsonObject { ["organisationId"] = new JsonObject { ["id"] = mol, ["scheme"] = "MOL" } };
+            if (cif is not null) debtor["otherOrganisationIds"] = new JsonArray(new JsonObject { ["id"] = cif, ["scheme"] = "CIF" });
+            if (email is not null) debtor["contactDetails"] = new JsonObject { ["emailAddress"] = email };
+            return act.Run(new NativeAttempt(act.Name, "1.0.0", new JsonObject
+            {
+                ["header"] = new JsonObject { ["scheme"] = "uae.wps" },
+                ["batch"] = new JsonObject { ["debtor"] = debtor, ["debtorAccount"] = new JsonObject { ["iban"] = Account } },
+            }, new JsonObject(), now, Bank, "batch"));
+        }
+        Assert.Equal("registered", Ask(Mol, "CIF000111", "Payroll@Example.invalid").Outcome);
+        Assert.Equal("registered", Ask(Mol, null, null).Outcome);
+        var cif = Ask(Mol, "CIF999999", null);
+        Assert.Equal(("mismatch", "BE01", "114"), (cif.Outcome, cif.ReasonCode, (string?)cif.Writes["facts.partyRegister"]!["schemeCode"]));
+        Assert.DoesNotContain("CIF999999", cif.Writes.ToJsonString());
+        var mail = Ask(Mol, "CIF000111", "someone-else@example.invalid");
+        Assert.Equal(("mismatch", "BE01", "165"), (mail.Outcome, mail.ReasonCode, (string?)mail.Writes["facts.partyRegister"]!["schemeCode"]));
+        // The e-mail is personal data: never in the step's facts, whether it matched or not.
+        Assert.DoesNotContain("example.invalid", mail.Writes.ToJsonString());
+        // A corporate the register keeps no CIF or e-mail for is not refused for the ones the channel declared.
+        Assert.Equal("registered", Ask("0000004444444", "CIF999999", "someone-else@example.invalid").Outcome);
+    }
 }

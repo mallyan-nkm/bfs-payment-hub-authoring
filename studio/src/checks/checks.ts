@@ -31,6 +31,13 @@ export interface Issue {
   file?: string;
 }
 
+/**
+ * The builtin services the platform module answers on the runtime and the runtime image does not, since native contract 2.1.0 (R-09-278,
+ * R-09-282): the accounting service and the reservation service. A platform builtin of one says `native: true` (lint L40), so a
+ * distribution that carries it needs the platform module. A scheme's own builtin of one is Issue I-387.
+ */
+export const MODULE_SERVICES = ['accounting', 'reservation'];
+
 export const CHECK_CATALOGUE: Record<string, string> = {
   L00: 'Schema validity',
   L02: 'Scope direction',
@@ -69,7 +76,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L35: 'A bank pack in content-configurations/banks/<bank>/ is its tenant\'s, and its lock file is current',
   L36: 'An await names a family its message\'s dispatch entry declares',
   L37: 'No literal secret: a binding, configuration or package names a secret by reference only (env:, file:, vault:)',
-  L40: 'An activity the native host implements as well keeps a script-behind or a builtin',
+  L40: 'An activity the native host implements as well keeps a script-behind or a builtin; a platform builtin of a service the platform module answers says native: true',
   L41: 'A published release never changes once seeded',
   L42: 'Money is exact: no floating-point tolerance in a rule, and no number of more than 15 significant digits where an amount may be',
   L43: 'A leg fills the slot contract of a platform workflow, reads only what it gives and writes only what it lets it write',
@@ -85,6 +92,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
   L56: 'A parameter marked a ledger account is an activity\'s string or code',
   L57: 'A pure activity names no port; a check without rule sets is pure only as a script',
+  L60: 'A bank that binds the rates port requires each rate\'s asOf: its configuration sets p.enrich.fx-rate.v1#requireAsOf to true',
 };
 
 // ---------------------------------------------------------------- walking
@@ -393,6 +401,11 @@ export class Checker {
         if (decl?.role === 'ledger-account') {
           if (d.kind !== 'activity') err('L56', `${d.name}#${k} is marked a ledger account, but only an activity's parameter names one`);
           if (!['string', 'code'].includes(decl.type)) err('L56', `${d.name}#${k} is marked a ledger account, but it is of type ${decl.type}, not a string or a code`);
+        }
+        // L56 (R-02-24): a default currency is a country cluster's, a code bound to an ISO 4217 code; the platform p names none.
+        if (decl?.role === 'default-currency') {
+          if (!/^[a-z0-9]+\.p$/.test(String(d.name ?? '').split('.').slice(0, 2).join('.'))) err('L56', `${d.name}#${k} is marked a default currency, but only a country cluster's platform scope (<cluster>.p) declares one`);
+          if (decl.type !== 'code' || decl.bounds?.pattern !== '^[A-Z]{3}$' || !/^[A-Z]{3}$/.test(String(decl.default))) err('L56', `${d.name}#${k} is marked a default currency, but it is not a code bound to an ISO 4217 code with such a default`);
         }
       }
     }
@@ -751,6 +764,15 @@ export class Checker {
       const binding = d.implementation?.binding;
       if (['validate', 'decide'].includes(d.type) && !(d.ruleSets ?? []).length && binding !== 'script')
         err('L57', `${d.name} is a ${d.type} without rule sets that is pure, but it is bound to a ${binding ?? 'nothing'}, not a script: say effect read`);
+    }
+    // L40 (R-08-16; R-09-282, Issues I-381, I-382): native: true goes with a script or a builtin; and since native contract 2.1.0 the image
+    // answers no core-banking activity, so a platform builtin of a service the platform module answers says native: true (a scheme's, I-387).
+    {
+      const impl = d.implementation ?? {};
+      if (impl.native === true && !['script', 'builtin'].includes(impl.binding))
+        err('L40', `${d.name} says the native host implements it too, but its binding is ${impl.binding}; native: true needs a script or a builtin`);
+      if (/^(p|[a-z0-9-]+\.p)\./.test(d.name ?? '') && impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service) && impl.native !== true)
+        err('L40', `${d.name} is a builtin of the ${impl.service} service, which the platform module answers on the runtime and the image does not; it says native: true`);
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {
@@ -1172,7 +1194,7 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
 }
 
 /**
- * L52 and L53 over a bank's folder on the content branch (R-11-101, R-11-102, Issue I-276). A bank whose port bindings bind
+ * L52, L53 and L60 over a bank's folder on the content branch (R-11-101, R-11-102, R-09-247, Issues I-276, I-278). A bank whose port bindings bind
  * `p.port.fx-rates.v1` takes its rates from the feed, so neither its working configuration set nor its newest released one sets
  * `p.enrich.fx-rate.v1#rates`: typed rates in a newer studio release would win over the feed's until the feed ran again. And the
  * studio never makes a patch release of a bank's configuration, which is the feed's line of numbers.
@@ -1200,11 +1222,16 @@ export function feedRateIssues(files: Map<string, string>, folder: string): Issu
   for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
     if (read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_RATES)))
       out.push({ code: 'L52', severity: 'error', key: p, message: `${p} sets ${FX_RATES}, but the bank binds ${FX_PORT}: its rates come from the feed, and typed rates in a newer release would win over them`, file: p });
+  // L60 (R-09-247, Issue I-278): a bank on the feed requires each rate's asOf, so a rate typed by hand is refused like a stale one.
+  for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
+    if (!read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_REQUIRE && v?.value === true)))
+      out.push({ code: 'L60', severity: 'error', key: p, message: `${p} does not set ${FX_REQUIRE} to true, but the bank binds ${FX_PORT}: a rate typed by hand, with no asOf, would never be refused as stale`, file: p });
   return out;
 }
 
 const FX_PORT = 'p.port.fx-rates.v1';
 const FX_RATES = 'p.enrich.fx-rate.v1#rates';
+const FX_REQUIRE = 'p.enrich.fx-rate.v1#requireAsOf';
 function compareNumbers(a: number[], b: number[]): number {
   for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
   return 0;

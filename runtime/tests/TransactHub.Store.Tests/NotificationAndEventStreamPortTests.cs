@@ -134,7 +134,7 @@ public sealed class NotificationAndEventStreamPortTests
     [InlineData("adib"), InlineData("dib"), InlineData("enbd"), InlineData("fab")]
     public void Each_real_bank_binds_both_ports_to_its_production_adapter_by_placeholder_host_and_credential_reference(string bank)
     {
-        var p = PortBindings.FromDirectory(PlatformOnlyBankFolderTests.Folder(bank));
+        var p = PortBindings.FromDirectory(PlatformOnlyBankFolderTests.Folder(bank), BankCurrency.Of(PlatformOnlyBankFolderTests.Folder(bank)));
         var at = DateTimeOffset.Parse("2026-11-24T08:00:00Z");
         var n = p.InForce(bank, NotificationAdapters.Port, at);
         var e = p.InForce(bank, EventStreamAdapters.Port, at);

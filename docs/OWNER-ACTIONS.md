@@ -83,6 +83,8 @@ Also decide whether turnaround limits count business days or clock time. I recom
 - **After the videos:** wave 7 (I-294, I-293, I-300, I-301, I-304, I-290, I-310, I-313 folders, I-314 with I-153, I-291, I-292, and the decisions below) and the native contract 2.0 (I-315, I-226, I-237), while no bank is live.
 - **I-278:** a bank on the rate feed refuses hand-typed rates with no date. **I-280:** sanctions hits stay out of the fraud alerts; high-score alerts only if a bank's fraud team asks. **I-168:** a reconciliation break may start an exception request or a return, with consent. **I-185:** escalation after a time is a setting, off by default. **I-275:** the feed's standing consent is confirmed.
 
+**Done in wave 7B (24 November 2026, factory 1.22.0, to be seeded after 7A's 1.21.0).** I-278: `requireAsOf`, set by the four real banks, which bind the feed (lint L60). I-168: a break may start an exception request or a return, with a bank approver's consent, by the message the scheme's report names; WPS names none yet (I-372). I-185: escalation after a time, off by default, to the role the bank chooses. Also: the corporate match compares the CIF and the e-mail (I-314, I-153); the kit counts the bank's calendar (I-291); the service console's Trust page and the feed's key added without hand editing (I-292); pause and resume in the operations console. **Decided:** re-screening needs no second approver (I-371, owner, 24 November 2026).
+
 ## B. Things to ask each bank
 You pass these on; I cannot get them myself. Until each arrives, the bank's folder holds a placeholder, and the runtime refuses rather than guessing.
 

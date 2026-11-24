@@ -30,6 +30,11 @@ describe('C03 canonical model, types and registries', () => {
     expect(m.resolve('items[].ext.uae.wps.personId')?.personalData).toBe(true);
     expect(m.resolve('ext.uae.unknown.field')).toBeUndefined();
   });
+  it("gives a party its contact e-mail, personal data (R-02-23, Issues I-153, I-314)", () => {
+    expect(m.resolve('batch.debtor.contactDetails.emailAddress')).toMatchObject({ isoType: 'Max2048Text', personalData: true });
+    expect(m.resolve('payment.creditor.contactDetails.emailAddress')?.personalData).toBe(true);
+    expect(m.resolve('batch.debtor.otherOrganisationIds[].id')?.personalData).toBe(false);
+  });
   it('generates types reproducibly and the type check refuses an undeclared path (C03-S3, S4)', () => {
     const a = env.store.doc('p.validate.duplicate.v1');
     expect(typescriptTypes(m, a)).toBe(typescriptTypes(m, a));
@@ -105,7 +110,8 @@ describe('C17 roles, maker-checker, audit and isolation', () => {
 describe('C19 retirement, propagation and supersession; C18 configuration', () => {
   it('refuses to retire a pinned release (C19-S3)', () => {
     const env = freshEnv();
-    expect(() => gov.retire(env, 'service.operations', 'p.reserve.funds.v1', '1.0.0')).toThrow(/pinned by .*p.wf.corporate.v1/);
+    // The release the lock files pin (1.1.0 since factory 1.23.0, R-09-283).
+    expect(() => gov.retire(env, 'service.operations', 'p.reserve.funds.v1', env.store.releasesOf('p.reserve.funds.v1').at(-1)!.release)).toThrow(/pinned by .*p.wf.corporate.v1/);
   });
   it('proposes patch releases of the workflows that pin a patched rule (C05-S4)', async () => {
     const env = freshEnv();

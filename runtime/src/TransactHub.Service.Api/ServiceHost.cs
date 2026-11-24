@@ -79,6 +79,8 @@ public sealed class ServiceHost
         s.AddSingleton<TimeProvider>(clock);
         s.AddSingleton(bank);
         s.AddSingleton(new ContentSettings(trust, secrets, testEnvs, environment, bank, cfg["Service:StuckPinAfter"]));
+        // The trust page (R-09-249, Issue I-292): each trusted key with what it may sign, and the rates feed's own key.
+        s.AddSingleton(new TrustSettings(trust, secrets, cfg["Service:FxRates:SigningKeyRef"], clock));
         s.AddSingleton(sp => ErrorDictionary.FromFolder(errorsDir));
         s.AddSingleton(sp => ViewCatalog.FromFolder(viewsDir ?? "content-configurations/artefacts"));
         s.AddSingleton(sp => new Projector(store, ops, sp.GetRequiredService<ViewCatalog>(), clock));
@@ -180,7 +182,7 @@ public sealed class ServiceHost
             book.Run("resume-intake", ActionBook.Intake(store, false, clock));
             book.Run("drain-worker", ActionBook.Worker("drain"));
             book.Run("restart-worker", ActionBook.Worker("restart"));
-            book.Run("rotate-trusted-key", ActionBook.RotateKey(trust, secrets, cfg["Service:TrustWritable"] == "true", clock));
+            book.Run("rotate-trusted-key", ActionBook.RotateKey(trust, secrets, cfg["Service:TrustWritable"] == "true", clock, sp.GetRequiredService<TrustSettings>()));
             if ((cfg["Service:Flowable:Url"] ?? cfg["TH_FLOWABLE_URL"]) is { Length: > 0 } fu)
                 book.Run("requeue-dead-letter", ActionBook.RequeueDeadLetter(fu, cfg["TH_FLOWABLE_USER"] ?? "rest-admin", cfg["Service:Flowable:PasswordRef"] ?? "env:TH_FLOWABLE_PASSWORD", secrets,
                     sp.GetService<FlowableHandler>()?.Handler));

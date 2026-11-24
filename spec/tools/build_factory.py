@@ -162,6 +162,19 @@ for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursemen
 # factory has called it since 1.19.0, and no distribution in force pins it: its release entry, its native code-behind and the
 # laptop's worker list go; its 1.0.0 and 1.1.0 stay on the content branch as published (R-11-35).
 del RELEASES["uae.wps.exchange.send-salary-file.v1"]
+# Owner's decision of 2026-11-24 (Issue I-278, R-09-247, factory 1.22.0): requireAsOf, a bank on the rates feed refuses a rate with
+# no asOf like a stale one (fx.RateUndated). A parameter added with a default, a minor; its script at scripts/...@1.3.0.ts.
+RELEASES["p.enrich.fx-rate.v1"] = ("1.3.0", "requireAsOf: a bank on the rates feed refuses a rate with no asOf (fx.RateUndated)")
+# Issues I-153, I-314, R-02-23 (factory 1.22.0): the salary file's intake map writes the e-mail the channel declared at upload as the
+# debtor's contact e-mail (Dbtr/CtctDtls/EmailAdr), which WPS's corporate match compares (R-09-248). A field written under batch, a
+# minor; its script at scripts/...@1.6.0.ts.
+RELEASES["uae.wps.map.sif-in.v1"] = ("1.6.0", "the employer's e-mail from the channel's upload as the debtor's contact e-mail (Issues I-153, I-314)")
+# Issues I-381, I-382, R-09-278, R-09-282 (factory 1.23.0, native contract 2.1.0): the builtin posting, the reservation, its release, the
+# reversal and the check of a posting say that the platform module answers them on the runtime (implementation.native: true beside
+# binding builtin). The image keeps none of them. A field added to the implementation, a minor. WPS's own posting is Issue I-387.
+RELEASES["p.post.accounting.v1"] = ("1.3.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-381)")
+for _n in ("p.reserve.funds.v1", "p.reserve.release.v1", "p.post.reverse.v1", "p.post.verify.v1"):
+    RELEASES[_n] = ("1.1.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-382)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -199,12 +212,20 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # uae.wps 1.5.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
 # native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
 # salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
+# 1.22.0 (change set CS-2026-11-24-017; 1.21.0 and CS-2026-11-24-016 are another change's): wave 7B, the owner's decisions of 24
+# November 2026: p.enrich.fx-rate.v1 1.3.0 with requireAsOf (Issue I-278, R-09-247); p.view.operations.v1 1.8.0, written by hand:
+# pause and resume offered, and escalation after a time (Issue I-185); the salary file's intake map 1.6.0, the employer's e-mail
+# (Issues I-153, I-314); the UAE cluster's default currency, uae.p.enrich.default-currency.v1 (R-02-24); and the platform's error
+# dictionary 1.12.0, on 1.11.0.
 # 1.21.0 (change set CS-2026-11-24-016): wave 7A. The canonical checks refuse a file that names no currency (p.validate.canonical.v2,
 # the check-and-screen segment 1.1.0, Issue I-294); the scheme's other sends read the encryption step's fact (their v2 lines, the
 # six subflows' next minors, the scheme's catalogue 1.6.0, Issue I-293); the salary file's send v1 retired; the platform's error
 # dictionary 1.11.0, on 1.10.0.
-PACK_RELEASES = {"p": "1.21.0", "uae.p": "1.21.0", "uae.wps": "1.21.0", "b": "1.21.0"}
-FACTORY_RELEASE = "1.21.0"
+# 1.23.0 (change set CS-2026-11-24-018; 1.21.0, 1.22.0 and change sets 016 and 017 are other changes'): native contract 2.1.0 (R-09-276
+# to R-09-283; Issues I-381, I-382, I-383): p.post.accounting.v1 1.3.0, p.reserve.funds.v1, p.reserve.release.v1, p.post.reverse.v1
+# and p.post.verify.v1 1.1.0, each with implementation.native: true beside its builtin (lint L40).
+PACK_RELEASES = {"p": "1.23.0", "uae.p": "1.23.0", "uae.wps": "1.23.0", "b": "1.23.0"}
+FACTORY_RELEASE = "1.23.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -299,9 +320,9 @@ act("p.decide.rail.v1", "Choose the rail and record the reason",
 act("p.reserve.funds.v1", "Reserve funds in the hub",
     ["payment.debtorAccount", "payment.instructedAmount", "batch.controlSum"], ["facts.reservation"],
     ["reserved", "insufficient"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.reserve.release.v1", service="reservation")
+    comp="p.reserve.release.v1", service="reservation", native=True)
 act("p.reserve.release.v1", "Release a reservation", ["facts.reservation"], ["facts.reservation"],
-    ["released"], "write", ports=["p.port.core-banking.v1"], policy=STD, service="reservation")
+    ["released"], "write", ports=["p.port.core-banking.v1"], policy=STD, service="reservation", native=True)
 # The accounting template's values (R-06-21): transaction codes, narration, accounts, charge slabs and VAT. A bank sets
 # its own; each is bounded. The defaults are placeholders that name no bank and no real account.
 TXN = {"pattern": "^[A-Z0-9]{2,10}$"}
@@ -340,7 +361,7 @@ ACCOUNTING = {
 }
 act("p.post.accounting.v1", "Post with an accounting template", ["header", "payment", "facts.route", "facts.reservation"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING)
+    comp="p.post.reverse.v1", service="accounting", params=ACCOUNTING, native=True)
 # The order's posting (R-12-23, Issue I-136): a new major line, so payments on v1 keep it. It reads what the platform's own steps
 # found (facts.fx, the converted amount of each line and of the order; facts.charges, each line's charge and VAT) and prices nothing
 # itself: its template has no slabs. Each line posts its converted amount between the line's account and the settlement account (a
@@ -352,9 +373,9 @@ act("p.post.accounting.v2", "Post an order's converted amounts, charges and VAT 
     ["header", "payment", "items[]", "facts.fx", "facts.charges"], ["facts.posting"], ["posted", "rejected", "unknown"], "write",
     level="batch", ports=["p.port.core-banking.v1"], policy=STD, comp="p.post.reverse.v1", params=ACCOUNTING_V2, script=True, native=True)
 act("p.post.verify.v1", "Verify the posting really happened", ["facts.posting"], ["facts.postingVerified"],
-    ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting")
+    ["verified", "mismatch"], "read", ports=["p.port.core-banking.v1"], service="accounting", native=True)
 act("p.post.reverse.v1", "Reverse a posting", ["facts.posting"], ["facts.posting"], ["reversed"], "write",
-    ports=["p.port.core-banking.v1"], policy=STD, service="accounting")
+    ports=["p.port.core-banking.v1"], policy=STD, service="accounting", native=True)
 # FX and charges on an order (R-12-20, Issue I-133): platform activities, never a scheme's. The rates and the charge slabs are the
 # bank's values (dials), effective-dated in its configuration releases; the factory's defaults are empty, so an order in a currency
 # other than its account's has no rate and an order bears no charge until the bank sets its own. Exact decimals (R-02-17): the
@@ -363,7 +384,10 @@ RATE_LIST = {"rates": {"type": "list", "default": [], "bounds": {"min": 0, "max"
                        "description": "The bank's exchange rates, each {from, to, rate} and, from the rates feed, asOf (the instant the bank's rates service gave it): one unit of from is rate units of to. None, and only a line in its account's own currency converts."},
              # R-09-178 (owner's decision of 2026-11-23, Issue I-189): a rate the feed gave is refused once older than this.
              "maxRateAge": {"type": "duration", "default": "PT24H", "bounds": {"min": "PT1H", "max": "P7D"},
-                            "description": "How old a rate with an asOf may be: an older one is refused (the line is no-rate, facts.fx.code fx.RateStale). A rate with no asOf, set by hand, is not aged."}}
+                            "description": "How old a rate with an asOf may be: an older one is refused (the line is no-rate, facts.fx.code fx.RateStale). A rate with no asOf, set by hand, is not aged unless requireAsOf is set."},
+             # R-09-247 (owner's decision of 2026-11-24, Issue I-278): a bank on the rates feed sets it, so a hand-typed rate is refused too.
+             "requireAsOf": {"type": "boolean", "default": False,
+                             "description": "Whether every rate must carry its asOf: a bank on the rates feed sets it, so that a rate with no asOf, set by hand, is refused like a stale one (the line is no-rate, facts.fx.code fx.RateUndated). False: a rate with no asOf is not aged."}}
 act("p.enrich.fx-rate.v1", "Convert each line at the bank's exchange rate", ["payment.instructedAmount", "payment.debtorAccount", "items[]"],
     ["facts.fx", "items[]"], ["converted", "no-rate"], "pure", level="batch", params=RATE_LIST, script=True, native=True)
 CHARGE_DIALS = {
@@ -440,6 +464,14 @@ act("uae.p.enrich.participant.v1", "Look up participants by routing code", ["pay
     ["facts.participants"], ["found", "unknown"], "read", ports=["uae.p.port.participant-directory.v1"])
 act("uae.p.enrich.business-date.v1", "Set the UAE business date", ["header.receivedAt"], ["header.businessDate"],
     ["set"], "read", ports=["uae.p.port.calendar.v1"])
+# R-02-24 (owner's decision of 2026-11-24): the default currency is the country's, a value of the cluster with bounds, ISO 4217
+# codes only. A bank of the cluster inherits it and may set its own (uae.p.enrich.default-currency.v1#currency). The front door gives
+# it to a payment that names none, after the intake map; a bank's configuration release gives it to a core-banking binding that
+# names none. The platform p names no currency (R-09-185).
+DEFAULT_CURRENCY = {"currency": {"type": "code", "default": "AED", "bounds": {"pattern": "^[A-Z]{3}$"}, "role": "default-currency",
+                                 "description": "The country's default currency, an ISO 4217 code: a payment whose file, lines and payment name none takes it at the front door, and a core-banking binding that names none takes it in the bank's configuration release. A bank of the cluster may set its own."}}
+act("uae.p.enrich.default-currency.v1", "Give a payment that names no currency the country's default", ["batch", "items[]", "payment.instructedAmount"],
+    ["batch.currency", "payment.instructedAmount"], ["applied", "named"], "pure", level="batch", params=DEFAULT_CURRENCY, invoked_by="front-door", script=True)
 
 # WPS (provisional)
 W = "ext.uae.wps"
@@ -1521,6 +1553,27 @@ test("P-FX-004", "A rate older than the bank's staleness limit is refused with f
 test("P-FX-005", "A rate the feed gave within the staleness limit converts, and the line keeps its asOf", "p.enrich.fx-rate.v1", "activity",
      refund_lines(100, currency="GBP"),
      {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
+# requireAsOf (R-09-247, owner's decision of 24 November 2026, Issue I-278): a bank on the rates feed sets it, so the example bank's
+# typed AED/USD rate, which has no asOf, is refused like a stale one; its feed's AED/GBP rate, dated, still converts.
+test("P-FX-006", "With requireAsOf a rate with no asOf, typed by hand, is refused with fx.RateUndated", "p.enrich.fx-rate.v1", "activity",
+     {**refund_lines(100, currency="USD"), "parameters": {"requireAsOf": True}},
+     {"outcome": "no-rate", "writes": {"facts.fx.undated": "AED/USD", "facts.fx.code": "fx.RateUndated", "facts.fx.requireAsOf": True}}, tenant="example-bank")
+test("P-FX-007", "With requireAsOf a rate the feed gave within the staleness limit still converts", "p.enrich.fx-rate.v1", "activity",
+     {**refund_lines(100, currency="GBP"), "parameters": {"requireAsOf": True}},
+     {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
+# R-02-24: the cluster's default currency, inherited or the bank's own; a file that names its own keeps it.
+def no_currency_file(currency=None):
+    batch = {"id": "F-9", "numberOfTransactions": 1, "controlSum": "100.00", **({"currency": currency} if currency else {})}
+    return {"context": {"header": {"paymentId": "P-9", "kind": "payment", "direction": "outward", "scheme": "uae.wps"}, "batch": batch,
+                        "items": [{"payment": {"instructedAmount": {"value": "100.00"}}}]}}
+
+
+test("UAEP-CUR-001", "A file that names no currency takes the country's default, AED", "uae.p.enrich.default-currency.v1", "activity",
+     no_currency_file(), {"outcome": "applied", "writes": {"batch.currency": "AED"}})
+test("UAEP-CUR-002", "A bank of the cluster that sets its own default currency gives a file its own", "uae.p.enrich.default-currency.v1", "activity",
+     {**no_currency_file(), "parameters": {"currency": "USD"}}, {"outcome": "applied", "writes": {"batch.currency": "USD"}})
+test("UAEP-CUR-003", "A file that names its currency keeps it", "uae.p.enrich.default-currency.v1", "activity",
+     no_currency_file("EUR"), {"outcome": "named"})
 test("P-CHG-001", "A line is priced on the bank's slab: fixed plus a percentage, then VAT", "p.enrich.charges.v1", "activity", refund_lines(100, 499.75),
      # 5.10 and 0.26 VAT on 100.00; 5.49975, so 5.50 and 0.28 (0.275) on 499.75: the sums of the rounded lines
      {"outcome": "priced", "writes": {"facts.charges.amount": 10.6, "facts.charges.tax.amount": 0.54, "facts.charges.totalChargesAndTaxAmount": 11.14}},

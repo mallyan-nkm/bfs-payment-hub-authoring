@@ -35,7 +35,7 @@ CASES = [
     ("M03", "ERROR L03", WF,
      "call: p.validate.limits.v1", "call: p.validate.nothing.v1", "a call names an activity that does not exist"),
     ("M04", "ERROR L04", "factory/p/activities/p.reserve.funds.v1.yaml",
-     "release: 1.0.0", "release: 2.0.0", "the release major disagrees with the name"),
+     "release: 1.1.0", "release: 2.1.0", "the release major disagrees with the name"),
     ("M05", "ERROR L05", SAL,
      "      pending: { end: pending }\n", "", "an outcome is left unhandled"),
     ("M06", "ERROR L06", WF,
@@ -225,6 +225,15 @@ CASES = [
     ("M82", "ERROR L52", "../content-configurations/banks/adib/configuration-set.yaml",
      "\nvalues:\n", "\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: \"2026-11-01\"\n    value:\n      - { from: USD, to: AED, rate: \"3.6725\" }\n",
      "a bank on the rates feed types its rates into its configuration"),
+    # L60 (R-09-247, Issue I-278): a bank on the rates feed requires each rate's asOf, so a hand-typed rate is refused like a stale one
+    ("M104", "ERROR L60", "../content-configurations/banks/dib/configuration-set.yaml",
+     "    value: true\n    validFrom: \"2026-11-24\"\n", "    value: false\n    validFrom: \"2026-11-24\"\n",
+     "a bank on the rates feed lets a rate typed by hand stand without its asOf"),
+    # L61 (R-05-107, Issue I-185): escalation after a time is off by default and names the role it escalates to
+    ("M105", "ERROR L61", "factory/p/views/p.view.operations.v1.yaml",
+     "escalateAfter: { type: duration, default: P0D,", "escalateAfter: { type: duration, default: PT4H,", "escalation after a time is on before the bank sets it"),
+    ("M106", "ERROR L61", "factory/p/views/p.view.operations.v1.yaml",
+     "bounds: { allowed: [Supervisor, BankApprover] }", "bounds: { allowed: [Supervisor, Auditor] }", "an item escalates to a role no one works items with"),
     # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration
     ("M83", "ERROR L53", "examples/bank/configuration-set.yaml",
      "\nrelease: 1.10.0\n", "\nrelease: 1.10.1\n", "the studio makes a patch release of a bank's configuration"),
@@ -284,9 +293,22 @@ CASES = [
     ("M102", "ERROR L38", "factory/uae.wps/views/uae.wps.view.operations.v1.yaml",
      'source: "delivery:uae.wps.sif-submission.outcome"', 'source: "delivery:uae.wps.ack.outcome"',
      "a view reads the delivery of the acknowledgement, which the bank receives"),
+    # L62 (R-09-250, Issue I-168): a break's order starts by a message of the scheme that starts an order of that kind
+    ("M107", "ERROR L62", "factory/uae.wps/scheme.yaml",
+     "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: uae.wps.map.psi-in.v1, period: P1D, resolutions: { return: uae.wps.sif } }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "a break's return starts by a message that starts an outward payment, not a return"),
+    # L56 (R-02-24): a default currency is a country cluster's, an ISO 4217 code; the platform names none
+    ("M108", "ERROR L56", "factory/uae.p/activities/uae.p.enrich.default-currency.v1.yaml",
+     "default: AED", "default: Dirham", "a cluster's default currency that is not an ISO 4217 code"),
     # L56 (R-05-100, Issue I-282): a parameter marked a ledger account is an activity's string or code
     ("M96", "ERROR L56", "factory/p/activities/p.post.accounting.v2.yaml",
      "  vatAccount:\n    type: string\n", "  vatAccount:\n    type: integer\n", "a ledger account that is a number"),
+    # L40 since native contract 2.1.0 (R-09-282, Issues I-381, I-382): a builtin of a service a module answers says native: true
+    ("M109", "ERROR L40", "factory/p/activities/p.post.accounting.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n", "the builtin posting does not say the platform module answers it"),
+    ("M110", "ERROR L40", "factory/p/activities/p.reserve.funds.v1.yaml",
+     "  service: reservation\n  native: true\n", "  service: reservation\n", "the reservation does not say the platform module answers it"),
 ]
 
 

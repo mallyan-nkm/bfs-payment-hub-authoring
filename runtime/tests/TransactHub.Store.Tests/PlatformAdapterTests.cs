@@ -264,7 +264,7 @@ public sealed class PlatformAdapterTests
         var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "content-configurations", "banks");
         foreach (var bank in new[] { "dib", "adib", "enbd", "fab" })
         {
-            var p = PortBindings.FromDirectory(Path.Combine(dir, bank));
+            var p = PortBindings.FromDirectory(Path.Combine(dir, bank), BankCurrency.Of(Path.Combine(dir, bank)));
             var mine = p.All.Where(b => b.Port is ScreeningAdapters.Sanctions or ScreeningAdapters.Fraud or NoticeAdapters.Port or FactsOutAdapters.Port or CalendarAdapters.Port or ParticipantDirectoryAdapters.Port or NotificationAdapters.Port or EventStreamAdapters.Port).ToList();
             Assert.Equal(8, mine.Select(b => b.Port).Distinct().Count());
             foreach (var b in mine)

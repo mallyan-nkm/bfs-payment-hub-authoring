@@ -94,6 +94,8 @@ public sealed class Dispatch
     }
 
     public IReadOnlyList<JsonObject> Schemes => schemes;
+    /// <summary>The latest release of every named document.</summary>
+    public IEnumerable<JsonObject> Documents => byName.Values;
     public JsonObject? Document(string name) => byName.GetValueOrDefault(name);
 
     /// <summary>The dispatch table's entry of a message, or null when no scheme of the distribution names it.</summary>
@@ -391,6 +393,9 @@ public sealed class RuntimeFrontDoor(StoreOptions store, IIntakeRunner intake, I
             foreach (var (k, v) in route.Route) h[k] = v?.DeepClone();
             h["scheme"] = route.Scheme;
             h["paymentId"] = paymentId;
+            // The country's default currency where the payment names none (R-02-24): its cluster's, or the bank's own value of it.
+            await using (var db = StoreDbContext.Open(store))
+                DefaultCurrency.Apply(ctx, await DefaultCurrency.Of(db, dispatch, f.Tenant, route.Scheme, now, ct));
             var keys = new Dictionary<string, string>(StringComparer.Ordinal) { ["conversation"] = conversation, ["paymentId"] = paymentId, ["fileStem"] = Stem(f.FileName) };
             foreach (var k in new[] { "endToEndId", "fileId" }) if (Dispatch.Str(h, k) is { Length: > 0 } v) keys[k] = v;
             await using (var db = StoreDbContext.Open(store))
@@ -527,4 +532,62 @@ public sealed class HttpEngineHost(Func<string, string?> supervisorOf, string? t
 
     public async Task<string> Deliver(string paymentId, string distribution, JsonObject message, CancellationToken ct = default) =>
         Dispatch.Str(await Post($"{Url(distribution)}/payments/{Uri.EscapeDataString(paymentId)}/messages", new JsonObject { ["message"] = message.DeepClone() }, ct), "answer") is { Length: > 0 } a ? a : "delivered";
+}
+
+/// <summary>
+/// The country's default currency (R-02-24; owner's decision of 24 November 2026). A country cluster declares it: the parameter its
+/// platform scope (<c>&lt;cluster&gt;.p</c>) marks <c>role: default-currency</c>, an ISO 4217 code (lint L56), AED for the UAE. A bank
+/// of the cluster inherits it and may set its own value in its configuration. The platform names no currency (R-09-185): the front
+/// door gives it, after the intake map, to a payment whose file, lines and payment name none; the canonical checks still refuse one
+/// that ends with none. Found by the role, never by a cluster's name.
+/// </summary>
+public static class DefaultCurrency
+{
+    public const string Role = "default-currency";
+
+    /// <summary>The cluster of a scheme's scope (<c>uae</c> for <c>uae.wps</c>); none for the platform or a bank.</summary>
+    public static string? ClusterOf(string? scope) => (scope ?? "").Split('.')[0] is { Length: > 0 } c && c != "p" && c != "b" ? c : null;
+
+    /// <summary>The cluster's declaration among a distribution's documents: the owner, the parameter and its declared default.</summary>
+    public static (string Owner, string Parameter, string? Default)? Declared(IEnumerable<JsonObject> documents, string? cluster)
+    {
+        if (cluster is null) return null;
+        foreach (var d in documents)
+        {
+            if (Dispatch.Str(d, "name") is not { } name || !name.StartsWith($"{cluster}.p.", StringComparison.Ordinal)) continue;
+            foreach (var (k, decl) in d["parameters"] as JsonObject ?? [])
+                if ((string?)decl?["role"] == Role) return (name, k, (string?)decl?["default"]);
+        }
+        return null;
+    }
+
+    /// <summary>The bank's default currency now: its own value of the cluster's parameter in force, else the cluster's default.</summary>
+    public static async Task<string?> Of(StoreDbContext db, Dispatch dispatch, string tenant, string scheme, DateTimeOffset at, CancellationToken ct = default)
+    {
+        if (Declared(dispatch.Documents, ClusterOf(scheme)) is not { } found) return null;
+        var key = $"{found.Owner}#{found.Parameter}";
+        var own = (await ConfigurationValues.InForce(db, tenant, at, ct)).FirstOrDefault(v => (string?)v["parameter"] == key)?["value"] as JsonValue;
+        var v = own is not null && own.TryGetValue<string>(out var s) ? s : found.Default;
+        return v is { Length: 3 } && v.All(char.IsAsciiLetterUpper) ? v : null;
+    }
+
+    /// <summary>Whether a context names a currency: its file's batch, one of its lines, or its payment.</summary>
+    public static bool Names(JsonObject ctx) =>
+        Dispatch.Str(ctx["batch"] as JsonObject, "currency").Length > 0
+        || Dispatch.Str(ctx["payment"]?["instructedAmount"] as JsonObject, "currency").Length > 0
+        || (ctx["items"] as JsonArray ?? []).OfType<JsonObject>().Any(i => Dispatch.Str(i["payment"]?["instructedAmount"] as JsonObject, "currency").Length > 0);
+
+    /// <summary>Gives a context that names no currency the default: its batch's where it is a file, else its payment's.</summary>
+    public static bool Apply(JsonObject ctx, string? currency)
+    {
+        if (currency is null || Names(ctx)) return false;
+        if (ctx["batch"] is JsonObject batch) batch["currency"] = currency;
+        else
+        {
+            if (ctx["payment"] is not JsonObject payment) ctx["payment"] = payment = new JsonObject();
+            if (payment["instructedAmount"] is not JsonObject amount) payment["instructedAmount"] = amount = new JsonObject();
+            amount["currency"] = currency;
+        }
+        return true;
+    }
 }

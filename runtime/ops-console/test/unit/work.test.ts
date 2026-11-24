@@ -19,6 +19,8 @@ describe('the work queue (R-05-71)', () => {
   it('says who holds an item: a person, the supervisors after an escalation, or nobody', () => {
     expect(holder(row({ assignee: 'op-1', assigneeName: 'Example operator' }))).toBe('Example operator');
     expect(holder(row({ escalated: true, level: 2 }))).toBe('Escalated to supervisors (level 2)');
+    // By time, after the bank's escalateAfter, to the role the view names (R-05-107, Issue I-185).
+    expect(holder(row({ escalated: true, level: 1, escalatedTo: 'BankApprover', automatic: true }))).toBe('Escalated to bank approvers (level 1), after waiting too long');
     expect(holder(row({}))).toBe('Unassigned');
   });
 

@@ -46,6 +46,8 @@ export interface WorkRow {
   item: string; itemKind: 'payment' | 'action' | 'alert'; tenant: string; scheme?: string; payment: string; what: string; amount?: number; currency?: string;
   waitingSince: string; assignee?: string | null; assigneeName?: string | null; escalated: boolean; level: number; assignedAt?: string | null;
   action?: string; requestedBy?: string;
+  /** The role an escalated item went to, and whether it escalated by itself after the bank's escalateAfter (R-05-107). */
+  escalatedTo?: string | null; automatic?: boolean;
 }
 export interface WorkQueue { filter: string; total: number; counts: Record<string, number>; rows: WorkRow[]; cursor: number }
 export interface BulkResult { done: number; refused: number; results: { item?: string; payment?: string; ok: boolean; status?: number; error?: string }[] }

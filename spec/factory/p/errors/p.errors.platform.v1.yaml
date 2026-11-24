@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.11.0
+release: 1.12.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -1014,6 +1014,29 @@ entries:
         - Mend the rates service or its binding, then let the feed publish again; consent to a release that waits, if it is right.
         - Then decide the payment that was refused; do not set a rate by hand to get it through.
       escalation: Escalate to the bank's treasury and payment operations supervisor with the pair, its asOf and the limit.
+  - code: fx.RateUndated
+    title: The exchange rate carries no asOf, and the bank requires one
+    category: business
+    retryable: false
+    raisedBy:
+      - activity
+      - native
+      - interpreter
+      - operations-console
+    meaning: 'p.enrich.fx-rate.v1 refused a rate with no asOf because the bank requires each rate''s asOf (requireAsOf): a
+      rate typed by hand is refused like a stale one, the line is no-rate and facts.fx names the pair as undated (R-09-247). The
+      operations console warns "rates stale" for the same rate.'
+    causes:
+      - A rate typed into the bank's configuration by hand is still in force, though the bank takes its rates from the feed.
+      - The feed has never published the pair, so only the hand-typed rate is there.
+    runbook:
+      checks:
+        - Read the rates on the operations console's banner; an undated pair is one no feed gave.
+        - Read the bank's configuration release in force for p.enrich.fx-rate.v1#rates, and the feed's last release on the service console.
+      safeActions:
+        - Let the feed publish the pair, or remove the hand-typed rate in a new configuration release; then decide the refused payment.
+        - Do not turn requireAsOf off to get a payment through.
+      escalation: Escalate to the bank's treasury and payment operations supervisor with the pair and the configuration release in force.
   - code: fx.FeedFailed
     title: The rates feed could not publish
     category: technical
@@ -1298,6 +1321,23 @@ entries:
       safeActions:
         - Take an action it offers now.
       escalation: Escalate to the bank's payment operations supervisor with the payment id and the step.
+  - code: ops.BreakNoOrderMessage
+    title: The scheme names no message that starts this order for a break
+    category: business
+    retryable: false
+    raisedBy:
+      - operations-console
+    meaning: 'A reconciliation break was asked to start an exception request or a return, but the scheme''s report names no message
+      that starts it (reconcile.resolutions, R-09-250), so the order cannot be started; nothing was recorded.'
+    causes:
+      - The scheme declares no such message yet; the console does not offer the resolution, but an older page or the API asked for it.
+    runbook:
+      checks:
+        - Reload the break queue and read the resolutions the break offers.
+        - Read the scheme manifest of the active distribution for the report's reconcile disposition.
+      safeActions:
+        - Resolve the break by an explanation, or by adopting the scheme's status where it gives one, and raise the order by hand outside the platform if it must be.
+      escalation: Escalate to the bank's payment operations supervisor with the break and the report file.
   - code: ops.RemarksRequired
     title: The action needs remarks
     category: business

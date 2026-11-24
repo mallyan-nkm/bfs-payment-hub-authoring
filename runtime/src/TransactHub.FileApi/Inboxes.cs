@@ -111,7 +111,7 @@ public sealed class InboxPoller(ITransferPorts ports, FileIntake intake, string 
 }
 
 /// <summary>The File API's background work: poll the inboxes and deliver the outbox, every <c>FileApi:PollSeconds</c> (default 10).</summary>
-public sealed class FileApiWorker(InboxPoller poller, FileOutbox outbox, IConfiguration cfg, ILogger<FileApiWorker> log) : BackgroundService
+public sealed class FileApiWorker(InboxPoller poller, FileOutbox outbox, IConfiguration cfg, ILogger<FileApiWorker> log, IServiceProvider? services = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -123,6 +123,8 @@ public sealed class FileApiWorker(InboxPoller poller, FileOutbox outbox, IConfig
             {
                 await poller.PollOnce(stoppingToken);
                 foreach (var id in await outbox.Pending(attempts, stoppingToken)) await outbox.Deliver(id, attempts, stoppingToken);
+                // The orders reconciliation breaks start once a bank approver consented (R-09-250): through the front door, once each.
+                if (services?.GetService(typeof(BreakOrderStarter)) is BreakOrderStarter orders) await orders.StartPending(stoppingToken);
             }
             catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "The File API's poll failed"); }
             try { await Task.Delay(every, stoppingToken); } catch (OperationCanceledException) { return; }

@@ -25,8 +25,8 @@ public sealed record NativeModulePackage(string Scope, string Assembly, IReadOnl
 /// serves and each file, kept in the package as base64 text under <c>activities/native/&lt;scope&gt;/</c>, with the SHA-256 of its
 /// bytes. The same check runs when the release API installs a distribution and when the native host loads one: every file is
 /// there, in the signed bill of materials, with its SHA-256; no other file is under <c>activities/native/</c>; no file is an
-/// assembly the runtime image keeps; the contract version is one this runtime supports; the module's assembly was compiled against
-/// that contract; and no assembly of the module references an assembly of TransactHub other than the contract and the module's own
+/// assembly the runtime image keeps; the contract version is one this runtime supports; each module's assembly was compiled against
+/// that contract or an earlier minor of its major (R-09-276); and no assembly of the module references an assembly of TransactHub other than the contract and the module's own
 /// (R-09-125, <see cref="ImageReference"/>): a module reaches the image only through the contract.
 /// </summary>
 public static class NativeAssemblies
@@ -60,8 +60,10 @@ public static class NativeAssemblies
     static string Sha(byte[] b) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(b));
 
     /// <summary>Checks the manifest's native section against the files and returns each module, decoded. A manifest without one carries none.</summary>
-    public static IReadOnlyList<NativeModulePackage> Check(JsonObject manifest, Func<string, byte[]?> file, IEnumerable<string> paths)
+    /// <param name="runtimeContract">The contract of the runtime that takes it: this image's (<see cref="NativeContract.Version"/>) unless a test names another.</param>
+    public static IReadOnlyList<NativeModulePackage> Check(JsonObject manifest, Func<string, byte[]?> file, IEnumerable<string> paths, string? runtimeContract = null)
     {
+        var own = runtimeContract ?? NativeContract.Version;
         var native = manifest["native"] as JsonObject;
         var under = paths.Where(p => p.StartsWith(Folder, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
         if (native is null)
@@ -71,7 +73,7 @@ public static class NativeAssemblies
         }
         var contract = native["contract"]?.ToString();
         var modules = native["modules"] as JsonArray ?? [];
-        if (modules.Count > 0 && !NativeContract.Supports(contract)) throw new NativeAssembliesRefused($"{ContractUnsupported}: it is refused: {NativeContract.Refusal(contract)}", ContractUnsupported);
+        if (modules.Count > 0 && !NativeContract.Supports(contract, own)) throw new NativeAssembliesRefused($"{ContractUnsupported}: it is refused: {NativeContract.Refusal(contract, own)}", ContractUnsupported);
         var bom = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "native-assembly").ToDictionary(a => (string?)a["path"] ?? "", StringComparer.Ordinal);
         var listed = new HashSet<string>(StringComparer.Ordinal);
@@ -104,10 +106,11 @@ public static class NativeAssemblies
             }
             if (!files.TryGetValue(assembly, out var main)) throw new NativeAssembliesRefused($"The native module of {scope} does not carry its assembly {assembly}.dll");
             var built = ContractOf(main) ?? throw new NativeAssembliesRefused($"{assembly}.dll does not reference the native contract ({NativeContract.AssemblyName})");
-            if (!NativeContract.Supports(built))
-                throw new NativeAssembliesRefused($"{ContractUnsupported}: {assembly}.dll was built against native contract {built}, its manifest says {contract}: {NativeContract.Refusal(built)}", ContractUnsupported);
-            if (!SameMinor(built, contract))
-                throw new NativeAssembliesRefused($"{assembly}.dll was built against native contract {built}, its manifest says {contract}: {NativeContract.Refusal(built)}");
+            if (!NativeContract.Supports(built, own))
+                throw new NativeAssembliesRefused($"{ContractUnsupported}: {assembly}.dll was built against native contract {built}, its manifest says {contract}: {NativeContract.Refusal(built, own)}", ContractUnsupported);
+            // The manifest names the latest minor its modules were built against (R-09-276): a 2.0 module beside a 2.1 one is taken.
+            if (!NativeContract.Supports(built, contract!))
+                throw new NativeAssembliesRefused($"{assembly}.dll was built against native contract {built}, its manifest says {contract}: a manifest names the latest native contract its modules were built against, of their major");
             // A module references the contract and nothing else of the runtime's (R-09-125): not the platform, the ports, the store.
             foreach (var (asm, bytes) in files)
                 foreach (var r in References(bytes))
@@ -120,9 +123,6 @@ public static class NativeAssemblies
             if (!listed.Contains(p)) throw new NativeAssembliesRefused($"{p} is a native assembly the manifest does not list");
         return outp;
     }
-
-    static bool SameMinor(string built, string? declared) =>
-        Version.TryParse(built, out var a) && Version.TryParse(declared, out var b) && a.Major == b.Major && a.Minor == b.Minor;
 
     /// <summary>The names of the assemblies an assembly references, read from its metadata without loading it; none for a file that is not one.</summary>
     public static IReadOnlyList<string> References(byte[] assembly)

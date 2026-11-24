@@ -257,6 +257,45 @@ public sealed class FxRateStatusTests(Databases dbs)
         Assert.Equal(HttpStatusCode.Forbidden, (await host.As("op-9", "other-bank:Operator").GetAsync($"/ops/api/fx-rates?tenant={Bank}")).StatusCode);
     }
 
+    [Theory]
+    [InlineData(StoreProvider.PostgreSql)]
+    [InlineData(StoreProvider.SqlServer)]
+    public async Task A_bank_that_requires_each_rates_asOf_sees_a_rate_typed_by_hand_as_stale(StoreProvider provider)
+    {
+        // R-09-247 (owner's decision of 24 November 2026, Issue I-278): a bank on the feed sets requireAsOf, so a payment refuses a
+        // rate with no asOf (fx.RateUndated), and the console warns "rates stale" for it instead of listing it as standing.
+        var (store, _) = await dbs.Pair(provider);
+        var bank = $"{Bank}-req-{provider}".ToLowerInvariant();
+        var now = DateTimeOffset.UtcNow;
+        var rates = new JsonArray(
+            new JsonObject { ["from"] = "AED", ["to"] = "USD", ["rate"] = 0.2723m },
+            new JsonObject { ["from"] = "AED", ["to"] = "EUR", ["rate"] = 0.2511m, ["asOf"] = now.AddHours(-2).ToString("yyyy-MM-ddTHH:mm:ssZ") });
+        await OversightHost.Value(store, bank, FxRateStatus.Rates, rates, now.AddDays(-1));
+        await using var host = new OversightHost(store);
+        var op = host.As("op-1", $"{bank}:Operator");
+        var before = (await OversightHost.Json(await op.GetAsync($"/ops/api/fx-rates?tenant={bank}")))["banks"]!.AsArray().Single()!;
+        Assert.False((bool)before["stale"]!);
+        Assert.False((bool)before["requireAsOf"]!);
+
+        await OversightHost.Value(store, bank, FxRateStatus.RequireAsOf, JsonValue.Create(true)!, now.AddDays(-1));
+        var after = (await OversightHost.Json(await op.GetAsync($"/ops/api/fx-rates?tenant={bank}")))["banks"]!.AsArray().Single()!;
+        Assert.True((bool)after["stale"]!);
+        Assert.Equal(["AED/USD"], after["undatedPairs"]!.AsArray().Select(x => (string)x!));
+        Assert.Equal(["AED/USD"], after["stalePairs"]!.AsArray().Select(x => (string)x!));
+        Assert.Equal("fx.RateUndated", (string?)after["code"]);
+        var usd = after["rates"]!.AsArray().Single(r => (string?)r!["pair"] == "AED/USD")!;
+        Assert.Equal((true, false, true), ((bool)usd["stale"]!, (bool)usd["standing"]!, (bool)usd["undated"]!));
+        Assert.False((bool)after["rates"]!.AsArray().Single(r => (string?)r!["pair"] == "AED/EUR")!["stale"]!);
+    }
+
+    [Fact]
+    public void The_activitys_requireAsOf_is_off_by_default_and_its_code_is_the_native_code_behinds()
+    {
+        var act = (JsonObject)Yaml.ToJson(File.ReadAllText(Path.Combine(Repo.Root(), "spec", "factory", "p", "activities", "p.enrich.fx-rate.v1.yaml")))!;
+        Assert.Equal(("boolean", false), ((string?)act["parameters"]!["requireAsOf"]!["type"], (bool)act["parameters"]!["requireAsOf"]!["default"]!));
+        Assert.Equal("fx.RateUndated", TransactHub.Activities.Platform.Native.EnrichFxRate.RateUndated);
+    }
+
     [Fact]
     public void The_consoles_default_limit_is_the_activitys_declared_default()
     {

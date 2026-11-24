@@ -206,6 +206,17 @@ public sealed class ServiceApi(StoreOptions store, Signers signers, FakeGitHub g
 {
     public StoreOptions Store => store;
 
+    /// <summary>
+    /// The host stops, and the idle connections its database's pool keeps are closed: each test has a database, so a pool left open
+    /// per test would hold the one container's connections until it refuses more (53300).
+    /// </summary>
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        using var c = new Npgsql.NpgsqlConnection(store.ConnectionString);
+        Npgsql.NpgsqlConnection.ClearPool(c);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder b)
     {
         b.UseEnvironment(environment);

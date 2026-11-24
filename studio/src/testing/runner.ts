@@ -190,6 +190,11 @@ export function baseConfig(env: RunnerEnv, test: any, extra: Partial<RunConfig> 
     signals: (test.given?.signals ?? []).map((s: any) => ({ after: s.at, signal: s.signal })),
     ...extra,
   };
+  // The target's parameters a test sets (given.parameters) stand over its defaults and the bank's values, from the test's date
+  // (R-09-247): a value of the bank's dated earlier is read before them.
+  const given = Object.entries<any>(test.given?.parameters ?? {});
+  if (given.length)
+    cfg.values = [...(cfg.values ?? []), ...given.map(([k, v]) => ({ parameter: `${test.target}#${k}`, value: v, validFrom: String(test.evaluationDate ?? '1900-01-01') }))];
   if (test.given?.inbound) {
     const s = loadSample(env, test.given.inbound);
     // The name the File API received the file under, beside its content (R-05-85, Issue I-195).

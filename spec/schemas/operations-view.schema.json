@@ -40,7 +40,7 @@
         ]
       }
     },
-    "parameters": { "description": "The operations console's dials that read this view (R-05-66 to R-05-70): each a parameter with a type, a default and bounds, as every artefact's (R-04-08). A bank sets them in its configuration release as `<view>#<parameter>`; the console reads the value in force by date. The platform's view declares tatLimit, unmaskWindow and retentionPeriod; a scheme's view MAY declare tatLimit and retentionPeriod for its own payments, which then win.", "$ref": "urn:th:schema:common#/$defs/parameters" },
+    "parameters": { "description": "The operations console's dials that read this view (R-05-66 to R-05-70): each a parameter with a type, a default and bounds, as every artefact's (R-04-08). A bank sets them in its configuration release as `<view>#<parameter>`; the console reads the value in force by date. The platform's view declares tatLimit, unmaskWindow and retentionPeriod, and the work queue's escalation after a time, escalateAfter (a duration, P0D by default: off) with escalateTo (a code: the role an item escalates to, R-05-107, lint L61); a scheme's view MAY declare tatLimit and retentionPeriod for its own payments, which then win.", "$ref": "urn:th:schema:common#/$defs/parameters" },
     "provenance": { "$ref": "urn:th:schema:common#/$defs/provenance" }
   },
   "$defs": {
