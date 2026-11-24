@@ -491,7 +491,8 @@ public partial class EngineHostTests(Servers servers)
     }
 
     /// <summary>A distribution's stored package as the studio builds it: an engine package per platform workflow (engine/&lt;wf&gt;/).</summary>
-    static byte[] Package(string release)
+    /// <param name="flowable">The package as the studio exports it for Flowable too: the platform workflow's BPMN beside its documents (I-269).</param>
+    static byte[] Package(string release, bool flowable = false)
     {
         var docs = Documents(release);
         docs[$"p.wf.ask.v1@{release}"] = Doc($$"""
@@ -508,6 +509,7 @@ public partial class EngineHostTests(Servers servers)
             Put("manifest.yaml", $"kind: distribution\nrelease: {release}\n");
             Put("engine/p.wf.ask.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
             foreach (var (k, v) in docs) Put($"engine/p.wf.ask.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+            if (flowable) Put($"engine/p.wf.ask.v1/flowable/p.wf.ask.v1@{release}.bpmn20.xml", AskBpmn(release));
         }
         return ms.ToArray();
     }
@@ -526,7 +528,8 @@ public partial class EngineHostTests(Servers servers)
         var plans = Path.Combine(Path.GetTempPath(), $"th-hosts-{bank}");
         try
         {
-            var package = Package("1.0.0");
+            // Flowable runs the BPMN the studio exported, so its stored package carries it (I-269); the others build from the documents.
+            var package = Package("1.0.0", flowable: engine == "flowable");
             await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
             await WithRegistry(r => r.Activate(dist, Environment, "test", "e2e"));
             System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", new JsonObject { ["th-p"] = worker.Url }.ToJsonString());
@@ -668,8 +671,9 @@ public partial class EngineHostTests(Servers servers)
     [Fact] public Task Elsa_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("elsa");
     // The bug the last change found (R-09-161): on Temporal a message sent to a payment after its run started, as the Central Bank's
     // ACK arrives through the File API, was counted unmatched by the payment's front door workflow and never reached the run. Flowable
-    // runs the exported BPMN, which this stored package does not carry; its live path stamps the message as DTFx's and Elsa's do.
+    // runs the exported BPMN, so its stored package carries it; its live path stamps the message as DTFx's and Elsa's do (I-269, R-09-207).
     [Fact] public Task Temporal_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("temporal");
+    [Fact] public Task Flowable_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("flowable");
 
     [Fact] public Task Temporal_worker_versioning_on_a_real_server() => SwitchOver("temporal");
     [Fact] public Task Dtfx() => SwitchOver("dtfx");
