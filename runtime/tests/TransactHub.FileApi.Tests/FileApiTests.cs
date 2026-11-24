@@ -630,6 +630,24 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
             Assert.Equal(("P-9", "out"), (f.SubjectId, f.Direction));
             Assert.Equal(["file.queued", "file.delivered", "file.resent", "file.delivered"], await db.Facts.AsNoTracking().Where(x => x.SubjectId == f.Id).OrderBy(x => x.Seq).Select(x => x.Kind).ToListAsync());
 
+            // The service console's resend-file of a salary file a native send put on the File API's outbox (R-09-162): the store keeps
+            // no copy of it, the File API does, so the console asks the File API to send its kept bytes again (Issue I-333). Before, the
+            // console found no file and refused (ops.NoFileKept), and a SIF the SFTP server never took could not be sent again.
+            await using (var dbs = StoreDbContext.Open(o))
+            {
+                dbs.Bulks.Add(new BulkRow { Id = "P-12", Tenant = Bank, Scheme = "uae.wps", Direction = "Outward", MessageId = "000000000012", ReleaseId = "dist/test@1", AcceptedAt = DateTimeOffset.UtcNow });
+                await dbs.SaveChangesAsync();
+            }
+            using (FileTransferOwner.Use(new FileTransferOwner("P-12", "leg-12", "uae.wps", "uae.wps.sif-out", "uae.wps.exchange.send-salary-file.v2")))
+                await outbox.Put("centralBank/sif", "000000000012.SIF.gpg", bytes);
+            var at12 = Path.Combine(root, "centralBank", "sif", "000000000012.SIF.gpg");
+            File.Delete(at12);
+            var resend = new TransactHub.Operations.FileResend(o, port);
+            Assert.Equal("sent", (string?)(await resend.Resend("P-12", "bulk", null, "svc.engineer", "act-12"))["result"]);
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(at12));
+            Assert.Equal("already resent by this action", (string?)(await resend.Resend("P-12", "bulk", null, "svc.engineer", "act-12"))["result"]);
+            Assert.Single(await db.Facts.AsNoTracking().Where(x => x.SubjectId == "P-12" && x.Kind == "message" && x.Code == "resent").ToListAsync());
+
             // A later configuration release binds another folder: the next delivery uses it, with no restart of the File API (R-09-112).
             await Bind("1.1.0", "env:TH_TEST_CB_ROOT2");
             await Task.Delay(TimeSpan.FromSeconds(2.5));

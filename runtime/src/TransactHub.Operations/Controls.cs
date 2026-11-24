@@ -17,6 +17,13 @@ public interface IFileTransferPort
 
     /// <summary>Puts a payment's file, whose tenant and payment the port is told (the File API keeps the file under them).</summary>
     Task<string> Put(string tenant, string subjectId, string fileId, string fileName, byte[] content, CancellationToken ct = default) => Put(fileId, fileName, content, ct);
+
+    /// <summary>
+    /// Sends again the last file the payment sent that the port itself keeps, by the action's id (the same id sends once): the File
+    /// API keeps every file a native send put on its outbox (R-09-162), and the store keeps no copy of it. Null where the port keeps
+    /// no file of the payment's (Issue I-333).
+    /// </summary>
+    Task<JsonObject?> ResendKept(string tenant, string subjectId, string actionId, CancellationToken ct = default) => Task.FromResult<JsonObject?>(null);
 }
 
 /// <summary>
@@ -40,6 +47,24 @@ public sealed class FileApiTransferPort(Uri fileApi, string folder, Func<Cancell
         var o = JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonObject ?? new JsonObject();
         if ((int)res.StatusCode >= 400 && (int)res.StatusCode != 502) throw new ActionRefused(502, $"The File API answered {(int)res.StatusCode}: {(string?)o["error"]}", OpsCodes.NoFileKept);
         return o;
+    }
+
+    public async Task<JsonObject?> ResendKept(string tenant, string subjectId, string actionId, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(fileApi, $"files?tenant={Uri.EscapeDataString(tenant)}&paymentId={Uri.EscapeDataString(subjectId)}"));
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await token(ct));
+        using var res = await http.SendAsync(req, ct);
+        if (!res.IsSuccessStatusCode) throw new ActionRefused(502, $"The File API answered {(int)res.StatusCode} for the files of {subjectId}", OpsCodes.NoFileKept);
+        // The payment's last file sent, not a console's earlier resend of it: the File API keeps each under the payment, oldest first.
+        var sent = (JsonNode.Parse(await res.Content.ReadAsStringAsync(ct)) as JsonArray ?? [])
+            .OfType<JsonObject>().LastOrDefault(f => (string?)f["direction"] == "out" && (string?)f["kind"] != "resend");
+        if (sent is null) return null;
+        var r = await Post($"files/{Uri.EscapeDataString((string)sent["id"]!)}/resend", new JsonObject { ["actionId"] = actionId }, ct);
+        return new JsonObject
+        {
+            ["file"] = (string?)sent["id"], ["fileName"] = (string?)sent["fileName"], ["kind"] = (string?)sent["kind"], ["sha256"] = (string?)sent["sha256"],
+            ["result"] = (string?)r["result"] == "resent" ? "sent" : (string?)r["result"] ?? "failed",
+        };
     }
 
     public async Task<string> Put(string tenant, string subjectId, string fileId, string fileName, byte[] content, CancellationToken ct = default)
@@ -118,12 +143,25 @@ public sealed class FileResend(StoreOptions store, IFileTransferPort port, TimeP
         await using var db = StoreDbContext.Open(store);
         var q = db.Messages.AsNoTracking().Where(m => m.SubjectId == subjectId && m.Direction == "Outward");
         var file = fileId is null ? await q.OrderByDescending(m => m.At).FirstOrDefaultAsync(ct) : await q.FirstOrDefaultAsync(m => m.Id == fileId, ct);
-        if (file is null) throw new ActionRefused(409, fileId is null ? $"{subjectId} has no file kept to send again" : $"{subjectId} has no file {fileId}", OpsCodes.NoFileKept);
         var done = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "message" && f.Code == "resent").Select(f => f.DataJson).ToListAsync(ct);
-        if (done.Any(d => (string?)JsonNode.Parse(d)?["action"] == actionId))
-            return new JsonObject { ["file"] = file.Id, ["result"] = "already resent by this action" };
         var tenant = await db.Bulks.AsNoTracking().Where(b => b.Id == subjectId).Select(b => b.Tenant).FirstOrDefaultAsync(ct)
             ?? await db.Payments.AsNoTracking().Where(p => p.Id == subjectId).Select(p => p.Tenant).FirstOrDefaultAsync(ct) ?? "";
+        if (file is null && fileId is null && tenant.Length > 0)
+        {
+            // A file a native send put on the File API's outbox (R-09-162): the File API keeps it, the store does not (Issue I-333).
+            if (done.Any(d => (string?)JsonNode.Parse(d)?["action"] == actionId))
+                return new JsonObject { ["result"] = "already resent by this action" };
+            if (await port.ResendKept(tenant, subjectId, actionId, ct) is { } kept)
+            {
+                kept["action"] = actionId;
+                await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("message", "resent", (JsonObject)kept.DeepClone(), Actor: actor), ct);
+                kept.Remove("action");
+                return kept;
+            }
+        }
+        if (file is null) throw new ActionRefused(409, fileId is null ? $"{subjectId} has no file kept to send again" : $"{subjectId} has no file {fileId}", OpsCodes.NoFileKept);
+        if (done.Any(d => (string?)JsonNode.Parse(d)?["action"] == actionId))
+            return new JsonObject { ["file"] = file.Id, ["result"] = "already resent by this action" };
         var result = await port.Put(tenant, subjectId, file.Id, file.FileName ?? file.Id, file.Content, ct);
         await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("message", "resent",
             new JsonObject { ["file"] = file.Id, ["fileName"] = file.FileName, ["kind"] = file.Kind, ["sha256"] = file.ContentHash, ["result"] = result, ["action"] = actionId }, Actor: actor), ct);

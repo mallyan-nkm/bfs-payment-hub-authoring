@@ -2460,6 +2460,20 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Done (24 November 2026).** Each answer with the page names a fresh nonce: the studio server (`appCsp`, `src/server/http.ts`) and the runtime hosts (`SecurityHeaders.WriteConsolePageAsync`, `UseConsolePage`) put it in the page's `<meta name="th-style-nonce">` and in `style-src 'self' 'nonce-…'`; the page gives it to Fluent's renderer, which sets it on every style element. `unsafe-inline` stays out, and scripts are still the page's own files only (`script-src 'self'`). Checked by `studio/test/security.test.ts` and `SecurityHeadersTests`.
 
 **Recommendation.** Say in R-09-60 and R-11-43 that a page may also apply style elements its own script writes when they carry the nonce of that answer, and never inline script; or, if the owner prefers no style elements at all, build Fluent's styles ahead of time into a stylesheet (Griffel's CSS extraction), which needs a build plugin the studio's Vite build does not have today.
+## I-334. An engine host that restarts refuses the answers for the payments it was running
+
+**Issue.** The engine host keeps the payments it started in memory only (`DistributionHost.Payments`). When its container is recreated (on the laptop, `docker compose up -d` after a new image), the Temporal runs of the payments in flight go on, but the host answers 404 (`... is not running on <distribution>`) to the File API's front door for every message of theirs: the Central Bank's ACK is moved to the inbox's `error/` folder (`file.not-handed`, `frontdoor.EngineRefused`) and the payment waits until its acknowledgement wait ends. Found on the laptop while preparing the end-to-end video.
+
+**Recommendation.** On start, have the host rebuild its list of running payments from the store (each payment's `engine started` fact and no end) or from the engine (Temporal's running front-door workflows of the distribution's build id), and add a laptop or engine-host test that restarts the host between a payment's send and its ACK. Until then, do not restart an engine host while payments wait for an answer.
+
+## I-333. The service console could not resend a salary file the File API kept
+
+**Issue.** Since R-09-162 a WPS salary file leaves through the File API's outbox, which keeps it; the store's `message` table holds no copy. The service console's `resend-file` (and the operations console's `resend`) read the store's copy only, so for a SIF the SFTP server never took (the partner down, the outbox's delivery attempts used up while its circuit breaker was open) both answered `ops.NoFileKept`, and nothing in a console could send it again. Found on the laptop while preparing the end-to-end video's technical failure.
+
+**Recommendation.** Let a resend send the File API's kept bytes when the store keeps none: list the payment's files at the File API (`GET /files`) and resend its last sent file there (`POST /files/{id}/resend`), idempotent by the action's id, with the `message resent` fact on the payment's chain. Have the operations console offer `resend` for such a payment too.
+
+**Done in part (24 November 2026).** The service console's `resend-file` does so (`FileResend`, `FileApiTransferPort.ResendKept`; R-05-58; `FileApiTests.The_consoles_resend_goes_through_the_File_API_outbox_and_is_delivered_on_the_banks_binding`, which failed with `ops.NoFileKept` before). The operations console still offers `resend` only where the store keeps the file: that part is open.
+
 ## I-332. The laptop's Flowable server never reports healthy
 
 **Issue.** `deploy/laptop/compose.yaml` checks the `flowable` service's health at `/flowable-rest/actuator/health` with no credentials. Flowable REST 7.1.0 answers that endpoint to its admin only (401), and the image has BusyBox's `wget` and no `curl`, so the service stays `unhealthy` and `docker compose --profile flowable up -d --wait` fails, although the server works. Found while running the bench's Flowable run on the laptop for I-331.
