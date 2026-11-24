@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRANCH, TEST_TOKEN, forkRepo, seeded } from '../support/content.js';
 import type { FakeGitHub } from '../support/fake-github.js';
+import { MODULE_SIGNERS, syntheticModuleFolder } from '../support/synthetic-modules.js';
 
 // Black-box harness: the studio as a separate process, reached only over HTTP. Its content branch is a
 // repository of the fake GitHub, which runs in the test's own process, seeded from
@@ -33,14 +34,21 @@ export async function startServer(extraEnv: Record<string, string> = {}, opts: {
   const port = 5100 + Math.floor(Math.random() * 800);
   const content = { TH_GITHUB_API: fake.url, TH_CONTENT_REPO: repo, TH_CONTENT_BRANCH: BRANCH, TH_GITHUB_TOKEN: TEST_TOKEN };
   const url = `http://127.0.0.1:${port}`;
+  // A bank's distribution is promotable, so it carries the platform's native module (R-09-120, I-381), and approving platform or
+  // bank content builds one: the studio gets a signed synthetic module build, as the unit tests do, unless the run names its own
+  // TH_NATIVE_MODULES (I-396). No runtime loads it.
+  const named = extraEnv.TH_NATIVE_MODULES ?? process.env.TH_NATIVE_MODULES;
+  const modules = named ? undefined : syntheticModuleFolder();
+  const native = named ? {} : { TH_NATIVE_MODULES: modules!, TH_NATIVE_MODULE_SIGNERS: MODULE_SIGNERS };
   // Sign-in through the built-in development provider (R-11-32), at the address the tests use.
   const auth = { TH_AUTH_DEV: '1', TH_PUBLIC_URL: url, NODE_ENV: 'test' };
-  const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/server/main.ts'], { cwd: STUDIO, env: { ...process.env, ...(opts.keepAiKeys ? {} : Object.fromEntries(AI_KEYS.map((k) => [k, '']))), PORT: String(port), ...content, ...auth, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(path.join(STUDIO, 'node_modules', '.bin', 'tsx'), ['src/server/main.ts'], { cwd: STUDIO, env: { ...process.env, ...(opts.keepAiKeys ? {} : Object.fromEntries(AI_KEYS.map((k) => [k, '']))), PORT: String(port), ...content, ...auth, ...native, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
   // The server's output is read, so a full pipe never blocks it; TH_BB_SERVER_LOG keeps it in a file.
   const sink = process.env.TH_BB_SERVER_LOG ? fs.createWriteStream(process.env.TH_BB_SERVER_LOG, { flags: 'a' }) : undefined;
   child.stdout?.on('data', (d) => sink?.write(d));
   child.stderr?.on('data', (d) => sink?.write(d));
   child.on('exit', (code, signal) => sink?.write(`\n[server exited ${code ?? ''} ${signal ?? ''}]\n`));
+  if (modules) child.on('exit', () => fs.rmSync(modules, { recursive: true, force: true }));
   for (let i = 0; i < 300; i++) {
     try {
       if ((await fetch(`${url}/health/live`)).ok) break;
