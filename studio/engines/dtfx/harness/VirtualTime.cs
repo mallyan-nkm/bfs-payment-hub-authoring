@@ -44,6 +44,12 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     object? baton; // the work item that runs now; null when free
     int batonWaiters;
     TaskCompletionSource changed = NewSignal();
+    /// <summary>
+    /// Where the service writes each change before it makes it, when it serves a distribution on the runtime (Issue I-165): a
+    /// message an instance takes, an episode it ran (its new history events, the activities and timers it scheduled, its state),
+    /// an activity whose answer was dropped. Null in a kit run.
+    /// </summary>
+    public IEngineHistory? History;
     public int DroppedMessages;
     public int Episodes; // orchestration work items; each replays the stored history from the start
     public int ActivityRuns;
@@ -77,20 +83,36 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
         }
     }
 
-    void Enqueue(TaskMessage m)
+    static string Ser(object o) => JsonConvert.SerializeObject(o, HistorySettings);
+    static T De<T>(string s) => JsonConvert.DeserializeObject<T>(s, HistorySettings)!;
+
+    /// <param name="activity">The activity work item whose answer this is, so that a service rebuilt from its history knows it ran.</param>
+    /// <param name="replay">Taken from the history while the service is rebuilt: nothing is written and the clock is told later.</param>
+    void Enqueue(TaskMessage m, string? activity = null, bool replay = false)
     {
         // Called under the lock. A message for a completed instance is dropped, as a store would.
         var id = m.OrchestrationInstance.InstanceId;
         if (!instances.TryGetValue(id, out var rec))
         {
-            if (m.Event is not ExecutionStartedEvent es) { DroppedMessages++; return; }
+            if (m.Event is not ExecutionStartedEvent es) { Dropped(activity, replay); return; }
+            if (!replay) Record(id, activity, m);
             rec = new InstanceRecord { Id = id, Name = es.Name, Input = es.Input, CreatedSeq = msgSeq, ParentId = es.ParentInstance?.OrchestrationInstance?.InstanceId };
             instances[id] = rec;
             creationOrder.Add(id);
         }
-        if (rec.Completed) { DroppedMessages++; return; }
+        else if (rec.Completed) { Dropped(activity, replay); return; }
+        else if (!replay) Record(id, activity, m);
         rec.Pending.Add((msgSeq++, m));
-        clock.Enter();
+        if (!replay) clock.Enter();
+    }
+
+    void Record(string id, string? activity, TaskMessage m) =>
+        History?.Append("message", new System.Text.Json.Nodes.JsonObject { ["instance"] = id, ["activity"] = activity, ["msg"] = Ser(m) });
+
+    void Dropped(string? activity, bool replay)
+    {
+        DroppedMessages++;
+        if (activity is not null && !replay) History?.Append("activity-done", new System.Text.Json.Nodes.JsonObject { ["activity"] = activity });
     }
 
     // ------------------------------------------------------------------ baton (one work item at a time)
@@ -180,6 +202,8 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
                         Episodes++;
                         baton = wi;
                         lockedCounts[r.Id] = r.Pending.Count;
+                        // The history as stored when the episode began: the dispatcher adds the new messages to this runtime state.
+                        lockedHistory[r.Id] = (r.History is null ? 0 : wi.OrchestrationRuntimeState.Events.Count, wi.OrchestrationRuntimeState.OrchestrationInstance?.ExecutionId);
                         return wi;
                     }
                 }
@@ -193,12 +217,14 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     }
 
     readonly Dictionary<string, int> lockedCounts = new();
+    readonly Dictionary<string, (int events, string? execution)> lockedHistory = new();
 
     public Task CompleteTaskOrchestrationWorkItemAsync(TaskOrchestrationWorkItem workItem, OrchestrationRuntimeState newOrchestrationRuntimeState, IList<TaskMessage> outboundMessages, IList<TaskMessage> orchestratorMessages, IList<TaskMessage> timerMessages, TaskMessage continuedAsNewMessage, OrchestrationState orchestrationState)
     {
         lock (gate)
         {
             var rec = instances[workItem.InstanceId];
+            if (History is not null) RecordEpisode(rec, workItem, newOrchestrationRuntimeState, outboundMessages, timerMessages, orchestrationState);
             // New work first, then retire the messages this episode consumed, so the clock never sees a false idle.
             foreach (var m in outboundMessages ?? Array.Empty<TaskMessage>()) { activityQueue.AddLast((msgSeq++, m)); clock.Enter(); }
             foreach (var m in orchestratorMessages ?? Array.Empty<TaskMessage>()) Enqueue(m);
@@ -288,7 +314,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     {
         lock (gate)
         {
-            Enqueue(responseMessage);
+            Enqueue(responseMessage, activity: workItem.Id);
             if (ReferenceEquals(baton, workItem) || baton is ActivityBaton ab && ab.WorkItemId == workItem.Id) baton = null;
             clock.Exit();
             Signal();
@@ -314,6 +340,127 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
 
     /// <summary>The work item that holds the baton now. An activity reads it when it starts, as it is then the holder.</summary>
     public object? CurrentBaton { get { lock (gate) return baton; } }
+
+    // ------------------------------------------------------------------ the history (Issue I-165)
+
+    /// <summary>
+    /// An episode as a fact, before its effects are made: the history events it added (and from which event), the activities it
+    /// scheduled with their numbers, the timers it set, how many messages it consumed and the instance's state. The messages it sends
+    /// to other instances and its continue-as-new are recorded as those instances take them.
+    /// </summary>
+    void RecordEpisode(InstanceRecord rec, TaskOrchestrationWorkItem workItem, OrchestrationRuntimeState? state, IList<TaskMessage>? outbound, IList<TaskMessage>? timers, OrchestrationState? orchestrationState)
+    {
+        var e = new System.Text.Json.Nodes.JsonObject { ["instance"] = rec.Id, ["consumed"] = lockedCounts[rec.Id] };
+        if (state is not null)
+        {
+            var newExec = state.OrchestrationInstance?.ExecutionId;
+            var (stored, oldExec) = lockedHistory.TryGetValue(rec.Id, out var h) ? h : (0, null);
+            var from = rec.History is not null && oldExec is not null && newExec == oldExec ? stored : 0;
+            e["execution"] = newExec;
+            e["from"] = from;
+            e["events"] = Ser(state.Events.Skip(from).ToList());
+        }
+        var seqNo = msgSeq;
+        e["activities"] = new System.Text.Json.Nodes.JsonArray((outbound ?? Array.Empty<TaskMessage>()).Select(m => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject { ["seq"] = seqNo++, ["msg"] = Ser(m) }).ToArray());
+        e["timers"] = new System.Text.Json.Nodes.JsonArray((timers ?? Array.Empty<TaskMessage>()).Select(m => (System.Text.Json.Nodes.JsonNode?)Ser(m)).ToArray());
+        if (orchestrationState is not null) e["state"] = Ser(orchestrationState);
+        History!.Append("episode", e);
+    }
+
+    static string TimerKey(TaskMessage m) => $"{m.OrchestrationInstance.InstanceId}|{((TimerFiredEvent)m.Event).TimerId}";
+
+    static bool Ended(OrchestrationStatus s) => s is OrchestrationStatus.Completed or OrchestrationStatus.Failed or OrchestrationStatus.Terminated or OrchestrationStatus.Canceled;
+
+    /// <summary>
+    /// The service as its history leaves it (Issue I-165): every instance with its history, the messages it has not consumed, the
+    /// activities scheduled and not answered (an activity that ran when the service stopped runs again: at least once, as a job
+    /// whose lock expired), and the timers set and not fired, which fire at their time on the clock (at once when it has passed).
+    /// Called before the worker starts. Answers what it rebuilt.
+    /// </summary>
+    public System.Text.Json.Nodes.JsonObject Rebuild(IEnumerable<(string code, System.Text.Json.Nodes.JsonObject data)> facts)
+    {
+        var timers = new Dictionary<string, TaskMessage>(StringComparer.Ordinal);
+        var activities = new SortedDictionary<long, TaskMessage>();
+        int episodes = 0, messages = 0;
+        lock (gate)
+        {
+            foreach (var (code, d) in facts)
+            {
+                switch (code)
+                {
+                    case "message":
+                    {
+                        var m = De<TaskMessage>((string)d["msg"]!);
+                        messages++;
+                        if ((string?)d["activity"] is string act && long.TryParse(act, out var a)) activities.Remove(a);
+                        if (m.Event is TimerFiredEvent) timers.Remove(TimerKey(m));
+                        Enqueue(m, replay: true);
+                        break;
+                    }
+                    case "activity-done":
+                        if (long.TryParse((string?)d["activity"], out var done)) activities.Remove(done);
+                        break;
+                    case "episode":
+                    {
+                        episodes++;
+                        var rec = instances[(string)d["instance"]!];
+                        var consumed = (int)d["consumed"]!;
+                        if ((string?)d["events"] is string evs)
+                        {
+                            var added = De<List<HistoryEvent>>(evs);
+                            var from = (int)d["from"]!;
+                            var all = from == 0 || rec.History is null ? new List<HistoryEvent>() : De<List<HistoryEvent>>(Encoding.UTF8.GetString(rec.History)).Take(from).ToList();
+                            if (from == 0 && rec.History is not null) rec.ArchivedHistories.Add(Encoding.UTF8.GetString(rec.History));
+                            all.AddRange(added);
+                            rec.History = Encoding.UTF8.GetBytes(Ser(all));
+                        }
+                        foreach (var a in d["activities"]!.AsArray())
+                        {
+                            var seqNo = (long)a!["seq"]!;
+                            activities[seqNo] = De<TaskMessage>((string)a["msg"]!);
+                            msgSeq = Math.Max(msgSeq, seqNo + 1);
+                        }
+                        foreach (var t in d["timers"]!.AsArray())
+                        {
+                            var m = De<TaskMessage>((string)t!);
+                            timers[TimerKey(m)] = m;
+                        }
+                        rec.Pending.RemoveRange(0, Math.Min(consumed, rec.Pending.Count));
+                        if ((string?)d["state"] is string st)
+                        {
+                            rec.State = De<OrchestrationState>(st);
+                            rec.CustomStatus = rec.State.Status;
+                            if (Ended(rec.State.OrchestrationStatus)) { rec.Completed = true; rec.Pending.Clear(); }
+                        }
+                        Episodes++;
+                        break;
+                    }
+                }
+            }
+            // What is still to do counts as in flight on the clock, as it did when it was first queued.
+            var pending = instances.Values.Sum(r => r.Completed ? 0 : r.Pending.Count);
+            foreach (var (seqNo, m) in activities)
+            {
+                if (instances.TryGetValue(m.OrchestrationInstance.InstanceId, out var r) && r.Completed) continue;
+                activityQueue.AddLast((seqNo, m));
+            }
+            clock.Enter(pending + activityQueue.Count);
+            var due = 0;
+            foreach (var (_, m) in timers)
+            {
+                if (instances.TryGetValue(m.OrchestrationInstance.InstanceId, out var r) && r.Completed) continue;
+                var msg = m;
+                due++;
+                clock.Schedule(Duration.MsOf(((TimerFiredEvent)m.Event).FireAt), () => { lock (gate) { Enqueue(msg); Signal(); } });
+            }
+            Signal();
+            return new System.Text.Json.Nodes.JsonObject
+            {
+                ["instances"] = instances.Count, ["open"] = instances.Values.Count(r => !r.Completed), ["episodes"] = episodes, ["messages"] = messages,
+                ["pendingMessages"] = pending, ["activitiesAgain"] = activityQueue.Count, ["timers"] = due,
+            };
+        }
+    }
 
     // ------------------------------------------------------------------ IOrchestrationServiceClient
 

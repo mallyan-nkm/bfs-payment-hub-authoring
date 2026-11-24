@@ -80,7 +80,7 @@ All four run one interpreter of the expanded workflow, behind one seam (`IEngine
 
 Each installation runs one engine (D1). The source's `IsPatched` ladder is not carried: versions come from releases, not patches.
 
-The long-running engine host (`runtime/tools/TransactHub.EngineHost`) runs a host per distribution, side by side, builds each host's plan from the stored package (R-09-94), and takes the messages the front door correlates to a running payment (R-09-93). On DTFx and Elsa a payment runs in a harness run of its own, in real time, which does not survive a restart of its host; Flowable deploys per payment (I-165).
+The long-running engine host (`runtime/tools/TransactHub.EngineHost`) runs a host per distribution, side by side, builds each host's plan from the stored package (R-09-94), and takes the messages the front door correlates to a running payment (R-09-93). On DTFx, Elsa and Flowable each distribution runs on one engine service that serves all its payments in real time and survives a restart of its host: DTFx and Elsa rebuild it from its history in the store, Flowable's one binding per distribution from its journal, with one deployment in the distribution's tenant (R-09-196 to R-09-199).
 
 ## Releases, activations and hot update
 
@@ -128,7 +128,7 @@ laptop inbox folder ---------+        +-- outbox <-- workflows' file sends, cons
 | Subject | Issue |
 | --- | --- |
 | What the File API and the front door leave open: file rules, inbox messages, host keys | [I-158](../ISSUES.md#i-158-the-file-api-and-the-runtimes-front-door) to [I-161](../ISSUES.md#i-161-the-banks-sftp-partners-have-no-pinned-host-key-and-the-logins-form) |
-| Durable DTFx and Elsa runs in the engine host; one Flowable deployment per distribution | [I-165](../ISSUES.md#i-165-dtfx-and-elsa-runs-do-not-survive-a-restart-of-their-host-and-flowable-deploys-per-payment) |
+| The throughput of one engine service per distribution, and how long it takes to start | [I-300](../ISSUES.md#i-300-a-distributions-engine-service-runs-one-work-item-at-a-time), [I-301](../ISSUES.md#i-301-a-distributions-history-chain-is-read-whole-at-every-start-of-its-service) |
 | Performance targets, deployment sizes | [I-68](../ISSUES.md#i-68-non-functional-targets-deployment-sizes-and-the-reporting-read-side), [I-143](../ISSUES.md#i-143-the-service-level-targets-the-alert-rules-have-no-number-for) |
 | Who keeps the SQL Server plugin on each Temporal release | [I-42](../ISSUES.md#i-42-who-keeps-the-sql-server-plugin-for-temporal-and-how-an-upgrade-is-proved) |
 | The original platform's capabilities the owner deferred, and those with no home yet | [I-188](../ISSUES.md#i-188-the-original-platforms-capabilities-the-owner-deferred), [I-189](../ISSUES.md#i-189-capabilities-of-the-original-platform-with-no-home-yet) |

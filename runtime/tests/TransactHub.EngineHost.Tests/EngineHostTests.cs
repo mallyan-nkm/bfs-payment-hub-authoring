@@ -52,8 +52,31 @@ public sealed class Servers : IAsyncLifetime
         await db.Database.MigrateAsync();
     }
 
+    /// <summary>The store on SQL Server 2022 as well, started the first time a test asks for it (the restart tests run on both, I-165).</summary>
+    Testcontainers.MsSql.MsSqlContainer? sql;
+    readonly SemaphoreSlim sqlGate = new(1, 1);
+
+    public async Task<StoreOptions> SqlServer()
+    {
+        await sqlGate.WaitAsync();
+        try
+        {
+            if (sql is null)
+            {
+                var c = new Testcontainers.MsSql.MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+                await c.StartAsync();
+                await using (var db = StoreDbContext.Open(new StoreOptions(StoreProvider.SqlServer, c.GetConnectionString())))
+                    await db.Database.MigrateAsync();
+                sql = c;
+            }
+            return new StoreOptions(StoreProvider.SqlServer, sql.GetConnectionString());
+        }
+        finally { sqlGate.Release(); }
+    }
+
     public async Task DisposeAsync()
     {
+        if (sql is not null) await sql.DisposeAsync();
         await pg.DisposeAsync();
         await temporal.DisposeAsync();
         await flowable.DisposeAsync();
@@ -126,8 +149,12 @@ sealed class Worker : IDisposable
 /// in wall time, with no harness patience.
 /// </summary>
 [Collection(HostCollection.Name)]
-public class EngineHostTests(Servers servers)
+public partial class EngineHostTests(Servers servers)
 {
+    /// <summary>The store a test runs on: PostgreSQL unless it asks for SQL Server.</summary>
+    StoreOptions? store;
+    StoreOptions Db => store ?? servers.Store;
+
     const string Environment = "test";
     /// <summary>A synthetic token for this test run's supervisor (R-08-22).</summary>
     static readonly string HostToken = $"synthetic-host-token-{Guid.NewGuid():N}";
@@ -150,7 +177,7 @@ public class EngineHostTests(Servers servers)
             var dir = Path.Combine(Runtime, "tools", tool);
             var found = Directory.Exists(Path.Combine(dir, "bin", "Release")) ? Directory.GetFiles(Path.Combine(dir, "bin", "Release"), dll, SearchOption.AllDirectories).FirstOrDefault() : null;
             if (found is not null) return found;
-            var b = Process.Start(new ProcessStartInfo("dotnet", ["build", "-c", "Release", "--nologo", "-v", "q"]) { WorkingDirectory = dir, RedirectStandardOutput = true, UseShellExecute = false })!;
+            var b = Process.Start(new ProcessStartInfo("dotnet", ["build", "-c", "Release", "--nologo", "-v", "q", "-nodeReuse:false"]) { WorkingDirectory = dir, RedirectStandardOutput = true, UseShellExecute = false })!;
             var output = b.StandardOutput.ReadToEnd();
             b.WaitForExit();
             Assert.True(b.ExitCode == 0, output);
@@ -246,7 +273,7 @@ public class EngineHostTests(Servers servers)
 
     async Task<T> WithRegistry<T>(Func<DistributionRegistry, Task<T>> f)
     {
-        await using var db = StoreDbContext.Open(servers.Store);
+        await using var db = StoreDbContext.Open(Db);
         return await f(new DistributionRegistry(db));
     }
 
@@ -260,7 +287,7 @@ public class EngineHostTests(Servers servers)
     /// <summary>The store's payment a run accepted for a payment id (its payload's create fact carries the id).</summary>
     async Task<string?> SubjectOf(string paymentId)
     {
-        await using var db = StoreDbContext.Open(servers.Store);
+        await using var db = StoreDbContext.Open(Db);
         var creates = await db.Facts.AsNoTracking().Where(f => f.SubjectKind == "payload" && f.Code == "create" && f.DataJson.Contains(paymentId)).Select(f => f.SubjectId).ToListAsync();
         foreach (var r in creates)
         {
@@ -273,7 +300,7 @@ public class EngineHostTests(Servers servers)
     async Task<bool> StepRecorded(string paymentId, string code)
     {
         if (await SubjectOf(paymentId) is not string subject) return false;
-        await using var db = StoreDbContext.Open(servers.Store);
+        await using var db = StoreDbContext.Open(Db);
         return await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == subject && f.Kind == "step" && f.Code == code);
     }
 
@@ -281,7 +308,7 @@ public class EngineHostTests(Servers servers)
     async Task Decide(string paymentId)
     {
         var subject = await SubjectOf(paymentId) ?? throw new Xunit.Sdk.XunitException($"{paymentId} was not accepted");
-        await using var db = StoreDbContext.Open(servers.Store);
+        await using var db = StoreDbContext.Open(Db);
         db.Outbox.Add(new OutboxRow
         {
             Topic = "engine-signal", Key = subject, At = DateTimeOffset.UtcNow,
@@ -328,8 +355,8 @@ public class EngineHostTests(Servers servers)
         if (engine != "temporal") Built($"TransactHub.{char.ToUpperInvariant(engine[0])}{engine[1..]}Harness", $"TransactHub.{char.ToUpperInvariant(engine[0])}{engine[1..]}Harness.dll");
         var psi = new ProcessStartInfo("dotnet", [dll, "supervise", "--engine", engine, "--bank", bank, "--environment", Environment, "--plans", plans])
         { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        psi.Environment["TH_STORE_PROVIDER"] = "PostgreSql";
-        psi.Environment["TH_STORE_CONNECTION"] = servers.Store.ConnectionString;
+        psi.Environment["TH_STORE_PROVIDER"] = Db.Provider.ToString();
+        psi.Environment["TH_STORE_CONNECTION"] = Db.ConnectionString;
         psi.Environment["TH_TEMPORAL_ADDRESS"] = servers.TemporalAddress;
         psi.Environment["TH_FLOWABLE_URL"] = servers.FlowableUrl;
         psi.Environment["TH_FLOWABLE_USER"] = Servers.FlowableUser;
@@ -564,7 +591,7 @@ public class EngineHostTests(Servers servers)
     /// <summary>A configuration release put in force: each value a version of kind config, as BankValues puts it in force (R-09-111).</summary>
     async Task PutInForce(string bank, string release, params (string parameter, string value, DateTimeOffset from, DateTimeOffset? to)[] values)
     {
-        await using var db = StoreDbContext.Open(servers.Store);
+        await using var db = StoreDbContext.Open(Db);
         foreach (var (parameter, value, from, to) in values)
             await new VersionedValues(db).Publish(ConfigurationValues.Kind, bank, parameter, new JsonObject { ["value"] = value, ["configurationSet"] = release }, from, to, "test.approver");
     }
@@ -608,7 +635,7 @@ public class EngineHostTests(Servers servers)
                 try { await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(4), $"{p} ended"); }
                 catch (Xunit.Sdk.XunitException x)
                 {
-                    await using var db = StoreDbContext.Open(servers.Store);
+                    await using var db = StoreDbContext.Open(Db);
                     var subject = await SubjectOf(p);
                     var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject).OrderBy(f => f.Seq).Select(f => f.Kind + ":" + f.Code).ToListAsync();
                     throw new Xunit.Sdk.XunitException($"{x.Message}: {e?.ToJsonString()}; facts: {string.Join(", ", steps)}");

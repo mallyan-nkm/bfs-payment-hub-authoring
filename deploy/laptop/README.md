@@ -91,4 +91,3 @@ docker compose -f deploy/laptop/compose.yaml -f deploy/laptop/compose.events.yam
 
 - A bank's installation (TLS, the bank's identity provider, its secret stores, high availability, the `sftp` binding to the bank's partners): this is a laptop. What the laptop chose that an installation decides is Issue I-156.
 - The scheme's other sends on the WPS port (receipt confirmations, returns, refunds) have no native code-behind on the port yet, so the laptop runs outward salary files only (Issue I-268); an encrypted salary file is not what is sent (Issue I-266).
-- A DTFx or Elsa payment on its supervisor does not survive a restart of its container, and Flowable deploys per payment (Issue I-165).
