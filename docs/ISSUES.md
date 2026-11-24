@@ -2653,6 +2653,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
       escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
 ```
 
+**Done (24 November 2026, R-11-117).** The entry is in the platform's error dictionary 1.12.0 (factory 1.22.0), as recommended, raised by the native host and the store's install.
+
 ## I-381. A promotable distribution now needs the platform module
 
 **Issue.** `p.post.accounting.v1` is a builtin (`implementation.binding: builtin`, `service: accounting`) with no script-behind, and since R-09-264 only the platform module answers it on the runtime. So a promotable distribution built with no module builds (`TH_NATIVE_MODULES` unset), which was taken before with `native.notCarried`, is now refused by the studio, as one with an activity bound `native` is. The factory's activity does not say that a module answers it: the studio lists it in `MODULE_BUILTINS` (`studio/src/export/native-modules.ts`).
