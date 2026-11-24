@@ -1616,6 +1616,8 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 
 **Recommendation.** Give the Bank Configurator an editor for a bank's own tables in the studio (today a table is authored as YAML, like a rule), and add each new kind of reference data as a table, not as a parameter.
 
+**Recommendation done (24 November 2026, R-11-106).** The studio's Reference tables view (Fluent UI 2, `studio/web/src/views/ReferenceTables.tsx`), which already added an edition to a bank's table (R-11-52), now starts a new table of the bank's own: a New table form takes its name (`b.ref.<name>.v1`), title, domain, columns (id, type, title, required, allowed values) and key, checks it as a table (schema and L49) and hands it to the edition editor, which saves the first edition with it as a draft at 1.0.0 for a Bank Approver. A published edition is never edited, as before. `studio/test/bank-calendar.test.ts` starts a synthetic table through the editor's API calls: a key that is no column refused, a row outside its allowed values refused, the draft listed.
+
 ## I-151. What the reference tables still lack
 
 **Issue.** Loading the Central Bank's register of licensed banks, October 2026, as the participant directory left gaps:

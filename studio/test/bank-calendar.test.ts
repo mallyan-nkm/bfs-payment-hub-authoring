@@ -69,4 +69,27 @@ describe('the bank\'s calendar and cut-offs (R-11-52)', () => {
     const next = (await as(env, 'example.maker', 'GET', '/api/tenants/example-bank/reference-tables')).body.tables.find((t: any) => t.name === 'b.ref.cut-offs.v1');
     expect([next.released.release, next.start.release]).toEqual(['1.1.0', '1.2.0']);
   });
+
+  it('the configurator starts a table of the bank\'s own in the editor: its columns and key, then its first edition (R-11-106, Issue I-150)', async () => {
+    const env = freshEnv();
+    // As the editor's new-table form writes it: the columns and key are checked with an empty edition first.
+    const table = {
+      kind: 'reference-table', name: 'b.ref.desks.v1', release: '1.0.0', title: 'The bank\'s payment desks', domain: 'desks', key: ['code'],
+      columns: [{ id: 'code', type: 'code', title: 'Desk', required: true }, { id: 'region', type: 'code', allowed: ['north', 'south'] }],
+      editions: [] as any[],
+    };
+    const shape = await as(env, 'example.maker', 'POST', '/api/tenants/example-bank/reference-tables/check', { doc: { ...table, editions: [{ validFrom: '2000-01-01', rows: [] }] } });
+    expect(shape.body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
+    const noKey = await as(env, 'example.maker', 'POST', '/api/tenants/example-bank/reference-tables/check', { doc: { ...table, key: ['desk'], editions: [{ validFrom: '2000-01-01', rows: [] }] } });
+    expect(noKey.body.issues.filter((i: any) => i.code === 'L49').length).toBeGreaterThan(0);
+    const doc = { ...table, editions: [{ validFrom: '2027-01-01', rows: [{ code: 'D1', region: 'north' }, { code: 'D2', region: 'east' }] }] };
+    const bad = await as(env, 'example.maker', 'POST', '/api/tenants/example-bank/reference-tables/check', { doc });
+    expect(bad.body.issues.filter((i: any) => i.code === 'L49').map((i: any) => i.message).join('\n')).toMatch(/region "east" is not one of/);
+    doc.editions[0].rows[1].region = 'south';
+    const saved = await as(env, 'example.maker', 'POST', '/api/drafts', { doc });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
+    const listed = (await as(env, 'example.maker', 'GET', '/api/tenants/example-bank/reference-tables')).body.tables.find((t: any) => t.name === 'b.ref.desks.v1');
+    expect([listed.released, listed.draft.release, listed.start.editions[0].rows.length]).toEqual([null, '1.0.0', 2]);
+  });
 });
