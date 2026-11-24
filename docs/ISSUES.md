@@ -2731,6 +2731,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the BPMN export put the handled step, its activity and outcome on each task of a handler (an extension element) and the Flowable binding send it as the attempt's `handlerOf`.
 
+**Done (24 November 2026, R-09-287).** The BPMN export writes `th:handlerOf` (step, activity, outcome, and `item` or `record` where the handled step is in an item or a finally) on each external worker task inside a handler of a call's or a block's outcome, as the interpreter's `inHandlerOf` names it; a compensation's task names none. The Flowable binding (`FlowableBinding.HandlerOf`) and the kit's Java harness send it as the attempt's `handlerOf`, labelled as the interpreter labels a step, so a hold the attempt opens records that step (`after`, `afterStep`) through the worker and the native host, as on the other engines. Evidence: `export.test.ts` (the corporate workflow's sanctions, fraud and repair reviews), `BpmnModelTests.A_task_in_a_handler_names_the_step_whose_outcome_it_handles`, `FlowableRestTests.The_binding_sends_an_attempt_in_a_handler_with_the_step_it_handles` on the Flowable REST server; the hold's side is R-09-241's `OperatorActionTests`.
+
 ## I-362. The service's default concurrency and its start-time target are not the owner's yet
 
 **Issue.** R-09-238 and R-09-239 set defaults of their own: four work items at once and a checkpoint every 500 facts. The spec sets no throughput for an engine host (I-68) and no time a host may take to start.
