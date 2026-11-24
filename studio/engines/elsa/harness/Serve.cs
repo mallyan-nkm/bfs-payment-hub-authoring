@@ -62,6 +62,10 @@ public sealed partial class Harness
         Clock = new VirtualClock(start) { RealTime = true };
         elsa = new ElsaHost();
         party = serviceParty = new ServiceParty(plans, distribution);
+        // Attempts of different payments side by side, as many as the host allows (R-09-286, Issue I-360): the worker's calls run off
+        // the clock's thread; Elsa's journals stay on it.
+        attemptsAtOnce = EngineHistory.ServiceConcurrency();
+        if (attemptsAtOnce > 1) attempts = new SemaphoreSlim(attemptsAtOnce, attemptsAtOnce);
 
         var facts = history.Load();
         var starts = new List<JsonObject>();
@@ -98,7 +102,7 @@ public sealed partial class Harness
             try { Command(c); }
             catch (Exception e) { ServiceLines.Out("ERROR", new JsonObject { ["error"] = e.Message, ["paymentId"] = J.S(c, "paymentId") }); }
         }));
-        ServiceLines.Out("READY", new JsonObject { ["engine"] = "elsa", ["distribution"] = distribution, ["history"] = history.Subject, ["rebuilt"] = J.Clone(rebuilt) });
+        ServiceLines.Out("READY", new JsonObject { ["engine"] = "elsa", ["distribution"] = distribution, ["history"] = history.Subject, ["rebuilt"] = J.Clone(rebuilt), ["concurrency"] = attemptsAtOnce });
         Clock.RunUntil(() => { Tell(); return false; }, long.MaxValue / 4, TimeSpan.FromHours(12));
     }
 
@@ -228,7 +232,7 @@ public sealed partial class Harness
                     ["service"] = new JsonObject
                     {
                         ["history"] = history!.Subject, ["instances"] = instances.Count, ["payments"] = served.Count, ["episodes"] = elsaRuns,
-                        ["activityRuns"] = activityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId,
+                        ["activityRuns"] = activityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId, ["concurrency"] = attemptsAtOnce,
                     },
                 },
             };

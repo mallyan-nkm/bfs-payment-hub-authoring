@@ -2723,6 +2723,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Run Elsa's dispatched operations (activity attempts) off the clock's thread, bounded by the same `TH_SERVICE_CONCURRENCY`, and hand each answer back to the clock's thread, so Elsa's own journal stays single-threaded; test it with the DTFx side-by-side test on Elsa.
 
+**Done (24 November 2026, R-09-286).** A distribution's Elsa service runs its activity attempts side by side: the request is read on the clock's thread, the worker's call runs off it, bounded by `TH_SERVICE_CONCURRENCY` (a semaphore), and the answer is handed back to the clock's thread, which stages its writes and delivers it to the instance, on the history first. Elsa's journals, the history and the claim-check store stay on the clock's thread. The observation and the service's `READY` line say the concurrency. A timer of an instance that comes due while one of its attempts is in its call fires after the answer (Issue I-390). A kit run keeps one at a time on the clock's thread. Evidence: `RestartTests.Elsa_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow` on PostgreSQL and SQL Server (it fails with `TH_HOST_SERVICE_CONCURRENCY=1`), every Elsa and DTFx engine host test, and 59 of 59 conformance scenarios on Elsa.
+
 ## I-361. Flowable names no handler for a hold
 
 **Issue.** R-09-241 has the interpreter name the step whose handler an attempt is in, so a hold records that step. Flowable runs the exported BPMN, not the interpreter: its attempts name no handler, and a hold after parallel branches there still names the latest step with a reason (R-05-94).
@@ -2748,6 +2750,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Factory 1.21.0 replaces WPS's six other sends with their v2 lines (R-09-232). Their v1 lines' native code-behinds stay in the WPS module, because every real bank's lock file at 1.20.0 pins the subflows that call them.
 
 **Recommendation.** Retire them as the salary file's v1 was (R-09-233), once no distribution in force pins a 1.20.0 lock file.
+
+## I-390. On the engine host, an attempt's timeout does not end a worker's call that outlives it
+
+**Issue.** R-05-54 has an attempt's timeout measure the attempt's own execution, in business time, and the Elsa binding races a journalled timer against the operation (Part 9, 9.4). On the engine host, business time is the wall clock. DTFx's service fires no timer while any work item is in flight (its clock is busy), and Elsa's service, before R-09-286, ran each worker's call on its clock's thread, so a call that outlived its attempt timeout was answered and taken, not abandoned. R-09-286 keeps that for Elsa: a timer of an instance that comes due while one of its attempts is in its call waits for the answer. So on the host a slow worker's call is never abandoned at its attempt timeout, and a retry never starts beside it; the worker's own timeout and the HTTP client's (five minutes) bound it instead.
+
+**Recommendation.** Decide with the owner whether the engine host's attempt timeout is the worker's (Start-To-Close, as on Temporal and Flowable in production) or the engine's. If the engine's, have DTFx's and Elsa's services end an attempt at its deadline on the host's clock and abandon the late answer, with an engine host test of a call that outlives its timeout on both.
 
 ## Not done, and why
 
