@@ -84,6 +84,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L54: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
   L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
   L56: 'A parameter marked a ledger account is an activity\'s string or code',
+  L57: 'A pure activity names no port; a check without rule sets is pure only as a script',
 };
 
 // ---------------------------------------------------------------- walking
@@ -717,6 +718,13 @@ export class Checker {
       if (why && !key) err('L54', `${d.name} has an outside effect (${why}) but no idempotency key: every attempt is at least once`);
       else if (why && (typeof key !== 'string' || !key.includes('header.') || /\b(?:now|clock|ids|uuid|random|attempt)\b/.test(key)))
         err('L54', `${d.name}'s idempotency key is not the same on every attempt: it must read a business id of the header, not the clock, a new id or the attempt`);
+    }
+    // L57 (R-03-27, Issue I-342): a pure activity names no port; a validate or decide without rule sets is pure only as a script.
+    if (d.effect === 'pure') {
+      if ((d.ports ?? []).length) err('L57', `${d.name} is pure but names the port ${d.ports.join(', ')}: an activity that reads through a port is read`);
+      const binding = d.implementation?.binding;
+      if (['validate', 'decide'].includes(d.type) && !(d.ruleSets ?? []).length && binding !== 'script')
+        err('L57', `${d.name} is a ${d.type} without rule sets that is pure, but it is bound to a ${binding ?? 'nothing'}, not a script: say effect read`);
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {

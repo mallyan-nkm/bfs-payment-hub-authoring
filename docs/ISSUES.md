@@ -2528,6 +2528,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Allow `effect: pure` for a `validate` or `decide` activity bound to a script with no ports, keep `read` required when it names ports, and add the mutation case and the check to the catalogue in `design/05-workflow-dsl.md` as `spec/CLAUDE.md` asks.
 
+**Done (24 November 2026, R-03-27).** The activity schema takes `effect: pure` beside `read` for a `validate` or `decide` without rule sets (`spec/schemas/activity.schema.json`). Lint L57 holds the rest, in `tools/validate.py` and the studio's `checks.ts`: a pure activity names no port, and a check without rule sets is pure only when it is bound to a script (a builtin or a subflow without rule sets reads, as `p.validate.duplicate.v1` and `p.decide.await-posting-window.v1` do; mutations M97 and M98). Pure needs no idempotency key, as read does not (L54). The interpreter refuses a port call from a pure activity (`ContractViolation` R-03-27) before the declared-port check. R-03-08 says a check of its own may name no rule sets. No factory activity changes: `p.decide.cut-off.v1` and `p.decide.posting-window.v1` read the bank's calendar and the clock and stay `read`. `studio/test/checks.test.ts` ("a scripted check without rule sets may be pure").
+
 ## Not done, and why
 
 | Story | Why |

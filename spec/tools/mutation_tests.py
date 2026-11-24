@@ -253,6 +253,11 @@ CASES = [
     ("M91", "ERROR L54", "factory/p/activities/p.notify.channel.v1.yaml",
      "idempotencyKey: concat(header.paymentId, ':channel')", "idempotencyKey: concat(header.paymentId, now())",
      "an idempotency key that reads the clock, so it changes on every attempt"),
+    # L57 (R-03-27, Issue I-342): a pure activity names no port; a validate or decide without rule sets is pure only as a script
+    ("M97", "ERROR L57", "factory/p/activities/p.validate.duplicate.v1.yaml",
+     "effect: read", "effect: pure", "a duplicate check that reads the payment record through a port says it is pure"),
+    ("M98", "ERROR L57", "factory/p/activities/p.decide.await-posting-window.v1.yaml",
+     "effect: read", "effect: pure", "a decide without rule sets bound to a subflow says it is pure"),
     # L55 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267): what a scheme message declares beside its disposition holds
     ("M92", "ERROR L55", "factory/uae.wps/scheme.yaml",
      "repliesTo: [uae.wps.sif-submission]", "repliesTo: [uae.wps.pif]", "the acknowledgement answers a message the bank receives"),

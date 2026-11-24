@@ -1196,6 +1196,8 @@ function makeIO(act: any, frame: Frame, scope: Scope, stepId: string, view: any,
   const io: any = {
     sentType,
     call: async (port: string, o: { expectsSyncReply: boolean; type?: string }) => {
+      // A pure activity has no input but the context, its parameters and its rule sets (R-03-27): it reaches no port.
+      if (act.effect === 'pure') throw new ContractViolation('R-03-27', `${act.name} is pure and reached port ${port}: an activity that reads through a port is read`);
       if (!(act.ports ?? []).includes(port)) throw new ContractViolation('R-03-06', `${act.name} reached port ${port}, which it does not declare`);
       const key = act.idempotencyKey ? safeEval(act.idempotencyKey, frame.ctx) : undefined;
       const msg: Message = {
