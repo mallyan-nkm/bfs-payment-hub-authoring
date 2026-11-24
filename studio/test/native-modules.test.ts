@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildDistribution } from '../src/export/distribution.js';
 import { assemblyReferences } from '../src/export/assembly-refs.js';
-import { IMAGE_REFERENCE, imageReferences, isNative, isPlatformScope, moduleSignature, nativeModules, readModuleFolder, sourceSha256 } from '../src/export/native-modules.js';
+import { CONTRACT_UNSUPPORTED, contractSupported, IMAGE_REFERENCE, imageReferences, isModuleBuiltin, isNative, isPlatformScope, moduleSignature, nativeModules, NATIVE_CONTRACT, readModuleFolder, sourceSha256 } from '../src/export/native-modules.js';
 import { generateSigningKey, parseTrustedSigners, trustedSignersJson, verifyFiles } from '../src/export/signing.js';
 import { freshEnv } from './helpers.js';
 import { testSigning } from './support/signing-env.js';
@@ -31,7 +31,7 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     const env = freshEnv();
     const d = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.23-1' });
     const native = d.manifest.native;
-    expect(native.contract).toBe('1.1.0');
+    expect(native.contract).toBe('2.0.0');
     expect(native.platform).toBeUndefined();
     expect(native.modules.map((m: any) => m.scope)).toEqual(['p', 'uae.wps']);
     const [p, m] = native.modules;
@@ -43,6 +43,8 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     expect(p.assembly).toBe(SYNTHETIC_PLATFORM_ASSEMBLY);
     for (const a of ['p.enrich.fx-rate.v1', 'p.enrich.charges.v1', 'p.decide.posting-window.v1', 'p.post.accounting.v2', 'p.enrich.party-register.v1', 'p.protect.encrypt-file.v1', 'p.protect.decrypt-file.v1'])
       expect(p.activities.some((x: string) => x.startsWith(`${a}@`))).toBe(true);
+    // Since native contract 2.0.0 the builtin posting is the platform module's too (R-09-264, Issue I-227): the image keeps no copy.
+    expect(p.activities.some((x: string) => x.startsWith('p.post.accounting.v1@'))).toBe(true);
     // Each prebuilt folder was verified against the signers the studio trusts (R-09-127).
     expect(m.signature).toEqual({ keyId: MODULE_KEY_ID });
     const f = m.files[0];
@@ -70,13 +72,13 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
   it('without a build of the code-behind, the distribution says what it does not carry; one with no script-behind is refused', () => {
     delete process.env.TH_NATIVE_MODULES;
     const env = freshEnv();
-    // The platform's and WPS's native activities have script-behinds or builtins (implementation.native: true): without the build
-    // they run as scripts.
-    for (const withSimulators of [false, true]) {
-      const t = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: withSimulators ? '2026.11.23-5' : '2026.11.23-4', withSimulators });
-      expect(t.manifest.native).toMatchObject({ modules: [], notCarried: ['p', 'uae.wps'] });
-      expect(Object.keys(t.files).some((p) => p.startsWith('activities/native/'))).toBe(false);
-    }
+    // The platform's and WPS's native activities have script-behinds (implementation.native: true): without the build they run as
+    // scripts, in a test distribution.
+    const t = buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.23-5', withSimulators: true });
+    expect(t.manifest.native).toMatchObject({ modules: [], notCarried: ['p', 'uae.wps'] });
+    expect(Object.keys(t.files).some((p) => p.startsWith('activities/native/'))).toBe(false);
+    // The builtin posting has no script-behind and the image no copy (R-09-264): a promotable distribution needs the platform's build.
+    expect(() => buildDistribution(env, { bank: 'example-bank', engine: 'temporal', id: '2026.11.23-4' })).toThrow(/p has native activities with no script-behind \(p\.post\.accounting\.v1@/);
     // An activity with no script-behind cannot run without its build: a promotable distribution that needs one is refused.
     const only = [{ kind: 'activity', name: 'uae.wps.enrich.synthetic.v1', release: '1.0.0', implementation: { binding: 'native' } }];
     expect(nativeModules(only, scopeOf, true).problems.join()).toMatch(/uae\.wps has native activities with no script-behind \(uae\.wps\.enrich\.synthetic\.v1@1\.0\.0\) .* set TH_NATIVE_MODULES \(R-09-120\)/);
@@ -98,6 +100,8 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     expect(isPlatformScope('uae.wps')).toBe(false);
     expect(isNative({ kind: 'activity', implementation: { binding: 'script', native: true } })).toBe(true);
     expect(isNative({ kind: 'activity', implementation: { binding: 'script' } })).toBe(false);
+    expect(isModuleBuiltin({ kind: 'activity', name: 'p.post.accounting.v1', implementation: { binding: 'builtin', service: 'accounting' } }, 'p')).toBe(true);
+    expect(isModuleBuiltin({ kind: 'activity', name: 'p.post.reverse.v1', implementation: { binding: 'builtin', service: 'accounting' } }, 'p')).toBe(false);
     const p = fs.mkdtempSync(path.join(os.tmpdir(), 'th-src-'));
     fs.writeFileSync(path.join(p, 'M.csproj'), '<Project/>');
     fs.writeFileSync(path.join(p, 'A.cs'), 'class A { string N = "build A"; }');
@@ -120,7 +124,7 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
 describe('a native module references the native contract only (R-09-125, Issue I-220)', () => {
   it('reads an assembly\'s references from its metadata, as a real .NET assembly holds them', () => {
     const refs = assemblyReferences(syntheticAssembly('M', [CONTRACT, { name: 'TransactHub.Ports', version: '1.0.0' }]));
-    expect(refs).toEqual([{ name: 'TransactHub.Activities.Contract', version: '1.1.0' }, { name: 'TransactHub.Ports', version: '1.0.0' }]);
+    expect(refs).toEqual([{ name: 'TransactHub.Activities.Contract', version: '2.0.0' }, { name: 'TransactHub.Ports', version: '1.0.0' }]);
     expect(assemblyReferences(Buffer.from('not an assembly'))).toBeUndefined();
   });
 
@@ -141,6 +145,23 @@ describe('a native module references the native contract only (R-09-125, Issue I
     // An assembly that does not reference the contract is no module.
     const bare = { ...good, files: [{ ...good.files[0], content: syntheticAssembly(SYNTHETIC_ASSEMBLY, [{ name: 'System.Runtime' }]) }] };
     expect(imageReferences(bare).join()).toMatch(/does not reference the native contract/);
+  });
+});
+
+describe('native contract 2.0.0 (R-09-262, Issues I-226, I-224)', () => {
+  it('the studio builds for contract 2.0.0 and refuses a module build made against contract 1.x, with its code', () => {
+    expect(NATIVE_CONTRACT).toBe('2.0.0');
+    expect(contractSupported('2.0.0', '2.0.0')).toBe(true);
+    for (const v of ['1.0.0', '1.1.0', '2.1.0', '3.0.0', undefined, 'x']) expect(contractSupported(v, '2.0.0')).toBe(false);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'th-test-contract1-'));
+    try {
+      // A build made ahead of time against contract 1.1.0, signed by a trusted key: still refused, to be rebuilt.
+      writeModuleFolder(path.join(root, 'p'), 'p', SYNTHETIC_PLATFORM_ASSEMBLY, syntheticAssembly(SYNTHETIC_PLATFORM_ASSEMBLY, [{ name: CONTRACT.name, version: '2.0.0' }]));
+      writeModuleFolder(path.join(root, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, [{ name: CONTRACT.name, version: '1.1.0' }]), true, '1.1.0');
+      process.env.TH_NATIVE_MODULES = root;
+      expect(() => buildDistribution(freshEnv(), { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-31' }))
+        .toThrow(new RegExp(`${CONTRACT_UNSUPPORTED.replace('.', '\\.')}: the module build of uae\\.wps was built against native contract 1\\.1\\.0; .*rebuild it against 2\\.0\\.0`));
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });
 

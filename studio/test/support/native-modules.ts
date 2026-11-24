@@ -16,7 +16,7 @@ import { syntheticAssembly } from './synthetic-assembly.js';
 
 export const SYNTHETIC_ASSEMBLY = 'TransactHub.Activities.Wps';
 export const SYNTHETIC_PLATFORM_ASSEMBLY = 'TransactHub.Activities.Platform.Native';
-export const CONTRACT = { name: 'TransactHub.Activities.Contract', version: '1.1.0' };
+export const CONTRACT = { name: 'TransactHub.Activities.Contract', version: '2.0.0' };
 
 const key = generateSigningKey();
 /** The trusted-signers document of the run's module-signing key. */
@@ -26,7 +26,7 @@ export const MODULE_KEY_ID = key.keyId;
 const sha = (b: Buffer | string) => `sha256:${createHash('sha256').update(b).digest('hex')}`;
 
 /** Writes one module build folder, signed unless `sign` is false. */
-export function writeModuleFolder(dir: string, scope: string, assembly: string, bytes: Buffer, sign = true, contract = '1.1.0') {
+export function writeModuleFolder(dir: string, scope: string, assembly: string, bytes: Buffer, sign = true, contract = '2.0.0') {
   fs.mkdirSync(dir, { recursive: true });
   const manifest = {
     format: 'th-native-module/1', scope, assembly, contract, sourceSha256: sha(`synthetic sources of ${scope}`),
