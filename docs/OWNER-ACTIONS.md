@@ -1,6 +1,6 @@
 # What is needed from the owner, and from others
 
-Status: 23 November 2026.
+Status: 24 November 2026.
 
 **Owner's decisions of 23 November 2026:** every recommendation in part A is accepted, except A4 (crypto-shredding), which is deferred. In addition, the owner asked for a notification port with an MQTT adapter and an event-streaming port with a Kafka adapter (A5). Building is under way.
  Each item says what it is in plain words, why it matters, what I recommend, and the issue in `docs/ISSUES.md` that holds the detail. Nothing here blocks the laptop stack or the tests; these items block a real bank going live.
@@ -77,6 +77,11 @@ Also decide whether turnaround limits count business days or clock time. I recom
 - **I-232, one worker set per distribution:** deferred.
 - **Outbound files:** the File API becomes a port that sends data out, so a scheme's outgoing file leaves through the File API's outbox (I-192).
 - Also to build: the upload page and the audit pages in the consoles, the file name read from the File API (I-195), the laptop's register maker, and the two studio tests that use old release numbers.
+
+### A8. Decided on 24 November 2026
+- **UI:** every user interface moves to Fluent UI 2 (ADR 0003), done; the videos are re-recorded on it (concept, installation, north star, end to end, per console), each replacing the old ones.
+- **After the videos:** wave 7 (I-294, I-293, I-300, I-301, I-304, I-290, I-310, I-313 folders, I-314 with I-153, I-291, I-292, and the decisions below) and the native contract 2.0 (I-315, I-226, I-237), while no bank is live.
+- **I-278:** a bank on the rate feed refuses hand-typed rates with no date. **I-280:** sanctions hits stay out of the fraud alerts; high-score alerts only if a bank's fraud team asks. **I-168:** a reconciliation break may start an exception request or a return, with consent. **I-185:** escalation after a time is a setting, off by default. **I-275:** the feed's standing consent is confirmed.
 
 ## B. Things to ask each bank
 You pass these on; I cannot get them myself. Until each arrives, the bank's folder holds a placeholder, and the runtime refuses rather than guessing.

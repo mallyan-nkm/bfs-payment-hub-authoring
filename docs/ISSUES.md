@@ -1798,6 +1798,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Decide with the owner which breaks start a workflow (an exception request on `p.wf.request.v1`, a return) and add those resolutions, each with the bank approver's consent where it changes the system.
 
+**Owner's decision (24 November 2026):** accepted. Build the resolutions as recommended: a break may start an exception request on `p.wf.request.v1` or a return, each with the bank approver's consent where it changes the system. To build in wave 7.
+
 ## I-169. The Flowable production black-box test expected a minute the run does not keep
 
 **Issue.** `studio/test/blackbox/e2e-wps-flowable-production.test.ts` ("on SqlServer: settles in real time ...") looked for the binding's timer line with fixed minutes: `placed at 2026-11-17T06:02:..`, written `2026-11-18T06:00:..`. Business time is the wall clock shifted to 06:00 on the plan's evaluation date, so those minutes hold only while the acknowledgement wait starts within the first wall minute of the run; on a slower run (SQL Server's journal writes, I-137, or a loaded machine) the wait starts later, both minutes move, and the line no longer matches although the binding placed it. The binding's code (`PlaceTimers`) places the timer as specified: two minutes after the wait began, from the bank's value, not the written day. Run again here (23 November 2026) both cases passed with the old pattern too (the waits began at 06:00:10 and 06:00:07), so the failure was not reproduced; the only paths that leave no line at all are a reschedule the server refuses and a timer already at its due, neither seen.
@@ -1876,6 +1878,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Still open.** (1) An escalation goes to the supervisors as a role; there are no named teams or levels beyond the count, and nothing escalates by itself on time (a breach is alerted, R-05-68, but not escalated). (2) The queue reads the facts of every item it shows; past some thousands of open items it needs a projection of its own, like the read model. (3) An assignee is named by the identity provider's subject; the runtime has no directory to offer names. (4) The live queue wakes on any write to the store, not only on its own items.
 
 **Recommendation.** Decide with each bank's operations whether an item escalates by itself after a time (a dial of the platform's view) and to whom, and project the queue into the read model when a bank's open items pass a thousand.
+
+**Owner's decision (24 November 2026):** accepted. Escalation after a time is a dial of the platform's view, off by default, with the role it escalates to; each bank's operations sets it. To build in wave 7.
 
 ## I-186. A bank's own reference table built a distribution, not a configuration release
 
@@ -2311,6 +2315,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation, built (R-09-179).** A standing consent the bank approver grants once, for rate releases only. It is asked for in the service console's book (`grant-rate-consent`, by a service engineer) and given by a bank approver, another person, like every change of the system (R-09-77); it is revoked the same way (`revoke-rate-consent`); each is a fact on its own chain (`standing-consent:fx-rates:<bank>`). It covers only a release whose configuration set sets `p.enrich.fx-rate.v1#rates` and nothing else, whose only other file is the rates table `b.ref.fx-rates.v1`, with no binding, and whose manifest names the feed (`feed: fx-rates`). Such a release is still verified against the trusted signers and checked against every distribution's parameter contract, and its in-force fact names the standing consent and who gave it. Every other release, and every rate release while no standing consent is in force, waits for a consent of its own. Why not a consent each time: an hourly consent would either be given without reading or leave payments refusing stale rates; the rates are market data the bank's own rates service gives, and the staleness limit (R-09-178) and the bounds still hold. Decide with each bank's treasury and its bank approver whether to grant it.
 
+**Owner's decision (24 November 2026):** confirmed as built: a standing consent for rate releases only, granted and revoked by a bank approver.
+
 ## I-276. The rates feed's releases and the studio's releases share one line of numbers
 
 **Issue.** A configuration release is numbered on the bank's one line of releases, and the value in force is the one the latest release that sets the parameter gives (R-09-111). The feed numbers its release the patch after the bank's newest (`1.10.1`, `1.10.2`, ...). The studio's next release is a minor (`1.11.0`), so the two do not collide while the studio makes no patch releases; but a studio release that sets `p.enrich.fx-rate.v1#rates` (the example bank's does) is newer than the feed's and its rates win until the feed runs again, and a studio patch release could take a number the feed took (the install refuses it, `ReleaseConflict`).
@@ -2333,6 +2339,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add a dial `requireAsOf` (default false) to `p.enrich.fx-rate.v1`; a bank on the feed sets it, so that a rate with no `asOf` is refused like a stale one. Decide with each bank's treasury.
 
+**Owner's decision (24 November 2026):** accepted. A bank on the feed sets `requireAsOf`, so a hand-typed rate with no `asOf` is refused like a stale one. To build in wave 7.
+
 ## I-279. Releasing a suspect payment needs no second approver
 
 **Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
@@ -2346,6 +2354,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** An alert is a payment `p.screen.fraud.v1` found `suspect` (R-05-90). The spec does not say whether a sanctions hit (`p.screen.sanctions.v1`, `hit`), a fraud engine that did not answer, or a payment the engine scored high but cleared is an alert too, nor whether an alert should carry the engine's score and case reference (the fraud port answers only a status, a reason code and a reference).
 
 **Recommendation.** Keep sanctions hits out of the fraud list (they are compliance work, deferred with the cases, I-188); ask each bank's fraud team whether a high but clear score should be an alert, and if so add a `score` to the fraud port's answer and a dial for the threshold.
+
+**Owner's decision (24 November 2026):** accepted. Sanctions hits stay out of the fraud alert list; each bank's fraud team is asked whether a high but clear score should raise an alert, and the score rule is added only on that answer.
 
 ## I-281. The event stream still drops a gap after its horizon
 
