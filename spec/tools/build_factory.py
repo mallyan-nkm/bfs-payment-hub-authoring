@@ -175,6 +175,9 @@ RELEASES["uae.wps.map.sif-in.v1"] = ("1.6.0", "the employer's e-mail from the ch
 RELEASES["p.post.accounting.v1"] = ("1.3.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-381)")
 for _n in ("p.reserve.funds.v1", "p.reserve.release.v1", "p.post.reverse.v1", "p.post.verify.v1"):
     RELEASES[_n] = ("1.1.0", "the platform module answers it on the runtime: native: true beside builtin (Issue I-382)")
+# Issue I-387, R-09-296 (factory 1.24.0): WPS's return posting is a builtin of the accounting service that only the WPS module answers on
+# the runtime: it says so, native: true beside builtin, as lint L40 asks of every scope now. A field added to the implementation, a minor.
+RELEASES["uae.wps.post.return.v1"] = ("1.3.0", "the WPS module answers it on the runtime: native: true beside builtin (Issue I-387)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -224,8 +227,11 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # 1.23.0 (change set CS-2026-11-24-018; 1.21.0, 1.22.0 and change sets 016 and 017 are other changes'): native contract 2.1.0 (R-09-276
 # to R-09-283; Issues I-381, I-382, I-383): p.post.accounting.v1 1.3.0, p.reserve.funds.v1, p.reserve.release.v1, p.post.reverse.v1
 # and p.post.verify.v1 1.1.0, each with implementation.native: true beside its builtin (lint L40).
-PACK_RELEASES = {"p": "1.23.0", "uae.p": "1.23.0", "uae.wps": "1.23.0", "b": "1.23.0"}
-FACTORY_RELEASE = "1.23.0"
+# 1.24.0 (change set CS-2026-11-24-019): WPS's return posting 1.3.0 says the WPS module answers it (lint L40 in every scope; R-09-296,
+# Issue I-387); the platform's error dictionary 1.13.0, hand-written in factory/p/errors, 1.12.0's entries and native.ActivityUnserved
+# (R-09-291, R-09-292, Issue I-384).
+PACK_RELEASES = {"p": "1.24.0", "uae.p": "1.24.0", "uae.wps": "1.24.0", "b": "1.24.0"}
+FACTORY_RELEASE = "1.24.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -684,7 +690,7 @@ act("uae.wps.decide.returns.v2", "Find the employee credits to return", ["items[
     ["none", "returns", "unverified"], "pure", rule_sets=["uae.wps.table.returns.v1"], p=WP)
 act("uae.wps.post.return.v1", "Record the returned amount once WPS accepts the returns file", ["header", "batch", "facts.returns"],
     ["facts.posting"], ["posted", "rejected", "unknown"], "write", ports=["p.port.core-banking.v1"], policy=STD,
-    comp="p.post.reverse.v1", service="accounting", p=WP,
+    comp="p.post.reverse.v1", service="accounting", p=WP, native=True,
     params={"template": {"type": "code", "default": "wps-return",
                          "description": "Accounting template for a return. The bank sets the accounts the returned amount moves between."},
             **{k: copy.deepcopy(ACCOUNTING[k]) for k in ("transactionCode", "reversalTransactionCode", "narration", "settlementAccount", "suspenseAccount")}})

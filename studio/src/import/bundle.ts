@@ -5,7 +5,7 @@ import { canonicalJson } from '../core/canonical.js';
 import { parseName, parseScope } from '../core/names.js';
 import { keyOf, Store } from '../core/store.js';
 import { parseYamlAll } from '../core/yaml.js';
-import { checkDocument, interfaceDiff, proposeRelease } from '../checks/checks.js';
+import { checkDocument, interfaceDiff, MODULE_SERVICES, proposeRelease } from '../checks/checks.js';
 import type { StudioEnv } from '../env.js';
 import { unzip } from '../export/zip.js';
 import { saveSample, saveScript } from '../governance/authoring.js';
@@ -181,6 +181,9 @@ function tenantFor(doc: any, opts: ImportOptions): string {
   return scope === 'b' ? opts.bankTenant ?? '' : opts.tenant;
 }
 
+/** The documents the import rewrote from a builtin a native module answers to a script-behind, with the builtin's service (R-09-297). */
+const rewritten = new WeakMap<object, string>();
+
 /** Everything the import knows before it saves anything. */
 export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): Promise<Report> {
   const issues: Issue[] = [...b.problems];
@@ -206,6 +209,22 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   if (b.docs.some((d) => (d.doc?.name ? parseName(d.doc.name)?.scope : d.doc?.scope) === 'b') || b.configuration.length) {
     if (opts.part === 'shared') warn('I15', 'bundle', 'The bundle has bank content (scope b or a configuration set). It is left for the bank: a bank configurator of that bank imports the bank part');
     else if (!opts.bankTenant) err('I14', 'bundle', 'The bundle has bank content (scope b or a configuration set): name the bank tenant to import it into');
+  }
+
+  // A builtin of the accounting or reservation service in the imported scheme: on the runtime only a native module of its scheme
+  // answers it (lint L40 asks native: true), and an imported scheme brings no module, so its promotable distribution would be refused.
+  // It is imported as a script-behind of the same contract, with a finding that says why (R-09-297, Issue I-387).
+  for (const { doc } of b.docs) {
+    if (doc?.kind !== 'activity' || !scope || parseName(doc.name ?? '')?.scope !== scope) continue;
+    const impl = doc.implementation ?? {};
+    if (impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service)) {
+      doc.implementation = { binding: 'script', language: 'typescript', script: `scripts/${doc.name}.ts` };
+      rewritten.set(doc, impl.service);
+    }
+  }
+  for (const { doc } of b.docs) {
+    const service = rewritten.get(doc);
+    if (service) warn('I54', doc.name, `A builtin of the ${service} service in the source: on the runtime only the scheme's own native module answers it, and an imported scheme brings none, so its distribution would be refused. It is imported as a script-behind of the same contract (binding script), which runs the reference behaviour in the studio. Translate the source's ${service === 'reservation' ? 'reservation' : 'posting'} into its script, or call the platform's ${service === 'reservation' ? 'p.reserve.funds.v1' : 'p.post.accounting.v1'} instead.`);
   }
 
   // A shadow of the catalogue, in memory only, with the bundle in it as if it were published: what

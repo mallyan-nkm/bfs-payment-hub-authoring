@@ -132,10 +132,20 @@ public static class ModuleBuilds
         Distribution(bank, id, contract, new Module("uae.wps", Assembly, module, [$"{AckIn}@{ackRelease}"], carried));
 
     /// <summary>A distribution as the studio builds it, reduced to what the native host reads: its manifest and its package.</summary>
-    public static (JsonObject Manifest, byte[] Package) Distribution(string bank, string id, string contract, params Module[] modules)
+    public static (JsonObject Manifest, byte[] Package) Distribution(string bank, string id, string contract, params Module[] modules) =>
+        Distribution(bank, id, contract, new Dictionary<string, string>(), modules);
+
+    /// <summary>The same, with activity documents (<c>name@release</c> to its YAML) in the bill of materials beside the modules' (R-09-291).</summary>
+    public static (JsonObject Manifest, byte[] Package) Distribution(string bank, string id, string contract, IReadOnlyDictionary<string, string> docs, params Module[] modules)
     {
         var files = new Dictionary<string, byte[]> { ["manifest.yaml"] = Encoding.UTF8.GetBytes($"kind: distribution\nid: {id}\nbank: {bank}\n") };
         var artefacts = new JsonArray();
+        foreach (var (a, yaml) in docs)
+        {
+            var path = $"activities/{a}.yaml";
+            files[path] = Encoding.UTF8.GetBytes(yaml);
+            artefacts.Add(new JsonObject { ["scope"] = a.Split('.')[0], ["kind"] = "activity", ["name"] = a.Split('@')[0], ["release"] = a.Split('@')[1], ["path"] = path, ["sha256"] = Sha(files[path]) });
+        }
         var listed = new JsonArray();
         foreach (var m in modules)
         {

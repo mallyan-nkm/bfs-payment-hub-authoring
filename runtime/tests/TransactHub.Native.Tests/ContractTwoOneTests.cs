@@ -93,6 +93,33 @@ public sealed class ContractTwoOneTests(Store store)
         Assert.Single(NativeAssemblies.Check(manifest, f => files.TryGetValue(f, out var x) ? x : null, files.Keys));
     }
 
+    /// <summary>The reservation as factory 1.22.0 published it: a builtin of the reservation service on core banking, which the image answered.</summary>
+    public const string ReservationBefore21 = "kind: activity\nname: p.reserve.funds.v1\nrelease: 1.0.0\ntype: reserve\nports:\n  - p.port.core-banking.v1\nimplementation:\n  binding: builtin\n  service: reservation\n";
+
+    /// <summary>
+    /// R-09-291 (Issue I-384): a distribution built before contract 2.1.0 carries the reservation, a builtin the image answered and no
+    /// longer does, and no module of it serves it. The native host refuses it as it loads the distribution, with its own code, for every
+    /// attempt of it, not only at the reservation's step; the image's own activities are no gap.
+    /// </summary>
+    [Fact]
+    public async Task A_distribution_whose_native_activity_nothing_serves_is_refused_when_the_host_loads_it()
+    {
+        var ack = $"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}";
+        var hold = "kind: activity\nname: p.hold.approval.v1\nrelease: 1.1.0\ntype: hold\nports:\n  - p.port.operations-queue.v1\nimplementation:\n  binding: builtin\n  service: operations\n";
+        var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-61", "2.1.0",
+            new Dictionary<string, string> { ["p.reserve.funds.v1@1.0.0"] = ReservationBefore21, ["p.hold.approval.v1@1.1.0"] = hold },
+            new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [ack]));
+        await using (var db = StoreDbContext.Open(store.Options))
+            await new DistributionRegistry(db).Store(Bank, "2026.11.24-61", package, manifest, ModuleBuilds.Sha(package)[7..], "test", "installed before R-09-291");
+        var d = DistributionRegistry.IdOf(Bank, "2026.11.24-61");
+        await using var host = new Host(store.Options);
+        var r = await Post(host.CreateClient(), Ack(d));
+        Assert.Equal(("error", NativeAssemblies.ActivityUnserved, false), ((string?)r["kind"], (string?)r["name"], (bool?)r["retryable"]));
+        Assert.Contains("p.reserve.funds.v1@1.0.0", (string?)r["message"]);
+        Assert.DoesNotContain("p.hold.approval.v1", (string?)r["message"]);
+        Assert.Contains("section 3.3", (string?)r["message"]);
+    }
+
     static object Attempt(string? d, string activity, string release, object view, object? p = null, string now = "2026-11-24T06:00:00Z") => new
     {
         activity, release, distribution = d, now, tenant = Bank, @params = p ?? new { }, view,

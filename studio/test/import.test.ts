@@ -88,6 +88,24 @@ describe('import: the training bundle', () => {
     expect(run.body.trace.at(-1)).toBe('end:settled');
   });
 
+  it('imports the scheme\'s builtin posting as a script-behind, with a finding that says why (R-09-297, Issue I-387)', async () => {
+    const env = freshEnv();
+    // The factory's return posting is a builtin only the WPS module answers (native: true); the copy brings no module.
+    expect(env.store.latest('uae.wps.post.return.v1')!.doc.implementation).toMatchObject({ binding: 'builtin', service: 'accounting' });
+    const r = await analyse(env, readBundle(wpsTrainingBundle(env)), OPTS);
+    expect(errors(r)).toEqual([]);
+    const finding = r.issues.find((i: any) => i.code === 'I54' && i.where === 'uae.wpsx.post.return.v1');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.message).toMatch(/builtin of the accounting service.*brings none.*script-behind/);
+    // The platform's own builtins it reuses are not the scheme's: only uae.wpsx's are rewritten.
+    expect(r.issues.filter((i: any) => i.code === 'I54').map((i: any) => i.where)).toEqual(['uae.wpsx.post.return.v1']);
+    const res = await apply(env, readBundle(wpsTrainingBundle(env)), { ...OPTS, actor: 'shared.designer', bankActor: 'example.maker' });
+    expect(res.applied).toBe(true);
+    const saved = env.store.drafts('owner').find((d) => d.name === 'uae.wpsx.post.return.v1')!.doc;
+    expect(saved.implementation).toEqual({ binding: 'script', language: 'typescript', script: 'scripts/uae.wpsx.post.return.v1.ts' });
+    expect(saved.ports).toEqual(['p.port.core-banking.v1']);
+  });
+
   it('a second import of the same, once published, is unchanged and saves nothing new', async () => {
     const env = freshEnv();
     const first = await apply(env, readBundle(wpsTrainingBundle(env)), { ...OPTS, actor: 'shared.designer', bankActor: 'example.maker' });

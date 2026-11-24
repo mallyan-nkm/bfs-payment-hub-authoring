@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.12.0
+release: 1.13.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -1218,6 +1218,26 @@ entries:
         - 'Do not retry. Rebuild every module against the runtime''s contract (the studio with TH_NATIVE_MODULES=build, or runtime/tools/native-module/build.sh), build a new distribution of the bank, install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2).'
         - 'Remove the refused distribution once nothing is pinned to it.'
       escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
+  # 1.13.0 (R-09-291, R-09-292, Issue I-384): a distribution that carries an activity the native host answers and nothing serves.
+  - code: native.ActivityUnserved
+    title: 'A distribution carries a native activity that neither the runtime image nor its modules serve'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+      - package-source
+    meaning: 'The distribution''s bill of materials carries an activity the runtime''s native host answers (bound native, implementation.native true, or a builtin on core banking), and neither the runtime image nor a native module of the distribution serves it (R-09-291). The release API refuses it at install, and the native host refuses it again when it loads the distribution, so no payment reaches the step. A distribution built before its runtime moved such an activity from the image into a module does this: one built at factory 1.22.0 or earlier carries the reservation as a builtin the image of native contract 2.1.0 no longer answers.'
+    causes:
+      - 'The distribution was built by a studio of an earlier factory release than the runtime takes, before the runtime image moved the activity into the platform module (native contract 2.1.0 moved the reservation, its release, the reversal and the check of a posting).'
+      - 'The distribution was built without the module of the activity''s scope, or with a module build made ahead of time that does not serve it.'
+    runbook:
+      checks:
+        - 'Read the refusal: it names each activity and release that nothing serves.'
+        - 'Read the distribution''s manifest: its native section (modules, their activities, notCarried) and the factory release of its packs; and the native host''s contract (GET /health, contract).'
+      safeActions:
+        - 'Do not retry and do not activate it. Build a new distribution of the bank from a studio of the factory release the runtime takes, with its module builds (TH_NATIVE_MODULES), install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.3).'
+        - 'Remove the refused distribution once nothing is pinned to it.'
+      escalation: 'Escalate to the runtime''s service team with the distribution id, the activities named and the factory release it was built from.'
   # 1.11.0 (R-09-244; Issues I-350, I-352, I-353): the runtime's own hosts that do not answer.
   - code: NativeHostUnreachable
     title: The worker could not reach the runtime's native host

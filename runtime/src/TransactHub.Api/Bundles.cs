@@ -43,8 +43,12 @@ public sealed class Bundle
         // contract this runtime supports; a mismatch refuses the whole distribution at install.
         if (kind == ReleaseSignature.Distribution)
         {
-            try { TransactHub.Store.NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
+            IReadOnlyList<TransactHub.Store.NativeModulePackage> modules;
+            try { modules = TransactHub.Store.NativeAssemblies.Check(manifest, p => files.TryGetValue(p, out var c) ? c : null, files.Keys); }
             catch (TransactHub.Store.NativeAssembliesRefused e) { throw new PackageRejected($"Its native assemblies are refused: {e.Message}", e.Code ?? "package.Rejected"); }
+            // Every activity the native host answers is served there, by the image or a module the manifest lists (R-09-291, Issue I-384).
+            var unserved = TransactHub.Store.NativeServed.Unserved(manifest, p => files.TryGetValue(p, out var c) ? c : null, modules);
+            if (unserved.Count > 0) throw new PackageRejected($"Its native activities are refused: {TransactHub.Store.NativeServed.Refusal(unserved)}", TransactHub.Store.NativeAssemblies.ActivityUnserved);
         }
         return b;
     }

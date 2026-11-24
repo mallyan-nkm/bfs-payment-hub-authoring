@@ -113,6 +113,8 @@ IEnumerable<INativeActivity> Platform(IReadOnlyDictionary<string, object> contri
 var registers = RegisterReaderOn(store);
 // TH_NATIVE_DEV_MODULES: module build folders (native-module.json and its assemblies) served to attempts that name no
 // distribution: the studio's interpreter and the black-box tests on one machine. A payment pinned to a distribution never uses them.
+// A host that calls core banking names the platform module among them: the image calls core banking only through the gate the
+// platform module contributes, and with none it refuses every core-banking call, WPS's return posting too (R-09-279, R-09-295, I-386).
 var devModules = (Environment.GetEnvironmentVariable("TH_NATIVE_DEV_MODULES") ?? "").Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var refreshEvery = TimeSpan.TryParse(Environment.GetEnvironmentVariable("TH_NATIVE_REFRESH"), System.Globalization.CultureInfo.InvariantCulture, out var re) ? re : TimeSpan.FromSeconds(10);
 // The distributions are read from the store (TH_STORE_*, or Store:* as every runtime host names it).

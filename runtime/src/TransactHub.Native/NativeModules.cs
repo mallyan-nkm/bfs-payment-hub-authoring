@@ -147,7 +147,16 @@ public sealed class NativeModules : IDisposable
         catch (NativeAssembliesRefused e) { throw new NativeRefusal(e.Code ?? "native.ModuleRefused", $"{distribution}: {e.Message}"); }
         var releases = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "activity").Select(a => $"{(string?)a["name"]}@{(string?)a["release"]}").ToHashSet(StringComparer.Ordinal);
-        return Build(distribution, modules, releases);
+        var table = Build(distribution, modules, releases);
+        // Every activity the host answers for the distribution is served, by the image or a module as loaded (R-09-291, Issue I-384): a
+        // distribution built before its runtime's contract moved an activity into a module is refused here, not at the payment's step.
+        var unserved = NativeServed.Unserved(manifest, p => files.TryGetValue(p, out var c) ? c : null, (name, _) => table.ByName.ContainsKey(name));
+        if (unserved.Count > 0)
+        {
+            table.Context?.Unload();
+            throw new NativeRefusal(NativeAssemblies.ActivityUnserved, $"{distribution}: {NativeServed.Refusal(unserved)}");
+        }
+        return table;
     }
 
     ActivityTable Build(string key, IReadOnlyList<NativeModulePackage> modules, IReadOnlySet<string>? releases)

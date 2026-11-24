@@ -34,6 +34,8 @@ import { parseTrustedSigners, SignatureRejected, verifyFiles } from './signing.j
 // that does (package.NativeImageReference), and the runtime refuses such a distribution.
 
 export const NATIVE_FOLDER = 'activities/native';
+/** The core-banking port: the runtime calls it only through the gate the platform module contributes (R-09-279). */
+export const CORE_BANKING_PORT = 'p.port.core-banking.v1';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DEFAULT_PROJECTS: Record<string, string> = { p: 'runtime/src/TransactHub.Activities.Platform.Native', 'uae.wps': 'runtime/src/TransactHub.Activities.Wps' };
 const CONTRACT_PROJECT = 'runtime/src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj';
@@ -295,6 +297,13 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
       return { path: p, name: f.name, sha256: f.sha256 };
     });
     modules.push({ scope, assembly: m.assembly, ...(m.project ? { project: m.project } : {}), ...(m.sourceSha256 ? { sourceSha256: m.sourceSha256 } : {}), ...(m.signature ? { signature: m.signature } : {}), activities, files: listed });
+  }
+  // A module whose activities call core banking needs the platform module beside it: the image calls core banking only through the
+  // gate a module contributed, and with none it refuses every call (R-09-279, R-09-295, Issue I-386).
+  if (promotable && !modules.some((m) => m.scope === 'p')) {
+    const byKey = new Map<string, any>(docs.map((d) => [`${d.name}@${d.release}`, d]));
+    const banking = modules.filter((m) => m.activities.some((a: string) => (byKey.get(a)?.ports ?? []).includes(CORE_BANKING_PORT)));
+    for (const m of banking) problems.push(`The module of ${m.scope} carries activities that name ${CORE_BANKING_PORT} (${m.activities.filter((a: string) => (byKey.get(a)?.ports ?? []).includes(CORE_BANKING_PORT)).join(', ')}), and the distribution carries no platform module: the runtime calls core banking only through the gate the platform module contributes (R-09-279). Set TH_NATIVE_MODULES so the platform module is built too`);
   }
   const section = { contract: contract ?? contractVersion(), modules, ...(notCarried.length ? { notCarried } : {}) };
   return { section, files, artefacts, problems };

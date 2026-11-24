@@ -28,6 +28,8 @@ public static class ErrorCodes
     public const string NativeImageReference = TransactHub.Store.NativeAssemblies.ImageReference;
     // A distribution whose modules were built against a native contract the runtime does not take (R-09-262): 1.x on a 2.0.0 runtime.
     public const string NativeContractUnsupported = TransactHub.Store.NativeAssemblies.ContractUnsupported;
+    // A distribution that carries an activity the native host answers and nothing serves (R-09-291, Issue I-384), since the dictionary's 1.13.0.
+    public const string NativeActivityUnserved = TransactHub.Store.NativeAssemblies.ActivityUnserved;
     public const string SourceUnreachable = "package-source.Unreachable", UnknownVersion = "package-source.UnknownVersion";
     public const string Unauthenticated = "auth.Unauthenticated", Forbidden = "auth.Forbidden", StudioIssuer = "auth.StudioIssuer", DevRefused = "auth.DevRefused", RoleMapInvalid = "auth.RoleMapInvalid";
     public const string ActionNotOffered = "ops.ActionNotOffered", RemarksRequired = "ops.RemarksRequired", MakerApproves = "ops.MakerApproves",

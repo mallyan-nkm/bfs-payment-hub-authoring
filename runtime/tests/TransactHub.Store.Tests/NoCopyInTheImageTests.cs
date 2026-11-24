@@ -71,6 +71,19 @@ public sealed class NoCopyInTheImageTests
             }
     }
 
+    /// <summary>
+    /// R-09-291 (Issue I-384): what the release API and the native host count as the image's own when they check that a distribution's
+    /// native activities are served is the image's table: the holds and the platform's production adapters, no core-banking activity.
+    /// </summary>
+    [Fact]
+    public void What_the_install_check_counts_as_the_images_own_is_the_images_table()
+    {
+        var adapters = PlatformPortActivities.All(new TransactHub.Ports.PortBindings()).Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+        string[] holds = ["p.hold.approval.v1", "p.hold.repair.v1"];
+        Assert.Equal(adapters.Concat(holds).Order(StringComparer.Ordinal), TransactHub.Store.NativeServed.ImageActivities.Order(StringComparer.Ordinal));
+        foreach (var a in CoreBankingActivities) Assert.DoesNotContain(a, TransactHub.Store.NativeServed.ImageActivities);
+    }
+
     static string RuntimeRoot()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)

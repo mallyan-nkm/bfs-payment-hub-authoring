@@ -309,6 +309,9 @@ CASES = [
      "  service: accounting\n  native: true\n", "  service: accounting\n", "the builtin posting does not say the platform module answers it"),
     ("M110", "ERROR L40", "factory/p/activities/p.reserve.funds.v1.yaml",
      "  service: reservation\n  native: true\n", "  service: reservation\n", "the reservation does not say the platform module answers it"),
+    # R-09-296 (Issue I-387): L40 in every scope; a scheme's builtin posting says its module answers it.
+    ("M111", "ERROR L40", "factory/uae.wps/activities/uae.wps.post.return.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n", "WPS's return posting does not say the WPS module answers it"),
 ]
 
 

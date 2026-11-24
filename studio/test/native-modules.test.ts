@@ -49,8 +49,8 @@ describe('a distribution\'s native assemblies (R-09-120)', () => {
     // studio lists it with no list of its own (MODULE_BUILTINS is gone, Issue I-381).
     for (const a of ['p.post.accounting.v1@1.3.0', 'p.reserve.funds.v1@1.1.0', 'p.reserve.release.v1@1.1.0', 'p.post.reverse.v1@1.1.0', 'p.post.verify.v1@1.1.0'])
       expect(p.activities).toContain(a);
-    // WPS's own posting is not marked yet (Issue I-387).
-    expect(m.activities.some((a: string) => a.startsWith('uae.wps.post.return.v1@'))).toBe(false);
+    // WPS's own posting says the WPS module answers it since factory 1.24.0 (R-09-296, Issue I-387).
+    expect(m.activities).toContain('uae.wps.post.return.v1@1.3.0');
     // Each prebuilt folder was verified against the signers the studio trusts (R-09-127).
     expect(m.signature).toEqual({ keyId: MODULE_KEY_ID });
     const f = m.files[0];
@@ -202,6 +202,25 @@ describe('native contract 2.1.0, a minor (R-09-276, R-09-282; Issues I-381, I-38
     delete process.env.TH_NATIVE_MODULES;
     expect(() => buildDistribution(freshEnv(), { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-64' }))
       .toThrow(/p has native activities with no script-behind \(p\.post\.accounting\.v1@1\.3\.0, p\.post\.reverse\.v1@1\.1\.0, p\.post\.verify\.v1@1\.1\.0, .*p\.reserve\.funds\.v1@1\.1\.0, p\.reserve\.release\.v1@1\.1\.0\)/);
+  });
+});
+
+describe('a module that calls core banking needs the platform module (R-09-295, Issue I-386)', () => {
+  it('refuses a promotable distribution whose module names p.port.core-banking.v1 without the platform module', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'th-test-banking-'));
+    try {
+      // A build of the scheme's module only: the platform's native activity has a script-behind, so its module is not carried.
+      writeModuleFolder(path.join(root, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, [CONTRACT]));
+      process.env.TH_NATIVE_MODULES = root;
+      const posting = { kind: 'activity', name: 'uae.wps.post.return.v1', release: '1.4.0', ports: ['p.port.core-banking.v1'], implementation: { binding: 'builtin', service: 'accounting', native: true } };
+      const fx = { kind: 'activity', name: 'p.enrich.fx-rate.v1', release: '1.3.0', implementation: { binding: 'script', native: true } };
+      const refused = nativeModules([posting, fx], scopeOf, true);
+      expect(refused.section.notCarried).toEqual(['p']);
+      expect(refused.problems).toEqual([expect.stringMatching(/^The module of uae\.wps carries activities that name p\.port\.core-banking\.v1 \(uae\.wps\.post\.return\.v1@1\.4\.0\), and the distribution carries no platform module/)]);
+      // A test distribution is not refused, nor a module that names no core banking.
+      expect(nativeModules([posting, fx], scopeOf, false).problems).toEqual([]);
+      expect(nativeModules([{ ...posting, ports: ['p.port.wps.v1'] }, fx], scopeOf, true).problems).toEqual([]);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });
 

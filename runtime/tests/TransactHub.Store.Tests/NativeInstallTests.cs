@@ -24,16 +24,20 @@ public sealed class NativeInstallTests(Databases dbs)
 
     /// <summary>A distribution with a native module, signed as the studio signs it; each argument breaks one thing.</summary>
     static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = TransactHub.Activities.Native.NativeContract.Version, string name = Asm, string? stray = null,
-        string scope = "uae.wps", string[]? activities = null)
+        string scope = "uae.wps", string[]? activities = null, IReadOnlyDictionary<string, string>? docs = null)
     {
         var path = $"activities/native/{scope}/{name}.dll.base64";
         var files = new Dictionary<string, string> { ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n", [path] = Convert.ToBase64String(assembly) + "\n" };
+        // Activity documents the bill of materials carries beside the module's (R-09-291): name@release to its YAML.
+        foreach (var (a, yaml) in docs ?? new Dictionary<string, string>()) files[$"activities/{a}.yaml"] = yaml;
         if (stray is not null) files[stray] = Convert.ToBase64String(assembly) + "\n";
         var real = Sha(assembly);
         var artefacts = new JsonArray(new JsonObject { ["path"] = "binding.yaml", ["sha256"] = Sha(Encoding.UTF8.GetBytes(files["binding.yaml"])) },
             new JsonObject { ["scope"] = scope, ["kind"] = "native-assembly", ["name"] = $"{name}.dll", ["path"] = path, ["sha256"] = Sha(Encoding.UTF8.GetBytes(files[path])), ["assemblySha256"] = claimedSha ?? real });
         foreach (var a in activities ?? ["uae.wps.map.ack-in.v1@1.2.0"])
             artefacts.Add(new JsonObject { ["scope"] = scope, ["kind"] = "activity", ["name"] = a.Split('@')[0], ["release"] = a.Split('@')[1] });
+        foreach (var (a, _) in docs ?? new Dictionary<string, string>())
+            artefacts.Add(new JsonObject { ["scope"] = a.Split('.')[0], ["kind"] = "activity", ["name"] = a.Split('@')[0], ["release"] = a.Split('@')[1], ["path"] = $"activities/{a}.yaml", ["sha256"] = Sha(Encoding.UTF8.GetBytes(files[$"activities/{a}.yaml"])) });
         var bom = new JsonObject { ["packs"] = new JsonArray(), ["artefacts"] = artefacts };
         var pc = new JsonObject { ["format"] = "th-parameter-contract/1", ["parameters"] = new JsonArray() };
         var native = new JsonObject
@@ -124,6 +128,83 @@ public sealed class NativeInstallTests(Databases dbs)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, reaching);
         Assert.Contains("references TransactHub.Ports, which is the runtime image's", reachingBody);
         Assert.Contains(NativeAssemblies.ImageReference, reachingBody);
+    }
+
+    /// <summary>The reservation as factory 1.22.0 published it: a builtin of the reservation service on core banking, which the image answered.</summary>
+    const string ReservationBefore21 = "kind: activity\nname: p.reserve.funds.v1\nrelease: 1.0.0\ntype: reserve\nports:\n  - p.port.core-banking.v1\nimplementation:\n  binding: builtin\n  service: reservation\n";
+    /// <summary>The reservation since factory 1.23.0: the platform module answers it (R-09-282).</summary>
+    const string Reservation = "kind: activity\nname: p.reserve.funds.v1\nrelease: 1.1.0\ntype: reserve\nports:\n  - p.port.core-banking.v1\nimplementation:\n  binding: builtin\n  service: reservation\n  native: true\n";
+    /// <summary>A hold: a builtin the image answers itself.</summary>
+    const string Hold = "kind: activity\nname: p.hold.approval.v1\nrelease: 1.1.0\ntype: hold\nports:\n  - p.port.operations-queue.v1\nimplementation:\n  binding: builtin\n  service: operations\n";
+    /// <summary>A rule-service builtin: the worker answers it, never the native host.</summary>
+    const string Limits = "kind: activity\nname: p.validate.limits.v1\nrelease: 1.0.0\ntype: validate\nimplementation:\n  binding: builtin\n  service: rule-service\n";
+
+    /// <summary>
+    /// R-09-291 (Issue I-384), on SQL Server and PostgreSQL: the release API refuses at install a distribution whose bill of materials
+    /// carries an activity the runtime's native host answers (here the reservation as factory 1.22.0 published it, a builtin on core
+    /// banking) that neither the image nor a module of it serves, with its own code; and the native host's check refuses it again as it
+    /// loads one that was stored before (the served activities read from the module as loaded). The same distribution with the reservation
+    /// the platform module lists is installed, and the image's own activities and the worker's builtins are no gap.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_distribution_whose_native_activity_nothing_serves_is_refused_at_install_and_at_load(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        var options = dbs.Fresh(p);
+        await using var host = new ApiHost(options, s);
+        var c = host.Client();
+        var before = new Dictionary<string, string> { ["p.reserve.funds.v1@1.0.0"] = ReservationBefore21, ["p.hold.approval.v1@1.1.0"] = Hold, ["p.validate.limits.v1@1.0.0"] = Limits };
+        var zip = Distribution(s.Key, "2026.11.24-61", Wps, docs: before);
+        var (refused, refusedBody) = await Post(c, zip);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, refused);
+        Assert.Contains(NativeAssemblies.ActivityUnserved, refusedBody);
+        Assert.Contains("p.reserve.funds.v1@1.0.0", refusedBody);
+        Assert.DoesNotContain("p.hold.approval.v1", refusedBody);
+        Assert.DoesNotContain("p.validate.limits.v1", refusedBody);
+        Assert.Contains("section 3.3", refusedBody);
+
+        // Rebuilt at factory 1.23.0: the reservation says native: true and the platform module serves it. Installed.
+        var platform = File.ReadAllBytes(typeof(TransactHub.Activities.Platform.Native.PlatformNativeModule).Assembly.Location);
+        var (ok, okBody) = await Post(c, Distribution(s.Key, "2026.11.24-62", platform, scope: "p", name: "TransactHub.Activities.Platform.Native",
+            activities: ["p.reserve.funds.v1@1.1.0"], docs: new Dictionary<string, string> { ["p.hold.approval.v1@1.1.0"] = Hold, ["p.validate.limits.v1@1.0.0"] = Limits }));
+        Assert.True(ok == HttpStatusCode.Created, okBody);
+
+        // Stored before the release API checked it (installed by an earlier runtime): the native host's check refuses it as it loads it.
+        var files = NativeAssemblies.Unzip(zip);
+        var manifest = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(files["manifest.yaml"]))!;
+        await using (var db = StoreDbContext.Open(options))
+            await new DistributionRegistry(db).Store(Bank, "2026.11.24-63", zip, manifest, Sha(zip)[7..], "test", "installed before R-09-291");
+        await using (var db = StoreDbContext.Open(options))
+        {
+            var row = await new ReleaseRegistry(db).Get(DistributionRegistry.Scope(Bank), "2026.11.24-63") ?? throw new Xunit.Sdk.XunitException("not stored");
+            var stored = NativeAssemblies.Unzip(row.Package);
+            var kept = (JsonObject)JsonNode.Parse(row.ManifestJson)!;
+            var module = Assert.Single(NativeAssemblies.Check(kept, f => stored.TryGetValue(f, out var x) ? x : null, stored.Keys));
+            var ctx = new ModuleContext(module.Files);
+            try
+            {
+                var asm = ctx.LoadFromAssemblyName(new AssemblyName(module.Assembly));
+                var entry = (TransactHub.Activities.Native.INativeModule)Activator.CreateInstance(asm.GetCustomAttribute<TransactHub.Activities.Native.NativeModuleAttribute>()!.Module)!;
+                var serves = entry.Activities(new Services(new TransactHub.Activities.Platform.Posting.CoreBankingResolver(new TransactHub.Ports.PortBindings()))).Select(a => a.Name).ToHashSet();
+                var unserved = NativeServed.Unserved(kept, f => stored.TryGetValue(f, out var x) ? x : null, (n, _) => serves.Contains(n));
+                Assert.Equal(["p.reserve.funds.v1@1.0.0"], unserved);
+                Assert.StartsWith(NativeAssemblies.ActivityUnserved, NativeServed.Refusal(unserved));
+            }
+            finally { ctx.Unload(); }
+        }
+    }
+
+    /// <summary>R-09-291: what the native host answers on a runtime, read from an activity's document.</summary>
+    [Fact]
+    public void The_host_answers_a_native_activity_and_a_builtin_on_core_banking()
+    {
+        JsonObject Doc(string json) => (JsonObject)JsonNode.Parse(json)!;
+        Assert.True(NativeServed.AnsweredByTheHost(Doc("""{ "implementation": { "binding": "native" } }""")));
+        Assert.True(NativeServed.AnsweredByTheHost(Doc("""{ "implementation": { "binding": "script", "native": "true" } }""")));
+        Assert.True(NativeServed.AnsweredByTheHost(Doc("""{ "ports": ["p.port.core-banking.v1"], "implementation": { "binding": "builtin", "service": "accounting" } }""")));
+        Assert.False(NativeServed.AnsweredByTheHost(Doc("""{ "implementation": { "binding": "builtin", "service": "rule-service" } }""")));
+        Assert.False(NativeServed.AnsweredByTheHost(Doc("""{ "ports": ["p.port.payment-record.v1"], "implementation": { "binding": "builtin", "service": "payment-record" } }""")));
+        Assert.False(NativeServed.AnsweredByTheHost(Doc("""{ "implementation": { "binding": "script" } }""")));
     }
 
     /// <summary>One distribution's load context, as the native host makes it: the module from its bytes, the contract from the image's.</summary>

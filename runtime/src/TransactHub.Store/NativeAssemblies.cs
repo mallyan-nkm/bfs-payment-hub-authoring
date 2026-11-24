@@ -54,6 +54,12 @@ public static class NativeAssemblies
     /// </summary>
     public const string ContractUnsupported = "native.ContractUnsupported";
 
+    /// <summary>
+    /// The error dictionary's code of a distribution that carries an activity the runtime's native host answers and that neither the image
+    /// nor a native module of it serves (R-09-291, Issue I-384): refused at install and at load (<see cref="NativeServed"/>).
+    /// </summary>
+    public const string ActivityUnserved = "native.ActivityUnserved";
+
     /// <summary>The prefix of the runtime's own assemblies: a module references none of them but the contract.</summary>
     public const string RuntimePrefix = "TransactHub.";
 
