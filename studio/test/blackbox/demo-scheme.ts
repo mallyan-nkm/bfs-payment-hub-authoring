@@ -60,8 +60,9 @@ export async function run({ ctx }) {
 `;
 export const FILE_OUT = { kind: 'activity', name: n('map', 'file-out'), release: '1.0.0', title: 'Canonical batch to the demo submission', type: 'map', reads: ['batch', 'items[]'], writes: ['messages'], outcomes: [{ name: 'mapped', primary: true }, { name: 'unmappable' }], effect: 'pure', map: { direction: 'out', sourceModel: 'Demo submission file', roundTrip: false }, implementation: { binding: 'builtin', service: 'reference' }, provenance: PROV };
 export const ACK_IN = { kind: 'activity', name: n('map', 'ack-in'), release: '1.0.0', title: 'Demo acknowledgement to status', type: 'map', reads: ['messages'], writes: ['status'], outcomes: [{ name: 'ack', primary: true }, { name: 'nak' }], effect: 'pure', map: { direction: 'in', sourceModel: 'Demo acknowledgement', roundTrip: true }, implementation: { binding: 'builtin', service: 'reference' }, provenance: PROV };
+// It reads facts.encryption: the subflow encrypts the file first, and the send sends the file the encryption made (L58, R-05-101).
 export const SEND = {
-  kind: 'activity', name: n('exchange', 'send-file'), release: '1.0.0', title: 'Send the demo file', type: 'exchange', mode: 'send', reads: ['header', 'messages'], writes: ['status', 'messages'],
+  kind: 'activity', name: n('exchange', 'send-file'), release: '1.0.0', title: 'Send the demo file', type: 'exchange', mode: 'send', reads: ['header', 'messages', 'facts.encryption'], writes: ['status', 'messages'],
   outcomes: [{ name: 'accepted', primary: true }, { name: 'rejected' }, { name: 'unknown' }], errors: [{ name: 'TransientError', retryable: true }, { name: 'BusinessReject', retryable: false }],
   effect: 'external', idempotencyKey: "concat(header.paymentId, ':send-file')", ports: [PORT.name],
   policy: { attemptTimeout: 'PT10S', totalTimeout: 'PT1M', retry: { maxAttempts: 3, firstInterval: 'PT2S', backoff: 2, nonRetryable: ['BusinessReject'] } },
