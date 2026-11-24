@@ -2890,6 +2890,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Run the same test (`OutlivesItsTimeout`) on Temporal and Flowable: on Flowable with a BPMN whose task has its attempt timer boundary.
 
+## I-402. The operations read model names WPS's message kinds, which the neutrality test refuses
+
+**Issue.** R-09-288 (Issue I-363) has the operations read model read a SIF kept under the binding's old word as the scheme message: `runtime/src/TransactHub.Operations/DocumentKinds.cs` maps `uae.wps.sif-out` to `uae.wps.sif-submission`. `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` (Store tests) refuses platform code that names a scheme, so it fails on that line, on both databases. The change that added the map (f3d3060) did not run it; this change did not touch either file.
+
+**Recommendation.** Move the map out of the platform's code: have WPS's store module (`TransactHub.Activities.Wps.Store`) contribute the former kinds of its messages, or read them from the scheme's catalogue (a `formerKinds` list on a message), so the read model names no scheme.
+
 ## Not done, and why
 
 | Story | Why |
