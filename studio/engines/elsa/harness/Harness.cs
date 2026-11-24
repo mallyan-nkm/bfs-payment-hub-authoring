@@ -59,6 +59,12 @@ public sealed class Instance
     public Instance? Parent;
     public int ParentOp;
     public int LateResults;
+    /// <summary>
+    /// On a distribution's service, the instance's attempts whose worker call runs now (R-09-286), and the timers that came due
+    /// meanwhile: they fire once the calls have answered, as they did when the calls ran on the clock's thread (Issue I-390).
+    /// </summary>
+    public int InFlight;
+    public readonly List<Action> Deferred = new();
 }
 
 public sealed partial class Harness : IDisposable
@@ -284,6 +290,8 @@ public sealed partial class Harness : IDisposable
                 var a = (JsonObject)J.P(op, "input")!;
                 if (name == Interp.ClaimCheck) { immediate.Add(new JsonObject { ["op"] = id, ["result"] = ClaimCheckOp(a) }); break; }
                 activityRuns++;
+                // A distribution's service may run several attempts at once (R-09-286, Issue I-360): off the clock's thread.
+                if (attempts is not null) { AttemptBeside(inst, id, a); break; }
                 var (result, at) = Attempt(a);
                 if (result is null) break; // never answers and has no deadline
                 var e = new JsonObject { ["op"] = id, ["result"] = result };
@@ -294,11 +302,14 @@ public sealed partial class Harness : IDisposable
             case "timer":
             {
                 var at = (long)J.Num(op, "at")!.Value;
-                Clock.Schedule(at, () =>
+                void Fire()
                 {
                     if (inst.Completed || inst.Cancelled.Contains(id)) return;
+                    // An attempt of the instance still in its worker's call: the timer waits for its answer (Issue I-390).
+                    if (inst.InFlight > 0) { inst.Deferred.Add(Fire); return; }
                     Deliver(inst, Stamp(new JsonArray(new JsonObject { ["op"] = id, ["result"] = null })));
-                });
+                }
+                Clock.Schedule(at, Fire);
                 break;
             }
             case "child":
@@ -322,6 +333,57 @@ public sealed partial class Harness : IDisposable
             }
             default: throw new InvalidOperationException($"unknown operation {J.S(op, "type")}");
         }
+    }
+
+    /// <summary>
+    /// With more than one attempt at once (a distribution's service, R-09-286, Issue I-360): the attempts its host's setting allows
+    /// at once; null in a kit run, whose attempts run one at a time on the clock's thread, in order, so a run is deterministic.
+    /// </summary>
+    SemaphoreSlim? attempts;
+    int attemptsAtOnce = 1;
+
+    /// <summary>
+    /// An activity attempt beside the others: its request is read on the clock's thread, the worker's call runs off it, bounded by
+    /// <see cref="attempts"/>, and its answer is handed back to the clock's thread, which takes it and delivers it to the instance
+    /// (on the history first). Elsa's journals and the claim-check store stay on the clock's thread only.
+    /// </summary>
+    void AttemptBeside(Instance inst, int op, JsonObject a)
+    {
+        var req = AttemptRequest(a);
+        var gate = attempts!;
+        inst.InFlight++;
+        _ = Task.Run(async () =>
+        {
+            JsonObject? res = null;
+            Exception? failed = null;
+            await gate.WaitAsync();
+            try { res = await party.Call(req); }
+            catch (Exception x) { failed = x; }
+            finally { gate.Release(); }
+            Clock.Schedule(Clock.Now, () =>
+            {
+                inst.InFlight--;
+                try
+                {
+                    if (failed is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
+                    var (result, at) = Answer(a, res!);
+                    if (result is null) return; // never answers and has no deadline
+                    var e = new JsonArray(new JsonObject { ["op"] = op, ["result"] = result });
+                    // The answer reaches the instance before a timer that came due while its call ran.
+                    if (at <= Clock.Now) Deliver(inst, Stamp(e));
+                    else Clock.Schedule(at, () => Deliver(inst, Stamp(e)));
+                }
+                finally
+                {
+                    if (inst.InFlight == 0 && inst.Deferred.Count > 0)
+                    {
+                        var due = inst.Deferred.ToList();
+                        inst.Deferred.Clear();
+                        foreach (var d in due) Clock.Schedule(Clock.Now, d);
+                    }
+                }
+            });
+        });
     }
 
     void Raise(string id, string name, JsonObject data)
@@ -415,7 +477,10 @@ public sealed partial class Harness : IDisposable
     /// the virtual time it reaches the instance: after the stub's latency; for an attempt that never
     /// answers, a late timeout at its own deadline, or nothing when it has none.
     /// </summary>
-    public (JsonObject? result, long at) Attempt(JsonObject a)
+    public (JsonObject? result, long at) Attempt(JsonObject a) => Answer(a, party.Call(AttemptRequest(a)).GetAwaiter().GetResult());
+
+    /// <summary>The party's request for an attempt, read from the claim-check store on the clock's thread.</summary>
+    JsonObject AttemptRequest(JsonObject a)
     {
         var step = J.S(a, "step")!;
         var activity = J.S(a, "activity")!;
@@ -431,7 +496,20 @@ public sealed partial class Harness : IDisposable
             // The step whose handler the attempt is in (R-09-241, Issue I-290).
             ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
-        var res = party.Call(req).GetAwaiter().GetResult();
+        return req;
+    }
+
+    /// <summary>
+    /// The party's answer to an attempt as the instance takes it, on the clock's thread: its later messages scheduled, its payload
+    /// writes staged in the claim-check store.
+    /// </summary>
+    (JsonObject? result, long at) Answer(JsonObject a, JsonObject res)
+    {
+        var step = J.S(a, "step")!;
+        var activity = J.S(a, "activity")!;
+        var payloadRef = J.S(a, "payloadRef")!;
+        var item = J.Num(a, "item") is double d ? (int?)d : null;
+        var now = (long)J.Num(a, "now")!.Value;
         Schedule(res);
         var at = now;
         if (J.S(dep.Stub(step, activity), "latency") is string latency) at = now + Duration.Ms(latency);

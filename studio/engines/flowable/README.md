@@ -25,7 +25,7 @@ Each run writes `out/<scenario>/`: the generated `*.bpmn20.xml`, the binding's `
 
 ## What maps how
 
-The generated model carries `th:` annotations (namespace `urn:transacthub:flowable:1`). The worker reads the step, activity, release and policy from `th:task`; the binding writes the business trace at `th:point` elements. Flow is in the BPMN only.
+The generated model carries `th:` annotations (namespace `urn:transacthub:flowable:1`). The worker reads the step, activity, release and policy from `th:task`, and the step whose outcome a handler's task handles from `th:handlerOf`, which it sends as the attempt's `handlerOf` (R-09-287); the binding writes the business trace at `th:point` elements. Flow is in the BPMN only.
 
 | DSL | BPMN on Flowable |
 | --- | --- |

@@ -149,6 +149,7 @@ public sealed class OperatorApiTests(Databases dbs)
             };
             var accepted = await new PaymentStore(db).AcceptBulk(bank, "uae.wps", Direction.Outward, bulk, "p.wf.corporate.v1@1.0.0", frontDoorId: fd);
             Assert.Equal(fd, accepted.BulkId);
+            // Kept under the kind an earlier File API gave it (the binding's word): the console lists it as the scheme message (R-09-288, Issue I-363).
             await new FileStore(db, key).Keep(new FileToKeep(bank, "uae.wps", "out", "uae.wps.sif-out", "0000001234567261124090001.SIF", fd, "scheme-leg", "uae.wps.exchange.send-salary-file.v2"), "SCR,synthetic\n"u8.ToArray());
             await new FileStore(db, key).Keep(new FileToKeep(bank, "uae.wps", "in", "uae.wps.ack", "0000001234567261124090001ABCDEF012345.ACK", fd, null, null), "ACK,synthetic\n"u8.ToArray());
         }
@@ -156,7 +157,7 @@ public sealed class OperatorApiTests(Databases dbs)
         var c = As(host.CreateClient(), "op-1", $"{bank}:Operator");
         var detail = await Until(c, $"/ops/api/payments/{fd}", j => j["documents"]!.AsArray().Count == 3);
         Assert.Equal(fd, (string?)detail["payment"]!["id"]);
-        Assert.Equal(["uae.wps.ack", "uae.wps.sif", "uae.wps.sif-out"], detail["documents"]!.AsArray().Select(d => (string)d!["kind"]!).Order());
+        Assert.Equal(["uae.wps.ack", "uae.wps.sif", "uae.wps.sif-submission"], detail["documents"]!.AsArray().Select(d => (string)d!["kind"]!).Order());
         var timeline = detail["timeline"]!.AsArray().Select(t => (string?)t!["kind"]).ToList();
         Assert.Equal(DistributionRegistry.PinKind, timeline[0]);
         Assert.Contains("status", timeline);

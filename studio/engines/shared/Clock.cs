@@ -49,7 +49,8 @@ public sealed class VirtualClock
 
     public void Schedule(long at, Action fire)
     {
-        lock (gate) timers[(Math.Max(at, now), seq++)] = fire;
+        // A wait for the wall clock (real time) wakes to take it: an answer handed back from another thread fires now, not later.
+        lock (gate) { timers[(Math.Max(at, now), seq++)] = fire; Monitor.PulseAll(gate); }
     }
 
     public void Enter(int n = 1) { if (n == 0) return; lock (gate) { busy += n; progress++; } }

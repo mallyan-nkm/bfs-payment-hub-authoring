@@ -848,6 +848,9 @@ public sealed partial class FlowableBinding
             ["call"] = call, ["attempt"] = attempt, ["now"] = now, ["ctx"] = ctx, ["level"] = index is not null && level == "item" ? "item" : null,
             ["policy"] = task.TryGetValue("policy", out var pol) ? J.Parse(pol) : null, ["item"] = index,
         };
+        // The step whose handler the task is in, as the export names it (th:handlerOf), named as the interpreter names it: in an item
+        // with its index, in a finally as finally:<step> (R-09-241, R-09-287, Issue I-361). A hold the attempt opens records that step.
+        if (HandlerOf(job, def) is { } handlerOf) req["handlerOf"] = handlerOf;
         // A worker that does not answer is a technical failure, not an attempt: the job's retries cover it.
         JsonObject? res = null;
         // A job the binding had answered before it restarted (Issue I-89) is answered from the journal, not called again.
@@ -975,6 +978,12 @@ public sealed partial class FlowableBinding
     }
 
     // ================================================================ the binding's own tasks
+
+    /// <summary>The step whose handler a task is in (<c>th:handlerOf</c>: step, activity, outcome), labelled as its job runs; null outside a handler.</summary>
+    public static JsonObject? HandlerOf(ExternalJob job, BpmnProcess def) =>
+        def.Ann(job.ElementId, "handlerOf") is { } h && h.GetValueOrDefault("step") is string step
+            ? new JsonObject { ["step"] = LabelOf(job, h, step), ["activity"] = h.GetValueOrDefault("activity"), ["outcome"] = h.GetValueOrDefault("outcome") }
+            : null;
 
     static string LabelOf(ExternalJob job, IReadOnlyDictionary<string, string> p, string step)
     {

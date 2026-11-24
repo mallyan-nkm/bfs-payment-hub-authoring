@@ -71,6 +71,9 @@ public sealed class CentralBankSifTests(Databases dbs)
         Assert.Equal(sif.Document.Content, Encoding.UTF8.GetString(msg.Content));
         Assert.Equal(sif.Document.Sha256.ToLowerInvariant(), msg.ContentHash);
         Assert.Equal(accepted.BulkId, msg.SubjectId);
+        // Under the scheme message's id, as the File API keeps the sent copy: one file, one kind (R-09-288, Issue I-363).
+        Assert.Equal("uae.wps.sif-submission", msg.Kind);
+        Assert.Equal(TransactHub.Activities.Wps.Native.SendSalaryFile.Message, CentralBankSif.MessageKind);
         Assert.Equal("sif-generated", (await new FactLog(db).Last(accepted.BulkId, "message"))!.Code);
 
         // Generated again (a retried step), the bytes are the same.

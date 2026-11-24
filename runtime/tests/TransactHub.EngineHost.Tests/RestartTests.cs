@@ -275,15 +275,18 @@ public partial class EngineHostTests
 
     [Fact] public Task Dtfx_serves_many_payments_of_a_distribution_on_one_service() => OneService("dtfx");
     [Fact] public Task Dtfx_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow() => SideBySide("dtfx");
+    [Fact] public Task Elsa_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow() => SideBySide("elsa");
+    [Fact] public Task Elsa_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow_on_SqlServer() => SideBySide("elsa", "sqlserver");
 
     /// <summary>
     /// R-09-238 (Issue I-300): a distribution's DTFx service runs several work items at once, as many as its host's setting allows
     /// (TH_HOST_SERVICE_CONCURRENCY, default 4): a payment whose worker call is slow holds up no other payment of the distribution.
-    /// With one work item at once, the second payment's first step would wait for the first's slow call.
+    /// With one work item at once, the second payment's first step would wait for the first's slow call. R-09-286 (Issue I-360):
+    /// Elsa's service runs its attempts so too, off its clock's thread.
     /// </summary>
-    async Task SideBySide(string engine)
+    async Task SideBySide(string engine, string database = "postgres")
     {
-        await UseStore("postgres");
+        await UseStore(database);
         using var worker = new Worker();
         var (bank, dist, plans, workflow) = await Distribution(engine, "sbs", "PT1M", worker);
         var slow = $"S1-{bank}";

@@ -122,6 +122,32 @@ public class BpmnModelTests
         Assert.Equal(["s_undo_task", "s_undo"], p.Ancestry("s_undo_task").ToArray());
     }
 
+    /// <summary>
+    /// R-09-287 (Issue I-361): a task of a handler carries the step whose outcome it handles (th:handlerOf, as the studio's export
+    /// writes it), and the binding names that step as the interpreter does: in an item with the item's index, in a finally as
+    /// finally:step. A task outside a handler names none.
+    /// </summary>
+    [Fact]
+    public void A_task_in_a_handler_names_the_step_whose_outcome_it_handles()
+    {
+        var xml = Docs.Head + """
+              <process id="h" isExecutable="true">
+                <serviceTask id="review_task" flowable:type="external-worker" flowable:topic="th-p:p.hold.approval.v1@1.0.0"><extensionElements><th:task step="review" activity="p.hold.approval.v1" release="1.0.0" record="business"/><th:handlerOf step="sanctions" activity="p.screen.sanctions.v1" outcome="hit"/></extensionElements></serviceTask>
+                <serviceTask id="item_task" flowable:type="external-worker" flowable:topic="th-p:p.hold.approval.v1@1.0.0"><extensionElements><th:task step="line-review" activity="p.hold.approval.v1" release="1.0.0" record="business" item="true"/><th:handlerOf step="line" activity="p.validate.line.v1" outcome="repair" item="true"/></extensionElements></serviceTask>
+                <serviceTask id="finally_task" flowable:type="external-worker" flowable:topic="th-p:p.hold.approval.v1@1.0.0"><extensionElements><th:task step="tidy-review" activity="p.hold.approval.v1" release="1.0.0" record="finally"/><th:handlerOf step="tidy" activity="p.notify.thing.v1" outcome="failed" record="finally"/></extensionElements></serviceTask>
+                <serviceTask id="plain_task" flowable:type="external-worker" flowable:topic="th-p:p.screen.sanctions.v1@1.0.0"><extensionElements><th:task step="sanctions" activity="p.screen.sanctions.v1" release="1.0.0" record="business"/></extensionElements></serviceTask>
+              </process>
+            </definitions>
+            """;
+        var p = BpmnProcess.Parse(xml);
+        ExternalJob Job(string element, int? item = null) => new("j", "pi", "pd", "ex", element, DateTimeOffset.UnixEpoch, 3,
+            item is int n ? new Dictionary<string, JsonNode?> { ["th_item"] = n } : new Dictionary<string, JsonNode?>());
+        Assert.Equal("""{"step":"sanctions","activity":"p.screen.sanctions.v1","outcome":"hit"}""", FlowableBinding.HandlerOf(Job("review_task"), p)!.ToJsonString());
+        Assert.Equal("line[2]", J.S(FlowableBinding.HandlerOf(Job("item_task", 2), p), "step"));
+        Assert.Equal("finally:tidy", J.S(FlowableBinding.HandlerOf(Job("finally_task"), p), "step"));
+        Assert.Null(FlowableBinding.HandlerOf(Job("plain_task"), p));
+    }
+
     [Fact]
     public void A_rest_variable_takes_its_type_from_the_value()
     {
@@ -246,5 +272,38 @@ public class FlowableRestTests(FlowableServer server)
         Assert.DoesNotContain("payment", keys);
         Assert.Contains("th_attempt", keys);
         Assert.Empty(J.A(obs, "notes"));
+        // Outside a handler, an attempt names none (R-09-241).
+        Assert.All(party.Attempts, a => Assert.Null(J.P(a, "handlerOf")));
+    }
+
+    /// <summary>
+    /// R-09-287 (Issue I-361): on the Flowable server, the binding sends each attempt of a handler's task with the step whose outcome
+    /// it handles (handlerOf: step, activity, outcome), so that a hold the attempt opens records that step (R-09-241).
+    /// </summary>
+    [Fact]
+    public async Task The_binding_sends_an_attempt_in_a_handler_with_the_step_it_handles()
+    {
+        using var rest = server.Client();
+        var key = FlowableBinding.Safe("t.wf.one.v1@1.0.0");
+        var bpmn = Docs.OneCall(key).Replace(
+            """<th:task step="check" activity="p.check.thing.v1" release="1.0.0" record="business"/>""",
+            """<th:task step="check" activity="p.check.thing.v1" release="1.0.0" record="business"/><th:handlerOf step="screen" activity="p.screen.thing.v1" outcome="hit"/>""");
+        Assert.Contains("th:handlerOf", bpmn);
+        var input = new JsonObject
+        {
+            ["built"] = new JsonObject
+            {
+                ["id"] = "T-2", ["spec"] = new JsonObject(), ["workflow"] = "t.wf.one.v1",
+                ["config"] = new JsonObject { ["evaluationDate"] = "2026-11-17", ["tenant"] = "test-bank" },
+                ["context"] = new JsonObject { ["header"] = new JsonObject { ["conversation"] = "conv-2", ["scheme"] = "p", ["direction"] = "outward" } },
+            },
+            ["documents"] = new JsonObject { ["t.wf.one.v1@1.0.0"] = new JsonObject { ["kind"] = "workflow", ["name"] = "t.wf.one.v1", ["release"] = "1.0.0" } },
+            ["bpmn"] = new JsonObject { ["t.wf.one.v1@1.0.0.bpmn20.xml"] = bpmn },
+        };
+        var party = new FakeParty();
+        var obs = await new FlowableBinding(input, rest, party).Run();
+        Assert.Equal(["check:ok", "end:done"], J.Strings(J.P((JsonObject)J.A(obs, "instances")[0]!, "trace")));
+        Assert.Equal(2, party.Attempts.Count);
+        Assert.All(party.Attempts, a => Assert.Equal("""{"step":"screen","activity":"p.screen.thing.v1","outcome":"hit"}""", J.P(a, "handlerOf")!.ToJsonString()));
     }
 }

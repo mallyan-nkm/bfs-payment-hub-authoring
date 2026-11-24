@@ -517,6 +517,17 @@ public final class Harness {
             req.put("level", "item");
         } else req.set("ctx", inst.ctx);
         try { if (task.containsKey("policy")) req.set("policy", M.readTree(task.get("policy"))); } catch (Exception e) { throw new IllegalStateException(e); }
+        // The step whose handler the task is in (th:handlerOf), named as the interpreter names it (R-09-241, R-09-287, Issue I-361).
+        Map<String, String> handler = annOf(job.getProcessDefinitionId(), job.getElementId()).get("handlerOf");
+        if (handler != null && handler.get("step") != null) {
+            String hs = handler.get("step");
+            if ("finally".equals(handler.get("record"))) hs = "finally:" + hs;
+            else if ("true".equals(handler.get("item")) && rt.getVariable(job.getExecutionId(), "th_item") instanceof Number n) hs = hs + "[" + n.intValue() + "]";
+            ObjectNode h = req.putObject("handlerOf");
+            h.put("step", hs);
+            if (handler.get("activity") != null) h.put("activity", handler.get("activity"));
+            if (handler.get("outcome") != null) h.put("outcome", handler.get("outcome"));
+        }
         JsonNode res = party.call(req);
         deliveries(res.get("deliveries"));
         String kind = res.get("kind").asText();

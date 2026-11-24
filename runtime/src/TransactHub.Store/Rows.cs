@@ -162,7 +162,7 @@ public sealed class StoredFileRow : IInsertOnly
     public string Scheme { get; set; } = "";
     /// <summary>"in" (received) or "out" (sent).</summary>
     public string Direction { get; set; } = "";
-    /// <summary>What it is: "uae.wps.sif-out", "uae.wps.prc"…, or the activity that kept it.</summary>
+    /// <summary>What it is: the scheme message id ("uae.wps.sif-submission", "uae.wps.ack"…), or the activity that kept it.</summary>
     public string Kind { get; set; } = "";
     public string FileName { get; set; } = "";
     public long Size { get; set; }

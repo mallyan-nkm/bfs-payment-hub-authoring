@@ -82,6 +82,19 @@ describe('export (C05, C20, C22)', () => {
     // The REST binding learns when each composite step began at a point of its own.
     expect(x).toMatch(/<th:point kind="blockStart" step="return-credits"\/>/);
   });
+  it('names on each task of a handler the step whose outcome it handles, for the Flowable binding (R-09-287, Issue I-361)', () => {
+    const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'flowable' });
+    const x = Object.entries(pkg.files).filter(([k]) => k.startsWith('bpmn/p.wf.corporate.v1@')).map(([, v]) => v as string).join('\n');
+    const task = (step: string) => x.match(new RegExp(`<serviceTask id="[^"]*" name="${step}"[^>]*>(.*?)</serviceTask>`))?.[1] ?? '';
+    // After the parallel branches, each review names its own branch's screen and the outcome it handles.
+    expect(task('sanctions-review')).toMatch(/<th:handlerOf step="sanctions" activity="p\.screen\.sanctions\.v1" outcome="hit"\/>/);
+    expect(task('sanctions-wait')).toMatch(/<th:handlerOf step="sanctions" activity="p\.screen\.sanctions\.v1" outcome="pending"\/>/);
+    expect(task('fraud-review')).toMatch(/<th:handlerOf step="fraud" activity="p\.screen\.fraud\.v1" outcome="suspect"\/>/);
+    expect(task('repair')).toMatch(/<th:handlerOf step="validate" activity="p\.validate\.canonical\.v2" outcome="repair"\/>/);
+    // A step outside any handler names none.
+    expect(task('sanctions')).not.toMatch(/th:handlerOf/);
+    expect(task('duplicate')).not.toMatch(/th:handlerOf/);
+  });
   it('marks the acknowledgement wait a bank sets for the Flowable binding (R-05-47)', () => {
     const pkg = exportPackage(env, { workflows: ['uae.wps.wf.salary-file-out.v1'], target: 'flowable' });
     const x = pkg.files['bpmn/uae.wps.wf.salary-file-out.v1@1.4.0.bpmn20.xml'];

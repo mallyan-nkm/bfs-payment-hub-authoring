@@ -373,6 +373,8 @@ async function main() {
   log('7b. outbound: P1\'s salary file went out through the File API\'s outbox onto the SFTP server, and the consoles\' resend sends it again');
   const sentFiles = (kept.data as any[]).filter((f: any) => f.direction === 'out' && f.kind === 'uae.wps.sif-submission');
   const out = sentFiles[0];
+  // One file, one kind (R-09-234, R-09-288): the scheme message's id, never the binding's old word.
+  check('no copy of P1\'s salary file is kept under the binding\'s old word (uae.wps.sif-out)', !(kept.data as any[]).some((f: any) => f.kind === 'uae.wps.sif-out'), kept.data);
   check(`the File API kept P1's outward salary file once, signed, linked to the payment (${out?.fileName})`, sentFiles.length === 1 && out.verified === true && out.fileName.toUpperCase() === `${f1.stem}.SIF`, kept.data);
   const hist = await call(FILES, channel, 'GET', `/files/${encodeURIComponent(out.id)}`);
   check('its delivery on the bank\'s SFTP binding is recorded on the file\'s chain', hist.status === 200 && (hist.data.facts as any[]).some((f: any) => f.kind === 'file.delivered'), hist.data);

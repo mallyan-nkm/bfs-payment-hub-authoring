@@ -63,6 +63,11 @@ interface Opts {
   tryScope?: TryScope;
   /** Inside an item of a forEach whose items run side by side and stop it on failure (R-05-53): an end marks the stopping item. */
   stopItems?: boolean;
+  /**
+   * Inside the handler of a step's outcome (R-09-287, Issue I-361): the step, its activity and the outcome handled, and whether the
+   * step is in an item or a finally, so that the binding names the step as the interpreter does (R-09-241).
+   */
+  handlerOf?: { step: string; activity: string; outcome: string; item: boolean; inFinally: boolean };
 }
 
 interface TryScope { markers: string[]; parent?: TryScope }
@@ -449,6 +454,8 @@ class B {
     inner.els.push(`<serviceTask id="${task}" name="${esc(stepId)}" flowable:type="external-worker" flowable:topic="${esc(topic)}" flowable:exclusive="false">${ext(
       listener(`\${execution.setVariable('th_attempt', ${v('th_attempt')} + 1)}`),
       ann('task', { step: stepId, activity: name, release, level: o.level, record: o.record, item: o.item ? 'true' : undefined, policy: o.policy, sources: o.sources }),
+      // The step whose handler the task is in: the binding sends it as the attempt's handlerOf (R-09-287, Issue I-361).
+      !o.swallow && this.o.handlerOf ? ann('handlerOf', { step: this.o.handlerOf.step, activity: this.o.handlerOf.activity, outcome: this.o.handlerOf.outcome, item: this.o.handlerOf.item ? 'true' : undefined, record: this.o.handlerOf.inFinally ? 'finally' : undefined }) : undefined,
     )}</serviceTask>`);
     inner.flow(`${sid}_start`, merge);
     inner.flow(merge, task);
@@ -533,7 +540,7 @@ class B {
     this.flow(after, rec);
     if (act.type === 'screen' && this.o.record !== 'finally' && !elementSuffix) this.g.screenSteps.push({ st, opts: this.o });
     const primary = (act.outcomes ?? []).find((o: any) => o.primary)?.name ?? act.outcomes?.[0]?.name;
-    const f = this.outcomes(rec, st, ov, primary, (act.outcomes ?? []).map((o: any) => o.name));
+    const f = this.outcomes(rec, st, ov, primary, (act.outcomes ?? []).map((o: any) => o.name), { step: stepId, activity: st.call });
     // A completed write registers its compensation: a marker on the primary path carries the handler.
     if (act.compensation && (act.effect === 'write' || act.effect === 'external') && f.primaryExit && this.o.record !== 'finally') {
       const m = `${sid}_written`;
@@ -622,7 +629,7 @@ class B {
    * The gateway on a step's outcome. The primary outcome carries on; a handled outcome runs its
    * action; an outcome nobody handles fails the step, as the interpreter does (L05).
    */
-  outcomes(from: string, st: any, ov: string, primary: string | undefined, declared: string[]): { exits: string[]; primaryExit?: string } {
+  outcomes(from: string, st: any, ov: string, primary: string | undefined, declared: string[], handled?: { step: string; activity: string }): { exits: string[]; primaryExit?: string } {
     const handle = st.handle ?? {};
     const lenient = this.o.record === 'finally';
     const others = declared.filter((o) => o !== primary && !(o in handle));
@@ -636,7 +643,11 @@ class B {
     let cont: string | undefined;
     for (const [o, a] of Object.entries<any>(handle)) {
       const cond = `\${${v(ov)} == '${o}'}`;
-      const after = this.action(a, gw, cond, o);
+      // The handler's attempts name the step whose outcome it handles (R-09-241, R-09-287), as the interpreter's do.
+      const outer = this.o.handlerOf;
+      if (handled) this.o.handlerOf = { step: handled.step, activity: handled.activity, outcome: o, item: this.o.item, inFinally: this.o.record === 'finally' };
+      let after: string[] | null;
+      try { after = this.action(a, gw, cond, o); } finally { this.o.handlerOf = outer; }
       if (after === null) {
         if (!cont) { cont = this.g.id('continue'); this.gateway(cont); exits.push(cont); }
         this.flow(gw, cont, cond, `${o}, continue`);
@@ -1006,7 +1017,7 @@ class B {
     const rec = this.g.stepId(st.id);
     this.els.push(this.g.pointElement(rec, st.id, ext(ann('point', { kind: 'call', step: st.id, var: ov, record: this.o.record, item: this.o.item ? 'true' : undefined }))));
     this.flow(join, rec);
-    const fr = this.outcomes(rec, st, ov, primary, (act?.outcomes ?? []).map((o: any) => o.name));
+    const fr = this.outcomes(rec, st, ov, primary, (act?.outcomes ?? []).map((o: any) => o.name), { step: st.id, activity: st.block.of });
     return { entry: id, exits: fr.exits };
   }
 }
