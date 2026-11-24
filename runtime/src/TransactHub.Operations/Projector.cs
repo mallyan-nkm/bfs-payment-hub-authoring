@@ -677,7 +677,7 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                     {
                         ["kind"] = (string?)d["kind"], ["outcome"] = t.Kind == DeliveredKind ? "delivered" : t.Kind == UndeliveredKind ? "undelivered" : "failed",
                         ["at"] = t.At.ToString("O"), ["attempt"] = d["attempt"]?.DeepClone() ?? d["attempts"]?.DeepClone(), ["adapter"] = (string?)d["adapter"],
-                        ["code"] = t.Kind == DeliveredKind ? null : t.Code, ["fileName"] = (string?)d["fileName"], ["folder"] = (string?)d["folder"], ["file"] = (string?)d["file"],
+                        ["code"] = t.Kind == DeliveredKind ? null : t.Kind == UndeliveredKind ? (string?)d["lastCode"] ?? t.Code : t.Code, ["fileName"] = (string?)d["fileName"], ["folder"] = (string?)d["folder"], ["file"] = (string?)d["file"],
                     };
                 }).ToList();
             var hold = await o.Holds.AsNoTracking().Where(x => x.SubjectId == subj.Id).OrderByDescending(x => x.OpenedAt).FirstOrDefaultAsync(ct);
