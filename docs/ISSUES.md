@@ -2790,6 +2790,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026).** `runtimePortGaps` counts no builtin (and no `binding: native`); a script-behind on the port is still a gap (`studio/test/runtime-port.test.ts`, "counts no builtin activity"). The deploy runner's error for a worker that exits before it listens, or does not say its port, gives the worker's stdout and stderr. The wording of R-09-213 is left for the owner.
 
+**Done (24 November 2026).** R-09-213 says that a builtin on a port given to the runtime is answered there (R-08-15) and is not a gap; only an activity with a script-behind or a reference binding and no native code-behind is.
+
 ## I-396. Black-box studios built promotable distributions with no module build
 
 **Issue.** Since native contract 2.0.0 a promotable distribution needs the platform module (I-381), and since factory 1.23.0 seven platform activities say `native: true`. Approving platform or bank content builds the banks' distributions, but the black-box harness (`studio/test/blackbox/server.ts`) started its studio with no `TH_NATIVE_MODULES`, so each such approval was refused (409 distribution, "set TH_NATIVE_MODULES"). In `ui-build.test.ts` the bank approver's approval of the licence in step 8 was refused, the scheme's rail was never enabled, and steps 9 and 11 failed after it; `ui-git.test.ts` and `e2e-new-scheme.test.ts` failed the same way. Step 6 of `ui-build.test.ts` failed too once L58 reached the branch: the test's synthetic demo send read no `facts.encryption`. The harness's `signIn` read `/auth/login`'s location without a check, so a refused sign-in (a rate limit, R-11-41) showed as "Invalid URL".
