@@ -171,7 +171,7 @@ export function App({ themeChoice, setThemeChoice }: { themeChoice: ThemeChoice;
           )}
           <div className="topbar-fields">
             <Tooltip content={shared ? 'Shared content: the platform and the schemes' : 'A bank tenant: scope b only; shared content is read-only'} relationship="description">
-              <FluentBadge appearance="filled" color={shared ? 'informative' : 'warning'} className="topbar-badge">{shared ? 'shared content' : tenant}</FluentBadge>
+              <FluentBadge appearance="filled" color={shared ? 'informative' : 'warning'} className={shared ? 'topbar-badge topbar-shared' : 'topbar-badge'}>{shared ? 'shared content' : tenant}</FluentBadge>
             </Tooltip>
             <Tooltip content="Design time only: no running payment is read or changed." relationship="description">
               <FluentBadge appearance="outline" className="topbar-badge topbar-design">design time</FluentBadge>

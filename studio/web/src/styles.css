@@ -121,6 +121,7 @@ input[type='file'] { font: inherit; color: var(--text); }
 .topbar-fields { margin-left: auto; display: flex; gap: 12px; align-items: center; min-width: 0; }
 .topbar-badge { white-space: nowrap; }
 .fui-Badge.topbar-design { color: #dbe7f5; border-color: #5c7da3; }
+.fui-Badge.topbar-shared { background: #dbe7f5; color: #0f2d4f; }
 .topbar .fui-Button.topbar-button, .topbar .fui-Button.nav-toggle { color: #ffffff; }
 .topbar .fui-Button.topbar-button:hover, .topbar .fui-Button.nav-toggle:hover { background: var(--th-topbar-2); color: #ffffff; }
 .topbar .fui-Button.topbar-button:hover .fui-Button__icon { color: #ffffff; }
