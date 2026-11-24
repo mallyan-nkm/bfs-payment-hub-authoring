@@ -9,7 +9,7 @@ import { Button, Checkbox, Input, Link, SearchBox, Select, Tab, TabList, Table, 
 
 // The test bench (F-16 to F-19): stored tests with run and run-all, and an ad hoc bench.
 
-interface TestRow { id: string; title: string; target: string; level: string; tenant?: string; scope: string; bench: any[]; lastResult?: 'pass' | 'fail' }
+interface TestRow { id: string; title: string; target: string; level: string; tenant?: string; scope: string; bench: any[]; lastResult?: 'pass' | 'fail'; draft?: boolean }
 interface BenchRow { port: string; simulator: string; scenario: string }
 interface SignalRow { signal: string; at: string }
 
@@ -121,7 +121,7 @@ export function TestBench({ query }: { query: URLSearchParams }) {
                 <TableBody>
                   {rows.map((t) => (
                     <TableRow key={t.id} className={report?.id === t.id ? 'sel' : ''}>
-                      <TableCell className="mono nowrap">{t.id}</TableCell>
+                      <TableCell className="mono nowrap">{t.id}{t.draft && <> <Badge tone="warn" title="A draft test: it runs with your drafts">draft</Badge></>}</TableCell>
                       <TableCell>{t.title}</TableCell>
                       <TableCell>{t.level}</TableCell>
                       <TableCell className="mono small break"><a href={`#/artefact/${encodeURIComponent(t.target)}`}>{t.target}</a></TableCell>
@@ -139,6 +139,7 @@ export function TestBench({ query }: { query: URLSearchParams }) {
         <AdHocBench key={benchParam} initialTarget={query.get('bench') ?? ''} tests={tests.data ?? []} onReport={show} />
       )}
       <div ref={reportRef}>
+        {report?.draftRun && <DraftRunNote run={report.draftRun} />}
         {report && debugging && <Debugger key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} onClose={() => setDebugging(false)} />}
         {report && !debugging && <RunReport key={`${report.id}|${report.elapsed}|${report.trace.join()}`} report={report} footer={<SaveAsTest report={report} source={source} />} />}
       </div>
@@ -162,12 +163,14 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [lastRun, setLastRun] = useState<any>();
+  // A draft run (R-09-230, Issue I-341): the target and every call from this workspace's drafts first, marked as such.
+  const [withDrafts, setWithDrafts] = useState(false);
 
   const targets = useLoad(async () => {
     const kinds = ['workflow', 'hook', 'activity'];
     const r = await Promise.all(kinds.map((k) => get(`/api/catalogue?kind=${k}`)));
-    return r.flatMap((x) => x.items).filter((i: Summary) => i.status === 'published') as Summary[];
-  }, [tenant]);
+    return r.flatMap((x) => x.items).filter((i: Summary) => i.status === 'published' || (withDrafts && (i.status === 'draft' || i.status === 'in-review'))) as Summary[];
+  }, [tenant, withDrafts]);
   const ports = useLoad(() => get('/api/catalogue?kind=port').then((r) => r.items as Summary[]), [tenant]);
   // The start messages of every scheme's dispatch table: a file from the bank's channel runs as a
   // payment end to end when the bench names the message it is (R-07-14).
@@ -214,14 +217,14 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
         message: input === 'inbound' && inbound && message ? message : undefined,
         expect: exp,
       };
-      const r = await post<TestRunReport>(debug ? '/api/debug/run' : '/api/bench/run', body, tenant);
+      const r = await post<TestRunReport>(debug ? '/api/debug/run' : '/api/bench/run', withDrafts ? { ...body, drafts: true } : body, tenant);
       const given: any = {};
       if (body.context) given.context = body.context;
       if (body.inbound) given.inbound = body.inbound;
       if (body.message) given.message = body.message;
       if (body.signals.length) given.signals = body.signals;
       setLastRun({ outcome: r.outcome, trace: r.trace, reasonCode: (r as any).reasonCode, error: (r as any).error });
-      onReport(r, { target, level: r.level, evaluationDate: date, tenant: runTenant !== 'owner' ? runTenant : undefined, bench: body.bench, given });
+      onReport(r, { target, level: r.level, evaluationDate: date, tenant: runTenant !== 'owner' ? runTenant : undefined, bench: body.bench, given, ...(withDrafts ? { drafts: true } : {}) });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -351,6 +354,7 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
       <h4>Expect (optional)</h4>
       <Textarea className="code-input" rows={4} value={expect} onChange={(e) => setExpect(e.target.value)} spellCheck={false} placeholder='{ "outcome": "settled", "attempts": { "send": 3 } }' aria-label="Expectation JSON" />
       <ErrorBox error={error} />
+      <Checkbox className="check" checked={withDrafts} onChange={(e) => setWithDrafts(e.target.checked)} label="Run with my drafts" />
       <div className="row-actions">
         <Button appearance="primary" disabled={!target || busy} onClick={() => runBench()}>{busy ? 'Running…' : 'Run the bench'}</Button>
         <Button disabled={!target || busy} onClick={() => runBench(true)}>Debug step by step</Button>
@@ -361,6 +365,15 @@ function AdHocBench({ initialTarget, tests, onReport }: { initialTarget: string;
 }
 
 /** Simulators per port, loaded once per port. */
+/** A draft run is marked as one, with the drafts it ran (R-09-230). */
+function DraftRunNote({ run }: { run: { drafts: string[]; note: string } }) {
+  return (
+    <Alert tone="warn" role="status" className="draft-run">
+      <strong>Draft run.</strong> {run.note} <span className="mono small">{run.drafts.join(', ')}</span>
+    </Alert>
+  );
+}
+
 function useSimulators(ports: string[]) {
   const [map, setMap] = useState<Record<string, any[]>>({});
   const key = useMemo(() => [...new Set(ports.filter(Boolean))].sort().join(','), [ports]);
@@ -435,7 +448,7 @@ function SaveAsTest({ report, source }: { report: TestRunReport; source?: any })
     setMsg(undefined);
     try {
       const g = source.given ?? {};
-      setCheck(await post<TestRunReport>('/api/bench/run', { target: source.target, level: source.level, evaluationDate: source.evaluationDate, tenant: source.tenant, bench: source.bench, context: g.context, inbound: g.inbound, message: g.message, signals: g.signals, expect: expect() }));
+      setCheck(await post<TestRunReport>('/api/bench/run', { target: source.target, level: source.level, evaluationDate: source.evaluationDate, tenant: source.tenant, bench: source.bench, context: g.context, inbound: g.inbound, message: g.message, signals: g.signals, expect: expect(), ...(source.drafts ? { drafts: true } : {}) }));
     } catch (e: any) {
       setMsg({ tone: 'fail', text: refusal(e) });
     } finally {

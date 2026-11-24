@@ -314,6 +314,7 @@
         }
       },
       "then": {
+        "description": "A validate or decide without rule sets is a check of its own (R-03-27, Issue I-342): read when it reads outside state, or pure when it is a script that names no port (lint L57).",
         "anyOf": [
           {
             "required": [
@@ -324,7 +325,8 @@
             "properties": {
               "effect": {
                 "enum": [
-                  "read"
+                  "read",
+                  "pure"
                 ]
               }
             }

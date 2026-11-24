@@ -1629,6 +1629,17 @@ for path, d in docs:
     elif "header." not in key or NOT_A_BUSINESS_ID.search(key):
         err("L54", path, "%s's idempotency key %r is not the same on every attempt: it must read a business id of the header and not the clock, a new id or the attempt" % (d.get("name"), key))
 
+# L57 (R-03-27, Issue I-342): a pure activity has no input but the context, its parameters and its rule sets, so it names no
+# port; a validate or decide without rule sets may be pure only as a script (a builtin or a subflow without rule sets reads).
+for path, d in docs:
+    if d.get("kind") != "activity" or d.get("effect") != "pure":
+        continue
+    if d.get("ports"):
+        err("L57", path, "%s is pure but names the port %s: an activity that reads through a port is read" % (d.get("name"), ", ".join(d["ports"])))
+    binding = (d.get("implementation") or {}).get("binding")
+    if d.get("type") in ("validate", "decide") and not d.get("ruleSets") and binding != "script":
+        err("L57", path, "%s is a %s without rule sets that is pure, but it is bound to a %s, not a script: say effect read" % (d.get("name"), d["type"], binding or "nothing"))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

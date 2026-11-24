@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { lintScript } from '../src/interp/sandbox.js';
 import { Checker, interfaceDiff, semverIssue, checkAll, factoryPackIssues } from '../src/checks/checks.js';
 import { freshEnv, clone } from './helpers.js';
+import { runActivity } from '../src/interp/interpreter.js';
 
 // Mutation cases: each breaks the repository once and expects its check to fire (CLAUDE.md, Checks).
 
@@ -141,6 +142,37 @@ describe('every attempt is at least once (L54, R-03-25, R-03-26, Issue I-303)', 
       delete a.idempotencyKey;
     });
     expect(send.map((i) => i.message)).toEqual([expect.stringMatching(/an exchange that sends/)]);
+  });
+});
+
+describe('a scripted check without rule sets may be pure (L57, R-03-27, Issue I-342)', () => {
+  const CHECK = {
+    kind: 'activity', name: 'b.validate.pay-period-check.v1', release: '1.0.0', title: 'The pay period is in order', type: 'validate', reads: ['header'], writes: ['facts.payPeriod'],
+    outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'pure', implementation: { binding: 'script', language: 'typescript', script: 'scripts/b.validate.pay-period-check.v1.ts' },
+  };
+  it('the schema takes pure or read for a validate without rule sets, and nothing else', () => {
+    const env = freshEnv();
+    expect(env.schemas.validate(CHECK)).toEqual([]);
+    expect(env.schemas.validate({ ...CHECK, effect: 'read' })).toEqual([]);
+    expect(env.schemas.validate({ ...CHECK, effect: 'write', idempotencyKey: 'header.paymentId' }).length).toBeGreaterThan(0);
+  });
+  it('a pure activity names no port, and a pure check without rule sets is a script', () => {
+    expect(fire('L57', () => {})).toEqual([]);
+    expect(fire('L57', (find) => { find('p.decide.cut-off.v1').effect = 'pure'; })).toEqual([]);
+    expect(fire('L57', (find) => { find('p.validate.duplicate.v1').effect = 'pure'; }).map((i) => i.message)).toEqual([expect.stringMatching(/is pure but names the port p\.port\.payment-record\.v1/), expect.stringMatching(/bound to a builtin, not a script/)]);
+    expect(fire('L57', (find) => { find('p.decide.await-posting-window.v1').effect = 'pure'; }).map((i) => i.message)).toEqual([expect.stringMatching(/bound to a subflow, not a script/)]);
+    // Pure, like read, needs no idempotency key (L54).
+    expect(fire('L54', (find) => { find('p.decide.cut-off.v1').effect = 'pure'; })).toEqual([]);
+  });
+  it('the interpreter runs a pure scripted check, and refuses a port call from one', async () => {
+    const env = freshEnv();
+    const store = env.store.shadow();
+    store.add(CHECK, 'banks/example-bank/activities/b.validate.pay-period-check.v1.yaml', 'studio', false, 'published', 'example-bank');
+    const script = (source: string) => env.scripts.withFirst([{ name: CHECK.name, language: 'typescript', file: 'content:pay-period-check.ts', source }]);
+    const ok = await runActivity({ store, scripts: script("export async function run({ ctx }) {\n  ctx.facts = { payPeriod: { days: 30 } };\n  return ctx.header.paymentId ? 'pass' : 'reject';\n}\n"), tenant: 'example-bank', evaluationDate: '2026-11-24', bench: [], signals: [] } as any, CHECK.name, { header: { paymentId: 'P-1' } });
+    expect(ok.root?.outcome).toBe('pass');
+    const calls = await runActivity({ store, scripts: script("export async function run({ ports }) {\n  await ports.request('p.port.payment-record.v1');\n  return 'pass';\n}\n"), tenant: 'example-bank', evaluationDate: '2026-11-24', bench: [], signals: [] } as any, CHECK.name, { header: { paymentId: 'P-1' } });
+    expect(JSON.stringify(calls.run.timeline)).toMatch(/b\.validate\.pay-period-check\.v1 is pure and reached port p\.port\.payment-record\.v1/);
   });
 });
 

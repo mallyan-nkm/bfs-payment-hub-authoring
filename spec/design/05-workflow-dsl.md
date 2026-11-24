@@ -278,6 +278,7 @@ Every check that `tools/validate.py` implements has at least one case in `tools/
 | L54 | Every attempt is at least once (R-03-25): an activity with an outside effect (effect `write` or `external`; a `reserve`, `hold` or `notify`; an `exchange` that sends, responds or reports; a port whose operations only send) carries an idempotency key that reads a business id of the header and not the clock, a new id or the attempt (R-03-26, Issue I-303) | Yes |
 | L55 | What a scheme message declares beside its disposition holds: a `file` block on a scheme whose wire is a file, with a name pattern that compiles; `repliesTo` on an inward message, naming outward messages of its scheme; a `reconcile` disposition on an inward message, whose activity is a reconcile activity and whose map an inward map; a `deliver` disposition's `correlationMap`, an inward map that reads the message (R-09-209 to R-09-212) | Yes |
 | L56 | A parameter marked a ledger account (`role: ledger-account`) is an activity's parameter of type string or code, with its kind (R-05-100, Issue I-282) | Yes |
+| L57 | A pure activity names no port: it has no input but the context, its parameters and its rule sets. A `validate` or `decide` without rule sets may be pure only when it is bound to a script; one that reads outside state, or is a builtin or a subflow, is `read`. Pure, like read, needs no idempotency key (L54) (R-03-27, Issue I-342) | Yes |
 
 ## 5.8 Examples
 

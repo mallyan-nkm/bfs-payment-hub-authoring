@@ -284,7 +284,7 @@ export function buildDistribution(env: StudioEnv, req: { bank: string; engine: T
  * validFrom), its port bindings (adapter and settings, credentials by secretRef only) and calendars, checked against the
  * parameter contract of each distribution named, which it records as `requiresContract`.
  */
-export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; release?: string; changeSet?: string; against: { releaseId: string; parameterContract: any }[]; bindings?: any[]; calendars?: any[]; set?: any }): BuiltBundle {
+export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; release?: string; number?: string; changeSet?: string; against: { releaseId: string; parameterContract: any }[]; bindings?: any[]; calendars?: any[]; set?: any }): BuiltBundle {
   const { bank } = req;
   env = scopedEnv(env, bank);
   const set = clone(req.set ?? env.store.configurationSet(bank));
@@ -296,7 +296,9 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
   // other bindings is a release of its own: <configuration set release>+bindings.<port bindings release>.
   const released = req.bindings === undefined ? env.store.portBindings(bank) : undefined;
   if (req.bindings === undefined && released?.bindings?.length) req = { ...req, bindings: released.bindings };
-  const release = req.release ?? (released?.release ? `${set.release}+bindings.${released.release}` : set.release);
+  // Its number is the one the approval gave it (R-11-115), else the configuration set's.
+  const number = req.number ?? set.release;
+  const release = req.release ?? (released?.release ? `${number}+bindings.${released.release}` : number);
   set.release = req.release ?? set.release;
   if (!req.against.length) throw new DistributionRefused(`A configuration release of ${bank} is checked against a distribution's parameter contract: build one first`);
   const problems: string[] = [];
@@ -334,6 +336,31 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
     kind: 'configuration', bank, id: release, releaseId, folder: configFolder(bank, release), files: signed, manifest,
     tag: { name: configTag(bank, release), message: [`Configuration release ${releaseId}`, '', `Folder: ${configFolder(bank, release)}/`, `Checked against: ${requiresContract.map((r) => r.distribution).join(', ')}`].join('\n') },
   };
+}
+
+/**
+ * The number of a bank's next configuration release (R-11-115, Issue I-340): each approval that builds one gives it a release of
+ * its own, after every configuration release of the bank the branch holds (`taken`, with or without build metadata). It is the
+ * configuration set's release while no release has reached it, else the minor after the newest: never a patch (R-11-102), so the
+ * rates feed's patches and the studio's releases never meet, and a later release always orders after an earlier one.
+ */
+export function nextConfigurationNumber(setRelease: string, taken: string[]): string {
+  const bases = taken.map((t) => t.split('+')[0]).filter((t) => /^\d+\.\d+\.\d+$/.test(t)).sort(compareReleases);
+  const newest = bases[bases.length - 1];
+  if (!newest || compareReleases(setRelease, newest) > 0) return setRelease;
+  const [major, minor] = newest.split('.').map(Number);
+  return `${major}.${minor + 1}.0`;
+}
+
+/** The releases of a bank's configuration the studio knows of: on the branch it read, and those it built since. */
+export function configurationReleasesOf(env: StudioEnv, bank: string, paths: Iterable<string> = []): string[] {
+  const out = new Set<string>((env.store.extra.configurationReleases ?? []).filter((r: string) => r.startsWith(`${bank}@`)).map((r: string) => r.slice(bank.length + 1)));
+  const re = new RegExp(`^${CONFIG_ROOT}/${bank}/([^/]+)/manifest\\.yaml$`);
+  for (const p of [...(env.store.content?.files?.keys() ?? []), ...paths]) {
+    const m = re.exec(p);
+    if (m) out.add(m[1]);
+  }
+  return [...out].sort(compareReleases);
 }
 
 /** The reference tables a bank sees: shared ones and its own, the latest published release of each name. */
@@ -376,6 +403,7 @@ export function remember(env: StudioEnv, b: BuiltBundle) {
     (env.store.extra.distributions ??= []).push(`${b.bank}/${b.id}`);
     (env.store.extra.distributionManifests ??= {})[b.releaseId] = b.manifest;
   }
+  if (b.kind === 'configuration') (env.store.extra.configurationReleases ??= []).push(`${b.bank}@${b.id}`);
 }
 
 /** Is a change set's member a bank's own artefact (not its values)? Shared platform or scheme content? Its values? */
