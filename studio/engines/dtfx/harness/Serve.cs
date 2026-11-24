@@ -52,7 +52,8 @@ public sealed partial class Harness
         dep = new Deployment((JsonObject)J.P(input, "documents")!, config, start, (int)(J.Num(input, "chunkSize") ?? 100)) { ItemConcurrency = (int)(J.Num(input, "itemConcurrency") ?? 1) };
         Deployment.Current = dep;
         Clock = new VirtualClock(start) { RealTime = true };
-        Service = new VirtualTimeOrchestrationService(Clock) { History = history };
+        // Work items of different payments side by side, as many as the host allows (R-09-238, Issue I-300).
+        Service = new VirtualTimeOrchestrationService(Clock) { History = history, Concurrency = EngineHistory.ServiceConcurrency() };
         party = serviceParty = new ServiceParty(plans, distribution);
 
         // The service its history leaves: its instances, their messages, the activities to run again and the timers to fire.
@@ -91,7 +92,7 @@ public sealed partial class Harness
         }
 
         ServiceLines.Read(Command);
-        ServiceLines.Out("READY", new JsonObject { ["engine"] = "dtfx", ["distribution"] = distribution, ["history"] = history.Subject, ["rebuilt"] = J.Clone(rebuilt) });
+        ServiceLines.Out("READY", new JsonObject { ["engine"] = "dtfx", ["distribution"] = distribution, ["history"] = history.Subject, ["rebuilt"] = J.Clone(rebuilt), ["concurrency"] = Service.Concurrency });
         // In real time, for as long as the host runs: each payment that ends is told to the host.
         Clock.RunUntil(() => { Tell(); return false; }, long.MaxValue / 4, TimeSpan.FromHours(12));
     }
@@ -162,7 +163,7 @@ public sealed partial class Harness
                     ["service"] = new JsonObject
                     {
                         ["history"] = history.Subject, ["instances"] = Service.Instances.Count, ["payments"] = served.Count, ["episodes"] = Service.Episodes,
-                        ["activityRuns"] = Service.ActivityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId,
+                        ["activityRuns"] = Service.ActivityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId, ["concurrency"] = Service.Concurrency,
                     },
                 },
             };

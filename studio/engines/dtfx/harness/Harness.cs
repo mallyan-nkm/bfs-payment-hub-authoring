@@ -317,9 +317,9 @@ public sealed partial class Harness : IDisposable
     /// time the attempt takes; an attempt that never answers ends at its own deadline (the
     /// attempt timeout), after the orchestration has already abandoned it.
     /// </summary>
-    public async Task<JsonObject> Attempt(JsonObject a, bool durable)
+    public async Task<JsonObject> Attempt(JsonObject a, bool durable, string? input = null)
     {
-        object? baton = durable ? Service.CurrentBaton : null;
+        object? baton = durable ? (input is not null ? Service.BatonOf(input) : Service.CurrentBaton) : null;
         async Task SleepUntil(long at)
         {
             if (baton is not null) Service.ReleaseBaton(baton);
