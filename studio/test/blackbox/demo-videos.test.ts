@@ -24,7 +24,7 @@ const dry = (which: string, limit = 300_000) => new Promise<string>((resolve) =>
 });
 
 describe('demo and training videos, dry run', () => {
-  for (const which of ['concepts', 'build', 'ideas', 'hands-on', 'architecture']) {
+  for (const which of ['concept', 'build', 'hands-on', 'architecture']) {
     it(`${which}: every scene runs`, async () => {
       const out = await dry(which);
       expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);

@@ -1,14 +1,13 @@
 # Narrated demos and training videos
 
-Four recorded videos of the studio (the three of the runtime are further down), each a real browser session on a fresh workspace, driven click by
+Three recorded videos of the studio (the three of the runtime are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
-an `.srt` subtitle file. The two training videos are in `docs/demo/training/` and run at a slower pace,
-in plain words for someone new to payments, with one picture throughout: a restaurant kitchen.
+an `.srt` subtitle file. The concept video and the hands-on training video (in `docs/demo/training/`) run at a slower pace,
+in plain words for someone new to payments; the concept video draws every idea as a restaurant kitchen.
 
 | Video | What it shows |
 | --- | --- |
-| `01-concepts-and-walkthrough.mp4` | Tenants and roles, names, the catalogue, an activity, the corporate payment workflow, the canonical model and code sets, a scheme's dispatch table, the designer and the expanded form, the editors, a test and its traces, a whole payment end to end, the conformance kit, a bank's configuration, export, the audit log, the AI assistant's templates |
-| `training/training-1-the-ideas.mp4` | Training 1, about ten minutes, no screens: every idea of the studio drawn as a kitchen. Stations (activities), quality checks (rules, rule sets, decision tables, parameters), recipes (workflows, legs, subflows, composites), doors, stand-ins and translators (ports, simulators, maps), the standard ticket (the canonical context), partners (schemes, dispatch tables, slots), franchises (tenants, configuration, hooks), who may change what (maker and checker), tasting (tests and the bench), and service (export, workers, engines) |
+| `1-concept.mp4` | The concept, in two parts. First, with no screens, every idea drawn as a kitchen on the animated stage (`demo/explainer/ideas.html`, in the apps' navy and teal): the studio designs and the runtime runs; one order's journey; activities, outcomes and rules; values (dials with a default and bounds) beside logic that stays fixed; workflows, schemes, the slot and the leg; the factory (`p`, `uae.p`, `uae.wps`); a bank's hooks, its values and maker and checker; the distribution and the configuration release, and a payment pinned to its distribution; one bank per runtime; everything together. Then a short tour of the same ideas in the studio on Fluent UI 2: the top bar and the catalogue, the factory's scopes and the four-part names, an activity, a rule's editor, the corporate workflow on the canvas, the WPS dispatch table, a test with its simulator, the bank workspace, the configuration set, the audit log and the export |
 | `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; the assistant beside the editor: help on a field, the rule in plain words, then a rule built by asking, allowed once, a change allowed always and undone; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved; then the same payment in the debugger: stepping into and back, a breakpoint on the bank's hook point and on the route, the decision and the data it changed |
 | `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
 
@@ -51,24 +50,20 @@ runs in real time; `Director.skip` cuts such a wait from the video and shows a c
 
 ## Record them again
 
-The scripts are `demo/concepts.ts`, `demo/build.ts`, `demo/ideas.ts` (with its animated stage,
-`demo/explainer/ideas.html`) and `demo/hands-on.ts` (with the documents it builds, in
+The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/build.ts`
+and `demo/hands-on.ts` (with the documents it builds, in
 `demo/hands-on/docs.ts`); `demo/record.ts` drives the browser, lays the
 voice at the time each scene starts, and joins them with ffmpeg. From `studio/`:
 
 ```bash
-npx tsx demo/run.ts concepts
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts concept
 ```
 
 ```bash
 npx tsx demo/run.ts build
 ```
 
-The training videos go to their own folder and were voiced a little slower:
-
-```bash
-TH_TTS_SPEED=0.85 npx tsx demo/run.ts ideas --out ../docs/demo/training
-```
+The hands-on training video goes to its own folder and was voiced a little slower:
 
 ```bash
 TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
@@ -83,7 +78,8 @@ The agent takes from a few seconds to a minute to answer; the recording waits up
 each time.
 
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
-hands-on production also checks its results as it goes. `test/blackbox/demo-videos.test.ts` runs the four studio
+hands-on production also checks its results as it goes. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
+video used 28, a smaller file). `test/blackbox/demo-videos.test.ts` runs the three studio
 productions and the architecture video this way, and the two stack videos too where a laptop stack is up with its
 secrets in the environment (the full run takes up to half an hour: it pays two payments on Temporal).
 

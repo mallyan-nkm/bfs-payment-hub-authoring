@@ -1,0 +1,167 @@
+1
+00:00:01,256 --> 00:00:13,650
+Welcome. This video explains the ideas behind TransactHub. You do not need to know anything about payments. First, we draw every idea as a kitchen. Then we find the same ideas in the studio.
+
+2
+00:00:15,257 --> 00:00:27,139
+Think of a payment as an order in a restaurant. Before a restaurant opens, its recipes are written and tried out in a test kitchen. The studio is that test kitchen. The studio designs.
+
+3
+00:00:28,742 --> 00:00:41,883
+The real kitchen cooks every order during service. In TransactHub, the real kitchen is called the runtime. The runtime runs. The studio never cooks a real order, and the runtime never writes a recipe.
+
+4
+00:00:43,495 --> 00:00:53,948
+Why keep them apart? Because a mistake in the test kitchen must never reach a real customer. A recipe goes to service only when it is finished, tested, and approved.
+
+5
+00:00:55,558 --> 00:01:07,334
+Let us follow one order. It is a file from a company, asking to pay its staff their salaries. First, the order is read and checked. Then the money is set aside, so it cannot be spent twice.
+
+6
+00:01:08,944 --> 00:01:18,864
+Then the order goes out to a partner, the payment network, and we wait for its answer. When the answer comes back, the payment is written into the books. Watch the order travel.
+
+7
+00:01:20,465 --> 00:01:33,542
+A kitchen has stations, and each station does one job. In TransactHub, a station is called an activity. An activity says what it reads from the order, what it writes onto it, and how its job can end.
+
+8
+00:01:35,153 --> 00:01:44,070
+The ways a job can end are called outcomes, such as pass or reject. Every outcome must lead somewhere, so an order is never left hanging.
+
+9
+00:01:45,676 --> 00:01:58,732
+How does a checking station know what to check? It follows rules. A rule is one simple question, such as: is the amount in dirhams? If the answer is no, the rule writes a finding, with a short reason code.
+
+10
+00:02:00,333 --> 00:02:11,063
+Rules are grouped into a checklist, called a rule set. And every rule comes with worked examples, one that passes and one that fails, so a broken rule is caught at once.
+
+11
+00:02:12,672 --> 00:02:29,397
+Some numbers are not fixed in the recipe. They are dials, such as the largest amount allowed. A dial has a safe range and a default. Each restaurant may turn it, but only within that range. In TransactHub, the dials and settings a bank may change are called values.
+
+12
+00:02:31,003 --> 00:02:40,283
+Here is the important part. Values can change without touching a recipe. The recipe itself, the logic, stays exactly as it was approved.
+
+13
+00:02:41,884 --> 00:02:53,126
+Stations do nothing on their own. A recipe puts them in order: first this, then that, and for each outcome, what happens next. In TransactHub, a recipe is called a workflow.
+
+14
+00:02:54,735 --> 00:03:07,599
+Payments do not only come from the dining room. They come through partners, each with its own rules, such as the salary payment system of the United Arab Emirates. In payments, such a partner is called a scheme.
+
+15
+00:03:09,212 --> 00:03:19,750
+The house recipe has a gap in the middle that says: now do the partner's part. That gap is a slot. Each scheme brings the piece that fills it. That piece is called a leg.
+
+16
+00:03:21,360 --> 00:03:29,616
+So one house recipe works for every partner. Only the piece in the gap changes. A new scheme means a new leg, not a new kitchen.
+
+17
+00:03:31,220 --> 00:03:38,174
+Where do the first recipes come from? The studio ships with a cookbook, ready on day one. It is called the factory.
+
+18
+00:03:39,776 --> 00:03:58,762
+The factory has three parts. The platform, with the house recipes every payment follows. The platform for the United Arab Emirates, with what every scheme there shares. And one scheme, WPS, with its leg. WPS is still provisional: it was written from public sources and waits to be confirmed.
+
+19
+00:04:00,364 --> 00:04:13,356
+Many banks share the cookbook, like restaurants in a franchise. Each bank has its own space that only its own people can see. A bank cannot rewrite the shared recipes. It sets its own values instead.
+
+20
+00:04:14,966 --> 00:04:31,606
+The house recipe also has marked spots where a bank may add a step of its own, like its house garnish before a dish goes out. These spots are hook points, and the bank's own step is a hook. A hook can hold a payment for a person to approve, add a detail, or let someone know.
+
+21
+00:04:33,213 --> 00:04:46,695
+And nobody changes anything alone. The person who makes a change never approves it. A second person checks it. This is called maker and checker, and every change is written in a log that cannot be quietly edited.
+
+22
+00:04:48,308 --> 00:05:06,782
+Now, how do the approved recipes reach a bank's real kitchen? The studio packs a sealed box for that bank. It holds everything the bank runs: the platform, the schemes it has licensed, and its own hooks. The box is signed, so nobody can change it on the way. This box is called a distribution.
+
+23
+00:05:08,392 --> 00:05:21,576
+The bank's values travel separately, on a signed card of their own. It says which dials are set to what, and from which date. This card is called a configuration release. It changes values only, never a recipe.
+
+24
+00:05:23,184 --> 00:05:36,154
+Why two? Because a bank changes a limit far more often than a recipe. A new value needs only a new card. A new recipe needs a new box. And a bank approver must agree before either one is put in force.
+
+25
+00:05:37,764 --> 00:05:45,572
+An order already cooking keeps the box it started with, to the very end. A payment never mixes two editions of a recipe.
+
+26
+00:05:47,179 --> 00:06:00,746
+One last idea. The test kitchen is shared: the platform's authors, the scheme authors and every bank work in one studio, each in their own space. But every bank has its own real kitchen. One bank per runtime.
+
+27
+00:06:02,352 --> 00:06:14,661
+A runtime is told its bank when it is installed. It refuses another bank's box, values, files or backups, whoever asks. So one bank's payments can never end up in another bank's kitchen.
+
+28
+00:06:16,268 --> 00:06:29,921
+Let us put it all together. The factory gives the house recipes and a scheme's leg. Activities do the work, following rules. A bank adds hooks and sets its values. Everything is tested and approved by two people.
+
+29
+00:06:31,524 --> 00:06:39,332
+Then the studio packs the bank's distribution and its configuration release, and the bank's own runtime cooks every order for real.
+
+30
+00:06:44,133 --> 00:06:47,546
+Now let us find the same ideas in the studio itself.
+
+31
+00:06:49,150 --> 00:07:01,523
+This is the studio. Across the top is the navy bar, with search, the tenant we work in, and who is signed in. On the left are the studio's surfaces. The catalogue lists everything in the cookbook.
+
+32
+00:07:03,126 --> 00:07:14,432
+The factory's three parts are here as scopes. Let us pick the salary scheme, WPS. Every item has a name with four parts: the scope, the type, the name, and the major version.
+
+33
+00:07:16,036 --> 00:07:25,550
+Here is an activity, a station: it checks an account number, called an IBAN. Its page says what it reads, what it writes, and the outcomes it can end with.
+
+34
+00:07:27,152 --> 00:07:34,256
+A rule opens in its own editor, as a form. Below it are its worked examples, and the checks that run as you edit.
+
+35
+00:07:35,859 --> 00:07:50,088
+This is a workflow, the corporate payment workflow, the house recipe. On the left is its text, on the right the same recipe drawn as steps. Its slot, the scheme leg, waits for a scheme to fill it, and its hook points wait for a bank.
+
+36
+00:07:51,689 --> 00:08:02,355
+Here is the scheme's order desk, its dispatch table. For WPS, a salary file starts the corporate payment workflow, and the WPS leg fills its slot.
+
+37
+00:08:03,959 --> 00:08:15,052
+On the test bench, a test runs a recipe with a stand-in for the partner, called a simulator. A wait of days ends at once. Each step of the run is listed, with how it ended.
+
+38
+00:08:16,653 --> 00:08:27,511
+Now we sign in as a bank's configurator. The bank workspace gathers what is the bank's own: its hooks, its rules and their values, its dials, and the schemes it has licensed.
+
+39
+00:08:29,114 --> 00:08:39,289
+The bank's values live in its configuration set, with a release number. Every dial is checked against the range the owner allowed. A value outside it is refused.
+
+40
+00:08:40,892 --> 00:08:49,596
+Governance keeps the record. Every save, approval and refusal is in the audit log, and the studio can prove that nobody has changed it.
+
+41
+00:08:51,199 --> 00:09:03,316
+Last, the export: the package a bank's runtime runs. When a bank approver approves the bank's change, the studio builds and signs the bank's distribution, and its runtime installs it.
+
+42
+00:09:04,919 --> 00:09:17,228
+That is the concept. The studio designs, tests and approves. Each bank's own runtime runs. The next videos build a scheme from scratch, and take you through the studio hands-on, step by step.

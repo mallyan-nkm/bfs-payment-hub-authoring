@@ -10,7 +10,7 @@ import { client, signInPage, startServer, STUDIO, type Server } from '../test/bl
 // by click, with a visible cursor, a highlight before each click, captions, chapter cards, and a
 // voice-over laid at the time each scene starts.
 //
-//   npx tsx demo/run.ts concepts|build|ideas|hands-on [--out dir]
+//   npx tsx demo/run.ts concept|build|hands-on|... [--out dir]
 //
 // The voice comes from a text-to-speech command: TH_TTS="<python> <say.py> <model> <voices> <voice>"
 // reads the text on stdin, writes a WAV to the path given last, and prints {"seconds": n}
@@ -278,20 +278,20 @@ const OVERLAY = `
     #__cur { position: fixed; z-index: 2147483647; width: 22px; height: 22px; margin: -3px 0 0 -3px; pointer-events: none;
       background: no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><path d='M2 1 L2 18 L7 13.5 L10.5 21 L13 20 L9.6 12.6 L17 12.6 Z' fill='white' stroke='black' stroke-width='1.3'/></svg>"); }
     .__ripple { position: fixed; z-index: 2147483646; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%;
-      border: 3px solid #0f6b5c; pointer-events: none; animation: __r .6s ease-out forwards; }
+      border: 3px solid #0f4c81; pointer-events: none; animation: __r .6s ease-out forwards; }
     @keyframes __r { from { transform: scale(.3); opacity: 1 } to { transform: scale(1.5); opacity: 0 } }
     #__mark { position: fixed; z-index: 2147483643; border: 3px solid #e8a33d; border-radius: 6px; pointer-events: none;
       box-shadow: 0 0 0 4000px rgba(10, 15, 20, .18); transition: all .25s ease; }
     #__cap { position: fixed; z-index: 2147483645; left: 50%; bottom: 16px; transform: translateX(-50%); max-width: 1060px; width: calc(100% - 80px);
       background: rgba(15, 20, 26, .88); color: #fff; font: 500 19px/1.4 system-ui, sans-serif; padding: 10px 18px; border-radius: 6px; pointer-events: none; text-align: center; }
     #__cap:empty { display: none; }
-    #__card { pointer-events: none; position: fixed; inset: 0; z-index: 2147483644; background: #0f3d36; color: #fff; display: flex; flex-direction: column;
+    #__card { pointer-events: none; position: fixed; inset: 0; z-index: 2147483644; background: #0f2d4f; border-top: 6px solid #5fd3c5; color: #fff; display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 14px; font-family: system-ui, sans-serif; text-align: center; padding: 0 80px; }
-    #__card h1 { font: 700 46px/1.15 system-ui, sans-serif; margin: 0; letter-spacing: .01em; }
-    #__card p { font: 400 23px/1.4 system-ui, sans-serif; margin: 0; color: #cfe9e3; max-width: 900px; }
+    #__card h1 { font: 600 46px/1.15 'Segoe UI', 'Noto Sans', system-ui, sans-serif; margin: 0; letter-spacing: .01em; }
+    #__card p { font: 400 23px/1.4 system-ui, sans-serif; margin: 0; color: #c9d9ec; max-width: 900px; }
     #__term { position: fixed; z-index: 2147483644; left: 40px; right: 40px; top: 60px; bottom: 110px; background: #0d1117; color: #d6e2ee;
       font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 16px 20px; border-radius: 8px; overflow: hidden; white-space: pre-wrap; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
-    #__term b { color: #4fc2ad; }
+    #__term b { color: #5fd3c5; }
   \`;
   const add = () => {
     if (document.getElementById('__cur')) return;
@@ -399,7 +399,8 @@ export async function record(prod: Production, outDir: string) {
     const ff = spawnSync('ffmpeg', ['-nostats', '-loglevel', 'error', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (ff.status !== 0) throw new Error(`ffmpeg failed (${ff.status ?? ff.signal}): ${ff.stderr.slice(-2000)}`);
   };
-  const encode = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p'];
+  // TH_DEMO_CRF sets the quality (default 26; a higher number is a smaller file).
+  const encode = ['-c:v', 'libx264', '-preset', 'medium', '-crf', process.env.TH_DEMO_CRF ?? '26', '-pix_fmt', 'yuv420p'];
   // First the cuts, video only: each kept part read as an input of its own, seeking to its start. (Trimming one input in several
   // branches holds every frame of a long cut in memory, more than a long recording with a long wait cut from it fits.)
   let picture = video;

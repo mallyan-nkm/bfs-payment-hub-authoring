@@ -5,13 +5,13 @@ import { STUDIO } from '../test/blackbox/server.js';
 import '../test/support/signing-env.js';
 import { record, type Production } from './record.js';
 
-// Records one production: npx tsx demo/run.ts concepts|build|ideas|hands-on|install|architecture|full-run [--out dir]
+// Records one production: npx tsx demo/run.ts concept|build|hands-on|install|architecture|full-run [--out dir]
 // (A separate entry point: the productions import record.ts, so record.ts must not wait on them.)
 
 const PRODUCTIONS: Record<string, () => Promise<Production>> = {
-  concepts: () => import('./concepts.js') as any,
+  // The concept: the ideas drawn as a kitchen, then the same ideas in the studio (it replaces the earlier ideas and concepts videos).
+  concept: () => import('./concept.js') as any,
   build: () => import('./build.js') as any,
-  ideas: () => import('./ideas.js') as any,
   'hands-on': () => import('./hands-on.js') as any,
   // The runtime videos (docs/demo/runtime/): the laptop stack and its consoles, the architecture, the full run.
   install: () => import('./install.js') as any,
