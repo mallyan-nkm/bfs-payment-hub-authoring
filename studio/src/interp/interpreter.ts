@@ -1,4 +1,5 @@
 import { businessCalendarIn, resolveReferenceValues, type CalendarDays } from '../core/reference.js';
+import { applyDefaultCurrency, clusterOf, defaultCurrencyDecl } from '../core/currency.js';
 import { addDuration, durationMs, DEFAULT_CALENDAR, isDuration } from '../core/duration.js';
 import { clone } from '../core/canonical.js';
 import { coveredByAny, getPath, pick, setPath, type DeltaEntry } from '../core/paths.js';
@@ -386,6 +387,12 @@ export class Run {
     const names = new Set<string>([...this.cfg.store.byKind('reference-table').map((e) => e.name), ...Object.values<any>(this.docs).filter((d) => d?.kind === 'reference-table').map((d) => d.name)]);
     const tables = [...names].map((n) => this.resolveDoc(n)).filter(Boolean);
     return businessCalendarIn(tables, date) ?? { weekend: [...DEFAULT_CALENDAR.weekend], holidays: [...DEFAULT_CALENDAR.holidays] };
+  }
+
+  /** Every activity the run sees: the store's and the run's own documents, each at the release the run resolves. */
+  activityDocs(): any[] {
+    const names = new Set<string>([...this.cfg.store.byKind('activity').map((e) => e.name), ...Object.values<any>(this.docs).filter((d) => d?.kind === 'activity').map((d) => d.name)]);
+    return [...names].map((n) => this.resolveDoc(n)).filter(Boolean);
   }
 
   /** Hook bindings in force when an instance starts (R-06-13). */
@@ -1768,6 +1775,9 @@ export function attachIntake(run: Run) {
         run.selfCheck(m, ctx);
         if (it.outcome !== 'mapped') return;
       }
+      // The country's default currency where the payment names none (R-02-24): its cluster's, or the bank's own value.
+      const dc = defaultCurrencyDecl(run.activityDocs(), clusterOf(scope));
+      if (dc) applyDefaultCurrency(ctx, run.lookupParam(dc.owner, dc.parameter, dc.decl, run.clock.today()));
       // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
       Object.assign(ctx.header, routeOf(disp.start), { scheme: scope });
       ctx.header.paymentId ??= run.newId('P');

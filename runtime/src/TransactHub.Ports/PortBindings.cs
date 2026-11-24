@@ -75,12 +75,28 @@ public sealed class PortBindings
     static string Key(PortBinding b) =>
         $"{b.Tenant}\n{b.Port}\n{b.Adapter}\n{b.ValidFrom:O}\n{b.Release}\n{string.Join("\n", b.Settings.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + "=" + kv.Value))}";
 
-    public static PortBindings FromDirectory(string dir)
+    /// <summary>
+    /// A bank folder's bindings, as its configuration release would carry them: with <paramref name="defaultCurrency"/>, the bank's
+    /// default currency (its country cluster's, or its own, R-02-24), given to each core-banking binding that names none, as the
+    /// studio gives it when it builds the release (<c>currency</c>, a file bulk's <c>localCurrency</c>).
+    /// </summary>
+    public static PortBindings FromDirectory(string dir, string? defaultCurrency = null)
     {
         var p = new PortBindings();
         foreach (var f in Directory.EnumerateFiles(dir, "*.yaml", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal))
             p.Add(File.ReadAllText(f), f);
+        if (defaultCurrency is { Length: > 0 })
+            for (var i = 0; i < p.all.Count; i++) p.all[i] = WithDefaultCurrency(p.all[i], defaultCurrency);
         return p;
+    }
+
+    /// <summary>A core-banking binding that names no currency, with the bank's default (R-02-24); any other binding as it is.</summary>
+    public static PortBinding WithDefaultCurrency(PortBinding b, string currency)
+    {
+        if (b.Port != "p.port.core-banking.v1") return b;
+        var key = b.Adapter == "file-bulk" ? "localCurrency" : "currency";
+        if (b.Settings.TryGetValue(key, out var have) && have.Length > 0) return b;
+        return b with { Settings = new Dictionary<string, string>(b.Settings, StringComparer.Ordinal) { [key] = currency } };
     }
 
     public void Add(string yaml, string source = "(text)")

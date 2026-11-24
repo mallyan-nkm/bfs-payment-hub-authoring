@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { applyDefaultCurrency, bankDefaultCurrency, clusterOf, defaultCurrencyDecl } from '../core/currency.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -266,6 +267,10 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       const intake: DeployResult['intake'] = { activity: map, queue, outcome: r.outcome };
       if (n === 1) log.push(`intake ${map} on ${queue}: ${r.outcome}`);
       if (r.outcome !== 'mapped') throw new Error(`Intake ${map} returned ${r.outcome}`);
+      // The country's default currency where the payment names none (R-02-24), as the runtime's front door gives it.
+      const dc = defaultCurrencyDecl(Object.values<any>(documents), clusterOf(scheme.scope));
+      if (applyDefaultCurrency(ctx, bankDefaultCurrency(dc, [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])], req.environment.evaluationDate)) && n === 1)
+        log.push(`front door: the default currency ${ctx.batch?.currency ?? ctx.payment?.instructedAmount?.currency} of ${dc!.owner}`);
       // The dispatch table routes, not the intake map (R-05-42): its values stand after the map.
       if (endToEnd) Object.assign(ctx.header, routeOf(entry.disposition.start), { scheme: scheme.scope });
       if (endToEnd) {

@@ -298,6 +298,9 @@ CASES = [
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.reconcile.scheme-report.v1, map: uae.wps.map.psi-in.v1, period: P1D, resolutions: { return: uae.wps.sif } }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a break's return starts by a message that starts an outward payment, not a return"),
+    # L56 (R-02-24): a default currency is a country cluster's, an ISO 4217 code; the platform names none
+    ("M108", "ERROR L56", "factory/uae.p/activities/uae.p.enrich.default-currency.v1.yaml",
+     "default: AED", "default: Dirham", "a cluster's default currency that is not an ISO 4217 code"),
     # L56 (R-05-100, Issue I-282): a parameter marked a ledger account is an activity's string or code
     ("M96", "ERROR L56", "factory/p/activities/p.post.accounting.v2.yaml",
      "  vatAccount:\n    type: string\n", "  vatAccount:\n    type: integer\n", "a ledger account that is a number"),

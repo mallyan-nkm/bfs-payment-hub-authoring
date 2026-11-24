@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { bankDefaultCurrency, clusterOf, defaultCurrencyDecl, withDefaultCurrency } from '../core/currency.js';
 import { canonicalJson, clone } from '../core/canonical.js';
 import { parseYaml, toYaml } from '../core/yaml.js';
 import { expandWorkflow } from '../core/expand.js';
@@ -319,6 +320,8 @@ export function buildConfigurationRelease(env: StudioEnv, req: { bank: string; r
     if (b.secretRef !== undefined && !/^(env|file|vault|akv|aws-sm|aws-ssm):/.test(String(b.secretRef))) problems.push(`the binding of ${b.port} holds a secretRef that is not a reference`);
   }
   if (problems.length) throw new DistributionRefused(`The configuration release ${bank}@${release} is refused: ${problems.join('; ')}`);
+  // A core-banking binding that names no currency takes the bank's default, its cluster's unless it sets its own (R-02-24).
+  if (req.bindings?.length) req = { ...req, bindings: withDefaultCurrency(req.bindings, bankCurrencyOf(env, bank, set.values ?? [])) };
   const files: Record<string, string> = {};
   files['configuration/configuration-set.yaml'] = toYaml(set);
   if (req.bindings?.length) files['bindings/port-bindings.yaml'] = toYaml({ kind: 'port-bindings', tenant: bank, ...(released?.release ? { release: released.release } : {}), bindings: req.bindings });
@@ -426,3 +429,14 @@ export function banksTaking(env: StudioEnv, scopes: string[]): string[] {
   });
 }
 
+/**
+ * A bank's default currency (R-02-24): the one its country cluster declares (the cluster of the packs its lock file depends on), or
+ * its own value of that parameter in its configuration set, as of today.
+ */
+export function bankCurrencyOf(env: StudioEnv, bank: string, values: any[], date = new Date().toISOString().slice(0, 10)): string | undefined {
+  const lock = env.store.all().find((x) => x.kind === 'pack' && x.tenant === bank)?.doc;
+  const clusters = [...new Set<string>(((lock?.dependsOn ?? []) as any[]).map((d) => clusterOf(d.scope)).filter((c): c is string => Boolean(c)))];
+  if (clusters.length !== 1) return undefined;
+  const docs = env.store.current().filter((e) => e.kind === 'activity').map((e) => e.doc);
+  return bankDefaultCurrency(defaultCurrencyDecl(docs, clusters[0]), values, date);
+}

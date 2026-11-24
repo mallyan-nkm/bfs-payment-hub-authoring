@@ -234,16 +234,19 @@ packs:
   - scope: uae.p
     packType: shared
     counts:
-      activity: 3
+      activity: 4
       error-dictionary: 1
       port: 2
       reference-table: 4
       rule: 5
       ruleset: 1
       simulator: 2
-    total: 18
+      test: 3
+    total: 22
     artefacts:
       - name: uae.p.enrich.business-date.v1
+        kind: activity
+      - name: uae.p.enrich.default-currency.v1
         kind: activity
       - name: uae.p.enrich.participant.v1
         kind: activity
@@ -279,6 +282,12 @@ packs:
         kind: simulator
       - name: uae.p.sim.participant-directory.v1
         kind: simulator
+      - name: UAEP-CUR-001
+        kind: test
+      - name: UAEP-CUR-002
+        kind: test
+      - name: UAEP-CUR-003
+        kind: test
   - scope: uae.wps
     packType: shared
     counts:

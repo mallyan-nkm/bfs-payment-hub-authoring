@@ -112,7 +112,7 @@ public sealed class EncryptionTests
     [InlineData("adib")]
     public void The_bank_encrypts_for_the_key_its_configuration_names_and_binds_that_key_by_reference_only(string bank)
     {
-        var b = PortBindings.FromDirectory(Folder(bank)).InForce(bank, OpenPgpEncryption.Port, From);
+        var b = PortBindings.FromDirectory(Folder(bank), BankCurrency.Of(Folder(bank))).InForce(bank, OpenPgpEncryption.Port, From);
         Assert.Equal(OpenPgpEncryption.Name, b.Adapter);
         var keyId = Value(ConfigurationSet(bank), "p.protect.encrypt-file.v1#recipientKey");
         Assert.Equal("cbuae-wps", keyId);
@@ -137,7 +137,7 @@ public sealed class AdibWpsBankFolderTests
     {
         // The platform's production adapters (R-09-90) are the shape of a binding only (platform-adapters.yaml, PlatformAdapterTests).
         string[] platform = [ScreeningAdapters.Sanctions, ScreeningAdapters.Fraud, NoticeAdapters.Port, FactsOutAdapters.Port, CalendarAdapters.Port, ParticipantDirectoryAdapters.Port, NotificationAdapters.Port, EventStreamAdapters.Port, FxRateAdapters.Port];
-        var all = PortBindings.FromDirectory(Folder());
+        var all = PortBindings.FromDirectory(Folder(), BankCurrency.Of(Folder()));
         var bindings = new PortBindings();
         foreach (var x in all.All.Where(x => !platform.Contains(x.Port))) bindings.Add($"kind: port-bindings\ntenant: {x.Tenant}\nbindings:\n  - port: {x.Port}\n    adapter: {x.Adapter}\n    validFrom: {x.ValidFrom:O}\n");
         // The labour ministry register (Issue I-118) is bound to the REST adapter with a placeholder host until the bank says where it is.
@@ -154,7 +154,7 @@ public sealed class AdibWpsBankFolderTests
     [Fact]
     public void The_file_transfer_carries_the_folders_of_the_source_with_placeholder_hosts_and_a_credential_by_reference()
     {
-        var b = PortBindings.FromDirectory(Folder()).InForce(Tenant, "p.port.file-transfer.v1", From);
+        var b = PortBindings.FromDirectory(Folder(), BankCurrency.Of(Folder())).InForce(Tenant, "p.port.file-transfer.v1", From);
         Assert.Equal("sftp", b.Adapter);
         Assert.Equal("/wps/inbound", b.Settings["pickup.folder"]);
         Assert.Equal("/wps/outbound", b.Settings["result.folder"]);

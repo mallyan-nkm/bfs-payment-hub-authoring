@@ -209,7 +209,8 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # 1.22.0 (change set CS-2026-11-24-017; 1.21.0 and CS-2026-11-24-016 are another change's): wave 7B, the owner's decisions of 24
 # November 2026: p.enrich.fx-rate.v1 1.3.0 with requireAsOf (Issue I-278, R-09-247); p.view.operations.v1 1.8.0, written by hand:
 # pause and resume offered, and escalation after a time (Issue I-185); the salary file's intake map 1.6.0, the employer's e-mail
-# (Issues I-153, I-314); and the platform's error dictionary 1.12.0, on 1.11.0.
+# (Issues I-153, I-314); the UAE cluster's default currency, uae.p.enrich.default-currency.v1 (R-02-24); and the platform's error
+# dictionary 1.12.0, on 1.11.0.
 PACK_RELEASES = {"p": "1.22.0", "uae.p": "1.22.0", "uae.wps": "1.22.0", "b": "1.22.0"}
 FACTORY_RELEASE = "1.22.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
@@ -450,6 +451,14 @@ act("uae.p.enrich.participant.v1", "Look up participants by routing code", ["pay
     ["facts.participants"], ["found", "unknown"], "read", ports=["uae.p.port.participant-directory.v1"])
 act("uae.p.enrich.business-date.v1", "Set the UAE business date", ["header.receivedAt"], ["header.businessDate"],
     ["set"], "read", ports=["uae.p.port.calendar.v1"])
+# R-02-24 (owner's decision of 2026-11-24): the default currency is the country's, a value of the cluster with bounds, ISO 4217
+# codes only. A bank of the cluster inherits it and may set its own (uae.p.enrich.default-currency.v1#currency). The front door gives
+# it to a payment that names none, after the intake map; a bank's configuration release gives it to a core-banking binding that
+# names none. The platform p names no currency (R-09-185).
+DEFAULT_CURRENCY = {"currency": {"type": "code", "default": "AED", "bounds": {"pattern": "^[A-Z]{3}$"}, "role": "default-currency",
+                                 "description": "The country's default currency, an ISO 4217 code: a payment whose file, lines and payment name none takes it at the front door, and a core-banking binding that names none takes it in the bank's configuration release. A bank of the cluster may set its own."}}
+act("uae.p.enrich.default-currency.v1", "Give a payment that names no currency the country's default", ["batch", "items[]", "payment.instructedAmount"],
+    ["batch.currency", "payment.instructedAmount"], ["applied", "named"], "pure", level="batch", params=DEFAULT_CURRENCY, invoked_by="front-door", script=True)
 
 # WPS (provisional)
 W = "ext.uae.wps"
@@ -1539,6 +1548,19 @@ test("P-FX-006", "With requireAsOf a rate with no asOf, typed by hand, is refuse
 test("P-FX-007", "With requireAsOf a rate the feed gave within the staleness limit still converts", "p.enrich.fx-rate.v1", "activity",
      {**refund_lines(100, currency="GBP"), "parameters": {"requireAsOf": True}},
      {"outcome": "converted", "writes": {"facts.fx.rate": 0.2134, "facts.fx.amount": 21.34, "facts.fx.currency": "GBP"}}, tenant="example-bank")
+# R-02-24: the cluster's default currency, inherited or the bank's own; a file that names its own keeps it.
+def no_currency_file(currency=None):
+    batch = {"id": "F-9", "numberOfTransactions": 1, "controlSum": "100.00", **({"currency": currency} if currency else {})}
+    return {"context": {"header": {"paymentId": "P-9", "kind": "payment", "direction": "outward", "scheme": "uae.wps"}, "batch": batch,
+                        "items": [{"payment": {"instructedAmount": {"value": "100.00"}}}]}}
+
+
+test("UAEP-CUR-001", "A file that names no currency takes the country's default, AED", "uae.p.enrich.default-currency.v1", "activity",
+     no_currency_file(), {"outcome": "applied", "writes": {"batch.currency": "AED"}})
+test("UAEP-CUR-002", "A bank of the cluster that sets its own default currency gives a file its own", "uae.p.enrich.default-currency.v1", "activity",
+     {**no_currency_file(), "parameters": {"currency": "USD"}}, {"outcome": "applied", "writes": {"batch.currency": "USD"}})
+test("UAEP-CUR-003", "A file that names its currency keeps it", "uae.p.enrich.default-currency.v1", "activity",
+     no_currency_file("EUR"), {"outcome": "named"})
 test("P-CHG-001", "A line is priced on the bank's slab: fixed plus a percentage, then VAT", "p.enrich.charges.v1", "activity", refund_lines(100, 499.75),
      # 5.10 and 0.26 VAT on 100.00; 5.49975, so 5.50 and 0.28 (0.275) on 499.75: the sums of the rounded lines
      {"outcome": "priced", "writes": {"facts.charges.amount": 10.6, "facts.charges.tax.amount": 0.54, "facts.charges.totalChargesAndTaxAmount": 11.14}},

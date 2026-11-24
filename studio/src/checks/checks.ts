@@ -395,6 +395,11 @@ export class Checker {
           if (d.kind !== 'activity') err('L56', `${d.name}#${k} is marked a ledger account, but only an activity's parameter names one`);
           if (!['string', 'code'].includes(decl.type)) err('L56', `${d.name}#${k} is marked a ledger account, but it is of type ${decl.type}, not a string or a code`);
         }
+        // L56 (R-02-24): a default currency is a country cluster's, a code bound to an ISO 4217 code; the platform p names none.
+        if (decl?.role === 'default-currency') {
+          if (!/^[a-z0-9]+\.p$/.test(String(d.name ?? '').split('.').slice(0, 2).join('.'))) err('L56', `${d.name}#${k} is marked a default currency, but only a country cluster's platform scope (<cluster>.p) declares one`);
+          if (decl.type !== 'code' || decl.bounds?.pattern !== '^[A-Z]{3}$' || !/^[A-Z]{3}$/.test(String(decl.default))) err('L56', `${d.name}#${k} is marked a default currency, but it is not a code bound to an ISO 4217 code with such a default`);
+        }
       }
     }
     // L29: step ids unique after segments are inlined.

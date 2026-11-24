@@ -34,7 +34,7 @@ public sealed class PlatformOnlyBankFolderTests
     [MemberData(nameof(PlatformOnly))]
     public void The_folder_binds_core_banking_for_its_tenant_from_its_validFrom_and_no_other(string tenant)
     {
-        var bindings = PortBindings.FromDirectory(Folder(tenant));
+        var bindings = PortBindings.FromDirectory(Folder(tenant), BankCurrency.Of(Folder(tenant)));
         var b = bindings.InForce(tenant, Port, From);
         Assert.Equal(GatewayRestCoreBanking.Name, b.Adapter);
         Assert.Throws<PortBindingException>(() => bindings.InForce(tenant, Port, From.AddSeconds(-1)));
@@ -50,7 +50,7 @@ public sealed class PlatformOnlyBankFolderTests
     [MemberData(nameof(Banks))]
     public async Task Until_the_bank_settings_are_added_every_call_is_refused_and_nothing_reaches_the_wire(string tenant)
     {
-        var b = PortBindings.FromDirectory(Folder(tenant)).InForce(tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
+        var b = PortBindings.FromDirectory(Folder(tenant), BankCurrency.Of(Folder(tenant))).InForce(tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
         Assert.EndsWith(".invalid/", b.Settings["baseUrl"]);
         Assert.Equal($"env:TH_{tenant.ToUpperInvariant()}_CORE_BANKING_TOKEN", b.Settings["secretRef"]);
         // The channel the gateway knows the runtime by, and the currency its accounts are kept in, are the bank's values (R-09-142, R-11-104).

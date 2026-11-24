@@ -1595,6 +1595,7 @@ for path, d in docs:
 
 # L44 (R-11-39) the parameter contract: every parameter declares its type and a default, and the default lies within its
 # own bounds; a distribution carries every dial with its type and bounds, and a configuration release is checked against it.
+DEFAULT_CURRENCIES = {}
 for path, d in docs:
     params = d.get("parameters")
     if not isinstance(params, dict):
@@ -1614,6 +1615,20 @@ for path, d in docs:
                 err("L56", path, "%s is marked a ledger account, but only an activity's parameter names one" % name)
             if decl["type"] not in ("string", "code"):
                 err("L56", path, "%s is marked a ledger account, but it is of type %s, not a string or a code" % (name, decl["type"]))
+        # L56 (R-02-24; the owner's decision of 24 November 2026) a default currency is a country cluster's: a code parameter of an
+        # artefact in a cluster's platform scope (<cluster>.p), an ISO 4217 code by its bounds and its default; one per cluster. The
+        # platform p names no currency.
+        if decl.get("role") == "default-currency":
+            sc = scope_of(d.get("name") or "")
+            if not re.match(r"^[a-z0-9]+\.p$", sc or ""):
+                err("L56", path, "%s is marked a default currency, but only a country cluster's platform scope (<cluster>.p) declares one" % name)
+            if decl["type"] != "code" or (decl.get("bounds") or {}).get("pattern") != "^[A-Z]{3}$" or not re.match(r"^[A-Z]{3}$", str(decl.get("default"))):
+                err("L56", path, "%s is marked a default currency, but it is not a code bound to an ISO 4217 code (pattern ^[A-Z]{3}$) with such a default" % name)
+            DEFAULT_CURRENCIES.setdefault(sc, []).append(name)
+
+for sc, names in sorted(DEFAULT_CURRENCIES.items()):
+    if len(names) > 1:
+        err("L56", "factory/%s" % sc, "the cluster declares %d default currencies (%s): it declares one" % (len(names), ", ".join(sorted(names))))
 
 # L49 (R-01-25) a reference table: its key and columns agree, its editions run in date order, every row fits its columns,
 # a column that references another table holds that table's keys, and a key is not repeated within an edition.

@@ -65,12 +65,13 @@ Generated from `factory/inventory.yaml`.
 <!-- INVENTORY:uae.p -->
 | Kind | Count | Artefacts |
 | --- | --- | --- |
-| Activity | 3 | `uae.p.enrich.business-date.v1`, `uae.p.enrich.participant.v1`, `uae.p.validate.iban.v1` |
+| Activity | 4 | `uae.p.enrich.business-date.v1`, `uae.p.enrich.default-currency.v1`, `uae.p.enrich.participant.v1`, `uae.p.validate.iban.v1` |
 | Rule | 5 | `uae.p.rule.currency-aed.v1`, `uae.p.rule.iban-checksum.v1`, `uae.p.rule.iban-country.v1`, `uae.p.rule.iban-length.v1`, `uae.p.rule.routing-code-format.v1` |
 | Ruleset | 1 | `uae.p.ruleset.iban.v1` |
 | Port | 2 | `uae.p.port.calendar.v1`, `uae.p.port.participant-directory.v1` |
 | Simulator | 2 | `uae.p.sim.calendar.v1`, `uae.p.sim.participant-directory.v1` |
-| Total | 18 | |
+| Test | 3 | `UAEP-CUR-001`, `UAEP-CUR-002`, `UAEP-CUR-003` |
+| Total | 22 | |
 <!-- /INVENTORY:uae.p -->
 
 ## D.6 Open points

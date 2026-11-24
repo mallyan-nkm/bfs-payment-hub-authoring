@@ -2215,6 +2215,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-09-185, R-09-187, R-11-104).** No platform or engine host code gives `AED` as a default: a currency is the payment's own or its batch's (`CanonicalMapper.ToPayment` takes the batch's), the caller's (the channel's charges preview now needs `currency`), or a binding's required setting (`currency` of the core banking simulator and of a gateway whose reply names none, `localCurrency` of the file bulk adapter, each by `PortBinding.Required`); a posting with no currency is refused (`BusinessReject`). `Money.Aed` is gone. Each bank folder's core-banking binding names its currency (`currency: AED`, the bank's setting). `NeutralityTests.No_platform_or_engine_host_code_defaults_a_currency` holds the platform's code to it and every bank folder's binding. `deploy/laptop/bin/run-pinned.mts` reads the bank's values from the release API (`GET /values`) as of the payment's date and gives them to the run, the distribution's own configuration set giving its bindings, and it needs its caller to name the message and the file; `LaptopDeploymentTests.The_one_off_run_reads_the_values_in_force_from_the_release_API_and_names_its_message`. The WPS module and the test bench's WPS data builder keep the scheme's currency, which is theirs.
 
+**Changed (24 November 2026, R-02-24; owner's decision of 24 November 2026: "the currency default should be by country").** The default currency is the country cluster's: `uae.p.enrich.default-currency.v1#currency`, AED, marked `role: default-currency` and bound to an ISO 4217 code (lint L56); a bank of the cluster inherits it and may set its own value. The platform still names none. The front door (the studio's, the deploy runner's and the runtime's `DefaultCurrency`) gives it to a payment that names no currency after its intake map, and the canonical checks still refuse one that ends with none; a bank's configuration release gives it to a core-banking binding that names none (`withDefaultCurrency`). So the five bank folders' `currency: AED` lines, which only repeated the cluster's default, are gone; a bank whose accounts differ names its own. The bank's cluster is the one its lock file depends on (Issue I-373 for what is left).
+
 ## I-239. An activation that loses a race is refused, not tried again
 
 **Issue.** Two activations of one bank and environment at once cannot both win (R-09-137): the store's unique key on the activation's number refuses the second, as `distribution.ActivationRaced`, and nothing of it is recorded. The service console shows the refusal to the bank approver who consented, whose action then fails; the person must ask again. A workflow package's dated activations (`ReleaseRegistry.Activate`) are numbered again and tried up to five times instead, as they are not a switch-over.
@@ -2777,6 +2779,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Factory 1.21.0 replaces WPS's six other sends with their v2 lines (R-09-232). Their v1 lines' native code-behinds stay in the WPS module, because every real bank's lock file at 1.20.0 pins the subflows that call them.
 
 **Recommendation.** Retire them as the salary file's v1 was (R-09-233), once no distribution in force pins a 1.20.0 lock file.
+
+## I-373. A default currency is bound by the form of an ISO 4217 code, not by the list
+
+**Issue.** The country cluster's default currency (R-02-24) is bound by the pattern `^[A-Z]{3}$`, the form of an ISO 4217 alphabetic code; the studio has no registry of the active ISO 4217 codes, so a well-formed code that is not a currency (`XYZ`) passes the bounds. A bank's cluster is read from the scopes its lock file depends on; a bank that depends on two clusters gets no default, and its bindings must name their currency.
+
+**Recommendation.** Add the ISO 4217 list to the studio's code registries (`studio/registries/iso-external-codes.yaml`, versioned like the other external code sets, R-02-11) and bound the parameter by it (`allowed`); and say in the bank's lock file which country it is in, when a bank in two countries appears.
 
 ## Not done, and why
 

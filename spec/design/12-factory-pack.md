@@ -58,10 +58,10 @@ The table is generated from `factory/inventory.yaml`.
 | Pack | Type | Activity | Rule | Ruleset | Table | Port | Simulator | Workflow | Scheme | Extension | Hook | Test | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `factory/p/` | shared | 29 | 8 | 2 | 3 | 15 | 15 | 8 |  |  |  | 23 | 106 |
-| `factory/uae.p/` | shared | 3 | 5 | 1 |  | 2 | 2 |  |  |  |  |  | 18 |
+| `factory/uae.p/` | shared | 4 | 5 | 1 |  | 2 | 2 |  |  |  |  | 3 | 22 |
 | `factory/uae.wps/` | shared | 37 | 12 | 3 | 2 | 3 | 5 | 15 | 1 | 1 |  | 42 | 123 |
 | `examples/bank/` | bank | 3 | 1 | 1 |  | 2 | 2 |  |  | 1 | 3 | 4 | 21 |
-| Total | | 72 | 26 | 7 | 5 | 22 | 24 | 23 | 1 | 2 | 3 | 69 | 268 |
+| Total | | 73 | 26 | 7 | 5 | 22 | 24 | 23 | 1 | 2 | 3 | 72 | 272 |
 <!-- /INVENTORY:summary -->
 
 ## 12.5 Platform workflows in the factory pack
