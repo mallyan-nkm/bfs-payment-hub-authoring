@@ -55,6 +55,8 @@ public sealed partial class Harness
         // Work items of different payments side by side, as many as the host allows (R-09-238, Issue I-300).
         Service = new VirtualTimeOrchestrationService(Clock) { History = history, Concurrency = EngineHistory.ServiceConcurrency() };
         party = serviceParty = new ServiceParty(plans, distribution);
+        // A worker's answer after its attempt was abandoned at its deadline: on the history, and ignored (R-09-298, Issue I-390).
+        WorkerRouter.Late = (req, res, err) => Service.RecordLate(EngineHistory.LateFact(req, res, err));
 
         // The service its history leaves: its instances, their messages, the activities to run again and the timers to fire.
         var facts = history.Load();
@@ -164,6 +166,7 @@ public sealed partial class Harness
                     {
                         ["history"] = history.Subject, ["instances"] = Service.Instances.Count, ["payments"] = served.Count, ["episodes"] = Service.Episodes,
                         ["activityRuns"] = Service.ActivityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId, ["concurrency"] = Service.Concurrency,
+                        ["lateAnswers"] = Service.LateAnswers,
                     },
                 },
             };

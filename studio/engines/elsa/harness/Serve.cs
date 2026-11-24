@@ -19,6 +19,8 @@ public sealed partial class Harness
     readonly ConcurrentDictionary<string, JsonObject> served = new(StringComparer.Ordinal);
     readonly ConcurrentDictionary<string, bool> reported = new(StringComparer.Ordinal), told = new(StringComparer.Ordinal);
     JsonObject rebuilt = new();
+    /// <summary>Answers that came after their attempt was abandoned at its deadline (R-09-298), recorded and ignored.</summary>
+    int lateAnswers;
 
     public static async Task<int> ServeMain(string planFile)
     {
@@ -63,9 +65,15 @@ public sealed partial class Harness
         elsa = new ElsaHost();
         party = serviceParty = new ServiceParty(plans, distribution);
         // Attempts of different payments side by side, as many as the host allows (R-09-286, Issue I-360): the worker's calls run off
-        // the clock's thread; Elsa's journals stay on it.
+        // the clock's thread, one at a time too, so the clock fires an attempt's timer at its deadline (R-09-298); Elsa's journals stay on it.
         attemptsAtOnce = EngineHistory.ServiceConcurrency();
-        if (attemptsAtOnce > 1) attempts = new SemaphoreSlim(attemptsAtOnce, attemptsAtOnce);
+        attempts = new SemaphoreSlim(attemptsAtOnce, attemptsAtOnce);
+        // A worker's answer after its attempt was abandoned at its deadline: on the history, and ignored (R-09-298, Issue I-390).
+        WorkerRouter.Late = (req, res, err) => Clock.Schedule(Clock.Now, () =>
+        {
+            lateAnswers++;
+            history?.Append("late-answer", EngineHistory.LateFact(req, res, err));
+        });
 
         var facts = history.Load();
         var starts = new List<JsonObject>();
@@ -233,6 +241,7 @@ public sealed partial class Harness
                     {
                         ["history"] = history!.Subject, ["instances"] = instances.Count, ["payments"] = served.Count, ["episodes"] = elsaRuns,
                         ["activityRuns"] = activityRuns, ["rebuilt"] = J.Clone(rebuilt), ["pid"] = Environment.ProcessId, ["concurrency"] = attemptsAtOnce,
+                        ["lateAnswers"] = lateAnswers,
                     },
                 },
             };

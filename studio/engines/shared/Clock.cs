@@ -11,6 +11,11 @@ public sealed class VirtualClock
 {
     readonly object gate = new();
     readonly SortedDictionary<(long at, long seq), Action> timers = new();
+    /// <summary>
+    /// The timers that fire on time in real time though work is in flight (R-09-300, Issue I-390): an attempt's timer on the engine
+    /// host, which ends an attempt that outlives its timeout at its deadline. Every other timer fires only when nothing is in flight.
+    /// </summary>
+    readonly HashSet<(long at, long seq)> onTime = new();
     long now;
     long seq;
     int busy;
@@ -31,7 +36,10 @@ public sealed class VirtualClock
     readonly DateTime wallStart;
 
     /// <summary>The wall clock as this clock's time.</summary>
-    long WallNow => Start + (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
+    public long WallNow => Start + (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
+
+    /// <summary>The wall clock's moment (Unix milliseconds) of a time on this clock, in real time: when the host reaches it.</summary>
+    public long WallAt(long at) => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (at - WallNow);
 
     public VirtualClock(long startMs)
     {
@@ -51,6 +59,36 @@ public sealed class VirtualClock
     {
         // A wait for the wall clock (real time) wakes to take it: an answer handed back from another thread fires now, not later.
         lock (gate) { timers[(Math.Max(at, now), seq++)] = fire; Monitor.PulseAll(gate); }
+    }
+
+    /// <summary>
+    /// A timer that, in real time, fires when the wall clock reaches it even while work is in flight (R-09-300): an attempt's timer
+    /// on the engine host. In virtual time it is an ordinary timer.
+    /// </summary>
+    public void ScheduleOnTime(long at, Action fire)
+    {
+        lock (gate)
+        {
+            var key = (Math.Max(at, now), seq++);
+            timers[key] = fire;
+            if (RealTime) onTime.Add(key);
+            Monitor.PulseAll(gate);
+        }
+    }
+
+    /// <summary>Under the lock: the earliest on-time timer the wall clock has reached, taken off the clock.</summary>
+    bool TakeOnTime(out Action? fire)
+    {
+        fire = null;
+        if (onTime.Count == 0) return false;
+        var wall = WallNow;
+        var key = onTime.Min();
+        if (key.at > wall) return false;
+        onTime.Remove(key);
+        fire = timers[key];
+        timers.Remove(key);
+        if (wall > now) now = wall;
+        return true;
     }
 
     public void Enter(int n = 1) { if (n == 0) return; lock (gate) { busy += n; progress++; } }
@@ -93,16 +131,27 @@ public sealed class VirtualClock
     {
         while (true)
         {
+            Action? urgent = null;
             lock (gate)
             {
                 var seen = progress;
                 var since = DateTime.UtcNow;
                 while (busy > 0)
                 {
-                    Monitor.Wait(gate, TimeSpan.FromSeconds(1));
+                    // In real time an attempt's timer fires at its deadline though work is in flight (R-09-300, Issue I-390).
+                    if (RealTime && TakeOnTime(out urgent)) { busy++; break; }
+                    var wait = TimeSpan.FromSeconds(1);
+                    if (RealTime && onTime.Count > 0) wait = TimeSpan.FromMilliseconds(Math.Clamp(onTime.Min().at - WallNow, 1, 1000));
+                    Monitor.Wait(gate, wait);
                     if (progress != seen) { seen = progress; since = DateTime.UtcNow; }
                     else if (DateTime.UtcNow - since > stall) throw new TimeoutException($"stalled with {busy} item(s) in flight at virtual {Duration.Iso(now)}");
                 }
+            }
+            if (urgent is not null)
+            {
+                try { urgent(); }
+                finally { Exit(); }
+                continue;
             }
             if (done()) return true;
             Action fire;
@@ -133,6 +182,7 @@ public sealed class VirtualClock
                 var first = timers.First();
                 if (first.Key.at > limitAt) return false;
                 timers.Remove(first.Key);
+                onTime.Remove(first.Key);
                 now = first.Key.at;
                 busy++;
                 fire = first.Value;

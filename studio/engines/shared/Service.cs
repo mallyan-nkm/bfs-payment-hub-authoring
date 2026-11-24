@@ -40,6 +40,19 @@ public static class EngineHistory
 
     public const int MinConcurrency = 1, MaxConcurrency = 64;
 
+    /// <summary>
+    /// A worker's answer to an attempt the service abandoned at its deadline, as its history keeps it (R-09-298, Issue I-390): the
+    /// attempt (instance, step, activity, release, call, attempt), when it came, and what it said (its kind and outcome, or the error's
+    /// name). Never the payload or the answer's writes: the answer is ignored, and the payment's own facts do not hold it.
+    /// </summary>
+    public static JsonObject LateFact(JsonObject request, JsonObject? answer, Exception? error) => new()
+    {
+        ["instance"] = J.S(request, "instance"), ["step"] = J.S(request, "step"), ["activity"] = J.S(request, "activity"), ["release"] = J.S(request, "release"),
+        ["call"] = J.Num(request, "call"), ["attempt"] = J.Num(request, "attempt"), ["answeredAt"] = DateTimeOffset.UtcNow.ToString("O"),
+        ["kind"] = error is not null ? "failed" : J.S(answer, "kind"), ["outcome"] = J.S(answer, "outcome"),
+        ["error"] = error is not null ? error.GetType().Name : J.S(answer, "name"),
+    };
+
     /// <summary>A short key of its own for a payment's run, as the engine host makes it: the store's subject ids are at most 64 characters.</summary>
     public static string Key(string s) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s))).ToLowerInvariant()[..24];
 }

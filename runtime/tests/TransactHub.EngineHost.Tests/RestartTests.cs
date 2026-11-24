@@ -89,7 +89,7 @@ public partial class EngineHostTests
     async Task UseStore(string database) => store = database == "sqlserver" ? await servers.SqlServer() : servers.Store;
 
     /// <summary>A bank's distribution installed and active, with its plan: from the stored package (DTFx, Elsa) or written (Flowable's BPMN).</summary>
-    async Task<(string bank, string dist, string plans, string workflow)> Distribution(string engine, string prefix, string wait, Worker worker)
+    async Task<(string bank, string dist, string plans, string workflow)> Distribution(string engine, string prefix, string wait, Worker worker, bool timeout = false)
     {
         var bank = $"{prefix}-{engine}-{Guid.NewGuid():N}"[..20];
         const string id = "2026.11.24-1";
@@ -105,7 +105,7 @@ public partial class EngineHostTests
         }
         else
         {
-            var package = Package("1.0.0");
+            var package = Package("1.0.0", timeout: timeout);
             await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
             System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", new JsonObject { ["th-p"] = worker.Url }.ToJsonString());
             workflow = "p.wf.ask.v1";
@@ -324,6 +324,78 @@ public partial class EngineHostTests
             try { Directory.Delete(plans, true); } catch { }
         }
     }
+    [Fact] public Task Dtfx_abandons_an_attempt_at_its_deadline_and_retries_it_on_PostgreSql() => OutlivesItsTimeout("dtfx", "postgres");
+    [Fact] public Task Dtfx_abandons_an_attempt_at_its_deadline_and_retries_it_on_SqlServer() => OutlivesItsTimeout("dtfx", "sqlserver");
+    [Fact] public Task Elsa_abandons_an_attempt_at_its_deadline_and_retries_it_on_PostgreSql() => OutlivesItsTimeout("elsa", "postgres");
+    [Fact] public Task Elsa_abandons_an_attempt_at_its_deadline_and_retries_it_on_SqlServer() => OutlivesItsTimeout("elsa", "sqlserver");
+
+    /// <summary>
+    /// R-09-298, R-09-300 (Issue I-390, the owner's decision of 24 November 2026: the attempt timeout is the engine's). On the engine
+    /// host a worker's call that outlives its attempt's timeout (three seconds; the call takes ten) is abandoned at its deadline on the
+    /// host's clock, and the retry runs while the first call is still out, though the service runs one work item at a time
+    /// (TH_HOST_SERVICE_CONCURRENCY=1). The first call's late answer is ignored and recorded on the service's history, never on the
+    /// payment: the payment's facts hold the attempt that timed out and the one that answered, and its step's fact is the retry's.
+    /// </summary>
+    async Task OutlivesItsTimeout(string engine, string database)
+    {
+        await UseStore(database);
+        using var worker = new Worker { TagAttempts = true };
+        var (bank, dist, plans, _) = await Distribution(engine, "to", "PT1S", worker, timeout: true);
+        var p = $"T1-{bank}";
+        var slow = TimeSpan.FromSeconds(10);
+        worker.AttemptDelay = (payment, step, attempt) => payment == p && step == "a" && attempt == 1 ? slow : TimeSpan.Zero;
+        System.Environment.SetEnvironmentVariable("TH_HOST_SERVICE_CONCURRENCY", "1");
+        Supervisor? sup = null;
+        try
+        {
+            sup = await Current(engine, bank, plans, dist);
+            var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.timeout.v1" });
+            Assert.True(r.status == 202, r.body.ToJsonString());
+            var e = await Ended(sup, p);
+            Assert.True(J.S(e, "outcome") == "done", e.ToJsonString());
+            // The retry reached the worker after the deadline and before the first call answered: the first was abandoned, not awaited.
+            await Until(() => Task.FromResult(worker.Timed.Any(x => x.call == $"{p}:a" && x.attempt == 1)), TimeSpan.FromSeconds(30), "the first call's late answer");
+            var a1 = worker.Timed.First(x => x.call == $"{p}:a" && x.attempt == 1);
+            var a2 = worker.Timed.First(x => x.call == $"{p}:a" && x.attempt == 2);
+            Assert.True(a2.at - a1.at >= TimeSpan.FromSeconds(2.5), $"the retry came {a2.at - a1.at} after the first attempt: before its deadline");
+            Assert.True(a2.at < a1.answered, $"the retry came at {a2.at:O}, after the first call answered at {a1.answered:O}: the attempt was not abandoned at its deadline");
+            Assert.Equal(1, worker.Timed.Count(x => x.call == $"{p}:b"));
+            // The payment took the retry's answer, never the late one.
+            var ctx = J.P(J.A(J.P(e, "observation"), "instances").FirstOrDefault(), "ctx");
+            if (ctx is not null) Assert.Equal("1.0.0#2", J.S(J.P(ctx, "facts"), "a"));
+            // The late answer is on the service's history, ignored (R-09-298).
+            await Until(async () => (await EngineChain(engine, dist)).Any(f => f.Code == "late-answer"), TimeSpan.FromSeconds(30), "the late answer on the history");
+            var late = (await EngineChain(engine, dist)).Single(f => f.Code == "late-answer");
+            var lf = JsonNode.Parse(late.DataJson)!;
+            Assert.Equal(("a", 1, "result", "ok"), (J.S(lf, "step"), (int?)J.Num(lf, "attempt"), J.S(lf, "kind"), J.S(lf, "outcome")));
+            Assert.DoesNotContain("1.0.0#1", late.DataJson);
+            // The payment's facts: step a timed out on its first attempt and answered on its second; nothing of the late answer.
+            var subject = await SubjectOf(p) ?? throw new Xunit.Sdk.XunitException($"{p} was not accepted");
+            await using (var db = StoreDbContext.Open(Db))
+            {
+                var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").OrderBy(f => f.Seq).ToListAsync();
+                var ofA = steps.Select(f => (f.Code, d: JsonNode.Parse(f.DataJson)!)).Where(x => J.S(x.d, "step") == "a").ToList();
+                Assert.Equal(new[] { "error", "ok" }, ofA.Select(x => x.Code).ToArray());
+                Assert.Equal("Timeout", J.S(J.P(ofA[0].d, "error"), "name"));
+                Assert.Equal(new[] { 1, 2 }, ofA.Select(x => (int)(J.Num(x.d, "attempt") ?? 0)).ToArray());
+                Assert.DoesNotContain(ofA, x => x.d.ToJsonString().Contains("1.0.0#1"));
+                Assert.Equal("1.0.0#2", (string?)ofA[1].d["writes"]?["facts.a"]);
+            }
+            await ChainsIntact(p);
+        }
+        catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+        {
+            throw new Xunit.Sdk.XunitException($"{x.Message}\n{x.StackTrace}\n--- the supervisor's log ---\n{sup?.Log}");
+        }
+        finally
+        {
+            if (sup is not null) await sup.DisposeAsync();
+            System.Environment.SetEnvironmentVariable("TH_HOST_SERVICE_CONCURRENCY", null);
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
     [Fact] public Task Elsa_serves_many_payments_of_a_distribution_on_one_service() => OneService("elsa");
     [Fact] public Task Flowable_serves_many_payments_of_a_distribution_from_one_deployment() => OneService("flowable");
 }

@@ -423,6 +423,26 @@ public sealed class WorkerRouter : IParty
     /// </summary>
     public static Func<JsonObject, JsonObject, Task>? Answered;
 
+    /// <summary>
+    /// Told of the answer a worker gave after its attempt was abandoned at its deadline (R-09-298, Issue I-390): the request, the
+    /// answer (null when the call failed) and the error. The answer is ignored; the engine host's services record it on their history.
+    /// </summary>
+    public static Action<JsonObject, JsonObject?, Exception?>? Late;
+
+    /// <summary>
+    /// The request field an engine host's service sets on an attempt (R-09-298): the wall clock's moment (Unix milliseconds) of the
+    /// attempt's deadline. At that moment the attempt ends as a retryable Timeout, marked late; the worker's later answer is ignored.
+    /// It is not sent to the worker.
+    /// </summary>
+    public const string AbandonAt = "abandonAt";
+
+    /// <summary>The answer of an attempt abandoned at its deadline: a retryable Timeout, marked late, as an engine that keeps the deadline gives it.</summary>
+    public static JsonObject Abandoned() => new()
+    {
+        ["kind"] = "error", ["name"] = "Timeout", ["retryable"] = true, ["late"] = true,
+        ["message"] = "no answer before the attempt's deadline: the attempt is abandoned and a later answer is ignored",
+    };
+
     public WorkerRouter(JsonObject workers, JsonObject queues, string? distribution = null)
     {
         Distribution = string.IsNullOrEmpty(distribution) ? null : distribution;
@@ -490,11 +510,29 @@ public sealed class WorkerRouter : IParty
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
                 if (Distribution is not null && J.S(body, "distribution") is null) body["distribution"] = Distribution;
+                long? abandonAt = J.Num(body, AbandonAt) is double ab ? (long)ab : null;
+                body.Remove(AbandonAt);
                 // One span per attempt; HttpClient carries its context to the worker (traceparent).
                 using var span = EngineTelemetry.Attempt(req, queue);
                 try
                 {
-                    var res = await Post($"{url}/attempt", body);
+                    Task<JsonObject>? call = null;
+                    if (abandonAt is long at)
+                    {
+                        // The engine host's attempt ends at its deadline on the host's clock (R-09-298): a call that outlives it is
+                        // abandoned, and its answer, when it comes, is ignored. A deadline already passed sends nothing.
+                        var left = at - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        call = left > 0 ? Post($"{url}/attempt", body) : null;
+                        if (call is null || await Task.WhenAny(call, Task.Delay(TimeSpan.FromMilliseconds(left))) != call)
+                        {
+                            var timeout = Abandoned();
+                            span.Answered(timeout);
+                            if (Answered is { } told) await told(body, timeout);
+                            if (call is not null) _ = LateAnswer(call, body);
+                            return timeout;
+                        }
+                    }
+                    var res = await (call ?? Post($"{url}/attempt", body));
                     span.Answered(res);
                     if (Answered is { } answered) await answered(body, res);
                     return res;
@@ -514,6 +552,17 @@ public sealed class WorkerRouter : IParty
             default:
                 throw new InvalidOperationException($"Unknown op {J.S(req, "op")}");
         }
+    }
+
+    /// <summary>The answer of an abandoned attempt, told to <see cref="Late"/> when it comes; it reaches no payment.</summary>
+    static async Task LateAnswer(Task<JsonObject> call, JsonObject body)
+    {
+        JsonObject? res = null;
+        Exception? error = null;
+        try { res = await call; }
+        catch (Exception e) { error = e; }
+        try { Late?.Invoke(body, res, error); }
+        catch (Exception e) { Console.Error.WriteLine($"[engine] a late answer was not recorded: {e.GetType().Name}"); }
     }
 
     public void Dispose() => http.Dispose();

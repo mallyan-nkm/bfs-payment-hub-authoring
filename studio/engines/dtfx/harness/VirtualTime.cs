@@ -70,6 +70,20 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     /// </summary>
     public IEngineHistory? History;
     public int DroppedMessages;
+    /// <summary>Timers of this service that are attempts' (by <see cref="TimerKey"/>), between their episode and the clock.</summary>
+    readonly HashSet<string> onTime = new(StringComparer.Ordinal);
+    /// <summary>Answers that came after their attempt was abandoned at its deadline (R-09-298), recorded and ignored.</summary>
+    public int LateAnswers;
+
+    /// <summary>A worker's answer to an attempt abandoned at its deadline, on the history (R-09-298): ignored, never the payment's.</summary>
+    public void RecordLate(System.Text.Json.Nodes.JsonObject late)
+    {
+        lock (gate)
+        {
+            LateAnswers++;
+            History?.Append("late-answer", late);
+        }
+    }
     public int Episodes; // orchestration work items; each replays the stored history from the start
     public int ActivityRuns;
 
@@ -243,6 +257,10 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
         lock (gate)
         {
             var rec = instances[workItem.InstanceId];
+            // The attempt timers this episode set (R-09-300): only a service of the engine host fires them on time.
+            if (History is not null)
+                foreach (var m in timerMessages ?? Array.Empty<TaskMessage>())
+                    if (DtfxEngine.TakeAttemptTimer(m.OrchestrationInstance.InstanceId, Duration.MsOf(((TimerFiredEvent)m.Event).FireAt))) onTime.Add(TimerKey(m));
             if (History is not null) RecordEpisode(rec, workItem, newOrchestrationRuntimeState, outboundMessages, timerMessages, orchestrationState);
             // New work first, then retire the messages this episode consumed, so the clock never sees a false idle.
             foreach (var m in outboundMessages ?? Array.Empty<TaskMessage>()) { activityQueue.AddLast((msgSeq++, m)); clock.Enter(); }
@@ -252,7 +270,10 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
             {
                 var fireAt = Duration.MsOf(((TimerFiredEvent)m.Event).FireAt);
                 var msg = m;
-                clock.Schedule(fireAt, () => { lock (gate) { Enqueue(msg); Signal(); } });
+                // An attempt's timer fires at its deadline though a work item is in flight (R-09-300, Issue I-390); every other timer
+                // fires when nothing is in flight, as before.
+                if (onTime.Remove(TimerKey(m))) clock.ScheduleOnTime(fireAt, () => { lock (gate) { Enqueue(msg); Signal(); } });
+                else clock.Schedule(fireAt, () => { lock (gate) { Enqueue(msg); Signal(); } });
             }
             var consumed = lockedCounts[rec.Id];
             lockedCounts.Remove(rec.Id);
@@ -414,6 +435,9 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
         var seqNo = msgSeq;
         e["activities"] = new System.Text.Json.Nodes.JsonArray((outbound ?? Array.Empty<TaskMessage>()).Select(m => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject { ["seq"] = seqNo++, ["msg"] = Ser(m) }).ToArray());
         e["timers"] = new System.Text.Json.Nodes.JsonArray((timers ?? Array.Empty<TaskMessage>()).Select(m => (System.Text.Json.Nodes.JsonNode?)Ser(m)).ToArray());
+        // Which of them are attempts' timers, fired on time again by a service rebuilt from the history (R-09-300).
+        var attempts = (timers ?? Array.Empty<TaskMessage>()).Select(TimerKey).Where(onTime.Contains).ToList();
+        if (attempts.Count > 0) e["attemptTimers"] = new System.Text.Json.Nodes.JsonArray(attempts.Select(k => (System.Text.Json.Nodes.JsonNode?)k).ToArray());
         if (orchestrationState is not null) e["state"] = Ser(orchestrationState);
         History!.Append("episode", e);
     }
@@ -431,6 +455,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
     public System.Text.Json.Nodes.JsonObject Rebuild(IEnumerable<(string code, System.Text.Json.Nodes.JsonObject data)> facts)
     {
         var timers = new Dictionary<string, TaskMessage>(StringComparer.Ordinal);
+        var attemptTimers = new HashSet<string>(StringComparer.Ordinal);
         var activities = new SortedDictionary<long, TaskMessage>();
         int episodes = 0, messages = 0;
         lock (gate)
@@ -476,6 +501,7 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
                             var m = De<TaskMessage>((string)t!);
                             timers[TimerKey(m)] = m;
                         }
+                        foreach (var k in d["attemptTimers"]?.AsArray() ?? []) if ((string?)k is string key) attemptTimers.Add(key);
                         rec.Pending.RemoveRange(0, Math.Min(consumed, rec.Pending.Count));
                         if ((string?)d["state"] is string st)
                         {
@@ -502,7 +528,9 @@ public sealed class VirtualTimeOrchestrationService : IOrchestrationService, IOr
                 if (instances.TryGetValue(m.OrchestrationInstance.InstanceId, out var r) && r.Completed) continue;
                 var msg = m;
                 due++;
-                clock.Schedule(Duration.MsOf(((TimerFiredEvent)m.Event).FireAt), () => { lock (gate) { Enqueue(msg); Signal(); } });
+                Action fire = () => { lock (gate) { Enqueue(msg); Signal(); } };
+                if (attemptTimers.Contains(TimerKey(m))) clock.ScheduleOnTime(Duration.MsOf(((TimerFiredEvent)m.Event).FireAt), fire);
+                else clock.Schedule(Duration.MsOf(((TimerFiredEvent)m.Event).FireAt), fire);
             }
             Signal();
             return new System.Text.Json.Nodes.JsonObject

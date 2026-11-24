@@ -96,6 +96,12 @@ sealed class Worker : IDisposable
     public readonly System.Collections.Concurrent.ConcurrentQueue<string> Named = new();
     /// <summary>How long the worker takes to answer an attempt of a payment and step, for a slow call (R-09-238); none by default.</summary>
     public Func<string?, string?, TimeSpan>? Delay;
+    /// <summary>How long the worker takes to answer one attempt of a payment's step (R-09-298): a call that outlives its attempt's timeout.</summary>
+    public Func<string?, string?, int, TimeSpan>? AttemptDelay;
+    /// <summary>Each attempt's payment, step and attempt, with when it reached the worker and when the worker answered it.</summary>
+    public readonly System.Collections.Concurrent.ConcurrentQueue<(string call, int attempt, DateTimeOffset at, DateTimeOffset answered)> Timed = new();
+    /// <summary>The step's fact names the attempt that answered it (<c>release#attempt</c>), so a late answer's write shows if it is taken.</summary>
+    public bool TagAttempts;
 
     public Worker()
     {
@@ -134,10 +140,14 @@ sealed class Worker : IDisposable
                 var release = J.S(req, "release");
                 Calls.Enqueue($"{payment}:{J.S(req, "step")}@{release}");
                 Named.Enqueue($"{payment}={J.S(req, "distribution")}");
+                var attempt = (int)(J.Num(req, "attempt") ?? 1);
+                var came = DateTimeOffset.UtcNow;
                 if (Delay?.Invoke(payment, J.S(req, "step")) is { } wait && wait > TimeSpan.Zero) await Task.Delay(wait);
+                if (AttemptDelay?.Invoke(payment, J.S(req, "step"), attempt) is { } slow && slow > TimeSpan.Zero) await Task.Delay(slow);
+                Timed.Enqueue(($"{payment}:{J.S(req, "step")}", attempt, came, DateTimeOffset.UtcNow));
                 answer = activity.StartsWith("p.hold.")
                     ? new JsonObject { ["kind"] = "held", ["hold"] = $"HOLD-{payment}", ["expiry"] = "P1D" }
-                    : new JsonObject { ["kind"] = "result", ["outcome"] = "ok", ["writes"] = new JsonObject { [$"facts.{J.S(req, "step")}"] = release } };
+                    : new JsonObject { ["kind"] = "result", ["outcome"] = "ok", ["writes"] = new JsonObject { [$"facts.{J.S(req, "step")}"] = TagAttempts ? $"{release}#{attempt}" : release } };
             }
             else if (path.EndsWith("/sent")) answer = new JsonObject { ["messages"] = new JsonArray() };
             else answer = new JsonObject { ["deliveries"] = new JsonArray() };
@@ -210,7 +220,7 @@ public partial class EngineHostTests(Servers servers)
             """),
         [$"p.enrich.check.v1@{release}"] = Doc($$"""
             { "kind": "activity", "name": "p.enrich.check.v1", "release": "{{release}}", "type": "enrich", "reads": ["header"], "writes": ["facts.a", "facts.b"],
-              "outcomes": [ { "name": "ok", "primary": true } ], "effect": "read" }
+              "outcomes": [ { "name": "ok", "primary": true } ], "effect": "read", "policy": { "attemptTimeout": "PT1M" } }
             """),
         [$"p.hold.approve.v1@{release}"] = Doc($$"""
             { "kind": "activity", "name": "p.hold.approve.v1", "release": "{{release}}", "type": "hold", "reads": ["header"], "writes": ["facts.approval"],
@@ -503,9 +513,17 @@ public partial class EngineHostTests(Servers servers)
 
     /// <summary>A distribution's stored package as the studio builds it: an engine package per platform workflow (engine/&lt;wf&gt;/).</summary>
     /// <param name="flowable">The package as the studio exports it for Flowable too: the platform workflow's BPMN beside its documents (I-269).</param>
-    static byte[] Package(string release, bool flowable = false)
+    /// <param name="timeout">A second platform workflow, whose first step's call may outlive its attempt's timeout (R-09-298).</param>
+    static byte[] Package(string release, bool flowable = false, bool timeout = false)
     {
         var docs = Documents(release);
+        // A step whose call may outlive its attempt's timeout (R-09-298): three seconds, then a retry.
+        if (timeout) docs[$"p.wf.timeout.v1@{release}"] = Doc($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.timeout.v1", "release": "{{release}}", "do": [
+              { "id": "a", "call": "p.enrich.check.v1", "policy": { "attemptTimeout": "PT3S" } },
+              { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
         docs[$"p.wf.ask.v1@{release}"] = Doc($$"""
             { "kind": "workflow", "wfKind": "platform", "name": "p.wf.ask.v1", "release": "{{release}}", "do": [
               { "id": "a", "call": "p.enrich.check.v1" },
@@ -521,6 +539,11 @@ public partial class EngineHostTests(Servers servers)
             Put("engine/p.wf.ask.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
             foreach (var (k, v) in docs) Put($"engine/p.wf.ask.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
             if (flowable) Put($"engine/p.wf.ask.v1/flowable/p.wf.ask.v1@{release}.bpmn20.xml", AskBpmn(release));
+            if (timeout)
+            {
+                Put("engine/p.wf.timeout.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
+                foreach (var (k, v) in docs) Put($"engine/p.wf.timeout.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+            }
         }
         return ms.ToArray();
     }

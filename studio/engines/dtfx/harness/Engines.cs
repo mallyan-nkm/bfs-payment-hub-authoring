@@ -22,6 +22,31 @@ public sealed class DtfxEngine : IEngine
 
     public Task Timer(long at, CancellationToken ct) => ctx.CreateTimer(Duration.Utc(at), "timer", ct);
 
+    /// <summary>
+    /// The attempt timers an episode set, by instance and due time, for the service to fire on time (R-09-300): on the engine host an
+    /// attempt's timer fires at its deadline though a work item is in flight. Marked only as the timer is first set, not on replay.
+    /// </summary>
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> AttemptTimers = new(StringComparer.Ordinal);
+
+    public static string AttemptTimerKey(string instance, long at) => $"{instance}|{at}";
+
+    public Task AttemptTimer(long at, CancellationToken ct)
+    {
+        if (!ctx.IsReplaying) AttemptTimers.AddOrUpdate(AttemptTimerKey(InstanceId, at), 1, (_, n) => n + 1);
+        return Timer(at, ct);
+    }
+
+    /// <summary>Takes one mark of an attempt timer of an instance due at a time; false when the timer is not an attempt's.</summary>
+    public static bool TakeAttemptTimer(string instance, long at)
+    {
+        var key = AttemptTimerKey(instance, at);
+        while (AttemptTimers.TryGetValue(key, out var n))
+        {
+            if (n <= 1 ? AttemptTimers.TryRemove(new KeyValuePair<string, int>(key, n)) : AttemptTimers.TryUpdate(key, n - 1, n)) return true;
+        }
+        return false;
+    }
+
     public async Task<JsonObject> Child(string instanceId, JsonObject input) =>
         (JsonObject)J.Parse(await ctx.CreateSubOrchestrationInstance<string>(OrchestrationName, "", instanceId, J.Str(input)))!;
 

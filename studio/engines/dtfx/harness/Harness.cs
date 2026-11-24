@@ -345,6 +345,8 @@ public sealed partial class Harness : IDisposable
             // The step whose handler the attempt is in (R-09-241, Issue I-290).
             ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
+        // On the engine host the attempt ends at its deadline on the host's clock, and a later answer is ignored (R-09-298, Issue I-390).
+        if (Service.History is not null && J.Num(a, "deadline") is double due) req[WorkerRouter.AbandonAt] = Clock.WallAt((long)due);
         var res = await party.Call(req);
         Schedule(res);
         // The party service answers at once; the time an attempt takes is the stub's latency.
@@ -361,7 +363,7 @@ public sealed partial class Harness : IDisposable
             await Clock.SleepForever();
         }
         if (kind == "error")
-            return new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["at"] = Clock.Now };
+            return new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["late"] = J.P(res, "late")?.DeepClone(), ["at"] = Clock.Now };
         // A hold opened its item: the orchestration awaits the operator's decision (Issue I-98).
         if (kind == "held") return new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry"), ["expiryCalendar"] = J.S(res, "expiryCalendar"), ["calendar"] = J.Clone(J.P(res, "calendar")), ["at"] = Clock.Now };
         // Writes: references go back to the engine; the payload part is staged in the claim-check store.

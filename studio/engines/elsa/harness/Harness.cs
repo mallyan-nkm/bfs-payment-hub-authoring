@@ -59,12 +59,6 @@ public sealed class Instance
     public Instance? Parent;
     public int ParentOp;
     public int LateResults;
-    /// <summary>
-    /// On a distribution's service, the instance's attempts whose worker call runs now (R-09-286), and the timers that came due
-    /// meanwhile: they fire once the calls have answered, as they did when the calls ran on the clock's thread (Issue I-390).
-    /// </summary>
-    public int InFlight;
-    public readonly List<Action> Deferred = new();
 }
 
 public sealed partial class Harness : IDisposable
@@ -302,14 +296,13 @@ public sealed partial class Harness : IDisposable
             case "timer":
             {
                 var at = (long)J.Num(op, "at")!.Value;
-                void Fire()
+                // A timer fires at its time, though an attempt of the instance is still in its worker's call: an attempt's timer
+                // ends that attempt at its deadline (R-09-298, Issue I-390).
+                Clock.Schedule(at, () =>
                 {
                     if (inst.Completed || inst.Cancelled.Contains(id)) return;
-                    // An attempt of the instance still in its worker's call: the timer waits for its answer (Issue I-390).
-                    if (inst.InFlight > 0) { inst.Deferred.Add(Fire); return; }
                     Deliver(inst, Stamp(new JsonArray(new JsonObject { ["op"] = id, ["result"] = null })));
-                }
-                Clock.Schedule(at, Fire);
+                });
                 break;
             }
             case "child":
@@ -351,7 +344,6 @@ public sealed partial class Harness : IDisposable
     {
         var req = AttemptRequest(a);
         var gate = attempts!;
-        inst.InFlight++;
         _ = Task.Run(async () =>
         {
             JsonObject? res = null;
@@ -362,26 +354,12 @@ public sealed partial class Harness : IDisposable
             finally { gate.Release(); }
             Clock.Schedule(Clock.Now, () =>
             {
-                inst.InFlight--;
-                try
-                {
-                    if (failed is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
-                    var (result, at) = Answer(a, res!);
-                    if (result is null) return; // never answers and has no deadline
-                    var e = new JsonArray(new JsonObject { ["op"] = op, ["result"] = result });
-                    // The answer reaches the instance before a timer that came due while its call ran.
-                    if (at <= Clock.Now) Deliver(inst, Stamp(e));
-                    else Clock.Schedule(at, () => Deliver(inst, Stamp(e)));
-                }
-                finally
-                {
-                    if (inst.InFlight == 0 && inst.Deferred.Count > 0)
-                    {
-                        var due = inst.Deferred.ToList();
-                        inst.Deferred.Clear();
-                        foreach (var d in due) Clock.Schedule(Clock.Now, d);
-                    }
-                }
+                if (failed is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
+                var (result, at) = Answer(a, res!);
+                if (result is null) return; // never answers and has no deadline
+                var e = new JsonArray(new JsonObject { ["op"] = op, ["result"] = result });
+                if (at <= Clock.Now) Deliver(inst, Stamp(e));
+                else Clock.Schedule(at, () => Deliver(inst, Stamp(e)));
             });
         });
     }
@@ -496,6 +474,8 @@ public sealed partial class Harness : IDisposable
             // The step whose handler the attempt is in (R-09-241, Issue I-290).
             ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
+        // On the engine host the attempt ends at its deadline on the host's clock, and a later answer is ignored (R-09-298, Issue I-390).
+        if (history is not null && J.Num(a, "deadline") is double due) req[WorkerRouter.AbandonAt] = Clock.WallAt((long)due);
         return req;
     }
 
@@ -524,7 +504,7 @@ public sealed partial class Harness : IDisposable
             return (null, long.MaxValue);
         }
         if (kind == "error")
-            return (new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["at"] = at }, at);
+            return (new JsonObject { ["kind"] = "error", ["name"] = J.S(res, "name"), ["retryable"] = J.P(res, "retryable")?.DeepClone(), ["message"] = J.S(res, "message"), ["late"] = J.P(res, "late")?.DeepClone(), ["at"] = at }, at);
         // A hold opened its item: the workflow awaits the operator's decision (Issue I-98).
         if (kind == "held") return (new JsonObject { ["kind"] = "held", ["hold"] = J.S(res, "hold"), ["expiry"] = J.S(res, "expiry"), ["expiryCalendar"] = J.S(res, "expiryCalendar"), ["calendar"] = J.Clone(J.P(res, "calendar")), ["at"] = at }, at);
         // Writes: references go back to the engine; the payload part is staged in the claim-check store.

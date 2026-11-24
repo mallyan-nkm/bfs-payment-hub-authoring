@@ -165,6 +165,11 @@ public interface IEngine
     bool Durable { get; }
     Task<JsonObject> Activity(string name, JsonObject input);
     Task Timer(long at, CancellationToken ct);
+    /// <summary>
+    /// An attempt's timer, raced against the attempt (R-05-54). An engine whose service ends an attempt at its deadline though other
+    /// work is in flight marks it so (DTFx on the engine host, R-09-300); any other sets an ordinary timer.
+    /// </summary>
+    Task AttemptTimer(long at, CancellationToken ct) => Timer(at, ct);
     Task<JsonObject> Child(string instanceId, JsonObject input);
     Task<T> WithRetry<T>(RetryPlan options, Func<Task<T>> call);
     void SendEvent(string instanceId, string name, JsonObject data);
@@ -1056,7 +1061,7 @@ public sealed partial class Interp
                 Task? timer = null;
                 // R-05-54: the attempt timeout measures the attempt's own execution. An engine that keeps the deadline
                 // itself answers a late attempt as a Timeout; any other races a timer on its business clock.
-                if (limitAt != long.MaxValue && eng is not IAttemptDeadlines) { timer = eng.Timer(limitAt, cts.Token); waits.Add(timer); }
+                if (limitAt != long.MaxValue && eng is not IAttemptDeadlines) { timer = eng.AttemptTimer(limitAt, cts.Token); waits.Add(timer); }
                 var w = await Task.WhenAny(waits);
                 if (w == task)
                 {
