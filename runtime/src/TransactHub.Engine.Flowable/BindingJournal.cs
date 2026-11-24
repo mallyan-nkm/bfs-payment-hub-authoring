@@ -181,7 +181,10 @@ public sealed partial class FlowableBinding
         var storeOpts = StoreFromEnvironment()!;
         // The payloads of starts not yet registered too: the pending start's and the scheduled ones' (I-302).
         var startRefs = queue.UnorderedItems.Where(x => x.Element.Kind == "start").Select(x => J.S(x.Element.Data, "payloadRef"))
-            .Append(J.S(J.P(s, "pending"), "payloadRef")).OfType<string>();
+            .Append(J.S(J.P(s, "pending"), "payloadRef")).OfType<string>()
+            // And those of the roots already started: their start's payload is the store's too, so the claim check holds it as the
+            // store rebuilds it and the run's store report matches (Issue I-407).
+            .Concat(roots.Select(r => StartRef(r.Label)));
         if (claim is DurableClaimCheck durable) await durable.Resume(insts.Values.Select(i => i.Ref).Concat(startRefs));
         if (J.P(s, "live") is JsonObject live && LiveSignals.Source is not null)
             liveFeed = new StoreSignals.Feed(storeOpts, TimeProvider.System, J.S(live, "subject")!, J.S(live, "kind")!, "flowable", J.S(live, "instance")!);

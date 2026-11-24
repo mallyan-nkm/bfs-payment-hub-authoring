@@ -277,6 +277,11 @@ public class FlowableRestartTests(FlowableServer virtualServer, FlowableLiveServ
             // What the restarted binding holds is what the store rebuilds from the payload's facts.
             var mine = J.A(J.P(J.P(obs, "engine"), "store"), "payloads").Single(x => J.S(x, "ref") == facts.payloadRef);
             Assert.True(J.Truthy(J.P(mine, "rebuilt")) && J.Truthy(J.P(mine, "chain")));
+            // The start's own payload (I-302), which the root's start wrote before the stop, is held as the store rebuilds it too, so the
+            // report of a restarted run says the store matches it (Issue I-407). The store is this collection's: other runs' payloads are in it.
+            var tenant = System.Text.RegularExpressions.Regex.Match(J.Strings(J.P(J.P(obs, "engine"), "log")).First(l => l.StartsWith("restarted (restart 1)")), @"tenant (\S+),").Groups[1].Value;
+            var start = J.A(J.P(J.P(obs, "engine"), "store"), "payloads").Single(x => J.S(x, "ref") == $"root-{tenant}#start");
+            Assert.True(J.Truthy(J.P(start, "rebuilt")) && J.Truthy(J.P(start, "chain")), $"root-{tenant}#start is not held as the store rebuilds it");
             Assert.Equal(baseFacts.steps, facts.steps);
             Assert.Equal(baseFacts.payload, facts.payload);
             Assert.Equal(["a#1", "b#1", "c#1"], baseCalls);
