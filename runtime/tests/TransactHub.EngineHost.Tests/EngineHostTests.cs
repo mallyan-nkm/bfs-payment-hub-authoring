@@ -716,6 +716,90 @@ public partial class EngineHostTests(Servers servers)
     // wait, declared payment-date, takes the value of the payment's acceptance, not the value in force when the timer starts.
     [Fact] public Task Flowable_reads_the_banks_values_as_of_each_step_and_as_of_the_payments_date() => ValuesAsOfEachStep("flowable");
 
+    /// <summary>A workflow with a hook point after its first step, and a bank's notify hook for it, in one stored distribution.</summary>
+    static byte[] HookedPackage()
+    {
+        var docs = Documents("1.0.0");
+        docs["p.wf.hooked.v1@1.0.0"] = Doc("""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.hooked.v1", "release": "1.0.0",
+              "hookPoints": [ { "name": "after-a", "type": "notify", "contract": { "reads": ["header"] } } ],
+              "do": [ { "id": "a", "call": "p.enrich.check.v1" }, { "hook": "after-a" }, { "id": "b", "call": "p.enrich.check.v1" }, { "end": "done" } ] }
+            """);
+        docs["b.hook.tell.v1@1.0.0"] = Doc("""
+            { "kind": "hook", "name": "b.hook.tell.v1", "release": "1.0.0", "implements": { "hookPoint": "after-a", "of": "p.wf.hooked.v1" },
+              "type": "notify", "outcomes": ["done"], "do": [ { "id": "told", "call": "p.enrich.check.v1" }, { "end": "done" } ] }
+            """);
+        var ms = new MemoryStream();
+        using (var z = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        {
+            void Put(string name, string text) { using var w = new StreamWriter(z.CreateEntry(name).Open()); w.Write(text); }
+            Put("manifest.yaml", "kind: distribution\nrelease: 1.0.0\n");
+            Put("engine/p.wf.hooked.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n  b: th-p\n");
+            foreach (var (k, v) in docs) Put($"engine/p.wf.hooked.v1/{(k.StartsWith("p.wf.") ? "workflows" : k.StartsWith("b.hook.") ? "hooks" : "activities")}/{k}.yaml", v!.ToJsonString());
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// R-09-217 (Issue I-335): a bank's hook binding reaches a payment on the long-running engine host from the configuration release in
+    /// force, as its values do (R-09-135). Before, the host's plan carried no bindings, so no bank hook ran on a runtime: a payment ran
+    /// past a bound hook point as past an unbound one. A payment that starts before the release is put in force runs no hook; one that
+    /// starts after runs it.
+    /// </summary>
+    async Task HookBoundInForce(string engine)
+    {
+        var bank = $"hk-{engine}-{Guid.NewGuid():N}"[..20];
+        const string id = "2026.11.24-1";
+        var dist = DistributionRegistry.IdOf(bank, id);
+        using var worker = new Worker();
+        var plans = Path.Combine(Path.GetTempPath(), $"th-hosts-{bank}");
+        try
+        {
+            var package = HookedPackage();
+            await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
+            await WithRegistry(r => r.Activate(dist, Environment, "test", "e2e"));
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", new JsonObject { ["th-p"] = worker.Url }.ToJsonString());
+            await using var sup = await StartSupervisor(engine, bank, plans);
+            try
+            {
+                await Until(async () => J.Truthy(J.P(J.P(await sup.Distribution(dist), "host"), "current")), TimeSpan.FromMinutes(3), $"{dist} current");
+                async Task<JsonObject> Pay(string p)
+                {
+                    var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.hooked.v1" });
+                    Assert.True(r.status == 202, r.body.ToJsonString());
+                    JsonObject? e = null;
+                    await Until(async () => J.S(e = (await sup.Call("GET", $"/payments/{p}")).body, "status") is "ended" or "failed", TimeSpan.FromMinutes(3), $"{p} ended");
+                    Assert.True(J.S(e, "outcome") == "done", e!.ToJsonString());
+                    return e!;
+                }
+                await Pay($"H1-{bank}");
+                await Until(() => Task.FromResult(worker.Calls.Contains($"H1-{bank}:b@1.0.0")), TimeSpan.FromMinutes(1), "H1's last step");
+                Assert.DoesNotContain($"H1-{bank}:told@1.0.0", worker.Calls);
+                // The bank's configuration release with the binding is put in force, as DistributionService puts one (R-09-111).
+                await using (var db = StoreDbContext.Open(Db))
+                    await HookBindings.Publish(db, TimeProvider.System, bank, "1.1.0", new JsonArray(new JsonObject
+                    {
+                        ["hookPoint"] = "p.wf.hooked.v1#after-a", ["hook"] = "b.hook.tell.v1", ["release"] = "1.0.0", ["validFrom"] = "2026-01-01",
+                    }), "test.approver");
+                await Pay($"H2-{bank}");
+                await Until(() => Task.FromResult(worker.Calls.Contains($"H2-{bank}:told@1.0.0")), TimeSpan.FromMinutes(1), "H2's hook ran on the host");
+            }
+            catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+            {
+                throw new Xunit.Sdk.XunitException($"{x.Message}\n--- the supervisor's log ---\n{sup.Log}\n--- the worker's calls ---\n{string.Join(", ", worker.Calls)}");
+            }
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
+    [Fact] public Task Temporal_runs_the_hook_the_configuration_in_force_binds() => HookBoundInForce("temporal");
+    [Fact] public Task Dtfx_runs_the_hook_the_configuration_in_force_binds() => HookBoundInForce("dtfx");
+    [Fact] public Task Elsa_runs_the_hook_the_configuration_in_force_binds() => HookBoundInForce("elsa");
+
     [Fact] public Task Dtfx_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("dtfx");
     [Fact] public Task Elsa_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("elsa");
     // The bug the last change found (R-09-161): on Temporal a message sent to a payment after its run started, as the Central Bank's

@@ -405,7 +405,11 @@ public sealed partial class FlowableBinding
         var i = new Inst
         {
             Pid = pid, Label = label, Name = workflow, Release = release, Key = key, Ref = $"{pid}#ctx", State = state, StartedAt = Elapsed,
-            Bindings = dep.BindingsAt(Duration.Today(now)), // hook bindings are taken when the instance starts (R-06-13)
+            // Hook bindings are taken when the instance starts (R-06-13): on a runtime's engine host, the configuration release's in force
+            // (R-09-217, Issue I-335); kept in the binding's journal with the instance, so a host that restarts keeps them.
+            Bindings = dep.Live && Deployment.LiveBindings is { } live
+                ? Deployment.BindingsIn(J.A(live(new JsonObject { ["tenant"] = J.S(input, "tenant") ?? J.S(config, "tenant"), ["at"] = now }), "bindings"), Duration.Today(now))
+                : dep.BindingsAt(Duration.Today(now)),
         };
         var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
         await claim.Create(i.Ref, payload, new AcceptInfo(J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant", J.S(header, "scheme") ?? workflow.Split('.')[0], direction, J.S(input, "distribution") ?? docKey, J.S(header, "paymentId")));

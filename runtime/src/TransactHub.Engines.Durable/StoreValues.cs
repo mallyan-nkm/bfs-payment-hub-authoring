@@ -20,6 +20,18 @@ public static class StoreValues
     {
         Deployment.LiveValues = a => Read(store, a).GetAwaiter().GetResult();
         Deployment.LiveCalendar = a => Calendar(store, a).GetAwaiter().GetResult();
+        Deployment.LiveBindings = a => Bindings(store, a).GetAwaiter().GetResult();
+    }
+
+    /// <summary>The bank's hook bindings when an instance starts (R-06-13, R-09-217, Issue I-335): those of its latest configuration release in force.</summary>
+    public static async Task<JsonObject> Bindings(StoreOptions store, JsonObject a, CancellationToken ct = default)
+    {
+        var tenant = J.S(a, "tenant") ?? throw new InvalidOperationException("The bank's hook bindings are read for a tenant: the run names none");
+        // As put in force by the moment the instance reads them: the instance's business time may lag the wall clock by the part of a
+        // second its start was rounded to, and a release put in force just before must count. The read is recorded by the engine
+        // (the claim check's op bindings), so a replay takes the same bindings; each binding's validFrom the engine applies on its date.
+        await using var db = StoreDbContext.Open(store);
+        return new JsonObject { ["bindings"] = await HookBindings.InForce(db, tenant, DateTimeOffset.UtcNow, ct) };
     }
 
     /// <summary>

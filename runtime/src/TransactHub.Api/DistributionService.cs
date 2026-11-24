@@ -281,6 +281,9 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     {
         if (await InForce(b.ReleaseId, ct)) return null;
         var values = SetText(b) is { } setText ? await BankValues.ImportText(db, clock, setText, actor, ct) : 0;
+        // The bank's hook bindings, which a payment's instance takes when it starts (R-06-13, R-09-217, Issue I-335).
+        var hooks = SetText(b) is { } hookText ? BankValues.HookBindingsOf(hookText) : [];
+        if (SetText(b) is not null) await HookBindings.Publish(db, clock, b.Bank, b.Release, hooks, actor, ct);
         var store = new VersionedValues(db, clock);
         var bindings = Bindings(b);
         foreach (var bd in bindings)
@@ -293,7 +296,7 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
         await Lookups.Import(db, clock, b.Bank, b.Release, tables, actor, ct);
         var result = new JsonObject
         {
-            ["id"] = b.ReleaseId, ["values"] = values, ["bindings"] = bindings.Count, ["referenceTables"] = tables.Count, ["checkedAgainst"] = Names(contracts),
+            ["id"] = b.ReleaseId, ["values"] = values, ["bindings"] = bindings.Count, ["hookBindings"] = hooks.Count, ["referenceTables"] = tables.Count, ["checkedAgainst"] = Names(contracts),
             ["why"] = why, ["consent"] = consent?.DeepClone(), ["inForce"] = true, ["state"] = "in-force",
         };
         await new FactLog(db, clock).Append(b.ReleaseId, "configuration", new NewFact(DistributionRegistry.InForceKind, b.Release, (JsonObject)result.DeepClone(), b.ReleaseId, actor), ct);

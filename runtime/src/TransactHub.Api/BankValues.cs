@@ -75,6 +75,14 @@ public static class BankValues
     public static Task<List<JsonObject>> InForce(StoreDbContext db, string tenant, DateTimeOffset at, CancellationToken ct = default) =>
         ConfigurationValues.InForce(db, tenant, at, ct);
 
+    /// <summary>The hook bindings of a configuration set (each a mapping with a <c>hookPoint</c>), as JSON (R-09-217, Issue I-335).</summary>
+    public static JsonArray HookBindingsOf(string yaml)
+    {
+        var (_, root) = Read(yaml);
+        if (root is null || !root.Children.TryGetValue(new YamlScalarNode("bindings"), out var bs) || bs is not YamlSequenceNode seq) return [];
+        return new JsonArray(seq.Children.OfType<YamlMappingNode>().Where(b => S(b, "hookPoint") is not null && S(b, "hook") is not null).Select(Json).ToArray());
+    }
+
     static (string release, YamlMappingNode? root) Read(string text)
     {
         var ys = new YamlStream();

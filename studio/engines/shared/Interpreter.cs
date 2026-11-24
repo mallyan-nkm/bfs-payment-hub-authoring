@@ -336,7 +336,7 @@ public sealed partial class Interp
         StartedAt = eng.Now;
         // Pins are taken when the instance starts (R-01-16); hook bindings likewise (R-06-13).
         foreach (var a in J.A(doc, "artefacts")) pins[J.S(a, "name")!] = J.S(a, "release")!;
-        bindings = dep.BindingsAt(Duration.Today(eng.Now));
+        bindings = await BindingsAtStart();
         ReleaseTrace.Add($"{ShortName(J.S(doc, "name")!)}@{J.S(doc, "release")}");
         await RunWorkflowBody(new Scope());
         // A notify hook does not delay the flow (R-06-09), but the instance completes with its result.
@@ -691,6 +691,18 @@ public sealed partial class Interp
     /// as of the step's time or of the payment's acceptance, as its owner declares (R-04-10). Elsewhere, the deployment's values on
     /// the engine's day, as before. Null when no live read is needed.
     /// </summary>
+    /// <summary>
+    /// The hook bindings an instance takes when it starts (R-06-13): on a runtime's engine host that reads the bank's configuration live,
+    /// those of the configuration release in force, read once through the host's claim check (op <c>bindings</c>) so that a replay
+    /// takes the same (R-09-217, Issue I-335); else the deployment's configuration set.
+    /// </summary>
+    async Task<List<JsonObject>> BindingsAtStart()
+    {
+        if (!dep.Live || Deployment.LiveBindings is null) return dep.BindingsAt(Duration.Today(eng.Now));
+        var r = await eng.Activity(ClaimCheck, new JsonObject { ["op"] = "bindings", ["tenant"] = J.S(dep.Config, "tenant"), ["at"] = eng.Now });
+        return Deployment.BindingsIn(J.A(r, "bindings"), Duration.Today(eng.Now));
+    }
+
     async Task<Func<string, string?>?> LiveValuesOf(IEnumerable<string?> parameters, Frame frame)
     {
         if (!dep.Live) return null;
@@ -1255,7 +1267,7 @@ public sealed partial class Interp
         foreach (var (k, v) in J.Obj(J.P(input, "callCounts"))) callCounts[k] = (int)J.D(v)!.Value;
         foreach (var (k, v) in J.Obj(J.P(input, "pins"))) pins[k] = J.AsKey(v)!;
         foreach (var (k, v) in J.Obj(J.P(input, "legs"))) legs[k] = J.AsKey(v)!;
-        bindings = dep.BindingsAt(Duration.Today(eng.Now));
+        bindings = await BindingsAtStart();
         var st = (JsonObject)J.P(input, "step")!;
         var from = (int)J.Num(input, "from")!.Value;
         var n = (int)J.Num(input, "n")!.Value;

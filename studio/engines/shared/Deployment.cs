@@ -71,8 +71,22 @@ public sealed class Deployment
     }
 
     /// <summary>Hook bindings in force on a date (R-06-13).</summary>
-    public List<JsonObject> BindingsAt(string date) => J.A(Config, "bindings").OfType<JsonObject>()
+    public List<JsonObject> BindingsAt(string date) => BindingsIn(J.A(Config, "bindings"), date);
+
+    /// <summary>The hook bindings of a list in force on a date: validFrom not after it, validTo not before it.</summary>
+    public static List<JsonObject> BindingsIn(IEnumerable<JsonNode?> all, string date) => all.OfType<JsonObject>()
         .Where(b => string.CompareOrdinal(J.S(b, "validFrom") ?? "", date) <= 0 && (J.S(b, "validTo") is not string to || string.CompareOrdinal(to, date) >= 0)).ToList();
+
+    /// <summary>
+    /// Where a runtime's engine host reads the bank's hook bindings when an instance starts (R-06-13, R-09-217, Issue I-335): given
+    /// <c>tenant</c> and <c>at</c> (ms), the <c>bindings</c> of the latest configuration release put in force by then. Installed by the
+    /// runtime's builds from the store, beside <see cref="LiveValues"/>; the studio's harnesses leave it unset and read the
+    /// deployment's configuration set.
+    /// </summary>
+    public static Func<JsonObject, JsonObject>? LiveBindings;
+
+    /// <summary>The hook bindings asked of the live source, or none (an engine's host answers the claim check's op <c>bindings</c> with it).</summary>
+    public static JsonObject BindingsOp(JsonObject a) => LiveBindings?.Invoke(a) ?? new JsonObject { ["bindings"] = new JsonArray() };
 
     /// <summary>
     /// The value of a parameter (<c>owner#name</c>) in force on a date, from the configuration's <c>values</c>, as the studio looks it
