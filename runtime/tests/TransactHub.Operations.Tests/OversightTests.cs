@@ -89,8 +89,19 @@ public sealed class FraudAlertTests(Databases dbs)
         // Releasing the payment is its own action (approve its hold), as the view offers it; the alert's chain says it was asked.
         Assert.Equal(HttpStatusCode.BadRequest, (await op.PostAsJsonAsync($"/ops/api/alerts/{suspect}/payment-action", new { action = "pay-anyway" })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await op.PostAsJsonAsync($"/ops/api/alerts/{plain}/payment-action", new { action = "release" })).StatusCode);
+        // A suspect payment's release needs a supervisor's second approval (R-05-94, Issue I-279): the view's approve for a hold after
+        // p.screen.fraud.v1. It waits for another person; the operator who asked may not approve it, a supervisor does.
+        Assert.Equal(HttpStatusCode.BadRequest, (await op.PostAsJsonAsync($"/ops/api/alerts/{suspect}/payment-action", new { action = "release" })).StatusCode);
         var released = await OversightHost.Json(await op.PostAsJsonAsync($"/ops/api/alerts/{suspect}/payment-action", new { action = "release", remarks = "The employer confirmed the file (synthetic)" }));
-        Assert.Equal(("approve", "done"), ((string?)released["asked"], (string?)released["status"]));
+        Assert.Equal(("approve", "pending-approval", "Supervisor"), ((string?)released["asked"], (string?)released["status"], (string?)released["secondApprover"]));
+        await using (var db = StoreDbContext.Open(store))
+            Assert.Empty(await db.Facts.AsNoTracking().Where(f => f.SubjectId == suspect && f.Kind == "hold" && f.Code == "decided").ToListAsync());
+        Assert.Equal("held", (string?)(await OversightHost.Json(await op.GetAsync("/ops/api/alerts")))["rows"]!.AsArray().Single(r => (string?)r!["item"] == suspect)!["state"]);
+        var actionId = (string)released["action"]!;
+        var otherOperator = host.As("op-3", $"{Bank}:Operator");
+        Assert.Equal(HttpStatusCode.Forbidden, (await otherOperator.PostAsJsonAsync($"/ops/api/payments/{suspect}/actions/{actionId}/decision", new { approve = true, remarks = "an operator only" })).StatusCode);
+        var sup = host.As("sup-1", $"{Bank}:Operator", $"{Bank}:Supervisor");
+        Assert.Equal(HttpStatusCode.OK, (await sup.PostAsJsonAsync($"/ops/api/payments/{suspect}/actions/{actionId}/decision", new { approve = true, remarks = "Second approval (synthetic)" })).StatusCode);
         await using (var db = StoreDbContext.Open(store))
         {
             var decided = await db.Facts.AsNoTracking().Where(f => f.SubjectId == suspect && f.Kind == "hold" && f.Code == "decided").ToListAsync();

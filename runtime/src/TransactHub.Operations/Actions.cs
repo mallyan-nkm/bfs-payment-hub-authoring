@@ -95,6 +95,8 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 var when = a["when"] as JsonObject ?? new JsonObject();
                 if (ActionNames.HoldDecisions.TryGetValue(name, out var hd) && open?.kind != hd.hold) continue;
                 if ((string?)when["hold"] is string wantHold && open?.kind != wantHold) continue;
+                // An action held to the step that led to the hold (R-05-94, Issue I-279): a fraud hold's release needs a second approver.
+                if ((string?)when["activity"] is string led && (open is not { } held || !await LedBy(subjectId, held.seq, led, ct))) continue;
                 // An action for some platform workflows only (R-05-61): offered on a payment that runs one of them. A payment whose
                 // steps name no workflow (recorded before they did) is offered it, as before.
                 if (when["workflow"] is JsonArray wf && platform is not null && !wf.Any(x => (string?)x == platform)) continue;
@@ -113,8 +115,8 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         return offers;
     }
 
-    /// <summary>The open hold of a payment, from the store itself (the read model may be a moment behind).</summary>
-    async Task<(string id, string kind)?> OpenHold(string subjectId, CancellationToken ct)
+    /// <summary>The open hold of a payment, from the store itself (the read model may be a moment behind), with where it opened on the chain.</summary>
+    async Task<(string id, string kind, int seq)?> OpenHold(string subjectId, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);
         var facts = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "hold").OrderBy(f => f.Seq).ToListAsync(ct);
@@ -122,7 +124,20 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         var open = facts.LastOrDefault(f => f.Code == "opened" && !closed.Contains((string?)JsonNode.Parse(f.DataJson)?["hold"]));
         if (open is null) return null;
         var d = JsonNode.Parse(open.DataJson)!;
-        return ((string)d["hold"]!, (string?)d["kind"] ?? "approval");
+        return ((string)d["hold"]!, (string?)d["kind"] ?? "approval", open.Seq);
+    }
+
+    /// <summary>
+    /// Whether a step of the activity led to the hold opened at <paramref name="openedAt"/> (R-05-94, Issue I-279): the activity the hold's
+    /// opening fact names as the step after which it opened (<c>after</c>, which the runtime's hold records), else the step
+    /// <see cref="HoldCause"/> finds on the chain before it, as the hold's reason names it.
+    /// </summary>
+    async Task<bool> LedBy(string subjectId, int openedAt, string activity, CancellationToken ct)
+    {
+        await using var db = StoreDbContext.Open(store);
+        var opened = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Seq == openedAt).Select(f => f.DataJson).FirstOrDefaultAsync(ct);
+        if ((string?)JsonNode.Parse(opened ?? "{}")?["after"] is string after) return after == activity;
+        return await HoldCause.Before(db, subjectId, openedAt, ct) is { } cause && cause.Activity == activity;
     }
 
     /// <summary>

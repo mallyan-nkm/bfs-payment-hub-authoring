@@ -178,7 +178,7 @@ public static class Seed
             [
                 new CreditTransfer
                 {
-                    PaymentId = new PaymentIdentification { EndToEndId = $"{fileId}-1" }, InstructedAmount = Money.Aed(1500m), Creditor = new Party { Name = CreditorName },
+                    PaymentId = new PaymentIdentification { EndToEndId = $"{fileId}-1" }, InstructedAmount = new Money(1500m, "AED"), Creditor = new Party { Name = CreditorName },
                     CreditorAccount = new Account { Iban = Iban }, CreditorAgent = new Agent { MemberId = "203320101" },
                     SupplementaryData = new Dictionary<string, JsonObject> { ["uae.wps"] = new() { ["personId"] = PersonId, ["fixedPay"] = 1200m } },
                 },

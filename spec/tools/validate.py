@@ -910,6 +910,51 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
                 err("L48", at, "binds %s twice from %s" % (port, b.get("validFrom")))
             seen.add((port, b.get("validFrom")))
 
+# ------------------------------------------------------- the rates feed and the studio's configuration releases
+# L52 (R-11-101, Issue I-276): a bank whose port bindings bind the rates port p.port.fx-rates.v1 takes its rates from the feed, so its
+# configuration (the folder's configuration-set.yaml and its newest release in configuration-sets/) sets no p.enrich.fx-rate.v1#rates:
+# a studio release that set them would be newer than the feed's and its typed rates would win until the feed ran again.
+# L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration; the feed numbers its releases as the
+# patches after the bank's newest, so the two lines of numbers never meet. A configuration release in configuration-sets/ is a major
+# or a minor (x.y.0), as is every configuration set the factory's examples hold.
+FX_PORT, FX_RATES = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates"
+
+
+def release_key(r):
+    try:
+        return tuple(int(x) for x in str(r).split("."))
+    except ValueError:
+        return (0,)
+
+
+for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
+    where = "content-configurations/banks/%s" % bank.name
+    feed = False
+    for f in sorted(bank.glob("*.yaml")) + sorted((bank / "port-bindings").glob("*.yaml") if (bank / "port-bindings").is_dir() else []):
+        for d in yaml.safe_load_all(f.read_text()):
+            if isinstance(d, dict) and d.get("kind") == "port-bindings" and any(isinstance(b, dict) and b.get("port") == FX_PORT for b in d.get("bindings") or []):
+                feed = True
+    sets = []
+    if (bank / "configuration-set.yaml").is_file():
+        sets.append(("configuration-set.yaml", yaml.safe_load((bank / "configuration-set.yaml").read_text()) or {}))
+    released = []
+    for f in sorted((bank / "configuration-sets").glob("*.yaml")) if (bank / "configuration-sets").is_dir() else []:
+        d = yaml.safe_load(f.read_text()) or {}
+        if not str(f.stem).endswith(".0"):
+            err("L53", "%s/configuration-sets/%s" % (where, f.name), "is a patch release of the bank's configuration: the studio releases a major or a minor, and the rates feed numbers its releases as the patches after the newest")
+        released.append((release_key(f.stem), "configuration-sets/%s" % f.name, d))
+    if released:
+        _, name, d = max(released, key=lambda x: x[0])
+        sets.append((name, d))
+    if feed:
+        for name, d in sets:
+            if any(isinstance(v, dict) and v.get("parameter") == FX_RATES for v in d.get("values") or []):
+                err("L52", "%s/%s" % (where, name), "sets %s, but the bank binds %s: its rates come from the feed, and typed rates in a newer release would win over them" % (FX_RATES, FX_PORT))
+
+for path, d in docs:
+    if d.get("kind") == "configuration-set" and d.get("release") and not str(d.get("release")).endswith(".0"):
+        err("L53", path, "configuration set %s is a patch release: a bank's configuration is released as a major or a minor" % d.get("release"))
+
 # ------------------------------------------------------- operations views
 # L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
 # apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
@@ -1123,6 +1168,13 @@ for path, d in docs:
                 hosts = shown if only is None else [w for w in shown if w in only]
                 if not hosts or not all(name in (by_name.get(w) or {}).get("signals", []) for w in hosts):
                     err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
+            # R-05-94 (Issue I-279): an action held to the step that led to its hold names a hold and an activity a flow of the view reaches.
+            led = (a.get("when") or {}).get("activity")
+            if led is not None:
+                if not (a.get("when") or {}).get("hold"):
+                    err("L38", at, "action %s names the activity that led to its hold (%s) but no hold" % (name, led))
+                elif led not in by_name or not any(reached([w], led) for w in flows):
+                    err("L38", at, "action %s is held to a hold after %s, which no flow of this view reaches" % (name, led))
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
                 err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
         # R-05-67 (Issue I-144): a fixed report is the subject's, and every column is a declared field, a declared line field

@@ -24,6 +24,15 @@ export function alertOffers(a: Pick<Alert, 'state' | 'closed'>): { release: bool
   return { release: a.state === 'held' && !a.closed, refuse: a.state === 'held' && !a.closed, close: a.state !== 'held' && !a.closed };
 }
 
+/**
+ * What the console says once a release or refusal of an alert's payment was asked (R-05-94, Issue I-279): carried out, or waiting for
+ * the second approver the view names (a suspect payment's release waits for a supervisor).
+ */
+export function askedNote(what: 'release' | 'refuse', answer: { status?: string | null; secondApprover?: string | null } | null | undefined): string {
+  const asked = what === 'release' ? 'Release of the payment asked' : 'Refusal of the payment asked';
+  return answer?.status === 'pending-approval' ? `${asked}: it waits for a ${(answer.secondApprover ?? 'second approver').toLowerCase()}'s approval` : asked;
+}
+
 /** The "rates stale" warning, or null while every rate is within the bank's limit. */
 export function ratesWarning(r: Rates | null): string | null {
   if (!r?.stale) return null;

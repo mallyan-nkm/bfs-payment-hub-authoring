@@ -13,13 +13,26 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
     static string NewId() => Guid.NewGuid().ToString("N");
 
     /// <summary>
-    /// Stores a bulk and its transactions under the release it was accepted on, with a first status fact
-    /// for the bulk (RCVD). One save: all of it or nothing.
+    /// The id a payment is accepted under (R-09-180, Issue I-286): one the front door started it under (<c>header.paymentId</c>), when the
+    /// store has its pin (<see cref="DistributionRegistry.PinKind"/>) and no bulk or payment holds that id yet; else a new one. A payment
+    /// the front door started then has one id: its pin, its run's facts, its kept files, the read model and the consoles all name it.
     /// </summary>
-    public async Task<AcceptedBulk> AcceptBulk(string tenant, string scheme, Direction direction, PaymentBulk bulk, string releaseId, CancellationToken ct = default)
+    async Task<string> IdFor(string? frontDoorId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(frontDoorId) || frontDoorId.Length > 64) return NewId();
+        if (!await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == frontDoorId && f.Kind == DistributionRegistry.PinKind, ct)) return NewId();
+        if (await db.Bulks.AsNoTracking().AnyAsync(b => b.Id == frontDoorId, ct) || await db.Payments.AsNoTracking().AnyAsync(x => x.Id == frontDoorId, ct)) return NewId();
+        return frontDoorId;
+    }
+
+    /// <summary>
+    /// Stores a bulk and its transactions under the release it was accepted on, with a first status fact
+    /// for the bulk (RCVD). One save: all of it or nothing. A bulk the front door started is accepted under its id (R-09-180).
+    /// </summary>
+    public async Task<AcceptedBulk> AcceptBulk(string tenant, string scheme, Direction direction, PaymentBulk bulk, string releaseId, CancellationToken ct = default, string? frontDoorId = null)
     {
         var at = StoreTime.Of(clock.GetUtcNow());
-        var bulkId = NewId();
+        var bulkId = await IdFor(frontDoorId, ct);
         var debtor = PartyOf(tenant, bulk.Debtor, at);
         db.Parties.Add(debtor);
         var initiator = bulk.InitiatingParty is null ? null : PartyOf(tenant, bulk.InitiatingParty, at);
@@ -48,10 +61,10 @@ public sealed class PaymentStore(StoreDbContext db, TimeProvider? clock = null)
         return new AcceptedBulk(bulkId, ids);
     }
 
-    public async Task<string> AcceptPayment(string tenant, string scheme, Direction direction, CreditTransfer t, string releaseId, CancellationToken ct = default)
+    public async Task<string> AcceptPayment(string tenant, string scheme, Direction direction, CreditTransfer t, string releaseId, CancellationToken ct = default, string? frontDoorId = null)
     {
         var at = StoreTime.Of(clock.GetUtcNow());
-        var id = NewId();
+        var id = await IdFor(frontDoorId, ct);
         db.Payments.Add(PaymentOf(id, tenant, scheme, direction, t, releaseId, at, null, 0, null, null, null));
         await db.SaveChangesAsync(ct);
         await new FactLog(db, clock).Append(id, "payment", new NewFact("status", nameof(TransactionStatus.RCVD), ReleaseId: releaseId), ct);

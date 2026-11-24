@@ -1431,7 +1431,8 @@ async function execAwait(st: any, frame: Frame) {
       });
       inst.awaiting = { type: aw.message, family: aw.family, stepId: id, resolve: (m) => { kill(); off(); resolve(m); } };
       if (timeout) {
-        const at = addDuration(run.clock.now, timeout, aw.calendar === 'business' ? DEFAULT_CALENDAR : undefined);
+        // On the bank's business calendar, its holidays and closing days included, as a hold's expiry is counted (R-09-183, I-166).
+        const at = addDuration(run.clock.now, timeout, aw.calendar === 'business' ? run.businessCalendar(run.clock.today()) : undefined);
         kill = run.clock.at(at, () => {
           off();
           inst.awaiting = undefined;

@@ -1,6 +1,6 @@
 kind: operations-view
 name: p.view.operations.v1
-release: 1.6.0
+release: 1.7.0
 title: Platform operations view
 description: >-
   What every payment shows an operator, whatever its scheme: where it is in the platform's lifecycle (checks, screening,
@@ -17,7 +17,9 @@ description: >-
   Each default switches its mechanism off, so no period is the runtime's own. Release 1.5.0 shows the inward lifecycle
   p.wf.inward.v2 in place of v1, which WPS's inward legs fill from factory release 1.9.0 (Issue I-141), and offers requeue for a
   dead-lettered step on every engine (R-09-91). Release 1.6.0 counts the turnaround limit in business days of the bank's business
-  calendar, its own closing days included, as a hold's expiry is counted (owner's decision of 23 November 2026, R-05-81).
+  calendar, its own closing days included, as a hold's expiry is counted (owner's decision of 23 November 2026, R-05-81). Release
+  1.7.0 asks a supervisor's second approval to release a payment the fraud engine found suspect: its approval hold follows a step of
+  p.screen.fraud.v1, which the action names (when.activity); every other approval hold is approved as before (R-05-94, Issue I-279).
 platform: [p.wf.corporate.v1, p.wf.inward.v2, p.wf.refund.v1, p.wf.refund-out.v1]
 parameters:
   # R-05-68, R-05-81: a payment open, or that ended, longer than this after its acceptance is in breach; each whole day is a business
@@ -85,6 +87,9 @@ subject:
     - { field: fx, match: exact }
     - { field: approval, match: exact }
   actions:
+    # A payment the fraud engine found suspect is released only with a supervisor's second approval (R-05-94, Issue I-279): the
+    # first declaration of an action that applies is the one offered, so this one comes before the plain approve.
+    - { action: approve, label: Release the suspect payment, role: Operator, secondApprover: Supervisor, remarks: required, when: { hold: approval, activity: p.screen.fraud.v1 } }
     - { action: approve, label: Approve, role: Operator, remarks: optional, when: { hold: approval } }
     - { action: decline, label: Decline, role: Operator, remarks: required, when: { hold: approval } }
     # A repair item released or rejected: dual control, as the source's business exceptions were (Mark as Success).

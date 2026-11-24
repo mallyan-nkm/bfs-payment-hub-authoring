@@ -217,6 +217,17 @@ CASES = [
      "        headOffice: AE-AJ\n", "        headOffice: AE-XX\n", "a head office names no emirate of the emirates table"),
     ("M75", "ERROR L49", "factory/uae.p/reference/uae.p.ref.emirates.v1.yaml",
      "      - code: AE-DU\n", "      - code: AE-AZ\n", "an edition repeats a key"),
+    # L38 (R-05-94, Issue I-279): an action held to the step that led to its hold names an activity a flow of the view reaches
+    ("M84", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
+     "when: { hold: approval, activity: p.screen.fraud.v1 }", "when: { hold: approval, activity: p.screen.fraud.v9 }",
+     "a supervisor's release is held to a fraud step no flow has"),
+    # L52 (R-11-101, Issue I-276): a bank that binds the rates port takes its rates from the feed and sets none in its configuration
+    ("M82", "ERROR L52", "../content-configurations/banks/adib/configuration-set.yaml",
+     "\nvalues:\n", "\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: \"2026-11-01\"\n    value:\n      - { from: USD, to: AED, rate: \"3.6725\" }\n",
+     "a bank on the rates feed types its rates into its configuration"),
+    # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration
+    ("M83", "ERROR L53", "examples/bank/configuration-set.yaml",
+     "\nrelease: 1.10.0\n", "\nrelease: 1.10.1\n", "the studio makes a patch release of a bank's configuration"),
     # L50 (R-11-51): a value read from a reference table names a published table and its columns
     ("M76", "ERROR L50", "examples/bank/configuration-set.yaml",
      "    value:\n      - { routingCode: \"203320101\", name: Example Bank One }\n      - { routingCode: \"302620122\", name: Example Bank Two }\n",

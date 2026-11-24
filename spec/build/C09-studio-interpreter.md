@@ -83,7 +83,7 @@ Size: 5 SP. Phase 2. Branch: `story/c09-s2-virtual-clock-wait-await-and-loop`.
 
 **Definition of Success**
 
-- CK-WAIT-01, CK-AWAIT-01 to 07 and CK-LOOP-01 and 02 pass.
+- CK-WAIT-01, CK-AWAIT-01 to 08 and CK-LOOP-01 and 02 pass.
 
 ### C09-S3 Timeouts and retries
 

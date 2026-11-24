@@ -53,8 +53,8 @@ public sealed class PlatformOnlyBankFolderTests
         var b = PortBindings.FromDirectory(Folder(tenant)).InForce(tenant, Port, DateTimeOffset.Parse("2026-11-24T08:00:00Z"));
         Assert.EndsWith(".invalid/", b.Settings["baseUrl"]);
         Assert.Equal($"env:TH_{tenant.ToUpperInvariant()}_CORE_BANKING_TOKEN", b.Settings["secretRef"]);
-        // The channel the gateway knows the runtime by is the bank's value (R-09-142).
-        Assert.Equal(["baseUrl", "channel", "secretRef"], b.Settings.Keys.Order(StringComparer.Ordinal));
+        // The channel the gateway knows the runtime by, and the currency its accounts are kept in, are the bank's values (R-09-142, R-11-104).
+        Assert.Equal(["baseUrl", "channel", "currency", "secretRef"], b.Settings.Keys.Order(StringComparer.Ordinal));
 
         var rec = new Recorder();
         var cb = CoreBankingAdapters.Create(b, new HttpClient(rec));

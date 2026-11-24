@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertOffers, alertState, ledgerGroups, ratesWarning, type LedgerBank, type Rates } from '../../src/ops/oversight';
+import { alertOffers, alertState, askedNote, ledgerGroups, ratesWarning, type LedgerBank, type Rates } from '../../src/ops/oversight';
 
 // The fraud alerts, the ledger accounts and the rates warning in words (R-05-90 to R-05-92). Synthetic values only.
 
@@ -13,6 +13,12 @@ describe('the fraud alerts (R-05-90)', () => {
   it("says what the alert's payment is now, and whether the alert is closed", () => {
     expect(alertState({ state: 'held', closed: false })).toBe('Payment held');
     expect(alertState({ state: 'refused', closed: true })).toBe('Payment refused; closed');
+  });
+
+  it("says that a suspect payment's release waits for a supervisor's second approval (R-05-94, I-279)", () => {
+    expect(askedNote('release', { status: 'pending-approval', secondApprover: 'Supervisor' })).toBe("Release of the payment asked: it waits for a supervisor's approval");
+    expect(askedNote('release', { status: 'done' })).toBe('Release of the payment asked');
+    expect(askedNote('refuse', { status: 'done' })).toBe('Refusal of the payment asked');
   });
 });
 

@@ -46,6 +46,45 @@ public sealed class SigningTests
     static string Refusal(Dictionary<string, byte[]> files, TrustedSigners trust, ReleaseExpectation? expected = null) =>
         Assert.Throws<SignatureRejected>(() => ReleaseSignature.Verify(files, expected ?? Expected, trust)).Message;
 
+    /// <summary>
+    /// R-09-184 (Issue I-277): a trusted signer names the kinds it may sign and, for a configuration release, the feed it is scoped to,
+    /// checked at verification. The rates feed's key, scoped to <c>fx-rates</c>, verifies the feed's configuration releases and nothing
+    /// else: not a workflow package or a distribution, not a configuration release that claims no feed or another. A key the list gives
+    /// no kinds signs any kind. A scope on a key that may sign more than configuration releases is refused as an invalid trust list.
+    /// </summary>
+    [Fact]
+    public void A_trusted_signer_signs_only_the_kinds_and_the_feed_the_trust_list_gives_it()
+    {
+        using var feedKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var studio = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var scoped = Key(feedKey);
+        scoped["kinds"] = new JsonArray("configuration");
+        scoped["scope"] = new JsonObject { ["feed"] = "fx-rates" };
+        var trust = Trust([scoped, Key(studio)]);
+        var config = new ReleaseClaims("config/example-bank@1.10.1", "", "1.10.1", "", "example-bank", "CS-FEED-1", ReleaseSignature.ConfigurationRelease, new JsonObject { ["feed"] = "fx-rates" });
+        var configExpected = new ReleaseExpectation(config.ReleaseId, "example-bank", ReleaseSignature.ConfigurationRelease);
+        var v = ReleaseSignature.Verify(Signed(feedKey, claims: config), configExpected, trust);
+        Assert.Equal("fx-rates", v.Feed);
+        // Not a workflow package, though it is otherwise good.
+        var wf = Assert.Throws<SignatureRejected>(() => ReleaseSignature.Verify(Signed(feedKey), Expected, trust));
+        Assert.Equal((SignatureRejected.OutOfScope, true), (wf.Code, wf.Message.Contains("may sign configuration only")));
+        // Not a configuration release that claims no feed, or another feed.
+        var plain = config with { Extra = null };
+        Assert.Equal(SignatureRejected.OutOfScope, Assert.Throws<SignatureRejected>(() => ReleaseSignature.Verify(Signed(feedKey, claims: plain), configExpected, trust)).Code);
+        var other = config with { Extra = new JsonObject { ["feed"] = "prices" } };
+        Assert.Equal(SignatureRejected.OutOfScope, Assert.Throws<SignatureRejected>(() => ReleaseSignature.Verify(Signed(feedKey, claims: other), configExpected, trust)).Code);
+        // The studio's key, given no kinds, signs both.
+        Assert.Null(ReleaseSignature.Verify(Signed(studio, claims: plain), configExpected, trust).Feed);
+        ReleaseSignature.Verify(Signed(studio), Expected, trust);
+        // A scope on a key that signs more than configuration releases, or a kind that is none, is an invalid list.
+        var wide = Key(feedKey);
+        wide["scope"] = new JsonObject { ["feed"] = "fx-rates" };
+        Assert.Equal(SignatureRejected.TrustListInvalid, Assert.Throws<SignatureRejected>(() => Trust([wide])).Code);
+        var bad = Key(feedKey);
+        bad["kinds"] = new JsonArray("anything");
+        Assert.Equal(SignatureRejected.TrustListInvalid, Assert.Throws<SignatureRejected>(() => Trust([bad])).Code);
+    }
+
     [Fact]
     public void A_signed_package_verifies_and_names_its_key_and_change_set()
     {

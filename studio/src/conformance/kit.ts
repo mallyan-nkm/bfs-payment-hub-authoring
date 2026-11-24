@@ -51,6 +51,12 @@ export function buildScenario(env: StudioEnv, kit: KitContent, sc: any) {
   const docs: Record<string, any> = {};
   for (const d of kit.library) docs[`${d.name ?? d.scope}@${d.release}`] = d;
   for (const d of sc.documents ?? []) docs[`${d.name}@${d.release}`] = d;
+  // Every engine counts the business calendar the interpreter counts (R-09-183, Issue I-166): the store's calendar tables, as the
+  // interpreter resolves them, travel with the scenario's documents.
+  for (const e of env.store.byKind('reference-table')) {
+    const d = env.store.doc(e.name);
+    if (d && (d.domain === 'business-calendar' || d.domain === 'bank-calendar') && !Object.values(docs).some((x: any) => x?.name === d.name)) docs[`${d.name}@${d.release}`] = d;
+  }
   const base: any = {
     kind: 'workflow',
     wfKind: sc.handler ? 'handler' : 'platform',

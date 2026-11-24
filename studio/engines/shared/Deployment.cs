@@ -90,6 +90,45 @@ public sealed class Deployment
     /// </summary>
     public static Func<JsonObject, JsonObject>? LiveValues;
 
+    /// <summary>
+    /// Where a runtime's engine host reads the bank's business calendar (R-09-183, Issue I-166): given <c>tenant</c> and <c>at</c> (ms), the
+    /// calendar of the configuration release in force then (its table of domain <c>business-calendar</c>, with its own closed days of
+    /// domain <c>bank-calendar</c>), as <c>{ weekend, holidays }</c>, or null when it installed none. Installed by the runtime's builds from
+    /// the store, beside <see cref="LiveValues"/>; the studio's harnesses leave it unset and read the deployment's reference tables.
+    /// </summary>
+    public static Func<JsonObject, JsonObject?>? LiveCalendar;
+
+    /// <summary>
+    /// The bank's business calendar at a moment (R-09-183, Issue I-166), for every business-calendar wait: an await's timeout, a hold's
+    /// expiry the answer names no calendar for. On a runtime's engine host, the calendar of the configuration release in force
+    /// (<see cref="LiveCalendar"/>); else the deployment's reference tables, as the studio reads them (core/reference.ts
+    /// businessCalendarIn): the bank's own table of domain <c>business-calendar</c> first, else a shared one, the edition in force on the
+    /// day, and the bank's closed days (<c>bank-calendar</c>, kind <c>closed</c>) as holidays too. Saturday and Sunday only where none is.
+    /// </summary>
+    public BusinessCalendar BusinessCalendarAt(long at)
+    {
+        if (Live && LiveCalendar is { } live && live(new JsonObject { ["tenant"] = J.S(Config, "tenant"), ["at"] = at }) is { } c && BusinessCalendar.Of(c) is { } fromStore)
+            return fromStore;
+        var date = DateTimeOffset.FromUnixTimeMilliseconds(at).UtcDateTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var tables = docs.Values.Where(d => J.S(d, "kind") == "reference-table").ToList();
+        BusinessCalendar? found = null;
+        foreach (var t in tables.Where(t => J.S(t, "domain") == "business-calendar").OrderBy(t => (J.S(t, "name") ?? "").StartsWith("b.", StringComparison.Ordinal) ? 0 : 1))
+            if (RowsAt(t, date) is { } rows) { found = BusinessCalendar.FromRows(rows); break; }
+        var closed = tables.Where(t => J.S(t, "domain") == "bank-calendar").SelectMany(t => RowsAt(t, date) ?? [])
+            .Where(r => J.S(r, "kind") == "closed" && J.S(r, "day") is { Length: 10 }).Select(r => J.S(r, "day")!).ToList();
+        if (found is null && closed.Count == 0) return BusinessCalendar.Default;
+        var cal = found ?? BusinessCalendar.Default;
+        return new BusinessCalendar(cal.Weekend, new HashSet<string>(cal.Holidays.Concat(closed), StringComparer.Ordinal));
+    }
+
+    /// <summary>The rows of a reference table's edition in force on a date (the latest validFrom not after it), or null when none is.</summary>
+    static List<JsonNode?>? RowsAt(JsonObject table, string date)
+    {
+        var ed = J.A(table, "editions").OfType<JsonObject>().Where(e => string.CompareOrdinal(J.S(e, "validFrom") ?? "", date) <= 0)
+            .OrderBy(e => J.S(e, "validFrom") ?? "", StringComparer.Ordinal).LastOrDefault();
+        return ed is null ? null : J.A(ed, "rows").ToList();
+    }
+
     /// <summary>Whether this deployment reads the bank's values live, step by step (a plan the engine host built, <c>liveValues</c>).</summary>
     public bool Live => LiveValues is not null && J.P(Config, "liveValues") is JsonValue v && v.TryGetValue<bool>(out var b) && b;
 
@@ -166,7 +205,8 @@ public sealed class ClaimCheckStore
     public static JsonObject AcceptFor(JsonObject state, string? tenant, string docKey)
     {
         var header = J.P(state, "header");
-        return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = Distribution ?? docKey };
+        // The id the front door started the payment under: the store accepts it under that id when it holds its pin (R-09-180).
+        return new JsonObject { ["tenant"] = tenant ?? "tenant", ["scheme"] = J.S(header, "scheme") ?? docKey.Split('.')[0], ["direction"] = J.S(header, "direction") ?? "outward", ["release"] = Distribution ?? docKey, ["paymentId"] = J.S(header, "paymentId") };
     }
 
     /// <summary>Split a context into what the engine holds and what the store holds.</summary>

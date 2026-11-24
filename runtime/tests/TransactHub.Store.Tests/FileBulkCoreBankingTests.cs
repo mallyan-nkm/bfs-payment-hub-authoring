@@ -22,7 +22,7 @@ public sealed class FileBulkCoreBankingTests
         var s = new Dictionary<string, string>
         {
             ["folder"] = "/cbs/de/in", ["headerBranch"] = "997", ["sourceCode"] = "WPSDE", ["batchDescription"] = "WPS salary credits",
-            ["upload"] = "simulator", ["statusPollSeconds"] = "0",
+            ["upload"] = "simulator", ["statusPollSeconds"] = "0", ["localCurrency"] = "AED",
         };
         foreach (var (k, v) in more ?? []) s[k] = v;
         return new PortBinding("test-bank", "p.port.core-banking.v1", FileBulkCoreBanking.Name, From, s);
@@ -228,6 +228,7 @@ public sealed class FileBulkCoreBankingTests
               sourceCode: WPSDE
               batchDescription: WPS salary credits
               statusPollSeconds: "0"
+              localCurrency: AED
               simulator.failAccounts: "0336543210987"
               simulator.failTimes: "5"
               repostAttempts: "1"

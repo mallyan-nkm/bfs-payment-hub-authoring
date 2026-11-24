@@ -162,7 +162,7 @@ public static class WpsRun
     static CreditTransfer Line(int n, decimal amount, string iban, string routing, string person) => new()
     {
         PaymentId = new PaymentIdentification { EndToEndId = $"{FileId}-{n}" },
-        InstructedAmount = Money.Aed(amount), Creditor = new Party(), CreditorAccount = new Account { Iban = iban },
+        InstructedAmount = new Money(amount, "AED"), Creditor = new Party(), CreditorAccount = new Account { Iban = iban },
         CreditorAgent = new Agent { MemberId = routing },
         SupplementaryData = new Dictionary<string, JsonObject> { ["uae.wps"] = new() { ["personId"] = person, ["payStartDate"] = "2026-10-01", ["payEndDate"] = "2026-10-31", ["daysInPeriod"] = 31, ["fixedPay"] = amount * 0.8m, ["variablePay"] = amount * 0.2m, ["leaveDays"] = 0 } },
     };

@@ -19,7 +19,8 @@ public static class ErrorCodes
     public const string InsertOnly = "store.InsertOnlyViolation", ChainBroken = "store.ChainBroken", ReleaseConflict = "store.ReleaseConflict", StoreUnavailable = "store.Unavailable";
     public const string ReadModelLagging = "readmodel.Lagging", ReadModelGap = "readmodel.Gap";
     public const string NotSigned = "signing.NotSigned", Tampered = "signing.Tampered", UntrustedKey = "signing.UntrustedKey", RevokedKey = "signing.RevokedKey",
-        RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid";
+        RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid",
+        OutOfScope = "signing.OutOfScope";
     public const string PackageRejected = "package.Rejected", NotPromotable = "package.NotPromotable", KindNotInstallable = "package.KindNotInstallable";
     // Content of another bank than the runtime's (R-09-76), with its own code since the dictionary's 1.2.0 (Issue I-154).
     public const string WrongBank = TransactHub.Api.RuntimeBank.WrongBank;

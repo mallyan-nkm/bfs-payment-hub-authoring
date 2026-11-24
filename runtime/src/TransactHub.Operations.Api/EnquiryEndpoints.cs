@@ -108,7 +108,9 @@ public static class EnquiryEndpoints
             if (scheme is null || kind is null) return Problem(400, "Name the scheme and the message kind (its scope and one of the messages its manifest declares)");
             if (!int.TryParse(Q(http, "records"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var records) || records < 1) return Problem(400, "records is the number of lines, at least 1");
             var amount = decimal.TryParse(Q(http, "amount"), NumberStyles.Number, CultureInfo.InvariantCulture, out var am) ? am : 0m;
-            var q = await core!.Charges((string?)corporate!["cif"] ?? id!, scheme, kind, records, amount, Q(http, "currency") ?? "AED", http.RequestAborted);
+            // The file's currency is the caller's to name: no platform default (R-09-185, Issue I-238).
+            if (Q(http, "currency") is not { Length: 3 } currency) return Problem(400, "Name the file's currency (ISO 4217, three letters)");
+            var q = await core!.Charges((string?)corporate!["cif"] ?? id!, scheme, kind, records, amount, currency, http.RequestAborted);
             return Results.Ok(new
             {
                 corporateId = id, q.Scheme, q.MessageKind, q.Records, q.Amount, q.Currency, charge = q.Charge, vat = q.Vat, total = q.Charge + q.Vat, chargeCurrency = q.ChargeCurrency,

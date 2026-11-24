@@ -29,7 +29,7 @@ public sealed class DistributionService(StoreDbContext db, TimeProvider clock, F
     async Task<Verification> VerifyBundle(Bundle b, CancellationToken ct)
     {
         try { return b.Verify(await trust(ct)); }
-        catch (SignatureRejected e) { throw new BundleRefused(422, $"{b.ReleaseId} is refused: {e.Message}"); }
+        catch (SignatureRejected e) { throw new BundleRefused(422, $"{b.ReleaseId} is refused: {e.Message}", e.Code); }
     }
 
     async Task VerifiedFact(Bundle b, Verification v, string purpose, string actor, CancellationToken ct) =>

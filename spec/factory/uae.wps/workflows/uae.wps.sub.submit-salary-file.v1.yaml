@@ -1,10 +1,10 @@
 kind: workflow
 wfKind: subflow
 name: uae.wps.sub.submit-salary-file.v1
-release: 1.2.0
+release: 1.3.0
 dsl: 1.0.0
 title: Submit the salary file and read the acknowledgement
-description: What the submit block does underneath. Encrypts the file for WPS, sends it, waits for the acknowledgement for as long as the calling step allows, and reads it. A file the encryption service refuses is never sent (Issue I-87, R-12-13).
+description: What the submit block does underneath. Encrypts the file for WPS, sends it, waits for the acknowledgement for as long as the calling step allows, and reads it. A file the encryption service refuses is never sent (Issue I-87, R-12-13). From 1.3.0 the send reads the encryption step's fact and sends the encrypted file where the bank's binding encrypted it, never the plain one (Issue I-266, R-09-182).
 implements:
   activity: uae.wps.exchange.submit-salary-file.v1
 exit:
@@ -15,7 +15,7 @@ do:
     handle:
       refused: { return: rejected }
   - id: send
-    call: uae.wps.exchange.send-salary-file.v1
+    call: uae.wps.exchange.send-salary-file.v2
     handle:
       rejected: { return: rejected }
       unknown: { return: pending }

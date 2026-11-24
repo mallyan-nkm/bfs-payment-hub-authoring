@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using TransactHub.Model;
 using TransactHub.Operations.Api;
 using TransactHub.Store;
 
@@ -113,6 +114,52 @@ public sealed class OperatorApiTests(Databases dbs)
         Assert.Equal(new byte[] { 0x85, 0x01, 0x0c }, await c.GetByteArrayAsync($"/ops/api/payments/{held}/documents/{kept.Id}"));
         var other = As(host.CreateClient(), "op-2", "other-bank:Operator");
         Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/ops/api/payments/{held}/documents/{kept.Id}")).StatusCode);
+    }
+
+    /// <summary>
+    /// R-09-180, R-05-95 (Issue I-286): one payment, one id. A salary file the File API's front door started under its own id is pinned and
+    /// its file kept under that id before the run accepts it; the store accepts the bulk under the same id, so the console's payment route
+    /// resolves the front door's id (the upload page's link), its timeline starts with the pin, and its Documents tab lists the file in,
+    /// the SIF out and the ACK in. On SQL Server and PostgreSQL; synthetic data only.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_payment_the_front_door_started_opens_under_its_id_with_its_files(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        var fd = $"uae-wps-{Guid.NewGuid():N}";
+        const string bank = WpsRun.Tenant;
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var reg = new DistributionRegistry(db);
+            var dist = $"2026.11.24-{Random.Shared.Next(100, 99999)}";
+            await reg.Store(bank, dist, "synthetic"u8.ToArray(), new JsonObject { ["id"] = dist, ["bank"] = bank }, new string('b', 64), "test", "e2e");
+            await reg.Activate(DistributionRegistry.IdOf(bank, dist), "test", "test", "e2e");
+            await reg.Pin(fd, bank, "test", "front-door");
+            await new FileStore(db, key).Keep(new FileToKeep(bank, "uae.wps", "in", "uae.wps.sif", "SALARY-0001.SIF", fd, null, null), "SCR,synthetic\n"u8.ToArray());
+        }
+        // The run accepts the file's batch under the front door's id.
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var bulk = new PaymentBulk
+            {
+                MessageId = "0000001234567261124090001", PaymentInformationId = "0000001234567261124090001", Debtor = new Party { Name = "Example Trading LLC", IsOrganisation = true },
+                DebtorAccount = new Account { Iban = "AE070331234567890123999" },
+                Transactions = [new CreditTransfer { PaymentId = new PaymentIdentification { EndToEndId = "E2E-FD-1" }, InstructedAmount = new Money(100m, "AED"), Creditor = new Party(), CreditorAccount = new Account { Iban = "AE070331234567890123456" } }],
+            };
+            var accepted = await new PaymentStore(db).AcceptBulk(bank, "uae.wps", Direction.Outward, bulk, "p.wf.corporate.v1@1.0.0", frontDoorId: fd);
+            Assert.Equal(fd, accepted.BulkId);
+            await new FileStore(db, key).Keep(new FileToKeep(bank, "uae.wps", "out", "uae.wps.sif-out", "0000001234567261124090001.SIF", fd, "scheme-leg", "uae.wps.exchange.send-salary-file.v2"), "SCR,synthetic\n"u8.ToArray());
+            await new FileStore(db, key).Keep(new FileToKeep(bank, "uae.wps", "in", "uae.wps.ack", "0000001234567261124090001ABCDEF012345.ACK", fd, null, null), "ACK,synthetic\n"u8.ToArray());
+        }
+        await using var host = new Host(store, "Development");
+        var c = As(host.CreateClient(), "op-1", $"{bank}:Operator");
+        var detail = await Until(c, $"/ops/api/payments/{fd}", j => j["documents"]!.AsArray().Count == 3);
+        Assert.Equal(fd, (string?)detail["payment"]!["id"]);
+        Assert.Equal(["uae.wps.ack", "uae.wps.sif", "uae.wps.sif-out"], detail["documents"]!.AsArray().Select(d => (string)d!["kind"]!).Order());
+        var timeline = detail["timeline"]!.AsArray().Select(t => (string?)t!["kind"]).ToList();
+        Assert.Equal(DistributionRegistry.PinKind, timeline[0]);
+        Assert.Contains("status", timeline);
     }
 
     [Fact]

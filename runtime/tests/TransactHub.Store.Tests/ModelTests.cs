@@ -40,8 +40,8 @@ public sealed class ModelTests
     [Fact]
     public void A_bulk_computes_its_count_and_control_sum()
     {
-        var t = new CreditTransfer { PaymentId = new() { EndToEndId = "1" }, InstructedAmount = Money.Aed(10.25m), Creditor = new(), CreditorAccount = new() };
-        var b = new PaymentBulk { MessageId = "m", PaymentInformationId = "p", Debtor = new(), DebtorAccount = new(), Transactions = [t, t with { InstructedAmount = Money.Aed(5m) }] };
+        var t = new CreditTransfer { PaymentId = new() { EndToEndId = "1" }, InstructedAmount = new Money(10.25m, "AED"), Creditor = new(), CreditorAccount = new() };
+        var b = new PaymentBulk { MessageId = "m", PaymentInformationId = "p", Debtor = new(), DebtorAccount = new(), Transactions = [t, t with { InstructedAmount = new Money(5m, "AED") }] };
         Assert.Equal(2, b.NumberOfTransactions);
         Assert.Equal(15.25m, b.ControlSum);
     }

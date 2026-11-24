@@ -90,6 +90,13 @@ public static class ReleaseSignature
         var keyId = (string?)st["keyId"] ?? throw new SignatureRejected($"{StatementFile} names no key");
         if (trust.Revoked.TryGetValue(keyId, out var revoked)) throw new SignatureRejected($"The package is signed by key {keyId}, which was revoked on {revoked.RevokedAt:O}", SignatureRejected.RevokedKey);
         if (!trust.Keys.TryGetValue(keyId, out var signer)) throw new SignatureRejected($"The package is signed by key {keyId}, which this installation does not trust", SignatureRejected.UntrustedKey);
+        // What the key may sign (R-09-184, Issue I-277): the kinds the trust list names for it, and for a configuration release the feed
+        // it is scoped to, which the signed statement must claim. A key the list gives no kinds signs any kind, as before.
+        if (signer.Kinds is { } kinds && !kinds.Contains(expected.Kind, StringComparer.Ordinal))
+            throw new SignatureRejected($"Key {keyId} may sign {string.Join(", ", kinds)} only, not a {expected.Kind}", SignatureRejected.OutOfScope);
+        var feed = (string?)st["feed"];
+        if (signer.Feed is { } scoped && feed != scoped)
+            throw new SignatureRejected($"Key {keyId} may sign the {scoped} feed's releases only; this statement {(feed is null ? "names no feed" : $"is the {feed} feed's")}", SignatureRejected.OutOfScope);
         byte[] sig;
         try { sig = Convert.FromBase64String(Encoding.ASCII.GetString(sigText).Trim()); }
         catch (FormatException) { throw new SignatureRejected($"{SignatureFile} is not Base64"); }
@@ -116,7 +123,7 @@ public static class ReleaseSignature
         }
         var missing = listed.Keys.Where(k => !files.ContainsKey(k)).ToList();
         if (missing.Count > 0) throw new SignatureRejected($"Signed but not in the package: {string.Join(", ", missing.Take(5))}");
-        return new Verification(keyId, Sha256Hex(bytes), (string?)st["changeSet"], signedAt, listed.Count, expected.Kind);
+        return new Verification(keyId, Sha256Hex(bytes), (string?)st["changeSet"], signedAt, listed.Count, expected.Kind) { Feed = feed };
     }
 
     /// <summary>RFC 8785 for the statement's shape (strings, arrays, objects, null): keys in ordinal order, no whitespace.</summary>
@@ -161,25 +168,36 @@ public sealed record ReleaseClaims(string ReleaseId, string Workflow, string Rel
 public sealed record ReleaseExpectation(string ReleaseId, string? Tenant, string Kind = ReleaseSignature.WorkflowPackage);
 
 /// <summary>The outcome of a verification, recorded as a fact on the release. It holds no secret.</summary>
-public sealed record Verification(string KeyId, string StatementSha256, string? ChangeSet, DateTimeOffset SignedAt, int Files, string Kind = ReleaseSignature.WorkflowPackage);
+public sealed record Verification(string KeyId, string StatementSha256, string? ChangeSet, DateTimeOffset SignedAt, int Files, string Kind = ReleaseSignature.WorkflowPackage)
+{
+    /// <summary>The feed the signed statement claims the release is of (a configuration release of the rates feed: <c>fx-rates</c>), or null.</summary>
+    public string? Feed { get; init; }
+}
 
 /// <summary>A signature refused, with the error dictionary's code set where it is thrown (Issue I-103).</summary>
 public sealed class SignatureRejected(string message, string code = SignatureRejected.Tampered) : Exception(message)
 {
     public const string Tampered = "signing.Tampered", NotSigned = "signing.NotSigned", UntrustedKey = "signing.UntrustedKey", RevokedKey = "signing.RevokedKey",
-        RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid";
+        RetiredKey = "signing.RetiredKey", WrongRelease = "signing.WrongRelease", TrustListInvalid = "signing.TrustListInvalid",
+        OutOfScope = "signing.OutOfScope";
     public string Code { get; } = code;
 }
 
-/// <summary>A public key the installation trusts, with the moment it stopped signing new releases, if it has.</summary>
-public sealed record TrustedSigner(string KeyId, string PublicKeyPem, DateTimeOffset? RetiredAt);
+/// <summary>
+/// A public key the installation trusts, with the moment it stopped signing new releases, if it has, and what it may sign
+/// (R-09-184, Issue I-277): the kinds of package (<c>kinds</c>; none named, any kind) and, for a configuration release, the feed whose
+/// releases alone it signs (<c>scope.feed</c>; the rates feed's key: <c>fx-rates</c>).
+/// </summary>
+public sealed record TrustedSigner(string KeyId, string PublicKeyPem, DateTimeOffset? RetiredAt, IReadOnlyList<string>? Kinds = null, string? Feed = null);
 
 public sealed record RevokedSigner(string KeyId, DateTimeOffset RevokedAt, string? Reason);
 
 /// <summary>
 /// The signers an installation trusts (<c>TH_TRUSTED_SIGNERS</c>): several keys by id, so a new key is added before the
 /// old one retires; a retired key still verifies what it signed before it retired; a revoked key verifies nothing.
-/// <code>{ "kind": "trusted-signers", "keys": [{ "keyId", "publicKey", "retiredAt"? }], "revoked": [{ "keyId", "revokedAt", "reason"? }] }</code>
+/// <code>{ "kind": "trusted-signers", "keys": [{ "keyId", "publicKey", "retiredAt"?, "kinds"?: [...], "scope"?: { "feed" } }], "revoked": [{ "keyId", "revokedAt", "reason"? }] }</code>
+/// A key's <c>kinds</c> are among <see cref="ReleaseSignature.Kinds"/>; a <c>scope</c> names a feed and is given only to a key that signs
+/// configuration releases alone (R-09-184).
 /// Each key id is checked against its key, so a list cannot name one key with another's id.
 /// </summary>
 public sealed class TrustedSigners
@@ -203,7 +221,22 @@ public sealed class TrustedSigners
             catch (Exception ex) when (ex is ArgumentException or CryptographicException) { throw new SignatureRejected($"Trusted key {id} is not a PEM EC public key", SignatureRejected.TrustListInvalid); }
             if (e.KeySize != 256) throw new SignatureRejected($"Trusted key {id} is not on P-256", SignatureRejected.TrustListInvalid);
             if (ReleaseSignature.KeyIdOf(e) != id) throw new SignatureRejected($"Trusted key {id} is not the id of its public key ({ReleaseSignature.KeyIdOf(e)})", SignatureRejected.TrustListInvalid);
-            keys[id] = new TrustedSigner(id, pem, (string?)k?["retiredAt"] is { } r ? DateTimeOffset.Parse(r, CultureInfo.InvariantCulture) : null);
+            List<string>? kinds = null;
+            if (k?["kinds"] is JsonNode kn)
+            {
+                kinds = (kn as JsonArray ?? throw new SignatureRejected($"Trusted key {id}'s kinds are not a list", SignatureRejected.TrustListInvalid))
+                    .Select(x => (string?)x ?? "").ToList();
+                if (kinds.Count == 0 || kinds.Any(x => !ReleaseSignature.Kinds.Contains(x)))
+                    throw new SignatureRejected($"Trusted key {id} names a kind that is none of {string.Join(", ", ReleaseSignature.Kinds)}", SignatureRejected.TrustListInvalid);
+            }
+            string? feed = null;
+            if (k?["scope"] is JsonNode sc)
+            {
+                feed = (string?)sc["feed"] is { Length: > 0 } f ? f : throw new SignatureRejected($"Trusted key {id}'s scope names no feed", SignatureRejected.TrustListInvalid);
+                if (kinds is not [ReleaseSignature.ConfigurationRelease])
+                    throw new SignatureRejected($"Trusted key {id} is scoped to the {feed} feed, so it signs configuration releases only: give it kinds [{ReleaseSignature.ConfigurationRelease}]", SignatureRejected.TrustListInvalid);
+            }
+            keys[id] = new TrustedSigner(id, pem, (string?)k?["retiredAt"] is { } r ? DateTimeOffset.Parse(r, CultureInfo.InvariantCulture) : null, kinds, feed);
         }
         var revoked = new Dictionary<string, RevokedSigner>(StringComparer.Ordinal);
         foreach (var r in o["revoked"] as JsonArray ?? [])
