@@ -1,0 +1,275 @@
+1
+00:00:01,247 --> 00:00:12,169
+This video walks through the north-star architecture of TransactHub: first the whole picture, then each tenet in turn: what it means, how the system does it, and where you can see it.
+
+2
+00:00:13,775 --> 00:00:28,836
+On the left is the authoring side. The designer studio is where workflows, rules, values and hooks are written, tested and approved. People sign in through the vendor's identity provider, and the studio's only store is a GitHub branch.
+
+3
+00:00:30,442 --> 00:00:42,239
+When a bank's change is approved, the studio builds and signs its distribution and its configuration release. The bank installs them in its own runtime, with a bank approver's consent.
+
+4
+00:00:43,848 --> 00:00:59,122
+In the runtime, every file comes and goes through the File API. Its front door starts a payment, or hands a message to the payment that waits for it. The engine host runs the workflow on one of four engines, and workers run the activities.
+
+5
+00:01:00,726 --> 00:01:10,774
+Everything is written to one insert-only store, on SQL Server or PostgreSQL. A read model, fed from the store's outbox, serves the consoles.
+
+6
+00:01:12,381 --> 00:01:21,469
+Outside systems are reached through ports and adapters. People sign in through the bank's identity provider, and services use machine credentials.
+
+7
+00:01:23,075 --> 00:01:28,920
+Ten tenets shape this picture. We take them one at a time, and come back to the diagram for each.
+
+8
+00:01:30,524 --> 00:01:44,625
+Tenet one: ISO 20 022 native. ISO 20 022 is the international standard for payment messages. TransactHub uses it as its own language, in every workflow and in the database.
+
+9
+00:01:46,229 --> 00:02:00,074
+A scheme speaks its own format: a WPS salary file has a layout of its own. A map at the edge reads it into the canonical model, and another writes the reply out. Nothing in between knows the scheme's layout.
+
+10
+00:02:01,679 --> 00:02:13,263
+So every rule, workflow and report works on one shape. A new scheme brings maps and a leg, not new tables. A field ISO has no place for is a typed, registered extension.
+
+11
+00:02:14,870 --> 00:02:27,648
+In the studio, the ISO data page is the dictionary: the canonical context, header first, then the payment, each element with its ISO type. Personal data is marked, so that it can be masked.
+
+12
+00:02:29,250 --> 00:02:36,759
+Each scheme message has sample files, mapped into the model, and the broken ones are caught with their ISO reason codes.
+
+13
+00:02:38,362 --> 00:02:50,073
+Now a real PostgreSQL store, built by the runtime's own migrations, with one synthetic salary file in it. These are all its tables. No table per scheme, and none per bank.
+
+14
+00:02:51,676 --> 00:03:07,633
+The salary file is one bulk, shaped like an ISO pain dot zero zero one: message id, salary purpose, transaction count, control sum, and the debtor's account and agent. WPS's own fields are typed supplementary data.
+
+15
+00:03:09,244 --> 00:03:18,716
+Each employee's line is a payment: end-to-end id, amount, currency, purpose, and the creditor's account. Scheme and bank are columns, not tables.
+
+16
+00:03:20,324 --> 00:03:33,401
+And the facts. Each step carries the workflow, the step, the activity and its release, but no names and no account numbers. The context carries ids, so the engine's history holds no personal data.
+
+17
+00:03:35,011 --> 00:03:43,800
+Tenet two: a platform workflow and a scheme leg. The life of a payment is written once, by the platform. A scheme fills only its own part.
+
+18
+00:03:45,406 --> 00:03:59,080
+The corporate workflow checks, screens, checks limits, reserves the funds and routes. Then comes a slot, the scheme leg, with a contract: what the leg reads, what it writes, and how it may end. Then the platform posts and closes.
+
+19
+00:04:00,686 --> 00:04:13,656
+WPS is a leg: it builds the salary file, sends it, and waits for the acknowledgement. The dispatch table says which message starts which payment, with which map and which leg. Refunds work the same way.
+
+20
+00:04:15,262 --> 00:04:24,734
+Here is the corporate workflow in the designer: its text on the left, its steps on the right. The slot waits for a leg, and the hook points wait for a bank.
+
+21
+00:04:30,113 --> 00:04:44,129
+And the WPS dispatch table. A salary file starts an outward corporate payment, with its leg and its intake map. An acknowledgement goes to the payment that waits for it. A leg that does not fit its slot is refused.
+
+22
+00:04:45,730 --> 00:04:55,138
+Tenet three: the workflow does not depend on the engine. TransactHub supports four engines: Temporal, the default, DTFx, Elsa and Flowable.
+
+23
+00:04:56,740 --> 00:05:07,428
+The studio exports one expanded workflow, and one interpreter runs it on every engine, behind one small contract. The engine keeps the state and the timers.
+
+24
+00:05:09,034 --> 00:05:16,244
+The export previews the package: its manifest, the pinned releases with their hashes, and one worker for each task queue.
+
+25
+00:05:18,878 --> 00:05:26,451
+For Flowable, the same workflow is exported as BPMN. The workflow is untouched. Only the package changes.
+
+26
+00:05:32,177 --> 00:05:41,841
+The conformance kit proves that the engines agree: fifty-nine scenarios, each with the trace it must produce. Here it runs on the studio's interpreter.
+
+27
+00:05:43,442 --> 00:05:47,260
+Now eight of those scenarios, run on DTFx and on Elsa.
+
+28
+00:05:55,582 --> 00:06:00,638
+All eight pass. The whole kit passed on both this week. Now Temporal and Flowable.
+
+29
+00:06:08,959 --> 00:06:14,655
+They pass there too. Each installation runs one engine, and the workflows do not change with it.
+
+30
+00:06:16,257 --> 00:06:22,145
+Tenet four: SQL Server and PostgreSQL. The runtime behaves the same on either.
+
+31
+00:06:23,749 --> 00:06:35,397
+There is one store model, and the database is chosen in one place. A build test fails on a driver or raw SQL anywhere else, and every store test runs on both databases.
+
+32
+00:06:37,001 --> 00:06:48,457
+Each database has its own migrations. This video's store is PostgreSQL. The laptop stack runs on SQL Server by default, with a PostgreSQL version too.
+
+33
+00:06:50,065 --> 00:06:59,494
+Tenet five: insert-only, versioned, and updated while running. Nothing is changed or deleted. A new version is inserted beside the old one.
+
+34
+00:07:01,101 --> 00:07:11,405
+The salary file's history: twelve facts, each holding the hash of the one before. Change one, and the check names it. The status, settled, is worked out from the facts.
+
+35
+00:07:13,013 --> 00:07:21,525
+The database enforces it. The runtime's login may read and insert, nothing more. An update is refused, and so is a delete.
+
+36
+00:07:23,130 --> 00:07:34,842
+New logic arrives as a distribution: a complete, signed copy of what the bank runs, stored once. A payment is pinned to the distribution active at its acceptance, and finishes on it.
+
+37
+00:07:36,445 --> 00:07:46,727
+Activate B, and A drains in the same step. New payments take B, and payments on A run to their end. Then A can be removed. Rollback is activating A again.
+
+38
+00:07:48,334 --> 00:07:58,062
+In the store, each step is a fact: A installed and active, the salary file pinned to A, then B installed and active, and A draining. Each with who did it.
+
+39
+00:07:59,669 --> 00:08:15,391
+Values are different. They arrive in a signed configuration release, each one effective-dated: here the bank's limit is two hundred and fifty thousand this year, and one hundred thousand from January. Values can reach a payment in flight. Logic is pinned.
+
+40
+00:08:17,002 --> 00:08:26,900
+Every fact also goes to the outbox, in the same transaction. The read model and the Kafka stream follow it, and the stream's position is a new row each time.
+
+41
+00:08:28,510 --> 00:08:36,659
+Tenet six: a bank is configuration, never a fork of the code: rules, values and hooks. Shared code never names a bank.
+
+42
+00:08:38,264 --> 00:08:49,592
+This is the bank's workspace, signed in as its configurator: its hooks at the platform's hook points, its own rules, simulators and port bindings. Shared content is read-only.
+
+43
+00:08:51,193 --> 00:08:59,961
+And its configuration set. Every dial has a default and bounds. This limit may be lowered, never raised, and each value has its dates.
+
+44
+00:09:01,561 --> 00:09:13,742
+Nobody changes a bank alone. In the studio, the configurator makes a change, and a bank approver approves it. In the runtime, every change of the system needs a bank approver's consent.
+
+45
+00:09:15,345 --> 00:09:25,542
+Installs, activations, drains, removals and rollbacks, a configuration in force, a restore, an unmask. Each request and each consent is a fact.
+
+46
+00:09:27,149 --> 00:09:34,125
+Tenet seven: no code where it can be, code only where it must be. So, what is configuration, and what is code?
+
+47
+00:09:35,729 --> 00:09:50,278
+Configuration is what designers and configurators write in the studio, as data: workflows, rules, decision tables, values, hooks, reference tables and port bindings. It is tested and approved, with no developer.
+
+48
+00:09:51,889 --> 00:10:04,433
+Code is where configuration stops: the builtin services of the runtime, small scripts that see only an injected interface, native C# activities, and the adapters behind the ports.
+
+49
+00:10:06,037 --> 00:10:13,162
+In the factory, counted over every release: builtin services, scripts, and those with a native implementation too.
+
+50
+00:10:14,766 --> 00:10:26,819
+Native code travels in the distribution, not in the runtime's image. Its hash is in the signed bill of materials, checked at install and at load, and each distribution loads its own build.
+
+51
+00:10:28,429 --> 00:10:32,781
+Tenet eight: one door for files, and ports for everything else outside.
+
+52
+00:10:34,382 --> 00:10:49,464
+Every file comes in through the File API: uploads over HTTPS or on a screen, and polled inboxes, such as a partner's SFTP folder. It is checked, decrypted if needed, kept with its hash, and handed to the front door.
+
+53
+00:10:51,065 --> 00:11:00,558
+Going out, a workflow's file goes to the outbox, is kept with its payment, and is delivered by the bank's binding, such as SFTP to the Central Bank.
+
+54
+00:11:02,160 --> 00:11:12,506
+Every other outside system is a port with adapters, chosen by a dated binding. A missing binding is refused. And each adapter has a circuit breaker.
+
+55
+00:11:14,115 --> 00:11:22,093
+Payment events go to Kafka from the outbox: references only, in order for each payment. Alerts go out by MQTT.
+
+56
+00:11:23,701 --> 00:11:31,807
+In the bank's port bindings, core banking moves from the simulator to the REST gateway on the first of December, by a binding alone.
+
+57
+00:11:33,409 --> 00:11:39,254
+Tenet nine: who you are, and what you may do. There are two identity providers, and they never mix.
+
+58
+00:11:40,857 --> 00:11:54,638
+The studio signs people in through the vendor's identity provider, and its users are a file on the branch. The runtime keeps no users: people sign in through the bank's provider, and a role map gives them runtime roles.
+
+59
+00:11:56,249 --> 00:12:05,379
+Services use client credentials from the bank's provider. The runtime never trusts the studio's sign-in, only the keys that sign its packages.
+
+60
+00:12:06,986 --> 00:12:16,628
+In the studio: the workflow designer, the workflow developer, the platform approver, the bank configurator and the bank approver, each for one bank, and the auditor.
+
+61
+00:12:18,238 --> 00:12:30,014
+In the runtime: the operator and the supervisor in the operations console, the service engineer in the service console, and the bank approver, who consents to every change of the system.
+
+62
+00:12:31,615 --> 00:12:41,791
+Each studio user lands on their own surfaces. The bank configurator works in its own bank only. The menu only hides things: the server checks every call.
+
+63
+00:12:43,393 --> 00:12:47,766
+Tenet ten: one studio for everyone, and one runtime for each bank.
+
+64
+00:12:49,367 --> 00:12:59,223
+The studio is multi-tenant. A runtime is told its bank at install, and refuses another bank's distribution, configuration, file or backup.
+
+65
+00:13:00,824 --> 00:13:07,928
+The studio keeps no database. It reads and writes one GitHub branch, and a published file is never rewritten.
+
+66
+00:13:09,530 --> 00:13:24,271
+On a laptop, one compose file runs the studio and one bank's runtime: the database, SFTP, the identity provider and machine auth, the APIs and consoles, the File API, the workers and the engine hosts.
+
+67
+00:13:25,881 --> 00:13:38,638
+That is the north star. One ISO model, inside and out. Platform workflows, with scheme legs. One workflow on four engines. Two databases. Insert-only, versioned, and updated while running.
+
+68
+00:13:40,242 --> 00:13:51,591
+Banks as configuration, with consent. Configuration before code. One door for files. Two identity providers, and clear personas. And one runtime for each bank.
+
+69
+00:13:53,193 --> 00:13:54,729
+Thank you for watching.
