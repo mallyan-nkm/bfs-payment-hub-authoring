@@ -11,4 +11,5 @@ tenant: example-bank
 reference: true
 databases: [SqlServer]
 bench: wps-happy
-clock: { date: '2026-11-17' }
+# The date is on or after the laptop bank's values (ADIB's from 2026-11-22), so its tester's run finds its rails (Issue I-331).
+clock: { date: '2026-11-24' }

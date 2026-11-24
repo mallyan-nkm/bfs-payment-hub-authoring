@@ -173,6 +173,9 @@ public sealed class Runner(Home home, Infra infra)
                             var conn = await infra.Database(db, name, plan.Connections, ct);
                             env["TH_STORE_PROVIDER"] = db;
                             env["TH_STORE_CONNECTION"] = conn;
+                            // The run's own database is new and the bench's login made it: the harness brings it to the store's
+                            // schema, also where the bench's host runs with Store__Migrate=false for the bank's store (deploy/laptop).
+                            env["Store__Migrate"] = "true";
                             so = new StoreOptions(Enum.Parse<StoreProvider>(db), conn);
                         }
                         if (e == "flowable") foreach (var kv in await infra.Flowable(plan.Flowable, ct)) env[kv.Key] = kv.Value;

@@ -165,8 +165,10 @@ async function main() {
     }
 
     // 2 and 3. Each engine: its package, then the deploy runner. Every package is signed (R-09-23) and verified before it
-    // runs (R-09-26): with no TH_SIGNING_KEY the bench signs its exports with its own key and trusts that key alone.
-    if (!process.env.TH_SIGNING_KEY) {
+    // runs (R-09-26): with no TH_SIGNING_KEY the bench signs its exports with its own key and trusts that key alone for them,
+    // also where TH_TRUSTED_SIGNERS names the deployment's signers for released packages (as on the laptop stack).
+    const ownKey = !process.env.TH_SIGNING_KEY;
+    if (ownKey) {
       process.env.TH_SIGNING_KEY = `file:${path.join(job.work, 'signing', 'key.pem')}`;
       benchKey();
       process.env.TH_TRUSTED_SIGNERS ??= `file:${benchKey().trust}`;
@@ -197,7 +199,7 @@ async function main() {
         // The harness the deploy runner starts inherits this process's environment.
         for (const k of Object.keys(process.env)) if (!(k in base)) delete process.env[k];
         Object.assign(process.env, base, e.env);
-        if (res.package?.resignedForTheTest) process.env.TH_TRUSTED_SIGNERS = `file:${benchKey().trust}`;
+        if (res.package?.resignedForTheTest || (ownKey && res.package?.from === 'content')) process.env.TH_TRUSTED_SIGNERS = `file:${benchKey().trust}`;
         const d = await deploy({
           packagePath: pkgPath, workflow: job.workflow, studioRoot: env.studioRoot,
           environment: { evaluationDate: job.evaluationDate, tenant: job.tenant && job.tenant !== OWNER ? job.tenant : undefined, bench: job.bench, ...(job.startTime ? { startTime: job.startTime } : {}), ...(job.values?.length ? { values: job.values } : {}) },
