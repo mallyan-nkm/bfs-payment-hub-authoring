@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { get, post, refusal } from '../api';
 import { Badge, ErrorBox, Loading, useLoad, useStudio } from '../ui';
+import { Button, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The schemes a bank licenses (R-11-75 to R-11-78, Issue I-205). A Bank Configurator proposes the bank's next lock file with a
 // further scheme; a Bank Approver who is not its maker approves it. The approval publishes the lock file on the content branch
@@ -37,25 +38,25 @@ export function Licensing() {
       <p className="small muted">
         Lock file {l.release ?? 'none'} licenses {l.licensedSchemes.join(', ') || 'no scheme'}. A distribution of {tenant} carries the schemes it licenses and no other; a configuration that binds another is refused at approval.
       </p>
-      <table className="grid small" aria-label="Schemes of the factory">
-        <thead><tr><th>Scheme</th><th>Release</th><th>Licence</th><th>Configuration</th><th /></tr></thead>
-        <tbody>{l.schemes.map((s: any) => {
+      <Table size="small" className="grid small" aria-label="Schemes of the factory">
+        <TableHeader><TableRow><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Release</TableHeaderCell><TableHeaderCell>Licence</TableHeaderCell><TableHeaderCell>Configuration</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{l.schemes.map((s: any) => {
           const proposed = draft?.licensedSchemes?.includes(s.scope) && !s.licensed;
           return (
-            <tr key={s.scope} data-scheme={s.scope}>
-              <td><span className="mono">{s.scope}</span> <span className="muted">{s.title}</span></td>
-              <td className="mono">{s.release}</td>
-              <td>{s.licensed ? <Badge tone="pass">licensed</Badge> : proposed ? <Badge tone="warn">proposed</Badge> : <Badge tone="muted">not licensed</Badge>}</td>
-              <td>{s.bound ? 'bound' : '—'}</td>
-              <td>{configurator && !s.licensed && !proposed && <button onClick={() => license(s.scope)}>License {s.scope}</button>}</td>
-            </tr>
+            <TableRow key={s.scope} data-scheme={s.scope}>
+              <TableCell><span className="mono">{s.scope}</span> <span className="muted">{s.title}</span></TableCell>
+              <TableCell className="mono">{s.release}</TableCell>
+              <TableCell>{s.licensed ? <Badge tone="pass">licensed</Badge> : proposed ? <Badge tone="warn">proposed</Badge> : <Badge tone="muted">not licensed</Badge>}</TableCell>
+              <TableCell>{s.bound ? 'bound' : '—'}</TableCell>
+              <TableCell>{configurator && !s.licensed && !proposed && <Button onClick={() => license(s.scope)}>License {s.scope}</Button>}</TableCell>
+            </TableRow>
           );
-        })}</tbody>
-      </table>
+        })}</TableBody>
+      </Table>
       {draft && (
         <p className="small" data-testid="licence-draft">
           Proposed: lock file {draft.release} licensing {draft.licensedSchemes.join(', ')} (change set {draft.changeSet ?? 'new'}).{' '}
-          {approver ? <button className="primary" onClick={approve}>Approve the licence</button> : <span className="muted">Waits for a bank approver.</span>}
+          {approver ? <Button appearance="primary" onClick={approve}>Approve the licence</Button> : <span className="muted">Waits for a bank approver.</span>}
         </p>
       )}
       {note && <p className="small" role="status">{note}</p>}

@@ -92,7 +92,7 @@ export function scenes(d: Director): Scene[] {
       do: async () => {
         await d.forTenant('example-bank');
         await d.go('tests');
-        await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
+        await d.click(p().getByRole('tab', { name: 'Ad hoc bench' }));
         await d.select(p().getByLabel('Target', { exact: true }), 'p.wf.corporate.v1');
         await d.select(p().getByLabel('Run tenant'), 'example-bank');
         for (const [port, sim] of PLATFORM) {
@@ -101,7 +101,7 @@ export function scenes(d: Director): Scene[] {
           await d.select(p().getByLabel('Simulator', { exact: true }).last(), sim);
           await d.select(p().getByLabel('Scenario', { exact: true }).last(), 'accept');
         }
-        await d.click(p().getByRole('button', { name: 'Inbound sample' }));
+        await d.click(p().getByRole('tab', { name: 'Inbound sample' }));
         await d.select(p().getByLabel('Inbound sample'), 'samples/wps-sif-valid.sif');
         await d.select(p().getByLabel('Start message'), 'uae.wps.sif');
       },

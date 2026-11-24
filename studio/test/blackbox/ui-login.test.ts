@@ -39,7 +39,7 @@ async function signInFromStudio(p: any, user: string) {
   await p.getByLabel('Signed in as').waitFor();
 }
 
-const nav = async (p: any) => (await p.locator('nav.sidebar a.nav > span:first-child').allTextContents()) as string[];
+const nav = async (p: any) => (await p.locator('nav.sidebar [data-testid="nav-label"]').allTextContents()) as string[];
 
 describe('sign-in in the web app', () => {
   it('shows only the sign-in page before sign-in, and nothing of the studio', async () => {

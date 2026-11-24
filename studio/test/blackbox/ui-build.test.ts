@@ -100,7 +100,7 @@ async function designerDraft(wfKind: string, doc: any) {
 /** Test bench, ad hoc: bind ports, pick a sample and optionally a start message, run. */
 async function benchRun(target: string, runTenant: string, ports: [string, string, string][], sample: string, message?: string) {
   await go('tests');
-  await page.getByRole('button', { name: 'Ad hoc bench' }).click();
+  await page.getByRole('tab', { name: 'Ad hoc bench' }).click();
   await page.getByLabel('Target', { exact: true }).selectOption(target);
   await page.getByLabel('Run tenant').selectOption(runTenant);
   for (const [port, sim, scenario] of ports) {
@@ -109,7 +109,7 @@ async function benchRun(target: string, runTenant: string, ports: [string, strin
     await page.getByLabel('Simulator', { exact: true }).last().selectOption(sim);
     await page.getByLabel('Scenario', { exact: true }).last().selectOption(scenario);
   }
-  await page.getByRole('button', { name: 'Inbound sample' }).click();
+  await page.getByRole('tab', { name: 'Inbound sample' }).click();
   await page.getByLabel('Inbound sample').selectOption(sample);
   if (message) await page.getByLabel('Start message').selectOption(message);
   await page.getByRole('button', { name: 'Run the bench' }).click();
@@ -132,8 +132,8 @@ describe('the guide: build a full workflow in the web app', () => {
   it('step 1: saves the synthetic sample files from the test bench', async () => {
     await go('tests');
     await as('owner', 'shared.designer');
-    await page.getByRole('button', { name: 'Ad hoc bench' }).click();
-    await page.getByRole('button', { name: 'Inbound sample' }).click();
+    await page.getByRole('tab', { name: 'Ad hoc bench' }).click();
+    await page.getByRole('tab', { name: 'Inbound sample' }).click();
     for (const [name, content] of [['demo-credit-file-valid.csv', VALID], ['demo-credit-file-usd.csv', USD], ['demo-credit-file-garbage.csv', GARBAGE]]) {
       await page.getByRole('button', { name: 'Add a sample file' }).click();
       await page.getByLabel('Sample file name').fill(name);

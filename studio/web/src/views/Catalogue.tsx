@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { get, q, type Summary } from '../api';
-import { ArtefactLink, Badge, ErrorBox, Loading, Provenance, StatusBadge, scopeText, useDebounced, useLoad, useStudio } from '../ui';
+import { Alert, ArtefactLink, Badge, ErrorBox, Loading, Provenance, StatusBadge, scopeText, useDebounced, useLoad, useStudio } from '../ui';
+import { SearchBox, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 interface CatalogueResult { items: Summary[]; scopes: any[]; kinds: string[]; partial?: string }
 
@@ -61,47 +62,47 @@ export function Catalogue({ query }: { query: URLSearchParams }) {
         <p className="muted">Every artefact this tenant may see: shared content and its own. Search by name, title, description or a path read or written.</p>
       </div>
       <div className="toolbar">
-        <input type="search" className="grow" placeholder="Search, for example iban or payment.creditorAccount" value={text} aria-label="Search" onChange={(e) => { setText(e.target.value); setUrl({ q: e.target.value }); }} />
-        <select value={scope} onChange={(e) => { setScope(e.target.value); setUrl({ scope: e.target.value }); }} aria-label="Scope">
+        <SearchBox className="grow" placeholder="Search, for example iban or payment.creditorAccount" value={text} aria-label="Search" onChange={(_, d) => { setText(d.value); setUrl({ q: d.value }); }} />
+        <Select value={scope} onChange={(e) => { setScope(e.target.value); setUrl({ scope: e.target.value }); }} aria-label="Scope">
           <option value="">Any scope</option>
           {opts.scopes.map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <select value={kind} onChange={(e) => { setKind(e.target.value); setType(''); setUrl({ kind: e.target.value, type: '' }); }} aria-label="Kind">
+        </Select>
+        <Select value={kind} onChange={(e) => { setKind(e.target.value); setType(''); setUrl({ kind: e.target.value, type: '' }); }} aria-label="Kind">
           <option value="">Any kind</option>
           {opts.kinds.map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <select value={type} onChange={(e) => { setType(e.target.value); setUrl({ type: e.target.value }); }} aria-label="Type">
+        </Select>
+        <Select value={type} onChange={(e) => { setType(e.target.value); setUrl({ type: e.target.value }); }} aria-label="Type">
           <option value="">Any type</option>
           {opts.types.map((s) => <option key={s}>{s}</option>)}
-        </select>
+        </Select>
       </div>
       <ErrorBox error={res.error} />
-      {res.data?.partial && <div className="alert warn">{res.data.partial}</div>}
+      {res.data?.partial && <Alert tone="warn">{res.data.partial}</Alert>}
       {res.loading && !res.data ? <Loading what="the catalogue" /> : res.data && (
         <>
           <p className="muted small">{res.data.items.length} artefact{res.data.items.length === 1 ? '' : 's'}</p>
           <div className="table-wrap">
-            <table className="grid">
-              <thead>
-                <tr><th>Name</th><th>Title</th><th>Scope</th><th>Kind</th><th>Type</th><th>Release</th><th>Status</th></tr>
-              </thead>
-              <tbody>
+            <Table size="small" className="grid">
+              <TableHeader>
+                <TableRow><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Scope</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Release</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell></TableRow>
+              </TableHeader>
+              <TableBody>
                 {res.data.items.map((i) => (
-                  <tr key={i.key} className="clickable" onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'A') go(`/artefact/${encodeURIComponent(i.name)}${i.status === 'draft' ? `?key=${encodeURIComponent(i.key)}` : ''}`); }}>
-                    <td><ArtefactLink name={i.name} keyOf={i.status === 'draft' ? i.key : undefined} /></td>
-                    <td>{i.title}</td>
-                    <td className="mono">{scopeText(i.scope)}</td>
-                    <td>{i.kind}</td>
-                    <td>{i.type}</td>
-                    <td className="mono">{i.release}</td>
-                    <td className="nowrap">
+                  <TableRow key={i.key} className="clickable" onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'A') go(`/artefact/${encodeURIComponent(i.name)}${i.status === 'draft' ? `?key=${encodeURIComponent(i.key)}` : ''}`); }}>
+                    <TableCell><ArtefactLink name={i.name} keyOf={i.status === 'draft' ? i.key : undefined} /></TableCell>
+                    <TableCell>{i.title}</TableCell>
+                    <TableCell className="mono">{scopeText(i.scope)}</TableCell>
+                    <TableCell>{i.kind}</TableCell>
+                    <TableCell>{i.type}</TableCell>
+                    <TableCell className="mono">{i.release}</TableCell>
+                    <TableCell className="nowrap">
                       <StatusBadge status={i.status} /> {i.tenant !== meta?.owner && <Badge tone="info">{i.tenant}</Badge>} <Provenance status={i.provenance} />
                       {i.generated && <Badge title="Generated by the factory build. Edit the generator, not the file.">generated</Badge>}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </>
       )}

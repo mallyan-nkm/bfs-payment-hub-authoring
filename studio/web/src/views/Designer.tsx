@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import YAML from 'yaml';
 import { del, get, post, q, refusal, type Issue, type Summary } from '../api';
-import { Badge, ErrorBox, Issues, Loading, Provenance, Section, StatusBadge, Tabs, useDebounced, useLoad, useStudio } from '../ui';
+import { Alert, Badge, ErrorBox, Issues, Loading, Provenance, Section, StatusBadge, Tabs, useDebounced, useLoad, useStudio } from '../ui';
 import { DraftActions, toYamlText } from '../authoring';
 import { expandWorkflow, sameDoc, useResolver } from '../expand';
 import { Canvas } from './Canvas';
 import { Outline } from './Outline';
 import { useAssist } from '../assist';
+import { Button, Input, Link, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 
 // The workflow designer (F-12 to F-14, F-22): create or open, edit with checks on every edit,
 // see the outline, the interface diff and the proposed release, save, publish.
@@ -173,8 +174,8 @@ export function Designer({ query }: { query: URLSearchParams }) {
           <div className="designer">
             <div className="pane">
               <label className="sr-only" htmlFor="yaml-editor">Workflow YAML</label>
-              <textarea id="yaml-editor" ref={area} className="yaml-editor" spellCheck={false} value={yaml} onChange={(e) => setYaml(e.target.value)} />
-              {local.error && <div className="alert warn small">YAML does not parse: {local.error}. The canvas shows the last good version and does not edit until the YAML parses.</div>}
+              <Textarea id="yaml-editor" ref={area} className="yaml-editor" spellCheck={false} value={yaml} onChange={(e) => setYaml(e.target.value)} />
+              {local.error && <Alert tone="warn" className="small">YAML does not parse: {local.error}. The canvas shows the last good version and does not edit until the YAML parses.</Alert>}
             </div>
             <div className="pane">
               <Section
@@ -240,9 +241,9 @@ function ExpandedView({ doc, resolver, issues }: { doc: any; resolver: { resolve
       <p className="muted small">
         {x.expanded ? 'Each composite step is a block holding the steps of its subflow, with the calling step id in front. Nobody edits this form; it is derived from the authored form.' : 'This workflow calls no composite activity, so its expanded form is the authored form.'}
       </p>
-      {x.problems.map((p, i) => <div key={i} className="alert fail small">{p}</div>)}
+      {x.problems.map((p, i) => <Alert key={i} tone="fail" className="small">{p}</Alert>)}
       <div className="inline-form">
-        <button onClick={compare} disabled={!doc?.name}>Compare with the server's expansion</button>
+        <Button onClick={compare} disabled={!doc?.name}>Compare with the server's expansion</Button>
         {server?.same === true && <Badge tone="pass">same as GET /api/expanded at {server.release}</Badge>}
         {server?.same === false && <Badge tone="warn">differs from the stored release {server.release}: the editor holds changes</Badge>}
         {server?.error && <span className="small fail-text">{server.error}</span>}
@@ -272,10 +273,10 @@ function InterfacePanel({ iface, doc }: { iface?: any; doc?: any }) {
         <p className="small warn-text">The document says {String(doc.release)}. Set the release to {iface.proposed}.</p>
       )}
       {iface.changes?.length ? (
-        <table className="grid compact">
-          <thead><tr><th>Part</th><th>Change</th><th>Impact</th></tr></thead>
-          <tbody>{iface.changes.map((c: any, i: number) => <tr key={i}><td>{c.part}</td><td>{c.change}</td><td><Badge tone={c.impact === 'major' ? 'fail' : c.impact === 'minor' ? 'warn' : 'muted'}>{c.impact}</Badge></td></tr>)}</tbody>
-        </table>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Part</TableHeaderCell><TableHeaderCell>Change</TableHeaderCell><TableHeaderCell>Impact</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>{iface.changes.map((c: any, i: number) => <TableRow key={i}><TableCell>{c.part}</TableCell><TableCell>{c.change}</TableCell><TableCell><Badge tone={c.impact === 'major' ? 'fail' : c.impact === 'minor' ? 'warn' : 'muted'}>{c.impact}</Badge></TableCell></TableRow>)}</TableBody>
+        </Table>
       ) : <p className="muted small">No interface change.</p>}
     </div>
   );
@@ -322,50 +323,50 @@ function NewPanel({ initialClone, onLoad }: { initialClone?: string; onLoad: (ya
       <div className="form-grid">
         <label className="field">
           <span>Start</span>
-          <select value={from} onChange={(e) => setFrom(e.target.value as any)} aria-label="Start from">
+          <Select value={from} onChange={(e) => setFrom(e.target.value as any)} aria-label="Start from">
             <option value="blank">Blank</option>
             <option value="template">From a template</option>
             <option value="clone">Clone a release</option>
-          </select>
+          </Select>
         </label>
         {from !== 'clone' ? (
           <>
             <label className="field">
               <span>Kind</span>
-              <select value={kind} onChange={(e) => setKind(e.target.value as any)} aria-label="Kind">
+              <Select value={kind} onChange={(e) => setKind(e.target.value as any)} aria-label="Kind">
                 <option value="workflow">workflow</option>
                 <option value="hook">hook</option>
-              </select>
+              </Select>
             </label>
             {kind === 'workflow' && (
               <label className="field">
                 <span>Workflow kind</span>
-                <select value={wfKind} onChange={(e) => setWfKind(e.target.value as any)} aria-label="Workflow kind">
+                <Select value={wfKind} onChange={(e) => setWfKind(e.target.value as any)} aria-label="Workflow kind">
                   {WF_KINDS.map((k) => <option key={k}>{k}</option>)}
-                </select>
+                </Select>
               </label>
             )}
           </>
         ) : (
           <label className="field wide">
             <span>Source</span>
-            <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Clone source">
+            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Clone source">
               <option value="">Choose a published workflow or hook</option>
               {(flows.data ?? []).map((f) => <option key={f.key} value={f.name}>{f.name} @{f.release}</option>)}
-            </select>
+            </Select>
           </label>
         )}
         <label className="field wide">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={from === 'clone' ? 'Leave empty for a new release of the source' : 'scope.type.name.v1, for example uae.wps.wf.my-leg.v1'} className="mono" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={from === 'clone' ? 'Leave empty for a new release of the source' : 'scope.type.name.v1, for example uae.wps.wf.my-leg.v1'} className="mono" />
         </label>
         <label className="field wide">
           <span>Title</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short and plain" />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short and plain" />
         </label>
       </div>
       <div className="row-actions">
-        <button className="primary" onClick={create} disabled={from === 'clone' && !source}>Create</button>
+        <Button appearance="primary" onClick={create} disabled={from === 'clone' && !source}>Create</Button>
       </div>
       <ErrorBox error={error} />
     </Section>
@@ -388,19 +389,19 @@ function OpenPanel({ drafts, onOpenDraft, onNewRelease, onDelete, current }: { d
       <ul className="plain">
         {(drafts.data ?? []).map((d) => (
           <li key={d.key} className={d.key === current ? 'sel' : ''}>
-            <button className="link mono" onClick={() => onOpenDraft(d.key)}>{d.key}</button>{' '}
+            <Link as="button" className="mono" onClick={() => onOpenDraft(d.key)}>{d.key}</Link>{' '}
             {d.issues ? <Badge tone="fail">{d.issues} error{d.issues === 1 ? '' : 's'}</Badge> : <Badge tone="pass">no errors</Badge>}{' '}
-            <button className="link danger" onClick={() => onDelete(d.key)}>Delete</button>
+            <Link as="button" className="danger" onClick={() => onDelete(d.key)}>Delete</Link>
           </li>
         ))}
       </ul>
       <h4>New release of a published one</h4>
       <div className="inline-form">
-        <select value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Published workflow">
+        <Select value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Published workflow">
           <option value="">Choose</option>
           {editable.map((f) => <option key={f.key} value={f.name}>{f.name} @{f.release}</option>)}
-        </select>
-        <button disabled={!pick} onClick={() => onNewRelease(pick)}>Open</button>
+        </Select>
+        <Button disabled={!pick} onClick={() => onNewRelease(pick)}>Open</Button>
       </div>
       {tenant !== 'owner' && <p className="muted small">A bank tenant may release only its own workflows and hooks. Shared content is read-only.</p>}
     </Section>

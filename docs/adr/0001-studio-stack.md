@@ -1,6 +1,6 @@
 # ADR 0001. The studio's own stack
 
-Status: accepted for the walking skeleton, 17 November 2026. To confirm at G1.
+Status: accepted for the walking skeleton, 17 November 2026. To confirm at G1. The web app row is superseded by ADR 0003 (Fluent UI 2).
 
 ## Context
 
@@ -13,7 +13,7 @@ The studio is a design-time tool. It must run workflows on its own interpreter w
 | Concern | Choice | Why |
 | --- | --- | --- |
 | Language | TypeScript on Node.js 22, one package in `studio/` | One language for the server, the interpreter, the rule service, the sandbox and the web app. TypeScript is already a script language, so the sandbox needs no second runtime. |
-| Web app | React 18 and Vite, plain CSS | A single-page app over the HTTP API. No UI framework, so the look is ours to change. |
+| Web app | React 18 and Vite, with Microsoft Fluent UI 2 (React v9) | A single-page app over the HTTP API. Superseded on 24 November 2026 by [ADR 0003](0003-ui-fluent.md): the row said "plain CSS, no UI framework, so the look is ours to change"; both the studio and the runtime's consoles now use Fluent UI 2 with one brand theme. |
 | HTTP | `node:http` with a small router (`src/server/api.ts`) | Few routes, no framework to learn or patch. |
 | Storage | Files: the spec repository is read as published content; the studio's drafts, releases and audit are one JSON file per workspace (`studio/data/`) | Matches D8 (artefacts as files per tenant) without deciding it. The store hides the choice behind `Store`. |
 | Schemas | Ajv for JSON Schema 2020-12, reading `spec/schemas` directly | The schemas stay the source of truth. |

@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
 import { downloadUrl, get, post, refusal, type Issue, type Summary, type TestRunReport } from '../api';
-import { ArtefactLink, Badge, ErrorBox, Issues, Loading, PassFail, Section, Tabs, useDebounced, useLoad, useStudio } from '../ui';
+import { Alert, ArtefactLink, Badge, ErrorBox, Issues, Loading, PassFail, Section, Tabs, useDebounced, useLoad, useStudio } from '../ui';
 import { DraftActions, Gates, JsonField, Sel, StringList, Txt, clean, orNone, resolves, scalar, toYamlText, useCatalogue, useDocs, useGates, useModel } from '../authoring';
 import { useResolver } from '../expand';
 import { useAssist } from '../assist';
 import { Canvas, getIn, setIn } from './Canvas';
+import { Button, Checkbox, Input, Link, Radio, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
+import { ArrowDownloadRegular } from '@fluentui/react-icons';
 
 // The artefact editors (C13, F-06 to F-11, F-36): forms that write valid documents for a rule,
 // a decision table, an activity contract, a map, a simulator and a composite with its subflow.
@@ -190,13 +192,13 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
       <div className="toolbar">
         {kind !== 'scheme' && <label className="field-inline">
           <span>Open a published {meta.label.toLowerCase()} as a new release</span>
-          <select value="" onChange={(e) => e.target.value && openRelease(e.target.value)} aria-label={`Open a published ${meta.label}`}>
+          <Select value="" onChange={(e) => e.target.value && openRelease(e.target.value)} aria-label={`Open a published ${meta.label}`}>
             <option value="">Choose</option>
             {choices.map((c) => <option key={c.key} value={c.name}>{c.name} @{c.release}</option>)}
-          </select>
+          </Select>
         </label>}
-        {meta.open && <button onClick={() => openRelease(meta.open)}>Open {meta.open}</button>}
-        <button onClick={() => { setDoc(starter(kind)); setPage(undefined); setDraftKey(undefined); setOrigin('A new document from the starter.'); if (kind === 'composite') setSub(subflowStarter(starter('composite'))); }}>Start new</button>
+        {meta.open && <Button onClick={() => openRelease(meta.open)}>Open {meta.open}</Button>}
+        <Button onClick={() => { setDoc(starter(kind)); setPage(undefined); setDraftKey(undefined); setOrigin('A new document from the starter.'); if (kind === 'composite') setSub(subflowStarter(starter('composite'))); }}>Start new</Button>
       </div>
       <ErrorBox error={error} />
       <p className="muted small">{origin}</p>
@@ -210,7 +212,7 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
           <YamlPane doc={doc} onDoc={setDoc} />
           {(kind === 'activity' || kind === 'map') && doc.implementation?.binding === 'script' && <ScriptBehind doc={doc} />}
           {(kind === 'activity' || kind === 'composite' || kind === 'map') && <Untested name={doc.name} />}
-          {kind === 'simulator' && doc.name && <Section title="Stub"><a className="button" href={downloadUrl(`/api/simulators/${encodeURIComponent(doc.name)}/stub`)}>Download the stub of the published {doc.name}</a><p className="muted small">A stand-alone stub that plays the scenarios, for a bank's own test environment.</p></Section>}
+          {kind === 'simulator' && doc.name && <Section title="Stub"><Button as="a" icon={<ArrowDownloadRegular />} href={downloadUrl(`/api/simulators/${encodeURIComponent(doc.name)}/stub`)}>Download the stub of the published {doc.name}</Button><p className="muted small">A stand-alone stub that plays the scenarios, for a bank's own test environment.</p></Section>}
         </div>
       </div>
       {kind === 'composite' && sub && <SubflowEditor act={doc} sub={sub} setSub={setSub} />}
@@ -238,11 +240,11 @@ function PortForm({ doc }: { doc: any }) {
   return (
     <Section title="Port">
       <p className="muted small">A port is the connection to one party: a scheme, core banking, screening. Every port needs a simulator (check L22); publish the two together. Edit the document in the YAML pane.</p>
-      <table className="grid compact"><tbody>
-        <tr><th>Name</th><td className="mono">{doc.name}</td></tr>
-        <tr><th>Party</th><td>{doc.party}</td></tr>
-        {(doc.operations ?? []).map((o: any) => <tr key={o.name}><th>Operation</th><td className="mono">{o.name} ({o.style})</td></tr>)}
-      </tbody></table>
+      <Table size="small" className="grid compact"><TableBody>
+        <TableRow><TableHeaderCell>Name</TableHeaderCell><TableCell className="mono">{doc.name}</TableCell></TableRow>
+        <TableRow><TableHeaderCell>Party</TableHeaderCell><TableCell>{doc.party}</TableCell></TableRow>
+        {(doc.operations ?? []).map((o: any) => <TableRow key={o.name}><TableHeaderCell>Operation</TableHeaderCell><TableCell className="mono">{o.name} ({o.style})</TableCell></TableRow>)}
+      </TableBody></Table>
     </Section>
   );
 }
@@ -251,16 +253,16 @@ function SchemeForm({ doc }: { doc: any }) {
   return (
     <Section title="Scheme and dispatch table">
       <p className="muted small">The dispatch table routes each message. A start message names the payment it starts (kind, direction and, for an outward payment, segment), its intake map and its leg (R-05-42, check L33). A deliver message reaches the workflow that awaits it; an outward message names the block that sends it. Edit the document in the YAML pane; publish it with its legs, composites and subflows as one change set.</p>
-      <div className="table-wrap"><table className="grid compact">
-        <thead><tr><th>Message</th><th>Direction</th><th>Disposition</th></tr></thead>
-        <tbody>
+      <div className="table-wrap"><Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>Message</TableHeaderCell><TableHeaderCell>Direction</TableHeaderCell><TableHeaderCell>Disposition</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {(doc.messages ?? []).map((m: any) => {
             const d = m.disposition ?? {};
             const what = d.start ? `start: ${d.start.kind ?? '?'} ${d.start.direction ?? '?'}${d.start.segment ? ' ' + d.start.segment : ''}, leg ${d.start.leg}, intake ${d.start.intakeMap}` : d.deliver ? `deliver by ${d.deliver.correlateBy}` : d.sentBy ? `sent by ${d.sentBy}` : d.handler ? `handler ${d.handler}` : d.planned ? 'planned' : JSON.stringify(d);
-            return <tr key={m.id}><td className="mono">{m.id}</td><td>{m.direction}</td><td className="small">{what}</td></tr>;
+            return <TableRow key={m.id}><TableCell className="mono">{m.id}</TableCell><TableCell>{m.direction}</TableCell><TableCell className="small">{what}</TableCell></TableRow>;
           })}
-        </tbody>
-      </table></div>
+        </TableBody>
+      </Table></div>
       <p className="small">Legs: <span className="mono">{(doc.legs ?? []).join(', ') || 'none'}</span>. Ports: <span className="mono">{(doc.ports ?? []).join(', ') || 'none'}</span>.</p>
     </Section>
   );
@@ -291,8 +293,8 @@ function ScriptBehind({ doc }: { doc: any }) {
   return (
     <Section title="Script-behind">
       <p className="muted small">Save the activity as a draft first. The script is checked as you save: no network, files, clock, randomness or environment.</p>
-      <textarea className="yaml-editor short" spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Script source" />
-      <button onClick={save}>Save the script as {actor}</button>
+      <Textarea className="yaml-editor short" spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Script source" />
+      <Button onClick={save}>Save the script as {actor}</Button>
       {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
     </Section>
   );
@@ -307,10 +309,10 @@ function YamlPane({ doc, onDoc }: { doc: any; onDoc: (d: any) => void }) {
     if (!edit) setText(y);
   }, [y, edit]);
   return (
-    <Section title="Document" actions={<button className="link" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit the YAML'}</button>}>
+    <Section title="Document" actions={<Link as="button" onClick={() => setEdit((e) => !e)}>{edit ? 'Done' : 'Edit the YAML'}</Link>}>
       {edit ? (
         <>
-          <textarea className="yaml-editor short" spellCheck={false} value={text} aria-label="Document YAML" onChange={(e) => {
+          <Textarea className="yaml-editor short" spellCheck={false} value={text} aria-label="Document YAML" onChange={(e) => {
             setText(e.target.value);
             try {
               const d = YAML.parse(e.target.value);
@@ -357,25 +359,25 @@ function TestsOf({ name, title = 'Tests of the published release' }: { name?: st
     }
   };
   return (
-    <Section title={title} count={mine.length} actions={mine.length ? <button onClick={() => mine.forEach((t) => run(t.id))}>Run them all</button> : undefined}>
+    <Section title={title} count={mine.length} actions={mine.length ? <Button onClick={() => mine.forEach((t) => run(t.id))}>Run them all</Button> : undefined}>
       {!mine.length ? <p className="muted small">No stored test targets {name}.</p> : (
-        <table className="grid compact">
-          <thead><tr><th>Test</th><th>Title</th><th>Result</th><th>Trace and detail</th><th></th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Test</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell><TableHeaderCell>Trace and detail</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {mine.map((t) => {
               const r = res[t.id];
               return (
-                <tr key={t.id}>
-                  <td className="mono nowrap"><a href={`#/tests?run=${encodeURIComponent(t.id)}`}>{t.id}</a></td>
-                  <td>{t.title}</td>
-                  <td>{r === 'running' ? <Badge>running…</Badge> : typeof r === 'string' ? <span className="fail-text small">{r}</span> : r ? <PassFail passed={r.passed} /> : <span className="muted small">not run</span>}</td>
-                  <td className="small mono break">{r && typeof r === 'object' && <>{r.trace.join(' ')}{r.detail?.length ? <div className="muted">detail {r.detail.join(' ')}</div> : null}</>}</td>
-                  <td><button onClick={() => run(t.id)}>Run</button></td>
-                </tr>
+                <TableRow key={t.id}>
+                  <TableCell className="mono nowrap"><a href={`#/tests?run=${encodeURIComponent(t.id)}`}>{t.id}</a></TableCell>
+                  <TableCell>{t.title}</TableCell>
+                  <TableCell>{r === 'running' ? <Badge>running…</Badge> : typeof r === 'string' ? <span className="fail-text small">{r}</span> : r ? <PassFail passed={r.passed} /> : <span className="muted small">not run</span>}</TableCell>
+                  <TableCell className="small mono break">{r && typeof r === 'object' && <>{r.trace.join(' ')}{r.detail?.length ? <div className="muted">detail {r.detail.join(' ')}</div> : null}</>}</TableCell>
+                  <TableCell><Button onClick={() => run(t.id)}>Run</Button></TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
     </Section>
   );
@@ -413,31 +415,31 @@ function ParametersEditor({ params, set }: { params?: Record<string, any>; set: 
       <p className="muted small">A value a bank may change is a parameter with a default and bounds, never a constant.</p>
       {Object.keys(p).length > 0 && (
         <div className="table-wrap">
-          <table className="grid compact">
-            <thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Currency</th><th>Min</th><th>Max</th><th>Description</th><th></th></tr></thead>
-            <tbody>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Default</TableHeaderCell><TableHeaderCell>Currency</TableHeaderCell><TableHeaderCell>Min</TableHeaderCell><TableHeaderCell>Max</TableHeaderCell><TableHeaderCell>Description</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+            <TableBody>
               {Object.entries<any>(p).map(([k, d]) => {
                 const out = d.bounds && ((d.bounds.max !== undefined && Number(d.default) > Number(d.bounds.max)) || (d.bounds.min !== undefined && Number(d.default) < Number(d.bounds.min)));
                 return (
-                  <tr key={k} className={out ? 'row-fail' : ''}>
-                    <td className="mono">{k}</td>
-                    <td><Sel value={d.type} onChange={(v) => put(k, { ...d, type: v })} options={['amount', 'integer', 'decimal', 'boolean', 'string', 'duration', 'code', 'list']} label="Parameter type" /></td>
-                    <td><Txt value={d.default} onChange={(v) => put(k, { ...d, default: scalar(v) })} label="Default" size={8} /></td>
-                    <td><Txt value={d.currency} onChange={(v) => put(k, clean({ ...d, currency: v }))} label="Currency" size={4} /></td>
-                    <td><Txt value={d.bounds?.min} onChange={(v) => put(k, clean({ ...d, bounds: orNone({ ...(d.bounds ?? {}), min: scalar(v) }) }))} label="Minimum" size={7} /></td>
-                    <td><Txt value={d.bounds?.max} onChange={(v) => put(k, clean({ ...d, bounds: orNone({ ...(d.bounds ?? {}), max: scalar(v) }) }))} label="Maximum" size={7} /></td>
-                    <td><Txt value={d.description} onChange={(v) => put(k, clean({ ...d, description: v }))} label="Parameter description" /></td>
-                    <td><button className="link danger" onClick={() => put(k, undefined)}>Remove</button></td>
-                  </tr>
+                  <TableRow key={k} className={out ? 'row-fail' : ''}>
+                    <TableCell className="mono">{k}</TableCell>
+                    <TableCell><Sel value={d.type} onChange={(v) => put(k, { ...d, type: v })} options={['amount', 'integer', 'decimal', 'boolean', 'string', 'duration', 'code', 'list']} label="Parameter type" /></TableCell>
+                    <TableCell><Txt value={d.default} onChange={(v) => put(k, { ...d, default: scalar(v) })} label="Default" size={8} /></TableCell>
+                    <TableCell><Txt value={d.currency} onChange={(v) => put(k, clean({ ...d, currency: v }))} label="Currency" size={4} /></TableCell>
+                    <TableCell><Txt value={d.bounds?.min} onChange={(v) => put(k, clean({ ...d, bounds: orNone({ ...(d.bounds ?? {}), min: scalar(v) }) }))} label="Minimum" size={7} /></TableCell>
+                    <TableCell><Txt value={d.bounds?.max} onChange={(v) => put(k, clean({ ...d, bounds: orNone({ ...(d.bounds ?? {}), max: scalar(v) }) }))} label="Maximum" size={7} /></TableCell>
+                    <TableCell><Txt value={d.description} onChange={(v) => put(k, clean({ ...d, description: v }))} label="Parameter description" /></TableCell>
+                    <TableCell><Link as="button" className="danger" onClick={() => put(k, undefined)}>Remove</Link></TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       <div className="inline-form">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="parameterName" className="mono" aria-label="New parameter name" />
-        <button disabled={!/^[a-z][A-Za-z0-9]*$/.test(name) || name in p} onClick={() => { put(name, { type: 'amount', default: 0, bounds: { min: 0 } }); setName(''); }}>Add a parameter</button>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="parameterName" className="mono" aria-label="New parameter name" />
+        <Button disabled={!/^[a-z][A-Za-z0-9]*$/.test(name) || name in p} onClick={() => { put(name, { type: 'amount', default: 0, bounds: { min: 0 } }); setName(''); }}>Add a parameter</Button>
       </div>
     </Section>
   );
@@ -459,7 +461,7 @@ function ExamplesEditor({ examples, set, gates, decisions }: { examples?: any[];
               <Txt value={x.name} onChange={(v) => put(i, { ...x, name: v ?? '' })} label="Example name" placeholder="name" />
               <Txt value={x.evaluationDate} onChange={(v) => put(i, clean({ ...x, evaluationDate: v }))} label="Evaluation date" placeholder="2026-11-17" mono size={10} />
               {r ? <PassFail passed={r.passed} /> : <Badge>not run</Badge>}
-              <button className="link danger" onClick={() => set(xs.filter((_, n) => n !== i))}>Remove</button>
+              <Link as="button" className="danger" onClick={() => set(xs.filter((_, n) => n !== i))}>Remove</Link>
             </div>
             <div className="ex-cols">
               <div>
@@ -484,7 +486,7 @@ function ExamplesEditor({ examples, set, gates, decisions }: { examples?: any[];
           </div>
         );
       })}
-      <button onClick={() => set([...xs, { name: `example ${xs.length + 1}`, evaluationDate: '2026-11-17', given: {}, expect: decisions ? { decisions: [] } : { findings: [] } }])}>Add an example</button>
+      <Button onClick={() => set([...xs, { name: `example ${xs.length + 1}`, evaluationDate: '2026-11-17', given: {}, expect: decisions ? { decisions: [] } : { findings: [] } }])}>Add an example</Button>
     </Section>
   );
 }
@@ -529,14 +531,14 @@ function RuleForm({ doc, set, gates }: { doc: any; set: Set; gates?: any }) {
               ) : (
                 <div className="grow"><JsonField value={c[k]} onChange={(v) => putW(i, { [k]: v })} rows={3} label={`${k} condition`} /></div>
               )}
-              <button className="link" disabled={i === 0} onClick={() => { const n = [...when]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set(['when'], n); }} aria-label="Move up">↑</button>
-              <button className="link danger" onClick={() => set(['when'], when.filter((_, n) => n !== i))}>Remove</button>
+              <Link as="button" disabled={i === 0} onClick={() => { const n = [...when]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; set(['when'], n); }} aria-label="Move up">↑</Link>
+              <Link as="button" className="danger" onClick={() => set(['when'], when.filter((_, n) => n !== i))}>Remove</Link>
             </div>
           );
         })}
         <div className="row-actions">
-          <button onClick={() => set(['when'], [...when, { match: { fact: 'Payment', as: 'p' } }])}>Add a pattern</button>
-          <button onClick={() => set(['when'], [...when, { having: '' }])}>Add a condition</button>
+          <Button onClick={() => set(['when'], [...when, { match: { fact: 'Payment', as: 'p' } }])}>Add a pattern</Button>
+          <Button onClick={() => set(['when'], [...when, { having: '' }])}>Add a condition</Button>
         </div>
       </Section>
       <Section title="Then" count={then.length}>
@@ -564,11 +566,11 @@ function RuleForm({ doc, set, gates }: { doc: any; set: Set; gates?: any }) {
                 </>
               )}
               {k === 'fact' && <div className="grow"><JsonField value={f} onChange={(v) => putT(i, { yield: { fact: v } })} rows={2} label="Fact" /></div>}
-              <button className="link danger" onClick={() => set(['then'], then.filter((_, n) => n !== i))}>Remove</button>
+              <Link as="button" className="danger" onClick={() => set(['then'], then.filter((_, n) => n !== i))}>Remove</Link>
             </div>
           );
         })}
-        <button onClick={() => set(['then'], [...then, { yield: { finding: { severity: 'reject', path: '', reasonCode: '' } } }])}>Add an action</button>
+        <Button onClick={() => set(['then'], [...then, { yield: { finding: { severity: 'reject', path: '', reasonCode: '' } } }])}>Add an action</Button>
       </Section>
       <ParametersEditor params={doc.parameters} set={(v) => set(['parameters'], v)} />
       <ExamplesEditor examples={doc.examples} set={(v) => set(['examples'], v)} gates={gates} />
@@ -626,45 +628,45 @@ function TableForm({ doc, set, gates, analysis }: { doc: any; set: Set; gates?: 
           <div key={i} className="bench-row">
             <Txt value={inp.name} onChange={(v) => set(['inputs', i, 'name'], v ?? '')} label="Input name" placeholder="name" mono />
             <Txt value={inp.expression} onChange={(v) => set(['inputs', i, 'expression'], v ?? '')} label="Input expression" placeholder="header.kind" mono list="table-paths" className="grow" />
-            <button className="link danger" onClick={() => set(['inputs'], ins.filter((_, n) => n !== i))}>Remove</button>
+            <Link as="button" className="danger" onClick={() => set(['inputs'], ins.filter((_, n) => n !== i))}>Remove</Link>
           </div>
         ))}
-        <button onClick={() => set(['inputs'], [...ins, { name: `input${ins.length + 1}`, expression: '' }])}>Add an input</button>
+        <Button onClick={() => set(['inputs'], [...ins, { name: `input${ins.length + 1}`, expression: '' }])}>Add an input</Button>
         <h4>Outputs</h4>
         <StringList value={outs} onChange={(v) => set(['outputs'], v ?? [])} placeholder="output name" />
       </Section>
       <Section title="Rows" count={rows.length} actions={blocking ? <Badge tone="fail">overlap: publish is blocked</Badge> : a.overlaps.length ? <Badge tone="warn">overlaps allowed by {doc.hitPolicy}</Badge> : <Badge tone="pass">no overlap</Badge>}>
         <p className="muted small">A blank cell matches any value. Rows that overlap are marked; under hit policy unique an overlap blocks publish.</p>
         <div className="table-wrap">
-          <table className="grid compact dt-grid">
-            <thead>
-              <tr><th>#</th>{ins.map((i) => <th key={`i-${i.name}`} className="dt-in">{i.name}</th>)}{outs.map((o) => <th key={`o-${o}`} className="dt-out">{o}</th>)}<th>Reason</th><th></th></tr>
-            </thead>
-            <tbody>
+          <Table size="small" className="grid compact dt-grid">
+            <TableHeader>
+              <TableRow><TableHeaderCell>#</TableHeaderCell>{ins.map((i) => <TableHeaderCell key={`i-${i.name}`} className="dt-in">{i.name}</TableHeaderCell>)}{outs.map((o) => <TableHeaderCell key={`o-${o}`} className="dt-out">{o}</TableHeaderCell>)}<TableHeaderCell>Reason</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((r, n) => (
-                <tr key={n} className={inOverlap.has(n) ? (blocking ? 'row-fail' : 'row-warn') : ''}>
-                  <td className="muted">{n + 1}{inOverlap.has(n) && <div className="small">overlaps {a.overlaps.filter((p) => p.includes(n)).map((p) => (p[0] === n ? p[1] : p[0]) + 1).join(', ')}</div>}</td>
-                  {ins.map((i) => <td key={`i-${i.name}`}><Txt value={r.when?.[i.name]} onChange={(v) => set(['rows', n, 'when'], clean({ ...(r.when ?? {}), [i.name]: scalar(v) }) ?? {})} label={`Row ${n + 1} ${i.name}`} placeholder="any" size={10} /></td>)}
-                  {outs.map((o) => <td key={`o-${o}`}><Txt value={r.then?.[o]} onChange={(v) => set(['rows', n, 'then'], clean({ ...(r.then ?? {}), [o]: scalar(v) }) ?? {})} label={`Row ${n + 1} ${o}`} size={14} /></td>)}
-                  <td><Txt value={r.reason} onChange={(v) => set(['rows', n, 'reason'], v)} label={`Row ${n + 1} reason`} /></td>
-                  <td className="nowrap">
-                    <button className="link" disabled={n === 0} onClick={() => { const x = [...rows]; [x[n - 1], x[n]] = [x[n], x[n - 1]]; set(['rows'], x); }} aria-label="Move row up">↑</button>{' '}
-                    <button className="link danger" onClick={() => set(['rows'], rows.filter((_, k) => k !== n))}>Remove</button>
-                  </td>
-                </tr>
+                <TableRow key={n} className={inOverlap.has(n) ? (blocking ? 'row-fail' : 'row-warn') : ''}>
+                  <TableCell className="muted">{n + 1}{inOverlap.has(n) && <div className="small">overlaps {a.overlaps.filter((p) => p.includes(n)).map((p) => (p[0] === n ? p[1] : p[0]) + 1).join(', ')}</div>}</TableCell>
+                  {ins.map((i) => <TableCell key={`i-${i.name}`}><Txt value={r.when?.[i.name]} onChange={(v) => set(['rows', n, 'when'], clean({ ...(r.when ?? {}), [i.name]: scalar(v) }) ?? {})} label={`Row ${n + 1} ${i.name}`} placeholder="any" size={10} /></TableCell>)}
+                  {outs.map((o) => <TableCell key={`o-${o}`}><Txt value={r.then?.[o]} onChange={(v) => set(['rows', n, 'then'], clean({ ...(r.then ?? {}), [o]: scalar(v) }) ?? {})} label={`Row ${n + 1} ${o}`} size={14} /></TableCell>)}
+                  <TableCell><Txt value={r.reason} onChange={(v) => set(['rows', n, 'reason'], v)} label={`Row ${n + 1} reason`} /></TableCell>
+                  <TableCell className="nowrap">
+                    <Link as="button" disabled={n === 0} onClick={() => { const x = [...rows]; [x[n - 1], x[n]] = [x[n], x[n - 1]]; set(['rows'], x); }} aria-label="Move row up">↑</Link>{' '}
+                    <Link as="button" className="danger" onClick={() => set(['rows'], rows.filter((_, k) => k !== n))}>Remove</Link>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
-        <button onClick={() => set(['rows'], [...rows, { when: {}, then: {} }])}>Add a row</button>
+        <Button onClick={() => set(['rows'], [...rows, { when: {}, then: {} }])}>Add a row</Button>
         <h4>Gaps</h4>
         {a.hasCatchAll ? <p className="ok-line small">A catch-all row covers every other combination.</p> : !a.gaps.length ? <p className="ok-line small">No gap among the values the rows name.</p> : (
           <>
             <p className="small warn-text">{a.gaps.length} combination{a.gaps.length === 1 ? '' : 's'} no row covers. Add a row, or a catch-all row with every cell blank.</p>
             <div className="table-wrap" style={{ maxHeight: 200 }}>
-              <table className="grid compact"><thead><tr>{ins.map((i) => <th key={i.name}>{i.name}</th>)}</tr></thead>
-                <tbody>{a.gaps.slice(0, 40).map((g, k) => <tr key={k}>{ins.map((i) => <td key={i.name} className="mono small">{g[i.name]}</td>)}</tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact"><TableHeader><TableRow>{ins.map((i) => <TableHeaderCell key={i.name}>{i.name}</TableHeaderCell>)}</TableRow></TableHeader>
+                <TableBody>{a.gaps.slice(0, 40).map((g, k) => <TableRow key={k}>{ins.map((i) => <TableCell key={i.name} className="mono small">{g[i.name]}</TableCell>)}</TableRow>)}</TableBody>
+              </Table>
             </div>
           </>
         )}
@@ -722,37 +724,37 @@ function ActivityForm({ doc, set, composite }: { doc: any; set: Set; composite?:
         <h4>Writes</h4>
         <StringList value={doc.writes} onChange={(v) => set(['writes'], v)} suggestions={paths} check={check} placeholder="a context path" label="Add a write" />
         <h4>Outcomes</h4>
-        <table className="grid compact">
-          <thead><tr><th>Primary</th><th>Name</th><th>Description</th><th></th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Primary</TableHeaderCell><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Description</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {outs.map((o, i) => (
-              <tr key={i}>
-                <td><input type="radio" name="primary" checked={!!o.primary} onChange={() => set(['outcomes'], outs.map((x, n) => clean({ ...x, primary: n === i ? true : undefined })))} aria-label={`Primary ${o.name}`} /></td>
-                <td><Txt value={o.name} onChange={(v) => set(['outcomes', i, 'name'], v ?? '')} mono label="Outcome name" /></td>
-                <td><Txt value={o.description} onChange={(v) => set(['outcomes', i], clean({ ...o, description: v }))} label="Outcome description" /></td>
-                <td><button className="link danger" onClick={() => set(['outcomes'], outs.filter((_, n) => n !== i))}>Remove</button></td>
-              </tr>
+              <TableRow key={i}>
+                <TableCell><Radio name="primary" checked={!!o.primary} onChange={() => set(['outcomes'], outs.map((x, n) => clean({ ...x, primary: n === i ? true : undefined })))} aria-label={`Primary ${o.name}`} /></TableCell>
+                <TableCell><Txt value={o.name} onChange={(v) => set(['outcomes', i, 'name'], v ?? '')} mono label="Outcome name" /></TableCell>
+                <TableCell><Txt value={o.description} onChange={(v) => set(['outcomes', i], clean({ ...o, description: v }))} label="Outcome description" /></TableCell>
+                <TableCell><Link as="button" className="danger" onClick={() => set(['outcomes'], outs.filter((_, n) => n !== i))}>Remove</Link></TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-        <button onClick={() => set(['outcomes'], [...outs, { name: `outcome-${outs.length + 1}`, ...(outs.length ? {} : { primary: true }) }])}>Add an outcome</button>
+          </TableBody>
+        </Table>
+        <Button onClick={() => set(['outcomes'], [...outs, { name: `outcome-${outs.length + 1}`, ...(outs.length ? {} : { primary: true }) }])}>Add an outcome</Button>
         <p className="muted small">The primary outcome falls through to the next step. A workflow handles every other one.</p>
         <h4>Errors</h4>
-        <table className="grid compact">
-          <thead><tr><th>Name</th><th>Retryable</th><th>Reason code</th><th>Description</th><th></th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Retryable</TableHeaderCell><TableHeaderCell>Reason code</TableHeaderCell><TableHeaderCell>Description</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {errs.map((x, i) => (
-              <tr key={i}>
-                <td><Txt value={x.name} onChange={(v) => set(['errors', i, 'name'], v ?? '')} mono label="Error name" /></td>
-                <td><input type="checkbox" checked={!!x.retryable} onChange={(e) => set(['errors', i, 'retryable'], e.target.checked)} aria-label={`Retryable ${x.name}`} /></td>
-                <td><Txt value={x.reasonCode} onChange={(v) => set(['errors', i], clean({ ...x, reasonCode: v }))} mono label="Error reason code" size={6} /></td>
-                <td><Txt value={x.description} onChange={(v) => set(['errors', i], clean({ ...x, description: v }))} label="Error description" /></td>
-                <td><button className="link danger" onClick={() => set(['errors'], errs.filter((_, n) => n !== i).length ? errs.filter((_, n) => n !== i) : undefined)}>Remove</button></td>
-              </tr>
+              <TableRow key={i}>
+                <TableCell><Txt value={x.name} onChange={(v) => set(['errors', i, 'name'], v ?? '')} mono label="Error name" /></TableCell>
+                <TableCell><Checkbox checked={!!x.retryable} onChange={(e) => set(['errors', i, 'retryable'], e.target.checked)} aria-label={`Retryable ${x.name}`} /></TableCell>
+                <TableCell><Txt value={x.reasonCode} onChange={(v) => set(['errors', i], clean({ ...x, reasonCode: v }))} mono label="Error reason code" size={6} /></TableCell>
+                <TableCell><Txt value={x.description} onChange={(v) => set(['errors', i], clean({ ...x, description: v }))} label="Error description" /></TableCell>
+                <TableCell><Link as="button" className="danger" onClick={() => set(['errors'], errs.filter((_, n) => n !== i).length ? errs.filter((_, n) => n !== i) : undefined)}>Remove</Link></TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-        <button onClick={() => set(['errors'], [...errs, { name: 'TransientError', retryable: true }])}>Add an error</button>
+          </TableBody>
+        </Table>
+        <Button onClick={() => set(['errors'], [...errs, { name: 'TransientError', retryable: true }])}>Add an error</Button>
         <h4>Ports</h4>
         <StringList value={doc.ports} onChange={(v) => set(['ports'], v)} suggestions={ports} check={(p) => (ports.length && !ports.includes(p) ? `${p} is not a published port` : undefined)} placeholder="a port" label="Add a port" />
         {['validate', 'decide', 'screen'].includes(doc.type) && (
@@ -808,27 +810,27 @@ function MapSection({ doc, set, paths }: { doc: any; set: Set; paths: string[] }
       <div className="form-grid">
         <label className="field"><span>Direction</span><Sel value={m.direction} onChange={(v) => setM('direction', v)} options={[['in', 'in: external to canonical'], ['out', 'out: canonical to external']]} label="Map direction" /></label>
         <label className="field wide"><span>Source model</span><Txt value={m.sourceModel} onChange={(v) => setM('sourceModel', v)} label="Source model" placeholder="WPS SIF" /></label>
-        <label className="check"><input type="checkbox" checked={!!m.roundTrip} onChange={(e) => setM('roundTrip', e.target.checked || undefined)} /> Round trip tested</label>
+        <Checkbox className="check" checked={!!m.roundTrip} onChange={(e) => setM('roundTrip', e.target.checked || undefined)} label={<>Round trip tested</>} />
       </div>
       <datalist id="map-paths">{paths.map((p) => <option key={p} value={p} />)}</datalist>
-      <table className="grid compact">
-        <thead><tr><th>{m.direction === 'out' ? 'From (canonical)' : 'From (external)'}</th><th>{m.direction === 'out' ? 'To (external)' : 'To (canonical)'}</th><th>Via</th><th></th><th></th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>{m.direction === 'out' ? 'From (canonical)' : 'From (external)'}</TableHeaderCell><TableHeaderCell>{m.direction === 'out' ? 'To (external)' : 'To (canonical)'}</TableHeaderCell><TableHeaderCell>Via</TableHeaderCell><TableHeaderCell></TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {fields.map((f, i) => {
             const lossy = !!f.via || dupTo.has(f.to);
             return (
-              <tr key={i} className={lossy ? 'row-warn' : ''}>
-                <td><Txt value={f.from} onChange={(v) => set(['map', 'fields', i, 'from'], v ?? '')} mono label="From" list={m.direction === 'out' ? 'map-paths' : undefined} /></td>
-                <td><Txt value={f.to} onChange={(v) => set(['map', 'fields', i, 'to'], v ?? '')} mono label="To" list={m.direction === 'out' ? undefined : 'map-paths'} /></td>
-                <td><Txt value={f.via} onChange={(v) => set(['map', 'fields', i], clean({ ...f, via: v }))} mono label="Via" placeholder="a function" size={12} /></td>
-                <td className="small">{lossy && <Badge tone="warn" title={dupTo.has(f.to) ? 'Two fields map to one target: the way back cannot tell them apart' : 'A function between the two sides: confirm the round trip gives the value back'}>may lose data</Badge>}</td>
-                <td><button className="link danger" onClick={() => set(['map', 'fields'], fields.filter((_, n) => n !== i))}>Remove</button></td>
-              </tr>
+              <TableRow key={i} className={lossy ? 'row-warn' : ''}>
+                <TableCell><Txt value={f.from} onChange={(v) => set(['map', 'fields', i, 'from'], v ?? '')} mono label="From" list={m.direction === 'out' ? 'map-paths' : undefined} /></TableCell>
+                <TableCell><Txt value={f.to} onChange={(v) => set(['map', 'fields', i, 'to'], v ?? '')} mono label="To" list={m.direction === 'out' ? undefined : 'map-paths'} /></TableCell>
+                <TableCell><Txt value={f.via} onChange={(v) => set(['map', 'fields', i], clean({ ...f, via: v }))} mono label="Via" placeholder="a function" size={12} /></TableCell>
+                <TableCell className="small">{lossy && <Badge tone="warn" title={dupTo.has(f.to) ? 'Two fields map to one target: the way back cannot tell them apart' : 'A function between the two sides: confirm the round trip gives the value back'}>may lose data</Badge>}</TableCell>
+                <TableCell><Link as="button" className="danger" onClick={() => set(['map', 'fields'], fields.filter((_, n) => n !== i))}>Remove</Link></TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
-      <button onClick={() => set(['map', 'fields'], [...fields, { from: '', to: '' }])}>Add a field</button>
+        </TableBody>
+      </Table>
+      <Button onClick={() => set(['map', 'fields'], [...fields, { from: '', to: '' }])}>Add a field</Button>
       <h4>Variants and edge rules</h4>
       <div className="form-grid">
         <label className="field wide"><span>Variants</span><StringList value={m.variants} onChange={(v) => setM('variants', v)} placeholder="variant" mono={false} /></label>
@@ -881,9 +883,9 @@ function SimulatorForm({ doc, set }: { doc: any; set: Set }) {
       </Section>
       <Section title="Standard scenarios" actions={missing.length ? <Badge tone="fail">{missing.length} missing: publish is blocked</Badge> : <Badge tone="pass">all eight present</Badge>}>
         <div className="chips">
-          {STANDARD.map((s) => (have.has(s) ? <Badge key={s} tone="pass">{s}</Badge> : <button key={s} className="chip-btn" onClick={() => set(['scenarios'], [...sc, seedScenario(s, doc)])} title="Add it from the standard set">+ {s}</button>))}
+          {STANDARD.map((s) => (have.has(s) ? <Badge key={s} tone="pass">{s}</Badge> : <Button size="small" key={s} className="chip-btn" onClick={() => set(['scenarios'], [...sc, seedScenario(s, doc)])} title="Add it from the standard set">+ {s}</Button>))}
         </div>
-        {missing.length > 1 && <div className="row-actions"><button onClick={() => set(['scenarios'], [...sc, ...missing.map((m) => seedScenario(m, doc))])}>Add every missing standard scenario</button></div>}
+        {missing.length > 1 && <div className="row-actions"><Button onClick={() => set(['scenarios'], [...sc, ...missing.map((m) => seedScenario(m, doc))])}>Add every missing standard scenario</Button></div>}
       </Section>
       <Section title="Scenarios" count={sc.length}>
         {sc.map((s, i) => (
@@ -891,36 +893,36 @@ function SimulatorForm({ doc, set }: { doc: any; set: Set }) {
             <div className="bench-row">
               <Txt value={s.name} onChange={(v) => set(['scenarios', i, 'name'], v ?? '')} mono label="Scenario name" />
               {STANDARD.includes(s.name) && <Badge tone="info">standard</Badge>}
-              <label className="check small"><input type="checkbox" checked={!!s.malformed} onChange={(e) => set(['scenarios', i, 'malformed'], e.target.checked || undefined)} /> malformed (skips self-check)</label>
+              <Checkbox className="check small" checked={!!s.malformed} onChange={(e) => set(['scenarios', i, 'malformed'], e.target.checked || undefined)} label={<>malformed (skips self-check)</>} />
               <Txt value={s.description} onChange={(v) => set(['scenarios', i, 'description'], v)} label="Scenario description" placeholder="description" className="grow" />
-              <button className="link danger" onClick={() => set(['scenarios'], sc.filter((_, n) => n !== i))}>Remove</button>
+              <Link as="button" className="danger" onClick={() => set(['scenarios'], sc.filter((_, n) => n !== i))}>Remove</Link>
             </div>
             <div className="table-wrap">
-              <table className="grid compact sim-steps">
-                <thead><tr><th>#</th>{SIM_STEP_KEYS.map((k) => <th key={k}>{k}</th>)}<th></th></tr></thead>
-                <tbody>
+              <Table size="small" className="grid compact sim-steps">
+                <TableHeader><TableRow><TableHeaderCell>#</TableHeaderCell>{SIM_STEP_KEYS.map((k) => <TableHeaderCell key={k}>{k}</TableHeaderCell>)}<TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+                <TableBody>
                   {(s.steps ?? []).map((st: any, j: number) => (
-                    <tr key={j}>
-                      <td className="muted">{j + 1}</td>
+                    <TableRow key={j}>
+                      <TableCell className="muted">{j + 1}</TableCell>
                       {SIM_STEP_KEYS.map((k) => (
-                        <td key={k}>
+                        <TableCell key={k}>
                           {k === 'noReply' || k === 'duplicate' ? (
-                            <input type="checkbox" checked={!!st[k]} onChange={(e) => set(['scenarios', i, 'steps', j], clean({ ...st, [k]: e.target.checked || undefined }))} aria-label={`${s.name} step ${j + 1} ${k}`} />
+                            <Checkbox checked={!!st[k]} onChange={(e) => set(['scenarios', i, 'steps', j], clean({ ...st, [k]: e.target.checked || undefined }))} aria-label={`${s.name} step ${j + 1} ${k}`} />
                           ) : (
                             <Txt value={st[k]} onChange={(v) => set(['scenarios', i, 'steps', j], clean({ ...st, [k]: k === 'failTimes' ? (v ? Number(v) : undefined) : v }))} mono label={`${s.name} step ${j + 1} ${k}`} size={k === 'expect' || k === 'send' ? 16 : 7} />
                           )}
-                        </td>
+                        </TableCell>
                       ))}
-                      <td><button className="link danger" onClick={() => set(['scenarios', i, 'steps'], (s.steps as any[]).filter((_, n) => n !== j))}>Remove</button></td>
-                    </tr>
+                      <TableCell><Link as="button" className="danger" onClick={() => set(['scenarios', i, 'steps'], (s.steps as any[]).filter((_, n) => n !== j))}>Remove</Link></TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
-            <button onClick={() => set(['scenarios', i, 'steps'], [...(s.steps ?? []), { send: '', status: 'accepted' }])}>Add a step</button>
+            <Button onClick={() => set(['scenarios', i, 'steps'], [...(s.steps ?? []), { send: '', status: 'accepted' }])}>Add a step</Button>
           </div>
         ))}
-        <div className="row-actions"><button onClick={() => set(['scenarios'], [...sc, { name: `scenario-${sc.length + 1}`, steps: [{ expect: '' }] }])}>Add a scenario</button></div>
+        <div className="row-actions"><Button onClick={() => set(['scenarios'], [...sc, { name: `scenario-${sc.length + 1}`, steps: [{ expect: '' }] }])}>Add a scenario</Button></div>
       </Section>
     </>
   );
@@ -954,10 +956,10 @@ function SubflowEditor({ act, sub, setSub }: { act: any; sub: any; setSub: (d: a
     <>
       <h3 className="sub-head">Subflow <span className="mono">{sub.name}</span></h3>
       {!agree && (
-        <div className="alert warn small">
+        <Alert tone="warn" className="small">
           The composite's outcomes ({outs.join(', ')}) and the subflow's ({exit.join(', ')}) differ. They must be the same (R-03-20, L30).{' '}
-          <button className="link" onClick={() => setSub({ ...sub, exit: { ...(sub.exit ?? {}), outcomes: outs } })}>Take the composite's outcomes</button>
-        </div>
+          <Link as="button" onClick={() => setSub({ ...sub, exit: { ...(sub.exit ?? {}), outcomes: outs } })}>Take the composite's outcomes</Link>
+        </Alert>
       )}
       <div className="cols">
         <div className="col">

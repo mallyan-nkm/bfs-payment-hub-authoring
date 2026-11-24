@@ -3,6 +3,7 @@ import { ArtefactLink, Badge, ErrorBox, Loading, Section, useLoad, useStudio } f
 import { PortBindings } from './PortBindings';
 import { ReferenceTables } from './ReferenceTables';
 import { Licensing } from './Licensing';
+import { Button } from '@fluentui/react-components';
 
 // The bank workspace (R-10-11): where a Bank Configurator lands. Its own hooks, rules, dials,
 // simulators and hook bindings in scope b, and the test bench for every workflow the bank can
@@ -57,15 +58,15 @@ export function Bank() {
       <ErrorBox error={cfg.error} />
       <div className="cols">
         <div className="col">
-          <Section title="Hooks" count={hooks.data?.length} actions={configurator && <button onClick={() => go('/designer')}>New hook</button>}>
+          <Section title="Hooks" count={hooks.data?.length} actions={configurator && <Button onClick={() => go('/designer')}>New hook</Button>}>
             <Items items={hooks.data} empty="No hook yet." edit="designer" />
             <h4>Hook activities</h4>
             <Items items={activities.data} empty="No bank activity yet." edit="activity" />
           </Section>
-          <Section title="Rules and rule values" count={(rules.data?.length ?? 0) + (tables.data?.length ?? 0)} actions={configurator && <button onClick={() => go('/editors?kind=rule')}>New rule</button>}>
+          <Section title="Rules and rule values" count={(rules.data?.length ?? 0) + (tables.data?.length ?? 0)} actions={configurator && <Button onClick={() => go('/editors?kind=rule')}>New rule</Button>}>
             <Items items={[...(rules.data ?? []), ...(tables.data ?? [])]} empty="No bank rule yet." edit="rule" />
           </Section>
-          <Section title="Simulators and scenarios" count={sims.data?.length} actions={configurator && <button onClick={() => go('/editors?kind=simulator')}>New simulator</button>}>
+          <Section title="Simulators and scenarios" count={sims.data?.length} actions={configurator && <Button onClick={() => go('/editors?kind=simulator')}>New simulator</Button>}>
             <Items items={sims.data} empty="No bank simulator yet." edit="simulator" />
           </Section>
           <Section title="Port bindings">
@@ -79,10 +80,10 @@ export function Bank() {
           </Section>
         </div>
         <div className="col side">
-          <Section title="Dials" count={params.length} actions={<button onClick={() => go('/tenant')}>Set dials</button>}>
+          <Section title="Dials" count={params.length} actions={<Button onClick={() => go('/tenant')}>Set dials</Button>}>
             {cfg.loading ? <Loading /> : <p className="small">{dialled.length} of {params.length} parameters have a value in configuration set {cfg.data?.configurationSet?.release ?? 'none'}. Every value lies inside the bounds the owner declared.</p>}
           </Section>
-          <Section title="Hook bindings" count={bound.length} actions={<button onClick={() => go('/tenant')}>Bind hooks</button>}>
+          <Section title="Hook bindings" count={bound.length} actions={<Button onClick={() => go('/tenant')}>Bind hooks</Button>}>
             <ul className="plain small">{bound.map((p) => <li key={p.hookPoint} className="mono">{p.hookPoint} → {p.bindings.map((b: any) => `${b.hook}@${b.release}`).join(', ')}</li>)}</ul>
             {!bound.length && <p className="muted small">No hook is bound.</p>}
           </Section>

@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import type { InstanceView, TestRunReport } from '../api';
-import { ArtefactLink, Badge, Json, KV, List, PassFail, Section, Tabs, Val, fmtMs } from '../ui';
+import { Alert, ArtefactLink, Badge, Json, KV, List, PassFail, Section, Tabs, Val, fmtMs } from '../ui';
+import { Button, Checkbox, Link, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // A run report (F-17, F-19): checks, business trace, timeline on the virtual clock, instance tree,
 // per-step context deltas, rule traces, messages and the bench.
@@ -48,26 +49,26 @@ export function RunReport({ report, footer }: { report: TestRunReport; footer?: 
           {rec && <span className="muted small">clock starts {rec.startedAt}</span>}
         </div>
       </div>
-      {report.error && <div className="alert fail"><b>The run failed.</b><pre className="code small">{report.error}</pre></div>}
-      {report.warnings?.length > 0 && <div className="alert warn"><b>Warnings</b><List items={report.warnings} /></div>}
+      {report.error && <Alert tone="fail"><b>The run failed.</b><pre className="code small">{report.error}</pre></Alert>}
+      {report.warnings?.length > 0 && <Alert tone="warn"><b>Warnings</b><List items={report.warnings} /></Alert>}
 
       <div className="cols">
         <div className="col">
           <Section title="Checks" count={report.checks.length} actions={report.checks.length ? <Badge tone={failed ? 'fail' : 'pass'}>{report.checks.length - failed} of {report.checks.length} pass</Badge> : undefined}>
             {report.checks.length === 0 ? <p className="muted">No expectation was set, so nothing was checked.</p> : (
-              <table className="grid compact">
-                <thead><tr><th>Check</th><th>Expected</th><th>Actual</th><th>Result</th></tr></thead>
-                <tbody>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Check</TableHeaderCell><TableHeaderCell>Expected</TableHeaderCell><TableHeaderCell>Actual</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>
                   {report.checks.map((c, i) => (
-                    <tr key={i} className={c.passed ? '' : 'row-fail'}>
-                      <td>{c.what}{c.note && <div className="muted small">{c.note}</div>}</td>
-                      <td><Val v={c.expected} /></td>
-                      <td><Val v={c.actual} /></td>
-                      <td><PassFail passed={c.passed} /></td>
-                    </tr>
+                    <TableRow key={i} className={c.passed ? '' : 'row-fail'}>
+                      <TableCell>{c.what}{c.note && <div className="muted small">{c.note}</div>}</TableCell>
+                      <TableCell><Val v={c.expected} /></TableCell>
+                      <TableCell><Val v={c.actual} /></TableCell>
+                      <TableCell><PassFail passed={c.passed} /></TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </Section>
         </div>
@@ -178,16 +179,16 @@ function Timeline({ timeline, elapsedMs }: { timeline: any[]; elapsedMs: number 
     const tick = prevAt !== undefined && prevAt !== t.at;
     prevAt = t.at;
     return (
-      <tr key={key} className={[tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')}>
-        <td className="mono nowrap">{fmtMs(t.at)}</td>
-        <td className="mono small">{t.instance}</td>
-        <td className="mono" style={{ paddingLeft: 7 + depth * 18 }}>{depth > 0 && <span className="muted">└ </span>}{t.step ?? ''}</td>
-        <td><Badge tone={typeTone(t.type)}>{t.type}</Badge></td>
-        <td className="small break">
+      <TableRow key={key} className={[tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')}>
+        <TableCell className="mono nowrap">{fmtMs(t.at)}</TableCell>
+        <TableCell className="mono small">{t.instance}</TableCell>
+        <TableCell className="mono" style={{ paddingLeft: 7 + depth * 18 }}>{depth > 0 && <span className="muted">└ </span>}{t.step ?? ''}</TableCell>
+        <TableCell><Badge tone={typeTone(t.type)}>{t.type}</Badge></TableCell>
+        <TableCell className="small break">
           {detailText(t.detail)}
           {t.detail?.policy && <> <details className="inline"><summary>policy</summary><Json value={t.detail.policy} /></details></>}
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     );
   };
   const render = (items: (any | Group)[], depth: number, path: string): any[] => items.flatMap((x, i) => {
@@ -197,18 +198,18 @@ function Timeline({ timeline, elapsedMs }: { timeline: any[]; elapsedMs: number 
     const tick = prevAt !== undefined && prevAt !== x.head.at;
     prevAt = x.head.at;
     const head = (
-      <tr key={`${path}-${i}-h`} className={['block-row', tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')} onClick={() => toggle(k)}>
-        <td className="mono nowrap">{fmtMs(x.head.at)}</td>
-        <td className="mono small">{x.head.instance}</td>
-        <td className="mono" style={{ paddingLeft: 7 + depth * 18 }}>
-          <button className="link" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} the steps inside ${x.head.step}`}>{isOpen ? '▾' : '▸'}</button> <b>{x.head.step}</b>
-        </td>
-        <td><Badge tone="info">composite</Badge></td>
-        <td className="small break">
+      <TableRow key={`${path}-${i}-h`} className={['block-row', tick ? 'tick' : '', depth ? 'nested' : ''].join(' ')} onClick={() => toggle(k)}>
+        <TableCell className="mono nowrap">{fmtMs(x.head.at)}</TableCell>
+        <TableCell className="mono small">{x.head.instance}</TableCell>
+        <TableCell className="mono" style={{ paddingLeft: 7 + depth * 18 }}>
+          <Link as="button" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} the steps inside ${x.head.step}`}>{isOpen ? '▾' : '▸'}</Link> <b>{x.head.step}</b>
+        </TableCell>
+        <TableCell><Badge tone="info">composite</Badge></TableCell>
+        <TableCell className="small break">
           {x.head.detail?.of && <><code>{x.head.detail.of}</code> by <code>{x.head.detail.by}</code>, </>}
           {countEvents(x)} events inside{x.end ? <>, ends <code>{x.end.detail?.outcome}</code> at {fmtMs(x.end.at)}</> : ', not ended'}
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     );
     if (!isOpen) return [head];
     return [head, ...render(x.inner, depth + 1, `${path}-${i}`), ...(x.end ? [line(x.end, depth + 1, `${path}-${i}-e`)] : [])];
@@ -222,24 +223,24 @@ function Timeline({ timeline, elapsedMs }: { timeline: any[]; elapsedMs: number 
         </p>
       )}
       <div className="toolbar">
-        <select value={inst} onChange={(e) => setInst(e.target.value)} aria-label="Instance">
+        <Select value={inst} onChange={(e) => setInst(e.target.value)} aria-label="Instance">
           <option value="">All instances</option>
           {instances.map((i) => <option key={i}>{i}</option>)}
-        </select>
-        <label className="check"><input type="checkbox" checked={onlyKey} onChange={(e) => setOnlyKey(e.target.checked)} /> Attempts, waits, timers, signals and messages only</label>
+        </Select>
+        <Checkbox className="check" checked={onlyKey} onChange={(e) => setOnlyKey(e.target.checked)} label={<>Attempts, waits, timers, signals and messages only</>} />
         {blocks.length > 0 && (
           <>
-            <button onClick={() => setOpen(new Set(blocks))}>Open every composite</button>
-            <button onClick={() => setOpen(new Set())}>Close them</button>
+            <Button onClick={() => setOpen(new Set(blocks))}>Open every composite</Button>
+            <Button onClick={() => setOpen(new Set())}>Close them</Button>
             <span className="muted small">The steps inside a composite are nested under it and closed at first.</span>
           </>
         )}
       </div>
       <div className="table-wrap tall">
-        <table className="grid compact timeline">
-          <thead><tr><th>At</th><th>Instance</th><th>Step</th><th>Event</th><th>Detail</th></tr></thead>
-          <tbody>{body}</tbody>
-        </table>
+        <Table size="small" className="grid compact timeline">
+          <TableHeader><TableRow><TableHeaderCell>At</TableHeaderCell><TableHeaderCell>Instance</TableHeaderCell><TableHeaderCell>Step</TableHeaderCell><TableHeaderCell>Event</TableHeaderCell><TableHeaderCell>Detail</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>{body}</TableBody>
+        </Table>
       </div>
     </Section>
   );
@@ -251,10 +252,10 @@ function Instances({ instances }: { instances: InstanceView[] }) {
   const cur = instances.find((i) => i.id === sel);
   const node = (i: InstanceView, depth: number): any => (
     <li key={i.id}>
-      <button className={i.id === sel ? 'tree-node on' : 'tree-node'} onClick={() => setSel(i.id)} style={{ paddingLeft: 6 + depth * 4 }}>
+      <Button className={i.id === sel ? 'tree-node on' : 'tree-node'} onClick={() => setSel(i.id)} style={{ paddingLeft: 6 + depth * 4 }}>
         <Badge tone="info">{i.kind}</Badge> <span className="mono">{i.workflow}</span><span className="muted mono">@{i.release}</span>{' '}
         {i.outcome && <Badge tone={i.failed ? 'fail' : 'pass'}>{i.outcome}</Badge>}
-      </button>
+      </Button>
       {instances.some((c) => c.parent === i.id) && <ul className="tree">{instances.filter((c) => c.parent === i.id).map((c) => node(c, depth + 1))}</ul>}
     </li>
   );
@@ -289,14 +290,14 @@ function nestSteps(i: InstanceView): { id: string; step?: any; inner?: any[]; ou
 
 function StepRow({ s, nested }: { s: any; nested?: boolean }) {
   return (
-    <tr className={nested ? 'nested' : ''}>
-      <td className="mono" style={nested ? { paddingLeft: 26 } : undefined}>{nested && <span className="muted">└ </span>}{s.step}</td>
-      <td>{s.activity && <ArtefactLink name={s.activity} release={s.release} />}{s.pinned && s.pinned !== s.release && <div className="small warn-text">pinned {s.pinned}</div>}</td>
-      <td>{s.attempts}</td>
-      <td>{s.outcome && <code>{s.outcome}</code>}</td>
-      <td className="mono small nowrap">{fmtMs(s.startedAt)}{s.endedAt !== undefined && s.endedAt !== s.startedAt ? ` to ${fmtMs(s.endedAt)}` : ''}</td>
-      <td className="small delta-cell"><Delta delta={s.delta} /></td>
-    </tr>
+    <TableRow className={nested ? 'nested' : ''}>
+      <TableCell className="mono" style={nested ? { paddingLeft: 26 } : undefined}>{nested && <span className="muted">└ </span>}{s.step}</TableCell>
+      <TableCell>{s.activity && <ArtefactLink name={s.activity} release={s.release} />}{s.pinned && s.pinned !== s.release && <div className="small warn-text">pinned {s.pinned}</div>}</TableCell>
+      <TableCell>{s.attempts}</TableCell>
+      <TableCell>{s.outcome && <code>{s.outcome}</code>}</TableCell>
+      <TableCell className="mono small nowrap">{fmtMs(s.startedAt)}{s.endedAt !== undefined && s.endedAt !== s.startedAt ? ` to ${fmtMs(s.endedAt)}` : ''}</TableCell>
+      <TableCell className="small delta-cell"><Delta delta={s.delta} /></TableCell>
+    </TableRow>
   );
 }
 
@@ -323,32 +324,32 @@ function InstanceDetail({ i }: { i: InstanceView }) {
         />
         <details>
           <summary>Pins ({Object.keys(i.pins ?? {}).length})</summary>
-          <table className="grid compact">
-            <tbody>{Object.entries(i.pins ?? {}).map(([k, v]) => <tr key={k}><td><ArtefactLink name={k} /></td><td className="mono">{v}</td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableBody>{Object.entries(i.pins ?? {}).map(([k, v]) => <TableRow key={k}><TableCell><ArtefactLink name={k} /></TableCell><TableCell className="mono">{v}</TableCell></TableRow>)}</TableBody>
+          </Table>
         </details>
       </Section>
       <Section title="Steps and context deltas" count={i.steps?.length}>
         {!i.steps?.length ? <p className="muted">No call steps ran.</p> : (
           <div className="table-wrap">
-            <table className="grid compact">
-              <thead><tr><th>Step</th><th>Activity and release</th><th>Attempts</th><th>Outcome</th><th>Time</th><th>Context delta</th></tr></thead>
-              <tbody>
+            <Table size="small" className="grid compact">
+              <TableHeader><TableRow><TableHeaderCell>Step</TableHeaderCell><TableHeaderCell>Activity and release</TableHeaderCell><TableHeaderCell>Attempts</TableHeaderCell><TableHeaderCell>Outcome</TableHeaderCell><TableHeaderCell>Time</TableHeaderCell><TableHeaderCell>Context delta</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>
                 {nestSteps(i).map((g, n) => g.inner ? (
                   <Fragment key={n}>
-                    <tr className="block-row" onClick={() => setOpenBlocks((o) => ({ ...o, [g.id]: !o[g.id] }))}>
-                      <td className="mono"><button className="link" aria-expanded={!!openBlocks[g.id]}>{openBlocks[g.id] ? '▾' : '▸'}</button> <b>{g.id}</b></td>
-                      <td><Badge tone="info">composite</Badge></td>
-                      <td>{g.inner.reduce((k: number, x: any) => k + (x.attempts ?? 0), 0)}</td>
-                      <td>{g.outcome && <code>{g.outcome}</code>}</td>
-                      <td className="mono small nowrap">{fmtMs(g.inner[0]?.startedAt)}{g.inner[g.inner.length - 1]?.endedAt !== undefined ? ` to ${fmtMs(g.inner[g.inner.length - 1].endedAt)}` : ''}</td>
-                      <td className="small muted">{g.inner.length} step{g.inner.length === 1 ? '' : 's'} inside</td>
-                    </tr>
+                    <TableRow className="block-row" onClick={() => setOpenBlocks((o) => ({ ...o, [g.id]: !o[g.id] }))}>
+                      <TableCell className="mono"><Link as="button" aria-expanded={!!openBlocks[g.id]}>{openBlocks[g.id] ? '▾' : '▸'}</Link> <b>{g.id}</b></TableCell>
+                      <TableCell><Badge tone="info">composite</Badge></TableCell>
+                      <TableCell>{g.inner.reduce((k: number, x: any) => k + (x.attempts ?? 0), 0)}</TableCell>
+                      <TableCell>{g.outcome && <code>{g.outcome}</code>}</TableCell>
+                      <TableCell className="mono small nowrap">{fmtMs(g.inner[0]?.startedAt)}{g.inner[g.inner.length - 1]?.endedAt !== undefined ? ` to ${fmtMs(g.inner[g.inner.length - 1].endedAt)}` : ''}</TableCell>
+                      <TableCell className="small muted">{g.inner.length} step{g.inner.length === 1 ? '' : 's'} inside</TableCell>
+                    </TableRow>
                     {openBlocks[g.id] && g.inner.map((s: any, k: number) => <StepRow key={k} s={s} nested />)}
                   </Fragment>
                 ) : <StepRow key={n} s={g.step} />)}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
         {i.deltas?.length > (i.steps?.length ?? 0) && (
@@ -363,19 +364,19 @@ function InstanceDetail({ i }: { i: InstanceView }) {
           <div key={n} className="rule-trace">
             <div><code>{r.step}</code> worst <Badge tone={r.worst === 'pass' ? 'pass' : r.worst === 'warn' ? 'warn' : 'fail'}>{r.worst}</Badge></div>
             {r.findings?.length > 0 && (
-              <table className="grid compact">
-                <thead><tr><th>Reason code</th><th>Severity</th><th>Path</th><th>Rule</th></tr></thead>
-                <tbody>{r.findings.map((f: any, k: number) => <tr key={k}><td className="mono">{f.reasonCode}</td><td><Badge tone={f.severity === 'warn' ? 'warn' : 'fail'}>{f.severity}</Badge></td><td className="mono">{f.path}</td><td>{f.rule && <ArtefactLink name={f.rule} />}</td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Reason code</TableHeaderCell><TableHeaderCell>Severity</TableHeaderCell><TableHeaderCell>Path</TableHeaderCell><TableHeaderCell>Rule</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{r.findings.map((f: any, k: number) => <TableRow key={k}><TableCell className="mono">{f.reasonCode}</TableCell><TableCell><Badge tone={f.severity === 'warn' ? 'warn' : 'fail'}>{f.severity}</Badge></TableCell><TableCell className="mono">{f.path}</TableCell><TableCell>{f.rule && <ArtefactLink name={f.rule} />}</TableCell></TableRow>)}</TableBody>
+              </Table>
             )}
             {r.decisions?.length > 0 && <div className="small">Decisions <Val v={r.decisions} /></div>}
             {r.parameters && Object.keys(r.parameters).length > 0 && <div className="small">Parameters <Val v={r.parameters} /></div>}
             <details>
               <summary className="small">Rules evaluated ({r.trace?.length ?? 0})</summary>
-              <table className="grid compact">
-                <thead><tr><th>Rule</th><th>Stage</th><th>Fired</th><th>Activations</th></tr></thead>
-                <tbody>{(r.trace ?? []).map((t: any, k: number) => <tr key={k}><td><ArtefactLink name={t.rule} release={t.release} /></td><td>{t.stage}</td><td>{t.fired ? <Badge tone="warn">fired</Badge> : <Badge>no</Badge>}</td><td>{t.activations}</td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Rule</TableHeaderCell><TableHeaderCell>Stage</TableHeaderCell><TableHeaderCell>Fired</TableHeaderCell><TableHeaderCell>Activations</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{(r.trace ?? []).map((t: any, k: number) => <TableRow key={k}><TableCell><ArtefactLink name={t.rule} release={t.release} /></TableCell><TableCell>{t.stage}</TableCell><TableCell>{t.fired ? <Badge tone="warn">fired</Badge> : <Badge>no</Badge>}</TableCell><TableCell>{t.activations}</TableCell></TableRow>)}</TableBody>
+              </Table>
             </details>
           </div>
         ))}
@@ -415,23 +416,23 @@ function Messages({ rec }: { rec: NonNullable<TestRunReport['record']> }) {
       <Section title="Messages in and out" count={rec.messages.length}>
         {!rec.messages.length ? <p className="muted">No message.</p> : (
           <div className="table-wrap tall">
-            <table className="grid compact">
-              <thead><tr><th>At</th><th>From</th><th>Port</th><th>Type</th><th>Id</th><th>Status</th><th>In reply to</th><th>Correlation</th></tr></thead>
-              <tbody>
+            <Table size="small" className="grid compact">
+              <TableHeader><TableRow><TableHeaderCell>At</TableHeaderCell><TableHeaderCell>From</TableHeaderCell><TableHeaderCell>Port</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Id</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>In reply to</TableHeaderCell><TableHeaderCell>Correlation</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>
                 {rec.messages.map((m, i) => (
-                  <tr key={i}>
-                    <td className="mono nowrap">{rel(m.at)}</td>
-                    <td><Badge tone={m.from === 'platform' ? 'info' : 'muted'}>{m.from === 'platform' ? 'out' : 'in'} {m.from}</Badge></td>
-                    <td className="mono small">{m.port}</td>
-                    <td className="mono small">{m.type || <span className="muted">reply</span>}{m.malformed && <Badge tone="fail">malformed</Badge>}{m.copy ? <Badge tone="warn">copy {m.copy}</Badge> : null}</td>
-                    <td className="mono small break">{m.id}</td>
-                    <td>{m.status ?? ''}</td>
-                    <td className="mono small break">{m.inReplyTo ?? ''}</td>
-                    <td className="small"><Val v={m.correlation} /></td>
-                  </tr>
+                  <TableRow key={i}>
+                    <TableCell className="mono nowrap">{rel(m.at)}</TableCell>
+                    <TableCell><Badge tone={m.from === 'platform' ? 'info' : 'muted'}>{m.from === 'platform' ? 'out' : 'in'} {m.from}</Badge></TableCell>
+                    <TableCell className="mono small">{m.port}</TableCell>
+                    <TableCell className="mono small">{m.type || <span className="muted">reply</span>}{m.malformed && <Badge tone="fail">malformed</Badge>}{m.copy ? <Badge tone="warn">copy {m.copy}</Badge> : null}</TableCell>
+                    <TableCell className="mono small break">{m.id}</TableCell>
+                    <TableCell>{m.status ?? ''}</TableCell>
+                    <TableCell className="mono small break">{m.inReplyTo ?? ''}</TableCell>
+                    <TableCell className="small"><Val v={m.correlation} /></TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
         <p className="muted small">Payloads are held by reference and not shown.</p>
@@ -458,20 +459,20 @@ function Bench({ rec }: { rec: NonNullable<TestRunReport['record']> }) {
       <div className="col">
         <Section title="Bench" count={rec.bench.length}>
           {!rec.bench.length ? <p className="muted">No port was bound in the bench.</p> : (
-            <table className="grid compact">
-              <thead><tr><th>Port</th><th>Simulator</th><th>Scenario</th></tr></thead>
-              <tbody>{rec.bench.map((b, i) => <tr key={i}><td><ArtefactLink name={b.port} /></td><td>{b.simulator && <ArtefactLink name={b.simulator} />}</td><td className="mono">{b.scenario}</td></tr>)}</tbody>
-            </table>
+            <Table size="small" className="grid compact">
+              <TableHeader><TableRow><TableHeaderCell>Port</TableHeaderCell><TableHeaderCell>Simulator</TableHeaderCell><TableHeaderCell>Scenario</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>{rec.bench.map((b, i) => <TableRow key={i}><TableCell><ArtefactLink name={b.port} /></TableCell><TableCell>{b.simulator && <ArtefactLink name={b.simulator} />}</TableCell><TableCell className="mono">{b.scenario}</TableCell></TableRow>)}</TableBody>
+            </Table>
           )}
         </Section>
       </div>
       <div className="col">
         <Section title="Default bindings the run used" count={rec.defaultBindings.length}>
           {!rec.defaultBindings.length ? <p className="muted">None. Every port the run reached was bound in the bench.</p> : (
-            <table className="grid compact">
-              <thead><tr><th>Port</th><th>Simulator</th><th>Scenario</th><th>Note</th></tr></thead>
-              <tbody>{rec.defaultBindings.map((b: any, i: number) => <tr key={i}><td>{b.port && <ArtefactLink name={b.port} />}</td><td>{b.simulator && <ArtefactLink name={b.simulator} />}</td><td className="mono">{b.scenario}</td><td className="small">{typeof b === 'string' ? b : b.note ?? b.reason ?? ''}</td></tr>)}</tbody>
-            </table>
+            <Table size="small" className="grid compact">
+              <TableHeader><TableRow><TableHeaderCell>Port</TableHeaderCell><TableHeaderCell>Simulator</TableHeaderCell><TableHeaderCell>Scenario</TableHeaderCell><TableHeaderCell>Note</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>{rec.defaultBindings.map((b: any, i: number) => <TableRow key={i}><TableCell>{b.port && <ArtefactLink name={b.port} />}</TableCell><TableCell>{b.simulator && <ArtefactLink name={b.simulator} />}</TableCell><TableCell className="mono">{b.scenario}</TableCell><TableCell className="small">{typeof b === 'string' ? b : b.note ?? b.reason ?? ''}</TableCell></TableRow>)}</TableBody>
+            </Table>
           )}
         </Section>
       </div>

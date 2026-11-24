@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { get, post, refusal } from '../api';
 import { useAssistReg, type AssistReg } from '../assist';
 import { Markdown } from '../markdown';
-import { Badge, useDebounced, useStudio } from '../ui';
+import { Alert, Badge, useDebounced, useStudio } from '../ui';
+import { Button, Link, Tab, TabList, Textarea } from '@fluentui/react-components';
+import { DismissRegular, SparkleRegular } from '@fluentui/react-icons';
 
 // The assistant beside every surface (I-29). Two tabs:
 // - What is happening: help on the field in focus, the document in plain words with a small
@@ -105,15 +107,15 @@ export function AssistantDock() {
     }
   }, [open]);
 
-  if (!open) return <button className="dock-tab" onClick={() => setOpen(true)} aria-label="Open the assistant">Assistant</button>;
+  if (!open) return <Button className="dock-tab" appearance="primary" icon={<SparkleRegular />} onClick={() => setOpen(true)} aria-label="Open the assistant">Assistant</Button>;
   return (
     <aside className="dock" aria-label="Assistant">
       <div className="dock-head">
-        <div className="tabs small-tabs" role="tablist">
-          <button role="tab" aria-selected={tab === 'happening'} className={tab === 'happening' ? 'tab on' : 'tab'} onClick={() => setTab('happening')}>What is happening</button>
-          <button role="tab" aria-selected={tab === 'ask'} className={tab === 'ask' ? 'tab on' : 'tab'} onClick={() => setTab('ask')}>Ask</button>
-        </div>
-        <button className="link" onClick={() => setOpen(false)} aria-label="Close the assistant">×</button>
+        <TabList className="tabs small-tabs" size="small" selectedValue={tab} onTabSelect={(_, d) => setTab(d.value as typeof tab)}>
+          <Tab value="happening">What is happening</Tab>
+          <Tab value="ask">Ask</Tab>
+        </TabList>
+        <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={() => setOpen(false)} aria-label="Close the assistant" />
       </div>
       <div className="dock-body">
         {tab === 'happening' ? <Happening reg={reg} focus={focus} /> : <Ask reg={reg} focus={focus} />}
@@ -252,8 +254,8 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
   if (!reg) return <p className="small muted">Open an editor, the designer, a bank's configuration or the test bench to ask about what you are building.</p>;
   return (
     <div className="ask" data-testid="ask">
-      {status && !status.configured && <div className="alert warn small" role="status">The assistant has no model credentials, so it cannot answer. {status.how} What is happening still works.</div>}
-      {status?.how === 'replay' && <div className="alert info small">Replaying a recorded conversation, not a live model.</div>}
+      {status && !status.configured && <Alert tone="warn" className="small" role="status">The assistant has no model credentials, so it cannot answer. {status.how} What is happening still works.</Alert>}
+      {status?.how === 'replay' && <Alert tone="info" className="small">Replaying a recorded conversation, not a live model.</Alert>}
       <div className="ask-log">
         {conv.messages.map((m, i) => <Message key={i} m={m} />)}
         {conv.pending && (
@@ -264,16 +266,16 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
             {conv.pending.preview.check && <pre className="code small">{conv.pending.preview.check}</pre>}
             {conv.pending.preview.detail && <details><summary className="small">Show the whole {conv.pending.tool === 'edit_document' ? 'new document' : 'content'}</summary><pre className="code small">{conv.pending.preview.detail}</pre></details>}
             <div className="row-actions">
-              <button className="primary" disabled={busy} onClick={() => decide('once')}>Allow once</button>
-              {conv.pending.allowAlways !== false && <button disabled={busy} onClick={() => decide('always')}>Allow always</button>}
-              <button className="danger" disabled={busy} onClick={() => decide('deny')}>Deny</button>
+              <Button appearance="primary" disabled={busy} onClick={() => decide('once')}>Allow once</Button>
+              {conv.pending.allowAlways !== false && <Button disabled={busy} onClick={() => decide('always')}>Allow always</Button>}
+              <Button className="danger" disabled={busy} onClick={() => decide('deny')}>Deny</Button>
             </div>
           </div>
         )}
         {(conv.flagged ?? []).map((f, i) => (
-          <div key={`${f.toolUseId}-${i}`} className="alert warn small" role="status" data-testid="instruction-flag">
+          <Alert key={`${f.toolUseId}-${i}`} tone="warn" className="small" role="status" data-testid="instruction-flag">
             What the assistant read through {f.tool} holds text that looks like an instruction to it: <q>{f.excerpt}</q>. It treats it as data and does not follow it. Check where it came from.
-          </div>
+          </Alert>
         ))}
         {busy && <p className="small muted">Working…</p>}
         {error && <div className="small fail-text" role="alert">{error}</div>}
@@ -285,22 +287,22 @@ function Ask({ reg, focus }: { reg?: AssistReg; focus?: string }) {
           <ul>
             {conv.history.map((c) => (
               <li key={c.id} className={conv.undone.includes(c.id) ? 'undone' : ''}>
-                <code>{c.id}</code> {c.summary} {conv.undone.includes(c.id) ? <span className="muted small">undone</span> : <button className="link small" onClick={() => undo(c)}>Undo</button>}
+                <code>{c.id}</code> {c.summary} {conv.undone.includes(c.id) ? <span className="muted small">undone</span> : <Link as="button" className="small" onClick={() => undo(c)}>Undo</Link>}
               </li>
             ))}
           </ul>
         </details>
       )}
-      {allow.length > 0 && <p className="small muted">Allowed always here: {allow.join(', ')}. <button className="link small" onClick={() => setAllow([])}>Ask every time again</button></p>}
+      {allow.length > 0 && <p className="small muted">Allowed always here: {allow.join(', ')}. <Link as="button" className="small" onClick={() => setAllow([])}>Ask every time again</Link></p>}
       <div className="chips">
-        {suggestions(reg).map((s) => <button key={s} className="chip-btn" onClick={() => setText(s)}>{s}</button>)}
+        {suggestions(reg).map((s) => <Button size="small" key={s} className="chip-btn" onClick={() => setText(s)}>{s}</Button>)}
       </div>
-      <textarea className="code-input" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Ask the assistant"
+      <Textarea className="code-input" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Ask the assistant"
         placeholder={`Ask about this ${reg.doc?.kind ?? reg.surface}, or ask it to build something`}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send(); }} />
       <div className="row-actions">
-        <button className="primary" disabled={busy || !text.trim() || !!conv.pending} onClick={send}>Send</button>
-        {conv.messages.length > 0 && <button className="link small" onClick={() => setConv({ messages: [], history: conv.history, undone: conv.undone })}>New conversation</button>}
+        <Button appearance="primary" disabled={busy || !text.trim() || !!conv.pending} onClick={send}>Send</Button>
+        {conv.messages.length > 0 && <Link as="button" className="small" onClick={() => setConv({ messages: [], history: conv.history, undone: conv.undone })}>New conversation</Link>}
       </div>
       <p className="small muted">It sees this page and the document. It asks before every change and never publishes. Never type personal data.</p>
     </div>

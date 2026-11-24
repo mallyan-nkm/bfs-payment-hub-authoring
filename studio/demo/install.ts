@@ -28,7 +28,7 @@ export function scenes(d: Director): Scene[] {
   const studio = async (user: string, hash: string) => { await d.as('', user); await d.go(hash); };
   const nav = async () => { await d.point(p().locator('nav.sidebar'), 2200); };
   const side = (name: string) => p().locator('nav.side a', { hasText: name });
-  const tab = (name: string) => p().locator('nav.tabs a', { hasText: name });
+  const tab = (name: string) => p().getByRole('tab', { name, exact: true });
   const svc = (page: string) => runtimeGo(d, URLS.service, `service/${page}`);
   const ops = (page: string) => runtimeGo(d, URLS.ops, page);
   const firstPayment = async () => {

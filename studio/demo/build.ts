@@ -61,7 +61,7 @@ export function scenes(d: Director): Scene[] {
   const bench = async (target: string, tenant: string, ports: [string, string][], sample: string, message?: string) => {
     await d.forTenant(tenant);
     await d.go('tests');
-    await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
+    await d.click(p().getByRole('tab', { name: 'Ad hoc bench' }));
     await d.select(p().getByLabel('Target', { exact: true }), target);
     await d.select(p().getByLabel('Run tenant'), tenant);
     for (const [port, sim] of ports) {
@@ -70,7 +70,7 @@ export function scenes(d: Director): Scene[] {
       await d.select(p().getByLabel('Simulator', { exact: true }).last(), sim);
       await d.select(p().getByLabel('Scenario', { exact: true }).last(), 'accept');
     }
-    await d.click(p().getByRole('button', { name: 'Inbound sample' }));
+    await d.click(p().getByRole('tab', { name: 'Inbound sample' }));
     await d.select(p().getByLabel('Inbound sample'), sample);
     if (message) await d.select(p().getByLabel('Start message'), message);
   };
@@ -85,8 +85,8 @@ export function scenes(d: Director): Scene[] {
       say: 'First, the test data. In the test bench, we save three synthetic sample files: a valid file, a file in dollars, and a file that is not a demo file at all.',
       do: async () => {
         await d.go('tests');
-        await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
-        await d.click(p().getByRole('button', { name: 'Inbound sample' }));
+        await d.click(p().getByRole('tab', { name: 'Ad hoc bench' }));
+        await d.click(p().getByRole('tab', { name: 'Inbound sample' }));
         for (const [name, content] of [['demo-credit-file-valid.csv', VALID], ['demo-credit-file-usd.csv', USD], ['demo-credit-file-garbage.csv', GARBAGE]]) {
           await d.click(p().getByRole('button', { name: 'Add a sample file' }));
           await d.type(p().getByLabel('Sample file name'), name, 20);

@@ -2323,6 +2323,14 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Make one id: let the store accept a payment the front door started under the front door's id (`header.paymentId`), or record the bulk's id as a correlation on the front door's chain when it is accepted. Then the console's payment route resolves either id, the read model files each kept file under the subject the console shows, and the upload page's link opens the payment. Until then the video opens the payment from the payments list and shows its kept files through the File API (`GET /files?paymentId=`).
 
+## I-290. The pages' content security policy and a UI library that writes its own styles
+
+**Issue.** The studio and the runtime's consoles moved to Fluent UI 2 (ADR 0003). Fluent writes its component styles and its theme's tokens into `<style>` elements at run time. The pages' policies said `style-src 'self'` (R-11-43 for the studio, R-09-60 for a runtime host), which a browser applies to those elements too: with the policy as it was, every page drew unstyled. R-09-60 says the console's page "may load only its own scripts and styles"; it does not say whether styles the page's own script writes are its own. R-11-43 forbids inline script only.
+
+**Done (24 November 2026).** Each answer with the page names a fresh nonce: the studio server (`appCsp`, `src/server/http.ts`) and the runtime hosts (`SecurityHeaders.WriteConsolePageAsync`, `UseConsolePage`) put it in the page's `<meta name="th-style-nonce">` and in `style-src 'self' 'nonce-…'`; the page gives it to Fluent's renderer, which sets it on every style element. `unsafe-inline` stays out, and scripts are still the page's own files only (`script-src 'self'`). Checked by `studio/test/security.test.ts` and `SecurityHeadersTests`.
+
+**Recommendation.** Say in R-09-60 and R-11-43 that a page may also apply style elements its own script writes when they carry the nonce of that answer, and never inline script; or, if the owner prefers no style elements at all, build Fluent's styles ahead of time into a stylesheet (Griffel's CSS extraction), which needs a build plugin the studio's Vite build does not have today.
+
 ## Not done, and why
 
 | Story | Why |

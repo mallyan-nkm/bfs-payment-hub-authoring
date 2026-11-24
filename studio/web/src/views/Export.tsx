@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { downloadUrl, get, post, type Summary } from '../api';
 import { Badge, ErrorBox, Issues, KV, Loading, Section, Tabs, useLoad, useStudio } from '../ui';
 import { GitBranch } from './GitBranch';
+import { Button, Checkbox, Link, Radio, RadioGroup, SearchBox, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
+import { ArrowDownloadRegular } from '@fluentui/react-icons';
 
 // Export (F-30, F-31): choose workflows, target and tenant; preview; download the zip.
 
@@ -59,15 +61,14 @@ export function Export({ query }: { query: URLSearchParams }) {
       </div>
       <div className="cols">
         <div className="col">
-          <Section title="Workflows" count={chosen.length} actions={<input type="search" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter workflows" />}>
+          <Section title="Workflows" count={chosen.length} actions={<SearchBox placeholder="Filter" value={filter} onChange={(_, d) => setFilter(d.value)} aria-label="Filter workflows" />}>
             {flows.loading && !flows.data ? <Loading /> : (
               <ul className="plain checklist">
                 {list.map((f) => (
                   <li key={f.key}>
-                    <label className="check">
-                      <input type="checkbox" checked={chosen.includes(f.name)} onChange={() => toggle(f.name)} />
+                    <Checkbox className="check" checked={chosen.includes(f.name)} onChange={() => toggle(f.name)} label={<>
                       <span className="mono">{f.name}</span> <span className="muted small">{f.type} {f.release}</span> {f.provenance === 'provisional' && <Badge tone="prov">provisional</Badge>}
-                    </label>
+                    </>} />
                   </li>
                 ))}
               </ul>
@@ -77,21 +78,18 @@ export function Export({ query }: { query: URLSearchParams }) {
         <div className="col side">
           <Section title="Target and tenant">
             <div className="stack">
-              <div className="seg" role="radiogroup" aria-label="Target">
-                {TARGETS.map((t) => <button key={t} role="radio" aria-checked={target === t} className={target === t ? 'on' : ''} onClick={() => setTarget(t)}>{t}</button>)}
-              </div>
+              <RadioGroup layout="horizontal" aria-label="Target" value={target} onChange={(_, d) => setTarget(d.value as (typeof TARGETS)[number])}>
+                {TARGETS.map((t) => <Radio key={t} value={t} label={t} />)}
+              </RadioGroup>
               <label className="field">
                 <span>Tenant</span>
-                <select value={exTenant} onChange={(e) => setExTenant(e.target.value)} aria-label="Export tenant">
+                <Select value={exTenant} onChange={(e) => setExTenant(e.target.value)} aria-label="Export tenant">
                   {(meta?.tenants ?? [tenant]).filter((t) => t === tenant).map((t) => <option key={t} value={t}>{t === meta?.owner ? `${t} (shared pack)` : `${t} (bank pack)`}</option>)}
-                </select>
+                </Select>
               </label>
-              <label className="check">
-                <input type="checkbox" checked={withSims} onChange={(e) => setWithSims(e.target.checked)} aria-label="With simulators" />
-                <span>With simulators, for a test deployment (the package is then not promotable)</span>
-              </label>
-              <button className="primary" disabled={!chosen.length || busy} onClick={preview}>{busy ? 'Building…' : 'Preview'}</button>
-              <a className={chosen.length ? 'button' : 'button disabled'} href={chosen.length ? href : undefined} download aria-disabled={!chosen.length}>Download the zip</a>
+              <Checkbox className="check" checked={withSims} onChange={(e) => setWithSims(e.target.checked)} aria-label="With simulators" label="With simulators, for a test deployment (the package is then not promotable)" />
+              <Button appearance="primary" disabled={!chosen.length || busy} onClick={preview}>{busy ? 'Building…' : 'Preview'}</Button>
+              <Button as="a" icon={<ArrowDownloadRegular />} disabledFocusable={!chosen.length} href={chosen.length ? href : undefined} download>Download the zip</Button>
             </div>
           </Section>
         </div>
@@ -125,40 +123,40 @@ export function Export({ query }: { query: URLSearchParams }) {
           {tab === 'manifest' && <Section title="manifest.yaml"><pre className="code tall">{res.preview?.['manifest.yaml'] ?? JSON.stringify(m, null, 2)}</pre></Section>}
           {tab === 'tasks' && (
             <Section title="Tasks">
-              <table className="grid compact">
-                <thead><tr><th>Kind</th><th>Task</th><th>Queue</th><th>Binding</th></tr></thead>
-                <tbody>{(m?.tasks ?? []).map((t: any, i: number) => <tr key={i}><td>{t.kind}</td><td className="mono">{t.task}</td><td className="mono">{t.queue}</td><td>{t.binding ?? ''}</td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Task</TableHeaderCell><TableHeaderCell>Queue</TableHeaderCell><TableHeaderCell>Binding</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{(m?.tasks ?? []).map((t: any, i: number) => <TableRow key={i}><TableCell>{t.kind}</TableCell><TableCell className="mono">{t.task}</TableCell><TableCell className="mono">{t.queue}</TableCell><TableCell>{t.binding ?? ''}</TableCell></TableRow>)}</TableBody>
+              </Table>
             </Section>
           )}
           {tab === 'files' && (
             <Section title="Files">
-              <table className="grid compact">
-                <thead><tr><th>Path</th><th>Bytes</th><th>Hash</th></tr></thead>
-                <tbody>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Path</TableHeaderCell><TableHeaderCell>Bytes</TableHeaderCell><TableHeaderCell>Hash</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>
                   {Object.entries<number>(res.files ?? {}).map(([p, n]) => {
                     const h = (m?.files ?? []).find((f: any) => f.path === p)?.hash;
-                    return <tr key={p}><td className="mono">{res.preview?.[p] ? <button className="link mono" onClick={() => { setFile(p); setTab('preview'); }}>{p}</button> : p}</td><td>{n}</td><td className="mono small">{h ? String(h).replace('sha256:', '').slice(0, 12) : ''}</td></tr>;
+                    return <TableRow key={p}><TableCell className="mono">{res.preview?.[p] ? <Link as="button" className="mono" onClick={() => { setFile(p); setTab('preview'); }}>{p}</Link> : p}</TableCell><TableCell>{n}</TableCell><TableCell className="mono small">{h ? String(h).replace('sha256:', '').slice(0, 12) : ''}</TableCell></TableRow>;
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </Section>
           )}
           {tab === 'portability' && (
             <Section title="Portability notes">
               {!portability?.length ? <p className="muted">No portability notes.</p> : (
-                <table className="grid compact">
-                  <thead><tr><th>Flow</th><th>Construct</th><th>Severity</th><th>Note</th></tr></thead>
-                  <tbody>{portability.map((p, i) => <tr key={i}><td className="mono small">{p.flow}</td><td>{p.construct}</td><td><Badge tone={p.severity === 'error' ? 'fail' : p.severity === 'warning' ? 'warn' : 'muted'}>{p.severity}</Badge></td><td>{p.note}</td></tr>)}</tbody>
-                </table>
+                <Table size="small" className="grid compact">
+                  <TableHeader><TableRow><TableHeaderCell>Flow</TableHeaderCell><TableHeaderCell>Construct</TableHeaderCell><TableHeaderCell>Severity</TableHeaderCell><TableHeaderCell>Note</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>{portability.map((p, i) => <TableRow key={i}><TableCell className="mono small">{p.flow}</TableCell><TableCell>{p.construct}</TableCell><TableCell><Badge tone={p.severity === 'error' ? 'fail' : p.severity === 'warning' ? 'warn' : 'muted'}>{p.severity}</Badge></TableCell><TableCell>{p.note}</TableCell></TableRow>)}</TableBody>
+                </Table>
               )}
             </Section>
           )}
           {tab === 'preview' && (
             <Section title="File preview" actions={
-              <select value={file} onChange={(e) => setFile(e.target.value)} aria-label="Preview file">
+              <Select value={file} onChange={(e) => setFile(e.target.value)} aria-label="Preview file">
                 {Object.keys(res.preview ?? {}).map((k) => <option key={k}>{k}</option>)}
-              </select>
+              </Select>
             }>
               {file && <pre className="code tall">{res.preview[file]}</pre>}
             </Section>

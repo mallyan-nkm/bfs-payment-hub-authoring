@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { get, post } from '../api';
 import { ErrorBox, Issues, Loading, useLoad, useStudio } from '../ui';
+import { Button, Input, Link, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // A bank's own reference tables (R-11-52, Issue I-150): its calendar of closing days, its cut-off times and its branches. A Bank
 // Configurator adds an edition (the rows in force from a date) and saves it as a draft at the table's next minor release; a Bank
@@ -61,37 +62,37 @@ export function ReferenceTables() {
   return (
     <div aria-label="Reference tables">
       <label className="field"><span>Table</span>
-        <select aria-label="Reference table" value={table.name} onChange={(e) => setName(e.target.value)}>
+        <Select aria-label="Reference table" value={table.name} onChange={(e) => setName(e.target.value)}>
           {data.data.tables.map((t: any) => <option key={t.name} value={t.name}>{t.title} ({t.name})</option>)}
-        </select>
+        </Select>
       </label>
       <p className="small muted">
         Released {table.released?.release ?? 'never'}{table.draft ? `, draft ${table.draft.release} in progress` : ''}. Editions: {(table.released?.editions ?? []).map((e: any) => e.validFrom).join(', ') || 'none'}.
         A new edition starts at its valid-from date; the next release is {table.start.release}.
       </p>
-      <label className="field"><span>New edition valid from</span><input aria-label="Valid from" type="date" value={validFrom} disabled={!configurator} onChange={(e) => setValidFrom(e.target.value)} /></label>
-      <table className="grid small" aria-label={`Rows of ${table.name}`}>
-        <thead><tr>{cols.map((c) => <th key={c.id}>{c.title ?? c.id}</th>)}<th /></tr></thead>
-        <tbody>{rows.map((r, i) => (
-          <tr key={i}>
+      <label className="field"><span>New edition valid from</span><Input aria-label="Valid from" type="date" value={validFrom} disabled={!configurator} onChange={(e) => setValidFrom(e.target.value)} /></label>
+      <Table size="small" className="grid small" aria-label={`Rows of ${table.name}`}>
+        <TableHeader><TableRow>{cols.map((c) => <TableHeaderCell key={c.id}>{c.title ?? c.id}</TableHeaderCell>)}<TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{rows.map((r, i) => (
+          <TableRow key={i}>
             {cols.map((c) => (
-              <td key={c.id}>{c.allowed ? (
-                <select aria-label={`${c.id} ${i + 1}`} value={r[c.id] ?? ''} disabled={!configurator} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [c.id]: e.target.value } : x)))}>
+              <TableCell key={c.id}>{c.allowed ? (
+                <Select aria-label={`${c.id} ${i + 1}`} value={r[c.id] ?? ''} disabled={!configurator} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [c.id]: e.target.value } : x)))}>
                   <option value="" />{c.allowed.map((a: any) => <option key={String(a)} value={String(a)}>{String(a)}</option>)}
-                </select>
+                </Select>
               ) : (
-                <input aria-label={`${c.id} ${i + 1}`} value={r[c.id] ?? ''} disabled={!configurator} size={12} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [c.id]: e.target.value } : x)))} />
-              )}</td>
+                <Input style={{ width: '15ch' }} aria-label={`${c.id} ${i + 1}`} value={r[c.id] ?? ''} disabled={!configurator} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [c.id]: e.target.value } : x)))} />
+              )}</TableCell>
             ))}
-            <td>{configurator && <button className="link" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>}</td>
-          </tr>
-        ))}</tbody>
-      </table>
+            <TableCell>{configurator && <Link as="button" onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</Link>}</TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
       {configurator && (
         <div className="row">
-          <button onClick={() => setRows([...rows, {}])}>Add a row</button>
-          <button onClick={() => run('check')} disabled={!validFrom}>Check</button>
-          <button className="primary" onClick={() => run('save')} disabled={!validFrom}>Save as draft</button>
+          <Button onClick={() => setRows([...rows, {}])}>Add a row</Button>
+          <Button onClick={() => run('check')} disabled={!validFrom}>Check</Button>
+          <Button appearance="primary" onClick={() => run('save')} disabled={!validFrom}>Save as draft</Button>
         </div>
       )}
       {note && <p className="small" role="status">{note}</p>}

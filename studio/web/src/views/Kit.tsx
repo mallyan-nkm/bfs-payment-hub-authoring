@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { get, post, type KitResult } from '../api';
-import { Badge, ErrorBox, Loading, PassFail, Section, Val, useLoad } from '../ui';
+import { Alert, Badge, ErrorBox, Loading, PassFail, Section, Val, useLoad } from '../ui';
+import { Button, Checkbox, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The conformance kit (Annex C): every scenario, run on the studio interpreter, expected against actual.
 
@@ -40,41 +41,41 @@ export function Kit() {
       </div>
       <ErrorBox error={kit.error || error} />
       <div className="toolbar">
-        <button className="primary" onClick={() => run()} disabled={busy}>{busy ? 'Running…' : `Run all ${scenarios.length}`}</button>
-        <select value={construct} onChange={(e) => setConstruct(e.target.value)} aria-label="Construct">
+        <Button appearance="primary" onClick={() => run()} disabled={busy}>{busy ? 'Running…' : `Run all ${scenarios.length}`}</Button>
+        <Select value={construct} onChange={(e) => setConstruct(e.target.value)} aria-label="Construct">
           <option value="">Every construct</option>
           {constructs.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        <label className="check"><input type="checkbox" checked={onlyFailed} onChange={(e) => setOnlyFailed(e.target.checked)} /> Failed only</label>
+        </Select>
+        <Checkbox className="check" checked={onlyFailed} onChange={(e) => setOnlyFailed(e.target.checked)} label={<>Failed only</>} />
         {results && <Badge tone={passed === results.length ? 'pass' : 'fail'}>{passed} of {results.length} pass</Badge>}
       </div>
       {kit.loading ? <Loading what="the kit" /> : (
         <Section title="Scenarios" count={scenarios.length}>
           <div className="table-wrap">
-            <table className="grid">
-              <thead><tr><th>Scenario</th><th>Construct</th><th>Title</th><th>Result</th><th>Virtual time</th><th></th></tr></thead>
-              <tbody>
+            <Table size="small" className="grid">
+              <TableHeader><TableRow><TableHeaderCell>Scenario</TableHeaderCell><TableHeaderCell>Construct</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell><TableHeaderCell>Virtual time</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+              <TableBody>
                 {rows.map((s) => {
                   const r = byId.get(s.id);
                   const isOpen = open === s.id;
                   return [
-                    <tr key={s.id} className={r && !r.passed ? 'row-fail clickable' : 'clickable'} onClick={() => setOpen(isOpen ? undefined : s.id)}>
-                      <td className="mono nowrap">{s.id}</td>
-                      <td>{s.construct}</td>
-                      <td>{s.title}</td>
-                      <td>{r ? <PassFail passed={r.passed} /> : <span className="muted small">not run</span>}</td>
-                      <td className="mono small">{r?.elapsed !== undefined ? `${r.elapsed} ms` : ''}</td>
-                      <td><button onClick={(e) => { e.stopPropagation(); void run([s.id]); setOpen(s.id); }} disabled={busy}>Run</button></td>
-                    </tr>,
+                    <TableRow key={s.id} className={r && !r.passed ? 'row-fail clickable' : 'clickable'} onClick={() => setOpen(isOpen ? undefined : s.id)}>
+                      <TableCell className="mono nowrap">{s.id}</TableCell>
+                      <TableCell>{s.construct}</TableCell>
+                      <TableCell>{s.title}</TableCell>
+                      <TableCell>{r ? <PassFail passed={r.passed} /> : <span className="muted small">not run</span>}</TableCell>
+                      <TableCell className="mono small">{r?.elapsed !== undefined ? `${r.elapsed} ms` : ''}</TableCell>
+                      <TableCell><Button onClick={(e) => { e.stopPropagation(); void run([s.id]); setOpen(s.id); }} disabled={busy}>Run</Button></TableCell>
+                    </TableRow>,
                     isOpen && (
-                      <tr key={`${s.id}-d`} className="sub">
-                        <td colSpan={6}><KitDetail scenario={s} result={r} /></td>
-                      </tr>
+                      <TableRow key={`${s.id}-d`} className="sub">
+                        <TableCell colSpan={6}><KitDetail scenario={s} result={r} /></TableCell>
+                      </TableRow>
                     ),
                   ];
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </Section>
       )}
@@ -88,31 +89,31 @@ function KitDetail({ scenario, result }: { scenario: any; result?: KitResult }) 
   const n = Math.max(expected.length, actual.length);
   return (
     <div className="kit-detail">
-      {result?.error && <div className="alert fail small">{result.error}</div>}
-      <table className="grid compact trace-compare">
-        <thead><tr><th>#</th><th>Expected</th><th>Actual</th><th></th></tr></thead>
-        <tbody>
+      {result?.error && <Alert tone="fail" className="small">{result.error}</Alert>}
+      <Table size="small" className="grid compact trace-compare">
+        <TableHeader><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Expected</TableHeaderCell><TableHeaderCell>Actual</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {Array.from({ length: n }, (_, i) => {
             const same = expected[i] === actual[i];
             return (
-              <tr key={i} className={result && !same ? 'row-fail' : ''}>
-                <td className="muted">{i + 1}</td>
-                <td className="mono">{expected[i] ?? ''}</td>
-                <td className="mono">{result ? actual[i] ?? <span className="muted">missing</span> : <span className="muted">not run</span>}</td>
-                <td>{result && (same ? <Badge tone="pass">same</Badge> : <Badge tone="fail">differs</Badge>)}</td>
-              </tr>
+              <TableRow key={i} className={result && !same ? 'row-fail' : ''}>
+                <TableCell className="muted">{i + 1}</TableCell>
+                <TableCell className="mono">{expected[i] ?? ''}</TableCell>
+                <TableCell className="mono">{result ? actual[i] ?? <span className="muted">missing</span> : <span className="muted">not run</span>}</TableCell>
+                <TableCell>{result && (same ? <Badge tone="pass">same</Badge> : <Badge tone="fail">differs</Badge>)}</TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {result?.checks.find((c) => c.what === 'detail') && <DetailCompare check={result.checks.find((c) => c.what === 'detail')!} />}
       {result && result.checks.length > 0 && (
         <>
           <h4>Checks</h4>
-          <table className="grid compact">
-            <thead><tr><th>Check</th><th>Expected</th><th>Actual</th><th>Result</th></tr></thead>
-            <tbody>{result.checks.map((c, i) => <tr key={i}><td>{c.what}</td><td><Val v={c.expected} /></td><td><Val v={c.actual} /></td><td><PassFail passed={c.passed} /></td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Check</TableHeaderCell><TableHeaderCell>Expected</TableHeaderCell><TableHeaderCell>Actual</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{result.checks.map((c, i) => <TableRow key={i}><TableCell>{c.what}</TableCell><TableCell><Val v={c.expected} /></TableCell><TableCell><Val v={c.actual} /></TableCell><TableCell><PassFail passed={c.passed} /></TableCell></TableRow>)}</TableBody>
+          </Table>
         </>
       )}
       {result?.notes && result.notes.length > 0 && <ul className="small">{result.notes.map((x, i) => <li key={i}>{x}</li>)}</ul>}
@@ -128,19 +129,19 @@ function DetailCompare({ check }: { check: { expected: any; actual: any; passed:
   return (
     <>
       <h4>Detail, inside composite steps</h4>
-      <table className="grid compact trace-compare">
-        <thead><tr><th>#</th><th>Expected</th><th>Actual</th><th></th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact trace-compare">
+        <TableHeader><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Expected</TableHeaderCell><TableHeaderCell>Actual</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {Array.from({ length: n }, (_, i) => (
-            <tr key={i} className={e[i] !== a[i] ? 'row-fail' : ''}>
-              <td className="muted">{i + 1}</td>
-              <td className="mono">{e[i] ?? ''}</td>
-              <td className="mono">{a[i] ?? <span className="muted">missing</span>}</td>
-              <td>{e[i] === a[i] ? <Badge tone="pass">same</Badge> : <Badge tone="fail">differs</Badge>}</td>
-            </tr>
+            <TableRow key={i} className={e[i] !== a[i] ? 'row-fail' : ''}>
+              <TableCell className="muted">{i + 1}</TableCell>
+              <TableCell className="mono">{e[i] ?? ''}</TableCell>
+              <TableCell className="mono">{a[i] ?? <span className="muted">missing</span>}</TableCell>
+              <TableCell>{e[i] === a[i] ? <Badge tone="pass">same</Badge> : <Badge tone="fail">differs</Badge>}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { DataTabs } from './Data';
 import { get, q } from '../api';
-import { ArtefactLink, Badge, ErrorBox, Loading, Provenance, Section, useDebounced, useLoad } from '../ui';
+import { Alert, ArtefactLink, Badge, ErrorBox, Loading, Provenance, Section, useDebounced, useLoad } from '../ui';
 import { DispatchTable } from './Artefact';
+import { Button, Link, SearchBox, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The ISO data browser (F-03) and the scheme message catalogues (F-04).
 
@@ -29,12 +30,12 @@ function PathsTab({ initial }: { initial?: string }) {
     <div>
       <p className="muted">Search a canonical context path, an extension field or a reason code. See which blocks read and write it.</p>
       <div className="toolbar">
-        <input type="search" className="grow" value={text} onChange={(e) => setText(e.target.value)} placeholder="For example payment.instructedAmount, salary or AM04" aria-label="Search the data" />
+        <SearchBox className="grow" value={text} onChange={(_, d) => setText(d.value)} placeholder="For example payment.instructedAmount, salary or AM04" aria-label="Search the data" />
       </div>
       {data.data?.parts && (
         <p className="small">
           Context parts:{' '}
-          {data.data.parts.map((p: string) => <button key={p} className="chip-btn mono" onClick={() => setText(p)}>{p}</button>)}
+          {data.data.parts.map((p: string) => <Button size="small" key={p} className="chip-btn mono" onClick={() => setText(p)}>{p}</Button>)}
         </p>
       )}
       <ErrorBox error={data.error} />
@@ -43,15 +44,15 @@ function PathsTab({ initial }: { initial?: string }) {
           <Section title="Paths" count={data.data.paths.length}>
             {data.data.paths.length === 0 ? <p className="muted">No block reads or writes a path that matches.</p> : (
               <div className="table-wrap">
-                <table className="grid">
-                  <thead><tr><th>Path</th><th>Readers</th><th>Writers</th><th>Extension</th></tr></thead>
-                  <tbody>
+                <Table size="small" className="grid">
+                  <TableHeader><TableRow><TableHeaderCell>Path</TableHeaderCell><TableHeaderCell>Readers</TableHeaderCell><TableHeaderCell>Writers</TableHeaderCell><TableHeaderCell>Extension</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>
                     {data.data.paths.map((p: any) => (
-                      <tr key={p.path}>
-                        <td className="mono break"><b>{p.path}</b></td>
-                        <td>{p.readers.length ? <ul className="plain">{p.readers.map((r: string) => <li key={r}><Reader r={r} /></li>)}</ul> : <span className="muted">none</span>}</td>
-                        <td>{p.writers.length ? <ul className="plain">{p.writers.map((r: string) => <li key={r}><Reader r={r} /></li>)}</ul> : <span className="muted">none</span>}</td>
-                        <td>
+                      <TableRow key={p.path}>
+                        <TableCell className="mono break"><b>{p.path}</b></TableCell>
+                        <TableCell>{p.readers.length ? <ul className="plain">{p.readers.map((r: string) => <li key={r}><Reader r={r} /></li>)}</ul> : <span className="muted">none</span>}</TableCell>
+                        <TableCell>{p.writers.length ? <ul className="plain">{p.writers.map((r: string) => <li key={r}><Reader r={r} /></li>)}</ul> : <span className="muted">none</span>}</TableCell>
+                        <TableCell>
                           {p.extension ? (
                             <div className="small">
                               <div><ArtefactLink name={p.extension.extension} /></div>
@@ -63,20 +64,20 @@ function PathsTab({ initial }: { initial?: string }) {
                               </div>
                             </div>
                           ) : <span className="muted">canonical</span>}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </Section>
           <Section title="Reason codes" count={data.data.reasonCodes.length}>
             {data.data.reasonCodes.length === 0 ? <p className="muted">No reason code matches. Search a code such as AM04, or clear the box to list all.</p> : (
-              <table className="grid compact">
-                <thead><tr><th>Code</th><th>Rules that yield it</th></tr></thead>
-                <tbody>{data.data.reasonCodes.map((c: any) => <tr key={c.code}><td className="mono">{c.code}</td><td><span className="chips">{c.rules.map((r: string) => <ArtefactLink key={r} name={r} />)}</span></td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Code</TableHeaderCell><TableHeaderCell>Rules that yield it</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{data.data.reasonCodes.map((c: any) => <TableRow key={c.code}><TableCell className="mono">{c.code}</TableCell><TableCell><span className="chips">{c.rules.map((r: string) => <ArtefactLink key={r} name={r} />)}</span></TableCell></TableRow>)}</TableBody>
+              </Table>
             )}
           </Section>
         </>
@@ -85,19 +86,19 @@ function PathsTab({ initial }: { initial?: string }) {
       <Section title="Scheme message catalogues">
         <ErrorBox error={schemes.error} />
         {schemes.data && (
-          <table className="grid">
-            <thead><tr><th>Scheme</th><th>Title</th><th>Release</th><th>Wire</th><th>Messages</th><th>Planned</th><th>Provenance</th></tr></thead>
-            <tbody>
+          <Table size="small" className="grid">
+            <TableHeader><TableRow><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Release</TableHeaderCell><TableHeaderCell>Wire</TableHeaderCell><TableHeaderCell>Messages</TableHeaderCell><TableHeaderCell>Planned</TableHeaderCell><TableHeaderCell>Provenance</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>
               {schemes.data.map((s) => (
-                <tr key={s.scope} className={scheme === s.scope ? 'clickable sel' : 'clickable'} onClick={() => setScheme(s.scope)}>
-                  <td className="mono"><button className="link">{s.scope}</button></td>
-                  <td>{s.title}</td><td className="mono">{s.release}</td><td>{s.wire}</td><td>{s.messages}</td>
-                  <td>{s.planned ? <Badge tone="warn">{s.planned} planned</Badge> : <Badge tone="pass">none</Badge>}</td>
-                  <td><Provenance status={s.provenance} /></td>
-                </tr>
+                <TableRow key={s.scope} className={scheme === s.scope ? 'clickable sel' : 'clickable'} onClick={() => setScheme(s.scope)}>
+                  <TableCell className="mono"><Link as="button">{s.scope}</Link></TableCell>
+                  <TableCell>{s.title}</TableCell><TableCell className="mono">{s.release}</TableCell><TableCell>{s.wire}</TableCell><TableCell>{s.messages}</TableCell>
+                  <TableCell>{s.planned ? <Badge tone="warn">{s.planned} planned</Badge> : <Badge tone="pass">none</Badge>}</TableCell>
+                  <TableCell><Provenance status={s.provenance} /></TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </Section>
       {scheme && detail.loading && <Loading what={scheme} />}
@@ -105,7 +106,7 @@ function PathsTab({ initial }: { initial?: string }) {
       {detail.data && (
         <>
           {detail.data.scheme?.provenance?.status === 'provisional' && (
-            <div className="alert prov"><b>Unconfirmed.</b> {detail.data.scheme.provenance.note} {detail.data.scheme.provenance.clauses?.length ? `Sources: ${detail.data.scheme.provenance.clauses.join('; ')}.` : ''}</div>
+            <Alert tone="prov"><b>Unconfirmed.</b> {detail.data.scheme.provenance.note} {detail.data.scheme.provenance.clauses?.length ? `Sources: ${detail.data.scheme.provenance.clauses.join('; ')}.` : ''}</Alert>
           )}
           <DispatchTable rows={detail.data.dispatch} />
           <details className="panel pad">

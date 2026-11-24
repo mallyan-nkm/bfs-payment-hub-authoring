@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Avatar, Badge as FluentBadge, Button, Card, Nav, NavItem, SearchBox, Spinner, Tooltip } from '@fluentui/react-components';
+import {
+  ArrowExportRegular, ArrowImportRegular, BeakerRegular, BuildingRegular, DatabaseRegular, DocumentEditRegular, FlowchartRegular,
+  GavelRegular, LibraryRegular, NavigationRegular, PeopleTeamRegular, ShieldCheckmarkRegular, SignOutRegular, SparkleRegular,
+} from '@fluentui/react-icons';
 import { get, heartbeat, me as whoAmI, onUnauthorized, setApiTenant, setCsrf, signOut, type Me, type Meta, type User } from './api';
-import { Studio, ErrorBox } from './ui';
+import { Alert, Studio, ErrorBox, ThemeMenu, initials } from './ui';
+import type { ThemeChoice } from './theme';
 import { Catalogue } from './views/Catalogue';
 import { ArtefactPage } from './views/Artefact';
 import { IsoData } from './views/IsoData';
@@ -16,19 +22,19 @@ import { AssistantDock } from './views/AssistantDock';
 import { Import } from './views/Import';
 import { Bank } from './views/Bank';
 
-const NAV: { id: string; label: string; hint: string }[] = [
-  { id: 'bank', label: 'Bank workspace', hint: 'F-26 to F-29' },
-  { id: 'designer', label: 'Workflow designer', hint: 'F-12 to F-15, F-22, F-33, F-34' },
-  { id: 'editors', label: 'Artefact editors', hint: 'F-06 to F-11, F-36' },
-  { id: 'catalogue', label: 'Catalogue', hint: 'F-01, F-02' },
-  { id: 'data', label: 'ISO data', hint: 'F-03 to F-05' },
-  { id: 'assistant', label: 'AI assistant', hint: 'F-20, F-21' },
-  { id: 'import', label: 'Import', hint: 'I-33' },
-  { id: 'tests', label: 'Test bench', hint: 'F-16 to F-19, F-35' },
-  { id: 'kit', label: 'Conformance kit', hint: 'Annex C' },
-  { id: 'tenant', label: 'Tenant', hint: 'F-26 to F-29' },
-  { id: 'export', label: 'Export', hint: 'F-30, F-31' },
-  { id: 'governance', label: 'Governance', hint: 'F-23 to F-25, F-32' },
+const NAV: { id: string; label: string; hint: string; icon: ReactElement }[] = [
+  { id: 'bank', label: 'Bank workspace', hint: 'F-26 to F-29', icon: <BuildingRegular /> },
+  { id: 'designer', label: 'Workflow designer', hint: 'F-12 to F-15, F-22, F-33, F-34', icon: <FlowchartRegular /> },
+  { id: 'editors', label: 'Artefact editors', hint: 'F-06 to F-11, F-36', icon: <DocumentEditRegular /> },
+  { id: 'catalogue', label: 'Catalogue', hint: 'F-01, F-02', icon: <LibraryRegular /> },
+  { id: 'data', label: 'ISO data', hint: 'F-03 to F-05', icon: <DatabaseRegular /> },
+  { id: 'assistant', label: 'AI assistant', hint: 'F-20, F-21', icon: <SparkleRegular /> },
+  { id: 'import', label: 'Import', hint: 'I-33', icon: <ArrowImportRegular /> },
+  { id: 'tests', label: 'Test bench', hint: 'F-16 to F-19, F-35', icon: <BeakerRegular /> },
+  { id: 'kit', label: 'Conformance kit', hint: 'Annex C', icon: <ShieldCheckmarkRegular /> },
+  { id: 'tenant', label: 'Tenant', hint: 'F-26 to F-29', icon: <PeopleTeamRegular /> },
+  { id: 'export', label: 'Export', hint: 'F-30, F-31', icon: <ArrowExportRegular /> },
+  { id: 'governance', label: 'Governance', hint: 'F-23 to F-25, F-32', icon: <GavelRegular /> },
 ];
 
 function readHash() {
@@ -42,32 +48,33 @@ function SignIn({ who }: { who?: Me }) {
   const returnTo = window.location.hash.startsWith('#/') ? window.location.hash : '';
   return (
     <div className="signin">
-      <div className="signin-card">
+      <Card className="signin-card" appearance="outline">
         <h1><span className="logo" aria-hidden>TH</span> TransactHub Designer Studio</h1>
         {who?.signedIn && !who.user ? (
           <>
-            <div className="alert fail" role="alert">You are signed in as <b>{who.identity}</b>, who is not a user of the studio. An administrator adds users through a reviewed change to the users and roles.</div>
-            <button onClick={() => signOut().then(() => window.location.reload())}>Sign out</button>
+            <Alert tone="fail" role="alert">You are signed in as <b>{who.identity}</b>, who is not a user of the studio. An administrator adds users through a reviewed change to the users and roles.</Alert>
+            <Button icon={<SignOutRegular />} onClick={() => signOut().then(() => window.location.reload())}>Sign out</Button>
           </>
         ) : (
           <>
             <p className="muted">Sign in to design, test and export payment workflows. What you may do follows from your roles.</p>
-            <a className="button primary" href={`/auth/login${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>Sign in</a>
+            <Button as="a" appearance="primary" href={`/auth/login${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}>Sign in</Button>
             {who?.provider === 'development' && <p className="muted small">This studio uses the built-in development sign-in (TH_AUTH_DEV=1). It is for local work and tests only.</p>}
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
 
-export function App() {
+export function App({ themeChoice, setThemeChoice }: { themeChoice: ThemeChoice; setThemeChoice: (c: ThemeChoice) => void }) {
   const [route, setRoute] = useState(readHash);
   const [who, setWho] = useState<Me>();
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [meta, setMeta] = useState<Meta>();
   const [metaError, setMetaError] = useState<string>();
   const [navOpen, setNavOpen] = useState(false);
+  const [find, setFind] = useState('');
   const tenant = who?.tenant ?? 'owner';
   const actor = who?.user ?? '';
   setApiTenant(tenant);
@@ -117,7 +124,7 @@ export function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ctx = useMemo(() => ({ tenant, actor, meta, users, roles, surfaces, setActor: () => {}, go }), [tenant, actor, meta, users, roles.join(), surfaces.join()]);
 
-  if (!who) return <div className="signin"><p className="muted">Loading…</p></div>;
+  if (!who) return <div className="signin"><Spinner size="small" label="Loading…" /></div>;
   if (!signedIn) return <SignIn who={who} />;
 
   const view = route.parts[0] ?? who.landing ?? 'catalogue';
@@ -127,7 +134,7 @@ export function App() {
     body = (
       <div className="view">
         <div className="view-head"><h2>Not for your role</h2></div>
-        <div className="alert warn">This part of the studio is not one of your surfaces ({roles.join(', ')}). <a href={`#/${who.landing}`}>Go to your workspace</a>.</div>
+        <Alert tone="warn">This part of the studio is not one of your surfaces ({roles.join(', ')}). <a href={`#/${who.landing}`}>Go to your workspace</a>.</Alert>
       </div>
     );
   } else switch (view) {
@@ -143,34 +150,55 @@ export function App() {
     case 'editors': body = <Editors query={route.query} />; break;
     case 'assistant': body = <Assistant />; break;
     case 'import': body = <Import />; break;
-    default: body = <Catalogue query={route.query} />;
+    // Keyed by the search, so the top bar's search opens the catalogue on what was asked.
+    default: body = <Catalogue key={route.query.get('q') ?? ''} query={route.query} />;
   }
 
+  const shared = tenant === (meta?.owner ?? 'owner');
   return (
     <Studio.Provider value={ctx}>
       <div className="shell">
         <header className="topbar">
-          <button className="nav-toggle" aria-label="Menu" onClick={() => setNavOpen((o) => !o)}>☰</button>
+          <Button className="nav-toggle" appearance="subtle" icon={<NavigationRegular />} aria-label="Menu" aria-expanded={navOpen} onClick={() => setNavOpen((o) => !o)} />
           <a className="brand" href={`#/${who.landing ?? 'catalogue'}`}>
             <span className="logo" aria-hidden>TH</span>
             <span>TransactHub <b>Designer Studio</b></span>
           </a>
+          {surfaces.includes('catalogue') && (
+            <form className="topbar-search" role="search" aria-label="Find" onSubmit={(e) => { e.preventDefault(); go(`/catalogue?q=${encodeURIComponent(find)}`); }}>
+              <SearchBox size="small" value={find} onChange={(_, d) => setFind(d.value)} placeholder="Find an artefact by name or path" aria-label="Find in the catalogue" />
+            </form>
+          )}
           <div className="topbar-fields">
-            <span className="field-inline" title={`Roles: ${roles.join(', ')}`} aria-label="Signed in as">
-              <span>Signed in as</span> <b className="mono">{actor}</b>
-              <span className="muted small">{tenant === meta?.owner ? 'shared content' : tenant} · {roles.join(', ') || 'no role'}</span>
+            <Tooltip content={shared ? 'Shared content: the platform and the schemes' : 'A bank tenant: scope b only; shared content is read-only'} relationship="description">
+              <FluentBadge appearance="filled" color={shared ? 'informative' : 'warning'} className="topbar-badge">{shared ? 'shared content' : tenant}</FluentBadge>
+            </Tooltip>
+            <Tooltip content="Design time only: no running payment is read or changed." relationship="description">
+              <FluentBadge appearance="outline" className="topbar-badge topbar-design">design time</FluentBadge>
+            </Tooltip>
+            <ThemeMenu choice={themeChoice} onChange={setThemeChoice} />
+            <span className="who" title={`Roles: ${roles.join(', ')}`} aria-label="Signed in as">
+              <Avatar size={28} initials={initials(actor)} color="colorful" idForColor={actor} aria-hidden />
+              <span className="who-text">
+                <b className="mono">{actor}</b>
+                <span className="small who-roles">{shared ? 'shared content' : tenant} · {roles.join(', ') || 'no role'}</span>
+              </span>
             </span>
-            <button onClick={() => signOut().then(() => { setWho({ signedIn: false, provider: who.provider, roles: [], surfaces: [] }); window.location.hash = ''; })}>Sign out</button>
+            <Button appearance="subtle" className="topbar-button" icon={<SignOutRegular />} onClick={() => signOut().then(() => { setWho({ signedIn: false, provider: who.provider, roles: [], surfaces: [] }); window.location.hash = ''; })}>Sign out</Button>
           </div>
         </header>
         {navOpen && <div className="backdrop" onClick={() => setNavOpen(false)} />}
-        <nav className={navOpen ? 'sidebar open' : 'sidebar'}>
-          {NAV.filter((n) => surfaces.includes(n.id)).map((n) => (
-            <a key={n.id} href={`#/${n.id}`} className={view === n.id || (view === 'artefact' && n.id === 'catalogue') ? 'nav on' : 'nav'} onClick={() => setNavOpen(false)}>
-              <span>{n.label}</span>
-              <span className="hint">{n.hint}</span>
-            </a>
-          ))}
+        <nav className={navOpen ? 'sidebar open' : 'sidebar'} aria-label="Studio">
+          <Nav selectedValue={shown} className="side-nav">
+            {NAV.filter((n) => surfaces.includes(n.id)).map((n) => (
+              <NavItem key={n.id} value={n.id} href={`#/${n.id}`} icon={n.icon} className="nav" data-testid={`nav-${n.id}`} onClick={() => setNavOpen(false)}>
+                <span className="nav-text">
+                  <span data-testid="nav-label">{n.label}</span>
+                  <span className="hint">{n.hint}</span>
+                </span>
+              </NavItem>
+            ))}
+          </Nav>
           <div className="sidebar-foot">
             {meta && (
               <p className="muted small">
@@ -181,8 +209,8 @@ export function App() {
         </nav>
         <main className="main">
           <ErrorBox error={metaError && `The studio API did not answer: ${metaError}`} />
-          {tenant !== (meta?.owner ?? 'owner') && (
-            <div className="tenant-strip">Working for bank tenant <b>{tenant}</b>, in scope b only. Shared content is read-only.</div>
+          {!shared && (
+            <Alert tone="warn" className="tenant-strip">Working for bank tenant <b>{tenant}</b>, in scope b only. Shared content is read-only.</Alert>
           )}
           {body}
         </main>

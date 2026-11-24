@@ -39,7 +39,7 @@ describe('the workflow debugger', () => {
   it('debugs a whole payment from the bench', async () => {
     await page.goto(`${server.url}/#/tests`);
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Ad hoc bench' }).click();
+    await page.getByRole('tab', { name: 'Ad hoc bench' }).click();
     await page.getByLabel('Target', { exact: true }).selectOption('p.wf.corporate.v1');
     for (const [port, sim] of [['p.port.core-banking.v1', 'p.sim.core-banking.v1'], ['p.port.sanctions.v1', 'p.sim.sanctions.v1'], ['p.port.fraud.v1', 'p.sim.fraud.v1'], ['uae.wps.port.wps.v1', 'uae.wps.sim.wps-outward.v1'], ['uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1']]) {
       await page.getByRole('button', { name: 'Add a port' }).click();
@@ -47,7 +47,7 @@ describe('the workflow debugger', () => {
       await page.getByLabel('Simulator', { exact: true }).last().selectOption(sim);
       await page.getByLabel('Scenario', { exact: true }).last().selectOption('accept');
     }
-    await page.getByRole('button', { name: 'Inbound sample' }).click();
+    await page.getByRole('tab', { name: 'Inbound sample' }).click();
     await page.getByLabel('Inbound sample').selectOption('samples/wps-sif-two-lines.sif');
     await page.getByLabel('Start message').selectOption('uae.wps.sif');
     await page.getByRole('button', { name: 'Debug step by step' }).click();

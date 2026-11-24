@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
 import { APPROVER_ROLES, ApiError, MAKER_ROLES, get, post, refusal, type GateResult, type Issue, type Summary } from './api';
 import { Badge, ErrorBox, Issues, Json, Section, useDebounced, useStudio } from './ui';
+import { Button, Input, Link, Select, Textarea } from '@fluentui/react-components';
 
 // Shared pieces of the authoring screens: the gates, save and publish through maker-checker,
 // paths from the canonical model, and small list editors.
@@ -233,18 +234,18 @@ export function DraftActions({ doc, yaml, onSaved, draftKey, setDraftKey, label 
 
   return (
     <div className="stack">
-      {maker && <button className="primary" disabled={busy || (!doc && !yaml)} onClick={save}>Save {label}</button>}
-      {maker && <button disabled={busy || !draftKey} onClick={requestRelease} title="Ask an approver to make this change set a version">Request release</button>}
+      {maker && <Button appearance="primary" disabled={busy || (!doc && !yaml)} onClick={save}>Save {label}</Button>}
+      {maker && <Button disabled={busy || !draftKey} onClick={requestRelease} title="Ask an approver to make this change set a version">Request release</Button>}
       {set.length > 1 && (
         <div className="small">
           <strong>Change set.</strong> Its release takes these drafts with it, checked and tested together:
           {set.filter((k) => k !== draftKey).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}
         </div>
       )}
-      {approver && <button className="primary" disabled={busy || !draftKey} onClick={publish} title={!draftKey ? 'Open a draft first' : undefined}>Approve as version</button>}
+      {approver && <Button appearance="primary" disabled={busy || !draftKey} onClick={publish} title={!draftKey ? 'Open a draft first' : undefined}>Approve as version</Button>}
       <p className="muted small">
         Saving needs no approval. A change set becomes a version when an approver for its area, who is not a maker of it, approves it, with no error and green tests.
-        {draftKey && <> Draft <code>{draftKey}</code>. <button className="link" onClick={() => go(`/artefact/${encodeURIComponent(draftKey.split('@')[0])}?key=${encodeURIComponent(draftKey)}`)}>Open its page</button></>}
+        {draftKey && <> Draft <code>{draftKey}</code>. <Link as="button" onClick={() => go(`/artefact/${encodeURIComponent(draftKey.split('@')[0])}?key=${encodeURIComponent(draftKey)}`)}>Open its page</Link></>}
       </p>
       {msg && (
         <div className={`alert ${msg.tone}`} role="status">
@@ -278,14 +279,14 @@ export function StringList({ value, onChange, placeholder, suggestions, check, m
             <span key={s + i} className={why ? 'chip bad' : 'chip'} title={why}>
               <span className={mono ? 'mono' : ''}>{s}</span>
               {why && <Badge tone="fail">does not resolve</Badge>}
-              <button className="link danger" aria-label={`Remove ${s}`} onClick={() => onChange(items.filter((_, n) => n !== i).length ? items.filter((_, n) => n !== i) : undefined)}>×</button>
+              <Link as="button" className="danger" aria-label={`Remove ${s}`} onClick={() => onChange(items.filter((_, n) => n !== i).length ? items.filter((_, n) => n !== i) : undefined)}>×</Link>
             </span>
           );
         })}
       </span>
       <span className="inline-form">
-        <input list={suggestions ? id : undefined} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), add())} placeholder={placeholder} className={mono ? 'mono' : ''} aria-label={label ?? placeholder ?? 'Add'} />
-        <button onClick={add} disabled={!text.trim()}>Add</button>
+        <Input list={suggestions ? id : undefined} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), add())} placeholder={placeholder} className={mono ? 'mono' : ''} aria-label={label ?? placeholder ?? 'Add'} />
+        <Button onClick={add} disabled={!text.trim()}>Add</Button>
       </span>
       {suggestions && <datalist id={id}>{suggestions.slice(0, 400).map((s) => <option key={s} value={s} />)}</datalist>}
     </div>
@@ -294,15 +295,15 @@ export function StringList({ value, onChange, placeholder, suggestions, check, m
 
 /** A text input that writes undefined when empty, so the document stays clean. */
 export function Txt({ value, onChange, placeholder, mono, label, list, size, className }: { value: any; onChange: (v: string | undefined) => void; placeholder?: string; mono?: boolean; label?: string; list?: string; size?: number; className?: string }) {
-  return <input value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)} placeholder={placeholder} className={[mono ? 'mono' : '', className ?? ''].join(' ')} aria-label={label ?? placeholder} list={list} size={size} />;
+  return <Input style={{ width: 'NaNch' }} value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)} placeholder={placeholder} className={[mono ? 'mono' : '', className ?? ''].join(' ')} aria-label={label ?? placeholder} list={list} />;
 }
 
 export function Sel({ value, onChange, options, label, blank }: { value: any; onChange: (v: string | undefined) => void; options: (string | [string, string])[]; label: string; blank?: string }) {
   return (
-    <select value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)} aria-label={label}>
+    <Select value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)} aria-label={label}>
       {blank !== undefined && <option value="">{blank}</option>}
       {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}
-    </select>
+    </Select>
   );
 }
 
@@ -356,7 +357,7 @@ export function JsonField({ value, onChange, rows = 4, label }: { value: any; on
   }, [value]);
   return (
     <div>
-      <textarea className="code-input" rows={rows} value={text} spellCheck={false} aria-label={label} onChange={(e) => {
+      <Textarea className="code-input" rows={rows} value={text} spellCheck={false} aria-label={label} onChange={(e) => {
         setText(e.target.value);
         try {
           const v = e.target.value.trim() ? JSON.parse(e.target.value) : undefined;

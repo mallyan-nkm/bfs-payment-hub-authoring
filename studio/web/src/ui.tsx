@@ -1,5 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  Badge as FluentBadge,
+  Button,
+  Card,
+  Link,
+  Menu,
+  MenuItemRadio,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+  MessageBar,
+  MessageBarBody,
+  Spinner,
+  Tab,
+  TabList,
+  Tooltip,
+  type BadgeProps,
+  type MessageBarIntent,
+} from '@fluentui/react-components';
+import { DarkThemeRegular, WeatherMoonRegular, WeatherSunnyRegular } from '@fluentui/react-icons';
 import type { Issue, Meta, User } from './api';
+import type { ThemeChoice } from './theme';
 
 // Shared building blocks: the studio context, data loading, badges, issues and small tables.
 
@@ -72,16 +93,39 @@ export function useDebounced<T>(value: T, ms: number): T {
 }
 
 export function Loading({ what }: { what?: string }) {
-  return <p className="muted">Loading{what ? ` ${what}` : ''}…</p>;
+  return <Spinner className="loading" size="tiny" labelPosition="after" label={`Loading${what ? ` ${what}` : ''}…`} />;
+}
+
+export type Tone = 'pass' | 'fail' | 'warn' | 'prov' | 'info' | 'muted';
+const INTENT: Record<Tone, MessageBarIntent> = { pass: 'success', fail: 'error', warn: 'warning', prov: 'info', info: 'info', muted: 'info' };
+
+/** A message in the page: a Fluent MessageBar. The class `alert <tone>` stays for the tests and the demo scripts. */
+export function Alert({ tone = 'info', className, role, children, title }: { tone?: Tone; className?: string; role?: string; children: ReactNode; title?: string }) {
+  return (
+    <MessageBar intent={INTENT[tone]} className={`alert ${tone}${className ? ` ${className}` : ''}`} role={role} title={title} layout="multiline">
+      <MessageBarBody>{children}</MessageBarBody>
+    </MessageBar>
+  );
 }
 
 export function ErrorBox({ error }: { error?: string }) {
   if (!error) return null;
-  return <div className="alert fail" role="alert">{error}</div>;
+  return <Alert tone="fail" role="alert">{error}</Alert>;
 }
 
-export function Badge({ tone, children, title }: { tone?: 'pass' | 'fail' | 'warn' | 'prov' | 'info' | 'muted'; children: ReactNode; title?: string }) {
-  return <span className={`badge ${tone ?? 'muted'}`} title={title}>{children}</span>;
+const BADGE: Record<Tone, Pick<BadgeProps, 'color' | 'appearance'>> = {
+  pass: { color: 'success', appearance: 'tint' },
+  fail: { color: 'danger', appearance: 'tint' },
+  warn: { color: 'warning', appearance: 'tint' },
+  info: { color: 'brand', appearance: 'tint' },
+  prov: { color: 'important', appearance: 'outline' },
+  muted: { color: 'informative', appearance: 'tint' },
+};
+
+/** A status badge: a Fluent Badge (success, warning, danger, informative). */
+export function Badge({ tone, children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
+  const t = tone ?? 'muted';
+  return <FluentBadge {...BADGE[t]} shape="rounded" className={`badge ${t}`} title={title}>{children}</FluentBadge>;
 }
 
 export function PassFail({ passed }: { passed: boolean | undefined }) {
@@ -103,7 +147,7 @@ export function StatusBadge({ status }: { status?: string }) {
 
 export function Section({ title, children, actions, count }: { title: ReactNode; children: ReactNode; actions?: ReactNode; count?: number }) {
   return (
-    <section className="panel">
+    <Card className="panel" appearance="outline">
       <header className="panel-head">
         <h3>
           {title}
@@ -112,7 +156,7 @@ export function Section({ title, children, actions, count }: { title: ReactNode;
         {actions && <div className="actions">{actions}</div>}
       </header>
       <div className="panel-body">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -126,9 +170,9 @@ export function Issues({ issues, onStep, empty }: { issues?: Issue[]; onStep?: (
         <li key={n} className={i.severity === 'error' ? 'sev-error' : 'sev-warning'}>
           <Badge tone={i.severity === 'error' ? 'fail' : 'warn'} title={meta?.checks?.[i.code]}>{i.code}</Badge>
           {i.step && (
-            <button className="link step-ref" onClick={() => onStep?.(i.step!)} title="Step">
+            <Link as="button" className="step-ref" onClick={() => onStep?.(i.step!)} title="Step">
               {i.step}
-            </button>
+            </Link>
           )}
           <span className="msg">{i.message}</span>
           {i.key && <span className="muted small"> {i.key}</span>}
@@ -174,10 +218,10 @@ export function ArtefactLink({ name, release, keyOf }: { name: string; release?:
   const { go } = useStudio();
   const href = `#/artefact/${encodeURIComponent(name)}${keyOf ? `?key=${encodeURIComponent(keyOf)}` : release ? `?release=${encodeURIComponent(release)}` : ''}`;
   return (
-    <a href={href} onClick={(e) => { e.preventDefault(); go(href.slice(1)); }} className="mono">
+    <Link href={href} onClick={(e) => { e.preventDefault(); go(href.slice(1)); }} className="mono">
       {name}
       {release ? <span className="muted">@{release}</span> : null}
-    </a>
+    </Link>
   );
 }
 
@@ -188,13 +232,13 @@ export function scopeText(s: any): string {
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode }[]; value: T; onChange: (t: T) => void }) {
   return (
-    <div className="tabs" role="tablist">
+    <TabList className="tabs" selectedValue={value} onTabSelect={(_, d) => onChange(d.value as T)}>
       {tabs.map((t) => (
-        <button key={t.id} role="tab" aria-selected={t.id === value} className={t.id === value ? 'tab on' : 'tab'} onClick={() => onChange(t.id)}>
+        <Tab key={t.id} value={t.id}>
           {t.label}
-        </button>
+        </Tab>
       ))}
-    </div>
+    </TabList>
   );
 }
 
@@ -208,6 +252,33 @@ export function KV({ rows }: { rows: [ReactNode, ReactNode][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/** Two letters for a user's avatar: `shared.designer` gives SD. */
+export function initials(user: string): string {
+  const parts = user.split(/[.\-_@\s]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? parts[0]?.[1] ?? '')).toUpperCase();
+}
+
+/** Light, dark or the system's choice (ADR 0003). */
+export function ThemeMenu({ choice, onChange }: { choice: ThemeChoice; onChange: (c: ThemeChoice) => void }) {
+  const icon = choice === 'dark' ? <WeatherMoonRegular /> : choice === 'light' ? <WeatherSunnyRegular /> : <DarkThemeRegular />;
+  return (
+    <Menu checkedValues={{ theme: [choice] }} onCheckedValueChange={(_, d) => onChange(d.checkedItems[0] as ThemeChoice)}>
+      <MenuTrigger disableButtonEnhancement>
+        <Tooltip content="Theme: light, dark or as the system" relationship="label">
+          <Button appearance="subtle" className="topbar-button" icon={icon} data-testid="theme-menu" />
+        </Tooltip>
+      </MenuTrigger>
+      <MenuPopover>
+        <MenuList>
+          <MenuItemRadio name="theme" value="system" icon={<DarkThemeRegular />}>As the system</MenuItemRadio>
+          <MenuItemRadio name="theme" value="light" icon={<WeatherSunnyRegular />}>Light</MenuItemRadio>
+          <MenuItemRadio name="theme" value="dark" icon={<WeatherMoonRegular />}>Dark</MenuItemRadio>
+        </MenuList>
+      </MenuPopover>
+    </Menu>
   );
 }
 
