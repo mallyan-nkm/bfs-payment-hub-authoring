@@ -1,8 +1,8 @@
 import { OWNER_TENANT, StoreError } from '../core/store.js';
 import { parseYaml } from '../core/yaml.js';
 import {
-  banksTaking, buildConfigurationRelease, buildDistribution, bundleFiles, checkSlotContracts, classify, DIST_ROOT, DistributionRefused, licensedSchemes,
-  parameterContract, publishedDistributions, remember, type BuiltBundle,
+  banksTaking, buildConfigurationRelease, buildDistribution, bundleFiles, checkSlotContracts, classify, configurationReleasesOf, DIST_ROOT, DistributionRefused, licensedSchemes,
+  nextConfigurationNumber, parameterContract, publishedDistributions, remember, type BuiltBundle,
 } from '../export/distribution.js';
 import { packEntries } from './packs.js';
 import { enforce } from './governance.js';
@@ -40,6 +40,16 @@ export async function nextId(env: StudioEnv, bank: string, date = new Date().toI
   return `${day}-${n}`;
 }
 
+/**
+ * The number of a bank's next configuration release (R-11-115, Issue I-340): after every configuration release of the bank on
+ * the branch's head and every one built since, so that each approval that builds one gives it a release of its own.
+ */
+export async function nextConfigurationRelease(env: StudioEnv, bank: string, setRelease: string): Promise<string> {
+  const c = env.store.content;
+  const paths = c?.head ? (await c.snapshot(c.head)).files.keys() : [];
+  return nextConfigurationNumber(setRelease, configurationReleasesOf(env, bank, paths));
+}
+
 /** The distributions of a bank on the branch, read from the head commit's tree (folders outside what the studio keeps in memory). */
 async function branchDistributions(env: StudioEnv, bank: string) {
   const out = publishedDistributions(env, bank);
@@ -57,7 +67,7 @@ async function branchDistributions(env: StudioEnv, bank: string) {
 
 export interface Plan {
   distributions: { bank: string; id: string }[];
-  configuration: { bank: string; against: { releaseId: string; parameterContract: any }[] }[];
+  configuration: { bank: string; number: string; against: { releaseId: string; parameterContract: any }[] }[];
 }
 
 /**
@@ -97,8 +107,10 @@ export async function planOnApproval(env: StudioEnv, tenant: string, checker: st
     // its bounds, refuses the approval before anything is published. A distribution this approval builds is checked in place.
     const set = docs.find((d) => d.kind === 'configuration-set');
     const bindings = docs.find((d) => d.kind === 'port-bindings');
-    if ((set || bindings) && !plan.distributions.some((d) => d.bank === tenant)) buildConfigurationRelease(env, { bank: tenant, release: set?.release, against, set, bindings: bindings?.bindings });
-    plan.configuration.push({ bank: tenant, against });
+    // Each approval that builds a configuration release gives it a release of its own (R-11-115, Issue I-340).
+    const number = await nextConfigurationRelease(env, tenant, (set ?? env.store.configurationSet(tenant))?.release ?? '1.0.0');
+    if ((set || bindings) && !plan.distributions.some((d) => d.bank === tenant)) buildConfigurationRelease(env, { bank: tenant, number, against, set, bindings: bindings?.bindings });
+    plan.configuration.push({ bank: tenant, number, against });
   }
   return plan;
 }
@@ -127,7 +139,7 @@ export function buildPlanned(env: StudioEnv, plan: Plan, changeSet: any): { file
   for (const c of plan.configuration) {
     const against = [...c.against, ...built.filter((b) => b.bank === c.bank).map((b) => ({ releaseId: b.releaseId, parameterContract: b.manifest.parameterContract }))];
     // The configuration set and the port bindings the studio last released (R-11-47), with this change set's members published.
-    built.push(buildConfigurationRelease(env, { bank: c.bank, changeSet: changeSet.id, against }));
+    built.push(buildConfigurationRelease(env, { bank: c.bank, number: c.number, changeSet: changeSet.id, against }));
   }
   built.forEach((b) => remember(env, b));
   return { files: Object.assign({}, ...built.map(bundleFiles)), tags: built.map((b) => b.tag), built };
@@ -149,7 +161,7 @@ export async function buildAndPublish(env: StudioEnv, actor: string, tenant: str
   }
   const b = req.kind === 'distribution'
     ? buildDistribution(env, { bank: req.bank, engine: req.engine ?? (env.store.settings.target as Target), id: await nextId(env, req.bank), withSimulators: req.withSimulators })
-    : buildConfigurationRelease(env, { bank: req.bank, release: req.release, against: (await branchDistributions(env, req.bank)).map((d) => ({ releaseId: d.releaseId, parameterContract: d.parameterContract })), bindings: req.bindings, calendars: req.calendars });
+    : buildConfigurationRelease(env, { bank: req.bank, release: req.release, number: req.release ? undefined : await nextConfigurationRelease(env, req.bank, env.store.configurationSet(req.bank)?.release ?? '1.0.0'), against: (await branchDistributions(env, req.bank)).map((d) => ({ releaseId: d.releaseId, parameterContract: d.parameterContract })), bindings: req.bindings, calendars: req.calendars });
   const c = env.store.content;
   if (!c) throw new StoreError('content', 'The studio is not connected to a content branch');
   const files = bundleFiles(b);

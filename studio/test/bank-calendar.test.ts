@@ -7,6 +7,7 @@ import * as gov from '../src/governance/governance.js';
 import { classify } from '../src/export/distribution.js';
 import { freshEnv } from './helpers.js';
 import { fake } from './support/content.js';
+import { compareReleases } from '../src/core/names.js';
 
 // A bank's calendar and cut-offs in the studio (R-11-52): reference tables of the bank's own, edited by the Bank Configurator as a
 // new edition, approved by the Bank Approver, and carried to the runtime in the bank's configuration release, never in a
@@ -69,6 +70,54 @@ describe('the bank\'s calendar and cut-offs (R-11-52)', () => {
     const next = (await as(env, 'example.maker', 'GET', '/api/tenants/example-bank/reference-tables')).body.tables.find((t: any) => t.name === 'b.ref.cut-offs.v1');
     expect([next.released.release, next.start.release]).toEqual(['1.1.0', '1.2.0']);
   });
+
+  it('each approval that builds a configuration release gives it a release of its own: a table, a second table, a value (R-11-115, Issue I-340)', async () => {
+    const env = freshEnv();
+    env.store.settings = { ...env.store.settings, distributions: true };
+    await buildAndPublish(env, 'example.checker', 'example-bank', { kind: 'distribution', bank: 'example-bank', engine: 'temporal' });
+    const approve = async (key: string) => {
+      const r: any = await gov.approveChangeSet(env, 'example-bank', 'example.checker', [key]);
+      await r.write;
+      return r.bundles.filter((b: any) => b.kind === 'configuration').map((b: any) => b.releaseId.split('@')[1]);
+    };
+    // A new edition of the cut-offs.
+    const cut = (await as(env, 'example.maker', 'GET', '/api/tenants/example-bank/reference-tables')).body.tables.find((t: any) => t.name === 'b.ref.cut-offs.v1').start;
+    const first = await as(env, 'example.maker', 'POST', '/api/drafts', { doc: { ...cut, editions: [...cut.editions, { validFrom: '2027-01-01', rows: [{ scheme: 'uae.wps', direction: 'outward', cutOff: '13:30', timeZone: 'Asia/Dubai', afterCutOff: 'next-business-day' }] }] } });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const one = await approve(first.body.draft.key);
+    // A second table, under the same configuration set release: refused before (409, R-09-21), its own release now.
+    const desks = {
+      kind: 'reference-table', name: 'b.ref.payroll-desks.v1', release: '1.0.0', title: 'The bank\'s payroll desks', domain: 'payroll-desks', key: ['code'],
+      columns: [{ id: 'code', type: 'code', title: 'Desk', required: true }], editions: [{ validFrom: '2027-01-01', rows: [{ code: 'D1' }] }],
+    };
+    const second = await as(env, 'example.maker', 'POST', '/api/drafts', { doc: desks });
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    const two = await approve(second.body.draft.key);
+    // Then a value change: the configuration set's next release.
+    const { toYaml } = await import('../src/core/yaml.js');
+    const set = structuredClone(env.store.configurationSet('example-bank'));
+    const setRelease = set.release;
+    set.release = `${setRelease.split('.')[0]}.${Number(setRelease.split('.')[1]) + 1}.0`;
+    set.values.find((v: any) => v.parameter === 'uae.wps.exchange.return-credits.v1#replyWait').value = 'P9D';
+    const third = await as(env, 'example.maker', 'POST', '/api/tenants/example-bank/configuration', { yaml: toYaml(set) });
+    expect(third.status, JSON.stringify(third.body)).toBe(200);
+    const three = await approve(third.body.draft.key);
+    const built = [...one, ...two, ...three];
+    expect(built).toHaveLength(3);
+    // Each its own, each after the one before, none a patch (R-11-102): the first takes the set's release.
+    expect(built[0]).toBe(setRelease);
+    expect(new Set(built).size).toBe(3);
+    for (let i = 1; i < built.length; i++) expect(compareReleases(built[i], built[i - 1])).toBeGreaterThan(0);
+    for (const b of built) expect(b).toMatch(/^\d+\.\d+\.0$/);
+    // The second carries both tables; the third the new value, its set still named by its own release.
+    const files = fake().files(env.store.content!.repository, 'main');
+    const at = (rel: string, f: string) => files[`content-configurations/releases/configuration/example-bank/${rel}/${f}`];
+    expect(at(built[1], 'reference/b.ref.payroll-desks.v1.yaml')).toBeDefined();
+    expect(parseYaml(at(built[1], 'reference/b.ref.cut-offs.v1.yaml')).release).toBe('1.1.0');
+    const shipped = parseYaml(at(built[2], 'configuration/configuration-set.yaml'));
+    expect([shipped.release, shipped.values.find((v: any) => v.parameter === 'uae.wps.exchange.return-credits.v1#replyWait').value]).toEqual([set.release, 'P9D']);
+    expect(parseYaml(at(built[2], 'manifest.yaml')).release).toBe(built[2]);
+  }, 240000);
 
   it('the configurator starts a table of the bank\'s own in the editor: its columns and key, then its first edition (R-11-106, Issue I-150)', async () => {
     const env = freshEnv();
