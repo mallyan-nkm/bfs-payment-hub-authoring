@@ -1175,7 +1175,7 @@ entries:
       actions:
         - resend-file
       escalation: Escalate to the bank's file-transfer support and the partner's operations desk with the file's id and the error.
-  # 1.11.0 (R-09-245, Issue I-380): native contract 2.0.0 refuses a module built against 1.x with its own code (R-09-262).
+  # 1.11.0 (R-09-243, Issue I-380): native contract 2.0.0 refuses a module built against 1.x with its own code (R-09-262).
   - code: native.ContractUnsupported
     title: 'A native module was built against a contract this runtime does not take'
     category: technical

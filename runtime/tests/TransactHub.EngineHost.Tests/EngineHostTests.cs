@@ -94,6 +94,8 @@ sealed class Worker : IDisposable
     public readonly System.Collections.Concurrent.ConcurrentQueue<string> Calls = new();
     /// <summary>Each attempt's payment and the distribution it names (R-09-130): <c>payment=distribution</c>.</summary>
     public readonly System.Collections.Concurrent.ConcurrentQueue<string> Named = new();
+    /// <summary>How long the worker takes to answer an attempt of a payment and step, for a slow call (R-09-238); none by default.</summary>
+    public Func<string?, string?, TimeSpan>? Delay;
 
     public Worker()
     {
@@ -113,6 +115,14 @@ sealed class Worker : IDisposable
         {
             HttpListenerContext c;
             try { c = await listener.GetContextAsync(); } catch { return; }
+            // Each request on its own, so that one slow answer holds up no other.
+            _ = Task.Run(() => Answer(c));
+        }
+    }
+
+    async Task Answer(HttpListenerContext c)
+    {
+        {
             var path = c.Request.Url!.AbsolutePath;
             JsonObject answer;
             if (path.EndsWith("/attempt"))
@@ -124,6 +134,7 @@ sealed class Worker : IDisposable
                 var release = J.S(req, "release");
                 Calls.Enqueue($"{payment}:{J.S(req, "step")}@{release}");
                 Named.Enqueue($"{payment}={J.S(req, "distribution")}");
+                if (Delay?.Invoke(payment, J.S(req, "step")) is { } wait && wait > TimeSpan.Zero) await Task.Delay(wait);
                 answer = activity.StartsWith("p.hold.")
                     ? new JsonObject { ["kind"] = "held", ["hold"] = $"HOLD-{payment}", ["expiry"] = "P1D" }
                     : new JsonObject { ["kind"] = "result", ["outcome"] = "ok", ["writes"] = new JsonObject { [$"facts.{J.S(req, "step")}"] = release } };
