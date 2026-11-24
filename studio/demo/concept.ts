@@ -384,8 +384,8 @@ export function scenes(d: Director): Scene[] {
       },
     },
     {
-      card: ['The studio designs. The runtime runs.', 'Next: building a scheme from scratch, and the hands-on training.'],
-      say: 'That is the concept. The studio designs, tests and approves. Each bank\'s own runtime runs. The next videos build a scheme from scratch, and take you through the studio hands-on, step by step.',
+      card: ['The studio designs. The runtime runs.', 'Next: the installation, the north star, a payment end to end, then the bank configurator, the studio designer and developer, and the service console.'],
+      say: 'That is the concept. The studio designs, tests and approves. Each bank\'s own runtime runs. The next videos install it, explain the north star, and follow a payment end to end. Then one video for each console: the bank configurator, the studio designer and developer, and the service console.',
     },
   ];
 }

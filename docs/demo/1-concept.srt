@@ -163,5 +163,5 @@ Governance keeps the record. Every save, approval and refusal is in the audit lo
 Last, the export: the package a bank's runtime runs. When a bank approver approves the bank's change, the studio builds and signs the bank's distribution, and its runtime installs it.
 
 42
-00:09:04,919 --> 00:09:17,228
-That is the concept. The studio designs, tests and approves. Each bank's own runtime runs. The next videos build a scheme from scratch, and take you through the studio hands-on, step by step.
+00:09:04,942 --> 00:09:23,929
+That is the concept. The studio designs, tests and approves. Each bank's own runtime runs. The next videos install it, explain the north star, and follow a payment end to end. Then one video for each console: the bank configurator, the studio designer and developer, and the service console.
