@@ -2317,6 +2317,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Write the attempt's envelope (activity, release, distribution, payment, instance, tenant, level) as a schema of its own, apart from the view, so that a field the host needs is never looked for in the view again.
 
+## I-286. A file's payment has two ids, and the operations console knows only one
+
+**Issue.** Recording runtime video 3 on the laptop: the File API's front door starts a salary file's payment under its own id (`uae-wps-<n>`), pins it and keeps the file, the outgoing SIF and the ACK under that id. The store accepts the file's canonical batch as a bulk with an id of its own (`StoreJournal`, `AcceptBulk`), and every fact of the run, the read model and the operations console's payment page use that one. So the upload page's link to the payment it started (`Payment uae-wps-…`, R-05-74) answers "No payment or bulk … for your tenants", and the payment's Documents tab lists none of its files, which the read model holds under the front door's id. Nothing records which bulk a front-door payment became, other than its pin and its end on the release API.
+
+**Recommendation.** Make one id: let the store accept a payment the front door started under the front door's id (`header.paymentId`), or record the bulk's id as a correlation on the front door's chain when it is accepted. Then the console's payment route resolves either id, the read model files each kept file under the subject the console shows, and the upload page's link opens the payment. Until then the video opens the payment from the payments list and shows its kept files through the File API (`GET /files?paymentId=`).
+
 ## Not done, and why
 
 | Story | Why |

@@ -21,7 +21,7 @@ Three videos of the runtime with the studio, in `docs/demo/runtime/`, each with 
 | --- | --- |
 | `runtime-1-install-and-screens.mp4` | Building the images, the stack's secrets by name only, `docker compose ... up -d --wait` and what runs; the studio's sign-in and its surfaces by role (designer, bank configurator, bank approver, auditor, administrator); the runtime's sign-in at the bank's development provider; every page of the service console (health, content, logs, errors and runbooks, actions, backup, assistant), the operations console (payments and a payment's page, work queue, approvals, reports, breaks, turnaround, retention, consents, registers, and its audit read from the API) and the test bench (run, test data, suite, history) |
 | `runtime-2-north-star-architecture.mp4` | The north-star architecture, drawn: ISO 20022 at the centre and scheme formats mapped at the edges; one insert-only store on SQL Server or PostgreSQL; four engines behind one contract, Temporal the default; the three layers and why; a payment pinned at acceptance, side by side, drained, removed, rolled back; platform workflows with slots, scheme legs (WPS also in a refund order), hooks and rules; the File API as the only door for files; the studio multi-tenant on its GitHub branch, a runtime one bank; maker-checker and the bank approver's consent; what is not built yet |
-| `runtime-3-full-run.mp4` | Not recorded yet: its production (`demo/full-run.ts`) is written and dry-run. One master workflow across every console: a bank's values, hook and rule on the corporate workflow; the new scheme leg `uae.demo` connected by its dispatch table; the bench; maker-checker; install, consent, activate in the service console; a payment through the File API (a WPS file until a bank can license a scheme built in the studio, I-205), followed in the operations console; a value changed by a configuration release; a second distribution, the first draining while a payment pinned to it finishes, then removed; a roll back |
+| `runtime-3-full-payment-run.mp4` | One bank's payments end to end: its distribution installed and activated in the service console, the native modules it carries checked by hash, its configuration release (with the laptop's file transfer bindings) put in force, each on a bank approver's consent; a salary file uploaded on the operations console's upload page (`POST /ops/api/upload`, which posts to the File API's `POST /files/ui`), its SIF sent through the File API's outbox to the Central Bank's SFTP folder, the ACK left there and matched back, the payment settled; the synthetic scheme `uae.demo` built in the studio, licensed by the bank (its configurator proposes, its approver approves, I-205), distribution B activated while A drains and is removed, and a demo credit file paid on `uae.demo`; the fraud alerts, ledger accounts, rates badge and audit |
 
 Bring the stack up first, with a compose project of your own and the secrets in your shell (`deploy/laptop/README.md`), then,
 from `studio/`, with the same shell:
@@ -41,9 +41,13 @@ TH_TTS_SPEED=0.85 npx tsx demo/run.ts full-run --out ../docs/demo/runtime
 `demo/stack.ts` holds what the two stack videos share: the stack's URLs, the sign-in at the bank's development provider, the
 services' APIs for a step that has no screen, and the commands shown in the terminal panel, run for real with every
 `TH_LAPTOP_*` secret in their output replaced by stars. The full run starts on a fresh stack: it adds the bank's two studio
-users, then publishes and installs the bank's distributions. Where a step has no screen today it is done as an operator would,
-by the API or a command shown on screen, and the voice says so (Issues I-200 to I-206). A WPS payment on Temporal waits in real
-time for its simulator's answer; `Director.skip` cuts such a wait from the video and shows a card instead.
+users and publishes the bank's first distribution before the camera, then installs it and everything after on screen. It needs the
+demo scheme's simulator among the workers' simulators: bring the stack up with `TH_LAPTOP_WORKERS_BENCH` set to the default list in
+`compose.yaml` plus `{"port":"uae.demo.port.demo.v1","simulator":"uae.demo.sim.demo-outward.v1","scenario":"accept"}`. Where a step has no screen today it is done as an operator would,
+by the API or a command shown on screen, and the voice says so: the configuration release with the laptop's bindings is built with
+the studio's API, the SIF and the ACK on the SFTP server are shown and left with `docker compose exec`, and a payment's kept files
+are listed by the File API, since its page in the operations console does not show them yet (Issue I-286). A payment on Temporal
+runs in real time; `Director.skip` cuts such a wait from the video and shows a card instead.
 
 ## Record them again
 

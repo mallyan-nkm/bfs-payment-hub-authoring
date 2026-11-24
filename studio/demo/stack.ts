@@ -51,7 +51,7 @@ export const compose = (args: string) => sh(`docker compose -f deploy/laptop/com
 
 /** A token of the bank's development provider: a person (svc.engineer, bank.approver, ops.operator, ...) or a machine client. */
 export async function token(who: string): Promise<string> {
-  const machine: Record<string, string | undefined> = { 'th-pipeline': process.env.TH_LAPTOP_PIPELINE_SECRET, 'th-front-door': process.env.TH_LAPTOP_FRONTDOOR_SECRET };
+  const machine: Record<string, string | undefined> = { 'th-pipeline': process.env.TH_LAPTOP_PIPELINE_SECRET, 'th-front-door': process.env.TH_LAPTOP_FRONTDOOR_SECRET, 'th-channel': process.env.TH_LAPTOP_CHANNEL_SECRET };
   const form: Record<string, string> = who in machine
     ? { grant_type: 'client_credentials', client_id: who, client_secret: machine[who] ?? '' }
     : { grant_type: 'password', username: who, password: process.env.TH_LAPTOP_USER_PASSWORD ?? '', client_id: 'transacthub-runtime-ui' };

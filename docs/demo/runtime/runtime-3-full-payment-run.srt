@@ -1,0 +1,139 @@
+1
+00:00:05,395 --> 00:00:28,157
+In this video we follow one bank's payments all the way through TransactHub, on the laptop stack from part 1. We install the bank's distribution, put its configuration in force, and send a salary file to the Central Bank. Then we build a new scheme in the studio, license it to the bank, and pay through it. Everything is synthetic: no real customer, no real account.
+
+2
+00:00:29,763 --> 00:00:46,808
+A service engineer opens the service console. The bank's distribution, A, is offered on GitHub. A distribution is a signed, complete copy of everything the bank runs, built by the studio. Difference shows what it would change. Nothing is active yet, so everything is new.
+
+3
+00:00:48,409 --> 00:00:56,494
+Install asks for a reason, and then it waits. The engineer who asks may not consent. A bank approver, another person, must.
+
+4
+00:01:00,401 --> 00:01:13,222
+The bank approver signs in, sees what waits, and approves it, with a reason. The runtime checks the signature, and stores the distribution. It only ever adds rows: nothing is updated or deleted.
+
+5
+00:01:26,457 --> 00:01:49,518
+The distribution also carries native code: compiled modules, one for the platform and one for the WPS scheme. The runtime's own image holds none. The signed manifest lists every file with its hash. When the distribution is installed, and again when the native host loads a module, each file is checked against its hash. A file that does not match is refused.
+
+6
+00:01:51,137 --> 00:02:00,801
+Installing is not using. The engineer activates A, and the approver consents again. From now on, new payments of this bank take distribution A.
+
+7
+00:02:27,506 --> 00:02:48,775
+Next, the bank's values and bindings: its configuration release. It carries values, never code. On this laptop every partner of the bank is one SFTP server in the stack, so the bank approver builds the release with the laptop's file transfer bindings. The studio has no screen for that yet, so it is done with the studio's API.
+
+8
+00:02:50,377 --> 00:03:11,966
+Installing a configuration release and putting it in force are two steps. Installing stores it, and checks every value against the bounds the distribution declares. Putting it in force makes its values and bindings the ones payments use, and that needs the bank approver's consent. Asked for here, the one consent does both. The release now says: in force.
+
+9
+00:03:28,605 --> 00:03:46,845
+Now a payment. An operator opens the operations console's upload page. The file goes to the File API as the operator's own upload. The File API checks it, keeps it with its hash, and starts its payment on the active distribution. We upload a synthetic salary file.
+
+10
+00:03:54,564 --> 00:04:11,076
+Here is the payment, in the payments list. Its timeline is a list of facts, one per step, each chained to the one before. The file was read into the ISO 20022 model, checked, screened, and the salary file for the Central Bank, the SIF, was written.
+
+11
+00:04:12,676 --> 00:04:25,454
+The SIF leaves through the File API's outbox. The File API delivers it to the Central Bank's folder on the SFTP server. Here it is. The payment now waits for the Central Bank's answer.
+
+12
+00:04:27,057 --> 00:04:44,273
+While it waits, the platform's designer builds a new scheme in the studio: a made-up one, called U A E demo. We go quickly here. Video 2 of the studio builds it step by step. First its test data: a good file, a file in dollars, and a file that is not a demo file at all.
+
+13
+00:04:45,876 --> 00:05:01,364
+Then the port to the demo clearing house, and the simulator that stands in for it in tests. Then the checks: a rule that a demo file is in dirhams, its rule set, and the activity that runs them. A checker, never the maker, approves each change.
+
+14
+00:05:11,585 --> 00:05:23,467
+The maps: one reads the file into the ISO 20022 model, with a small script. One writes the file for the clearing house, and one reads its acknowledgement. Then the send.
+
+15
+00:05:36,079 --> 00:05:55,833
+Then the leg: check the file, check each account, write the file, and submit it, waiting for the answer. The scheme's dispatch table connects the leg to the platform's corporate workflow: a demo credit file starts a corporate payment, with this leg in the scheme slot. They refer to one another, so the checker approves them as one change set.
+
+16
+00:05:58,292 --> 00:06:09,214
+We test the leg on the studio's bench, against the clearing house's simulator. The file is checked, both accounts pass, the file is submitted and acknowledged, and the leg settles.
+
+17
+00:06:10,818 --> 00:06:27,969
+A bank pays through a scheme only once it licenses it. The bank's configurator opens the bank's page and proposes a licence for U A E demo. The licence is a change to the bank's lock file, the list of what its distribution carries, so it waits for the bank's approver.
+
+18
+00:06:29,572 --> 00:06:41,177
+The bank approver, another person, signs in and approves the licence. The approval builds the bank's next distribution, B. It carries the new scheme, and is published to GitHub with a tag.
+
+19
+00:06:44,180 --> 00:06:56,980
+Then the bank's values: it accepts the scheme's release and enables its rail, in its configuration set. The checks run as we type, and every value must stay inside its bounds. The approver approves it.
+
+20
+00:07:17,307 --> 00:07:28,805
+A whole payment for the bank on the studio's bench: a demo credit file starts the corporate workflow with the bank's values, the rail is the new scheme, and the new leg runs in its slot.
+
+21
+00:08:46,310 --> 00:09:00,539
+Back in the service console, distribution B is offered. The engineer installs it, and the approver consents. Then the engineer activates B, and the approver consents again. Activating B moves A to draining, in the same step.
+
+22
+00:10:04,742 --> 00:10:17,328
+A cannot be removed now. One payment pinned to it is still open: our salary payment, waiting for the Central Bank. The button stays off. New payments take B. Our payment stays on A until it ends.
+
+23
+00:10:18,936 --> 00:10:40,056
+The bank's new values go the same way. Approving them in the studio built a configuration release. On the laptop, the approver builds one more with the laptop's bindings on top, and that is the one the engineer installs. It is checked against both distributions, and put in force with the approver's consent. Nothing is redeployed for a value.
+
+24
+00:10:54,418 --> 00:11:10,482
+Now we play the Central Bank. It leaves an acknowledgement, an ACK, in its answer folder on the SFTP server, named after the salary file. The File API picks it up, matches it to the payment by the salary file's name, and hands it to the payment.
+
+25
+00:11:12,093 --> 00:11:13,863
+We let the payment read it.
+
+26
+00:11:26,165 --> 00:11:49,866
+The Central Bank accepted the file, so the payment settled, on A, where it started. The File API keeps every file of the payment, each with its hash: the salary file that came in, the SIF that went out, and the ACK that came back. The payment's page does not list them yet, because the File API and the store know the payment by two different ids. That is recorded as an issue.
+
+27
+00:11:51,468 --> 00:12:12,566
+With no payment open on it, A is drained. The engineer asks to remove it, and the approver consents. The runtime still refuses, and says why: a late answer could still arrive for a payment of A, so A is kept until its longest declared wait has passed, thirty days here. Even then, its package stays in the store and on GitHub, as a record.
+
+28
+00:12:28,903 --> 00:12:41,319
+Last, a payment on the new scheme. The operator uploads a demo credit file. The upload page offers the messages the active distribution receives, and that is now B, with U A E demo.
+
+29
+00:12:53,208 --> 00:13:02,893
+It runs the same corporate workflow, with the demo leg in the scheme slot. On this laptop the clearing house is its simulator. We let it run to its end.
+
+30
+00:13:16,719 --> 00:13:27,769
+It settled, on B, through U A E demo: a scheme built in the studio a few minutes ago, licensed by the bank, and paid in the runtime, with nothing redeployed but signed content.
+
+31
+00:13:29,371 --> 00:13:41,339
+A few more pages of the operations console. Fraud alerts: a payment the fraud check finds suspect becomes an alert here, for staff to take, note and close. Our payments raised none.
+
+32
+00:13:42,940 --> 00:13:55,569
+Ledger accounts: the bank's own accounts that payments post against, as its configuration in force names them. They are read only here. They change in the studio, as a new configuration release.
+
+33
+00:13:57,171 --> 00:14:07,923
+If the bank's exchange rates are older than it allows, a red badge says "Rates stale" in the top bar, and a payment that needs a rate is refused rather than paid at an old one.
+
+34
+00:14:09,524 --> 00:14:21,214
+And the audit. Every request, every consent and every upload is a fact: who, when and why. The operations console's audit reads them, and so does the service console's event log.
+
+35
+00:14:22,817 --> 00:14:44,598
+That is the whole run. A distribution installed and activated, its native code checked, its configuration put in force, each with a second person's consent. A salary file uploaded, sent to the Central Bank and answered. A new scheme built in the studio, licensed by the bank, put beside the first distribution while that one drained, and paid.

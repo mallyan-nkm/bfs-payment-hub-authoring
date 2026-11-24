@@ -243,13 +243,15 @@ export class Director {
    * the time is cut from the video. It starts once the scene's voice has finished, so no voice is cut.
    */
   cuts: { from: number; to: number }[] = [];
-  async skip(title: string, fn: () => Promise<void>) {
+  async skip(title: string, fn: () => Promise<void>, minSeconds = 0) {
     const last = this.marks[this.marks.length - 1];
     if (last && !DRY) { const left = last.at + last.seconds + 0.3 - this.now(); if (left > 0) await this.page.waitForTimeout(left * 1000); }
     const t0 = this.now();
     await fn();
     const took = this.now() - t0;
-    await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [title, `${Math.max(1, Math.round(took / 60))} minute(s) later`]);
+    // A wait shorter than minSeconds is kept as it was, with no card.
+    if (took < minSeconds) return;
+    await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [title, took < 60 ? 'A moment later' : `${Math.round(took / 60)} minute(s) later`]);
     await this.wait(2500);
     await this.page.evaluate(() => (window as any).__card?.());
     // Cut what came before the card, keep the card's last 2.5 seconds.
@@ -392,27 +394,34 @@ export async function record(prod: Production, outDir: string) {
   let from = 0;
   for (const c of d.cuts) { keep.push([from, c.from]); from = c.to; }
   keep.push([from, undefined]);
-  const cutGraph = d.cuts.length
-    ? [...keep.map(([a, b], i) => `[0:v]trim=start=${a.toFixed(3)}${b === undefined ? '' : `:end=${b.toFixed(3)}`},setpts=PTS-STARTPTS[v${i}]`), `${keep.map((_, i) => `[v${i}]`).join('')}concat=n=${keep.length}:v=1:a=0[vout]`]
-    : [];
-  // The voice: each line at the time its scene started, mixed into one track.
+  // A long video's progress lines overflow spawnSync's default buffer of 1 MB, which kills ffmpeg: keep its errors only.
+  const ffmpeg = (args: string[]) => {
+    const ff = spawnSync('ffmpeg', ['-nostats', '-loglevel', 'error', ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (ff.status !== 0) throw new Error(`ffmpeg failed (${ff.status ?? ff.signal}): ${ff.stderr.slice(-2000)}`);
+  };
+  const encode = ['-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p'];
+  // First the cuts, video only: each kept part read as an input of its own, seeking to its start. (Trimming one input in several
+  // branches holds every frame of a long cut in memory, more than a long recording with a long wait cut from it fits.)
+  let picture = video;
+  if (d.cuts.length) {
+    picture = path.join(work, 'cut.mp4');
+    const graph = path.join(work, 'cut.txt');
+    fs.writeFileSync(graph, [...keep.map((_, i) => `[${i}:v]setpts=PTS-STARTPTS[v${i}]`), `${keep.map((_, i) => `[v${i}]`).join('')}concat=n=${keep.length}:v=1:a=0[vout]`].join(';'));
+    ffmpeg(['-y', ...keep.flatMap(([a, b]) => ['-ss', a.toFixed(3), ...(b === undefined ? [] : ['-to', b.toFixed(3)]), '-i', video]), '-filter_complex_script', graph, '-map', '[vout]', ...encode, picture]);
+  }
+  // Then the voice: each line at the time its scene started, mixed into one track, beside the picture.
   const out = path.join(outDir, `${prod.NAME}.mp4`);
   const voiced = d.marks.filter((m) => m.wav);
-  const args = ['-y', '-i', video];
+  const args = ['-y', '-i', picture];
   for (const m of voiced) args.push('-i', m.wav!);
-  if (voiced.length || cutGraph.length) {
+  if (voiced.length) {
     const delays = voiced.map((m, i) => `[${i + 1}:a]adelay=${Math.round(m.at * 1000)}|${Math.round(m.at * 1000)}[a${i}]`);
-    const mix = voiced.length ? [`${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0,apad[aout]`] : [];
     const graph = path.join(work, 'mix.txt');
-    fs.writeFileSync(graph, [...cutGraph, ...delays, ...mix].join(';'));
-    args.push('-filter_complex_script', graph, '-map', cutGraph.length ? '[vout]' : '0:v');
-    if (voiced.length) args.push('-map', '[aout]', '-shortest');
+    fs.writeFileSync(graph, [...delays, `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0,apad[aout]`].join(';'));
+    args.push('-filter_complex_script', graph, '-map', '0:v', '-map', '[aout]', '-shortest', '-c:a', 'aac', '-b:a', '128k');
   }
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-metadata', `title=${prod.TITLE}`);
-  if (voiced.length) args.push('-c:a', 'aac', '-b:a', '128k');
-  args.push(out);
-  const ff = spawnSync('ffmpeg', args, { encoding: 'utf8' });
-  if (ff.status !== 0) throw new Error(`ffmpeg failed: ${ff.stderr.slice(-2000)}`);
+  args.push(...(d.cuts.length ? ['-c:v', 'copy'] : encode), '-movflags', '+faststart', '-metadata', `title=${prod.TITLE}`, out);
+  ffmpeg(args);
 
   // Subtitles beside the video, from the same lines and times.
   const ts = (s: number) => new Date(Math.max(0, s) * 1000).toISOString().slice(11, 23).replace('.', ',');
