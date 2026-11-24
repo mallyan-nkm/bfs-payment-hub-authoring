@@ -135,7 +135,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         return change is null ? text : System.Text.RegularExpressions.Regex.Replace(change(text), @"(?m)^release: .*$", "release: 99.0.0", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
     }
 
-    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null, string? scheme = null)
+    async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null, string? scheme = null, IEngineHost? engineHost = null)
     {
         var o = await pg.Fresh();
         var dist = await ActiveDistribution(o, scheme);
@@ -143,8 +143,31 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
         var engines = new FakeEngines();
         bindings ??= new PortBindings();
         var resolver = new SecretResolver([new EnvSecretProvider(k => secrets?.GetValueOrDefault(k))]);
-        var fd = new RuntimeFrontDoor(o, map, engines);
+        var fd = new RuntimeFrontDoor(o, map, engineHost ?? engines);
         return new Rig(o, new FileIntake(o, Key, Config(config), new Decryptor(bindings, resolver), fd), map, engines, dist, bindings);
+    }
+
+    /// <summary>
+    /// R-09-244 (Issue I-353): an engine host that does not answer is a refusal with the dictionary's code
+    /// (<c>frontdoor.EngineUnreachable</c>, answered 503), never the exception's text, which names the runtime's hosts. The file is
+    /// kept, and the pin the front door made ends abandoned with the code.
+    /// </summary>
+    [Fact]
+    public async Task An_engine_host_that_does_not_answer_is_a_clean_refusal_with_its_code_and_the_file_kept()
+    {
+        var closed = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        var r = await Make(engineHost: new HttpEngineHost(_ => $"http://127.0.0.1:{port}", http: new HttpClient { Timeout = TimeSpan.FromSeconds(5) }));
+        var got = await r.Intake.Receive(A("uae.wps.pif", "000000000099.PIF", Pif("down")));
+        Assert.False(got.Accepted);
+        Assert.Equal(HttpEngineHost.EngineUnreachable, got.Code);
+        Assert.DoesNotContain("127.0.0.1", got.Detail ?? "");
+        Assert.DoesNotContain("Exception", got.Detail ?? "");
+        await using var db = StoreDbContext.Open(r.Store);
+        Assert.True(await db.StoredFiles.AsNoTracking().AnyAsync(f => f.FileName == "000000000099.PIF"));
+        Assert.True(await db.Facts.AsNoTracking().AnyAsync(f => f.Kind == DistributionRegistry.EndKind && f.DataJson.Contains(HttpEngineHost.EngineUnreachable)));
     }
 
     static byte[] Pif(string tag) => Encoding.UTF8.GetBytes($"# synthetic payment file {tag}\nSCR,TEST\n");

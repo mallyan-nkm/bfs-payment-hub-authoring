@@ -48,6 +48,10 @@ public static class ErrorCodes
     // A file the File API's outbox could not deliver, on the file's chain and its payment's, since the dictionary's 1.11.0
     // (R-09-236, Issue I-337): no binding, a transfer that failed, the outbox's attempts ended.
     public const string FileNotBound = "file.NotBound", DeliveryFailed = "file.DeliveryFailed", Undelivered = "file.Undelivered";
+    // The runtime's own hosts that do not answer, since the dictionary's 1.11.0 (R-09-244, Issues I-350, I-352, I-353): a worker's
+    // native host, the health probes of the native host, the workers and the engine host, the File API's front door to the engine host.
+    public const string NativeHostUnreachable = "NativeHostUnreachable", NativeHostDown = "service.NativeHostDown", WorkersDown = "service.WorkersDown",
+        EngineHostDown = "service.EngineHostDown", EngineUnreachable = "frontdoor.EngineUnreachable";
 
     /// <summary>Every runtime code above, for the dictionary test.</summary>
     public static IEnumerable<string> All => typeof(ErrorCodes).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!);

@@ -262,6 +262,10 @@ services:
       Service__FileApi__TokenRef: file:/var/lib/transacthub/tokens/th-operations.jwt
       # The replies the gauge watches are the installation's to name, not the platform's (R-09-142, Issue I-235).
       Service__Gauges__AwaitedReplies: '[{"scheme":"uae.wps","sent":"uae.wps.sif","replies":["uae.wps.ack"]}]'
+      # The runtime's own hosts on the health page (R-09-244, Issue I-352).
+      Service__Hosts__NativeHost: http://native:7300/health
+      Service__Hosts__Workers: http://workers:7700/health
+      Service__Hosts__EngineHost: enginehost:7600
     volumes:
       - keys:/var/lib/transacthub/keys:ro
       - jwks:/var/lib/transacthub/jwks:ro

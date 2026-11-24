@@ -2635,6 +2635,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Partly done (24 November 2026, R-05-52).** The log reads an error object's name as its code, so the code filter finds it and a known code links to its runbook (`ServiceApiTests.Logs_show_the_facts_masked_filtered_and_linked_to_the_payment_and_each_error_to_its_runbook`); each item carries its step's error unmasked, by name and whether it may be retried (an error's name is a code; the fact's data is masked, and an error object's `name` was masked with it), and an error the dictionary does not know is named on the row (`stepError`, `runtime/ops-console/src/service/format.ts`). The dictionary entry is not added: it is a new release of factory content.
 
+**Done (24 November 2026, R-09-243).** The platform's error dictionary 1.11.0 holds `NativeHostUnreachable` (technical, retryable, raised by `interpreter`; checks the native host's health and log; safe action: bring the host back, then retry the parked step; action `retry-attempt`). `ErrorDictionaryTests` passes. The check that every error name the interpreter and the engine bindings throw has an entry is `ErrorDictionaryTests.Every_code_a_native_activity_or_the_interpreter_raises_has_an_entry`, as before.
+
 ## I-351. The service console's content page misread configuration releases and lacked what it is for
 
 **Issue.** Four things, found while recording video 5c. (1) The Difference of a configuration release grouped its files by `kind:name`, which a configuration release's bill of materials does not have, so every file appeared as one line keyed `:` with all the hashes joined. (2) Every configuration release ever put in force was shown `in-force`, although only the latest counts (a configuration set is the bank's whole set, `ConfigurationValues`). (3) The page showed neither the values in force nor the pins with no payment, which have API routes or store reads of their own, and offered no Put in force for a release installed but not in force. (4) Nothing showed the trusted signers, nor a distribution's native modules and their SHA-256 (R-09-120 to R-09-123). And a long probe name, the disk's path, widened the health page beyond the screen.
@@ -2649,11 +2651,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Add probes for the native host (`/health` of `TH_NATIVE_HOST`), the activity workers and the engine host, each with an error code and a runbook entry, as `TH_HEALTH_URL` already names for each container.
 
+**Done (24 November 2026, R-09-244).** The service console's health probes the native host (`Service:Hosts:NativeHost`, else `TH_NATIVE_HOST`'s `/health`), the activity workers (`Service:Hosts:Workers`) and the engine host (`Service:Hosts:EngineHost`, a connection only, as its routes need a token), in the group `hosts`, each failing with its own code and runbook (`service.NativeHostDown`, `service.WorkersDown`, `service.EngineHostDown`, dictionary 1.11.0); an HTTP probe whose host does not answer now fails instead of throwing. The laptop names the three (`deploy/laptop/compose.yaml`). `RuntimeHostProbeTests`.
+
 ## I-353. The File API answers 500 with an exception's text when the engine host is down
 
 **Issue.** With the laptop's engine host stopped, `POST /files` answered `500` with the .NET exception and its stack (`HttpRequestException: Name or service not known (enginehost:7600)`), and no code. The channel cannot tell a refusal from a fault, and the text names the runtime's hosts. Found while preparing video 5c.
 
 **Recommendation.** Have the front door catch a failure to reach the engine host, answer `503` with a code of the error dictionary (for example `frontdoor.EngineUnreachable`) and no exception text, and say whether the file was kept for a retry.
+
+**Done (24 November 2026, R-09-244).** The front door's engine host client (`HttpEngineHost`) turns a host that does not answer into a refusal, `frontdoor.EngineUnreachable`, answered 503 with words that name no host and no exception; the file is kept and the pin ends abandoned with the code (R-09-164). Dictionary 1.11.0 has the entry. `FileApiTests.An_engine_host_that_does_not_answer_is_a_clean_refusal_with_its_code_and_the_file_kept`.
 
 ## I-354. The first native attempt after the native host starts timed out
 

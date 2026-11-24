@@ -1195,6 +1195,93 @@ entries:
         - 'Do not retry. Rebuild every module against the runtime''s contract (the studio with TH_NATIVE_MODULES=build, or runtime/tools/native-module/build.sh), build a new distribution of the bank, install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2).'
         - 'Remove the refused distribution once nothing is pinned to it.'
       escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
+  # 1.11.0 (R-09-244; Issues I-350, I-352, I-353): the runtime's own hosts that do not answer.
+  - code: NativeHostUnreachable
+    title: The worker could not reach the runtime's native host
+    category: technical
+    retryable: true
+    raisedBy:
+      - interpreter
+    meaning: An attempt of an activity the runtime's native host implements could not reach the host (TH_NATIVE_HOST), so it was not run. The attempt is retried by its policy, and a step that parks waits for an operator's retry.
+    causes:
+      - The native host is stopped, starting, or out of memory.
+      - The worker names a native host its network does not reach.
+    runbook:
+      checks:
+        - Read the service console's health, native-host, and the native host's log.
+        - Read the worker's TH_NATIVE_HOST and whether that host answers its /health.
+      safeActions:
+        - Bring the native host back, then retry the parked step.
+      actions:
+        - retry-attempt
+      escalation: Escalate to the runtime's service team with the step, the payment and the time of the attempt.
+  - code: service.NativeHostDown
+    title: The native host does not answer its health check
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: The service console's probe of the native host's health failed. Steps of native activities fail with NativeHostUnreachable until it answers.
+    causes:
+      - The native host is stopped or starting.
+      - The probe's URL (Service:Hosts:NativeHost) names another host.
+    runbook:
+      checks:
+        - Read the native host's log and its container's state.
+        - Read the service console's log for NativeHostUnreachable on steps.
+      safeActions:
+        - Restart the native host; then retry the steps that parked.
+      actions:
+        - retry-attempt
+      escalation: Escalate to the runtime's service team with the time the probe first failed.
+  - code: service.WorkersDown
+    title: The activity workers do not answer their health check
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: The service console's probe of the activity workers' health failed. No activity runs while they do not answer; the engines keep the attempts and retry them.
+    causes:
+      - The workers' process is stopped or starting.
+      - The probe's URL (Service:Hosts:Workers) names another host.
+    runbook:
+      checks:
+        - Read the workers' log and their container's state.
+      safeActions:
+        - Restart the workers; the engines offer the attempts again.
+      actions:
+        - restart-worker
+      escalation: Escalate to the runtime's service team with the time the probe first failed.
+  - code: service.EngineHostDown
+    title: The engine host does not accept connections
+    category: technical
+    retryable: true
+    raisedBy:
+      - service-console
+    meaning: The service console's probe of the engine host (Service:Hosts:EngineHost) could not connect. No payment starts, and the File API refuses new files with frontdoor.EngineUnreachable.
+    causes:
+      - The engine host is stopped or starting.
+    runbook:
+      checks:
+        - Read the engine host's log and its container's state.
+      safeActions:
+        - Restart the engine host; its services take their payments back from their history.
+      escalation: Escalate to the runtime's service team with the time the probe first failed.
+  - code: frontdoor.EngineUnreachable
+    title: The engine host did not answer, so no payment started
+    category: technical
+    retryable: true
+    raisedBy:
+      - file-api
+    meaning: The File API kept the file, but its front door could not reach the engine host to start the payment, and answered 503 with this code. The pin it made is ended abandoned.
+    causes:
+      - The engine host is stopped or starting.
+    runbook:
+      checks:
+        - Read the service console's health, engine-host.
+      safeActions:
+        - Bring the engine host back, then ask the channel to send the file again.
+      escalation: Escalate to the runtime's service team with the file's id and the time.
   - code: ops.ActionNotOffered
     title: The action does not apply to this payment now
     category: business
