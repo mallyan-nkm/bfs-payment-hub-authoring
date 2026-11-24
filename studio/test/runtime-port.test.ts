@@ -66,7 +66,7 @@ describe('every activity of a port the bench gives to the runtime has a native c
     const docs = freshEnv().store.current().map((e) => e.doc);
     expect(runtimePortGaps(docs, bench)).toEqual([]);
     const without = clone(docs);
-    delete without.find((d: any) => d.name === 'uae.wps.exchange.send-receipt-confirmation.v1').implementation.native;
-    expect(runtimePortGaps(without, bench)).toEqual([{ port: 'uae.wps.port.wps.v1', activity: 'uae.wps.exchange.send-receipt-confirmation.v1', release: '1.1.0' }]);
+    delete without.find((d: any) => d.name === 'uae.wps.exchange.send-receipt-confirmation.v2').implementation.native;
+    expect(runtimePortGaps(without, bench)).toEqual([{ port: 'uae.wps.port.wps.v1', activity: 'uae.wps.exchange.send-receipt-confirmation.v2', release: '2.0.0' }]);
   });
 });

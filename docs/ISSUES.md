@@ -2407,6 +2407,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Let the engine name the step that holds and the step whose handler it is in, in the attempt's envelope (with Issue I-285's envelope schema), and have the hold record that step, not the latest one.
 
+**Done (24 November 2026, R-09-241).** The engine names the step whose handler an attempt is in (`handlerOf`: step, activity, outcome) on DTFx, Elsa and Temporal (the shared interpreter) and in the studio's interpreter and worker; the native host gives it to the image's holds (`AttemptEnvelope`, not the native contract), and a hold records that step (`after`, `afterStep`) and its reason; an attempt that names none keeps R-05-94's latest step. Evidence: `OperatorActionTests.Holds_after_parallel_branches_each_name_the_step_whose_handler_they_are_in` (SQL Server and PostgreSQL). Flowable is Issue I-361; the attempt's envelope schema stays I-285's.
+
 ## I-291. The kit's business elapsed check counts Saturday and Sunday only
 
 **Issue.** A kit scenario may check its elapsed time on the business calendar (`virtualElapsedBusiness`, CK-AWAIT-02). The runner counts it on `DEFAULT_CALENDAR`, not on the calendar the scenario's documents give, so a scenario over a holiday must state its elapsed time in plain days, as CK-AWAIT-08 does.
@@ -2425,11 +2427,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Give each send its v2 that reads `facts.encryption`, with its native code-behind, in the same change as I-268's; and retire `uae.wps.exchange.send-salary-file.v1` (now reached by no workflow, L11) once no distribution in force pins it.
 
+**Done (24 November 2026, R-09-232, R-09-233, R-05-101).** WPS's six other sends have v2 lines at 2.0.0 that read `facts.encryption` and send the encrypted file where the bank's binding encrypted it, one code-behind with the salary file's (`SchemeSend`, `runtime/src/TransactHub.Activities.Wps/Native/SchemeSends.cs`); the six subflows call them from their next minor and the scheme's catalogue 1.6.0 names them; the v1 lines leave the factory, and their native code-behinds stay for the distributions pinned to 1.20.0 (Issue I-364). Lint L58 holds a send after an encryption step to reading the fact (mutation M99). `uae.wps.exchange.send-salary-file.v1` is retired: out of `RELEASES`, the WPS module and the laptop's worker list (`deploy/laptop/compose.yaml`, `LaptopDeploymentTests`); no workflow of the factory has called it since 1.19.0 and the laptop's distribution pins 1.20.0. Evidence: `PortFileTransferTests` (`Every_send_v2_puts_the_encrypted_file_on_its_messages_folder_where_the_bank_encrypts`, `The_WPS_module_carries_no_send_the_factory_retired_and_each_send_is_its_schemes_message`).
+
 ## I-294. A payment with no currency is accepted with none
 
 **Issue.** R-09-185 removed the platform's default currency. A payload whose payment and batch name no currency is accepted into the store with an empty currency, and only its posting refuses it (`BusinessReject`). The canonical checks do not refuse it first.
 
 **Recommendation.** Have `p.validate.canonical.v1` refuse a payment that names no currency (a rule of the platform's canonical rule set, in its next release), so the payment is refused at its checks, before anything else runs.
+
+**Done (24 November 2026, R-09-231).** The check-and-screen segment's canonical checks read the batch and its lines: `p.validate.canonical.v2` (2.0.0, a read added, a new major line) with `p.ruleset.canonical.v1` 1.1.0, which holds `p.rule.batch-currency-present.v1`: a file whose batch names no currency and one of whose lines names none either is refused (`AM03`) at its checks, before anything else runs; a line that names its own is not refused. `p.seg.check-and-screen.v1` 1.1.0 calls it (factory 1.21.0). The inward legs keep v1: their payment names its own currency, which `p.rule.currency-present.v1` already checks. Evidence: the rule's examples (`tools/validate.py`, `npm run studio -- check`) and `studio/test/rules.test.ts` (`refuses a file that names no currency`).
 
 ## I-300. A distribution's engine service runs one work item at a time
 
@@ -2437,11 +2443,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Decide the target with the owner (I-68). Then let the service run work items of different instances side by side (a baton per instance, activities off the baton), and keep the history's order per instance rather than per service, or run several services per distribution, each with a share of the payments by root id.
 
+**Done (24 November 2026, R-09-238).** A distribution's DTFx service runs several work items at once (`VirtualTimeOrchestrationService.Concurrency`): episodes of different instances and activities side by side, an instance's episodes still one at a time in its own message order, each activity finding its own slot by its input. The host's setting `TH_HOST_SERVICE_CONCURRENCY` (1 to 64, default 4; out of bounds stops the host) reaches the service as `TH_SERVICE_CONCURRENCY`, and the observation says it. A kit run keeps one at a time, so it stays deterministic. Evidence: `RestartTests.Dtfx_runs_a_distributions_payments_side_by_side_while_one_workers_call_is_slow` (a payment's 25-second worker call holds up no other), and the DTFx restart and one-service tests. Elsa is Issue I-360; the throughput target stays I-68's, and the default is Issue I-362.
+
 ## I-301. A distribution's history chain is read whole at every start of its service
 
 **Issue.** The service's history (R-09-196) is insert-only, so it is never trimmed: a service that starts again reads and folds every fact of every payment the distribution ever ran, though only the open payments matter, and an ended payment's instances are rebuilt too. A distribution that runs for months will take long to start. The spec says nothing of how long a host may take to start.
 
 **Recommendation.** Add a checkpoint fact to the chain (the open instances' state, the activities and timers outstanding) every so many episodes, and fold only from the last checkpoint; on Elsa, skip the facts of payments whose end is `reported`, as the rebuild already skips their instances. Set a start-time target with the owner.
+
+**Done (24 November 2026, R-09-239).** The DTFx and Elsa services checkpoint their history every `TH_HOST_HISTORY_CHECKPOINT_EVERY` facts (50 to 100000, default 500): one fact holding, in their order, the facts of the payments whose end the host has not recorded, without the service's openings (`StoreHistory.Compact`). A service that starts again reads the chain from its last checkpoint only and folds it as before. Chosen over a snapshot of each engine's state: the fold stays the one way a service is rebuilt, on both engines. The chain stays insert-only and verifies whole. Evidence: `StoreHistoryTests` (SQL Server and PostgreSQL) and the DTFx and Elsa restart tests. The start-time target is Issue I-362.
 
 ## I-302. The Flowable binding's journal holds a payment's whole context at its start
 
@@ -2465,6 +2475,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Record a step's rule trace as a fact on the payment's chain with its step fact, and read it from there for the observation and the operations console.
 
+**Done (24 November 2026, R-09-240).** A step's rule trace is kept with its step fact on the payment's chain (`StepFacts.RuleTrace`): the rules with their release, stage, fired and activations, the findings' codes and paths, the decisions' names and the worst; never the facts the rules were given, their bindings or the parameters' values. The engine host's observation reads them from the chain (`ruleTraces`), so a payment taken back after a restart has them all, and the console's timeline shows the rules that fired. Evidence: `OperatorActionTests.A_steps_rule_trace_is_kept_on_the_payments_chain_without_the_facts_it_was_given` (SQL Server and PostgreSQL).
+
 ## I-330. The pages' content security policy and a UI library that writes its own styles
 
 **Issue.** The studio and the runtime's consoles moved to Fluent UI 2 (ADR 0003). Fluent writes its component styles and its theme's tokens into `<style>` elements at run time. The pages' policies said `style-src 'self'` (R-11-43 for the studio, R-09-60 for a runtime host), which a browser applies to those elements too: with the policy as it was, every page drew unstyled. R-09-60 says the console's page "may load only its own scripts and styles"; it does not say whether styles the page's own script writes are its own. R-11-43 forbids inline script only.
@@ -2477,6 +2489,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** A WPS leg's send step ends `accepted` when the File API's outbox takes the salary file (R-09-162), and the leg's "Sent to the Central Bank at" is that time. When the SFTP partner is down, the outbox's delivery attempts fail and its circuit breaker opens, but nothing reaches the payment's chain: the operations console shows the payment as sent and waiting for the Central Bank's answer, and only the service console's health (`circuit-breakers`) shows that something is wrong, with no link to the payments it holds up. An operator who opens the payment cannot tell a late answer from a file that never left. Found on the laptop while recording the end-to-end video's technical failure (`docs/demo/4-end-to-end.mp4`).
 
 **Recommendation.** Have the File API record on the payment's chain each failed delivery of its file and the end of its attempts (with the port, adapter and error code), and the delivery itself; show them on the payment's timeline and set the leg's sent time from the delivery, not from the outbox's acceptance. Let the operations console list the payments whose file is kept and undelivered, with the resend the service console offers (Issue I-333).
+
+**Done (24 November 2026, R-09-236, R-09-237, R-05-103).** The File API's outbox tells the payment's own chain of each delivery of its file (`file.delivered`), each failed attempt (`file.delivery-failed`, code `port.CircuitOpen` where the partner's breaker is open, `file.NotBound`, else `file.DeliveryFailed`) and the end of its attempts (`file.undelivered`, `file.Undelivered`); an open breaker now fails the attempt instead of the outbox's round. The read model reads them as a view source (`delivery:<message>.<outcome|at|attempts|adapter|code|fileName|folder>`, lint L38, mutation M102); `uae.wps.view.operations.v1` 1.7.0 takes "Sent to the Central Bank at" from the delivery and shows the delivery, its attempts and its error, with the outbox's acceptance as "Taken by the File API at". The console lists the payments whose kept file is not delivered (`GET /ops/api/undelivered`, section Undelivered files) with the payment's resend, and its timeline says each delivery in words. Error dictionary 1.11.0 holds the three codes. Evidence: `FileApiTests` (`The_payment_is_told_each_failed_delivery_of_its_file_the_end_of_the_attempts_and_the_delivery`, PostgreSQL), `ProjectionTests` (`A_file_the_File_API_never_delivered_shows_on_the_payment_its_leg_and_the_undelivered_list`, SQL Server and PostgreSQL), `runtime/ops-console/test/unit/oversight.test.ts`.
 
 ## I-336. The service console's log failed once any action was done
 
@@ -2530,6 +2544,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the File API keep a file a port sends under the id of the scheme message its exchange sends (the message whose `disposition.sentBy` names the exchange), and retire `<operation>.kind`; until then a bank's binding names that message id as the kind, and the installation's setting names the pair its kinds need.
 
+**Done (24 November 2026, R-09-234, R-05-102).** A sent file is kept as the id of the scheme message its exchange sends: each native send names its message (`uae.wps.sif-submission` for the salary file) and `PortFileTransfer.KindOf` takes it; `<operation>.kind` is read only for a send that names none (a module of an earlier distribution), and ADIB's laptop binding names none. Lint L59 holds every message a file scheme sends to one send exchange of its own, and no exchange to two messages (mutations M100, M101). The laptop's `Service:Gauges:AwaitedReplies` stays as it is: it names the channel's inward file, which the scheme's pairs do not. Evidence: `PortFileTransferTests`. The store's own copy of the Central Bank SIF is Issue I-363.
+
 ## I-311. The PSI and the RSU have no correlation map
 
 **Issue.** A deliver disposition may now name a correlation map (R-09-212), and the ACK's does. The PSI (paired with its PIF by the payment file id) and the RSU (by the refund request file id) have none: their layouts in the factory say no field that carries the key, so the front door still matches them by the sender's keys and, failing those, the stem of the file name.
@@ -2547,6 +2563,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Since R-09-213 every send of the WPS port has a native code-behind, which sends the file its render kept. The receipt confirmation, the disbursement file and the returns file are rendered natively by the source's writers (PRC, DIF, RFA); the disbursement cancellation (DCR), the refund request (RFR) and the refund request response (RRR) are not: the source holds no writer for them and the factory's layouts are unconfirmed, so on a runtime their native send finds no kept file and refuses (`FF01`). And the bank's binding of the port names one folder and one kind for its `submit-file` operation (on the laptop `centralBank.sifFolder`, `uae.wps.sif-out`), so every file of the port goes there under the salary file's kind.
 
 **Recommendation.** Write the DCR, RFR and RRR renders natively once the rulebook (D10) gives their layouts, in minor releases; and let a port binding name a folder and a kind per message the port sends (`submit-file.<message>.folder`), or the File API derive the kind from the message (Issue I-310). Until then a laptop or test of the refund cycle names the port's simulator in its bench.
+
+**Done (24 November 2026, R-09-235; the folders part).** A port binding may name a folder per message the port sends (`submit-file.<message>.folder`, as `submit-file.folder` is named); a file of that message goes there, else to the operation's folder. Evidence: `PortFileTransferTests.Every_send_v2_puts_the_encrypted_file_on_its_messages_folder_where_the_bank_encrypts`. Still open: the DCR, RFR and RRR renders, until the rulebook (D10) gives their layouts.
 
 ## I-314. The corporate match does not compare the CIF yet, and the e-mail has no place
 
@@ -2622,6 +2640,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
       escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
 ```
 
+**Done (24 November 2026, R-09-243).** The platform's error dictionary 1.11.0 holds `native.ContractUnsupported` with its runbook, raised by `native` and `package-source` (the schema has no raiser `package`; the release API's package refusals are `package-source`'s, as `package.Rejected` is). `ErrorDictionaryTests.Every_runtime_code_has_an_entry_with_a_runbook` passes once the factory is seeded.
+
 ## I-381. A promotable distribution now needs the platform module
 
 **Issue.** `p.post.accounting.v1` is a builtin (`implementation.binding: builtin`, `service: accounting`) with no script-behind, and since R-09-264 only the platform module answers it on the runtime. So a promotable distribution built with no module builds (`TH_NATIVE_MODULES` unset), which was taken before with `native.notCarried`, is now refused by the studio, as one with an activity bound `native` is. The factory's activity does not say that a module answers it: the studio lists it in `MODULE_BUILTINS` (`studio/src/export/native-modules.ts`).
@@ -2639,6 +2659,36 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** `INativeBoundPorts.Send` sends a JSON body and reads any body back; it is what the labour ministry's register needs. A scheme port on another wire (a file over SFTP, a message queue, a SOAP service with a signed envelope) still needs an adapter in the image, reached through `INativePorts` (a kept file on a port bound to `file-transfer` already is).
 
 **Recommendation.** When a scheme's port needs another wire, add it to the bound ports as a contract minor (a body of bytes with its content type, then a file put through the binding's transfer), rather than an image case for the port.
+
+## I-360. A distribution's Elsa service runs one operation at a time
+
+**Issue.** R-09-238 lets a distribution's DTFx service run several work items at once. The Elsa service runs every operation on its clock's thread (`studio/engines/elsa/harness/Serve.cs`, commands and deliveries scheduled on `Clock`), so one slow worker call still delays every other payment of the distribution.
+
+**Recommendation.** Run Elsa's dispatched operations (activity attempts) off the clock's thread, bounded by the same `TH_SERVICE_CONCURRENCY`, and hand each answer back to the clock's thread, so Elsa's own journal stays single-threaded; test it with the DTFx side-by-side test on Elsa.
+
+## I-361. Flowable names no handler for a hold
+
+**Issue.** R-09-241 has the interpreter name the step whose handler an attempt is in, so a hold records that step. Flowable runs the exported BPMN, not the interpreter: its attempts name no handler, and a hold after parallel branches there still names the latest step with a reason (R-05-94).
+
+**Recommendation.** Have the BPMN export put the handled step, its activity and outcome on each task of a handler (an extension element) and the Flowable binding send it as the attempt's `handlerOf`.
+
+## I-362. The service's default concurrency and its start-time target are not the owner's yet
+
+**Issue.** R-09-238 and R-09-239 set defaults of their own: four work items at once and a checkpoint every 500 facts. The spec sets no throughput for an engine host (I-68) and no time a host may take to start.
+
+**Recommendation.** Decide with the owner a throughput per distribution and a start-time target, then set the defaults from a load run (`runtime/load`) on each engine.
+
+## I-363. The store's copy of the Central Bank SIF keeps the binding's old word as its kind
+
+**Issue.** R-09-234 keeps a file a port sends as its scheme message's id (`uae.wps.sif-submission`). `CentralBankSif` (`runtime/src/TransactHub.Activities.Wps.Store`), which keeps a stored bulk's SIF as a message, still names it `uae.wps.sif-out` (`MessageKind`), so the two copies of one file have two kinds.
+
+**Recommendation.** Keep it as `uae.wps.sif-submission` in the next WPS store change, and read both kinds where a reader looks for the old one.
+
+## I-364. The six v1 sends' native code-behinds stay in the WPS module
+
+**Issue.** Factory 1.21.0 replaces WPS's six other sends with their v2 lines (R-09-232). Their v1 lines' native code-behinds stay in the WPS module, because every real bank's lock file at 1.20.0 pins the subflows that call them.
+
+**Recommendation.** Retire them as the salary file's v1 was (R-09-233), once no distribution in force pins a 1.20.0 lock file.
 
 ## Not done, and why
 
