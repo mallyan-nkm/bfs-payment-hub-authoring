@@ -68,7 +68,7 @@ public sealed class SideBySideTests(Store store)
         view = new { header = new { scheme = "uae.wps", paymentId = "PAY-NATIVE-1" }, messages = new { lastReceived = new { status = "accepted" } } },
     };
 
-    async Task<string> Install(string id, byte[] module, string contract = "1.1.0", byte[]? carried = null) =>
+    async Task<string> Install(string id, byte[] module, string contract = "2.0.0", byte[]? carried = null) =>
         await Install(ModuleBuilds.Distribution(Bank, id, module, contract, carried), id);
 
     async Task<string> Install((System.Text.Json.Nodes.JsonObject Manifest, byte[] Package) d, string id)
@@ -157,10 +157,10 @@ public sealed class SideBySideTests(Store store)
         // R-09-126 (Issue I-221): the platform's native activities are a module each distribution carries, as a scheme's are.
         Assert.NotEqual(ModuleBuilds.Sha(store.PlatformA), ModuleBuilds.Sha(store.PlatformB));
         var window = $"{ModuleBuilds.PostingWindow}@{ModuleBuilds.PostingWindowRelease}";
-        var a = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-11", "1.1.0",
+        var a = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-11", "2.0.0",
             new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [window]),
             new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"])), "2026.11.23-11");
-        var b = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-12", "1.1.0",
+        var b = await Install(ModuleBuilds.Distribution(Bank, "2026.11.23-12", "2.0.0",
             new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformB, [window])), "2026.11.23-12");
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
@@ -209,20 +209,24 @@ public sealed class SideBySideTests(Store store)
     public async Task A_distribution_whose_assembly_does_not_match_its_hash_or_whose_contract_is_unsupported_is_not_loaded()
     {
         var tampered = await Install("2026.11.23-3", store.BuildA, carried: store.BuildB);
-        var future = await Install("2026.11.23-4", store.BuildA, contract: "2.0.0");
-        var newer = await Install("2026.11.23-5", store.BuildA, contract: "1.9.0");
-        // Built against 1.1.0, its manifest claiming 1.0.0: refused, though 1.0.0 itself is supported.
-        var claims = await Install("2026.11.23-6", store.BuildA, contract: "1.0.0");
+        var future = await Install("2026.11.23-4", store.BuildA, contract: "3.0.0");
+        var newer = await Install("2026.11.23-5", store.BuildA, contract: "2.9.0");
+        // Built against 2.0.0, its manifest claiming 1.1.0, a contract 2.0.0 no longer takes (R-09-262).
+        var claims = await Install("2026.11.23-6", store.BuildA, contract: "1.1.0");
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
         var t = await Post(c, Ack(tampered));
         Assert.Equal("native.ModuleRefused", (string?)t["name"]);
         Assert.Contains("does not match its SHA-256", (string?)t["message"]);
         var f = await Post(c, Ack(future));
-        Assert.Equal("native.ModuleRefused", (string?)f["name"]);
-        Assert.Contains("native contract 2.0.0", (string?)f["message"]);
-        Assert.Contains("native contract 1.9.0", (string?)(await Post(c, Ack(newer)))["message"]);
-        Assert.Contains("its manifest says 1.0.0", (string?)(await Post(c, Ack(claims)))["message"]);
+        Assert.Equal(NativeAssemblies.ContractUnsupported, (string?)f["name"]);
+        Assert.Contains("native contract 3.0.0", (string?)f["message"]);
+        var n = await Post(c, Ack(newer));
+        Assert.Equal(NativeAssemblies.ContractUnsupported, (string?)n["name"]);
+        Assert.Contains("native contract 2.9.0", (string?)n["message"]);
+        var cl = await Post(c, Ack(claims));
+        Assert.Equal(NativeAssemblies.ContractUnsupported, (string?)cl["name"]);
+        Assert.Contains("native contract 1.1.0", (string?)cl["message"]);
         Assert.Equal("native.DistributionUnknown", (string?)(await Post(c, Ack("dist/example-bank@2026.11.23-99")))["name"]);
     }
 
@@ -232,17 +236,22 @@ public sealed class SideBySideTests(Store store)
         var v = typeof(INativeModule).Assembly.GetName().Version!;
         Assert.Equal(NativeContract.Version, $"{v.Major}.{v.Minor}.{v.Build}");
         Assert.Equal(NativeContract.AssemblyName, typeof(INativeModule).Assembly.GetName().Name);
-        // 1.1.0 (R-09-125): the same major, at a minor no later than the runtime's own.
-        Assert.Equal("1.1.0", NativeContract.Version);
-        Assert.True(NativeContract.Supports("1.0.0"));
-        Assert.True(NativeContract.Supports("1.1.0"));
-        Assert.False(NativeContract.Supports("1.2.0"));
-        Assert.False(NativeContract.Supports("2.0.0"));
-        Assert.False(NativeContract.Supports("0.9.0"));
+        // 2.0.0 (R-09-262): the same major, at a minor no later than the runtime's own; every 1.x module is refused.
+        Assert.Equal("2.0.0", NativeContract.Version);
+        Assert.True(NativeContract.Supports("2.0.0"));
+        Assert.False(NativeContract.Supports("1.0.0"));
+        Assert.False(NativeContract.Supports("1.1.0"));
+        Assert.False(NativeContract.Supports("2.1.0"));
+        Assert.False(NativeContract.Supports("3.0.0"));
         Assert.False(NativeContract.Supports(null));
-        // The WPS build references the contract it was built against, read without loading it.
-        Assert.Equal("1.1.0", NativeAssemblies.ContractOf(store.BuildA));
-        Assert.Equal("1.1.0", NativeAssemblies.ContractOf(store.PlatformA));
+        // 2.0.0 hands out no type of the image (Issue I-226) and gives a module bound ports (Issue I-315).
+        Assert.Null(typeof(INativeServices).GetMethod("Service"));
+        Assert.NotNull(typeof(INativeServices).GetProperty(nameof(INativeServices.BoundPorts)));
+        Assert.Equal(typeof(INativeBoundPorts), typeof(INativeServices).GetProperty(nameof(INativeServices.BoundPorts))!.PropertyType);
+        Assert.Equal("binding-gate:p.port.core-banking.v1", NativeContributions.BindingGate("p.port.core-banking.v1"));
+        // The WPS and platform builds reference the contract they were built against, read without loading them.
+        Assert.Equal("2.0.0", NativeAssemblies.ContractOf(store.BuildA));
+        Assert.Equal("2.0.0", NativeAssemblies.ContractOf(store.PlatformA));
         Assert.Null(NativeAssemblies.ContractOf(File.ReadAllBytes(typeof(NativeContract).Assembly.Location)));
     }
 }

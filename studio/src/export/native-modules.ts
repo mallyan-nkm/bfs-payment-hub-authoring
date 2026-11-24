@@ -37,8 +37,18 @@ export const NATIVE_FOLDER = 'activities/native';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DEFAULT_PROJECTS: Record<string, string> = { p: 'runtime/src/TransactHub.Activities.Platform.Native', 'uae.wps': 'runtime/src/TransactHub.Activities.Wps' };
 const CONTRACT_PROJECT = 'runtime/src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj';
-/** The native contract this studio builds against when the runtime's sources are not here (a prebuilt module says its own). */
-export const NATIVE_CONTRACT = '1.1.0';
+/**
+ * The native contract this studio builds against when the runtime's sources are not here (a prebuilt module says its own). 2.0.0
+ * (R-09-261 to R-09-264): bound ports, no Service<T>; a module built against 1.x is refused here and on the runtime.
+ */
+export const NATIVE_CONTRACT = '2.0.0';
+/** The error dictionary's code of a module built against a native contract the runtime does not take (R-09-262). */
+export const CONTRACT_UNSUPPORTED = 'native.ContractUnsupported';
+/**
+ * Builtin activities a platform module answers on the runtime since native contract 2.0.0 (R-09-264, Issue I-227): the image keeps no
+ * copy, so a distribution that carries one needs its scope's module as it needs the module of an activity with no script-behind.
+ */
+export const MODULE_BUILTINS: Record<string, string[]> = { p: ['p.post.accounting.v1'] };
 /** The native contract's assembly: the one assembly of TransactHub a module references (R-09-125). */
 export const CONTRACT_ASSEMBLY = 'TransactHub.Activities.Contract';
 /** The error dictionary's code of a module that references the runtime image beyond the contract (R-09-125, Issue I-220). */
@@ -66,6 +76,17 @@ const sha = (b: Buffer | string) => `sha256:${createHash('sha256').update(b).dig
 /** Does the runtime run this activity as native code-behind? */
 export function isNative(doc: any): boolean {
   return doc?.kind === 'activity' && (doc.implementation?.binding === 'native' || doc.implementation?.native === true);
+}
+
+/** Is this a builtin activity a platform module answers on the runtime (MODULE_BUILTINS)? */
+export function isModuleBuiltin(doc: any, scope: string): boolean {
+  return doc?.kind === 'activity' && doc.implementation?.binding === 'builtin' && (MODULE_BUILTINS[scope] ?? []).includes(doc.name);
+}
+
+/** Whether a module built against `built` runs on a runtime of contract `own`: the same major, at a minor no later (R-09-123, R-09-262). */
+export function contractSupported(built: string | undefined, own = contractVersion()): boolean {
+  const [a, b] = [built, own].map((v) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v ?? '')?.slice(1).map(Number));
+  return !!a && !!b && a[0] === b[0] && a[1] <= b[1];
 }
 
 /** A platform scope: the platform and the cluster platforms. Since R-09-126 their native code is a module like any other. */
@@ -236,10 +257,10 @@ export function imageReferences(m: NativeModuleBuild): string[] {
 export function nativeModules(docs: any[], scopeOf: (name: string) => string, promotable: boolean): { section: any; files: Record<string, string>; artefacts: any[]; problems: string[] } {
   const byScope = new Map<string, string[]>();
   const nativeOnly = new Map<string, string[]>();
-  for (const d of docs.filter(isNative)) {
+  for (const d of docs.filter((x) => isNative(x) || (x?.implementation?.binding === 'builtin' && typeof x.name === 'string' && isModuleBuiltin(x, scopeOf(x.name))))) {
     const s = scopeOf(d.name);
     byScope.set(s, [...(byScope.get(s) ?? []), `${d.name}@${d.release}`].sort());
-    if (d.implementation?.binding === 'native') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
+    if (d.implementation?.binding !== 'script') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
   }
   const modules: any[] = [];
   const files: Record<string, string> = {};
@@ -257,6 +278,10 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
       continue;
     }
     if (m.scope !== scope) problems.push(`The module build for ${scope} is of ${m.scope}`);
+    if (!contractSupported(m.contract)) {
+      problems.push(`${CONTRACT_UNSUPPORTED}: the module build of ${scope} was built against native contract ${m.contract ?? '(none)'}; this studio builds distributions for native contract ${contractVersion()}: rebuild it against ${contractVersion()} (runtime/tools/native-module/build.sh, docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2)`);
+      continue;
+    }
     const refused = imageReferences(m);
     if (refused.length) { problems.push(...refused); continue; }
     contract = m.contract ?? contract;
