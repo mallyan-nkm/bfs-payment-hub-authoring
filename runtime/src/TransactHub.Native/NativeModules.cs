@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
 using TransactHub.Activities.Native;
 using TransactHub.Store;
 
@@ -82,7 +83,8 @@ public sealed class NativeModules : IDisposable
         this.store = store;
         var dev = developmentModules.SelectMany(ReadFolder).ToList();
         tables[Development] = new Lazy<Task<ActivityTable>>(() => Task.FromResult(Build(Development, dev, null)));
-        if (store is not null) refresh = new Timer(_ => { try { Refresh().GetAwaiter().GetResult(); } catch { /* the next tick tries again */ } }, null, refreshEvery ?? TimeSpan.FromSeconds(10), refreshEvery ?? TimeSpan.FromSeconds(10));
+        // The first tick comes at once: a host that starts loads the active distributions before an attempt asks (Issue I-354).
+        if (store is not null) refresh = new Timer(_ => { try { Refresh().GetAwaiter().GetResult(); } catch { /* the next tick tries again */ } }, null, TimeSpan.Zero, refreshEvery ?? TimeSpan.FromSeconds(10));
     }
 
     /// <summary>
@@ -217,7 +219,30 @@ public sealed class NativeModules : IDisposable
             unloaded[key] = (Unload(lazy), DateTimeOffset.UtcNow);
             done.Add(key);
         }
+        await Preload(ct);
         return done;
+    }
+
+    /// <summary>The distributions this host tried to load ahead of an attempt; each is tried once, a refusal is left to the attempt.</summary>
+    readonly ConcurrentDictionary<string, bool> preloaded = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Loads, ahead of any attempt, each distribution active or draining in some environment, so the first attempt after the host
+    /// starts is not slowed by the load and the check of every hash past its activity's timeout (R-09-122, Issue I-354).
+    /// </summary>
+    async Task Preload(CancellationToken ct)
+    {
+        List<string> ids;
+        await using (var db = StoreDbContext.Open(store!))
+            ids = await db.Releases.AsNoTracking().Where(r => r.Scope.StartsWith(DistributionRegistry.DistPrefix)).Select(r => r.Id).ToListAsync(ct);
+        foreach (var id in ids.Where(i => !tables.ContainsKey(i) && !unloaded.ContainsKey(i) && !preloaded.ContainsKey(i)))
+        {
+            await using var db = StoreDbContext.Open(store!);
+            var states = await new DistributionRegistry(db).StatesOf(id, ct);
+            if (!states.Any(kv => kv.Key != DistributionRegistry.AnyEnvironment && kv.Value.State is "active" or "draining")) continue;
+            preloaded[id] = true;
+            try { await For(id, ct); } catch (Exception) { /* refused: the attempt that asks for it is told why */ }
+        }
     }
 
     /// <summary>Removed in every environment it has a state in (an installation again after removal makes it installed there).</summary>

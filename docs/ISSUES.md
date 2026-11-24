@@ -2622,6 +2622,14 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Have the front door catch a failure to reach the engine host, answer `503` with a code of the error dictionary (for example `frontdoor.EngineUnreachable`) and no exception text, and say whether the file was kept for a retry.
 
+## I-354. The first native attempt after the native host starts timed out
+
+**Issue.** The native host loads a distribution's modules, and checks every file's SHA-256, when the first attempt names that distribution (`NativeModules.For`). On the laptop that load takes about nine seconds, and a native activity's start-to-close timeout on Temporal is five, so the first attempt after the host starts timed out, although the host then answered: in video 5c, the retried render step of a salary file parked again, with the SIF rendered too late to count.
+
+**Recommendation.** Load the distributions that can take attempts when the host starts, before an attempt asks.
+
+**Done (24 November 2026, R-09-122).** The native host's refresh, which already unloads removed distributions, also loads each distribution active or draining in some environment, once, and its first tick comes as the host starts (`NativeModules.Preload`, `runtime/src/TransactHub.Native/NativeModules.cs`); a refusal is left to the attempt that asks. `SideBySideTests.A_host_that_starts_loads_the_active_distribution_before_any_attempt` failed before. The host's health still answers before the load ends; a recommendation for a readiness that waits for it stays open.
+
 ## Not done, and why
 
 | Story | Why |
