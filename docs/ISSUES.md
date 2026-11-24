@@ -2696,6 +2696,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Keep `re-screen` without a second approver, and say so in the spec beside R-05-106 once the owner agrees; if a bank's compliance asks for one, the view's action takes `secondApprover: Supervisor` in a minor release, with no code change.
 
+**Owner's decision (24 November 2026):** no. Re-screening a payment needs no second approver: it only checks again and decides nothing.
+
 ## I-372. WPS names no message that starts a break's exception request or return
 
 **Issue.** A break may start an exception request or a return by the message the scheme's report names for it (R-09-250). WPS declares no report (the Central Bank gives no layout, Issue I-164) and no inward message that starts a request or a return for a break, with an intake map that reads the break's order document. So no WPS break is offered either resolution; an installation that names a report of its own (`FileApi:Reports:<message>:Scheme`) has no disposition to name them in.
