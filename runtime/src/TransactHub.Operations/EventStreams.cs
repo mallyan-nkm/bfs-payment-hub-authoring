@@ -190,15 +190,9 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
     /// </summary>
     public bool CommitOrder { get; init; } = true;
 
-    /// <summary>The oldest commit version still in flight: every row below it is committed, and none will commit below it.</summary>
-    public static async Task<long> CommittedBelow(StoreDbContext db, CancellationToken ct = default) =>
-        (await db.Database.SqlQueryRaw<long>(db.OnSqlServer
-            ? "SELECT CAST(MIN_ACTIVE_ROWVERSION() AS bigint) AS [Value]"
-            : "SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint AS \"Value\"").ToListAsync(ct)).Single();
 
     async Task<int> PollInCommitOrder(StoreDbContext db, (PortBinding Binding, IEventStream Stream) bound, Dials dials, StreamPositionRow? last, DateTimeOffset now, TimeSpan horizon, CancellationToken ct)
     {
-        var below = await CommittedBelow(db, ct);
         // Where the stream is: its keyset in commit order, and the number below which it published by number (0 for a new stream).
         var floor = last?.Through ?? 0;
         var keyV = last?.ThroughVersion ?? long.MinValue;
@@ -212,7 +206,7 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
         var open = GapsOf(last?.GapsJson, "open");
         var late = new List<OutboxRow>();
         foreach (var g in open)
-            late.AddRange(await db.Outbox.AsNoTracking().Where(x => x.Id >= g.From && x.Id <= g.To && x.CommitVersion < below).OrderBy(x => x.Id).ToListAsync(ct));
+            late.AddRange(await db.Outbox.AsNoTracking().Where(x => x.Id >= g.From && x.Id <= g.To && x.CommitVersion < StoreDbContext.OldestInFlight(x.Id)).OrderBy(x => x.Id).ToListAsync(ct));
         late = late.OrderBy(x => x.Id).ToList();
         var found = late.Select(x => x.Id).ToHashSet();
         var still = open.SelectMany(g => Without(g, found)).ToList();
@@ -221,7 +215,7 @@ public sealed class EventStreamRelay(StoreOptions store, string tenant, PortBind
         var v = keyV;
         var i = keyId;
         var rows = await db.Outbox.AsNoTracking()
-            .Where(x => x.Id > floor && x.CommitVersion < below && (x.CommitVersion > v || (x.CommitVersion == v && x.Id > i)))
+            .Where(x => x.Id > floor && x.CommitVersion < StoreDbContext.OldestInFlight(x.Id) && (x.CommitVersion > v || (x.CommitVersion == v && x.Id > i)))
             .OrderBy(x => x.CommitVersion).ThenBy(x => x.Id).Take(BatchSize).ToListAsync(ct);
         if (rows.Count == 0 && late.Count == 0 && dropped.Count == 0 && last?.ThroughVersion is not null) return 0;
         var events = late.Concat(rows).Where(r => r.Topic == Outbox.FactTopic).Select(Of).OfType<PaymentEvent>().ToList();
