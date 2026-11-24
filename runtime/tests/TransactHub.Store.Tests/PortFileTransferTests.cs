@@ -148,6 +148,7 @@ public sealed class PortFileTransferTests
         var wps = b.InForce("adib", "uae.wps.port.wps.v1", Now);
         Assert.Equal(PortFileTransfer.Name, wps.Adapter);
         Assert.Equal("centralBank/upload/cb/wps/sif", PortFileTransfer.FolderOf(wps, b.InForce("adib", FileTransferAdapters.Port, Now), "submit-file"));
-        Assert.Equal("12", b.InForce("adib", FileTransferAdapters.Port, Now).Settings["centralBank.inbox.ack.stemDrop"]);
+        // The ACK is correlated by the scheme's correlation map (R-09-212, Issue I-267): the binding trims no stem.
+        Assert.DoesNotContain(b.InForce("adib", FileTransferAdapters.Port, Now).Settings.Keys, k => k.EndsWith(".stemDrop"));
     }
 }

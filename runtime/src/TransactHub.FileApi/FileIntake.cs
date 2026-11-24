@@ -35,20 +35,38 @@ public sealed record Received(string Status, string FileId, string Sha256, strin
 /// pattern its name must match, and whether a name may come twice. The scheme declares none of these yet (Issue I-159): they are the
 /// installation's, and a bank may set them per message.
 /// </summary>
-public sealed record FileRules(long MaxBytes, IReadOnlyList<string> Extensions, Regex? NamePattern, bool UniqueName)
+public sealed record FileRules(long MaxBytes, IReadOnlyList<string> Extensions, Regex? NamePattern, bool UniqueName, bool? Encrypted = null)
 {
     public const long DefaultMaxBytes = 50L * 1024 * 1024;
     public static readonly string[] EncryptedExtensions = [".gpg", ".pgp", ".asc"];
 
-    public static FileRules For(IConfiguration cfg, string message)
+    /// <summary>
+    /// The rules of a message's files. The scheme's file block in the active distribution (<paramref name="declared"/>: namePattern,
+    /// extensions, maxBytes, uniqueName, encrypted; R-09-209, Issue I-159) sets each rule it declares; a rule it does not declare is the
+    /// installation's setting, else the default (any extension, 50 MB, names unique, encrypted or not).
+    /// </summary>
+    public static FileRules For(IConfiguration cfg, string message, JsonObject? declared = null)
     {
         var s = cfg.GetSection($"FileApi:Messages:{message}");
         long L(string? v, long d) => long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n > 0 ? n : d;
-        var max = L(s["MaxBytes"], L(cfg["FileApi:MaxBytes"], DefaultMaxBytes));
-        var ext = (s["Extensions"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(e => e.StartsWith('.') ? e : "." + e).ToList();
-        var pattern = s["NamePattern"] is { Length: > 0 } p ? new Regex(p, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)) : null;
-        return new FileRules(max, ext, pattern, (s["UniqueName"] ?? cfg["FileApi:UniqueName"] ?? "true") != "false");
+        var max = declared?["maxBytes"] is JsonValue mb && long.TryParse(mb.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) && m > 0 ? m : L(s["MaxBytes"], L(cfg["FileApi:MaxBytes"], DefaultMaxBytes));
+        var ext = declared?["extensions"] is JsonArray de ? de.Select(e => (string)e!).ToList()
+            : (s["Extensions"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(e => e.StartsWith('.') ? e : "." + e).ToList();
+        // A scheme's pattern names the whole file name.
+        var pattern = (string?)declared?["namePattern"] is { Length: > 0 } dp ? new Regex($"^(?:{dp})$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))
+            : s["NamePattern"] is { Length: > 0 } p ? new Regex(p, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)) : null;
+        var unique = declared?["uniqueName"] is JsonValue un && bool.TryParse(un.ToString(), out var u) ? u : (s["UniqueName"] ?? cfg["FileApi:UniqueName"] ?? "true") != "false";
+        bool? encrypted = declared?["encrypted"] is JsonValue en && bool.TryParse(en.ToString(), out var e1) ? e1 : null;
+        return new FileRules(max, ext, pattern, unique, encrypted);
     }
+
+    /// <summary>The scheme's rule on encryption, of the file as received: true, it must be encrypted; false, it must not.</summary>
+    public (string Code, string Why)? FailEncryption(byte[] received) => Encrypted switch
+    {
+        true when !OpenPgp.IsEncrypted(received) => ("file.NotEncrypted", "A file of this message arrives encrypted; this one is not"),
+        false when OpenPgp.IsEncrypted(received) => ("file.Encrypted", "A file of this message arrives in the clear; this one is encrypted"),
+        _ => null,
+    };
 
     /// <summary>The name without an encryption extension, as its checks read it.</summary>
     public static string Plain(string name) => EncryptedExtensions.FirstOrDefault(e => name.EndsWith(e, StringComparison.OrdinalIgnoreCase)) is { } e ? name[..^e.Length] : name;
@@ -109,15 +127,15 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
     public async Task<Received> Receive(Arrival a, CancellationToken ct = default)
     {
         var now = clock.GetUtcNow();
-        var rules = FileRules.For(cfg, a.Message);
         var sha = FileStore.Sha256Hex(a.Content);
         var scheme = WorkerIntake.ScopeOf(a.Message);
 
         // 1. What the file is, by the dispatch table of the bank's active distribution: a file no scheme names is refused.
         MessageEntry? entry = null;
         string? refusedCode = null, refused = null;
-        // A scheme's report file (R-09-92) is reconciled on arrival, not routed: the installation names its messages until the scheme
-        // declares them (FileApi:Reports:<message>:Scheme, Issue I-164).
+        // A scheme's report file (R-09-92) is reconciled on arrival, not routed: the scheme says so with a reconcile disposition
+        // (R-09-210, Issue I-164); an installation may still name a report the scheme does not (FileApi:Reports:<message>:Scheme), read
+        // in the runtime's own layout.
         var reportScheme = cfg[$"FileApi:Reports:{a.Message}:Scheme"];
         if (reportScheme is null && frontDoor is not null)
         {
@@ -125,10 +143,13 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
             {
                 entry = await frontDoor.Classify(a.Tenant, a.Environment, a.Message, ct);
                 if (entry.Direction != "in") (refusedCode, refused) = ("file.NotReceived", $"{a.Message} is a message the bank sends, not one it receives");
+                else if (entry.Kind == "reconcile") reportScheme = entry.Scheme;
             }
             catch (FrontDoorRefused e) { (refusedCode, refused) = (e.Code, e.Message); }
         }
-        // 2. The checks of its message: size, type, name.
+        // 2. The checks of its message: size, type, name, as the scheme declares them, else as the installation sets them (R-09-209).
+        var rules = FileRules.For(cfg, a.Message, entry?.File);
+        if (refused is null && rules.FailEncryption(a.Content) is { } enc) (refusedCode, refused) = enc;
         if (refused is null && rules.Fail(a.FileName, a.Content) is { } f) (refusedCode, refused) = f;
         // 3. Duplicates: the same bytes, or the same name where the message's names are unique, kept before for the bank.
         await using var db = StoreDbContext.Open(store);
@@ -169,6 +190,9 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
                 else if (entry.Kind == "deliver")
                 {
                     var keys = new Dictionary<string, string>(a.Correlation ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+                    // The scheme's correlation map reads the key from the file (R-09-212, Issue I-267), before the stem of its name.
+                    foreach (var (k, v) in await frontDoor.CorrelationKeys(a.Tenant, a.Environment, entry, plainFileName, plain ?? a.Content, ct) ?? new Dictionary<string, string>())
+                        keys.TryAdd(k, v);
                     keys.TryAdd("fileStem", RuntimeFrontDoor.Stem(plainFileName));
                     paymentId = await frontDoor.Correlate(a.Tenant, keys, ct);
                     if (paymentId is null) (refusedCode, refused) = ("frontdoor.Unmatched", $"No payment the front door started matches this {a.Message}");
@@ -193,8 +217,20 @@ public sealed class FileIntake(StoreOptions store, System.Security.Cryptography.
         if (refused is not null) return new Received("refused", row.Id, sha, dec?.Id, refusedCode, refused, null);
         if (reportScheme is not null)
         {
-            // p.reconcile.scheme-report.v1 on the runtime: matched against the store, each break a fact for the console's queue.
-            var r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, plain ?? a.Content, "file-api:reconcile", ct);
+            // p.reconcile.scheme-report.v1 on the runtime: matched against the store, each break a fact for the console's queue. A report
+            // the scheme declares is read by its map into lines, and a payment of its period the report does not name is a break too
+            // (R-09-210, Issue I-164); one the installation names is read in the runtime's own layout.
+            JsonObject r;
+            if (entry?.Reconcile is { } rec && frontDoor is not null)
+            {
+                List<ReportLine>? lines = null;
+                string? why = null;
+                try { lines = await frontDoor.ReportLines(a.Tenant, a.Environment, entry, plainFileName, plain ?? a.Content, ct); }
+                catch (FrontDoorRefused e) { why = e.Message; }
+                var period = (string?)rec["period"] is { Length: > 0 } p ? System.Xml.XmlConvert.ToTimeSpan(p) : (TimeSpan?)null;
+                r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, lines, why, period, (string?)rec["activity"] ?? SchemeReconciliation.Activity, "file-api:reconcile", ct);
+            }
+            else r = await new SchemeReconciliation(db, clock).Run(a.Tenant, reportScheme, row.Id, plain ?? a.Content, "file-api:reconcile", ct);
             await log.Append(row.Id, FileKind, new NewFact("file.reconciled", (string?)r["outcome"], new JsonObject { ["run"] = r["run"]?.DeepClone(), ["breaks"] = (r["breaks"] as JsonArray)?.Count ?? 0 }, Actor: "file-api:reconcile"), ct);
             return new Received("accepted", row.Id, sha, dec?.Id, null, $"reconciled: {(string?)r["outcome"]}, {(r["breaks"] as JsonArray)?.Count ?? 0} break(s) ({(string?)r["run"]})", null);
         }

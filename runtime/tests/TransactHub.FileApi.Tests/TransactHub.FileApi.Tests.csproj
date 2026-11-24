@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TransactHub.FileApi\TransactHub.FileApi.csproj" />
     <ProjectReference Include="..\..\src\TransactHub.Operations\TransactHub.Operations.csproj" />
+    <ProjectReference Include="..\..\src\TransactHub.Activities.Wps\TransactHub.Activities.Wps.csproj" />
   </ItemGroup>
 
   <ItemGroup>

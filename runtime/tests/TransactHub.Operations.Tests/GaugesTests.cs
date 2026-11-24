@@ -46,4 +46,36 @@ public sealed class GaugesTests(Databases dbs)
         await g.Refresh();
         Assert.Equal(0, Assert.Single(g.Current.awaitAge).Value);
     }
+
+    /// <summary>
+    /// R-09-211, Issue I-235: the gauge reads the awaited replies from the schemes of the active distributions (a message's
+    /// <c>repliesTo</c>, here uae.wps 1.4.0 of the repository: the ACK answers the salary file the bank submits), and the installation's
+    /// setting only adds to them; a distribution not active adds nothing.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_awaited_replies_are_the_active_distributions_schemes_and_the_setting_adds_to_them(StoreProvider p)
+    {
+        var (store, ops) = await dbs.Pair(p);
+        var scheme = await File.ReadAllBytesAsync(Path.Combine(Repo.Root(), "spec", "factory", "uae.wps", "scheme.yaml"));
+        var ms = new MemoryStream();
+        using (var z = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+        await using (var s = z.CreateEntry("engine/p.wf.corporate.v1/uae.wps/scheme/1.4.0.yaml").Open())
+            await s.WriteAsync(scheme);
+        var bytes = ms.ToArray();
+        var bank = $"gauge-{Guid.NewGuid():N}"[..16];
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var reg = new DistributionRegistry(db);
+            await reg.Store(bank, "2026.11.24-1", bytes, new System.Text.Json.Nodes.JsonObject { ["bank"] = bank }, FileStore.Sha256Hex(bytes), "test", "test");
+            await reg.Store(bank, "2026.11.24-2", bytes, new System.Text.Json.Nodes.JsonObject { ["bank"] = bank }, FileStore.Sha256Hex(bytes), "test", "test");
+            await reg.Activate(DistributionRegistry.IdOf(bank, "2026.11.24-1"), "test", "test", "test");
+        }
+        var g = new RuntimeGauges(store, ops, RuntimeGauges.FromSetting("""[{ "scheme": "uae.wps", "sent": "uae.wps.sif-submission", "replies": ["uae.wps.nak-by-setting"] }, { "scheme": "x.other", "sent": "x.other.out", "replies": ["x.other.in"] }]"""));
+        await g.Refresh();
+        Assert.Equal(["uae.wps uae.wps.sif-submission: uae.wps.ack, uae.wps.nak-by-setting", "x.other x.other.out: x.other.in"],
+            g.Watched.Select(r => $"{r.Scheme} {r.Sent}: {string.Join(", ", r.Replies)}"));
+        var none = new RuntimeGauges(store, ops);
+        await none.Refresh();
+        Assert.Equal(["uae.wps uae.wps.sif-submission: uae.wps.ack"], none.Watched.Select(r => $"{r.Scheme} {r.Sent}: {string.Join(", ", r.Replies)}"));
+    }
 }

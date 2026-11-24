@@ -79,6 +79,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
   L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
   L52: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
+  L53: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
 };
 
 // ---------------------------------------------------------------- walking
@@ -592,6 +593,34 @@ export class Checker {
     const awaited = new Set<string>();
     for (const w of this.docs) if (w.kind === 'workflow' && scopeOf(w.name) === d.scope) for (const st of allSteps(w)) if (st.await) awaited.add(st.await.message);
     for (const m of d.messages ?? []) if (m.disposition?.deliver && !awaited.has(m.id)) err('L10', `${m.id} is a deliver message but no workflow of ${d.scope} awaits it`);
+    // L53 (R-09-209 to R-09-212): a message's file rules, the messages it answers, its report's activity and map, its correlation map.
+    const ids = new Map<string, any>((d.messages ?? []).map((m: any) => [m.id, m]));
+    const inwardMap = (n: string | undefined, reads?: string) => {
+      const a = n ? this.byName.get(n) : undefined;
+      return !!a && a.kind === 'activity' && a.type === 'map' && a.map?.direction === 'in' && (!reads || (a.reads ?? []).includes(reads));
+    };
+    for (const m of d.messages ?? []) {
+      if (m.file) {
+        if (!['file', 'mixed'].includes(d.wire)) err('L53', `${m.id} declares a file block, but ${d.scope}'s wire is ${d.wire ?? 'unstated'}, not a file`);
+        if (m.file.namePattern !== undefined) {
+          try { new RegExp(m.file.namePattern); } catch (e: any) { err('L53', `${m.id}'s file name pattern does not compile: ${e.message}`); }
+        }
+      }
+      for (const r of m.repliesTo ?? []) {
+        if (m.direction !== 'in') err('L53', `${m.id} answers ${r} but is not a message the bank receives`);
+        if (!ids.has(r)) err('L53', `${m.id} answers ${r}, which is no message of ${d.scope}`);
+        else if (ids.get(r).direction !== 'out') err('L53', `${m.id} answers ${r}, which the bank does not send`);
+      }
+      const rec = m.disposition?.reconcile;
+      if (rec) {
+        if (m.direction !== 'in') err('L53', `${m.id} is reconciled, but the bank does not receive it`);
+        const act = this.byName.get(rec.activity);
+        if (!act || act.kind !== 'activity' || act.type !== 'reconcile') err('L53', `${m.id}'s reconcile activity ${rec.activity} is not a reconcile activity`);
+        if (!inwardMap(rec.map)) err('L53', `${m.id}'s report map ${rec.map} is not an inward map`);
+      }
+      const cm = m.disposition?.deliver?.correlationMap;
+      if (cm && !inwardMap(cm, 'messages')) err('L53', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
+    }
     // L33 (R-05-42): the dispatch table routes a start message. Its kind, direction and segment select
     // one platform workflow through workflow-select, and the leg it names fills that workflow's slot.
     const select = this.docs.find((x) => x.name === 'p.table.workflow-select.v1');

@@ -32,6 +32,21 @@ public static class UploadCatalogue
     /// <summary>The messages the schemes of a package receive: the latest release of each scheme manifest, in id order.</summary>
     public static IReadOnlyList<UploadMessage> Messages(byte[] package)
     {
+        var out_ = new List<UploadMessage>();
+        foreach (var (scope, s) in Schemes(package))
+            foreach (var m in (s["messages"] as JsonArray ?? []).OfType<JsonObject>())
+            {
+                if ((string?)m["direction"] != "in" || m["disposition"] is not JsonObject d) continue;
+                var kind = d["start"] is JsonObject ? "start" : d["deliver"] is JsonObject ? "deliver" : d["reconcile"] is JsonObject ? "reconcile" : null;
+                if (kind is null || (string?)m["id"] is not { Length: > 0 } mid) continue;
+                out_.Add(new UploadMessage(mid, (string?)m["title"] ?? mid, scope, kind));
+            }
+        return out_.OrderBy(m => m.Id, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The scheme manifests of a package, by scope: the latest release of each.</summary>
+    public static IReadOnlyDictionary<string, JsonObject> Schemes(byte[] package)
+    {
         var schemes = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
         using (var zip = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read))
         {
@@ -46,15 +61,6 @@ public static class UploadCatalogue
                 if (!schemes.TryGetValue(scope, out var had) || ReleaseOrder.Compare((string?)doc["release"], (string?)had["release"]) > 0) schemes[scope] = doc;
             }
         }
-        var out_ = new List<UploadMessage>();
-        foreach (var (scope, s) in schemes)
-            foreach (var m in (s["messages"] as JsonArray ?? []).OfType<JsonObject>())
-            {
-                if ((string?)m["direction"] != "in" || m["disposition"] is not JsonObject d) continue;
-                var kind = d["start"] is JsonObject ? "start" : d["deliver"] is JsonObject ? "deliver" : null;
-                if (kind is null || (string?)m["id"] is not { Length: > 0 } mid) continue;
-                out_.Add(new UploadMessage(mid, (string?)m["title"] ?? mid, scope, kind));
-            }
-        return out_.OrderBy(m => m.Id, StringComparer.Ordinal).ToList();
+        return schemes;
     }
 }

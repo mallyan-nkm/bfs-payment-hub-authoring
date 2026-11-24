@@ -162,8 +162,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # port.CircuitOpen (Issue I-259); the salary file's intake map 1.4.0, which takes the file's name from the File API (Issue I-195,
 # R-05-85); native code-behinds of the salary file's render and send, whose send goes out on the bank's binding of the WPS port, the
 # File API's outbox where the bank binds it so (Issue I-192, R-09-162).
-PACK_RELEASES = {"p": "1.18.0", "uae.p": "1.18.0", "uae.wps": "1.18.0", "b": "1.18.0"}
-FACTORY_RELEASE = "1.18.0"
+# 1.20.0 (change set CS-2026-11-24-015; 1.19.0 and CS-2026-11-24-014 are another change's): the scheme manifest's message rules,
+# uae.wps 1.4.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
+# native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
+# salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
+PACK_RELEASES = {"p": "1.20.0", "uae.p": "1.20.0", "uae.wps": "1.20.0", "b": "1.20.0"}
+FACTORY_RELEASE = "1.20.0"
 # The schemes each bank pack licenses (R-11-37, Issue I-111): a distribution of the bank carries these and no other.
 LICENSED_SCHEMES = {"example-bank": ["uae.wps"]}
 
@@ -461,6 +465,14 @@ wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AH
              {"from": "DER.lineNo", "to": "status.transactions[].lineNo"}, {"from": "DER.errorCode", "to": "status.transactions[].schemeCode"},
              {"from": "DER.description", "to": "status.transactions[].additionalInformation"},
              {"from": "constant RJCT", "to": "status.transactions[].code"}])
+# Issue I-267, I-160 (2), R-09-212: the correlation map of the ACK's deliver disposition. The front door runs it on a received ACK or
+# NAK before it is kept: it reads the stem of the salary file the answer names, as the source's WpsAckNakFile reads it (the file's
+# name split from the back before the Central Bank's file id, or the AHR record's processed file name), and gives it as the key the
+# sent file was recorded by (fileStem). Provisional, as the scheme is: the naming is the source's reading of the SSM.
+wmap("uae.wps.map.ack-correlation.v1", "ACK or NAK file to the salary file it answers", "in", "WPS ACK and NAK: the file name and the AHR record",
+     ["messages"], ["messages"], outcomes=("correlated", "uncorrelated"), native=True,
+     fields=[{"from": "fileName without its last twelve characters before the extension", "to": "messages.correlation.fileStem"},
+             {"from": "AHR.processedFileName", "to": "messages.correlation.fileStem"}])
 wmap("uae.wps.map.pif-in.v1", "Payment file and details to inward batch", "in", "WPS PIF: EDR, EVP and PCR records",
      ["messages"], ["header", "batch", "items[]", W], native=True)
 wmap("uae.wps.map.prc-out.v2", "Receipt confirmation", "out", "WPS PRC: one RDR and one RCR", ["header", "batch", "items[]", W, "status"], ["messages"],

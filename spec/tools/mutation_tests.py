@@ -242,6 +242,18 @@ CASES = [
     ("M91", "ERROR L52", "factory/p/activities/p.notify.channel.v1.yaml",
      "idempotencyKey: concat(header.paymentId, ':channel')", "idempotencyKey: concat(header.paymentId, now())",
      "an idempotency key that reads the clock, so it changes on every attempt"),
+    # L53 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267): what a scheme message declares beside its disposition holds
+    ("M92", "ERROR L53", "factory/uae.wps/scheme.yaml",
+     "repliesTo: [uae.wps.sif-submission]", "repliesTo: [uae.wps.pif]", "the acknowledgement answers a message the bank receives"),
+    ("M93", "ERROR L53", "factory/uae.wps/scheme.yaml",
+     "correlationMap: uae.wps.map.ack-correlation.v1", "correlationMap: uae.wps.map.sif-out.v1", "a correlation map that is an outward map"),
+    ("M94", "ERROR L53", "factory/uae.wps/scheme.yaml",
+     "  - id: uae.wps.pif\n    title: Payment information file, one per agent\n",
+     "  - id: uae.wps.pif\n    title: Payment information file, one per agent\n    file: { namePattern: '([0-9' }\n", "a file name pattern that does not compile"),
+    ("M95", "ERROR L53", "factory/uae.wps/scheme.yaml",
+     "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.post.verify.v1, map: uae.wps.map.psi-in.v1, period: P1D }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
+     "a report whose reconcile activity is not a reconcile activity"),
 ]
 
 

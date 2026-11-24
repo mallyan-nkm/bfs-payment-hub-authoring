@@ -64,25 +64,46 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
         var x => x,
     };
 
+    /// <summary>A report in the runtime's own layout (<see cref="SchemeReport"/>), as an installation names one the scheme does not.</summary>
     public async Task<JsonObject> Run(string tenant, string scheme, string fileId, byte[] content, string actor, CancellationToken ct = default)
+    {
+        List<ReportLine>? lines = null;
+        string? why = null;
+        try { lines = SchemeReport.Parse(content); }
+        catch (FormatException e) { why = e.Message; }
+        return await Run(tenant, scheme, fileId, lines, why, null, Activity, actor, ct);
+    }
+
+    /// <summary>
+    /// A report's lines as its scheme's map read them (R-09-210, Issue I-164), or why they could not be read. With a period, each
+    /// payment of the bank and scheme accepted within it before now that no line names is a break too (<c>not-in-report</c>).
+    /// </summary>
+    public async Task<JsonObject> Run(string tenant, string scheme, string fileId, List<ReportLine>? lines, string? unreadable, TimeSpan? period, string activity, string actor, CancellationToken ct = default)
     {
         var run = $"recon-{fileId}"[..Math.Min(64, $"recon-{fileId}".Length)];
         var log = new FactLog(db, clock);
-        List<ReportLine> lines;
-        try { lines = SchemeReport.Parse(content); }
-        catch (FormatException e)
+        if (lines is null)
         {
-            await log.Append(run, SubjectKind, new NewFact("reconciliation", "unreadable", new JsonObject { ["file"] = fileId, ["why"] = e.Message, ["activity"] = Activity }, Actor: actor), ct);
-            return new JsonObject { ["run"] = run, ["outcome"] = "unreadable", ["why"] = e.Message };
+            await log.Append(run, SubjectKind, new NewFact("reconciliation", "unreadable", new JsonObject { ["file"] = fileId, ["why"] = unreadable, ["activity"] = activity }, Actor: actor), ct);
+            return new JsonObject { ["run"] = run, ["outcome"] = "unreadable", ["why"] = unreadable };
         }
         var refs = lines.Select(l => l.Reference.Length <= 35 ? l.Reference : l.Reference[..35]).Distinct().ToList();
         var payments = await db.Payments.AsNoTracking().Where(p => p.Tenant == tenant && p.Scheme == scheme && refs.Contains(p.EndToEndId)).ToListAsync(ct);
+        var missing = new List<PaymentRow>();
+        if (period is TimeSpan within)
+        {
+            var until = clock.GetUtcNow();
+            var since = until - within;
+            missing = (await db.Payments.AsNoTracking().Where(p => p.Tenant == tenant && p.Scheme == scheme && p.AcceptedAt >= since && p.AcceptedAt <= until && !refs.Contains(p.EndToEndId)).ToListAsync(ct))
+                .OrderBy(p => p.AcceptedAt).ThenBy(p => p.Id, StringComparer.Ordinal).ToList();
+        }
         var ids = payments.Select(p => p.Id).Concat(payments.Where(p => p.BulkId != null).Select(p => p.BulkId!)).Distinct().ToList();
         var statuses = (await db.Facts.AsNoTracking().Where(f => ids.Contains(f.SubjectId) && f.Kind == "status").OrderBy(f => f.Seq).Select(f => new { f.SubjectId, f.Code }).ToListAsync(ct))
             .GroupBy(f => f.SubjectId).ToDictionary(g => g.Key, g => g.Last().Code);
         await log.Append(run, SubjectKind, new NewFact("reconciliation", "run", new JsonObject
         {
-            ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme, ["lines"] = lines.Count, ["activity"] = Activity,
+            ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme, ["lines"] = lines.Count, ["activity"] = activity,
+            ["period"] = period is TimeSpan pd ? System.Xml.XmlConvert.ToString(pd) : null,
         }, Actor: actor), ct);
         var breaks = new JsonArray();
         var matched = 0;
@@ -102,6 +123,17 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
             {
                 ["break"] = id, ["kind"] = kind, ["line"] = l.LineNo, ["reference"] = l.Reference, ["payment"] = p?.Id, ["expected"] = expected, ["reported"] = actual,
                 ["reportedStatus"] = Iso(l.Status), ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme,
+            };
+            await log.Append(run, SubjectKind, new NewFact("reconciliation", "break", b, Actor: actor), ct);
+            breaks.Add(b.DeepClone());
+        }
+        // A payment of the report's period the report does not name (R-09-210): the scheme has no record of what the store holds.
+        foreach (var p in missing)
+        {
+            var id = $"brk-{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes($"{run}|missing|{p.Id}")))[..20]}";
+            var b = new JsonObject
+            {
+                ["break"] = id, ["kind"] = "not-in-report", ["reference"] = p.EndToEndId, ["payment"] = p.Id, ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme,
             };
             await log.Append(run, SubjectKind, new NewFact("reconciliation", "break", b, Actor: actor), ct);
             breaks.Add(b.DeepClone());

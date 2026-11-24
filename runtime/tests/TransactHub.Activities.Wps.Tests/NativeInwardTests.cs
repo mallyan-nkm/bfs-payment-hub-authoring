@@ -102,6 +102,19 @@ public class NativeInwardTests
         Run(new RenderRfa(), ctx, new JsonObject { ["headRoutingCode"] = "302620122" }).Outcome.Should().Be("unmappable");
     }
 
+    /// <summary>R-09-212, Issue I-267: the ACK's correlation map gives the stem of the SIF it answers, from its AHR record or its name.</summary>
+    [Fact]
+    public void The_acknowledgements_correlation_map_reads_the_salary_file_it_answers()
+    {
+        JsonObject File(string name, string text) => new() { ["messages"] = new JsonObject { ["inbound"] = new JsonObject { ["fileName"] = name, ["payload"] = text } } };
+        string? Key(NativeResult r) => (string?)r.Writes["messages.correlation"]?["fileStem"];
+        var ahr = Run(new MapAckCorrelation(), File("anything.ACK", WpsAckNakFile.Build("0000001234567261117083100.SIF", accepted: true)));
+        (ahr.Outcome, Key(ahr)).Should().Be(("correlated", "0000001234567261117083100"));
+        var byName = Run(new MapAckCorrelation(), File("0000001234567261117083100S26000000001.NAK", "ATR,REJECTED,1\n"));
+        (byName.Outcome, Key(byName)).Should().Be(("correlated", "0000001234567261117083100"));
+        Run(new MapAckCorrelation(), File("SHORT.ACK", "")).Outcome.Should().Be("uncorrelated");
+    }
+
     [Fact]
     public void An_acknowledgement_file_is_read_by_the_source_s_reader_and_a_simulator_s_status_by_itself()
     {

@@ -150,7 +150,7 @@ public sealed class LaptopDeploymentTests
         var adib = File.ReadAllText(Path.Combine(Laptop, "banks", "adib", "file-transfer.yaml"));
         Assert.Matches(@"- port: uae\.wps\.port\.wps\.v1\n    adapter: file-transfer\n", adib);
         Assert.Contains("submit-file.folder: centralBank.sifFolder", adib);
-        Assert.Contains("centralBank.inbox.ack.stemDrop: \"12\"", adib);
+        Assert.DoesNotContain("stemDrop", adib); // the scheme's correlation map reads the ACK's key (R-09-212, Issue I-267)
         var workers = Service("workers");
         Assert.Contains("{\"port\":\"uae.wps.port.wps.v1\",\"simulator\":\"runtime\"}", workers);
         Assert.Contains("TH_NATIVE_HOST: http://native:7300", workers);

@@ -149,6 +149,11 @@ def refs_of(d):
             for k in ("handler", "sentBy"):
                 if k in disp:
                     out.add(disp[k])
+            # a report's reconcile activity and map, a deliver message's correlation map (R-09-210, R-09-212)
+            if "reconcile" in disp:
+                out.update([disp["reconcile"]["activity"], disp["reconcile"]["map"]])
+            if (disp.get("deliver") or {}).get("correlationMap"):
+                out.add(disp["deliver"]["correlationMap"])
     if kind == "reference-table":
         out |= {c["references"] for c in d.get("columns") or [] if c.get("references")}
     if kind == "test":
@@ -452,6 +457,43 @@ for path, d in docs:
     for m in d["messages"]:
         if "deliver" in m["disposition"] and m["id"] not in awaited:
             err("L10", path, "%s is a deliver message but no workflow of %s awaits it" % (m["id"], d["scope"]))
+    # L53 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267) what a message declares beside its disposition holds: a file
+    # block on a file or mixed wire, with a name pattern that compiles; a reply that answers messages of its own scheme that it
+    # sends out; a report's reconcile activity and map; a deliver message's correlation map, an inward map that reads the message
+    ids = {m["id"]: m for m in d["messages"]}
+    for m in d["messages"]:
+        mid = m["id"]
+        f = m.get("file")
+        if f is not None:
+            if d.get("wire") not in ("file", "mixed"):
+                err("L53", path, "%s declares a file block, but %s's wire is %s, not a file" % (mid, d["scope"], d.get("wire", "unstated")))
+            if "namePattern" in f:
+                try:
+                    re.compile(f["namePattern"])
+                except re.error as e:
+                    err("L53", path, "%s's file name pattern does not compile: %s" % (mid, e))
+        for r in m.get("repliesTo") or []:
+            if m["direction"] != "in":
+                err("L53", path, "%s answers %s but is not a message the bank receives" % (mid, r))
+            if r not in ids:
+                err("L53", path, "%s answers %s, which is no message of %s" % (mid, r, d["scope"]))
+            elif ids[r]["direction"] != "out":
+                err("L53", path, "%s answers %s, which the bank does not send" % (mid, r))
+        rec = m["disposition"].get("reconcile")
+        if rec:
+            if m["direction"] != "in":
+                err("L53", path, "%s is reconciled, but the bank does not receive it" % mid)
+            act = by_name.get(rec["activity"])
+            if not act or act.get("kind") != "activity" or act.get("type") != "reconcile":
+                err("L53", path, "%s's reconcile activity %s is not a reconcile activity" % (mid, rec["activity"]))
+            mp = by_name.get(rec["map"])
+            if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in":
+                err("L53", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
+        cm = (m["disposition"].get("deliver") or {}).get("correlationMap")
+        if cm:
+            mp = by_name.get(cm)
+            if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in" or "messages" not in (mp.get("reads") or []):
+                err("L53", path, "%s's correlation map %s is not an inward map that reads the message" % (mid, cm))
     # L33 a start message routes: its kind, direction and segment select, through workflow-select,
     # one platform workflow, and the leg it names fills that workflow's slot (R-05-42)
     for m in d["messages"]:
