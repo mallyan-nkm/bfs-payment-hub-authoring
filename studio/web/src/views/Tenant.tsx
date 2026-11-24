@@ -3,6 +3,7 @@ import YAML from 'yaml';
 import { get, post, refusal, type Issue } from '../api';
 import { Alert, ArtefactLink, Badge, ErrorBox, Issues, KV, Loading, PassFail, Section, Val, useDebounced, useLoad, useStudio } from '../ui';
 import { toYamlText } from '../authoring';
+import { nextConfigurationSetRelease } from '../release';
 import { useAssist } from '../assist';
 import { Button, Link, SearchBox, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 
@@ -80,8 +81,7 @@ export function Tenant() {
     }
   };
   const bump = () => edit((d) => {
-    const [a, b, c] = String(d.release ?? '1.0.0').split('.').map(Number);
-    d.release = `${a}.${b}.${(c || 0) + 1}`;
+    d.release = nextConfigurationSetRelease(d.release);
   });
   const addValue = (p: any) => edit((d) => {
     d.values = [...(d.values ?? []), { parameter: p.parameter, value: p.default, validFrom: '2026-11-17' }];
