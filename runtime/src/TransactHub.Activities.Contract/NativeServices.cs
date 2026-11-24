@@ -4,7 +4,8 @@ namespace TransactHub.Activities.Native;
 
 // What the runtime image answers for a module, since native contract 1.1.0 (spec R-09-125, Issue I-220). A module references this
 // assembly and no other of TransactHub: the posting through core banking, the bank's other ports, the host's files and a scheme's
-// match of a registered party are reached through these types, and the image's adapters, bindings and store stay behind them.
+// match of a registered party are reached through these types, and the image's adapters, bindings and store stay behind them. Since
+// 2.0.0 a module also builds the adapters of its own ports on the bindings in force (NativeBoundPorts.cs, R-09-261).
 
 /// <summary>One leg of a posting: debit or credit, the branch and account core banking knows, the amount, the transaction code and the narration.</summary>
 public sealed record NativePostingLeg(string Kind, string Branch, string Account, decimal Amount, string Currency, string TxnCode, string Narration);
@@ -23,8 +24,11 @@ public sealed record NativePosted(string Outcome, string? ReasonCode, JsonObject
 public interface INativeCoreBanking
 {
     /// <summary>
-    /// The binding in force for the attempt's tenant at its time. It refuses an attempt with no tenant (<c>NoTenant</c>), a tenant with no
-    /// binding (<c>PortNotBound</c>), and, while the binding's posting window is closed, fails as a retryable <c>TransientError</c>.
+    /// The binding in force for the attempt's tenant at its time. It refuses an attempt with no tenant (<c>NoTenant</c>) and a tenant with
+    /// no binding (<c>PortNotBound</c>). Since 2.0.0 the image then asks the gate a module of the distribution contributed on the binding
+    /// (<see cref="NativeContributions.BindingGate"/> of <c>p.port.core-banking.v1</c>: the platform module's posting window, R-09-264), which
+    /// fails as a retryable <c>TransientError</c> while the window is closed; a binding that names a posting window with no gate contributed
+    /// is refused (<c>PortNotBound</c>), never called ungated.
     /// </summary>
     INativeCoreBankingBinding For(NativeAttempt a);
 }
@@ -34,6 +38,9 @@ public interface INativeCoreBankingBinding
 {
     /// <summary>The adapter that answers (<c>simulator</c>, <c>rest</c>, <c>file-bulk</c>, ...).</summary>
     string Adapter { get; }
+
+    /// <summary>Since 2.0.0. The binding itself: its adapter, its moment and its settings.</summary>
+    NativeBinding Binding { get; }
 
     /// <summary>The account core banking knows for an account of the context: its id, else its IBAN as the binding keys it.</summary>
     string AccountOf(JsonNode? account);
@@ -61,8 +68,10 @@ public sealed class NativePortRefused(string port, string message) : Exception(m
 /// <item><c>p.port.party-register.v1</c> <c>lookup</c>: <c>{ kind, field, value }</c> to <c>{ found, key, record }</c>;</item>
 /// <item><c>p.port.encryption.v1</c> <c>encrypt</c>: <c>{ sha256, recipientKey, fileName }</c> (a file the host keeps) to <c>{ sha256, bytes }</c>, the encrypted file kept;</item>
 /// <item><c>p.port.decryption.v1</c> <c>decrypt</c>: <c>{ sha256 }</c> (a file the host keeps) to <c>{ sha256, bytes }</c>, the decrypted file kept;</item>
-/// <item><c>uae.wps.port.labour-ministry.v1</c> <c>status</c>: <c>{ employer }</c> to <c>{ found, status }</c>.</item>
+/// <item>any port the bank binds to <c>file-transfer</c>: <c>{ sha256, fileName, paymentId, leg, scheme }</c> to <c>{ sent, via, folder, fileName, kind, bytes }</c>, the kept file sent.</item>
 /// </list>
+/// Since 2.0.0 the image answers no scheme's port: a scheme's module builds its own adapter on <see cref="INativeServices.BoundPorts"/>
+/// (the labour ministry's register is the WPS module's, R-09-263).
 /// A failure is a <see cref="NativeFailure"/>: <c>NoTenant</c>, <c>PortNotBound</c> (also for a port or operation the image does not
 /// answer), <c>SecretUnavailable</c>, or a retryable <c>TransientError</c> when the party did not answer; a request the adapter itself
 /// refused is a <see cref="NativePortRefused"/>.

@@ -23,7 +23,7 @@ public sealed class NativeInstallTests(Databases dbs)
     static byte[] Wps => File.ReadAllBytes(typeof(TransactHub.Activities.Wps.Native.WpsNativeModule).Assembly.Location);
 
     /// <summary>A distribution with a native module, signed as the studio signs it; each argument breaks one thing.</summary>
-    static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = "1.1.0", string name = Asm, string? stray = null)
+    static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = "2.0.0", string name = Asm, string? stray = null)
     {
         var path = $"activities/native/uae.wps/{name}.dll.base64";
         var files = new Dictionary<string, string> { ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n", [path] = Convert.ToBase64String(assembly) + "\n" };
@@ -74,13 +74,22 @@ public sealed class NativeInstallTests(Databases dbs)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, swapped);
         Assert.Contains("does not match its SHA-256 in the bill of materials", swappedBody);
 
-        // Built against a contract this runtime does not support, or claiming one its assembly was not built against.
-        var (future, futureBody) = await Post(c, Distribution(s.Key, "2026.11.23-3", Wps, contract: "2.0.0"));
+        // Built against a contract this runtime does not support, or claiming one its assembly was not built against: its own code (R-09-262).
+        var (future, futureBody) = await Post(c, Distribution(s.Key, "2026.11.23-3", Wps, contract: "3.0.0"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, future);
-        Assert.Contains("native contract 2.0.0", futureBody);
-        var (claims, claimsBody) = await Post(c, Distribution(s.Key, "2026.11.23-4", Wps, contract: "1.0.0"));
+        Assert.Contains("native contract 3.0.0", futureBody);
+        Assert.Contains(NativeAssemblies.ContractUnsupported, futureBody);
+        var (claims, claimsBody) = await Post(c, Distribution(s.Key, "2026.11.23-4", Wps, contract: "1.1.0"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, claims);
-        Assert.Contains("native contract 1.1.0, its manifest says 1.0.0", claimsBody);
+        Assert.Contains(NativeAssemblies.ContractUnsupported, claimsBody);
+        // A module built against contract 1.x, as every module before 2.0.0 was: refused at install, to be rebuilt (Issue I-224 superseded).
+        var (old, oldBody) = await Post(c, Distribution(s.Key, "2026.11.23-9", BuiltAgainstContract1(), contract: "1.1.0"));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, old);
+        Assert.Contains(NativeAssemblies.ContractUnsupported, oldBody);
+        Assert.Contains("rebuild every module against 2.0.0", oldBody);
+        var (oldClaims, oldClaimsBody) = await Post(c, Distribution(s.Key, "2026.11.23-10", BuiltAgainstContract1()));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, oldClaims);
+        Assert.Contains("was built against native contract 1.1.0, its manifest says 2.0.0", oldClaimsBody);
 
         // An assembly that does not reference the contract, one the image keeps, and one the manifest does not list.
         var (bare, bareBody) = await Post(c, Distribution(s.Key, "2026.11.23-5", File.ReadAllBytes(typeof(Xunit.FactAttribute).Assembly.Location)));
@@ -110,6 +119,26 @@ public sealed class NativeInstallTests(Databases dbs)
             Assert.DoesNotContain(refs, r => r.StartsWith("TransactHub.") && r != TransactHub.Activities.Native.NativeContract.AssemblyName);
         }
         Assert.Contains("TransactHub.Ports", NativeAssemblies.References(ReachesIntoTheImage()));
+    }
+
+    /// <summary>
+    /// A module assembly as a build against native contract 1.1.0 leaves it (its reference to the contract at 1.1.0.0), written with
+    /// System.Reflection.Metadata for the test and never loaded.
+    /// </summary>
+    static byte[] BuiltAgainstContract1()
+    {
+        var mb = new System.Reflection.Metadata.Ecma335.MetadataBuilder();
+        mb.AddModule(0, mb.GetOrAddString($"{Asm}.dll"), mb.GetOrAddGuid(new Guid("6f1c2a0e-3b7d-4c55-9a51-0c1d2e3f4a5b")), default, default);
+        mb.AddAssembly(mb.GetOrAddString(Asm), new Version(1, 0, 0, 0), default, default, 0, System.Reflection.AssemblyHashAlgorithm.Sha1);
+        var contract = mb.AddAssemblyReference(mb.GetOrAddString("TransactHub.Activities.Contract"), new Version(1, 1, 0, 0), default, default, 0, default);
+        mb.AddTypeReference(contract, mb.GetOrAddString("TransactHub.Activities.Native"), mb.GetOrAddString("INativeModule"));
+        mb.AddTypeDefinition(default, default, mb.GetOrAddString("<Module>"), default,
+            System.Reflection.Metadata.Ecma335.MetadataTokens.FieldDefinitionHandle(1), System.Reflection.Metadata.Ecma335.MetadataTokens.MethodDefinitionHandle(1));
+        var pe = new System.Reflection.PortableExecutable.ManagedPEBuilder(System.Reflection.PortableExecutable.PEHeaderBuilder.CreateLibraryHeader(),
+            new System.Reflection.Metadata.Ecma335.MetadataRootBuilder(mb), new System.Reflection.Metadata.BlobBuilder());
+        var blob = new System.Reflection.Metadata.BlobBuilder();
+        pe.Serialize(blob);
+        return blob.ToArray();
     }
 
     /// <summary>A module assembly that references the ports beside the contract, emitted for the test and never loaded.</summary>

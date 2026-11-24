@@ -1175,6 +1175,26 @@ entries:
       actions:
         - resend-file
       escalation: Escalate to the bank's file-transfer support and the partner's operations desk with the file's id and the error.
+  # 1.11.0 (R-09-245, Issue I-380): native contract 2.0.0 refuses a module built against 1.x with its own code (R-09-262).
+  - code: native.ContractUnsupported
+    title: 'A native module was built against a contract this runtime does not take'
+    category: technical
+    retryable: false
+    raisedBy:
+      - native
+      - package-source
+    meaning: 'The distribution''s native modules were built against a native contract of another major than the runtime''s, or a later minor (R-09-262). Since native contract 2.0.0 every module built against 1.x is refused, at install by the release API and again when the native host loads the distribution.'
+    causes:
+      - 'The distribution was built before the runtime took native contract 2.0.0.'
+      - 'A module build made ahead of time was made against another contract than the runtime image''s.'
+    runbook:
+      checks:
+        - 'Read the refusal: it names the module, the contract it was built against and the contract the runtime supports.'
+        - 'Read the native host''s contract (GET /health, contract) and the distribution''s manifest (native.contract).'
+      safeActions:
+        - 'Do not retry. Rebuild every module against the runtime''s contract (the studio with TH_NATIVE_MODULES=build, or runtime/tools/native-module/build.sh), build a new distribution of the bank, install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2).'
+        - 'Remove the refused distribution once nothing is pinned to it.'
+      escalation: 'Escalate to the runtime''s service team with the distribution id and the contract versions.'
   - code: ops.ActionNotOffered
     title: The action does not apply to this payment now
     category: business
