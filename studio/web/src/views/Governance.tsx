@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { APPROVER_ROLES, MAKER_ROLES, del, downloadUrl, get, post, q, refusal, type Issue, type Summary, type User } from '../api';
-import { ArtefactLink, Badge, ErrorBox, Issues, KV, List, Loading, PassFail, Section, Tabs, Val, useLoad, useStudio } from '../ui';
+import { Alert, ArtefactLink, Badge, ErrorBox, Issues, KV, List, Loading, PassFail, Section, Tabs, Val, useLoad, useStudio } from '../ui';
 import { useCatalogue } from '../authoring';
+import { Button, Checkbox, Input, Link, SearchBox, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
+import { ArrowDownloadRegular } from '@fluentui/react-icons';
 
 // Governance (F-24, F-25, F-32): drafts, the audit log, supersessions and the whole-store checks.
 
@@ -57,7 +59,7 @@ export function AsUser({ value, onChange, prefer, label = 'As' }: { value: strin
   return (
     <span className="field-inline" aria-label={label}>
       <span>{label}</span> <b className="mono">{actor}</b>
-      {!may && <span className="badge warn" title="Your roles do not include the one this needs; the server will refuse">not your role</span>}
+      {!may && <Badge tone="warn" title="Your roles do not include the one this needs; the server will refuse">not your role</Badge>}
     </span>
   );
 }
@@ -111,27 +113,27 @@ function Drafts() {
       {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
       {drafts.loading && !drafts.data ? <Loading /> : !drafts.data?.length ? <p className="muted">No drafts.</p> : (
         <div className="table-wrap">
-          <table className="grid">
-            <thead><tr><th>Draft</th><th>Kind</th><th>Title</th><th>State</th><th>Errors</th><th>Publishes with</th><th></th></tr></thead>
-            <tbody>
+          <Table size="small" className="grid">
+            <TableHeader><TableRow><TableHeaderCell>Draft</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Errors</TableHeaderCell><TableHeaderCell>Publishes with</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+            <TableBody>
               {drafts.data.map((d) => (
-                <tr key={d.key}>
-                  <td><ArtefactLink name={d.name} keyOf={d.key} /> <span className="mono muted">@{d.release}</span></td>
-                  <td>{d.kind} {d.type}</td>
-                  <td>{d.title}</td>
-                  <td><Badge tone={d.status === 'in-review' ? 'info' : 'warn'}>{d.status}</Badge></td>
-                  <td>{d.issues ? <Badge tone="fail">{d.issues}</Badge> : <Badge tone="pass">none</Badge>}</td>
-                  <td className="small">{(sets.data?.[d.key] ?? []).filter((k) => k !== d.key).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}{(sets.data?.[d.key] ?? []).length <= 1 && <span className="muted">alone</span>}</td>
-                  <td className="nowrap">
-                    {['workflow', 'hook'].includes(d.kind) && <button onClick={() => go(`/designer?open=${encodeURIComponent(d.key)}&draft=1`)}>Open</button>}{' '}
-                    {roles.some((r) => MAKER_ROLES.includes(r)) && <button disabled={busy === d.key || d.status === 'in-review'} onClick={() => act(d.key, 'review')}>Request release</button>}{' '}
-                    {roles.some((r) => APPROVER_ROLES.includes(r)) && <button className="primary" disabled={busy === d.key} onClick={() => act(d.key, 'publish')}>{busy === d.key ? 'Working…' : 'Approve as version'}</button>}{' '}
-                    {roles.some((r) => MAKER_ROLES.includes(r)) && <button className="link danger" onClick={() => remove(d.key)}>Delete</button>}
-                  </td>
-                </tr>
+                <TableRow key={d.key}>
+                  <TableCell><ArtefactLink name={d.name} keyOf={d.key} /> <span className="mono muted">@{d.release}</span></TableCell>
+                  <TableCell>{d.kind} {d.type}</TableCell>
+                  <TableCell>{d.title}</TableCell>
+                  <TableCell><Badge tone={d.status === 'in-review' ? 'info' : 'warn'}>{d.status}</Badge></TableCell>
+                  <TableCell>{d.issues ? <Badge tone="fail">{d.issues}</Badge> : <Badge tone="pass">none</Badge>}</TableCell>
+                  <TableCell className="small">{(sets.data?.[d.key] ?? []).filter((k) => k !== d.key).map((k) => <div key={k} className="mono">{k.replace(/#draft$/, '')}</div>)}{(sets.data?.[d.key] ?? []).length <= 1 && <span className="muted">alone</span>}</TableCell>
+                  <TableCell className="nowrap">
+                    {['workflow', 'hook'].includes(d.kind) && <Button onClick={() => go(`/designer?open=${encodeURIComponent(d.key)}&draft=1`)}>Open</Button>}{' '}
+                    {roles.some((r) => MAKER_ROLES.includes(r)) && <Button disabled={busy === d.key || d.status === 'in-review'} onClick={() => act(d.key, 'review')}>Request release</Button>}{' '}
+                    {roles.some((r) => APPROVER_ROLES.includes(r)) && <Button appearance="primary" disabled={busy === d.key} onClick={() => act(d.key, 'publish')}>{busy === d.key ? 'Working…' : 'Approve as version'}</Button>}{' '}
+                    {roles.some((r) => MAKER_ROLES.includes(r)) && <Link as="button" className="danger" onClick={() => remove(d.key)}>Delete</Link>}
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {users.length > 0 && <p className="muted small">Users of {tenant}: {users.map((u) => u.id).join(', ')}.</p>}
@@ -158,28 +160,28 @@ function Users() {
         <Section title={`Users ${tenant === meta?.owner ? 'of every tenant' : `of ${tenant}`}`} count={users.data?.length}>
           <ErrorBox error={users.error} />
           <p className="muted small">Names are role-shaped placeholders; no real person is named. A user acts in one tenant only. A change to the users is proposed by one administrator and approved by another.</p>
-          <table className="grid compact">
-            <thead><tr><th>User</th><th>Tenant</th><th>Roles</th></tr></thead>
-            <tbody>{(users.data ?? []).map((u) => <tr key={u.id}><td className="mono">{u.id}</td><td>{u.tenant}</td><td>{u.roles.map((r) => <Badge key={r} tone="info">{r}</Badge>)}</td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>User</TableHeaderCell><TableHeaderCell>Tenant</TableHeaderCell><TableHeaderCell>Roles</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{(users.data ?? []).map((u) => <TableRow key={u.id}><TableCell className="mono">{u.id}</TableCell><TableCell>{u.tenant}</TableCell><TableCell>{u.roles.map((r) => <Badge key={r} tone="info">{r}</Badge>)}</TableCell></TableRow>)}</TableBody>
+          </Table>
           <h4>The permission table</h4>
           <p className="muted small">The server checks every write, release and approval against this table. Reading is open to every user of a tenant for what the tenant may see.</p>
           <ErrorBox error={table.error} />
-          <table className="grid compact">
-            <thead><tr><th>Role</th><th>Where</th><th>May</th><th>On</th></tr></thead>
-            <tbody>{(table.data?.grants ?? []).map((g, i) => <tr key={i}><td>{g.role}</td><td>{g.scope === 'bank' ? 'scope b of its bank' : g.scope === 'shared' ? 'shared scopes' : 'the studio'}</td><td>{g.actions.join(', ')}</td><td className="small">{g.kinds.join(', ')}</td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Role</TableHeaderCell><TableHeaderCell>Where</TableHeaderCell><TableHeaderCell>May</TableHeaderCell><TableHeaderCell>On</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{(table.data?.grants ?? []).map((g, i) => <TableRow key={i}><TableCell>{g.role}</TableCell><TableCell>{g.scope === 'bank' ? 'scope b of its bank' : g.scope === 'shared' ? 'shared scopes' : 'the studio'}</TableCell><TableCell>{g.actions.join(', ')}</TableCell><TableCell className="small">{g.kinds.join(', ')}</TableCell></TableRow>)}</TableBody>
+          </Table>
         </Section>
       </div>
       <div className="col side">
         <Section title="May this user do this?">
           <div className="stack">
-            <select value={who} onChange={(e) => setWho(e.target.value)} aria-label="User"><option value="">Choose a user</option>{(users.data ?? []).map((u) => <option key={u.id}>{u.id}</option>)}</select>
-            <select value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action">{ACTIONS.map((a) => <option key={a}>{a}</option>)}</select>
-            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">{KINDS.map((a) => <option key={a}>{a}</option>)}</select>
-            <input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="scope, for example p or b (optional)" className="mono" aria-label="Scope" />
-            <button disabled={!who} onClick={ask}>Ask</button>
-            {res && (res.error ? <p className="fail-text small">{res.error}</p> : res.allowed ? <div className="alert pass small">Allowed.</div> : <div className="alert fail small">Refused: {res.reason}</div>)}
+            <Select value={who} onChange={(e) => setWho(e.target.value)} aria-label="User"><option value="">Choose a user</option>{(users.data ?? []).map((u) => <option key={u.id}>{u.id}</option>)}</Select>
+            <Select value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action">{ACTIONS.map((a) => <option key={a}>{a}</option>)}</Select>
+            <Select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind">{KINDS.map((a) => <option key={a}>{a}</option>)}</Select>
+            <Input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="scope, for example p or b (optional)" className="mono" aria-label="Scope" />
+            <Button disabled={!who} onClick={ask}>Ask</Button>
+            {res && (res.error ? <p className="fail-text small">{res.error}</p> : res.allowed ? <Alert tone="pass" className="small">Allowed.</Alert> : <Alert tone="fail" className="small">Refused: {res.reason}</Alert>)}
           </div>
         </Section>
       </div>
@@ -243,10 +245,10 @@ function Releases({ initial }: { initial: string }) {
     <>
       <Section title="A release and who pins it (F-24)">
         <div className="toolbar">
-          <input list="rel-names" value={name} onChange={(e) => setName(e.target.value)} className="mono grow" aria-label="Artefact name" />
+          <Input list="rel-names" value={name} onChange={(e) => setName(e.target.value)} className="mono grow" aria-label="Artefact name" />
           <datalist id="rel-names">{[...new Set(names)].map((n) => <option key={n} value={n} />)}</datalist>
-          <input value={release} onChange={(e) => setRelease(e.target.value)} className="mono" size={8} aria-label="Release" />
-          <button className="primary" onClick={() => look()}>Show pins</button>
+          <Input style={{ width: '11ch' }} value={release} onChange={(e) => setRelease(e.target.value)} className="mono" aria-label="Release" />
+          <Button appearance="primary" onClick={() => look()}>Show pins</Button>
         </div>
         {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
         {pins && (
@@ -262,7 +264,7 @@ function Releases({ initial }: { initial: string }) {
             <div className="col side">
               <div className="stack">
                 <AsUser value={as} onChange={setAs} prefer={may('platform approver', 'service operations')} label="Retire as" />
-                <button className="danger-btn" onClick={retire}>Retire {pins.name}@{pins.release}</button>
+                <Button className="danger-btn" onClick={retire}>Retire {pins.name}@{pins.release}</Button>
                 <p className="muted small">The server refuses while anything pins it or an instance in flight is pinned to it.</p>
               </div>
             </div>
@@ -274,26 +276,26 @@ function Releases({ initial }: { initial: string }) {
           <Section title="Propagate a new release of a block (F-23)">
             <p className="muted small">For a new release of {name}: every workflow on that line that pins it, its tests rerun with the new release, and the proposed new workflow release.</p>
             <div className="inline-form">
-              <input value={newRel} onChange={(e) => setNewRel(e.target.value)} placeholder="new release, for example 1.0.1" className="mono" aria-label="New release" />
-              <button disabled={!newRel || propBusy} onClick={propagate}>{propBusy ? 'Rerunning…' : 'Propagate'}</button>
+              <Input value={newRel} onChange={(e) => setNewRel(e.target.value)} placeholder="new release, for example 1.0.1" className="mono" aria-label="New release" />
+              <Button disabled={!newRel || propBusy} onClick={propagate}>{propBusy ? 'Rerunning…' : 'Propagate'}</Button>
             </div>
-            {prop?.error && <div className="alert fail small">{prop.error}</div>}
+            {prop?.error && <Alert tone="fail" className="small">{prop.error}</Alert>}
             {prop && !prop.error && (
               <>
                 <p>{prop.artefact} {prop.from} to {prop.to}: a <Badge tone={prop.change === 'major' ? 'fail' : prop.change === 'minor' ? 'warn' : 'pass'}>{prop.change}</Badge></p>
-                <table className="grid compact">
-                  <thead><tr><th>Workflow</th><th>Tests rerun</th><th>Proposed release</th><th>New pin</th></tr></thead>
-                  <tbody>
+                <Table size="small" className="grid compact">
+                  <TableHeader><TableRow><TableHeaderCell>Workflow</TableHeaderCell><TableHeaderCell>Tests rerun</TableHeaderCell><TableHeaderCell>Proposed release</TableHeaderCell><TableHeaderCell>New pin</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>
                     {prop.workflows.map((w: any) => (
-                      <tr key={w.workflow}>
-                        <td><ArtefactLink name={w.workflow} release={w.release} /></td>
-                        <td className="small">{w.tests.length ? w.tests.map((t: any) => <div key={t.id}><PassFail passed={t.passed} /> <span className="mono">{t.id}</span></div>) : <span className="muted">none</span>}</td>
-                        <td>{w.proposed ? <b className="mono">{w.proposed}</b> : <span className="warn-text small">{w.blockedBy}</span>}</td>
-                        <td className="mono small break">{w.newPin.name}@{w.newPin.release}</td>
-                      </tr>
+                      <TableRow key={w.workflow}>
+                        <TableCell><ArtefactLink name={w.workflow} release={w.release} /></TableCell>
+                        <TableCell className="small">{w.tests.length ? w.tests.map((t: any) => <div key={t.id}><PassFail passed={t.passed} /> <span className="mono">{t.id}</span></div>) : <span className="muted">none</span>}</TableCell>
+                        <TableCell>{w.proposed ? <b className="mono">{w.proposed}</b> : <span className="warn-text small">{w.blockedBy}</span>}</TableCell>
+                        <TableCell className="mono small break">{w.newPin.name}@{w.newPin.release}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
                 {!prop.workflows.length && <p className="muted small">No workflow on this line pins {name}.</p>}
               </>
             )}
@@ -304,9 +306,9 @@ function Releases({ initial }: { initial: string }) {
             <p className="muted small">Service operations supplies the count of instances pinned to each release. The studio never reads a payment.</p>
             <div className="stack">
               <AsUser value={as} onChange={setAs} prefer={may('service operations')} label="Import as" />
-              <textarea className="code-input" rows={4} value={counts} onChange={(e) => setCounts(e.target.value)} aria-label="In-flight counts JSON" />
-              <input value={asOf} onChange={(e) => setAsOf(e.target.value)} className="mono" aria-label="As of" />
-              <button onClick={importCounts}>Import</button>
+              <Textarea className="code-input" rows={4} value={counts} onChange={(e) => setCounts(e.target.value)} aria-label="In-flight counts JSON" />
+              <Input value={asOf} onChange={(e) => setAsOf(e.target.value)} className="mono" aria-label="As of" />
+              <Button onClick={importCounts}>Import</Button>
             </div>
           </Section>
         </div>
@@ -344,16 +346,16 @@ function SupersessionWizard() {
     <Section title="Supersession wizard (F-25)" actions={<span className="wizard-steps">{['Draft', 'Evidence', 'Hand over'].map((s, i) => <Badge key={s} tone={step > i ? 'pass' : step === i ? 'info' : 'muted'}>{i + 1}. {s}</Badge>)}</span>}>
       <p className="muted small">A supersession swaps a release of logic for the payments already in flight. It is drafted, tested by rerunning every pinned workflow's tests with the replacement swapped in, then handed over with a maker and a different checker. The studio never applies it.</p>
       <div className="form-grid">
-        <label className="field wide"><span>Artefact</span><input value={artefact} onChange={(e) => setArtefact(e.target.value)} className="mono" aria-label="Superseded artefact" /></label>
-        <label className="field"><span>Replaces</span><input value={replaces} onChange={(e) => setReplaces(e.target.value)} className="mono" aria-label="Replaces release" /></label>
-        <label className="field"><span>With</span><input value={by} onChange={(e) => setBy(e.target.value)} className="mono" aria-label="With release" /></label>
-        <label className="field wide"><span>Reason</span><input value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" /></label>
+        <label className="field wide"><span>Artefact</span><Input value={artefact} onChange={(e) => setArtefact(e.target.value)} className="mono" aria-label="Superseded artefact" /></label>
+        <label className="field"><span>Replaces</span><Input value={replaces} onChange={(e) => setReplaces(e.target.value)} className="mono" aria-label="Replaces release" /></label>
+        <label className="field"><span>With</span><Input value={by} onChange={(e) => setBy(e.target.value)} className="mono" aria-label="With release" /></label>
+        <label className="field wide"><span>Reason</span><Input value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reason" /></label>
       </div>
       <div className="row-actions">
-        <button className="primary" disabled={busy} onClick={() => run(async () => { setEv(undefined); setDone(undefined); setDoc(await post('/api/supersessions/draft', { artefact, replaces, with: by, reason, maker: actor })); })}>1. Draft as {actor}</button>
-        <button disabled={busy || !doc} onClick={() => run(async () => setEv(await post('/api/supersessions/evidence', { doc })))}>{busy && doc && !ev ? 'Rerunning…' : '2. Rerun the pinned tests'}</button>
+        <Button appearance="primary" disabled={busy} onClick={() => run(async () => { setEv(undefined); setDone(undefined); setDoc(await post('/api/supersessions/draft', { artefact, replaces, with: by, reason, maker: actor })); })}>1. Draft as {actor}</Button>
+        <Button disabled={busy || !doc} onClick={() => run(async () => setEv(await post('/api/supersessions/evidence', { doc })))}>{busy && doc && !ev ? 'Rerunning…' : '2. Rerun the pinned tests'}</Button>
         <AsUser value={checker} onChange={setChecker} prefer={(u) => u.roles.includes('platform approver')} label="Checker" />
-        <button disabled={busy || !ev} onClick={() => run(async () => setDone(await post('/api/supersessions/hand-over', { doc: ev, checker })))}>3. Hand over</button>
+        <Button disabled={busy || !ev} onClick={() => run(async () => setDone(await post('/api/supersessions/hand-over', { doc: ev, checker })))}>3. Hand over</Button>
       </div>
       <ErrorBox error={err} />
       {doc && !ev && (
@@ -366,15 +368,15 @@ function SupersessionWizard() {
       {ev && (
         <>
           <h4>Evidence {green ? <Badge tone="pass">green</Badge> : <Badge tone="fail">not green</Badge>}</h4>
-          <table className="grid compact">
-            <thead><tr><th>Workflow release</th><th>Result</th><th>Tests</th></tr></thead>
-            <tbody>{(ev.details ?? []).map((r: any) => <tr key={r.workflow}><td><ArtefactLink name={r.workflow} release={r.release} /></td><td><Badge tone={r.result === 'green' ? 'pass' : 'fail'}>{r.result}</Badge></td><td className="small"><span className="chips">{r.tests.map((t: any) => <span key={t.id} className="nowrap"><PassFail passed={t.passed} /> <span className="mono">{t.id}</span></span>)}</span></td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Workflow release</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell><TableHeaderCell>Tests</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{(ev.details ?? []).map((r: any) => <TableRow key={r.workflow}><TableCell><ArtefactLink name={r.workflow} release={r.release} /></TableCell><TableCell><Badge tone={r.result === 'green' ? 'pass' : 'fail'}>{r.result}</Badge></TableCell><TableCell className="small"><span className="chips">{r.tests.map((t: any) => <span key={t.id} className="nowrap"><PassFail passed={t.passed} /> <span className="mono">{t.id}</span></span>)}</span></TableCell></TableRow>)}</TableBody>
+          </Table>
         </>
       )}
       {done && (
         <>
-          <div className="alert pass">Handed over {done.document.id}: maker {done.document.approval.maker}, checker {done.document.approval.checker}.</div>
+          <Alert tone="pass">Handed over {done.document.id}: maker {done.document.approval.maker}, checker {done.document.approval.checker}.</Alert>
           <pre className="code">{done.yaml}</pre>
         </>
       )}
@@ -390,10 +392,10 @@ function HandedOver() {
   return (
     <details>
       <summary>Handed over in this data root ({h.data.length})</summary>
-      <table className="grid compact">
-        <thead><tr><th>Id</th><th>Artefact</th><th>Replaces</th><th>With</th><th>Maker</th><th>Checker</th></tr></thead>
-        <tbody>{h.data.map((s) => <tr key={s.id}><td className="mono">{s.id}</td><td><ArtefactLink name={s.artefact} /></td><td className="mono">{s.replaces}</td><td className="mono">{s.with}</td><td>{s.approval?.maker}</td><td>{s.approval?.checker}</td></tr>)}</tbody>
-      </table>
+      <Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>Id</TableHeaderCell><TableHeaderCell>Artefact</TableHeaderCell><TableHeaderCell>Replaces</TableHeaderCell><TableHeaderCell>With</TableHeaderCell><TableHeaderCell>Maker</TableHeaderCell><TableHeaderCell>Checker</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{h.data.map((s) => <TableRow key={s.id}><TableCell className="mono">{s.id}</TableCell><TableCell><ArtefactLink name={s.artefact} /></TableCell><TableCell className="mono">{s.replaces}</TableCell><TableCell className="mono">{s.with}</TableCell><TableCell>{s.approval?.maker}</TableCell><TableCell>{s.approval?.checker}</TableCell></TableRow>)}</TableBody>
+      </Table>
     </details>
   );
 }
@@ -432,18 +434,18 @@ function Packs() {
     <>
       <Section title="Pack manifests compared with the repository" count={packs.data?.length}>
         <ErrorBox error={packs.error} />
-        <table className="grid compact">
-          <thead><tr><th>Scope</th><th>Generated manifest equals the repository's</th><th>Differences</th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Scope</TableHeaderCell><TableHeaderCell>Generated manifest equals the repository's</TableHeaderCell><TableHeaderCell>Differences</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {(packs.data ?? []).map((p) => (
-              <tr key={p.scope} className={p.scope === scope ? 'sel clickable' : 'clickable'} onClick={() => { setScope(p.scope); setBuilt(undefined); setGate(undefined); }}>
-                <td className="mono"><button className="link">{p.scope}</button></td>
-                <td>{p.equal ? <Badge tone="pass">equal</Badge> : <Badge tone="warn">differs</Badge>}</td>
-                <td className="small break">{p.differences?.length ? p.differences.map((d: string, i: number) => <div key={i}>{d}</div>) : <span className="muted">none</span>}</td>
-              </tr>
+              <TableRow key={p.scope} className={p.scope === scope ? 'sel clickable' : 'clickable'} onClick={() => { setScope(p.scope); setBuilt(undefined); setGate(undefined); }}>
+                <TableCell className="mono"><Link as="button">{p.scope}</Link></TableCell>
+                <TableCell>{p.equal ? <Badge tone="pass">equal</Badge> : <Badge tone="warn">differs</Badge>}</TableCell>
+                <TableCell className="small break">{p.differences?.length ? p.differences.map((d: string, i: number) => <div key={i}>{d}</div>) : <span className="muted">none</span>}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </Section>
       <div className="cols">
         <div className="col">
@@ -453,10 +455,10 @@ function Packs() {
               <>
                 <KV rows={[['Release', <code>{man.data.manifest.release}</code>], ['Type', man.data.manifest.packType], ['Depends on', <span className="chips">{(man.data.manifest.dependsOn ?? []).map((d: any) => <span key={d.scope} className="chip mono">{d.scope} {d.release}</span>)}</span>]]} />
                 <div className="table-wrap tall">
-                  <table className="grid compact">
-                    <thead><tr><th>Artefact</th><th>Kind</th><th>Release</th><th>Hash</th></tr></thead>
-                    <tbody>{(man.data.manifest.artefacts ?? []).map((a: any) => <tr key={a.name}><td><ArtefactLink name={a.name} /></td><td>{a.kind}</td><td className="mono">{a.release}</td><td className="mono small" title={a.hash}>{String(a.hash).replace('sha256:', '').slice(0, 12)}</td></tr>)}</tbody>
-                  </table>
+                  <Table size="small" className="grid compact">
+                    <TableHeader><TableRow><TableHeaderCell>Artefact</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Release</TableHeaderCell><TableHeaderCell>Hash</TableHeaderCell></TableRow></TableHeader>
+                    <TableBody>{(man.data.manifest.artefacts ?? []).map((a: any) => <TableRow key={a.name}><TableCell><ArtefactLink name={a.name} /></TableCell><TableCell>{a.kind}</TableCell><TableCell className="mono">{a.release}</TableCell><TableCell className="mono small" title={a.hash}>{String(a.hash).replace('sha256:', '').slice(0, 12)}</TableCell></TableRow>)}</TableBody>
+                  </Table>
                 </div>
               </>
             )}
@@ -465,20 +467,20 @@ function Packs() {
         <div className="col side">
           <Section title="Build and download">
             <div className="stack">
-              <select value={kind} onChange={(e) => { setKind(e.target.value as any); setBuilt(undefined); }} aria-label="Pack kind">
+              <Select value={kind} onChange={(e) => { setKind(e.target.value as any); setBuilt(undefined); }} aria-label="Pack kind">
                 <option value="shared">shared pack</option>
                 <option value="bank">bank pack{bankTenant ? ` for ${bankTenant}` : ''}</option>
                 <option value="test">test pack</option>
-              </select>
-              <button onClick={build} disabled={busy === 'build'}>{busy === 'build' ? 'Building…' : 'Build'}</button>
-              {built?.error && <div className="alert fail small">{built.error}</div>}
-              {built && !built.error && (built.refused ? <div className="alert fail small">Refused: the pack has red checks.<Issues issues={built.refused} /></div> : <div className="alert pass small">{built.files.length} files. No simulator in a promotable pack.</div>)}
-              <a className="button" href={downloadUrl(`/api/packs/download${q({ scope, kind, tenant: kind === 'bank' ? bankTenant : undefined })}`)}>Download the zip</a>
+              </Select>
+              <Button onClick={build} disabled={busy === 'build'}>{busy === 'build' ? 'Building…' : 'Build'}</Button>
+              {built?.error && <Alert tone="fail" className="small">{built.error}</Alert>}
+              {built && !built.error && (built.refused ? <Alert tone="fail" className="small">Refused: the pack has red checks.<Issues issues={built.refused} /></Alert> : <Alert tone="pass" className="small">{built.files.length} files. No simulator in a promotable pack.</Alert>)}
+              <Button as="a" icon={<ArrowDownloadRegular />} href={downloadUrl(`/api/packs/download${q({ scope, kind, tenant: kind === 'bank' ? bankTenant : undefined })}`)}>Download the zip</Button>
             </div>
           </Section>
           <Section title="Release gate">
-            <button onClick={runGate} disabled={busy === 'gate'}>{busy === 'gate' ? 'Running the kit…' : `Run the release gate for ${scope}`}</button>
-            {gate?.error && <div className="alert fail small">{gate.error}</div>}
+            <Button onClick={runGate} disabled={busy === 'gate'}>{busy === 'gate' ? 'Running the kit…' : `Run the release gate for ${scope}`}</Button>
+            {gate?.error && <Alert tone="fail" className="small">{gate.error}</Alert>}
             {gate && !gate.error && (
               <KV rows={[
                 ['Checks', gate.checks.green ? <Badge tone="pass">green</Badge> : <Badge tone="fail">{gate.checks.errors?.length} red</Badge>],
@@ -528,17 +530,17 @@ function Conformance() {
   return (
     <div className="cols">
       <div className="col">
-        <Section title="Conformance report" actions={<><input value={target} onChange={(e) => setTarget(e.target.value)} className="mono" size={10} aria-label="Target" /><button className="primary" onClick={load} disabled={busy}>{busy ? 'Running the kit…' : 'Run the report'}</button></>}>
+        <Section title="Conformance report" actions={<><Input style={{ width: '13ch' }} value={target} onChange={(e) => setTarget(e.target.value)} className="mono" aria-label="Target" /><Button appearance="primary" onClick={load} disabled={busy}>{busy ? 'Running the kit…' : 'Run the report'}</Button></>}>
           <p className="muted small">The conformance kit on a target, with waivers. A red scenario that is not waived blocks the release.</p>
           {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
           {rep && (
             <>
               <p>Kit {rep.kitRelease} of {rep.date}: {rep.green ? <Badge tone="pass">green</Badge> : <Badge tone="fail">red</Badge>} {rows.filter((r) => r.result === 'pass').length} pass, {rows.filter((r) => r.result === 'waived').length} waived, {rows.filter((r) => r.result === 'fail').length} fail</p>
               <div className="table-wrap tall">
-                <table className="grid compact">
-                  <thead><tr><th>Scenario</th><th>Construct</th><th>Result</th><th>Waiver</th></tr></thead>
-                  <tbody>{rows.map((r) => <tr key={r.scenario} className={r.result === 'fail' ? 'row-fail' : r.result === 'waived' ? 'row-warn' : ''}><td className="mono">{r.scenario}</td><td>{r.construct}</td><td><Badge tone={r.result === 'pass' ? 'pass' : r.result === 'waived' ? 'warn' : 'fail'}>{r.result}</Badge></td><td className="small">{r.waiver ? `${r.waiver.reason} (${r.waiver.approver})` : ''}</td></tr>)}</tbody>
-                </table>
+                <Table size="small" className="grid compact">
+                  <TableHeader><TableRow><TableHeaderCell>Scenario</TableHeaderCell><TableHeaderCell>Construct</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell><TableHeaderCell>Waiver</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>{rows.map((r) => <TableRow key={r.scenario} className={r.result === 'fail' ? 'row-fail' : r.result === 'waived' ? 'row-warn' : ''}><TableCell className="mono">{r.scenario}</TableCell><TableCell>{r.construct}</TableCell><TableCell><Badge tone={r.result === 'pass' ? 'pass' : r.result === 'waived' ? 'warn' : 'fail'}>{r.result}</Badge></TableCell><TableCell className="small">{r.waiver ? `${r.waiver.reason} (${r.waiver.approver})` : ''}</TableCell></TableRow>)}</TableBody>
+                </Table>
               </div>
             </>
           )}
@@ -547,13 +549,13 @@ function Conformance() {
       <div className="col side">
         <Section title="Add a waiver">
           <div className="stack">
-            <select value={scenario} onChange={(e) => setScenario(e.target.value)} aria-label="Scenario">
+            <Select value={scenario} onChange={(e) => setScenario(e.target.value)} aria-label="Scenario">
               <option value="">Choose a scenario</option>
               {rows.map((r) => <option key={r.scenario} value={r.scenario}>{r.scenario} ({r.result})</option>)}
-            </select>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="The reason, required" aria-label="Waiver reason" />
+            </Select>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="The reason, required" aria-label="Waiver reason" />
             <AsUser value={as} onChange={setAs} prefer={may('platform approver')} label="Approve as" />
-            <button disabled={!scenario || !reason} onClick={waive}>Waive</button>
+            <Button disabled={!scenario || !reason} onClick={waive}>Waive</Button>
             <p className="muted small">Run the report first to list the scenarios.</p>
           </div>
         </Section>
@@ -576,31 +578,31 @@ function Coverage() {
       <div className="col">
         <Section title="Test coverage: outcomes no test expects" count={rows.length} actions={
           <>
-            <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind"><option value="">every kind</option><option>activity</option><option>hook</option><option>workflow</option></select>
-            <label className="check small"><input type="checkbox" checked={onlyGaps} onChange={(e) => setOnlyGaps(e.target.checked)} /> Only with untested outcomes</label>
+            <Select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Kind"><option value="">every kind</option><option>activity</option><option>hook</option><option>workflow</option></Select>
+            <Checkbox className="check small" checked={onlyGaps} onChange={(e) => setOnlyGaps(e.target.checked)} label={<>Only with untested outcomes</>} />
           </>
         }>
           <ErrorBox error={tc.error} />
           {tc.data && <p className="small">{total - untested} of {total} outcomes have a test that expects them.</p>}
           <div className="table-wrap tall">
-            <table className="grid compact">
-              <thead><tr><th>Artefact</th><th>Kind</th><th>Tests</th><th>Untested outcomes</th></tr></thead>
-              <tbody>{rows.map((r) => <tr key={r.name}><td><ArtefactLink name={r.name} /></td><td>{r.kind}</td><td className="small mono">{r.tests.join(', ') || <span className="muted">none</span>}</td><td>{r.untested.length ? r.untested.map((o: string) => <Badge key={o} tone="warn">{o}</Badge>) : <Badge tone="pass">none</Badge>}</td></tr>)}</tbody>
-            </table>
+            <Table size="small" className="grid compact">
+              <TableHeader><TableRow><TableHeaderCell>Artefact</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Tests</TableHeaderCell><TableHeaderCell>Untested outcomes</TableHeaderCell></TableRow></TableHeader>
+              <TableBody>{rows.map((r) => <TableRow key={r.name}><TableCell><ArtefactLink name={r.name} /></TableCell><TableCell>{r.kind}</TableCell><TableCell className="small mono">{r.tests.join(', ') || <span className="muted">none</span>}</TableCell><TableCell>{r.untested.length ? r.untested.map((o: string) => <Badge key={o} tone="warn">{o}</Badge>) : <Badge tone="pass">none</Badge>}</TableCell></TableRow>)}</TableBody>
+            </Table>
           </div>
         </Section>
       </div>
       <div className="col side">
-        <Section title="Reason-code coverage per scheme" actions={<select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Scheme scope">{['uae.wps', 'uae.p', 'p'].map((s) => <option key={s}>{s}</option>)}</select>}>
+        <Section title="Reason-code coverage per scheme" actions={<Select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Scheme scope">{['uae.wps', 'uae.p', 'p'].map((s) => <option key={s}>{s}</option>)}</Select>}>
           <p className="muted small">Each reason code the scheme's rules can yield, and the simulator scenarios that make it happen in a test.</p>
           <ErrorBox error={rc.error} />
           {rc.data && (
             <>
               <p className="small"><Badge tone="pass">{rc.data.covered.length} covered</Badge> <Badge tone="warn">{rc.data.open.length} open</Badge></p>
-              <table className="grid compact">
-                <thead><tr><th>Code</th><th>State</th><th>Yielded by</th><th>Scenarios</th></tr></thead>
-                <tbody>{rc.data.rows.map((r: any) => <tr key={r.code}><td className="mono">{r.code}</td><td><Badge tone={r.state === 'covered' ? 'pass' : 'warn'}>{r.state}</Badge></td><td className="small">{r.rules.map((x: string) => <div key={x}><ArtefactLink name={x} /></div>)}</td><td className="small mono">{r.scenarios.join(', ') || <span className="muted">none</span>}</td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Code</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Yielded by</TableHeaderCell><TableHeaderCell>Scenarios</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{rc.data.rows.map((r: any) => <TableRow key={r.code}><TableCell className="mono">{r.code}</TableCell><TableCell><Badge tone={r.state === 'covered' ? 'pass' : 'warn'}>{r.state}</Badge></TableCell><TableCell className="small">{r.rules.map((x: string) => <div key={x}><ArtefactLink name={x} /></div>)}</TableCell><TableCell className="small mono">{r.scenarios.join(', ') || <span className="muted">none</span>}</TableCell></TableRow>)}</TableBody>
+              </Table>
             </>
           )}
         </Section>
@@ -657,27 +659,27 @@ function Audit() {
   const check = async () => setVerify(await get('/api/audit/verify').catch((e) => ({ ok: false, error: e.message })));
   const rows = (audit.data ?? []).filter((a) => !filter || JSON.stringify(a).toLowerCase().includes(filter.toLowerCase()));
   return (
-    <Section title="Audit log" count={audit.data?.length} actions={<><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter" aria-label="Filter the audit log" /><button onClick={check}>Verify the chain</button></>}>
+    <Section title="Audit log" count={audit.data?.length} actions={<><SearchBox value={filter} onChange={(_, d) => setFilter(d.value)} placeholder="Filter" aria-label="Filter the audit log" /><Button onClick={check}>Verify the chain</Button></>}>
       <p className="muted small">Newest first. A publish names its maker and a different checker. A refusal is recorded too. Each entry carries the hash of the one before it, so a change to the log breaks the chain.</p>
-      {verify && (verify.ok ? <div className="alert pass small">The chain verifies: no entry was changed or removed.</div> : <div className="alert fail small">The chain does not verify. {verify.error ?? verify.reason ?? ''} {verify.brokenAt !== undefined ? `It breaks at entry ${verify.brokenAt}.` : ''}</div>)}
+      {verify && (verify.ok ? <Alert tone="pass" className="small">The chain verifies: no entry was changed or removed.</Alert> : <Alert tone="fail" className="small">The chain does not verify. {verify.error ?? verify.reason ?? ''} {verify.brokenAt !== undefined ? `It breaks at entry ${verify.brokenAt}.` : ''}</Alert>)}
       <ErrorBox error={audit.error} />
       {audit.loading && !audit.data ? <Loading /> : !audit.data?.length ? <p className="muted">Nothing recorded yet in this data root.</p> : (
         <div className="table-wrap">
-          <table className="grid compact">
-            <thead><tr><th>When</th><th>Tenant</th><th>Who</th><th>Action</th><th>Artefact</th><th>Detail</th></tr></thead>
-            <tbody>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>When</TableHeaderCell><TableHeaderCell>Tenant</TableHeaderCell><TableHeaderCell>Who</TableHeaderCell><TableHeaderCell>Action</TableHeaderCell><TableHeaderCell>Artefact</TableHeaderCell><TableHeaderCell>Detail</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>
               {rows.map((a, i) => (
-                <tr key={i} className={a.outcome === 'refused' ? 'row-warn' : ''}>
-                  <td className="mono small nowrap">{a.at ?? a.when ?? ''}</td>
-                  <td>{a.tenant}</td>
-                  <td>{a.actor}</td>
-                  <td><Badge tone={a.outcome === 'refused' ? 'fail' : a.action === 'publish' ? 'pass' : a.action === 'delete-draft' ? 'warn' : 'info'}>{a.action}{a.outcome === 'refused' ? ' refused' : ''}</Badge></td>
-                  <td className="mono small break">{a.key}</td>
-                  <td className="small">{a.detail ?? ''}</td>
-                </tr>
+                <TableRow key={i} className={a.outcome === 'refused' ? 'row-warn' : ''}>
+                  <TableCell className="mono small nowrap">{a.at ?? a.when ?? ''}</TableCell>
+                  <TableCell>{a.tenant}</TableCell>
+                  <TableCell>{a.actor}</TableCell>
+                  <TableCell><Badge tone={a.outcome === 'refused' ? 'fail' : a.action === 'publish' ? 'pass' : a.action === 'delete-draft' ? 'warn' : 'info'}>{a.action}{a.outcome === 'refused' ? ' refused' : ''}</Badge></TableCell>
+                  <TableCell className="mono small break">{a.key}</TableCell>
+                  <TableCell className="small">{a.detail ?? ''}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </Section>
@@ -708,7 +710,7 @@ function Supersessions() {
       {sups.loading && !sups.data ? <Loading /> : !sups.data?.length ? <p className="muted">No supersessions.</p> : sups.data.map((s) => {
         const r = results[s.id];
         return (
-          <Section key={s.id} title={<span className="mono">{s.id}</span>} actions={<button className="primary" onClick={() => test(s)} disabled={busy === s.id}>{busy === s.id ? 'Testing…' : 'Test'}</button>}>
+          <Section key={s.id} title={<span className="mono">{s.id}</span>} actions={<Button appearance="primary" onClick={() => test(s)} disabled={busy === s.id}>{busy === s.id ? 'Testing…' : 'Test'}</Button>}>
             <KV rows={[
               ['Artefact', <ArtefactLink name={s.artefact} />],
               ['Replaces', <><code>{s.replaces}</code> with <code>{s.with}</code></>],
@@ -723,10 +725,10 @@ function Supersessions() {
               <>
                 <h4>Test result {r.green ? <Badge tone="pass">green</Badge> : <Badge tone="fail">not green</Badge>}</h4>
                 {!r.results.length ? <p className="muted small">No test targets the workflows in scope, so nothing reran.</p> : (
-                  <table className="grid compact">
-                    <thead><tr><th>Test</th><th>Target</th><th>Outcome</th><th>Result</th></tr></thead>
-                    <tbody>{r.results.map((x: any) => <tr key={x.id}><td className="mono"><a href={`#/tests?run=${encodeURIComponent(x.id)}`}>{x.id}</a></td><td className="mono small">{x.target}</td><td><code>{x.outcome}</code></td><td><PassFail passed={x.passed} /></td></tr>)}</tbody>
-                  </table>
+                  <Table size="small" className="grid compact">
+                    <TableHeader><TableRow><TableHeaderCell>Test</TableHeaderCell><TableHeaderCell>Target</TableHeaderCell><TableHeaderCell>Outcome</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell></TableRow></TableHeader>
+                    <TableBody>{r.results.map((x: any) => <TableRow key={x.id}><TableCell className="mono"><a href={`#/tests?run=${encodeURIComponent(x.id)}`}>{x.id}</a></TableCell><TableCell className="mono small">{x.target}</TableCell><TableCell><code>{x.outcome}</code></TableCell><TableCell><PassFail passed={x.passed} /></TableCell></TableRow>)}</TableBody>
+                  </Table>
                 )}
               </>
             )}
@@ -750,39 +752,39 @@ function StoreChecks() {
     <Section title="Every static check across the store" count={issues.length} actions={<>{errors ? <Badge tone="fail">{errors} errors</Badge> : <Badge tone="pass">no errors</Badge>} <Badge tone="warn">{issues.length - errors} warnings</Badge></>}>
       <ErrorBox error={checks.error} />
       <div className="toolbar">
-        <select value={code} onChange={(e) => setCode(e.target.value)} aria-label="Check">
+        <Select value={code} onChange={(e) => setCode(e.target.value)} aria-label="Check">
           <option value="">Every check</option>
           {codes.map((c) => <option key={c} value={c}>{c} {meta?.checks?.[c] ?? ''}</option>)}
-        </select>
-        <select value={sev} onChange={(e) => setSev(e.target.value)} aria-label="Severity">
+        </Select>
+        <Select value={sev} onChange={(e) => setSev(e.target.value)} aria-label="Severity">
           <option value="">Any severity</option>
           <option value="error">error</option>
           <option value="warning">warning</option>
-        </select>
+        </Select>
       </div>
       {checks.loading && !checks.data ? <Loading /> : (
         <div className="table-wrap">
-          <table className="grid compact">
-            <thead><tr><th>Check</th><th>Severity</th><th>Artefact</th><th>Step</th><th>Message</th></tr></thead>
-            <tbody>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Check</TableHeaderCell><TableHeaderCell>Severity</TableHeaderCell><TableHeaderCell>Artefact</TableHeaderCell><TableHeaderCell>Step</TableHeaderCell><TableHeaderCell>Message</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>
               {rows.map((i, n) => (
-                <tr key={n}>
-                  <td title={meta?.checks?.[i.code]}><Badge tone={i.severity === 'error' ? 'fail' : 'warn'}>{i.code}</Badge></td>
-                  <td>{i.severity}</td>
-                  <td className="small">{i.key && /\.v\d+$|^scheme:/.test(i.key) ? <ArtefactLink name={i.key} /> : <span className="mono">{i.key}</span>}</td>
-                  <td className="mono">{i.step ?? ''}</td>
-                  <td>{i.message}</td>
-                </tr>
+                <TableRow key={n}>
+                  <TableCell title={meta?.checks?.[i.code]}><Badge tone={i.severity === 'error' ? 'fail' : 'warn'}>{i.code}</Badge></TableCell>
+                  <TableCell>{i.severity}</TableCell>
+                  <TableCell className="small">{i.key && /\.v\d+$|^scheme:/.test(i.key) ? <ArtefactLink name={i.key} /> : <span className="mono">{i.key}</span>}</TableCell>
+                  <TableCell className="mono">{i.step ?? ''}</TableCell>
+                  <TableCell>{i.message}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       <details>
         <summary>The check catalogue</summary>
-        <table className="grid compact">
-          <tbody>{Object.entries(checks.data?.catalogue ?? {}).map(([k, v]) => <tr key={k}><td className="mono">{k}</td><td>{String(v)}</td></tr>)}</tbody>
-        </table>
+        <Table size="small" className="grid compact">
+          <TableBody>{Object.entries(checks.data?.catalogue ?? {}).map(([k, v]) => <TableRow key={k}><TableCell className="mono">{k}</TableCell><TableCell>{String(v)}</TableCell></TableRow>)}</TableBody>
+        </Table>
       </details>
     </Section>
   );

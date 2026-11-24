@@ -2435,6 +2435,13 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Record a step's rule trace as a fact on the payment's chain with its step fact, and read it from there for the observation and the operations console.
 
+## I-330. The pages' content security policy and a UI library that writes its own styles
+
+**Issue.** The studio and the runtime's consoles moved to Fluent UI 2 (ADR 0003). Fluent writes its component styles and its theme's tokens into `<style>` elements at run time. The pages' policies said `style-src 'self'` (R-11-43 for the studio, R-09-60 for a runtime host), which a browser applies to those elements too: with the policy as it was, every page drew unstyled. R-09-60 says the console's page "may load only its own scripts and styles"; it does not say whether styles the page's own script writes are its own. R-11-43 forbids inline script only.
+
+**Done (24 November 2026).** Each answer with the page names a fresh nonce: the studio server (`appCsp`, `src/server/http.ts`) and the runtime hosts (`SecurityHeaders.WriteConsolePageAsync`, `UseConsolePage`) put it in the page's `<meta name="th-style-nonce">` and in `style-src 'self' 'nonce-…'`; the page gives it to Fluent's renderer, which sets it on every style element. `unsafe-inline` stays out, and scripts are still the page's own files only (`script-src 'self'`). Checked by `studio/test/security.test.ts` and `SecurityHeadersTests`.
+
+**Recommendation.** Say in R-09-60 and R-11-43 that a page may also apply style elements its own script writes when they carry the nonce of that answer, and never inline script; or, if the owner prefers no style elements at all, build Fluent's styles ahead of time into a stylesheet (Griffel's CSS extraction), which needs a build plugin the studio's Vite build does not have today.
 ## I-310. A sent file's kind is the bank binding's word, not the scheme's message
 
 **Issue.** The gauge of the oldest wait for a reply now reads its pairs from the schemes (R-09-211): `uae.wps.ack` answers `uae.wps.sif-submission`. The read model's documents carry the kind the File API kept a sent file under, which is the bank binding's `<operation>.kind` (on the laptop `submit-file.kind: uae.wps.sif-out`), so the pair the scheme declares matches no document of a sent salary file, and the laptop's `Service:Gauges:AwaitedReplies` names `uae.wps.sif`, the channel's inward file's kind. The spec does not say what a sent file's kind is.

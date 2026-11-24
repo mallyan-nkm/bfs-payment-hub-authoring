@@ -120,7 +120,7 @@ describe('the assistant beside every surface', () => {
     await signInPage(page, server.url, 'shared.designer');
 
     await go('tests');
-    await page.getByRole('button', { name: 'Ad hoc bench' }).click();
+    await page.getByRole('tab', { name: 'Ad hoc bench' }).click();
     await page.getByLabel('Target', { exact: true }).selectOption('uae.p.validate.iban.v1');
     await expect.poll(async () => (await dock().getByTestId('explanation').textContent()) ?? '').toMatch(/The bench will run uae\.p\.validate\.iban\.v1/);
     await page.getByLabel('Run tenant').focus();

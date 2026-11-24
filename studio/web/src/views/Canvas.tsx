@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { get, type Issue } from '../api';
-import { Badge } from '../ui';
+import { Alert, Badge } from '../ui';
 import { Sel, Txt, StringList, useCatalogue } from '../authoring';
 import { isComposite, prefixSteps } from '../expand';
 import { Outline, stepKind, stepLabel } from './Outline';
+import { Button, Checkbox, Input, Link, SearchBox, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The canvas (C14-S2, C14-S3, C14-S6): compose a workflow from steps without writing YAML.
 // Each change writes the document, the YAML editor follows, and the checks run on every edit.
@@ -99,9 +100,9 @@ export function Canvas({ doc, onChange, issues, docs, selected, onSelect }: Canv
           </div>
         )}
         {clip && (
-          <div className="alert warn small cv-clip">
-            Holding a <b>{stepKind(clip)}</b> step <code>{stepLabel(clip)}</code>. Use "Paste here" on any lane to put it back. <button className="link" onClick={() => setClip(undefined)}>Discard it</button>
-          </div>
+          <Alert tone="warn" className="small cv-clip">
+            Holding a <b>{stepKind(clip)}</b> step <code>{stepLabel(clip)}</code>. Use "Paste here" on any lane to put it back. <Link as="button" onClick={() => setClip(undefined)}>Discard it</Link>
+          </Alert>
         )}
         {doc.deadline ? (
           <Lane title={<><span className="ol-kind k-deadline">deadline</span> after <Txt value={doc.deadline.after} onChange={(v) => ctx.set(['deadline', 'after'], v)} mono size={8} label="Deadline after" /></>} onRemove={() => ctx.set(['deadline'], undefined)}>
@@ -117,8 +118,8 @@ export function Canvas({ doc, onChange, issues, docs, selected, onSelect }: Canv
           </Lane>
         ) : null}
         <div className="row-actions">
-          {!doc.deadline && doc.wfKind !== 'subflow' && <button onClick={() => ctx.set(['deadline'], { after: 'PT8S', do: [] })}>Add a deadline lane</button>}
-          {!doc.finally && doc.wfKind !== 'subflow' && <button onClick={() => ctx.set(['finally'], [])}>Add a finally lane</button>}
+          {!doc.deadline && doc.wfKind !== 'subflow' && <Button onClick={() => ctx.set(['deadline'], { after: 'PT8S', do: [] })}>Add a deadline lane</Button>}
+          {!doc.finally && doc.wfKind !== 'subflow' && <Button onClick={() => ctx.set(['finally'], [])}>Add a finally lane</Button>}
         </div>
       </div>
     </C.Provider>
@@ -143,7 +144,7 @@ function Lane({ title, children, onRemove }: { title: ReactNode; children: React
     <div className="cv-lane">
       <div className="cv-lane-head">
         {title}
-        {onRemove && <button className="link danger small" onClick={onRemove}>Remove the lane</button>}
+        {onRemove && <Link as="button" className="danger small" onClick={onRemove}>Remove the lane</Link>}
       </div>
       {children}
     </div>
@@ -177,10 +178,10 @@ function InterfaceEditor() {
                   <span className="small muted">outcomes</span>
                   <StringList value={s.contract?.outcomes} onChange={(v) => set(['slots', i, 'contract', 'outcomes'], v)} placeholder="outcome" />
                   <Sel value={s.contract?.primaryOutcome} onChange={(v) => set(['slots', i, 'contract', 'primaryOutcome'], v)} options={s.contract?.outcomes ?? []} label="Primary outcome" blank="primary outcome" />
-                  <button className="link danger" onClick={() => set(['slots'], (doc.slots as any[]).filter((_, n) => n !== i).length ? (doc.slots as any[]).filter((_, n) => n !== i) : undefined)}>Remove</button>
+                  <Link as="button" className="danger" onClick={() => set(['slots'], (doc.slots as any[]).filter((_, n) => n !== i).length ? (doc.slots as any[]).filter((_, n) => n !== i) : undefined)}>Remove</Link>
                 </div>
               ))}
-              <button onClick={() => set(['slots'], [...(doc.slots ?? []), { name: 'new-slot', contract: { reads: [], writes: [], outcomes: ['done'], primaryOutcome: 'done' } }])}>Declare a slot</button>
+              <Button onClick={() => set(['slots'], [...(doc.slots ?? []), { name: 'new-slot', contract: { reads: [], writes: [], outcomes: ['done'], primaryOutcome: 'done' } }])}>Declare a slot</Button>
               <h4>Hook points</h4>
               {(doc.hookPoints ?? []).map((h: any, i: number) => (
                 <div key={i} className="bench-row">
@@ -188,10 +189,10 @@ function InterfaceEditor() {
                   <Sel value={h.type} onChange={(v) => set(['hookPoints', i, 'type'], v)} options={['transform', 'gate', 'notify']} label="Hook point type" />
                   <span className="small muted">writes</span>
                   <StringList value={h.contract?.writes} onChange={(v) => set(['hookPoints', i, 'contract', 'writes'], v)} placeholder="path" />
-                  <button className="link danger" onClick={() => set(['hookPoints'], (doc.hookPoints as any[]).filter((_, n) => n !== i).length ? (doc.hookPoints as any[]).filter((_, n) => n !== i) : undefined)}>Remove</button>
+                  <Link as="button" className="danger" onClick={() => set(['hookPoints'], (doc.hookPoints as any[]).filter((_, n) => n !== i).length ? (doc.hookPoints as any[]).filter((_, n) => n !== i) : undefined)}>Remove</Link>
                 </div>
               ))}
-              <button onClick={() => set(['hookPoints'], [...(doc.hookPoints ?? []), { name: 'new-hook-point', type: 'notify', contract: { reads: ['header'] } }])}>Declare a hook point</button>
+              <Button onClick={() => set(['hookPoints'], [...(doc.hookPoints ?? []), { name: 'new-hook-point', type: 'notify', contract: { reads: ['header'] } }])}>Declare a hook point</Button>
             </>
           )}
         </div>
@@ -242,17 +243,17 @@ function Inserter({ onInsert, last, empty }: { onInsert: (st: any) => void; last
   if (!open) {
     return (
       <div className={last ? 'cv-insert last' : 'cv-insert'}>
-        <button className="cv-plus" onClick={() => setOpen(true)} title="Insert a step here" aria-label="Insert a step here">+{last ? (empty ? ' Add the first step' : ' Add a step') : ''}</button>
-        {ctx.clip && <button className="link small" onClick={() => { onInsert(ctx.clip); ctx.setClip(undefined); }}>Paste here</button>}
+        <Button className="cv-plus" onClick={() => setOpen(true)} title="Insert a step here" aria-label="Insert a step here">+{last ? (empty ? ' Add the first step' : ' Add a step') : ''}</Button>
+        {ctx.clip && <Link as="button" className="small" onClick={() => { onInsert(ctx.clip); ctx.setClip(undefined); }}>Paste here</Link>}
       </div>
     );
   }
   return (
     <div className="cv-palette" role="menu">
       {kinds.map((k) => (
-        <button key={k} className={`cv-pal k-${k}`} onClick={() => { onInsert(template(k, ctx.doc, ctx.ids)); setOpen(false); }}>{k}</button>
+        <Button key={k} className={`cv-pal k-${k}`} onClick={() => { onInsert(template(k, ctx.doc, ctx.ids)); setOpen(false); }}>{k}</Button>
       ))}
-      <button className="link" onClick={() => setOpen(false)}>Cancel</button>
+      <Link as="button" onClick={() => setOpen(false)}>Cancel</Link>
       {!ctx.subflow && <span className="muted small">await and return are offered only in a subflow (L31).</span>}
     </div>
   );
@@ -278,10 +279,10 @@ function StepCard({ st, path, index, count, onMove, onDelete, onCut }: { st: any
         {st?.id && <span className="ol-id">{st.id}</span>}
         <span className="ol-main"><Summary st={st} kind={kind} /></span>
         <span className="cv-tools" onClick={(e) => e.stopPropagation()}>
-          <button className="link" disabled={index === 0} onClick={() => onMove(-1)} title="Move up" aria-label={`Move ${label} up`}>↑</button>
-          <button className="link" disabled={index === count - 1} onClick={() => onMove(1)} title="Move down" aria-label={`Move ${label} down`}>↓</button>
-          <button className="link" onClick={onCut} title="Cut, to paste in another place" aria-label={`Cut ${label}`}>cut</button>
-          <button className="link danger" onClick={onDelete} title="Delete the step" aria-label={`Delete ${label}`}>delete</button>
+          <Link as="button" disabled={index === 0} onClick={() => onMove(-1)} title="Move up" aria-label={`Move ${label} up`}>↑</Link>
+          <Link as="button" disabled={index === count - 1} onClick={() => onMove(1)} title="Move down" aria-label={`Move ${label} down`}>↓</Link>
+          <Link as="button" onClick={onCut} title="Cut, to paste in another place" aria-label={`Cut ${label}`}>cut</Link>
+          <Link as="button" className="danger" onClick={onDelete} title="Delete the step" aria-label={`Delete ${label}`}>delete</Link>
         </span>
       </div>
       {issues.length > 0 && (
@@ -386,7 +387,7 @@ function CompositeInside({ st, act }: { st: any; act: any }) {
   }, [sub, st, act, name]);
   return (
     <div className="cv-inside">
-      <button className="link small" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? '▾ Hide' : '▸ Show'} the steps inside <code>{st.id ?? st.call}</code> ({name})</button>
+      <Link as="button" className="small" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? '▾ Hide' : '▸ Show'} the steps inside <code>{st.id ?? st.call}</code> ({name})</Link>
       {open && (
         <div className="cv-inside-body">
           {err && <div className="small fail-text">{err}</div>}
@@ -438,7 +439,7 @@ function StepEditor({ st, kind, set }: { st: any; kind: string; set: (p: Path, v
       return (
         <div className="form-grid">
           <label className="field"><span>Outcome</span><Txt value={st.end} onChange={(v) => set(['end'], v)} mono label="End outcome" list="cv-exits" /></label>
-          <label className="check"><input type="checkbox" checked={!!st.compensate} onChange={(e) => set(['compensate'], e.target.checked ? 'all' : undefined)} /> Compensate all first</label>
+          <Checkbox className="check" checked={!!st.compensate} onChange={(e) => set(['compensate'], e.target.checked ? 'all' : undefined)} label={<>Compensate all first</>} />
           <datalist id="cv-exits">{exits.map((o) => <option key={o} value={o} />)}</datalist>
         </div>
       );
@@ -475,7 +476,7 @@ function StepEditor({ st, kind, set }: { st: any; kind: string; set: (p: Path, v
           </div>
           <h4>Cases</h4>
           <KeyList keys={Object.keys(s.cases ?? {})} onAdd={(k) => set(['switch', 'cases', k], [])} onRemove={(k) => set(['switch', 'cases', k], undefined)} placeholder="case value" />
-          <label className="check"><input type="checkbox" checked={'default' in s} onChange={(e) => set(['switch', 'default'], e.target.checked ? [] : undefined)} /> A default branch</label>
+          <Checkbox className="check" checked={'default' in s} onChange={(e) => set(['switch', 'default'], e.target.checked ? [] : undefined)} label={<>A default branch</>} />
         </>
       );
     }
@@ -483,8 +484,8 @@ function StepEditor({ st, kind, set }: { st: any; kind: string; set: (p: Path, v
       const b: any[] = st.parallel?.branches ?? [];
       return (
         <div className="row-actions">
-          <button onClick={() => set(['parallel', 'branches'], [...b, []])}>Add a branch</button>
-          <button disabled={b.length <= 2} onClick={() => set(['parallel', 'branches'], b.slice(0, -1))}>Remove the last branch</button>
+          <Button onClick={() => set(['parallel', 'branches'], [...b, []])}>Add a branch</Button>
+          <Button disabled={b.length <= 2} onClick={() => set(['parallel', 'branches'], b.slice(0, -1))}>Remove the last branch</Button>
           <span className="muted small">A parallel step has two branches at least and joins all.</span>
         </div>
       );
@@ -514,16 +515,16 @@ function StepEditor({ st, kind, set }: { st: any; kind: string; set: (p: Path, v
       const cs: any[] = Array.isArray(st.catch) ? st.catch : [];
       return (
         <>
-          <label className="check"><input type="checkbox" checked={!!st.compensate} onChange={(e) => set(['compensate'], e.target.checked ? 'all' : undefined)} /> Compensate all on a caught error</label>
+          <Checkbox className="check" checked={!!st.compensate} onChange={(e) => set(['compensate'], e.target.checked ? 'all' : undefined)} label={<>Compensate all on a caught error</>} />
           <h4>Catch</h4>
           {cs.map((c, i) => (
             <div key={i} className="cv-catch">
               <Txt value={c.error} onChange={(v) => set(['catch', i, 'error'], v ?? '')} mono label="Error name" placeholder="TransientError" />
               <ActionEditor value={c.do} onChange={(v) => set(['catch', i, 'do'], v)} />
-              <button className="link danger" onClick={() => set(['catch'], cs.filter((_, n) => n !== i))}>Remove</button>
+              <Link as="button" className="danger" onClick={() => set(['catch'], cs.filter((_, n) => n !== i))}>Remove</Link>
             </div>
           ))}
-          <button onClick={() => set(['catch'], [...cs, { error: 'BusinessReject', do: { continue: true } }])}>Add a catch</button>
+          <Button onClick={() => set(['catch'], [...cs, { error: 'BusinessReject', do: { continue: true } }])}>Add a catch</Button>
         </>
       );
     }
@@ -535,8 +536,8 @@ function KeyList({ keys, onAdd, onRemove, placeholder }: { keys: string[]; onAdd
   const [t, setT] = useState('');
   return (
     <div className="chips">
-      {keys.map((k) => <span key={k} className="chip mono">{k} <button className="link danger" onClick={() => onRemove(k)} aria-label={`Remove ${k}`}>×</button></span>)}
-      <span className="inline-form"><input value={t} onChange={(e) => setT(e.target.value)} placeholder={placeholder} className="mono" aria-label={placeholder} /><button disabled={!t.trim() || keys.includes(t.trim())} onClick={() => { onAdd(t.trim()); setT(''); }}>Add</button></span>
+      {keys.map((k) => <span key={k} className="chip mono">{k} <Link as="button" className="danger" onClick={() => onRemove(k)} aria-label={`Remove ${k}`}>×</Link></span>)}
+      <span className="inline-form"><Input value={t} onChange={(e) => setT(e.target.value)} placeholder={placeholder} className="mono" aria-label={placeholder} /><Button disabled={!t.trim() || keys.includes(t.trim())} onClick={() => { onAdd(t.trim()); setT(''); }}>Add</Button></span>
     </div>
   );
 }
@@ -554,24 +555,24 @@ function BlockPicker({ kind = 'activity', value, onPick, filter }: { kind?: stri
     return (
       <span className="inline-form">
         <code className="strong break">{value}</code>
-        <button onClick={() => setOpen(true)}>Change</button>
+        <Button onClick={() => setOpen(true)}>Change</Button>
       </span>
     );
   }
   return (
     <div className="picker">
-      <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search the ${kind}s by name, title or type`} aria-label="Search the catalogue" />
+      <SearchBox autoFocus value={q} onChange={(_, d) => setQ(d.value)} placeholder={`Search the ${kind}s by name, title or type`} aria-label="Search the catalogue" />
       <ul className="picker-list">
         {hits.map((s) => (
           <li key={s.key}>
-            <button className="picker-item" onClick={() => { onPick(s.name); setOpen(false); setQ(''); }}>
+            <Button className="picker-item" onClick={() => { onPick(s.name); setOpen(false); setQ(''); }}>
               <span className="mono">{s.name}</span> <span className="muted small">{s.type} · {s.title}</span>
-            </button>
+            </Button>
           </li>
         ))}
         {!hits.length && <li className="muted small">No match.</li>}
       </ul>
-      {value && <button className="link small" onClick={() => setOpen(false)}>Keep {value}</button>}
+      {value && <Link as="button" className="small" onClick={() => setOpen(false)}>Keep {value}</Link>}
     </div>
   );
 }
@@ -612,13 +613,13 @@ function CallEditor({ st, set, idField }: { st: any; set: (p: Path, v: any) => v
                 <label className="field"><span>Reply time</span><Txt value={pol.replyTimeout} onChange={(v) => setPol('replyTimeout', v)} mono label="Reply timeout" placeholder={act.policy?.replyTimeout ?? 'P1D'} /></label>
                 <label className="field"><span>Reply calendar</span><Sel value={pol.replyCalendar} onChange={(v) => setPol('replyCalendar', v)} options={['elapsed', 'business']} label="Reply calendar" blank={act.policy?.replyCalendar ? `activity: ${act.policy.replyCalendar}` : 'none'} /></label>
               </div>
-              <table className="grid compact">
-                <thead><tr><th>Setting</th><th>Effective value</th><th>Comes from</th></tr></thead>
-                <tbody>
-                  <tr><td>replyTimeout</td><td>{reply ? <code>{reply.v}</code> : <span className="fail-text">none (L32)</span>}</td><td>{reply && <Badge tone={reply.from === 'step override' ? 'warn' : 'info'}>{reply.from}</Badge>}</td></tr>
-                  <tr><td>replyCalendar</td><td>{cal ? <code>{cal.v}</code> : <span className="muted">elapsed</span>}</td><td>{cal ? <Badge tone={cal.from === 'step override' ? 'warn' : 'info'}>{cal.from}</Badge> : <Badge>type default</Badge>}</td></tr>
-                </tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Setting</TableHeaderCell><TableHeaderCell>Effective value</TableHeaderCell><TableHeaderCell>Comes from</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>
+                  <TableRow><TableCell>replyTimeout</TableCell><TableCell>{reply ? <code>{reply.v}</code> : <span className="fail-text">none (L32)</span>}</TableCell><TableCell>{reply && <Badge tone={reply.from === 'step override' ? 'warn' : 'info'}>{reply.from}</Badge>}</TableCell></TableRow>
+                  <TableRow><TableCell>replyCalendar</TableCell><TableCell>{cal ? <code>{cal.v}</code> : <span className="muted">elapsed</span>}</TableCell><TableCell>{cal ? <Badge tone={cal.from === 'step override' ? 'warn' : 'info'}>{cal.from}</Badge> : <Badge>type default</Badge>}</TableCell></TableRow>
+                </TableBody>
+              </Table>
               <p className="muted small">A composite's own steps carry their attempt and retry policy; the designer sets only how long the block waits for its reply.</p>
             </>
           ) : (
@@ -648,22 +649,22 @@ function HandleEditor({ outcomes, primary, handle, set }: { outcomes: string[]; 
       <h4>Handle</h4>
       {primary && <p className="muted small">The primary outcome <code>{primary}</code> falls through to the next step.</p>}
       {!outcomes.length && <p className="muted small">No other outcome to handle.</p>}
-      <table className="grid compact handle-table">
-        <tbody>
+      <Table size="small" className="grid compact handle-table">
+        <TableBody>
           {outcomes.map((o) => (
-            <tr key={o} className={h[o] === undefined ? 'row-fail' : ''}>
-              <td className="mono nowrap">{o}</td>
-              <td><ActionEditor value={h[o]} onChange={(v) => put(o, v)} allowNone outcome={o} /></td>
-            </tr>
+            <TableRow key={o} className={h[o] === undefined ? 'row-fail' : ''}>
+              <TableCell className="mono nowrap">{o}</TableCell>
+              <TableCell><ActionEditor value={h[o]} onChange={(v) => put(o, v)} allowNone outcome={o} /></TableCell>
+            </TableRow>
           ))}
           {extra.map((o) => (
-            <tr key={o} className="row-warn">
-              <td className="mono nowrap">{o}</td>
-              <td><span className="warn-text small">Not an outcome of this block. </span><button className="link danger" onClick={() => put(o, undefined)}>Remove</button></td>
-            </tr>
+            <TableRow key={o} className="row-warn">
+              <TableCell className="mono nowrap">{o}</TableCell>
+              <TableCell><span className="warn-text small">Not an outcome of this block. </span><Link as="button" className="danger" onClick={() => put(o, undefined)}>Remove</Link></TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </>
   );
 }
@@ -676,17 +677,17 @@ function ActionEditor({ value, onChange, allowNone, outcome }: { value: any; onC
   const modes: [string, string][] = [...(allowNone ? [['none', 'not handled'] as [string, string]] : []), ['end', 'end the workflow'], ['continue', 'record and carry on'], ['steps', 'run steps'], ...(ctx.subflow ? [['return', 'return an outcome'] as [string, string]] : [])];
   return (
     <span className="action-editor">
-      <select value={mode} aria-label="Action" onChange={(e) => {
+      <Select value={mode} aria-label="Action" onChange={(e) => {
         const m = e.target.value;
         onChange(m === 'none' ? undefined : m === 'end' ? { end: fallback } : m === 'continue' ? { continue: true } : m === 'steps' ? [] : m === 'return' ? { return: fallback } : value);
       }}>
         {modes.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         {mode === 'other' && <option value="other">as in the YAML</option>}
-      </select>
+      </Select>
       {mode === 'end' && (
         <>
-          <input value={value.end ?? ''} onChange={(e) => onChange({ ...value, end: e.target.value })} className="mono" list="cv-exit-list" aria-label="End outcome" size={12} />
-          <label className="check small"><input type="checkbox" checked={!!value.compensate} onChange={(e) => onChange(e.target.checked ? { ...value, compensate: 'all' } : { end: value.end })} /> compensate</label>
+          <Input style={{ width: '15ch' }} value={value.end ?? ''} onChange={(e) => onChange({ ...value, end: e.target.value })} className="mono" list="cv-exit-list" aria-label="End outcome" />
+          <Checkbox className="check small" checked={!!value.compensate} onChange={(e) => onChange(e.target.checked ? { ...value, compensate: 'all' } : { end: value.end })} label={<>compensate</>} />
         </>
       )}
       {mode === 'return' && <Sel value={value.return} onChange={(v) => onChange({ return: v ?? '' })} options={exits} label="Return outcome" blank="choose" />}

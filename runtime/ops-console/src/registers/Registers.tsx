@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { show } from '../ops/format';
 import type { Change, RegisterField, RegisterKind, RegistersClient, RegistersInfo, Version } from './api';
 import { changedFields, missing, stateLabel, toInput } from './form';
+import { Button, Card, Checkbox, Input, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
+import { Alert, Badge } from '../ui';
 
 // The registers area (R-05-62 to R-05-64): the bank's registers, starting with the corporate registration. Rendered from each
 // kind's declaration: its key, its fields and their types, which are masked. A maker proposes a change; it waits until a
@@ -26,17 +28,17 @@ function RecordForm({ kind, before, onSubmit, busy }: { kind: RegisterKind; befo
           <label key={f.id} data-field={f.id}>
             <span>{f.title}{f.required ? ' *' : ''}{f.personal ? <span className="muted"> (personal, masked)</span> : null}</span>
             {f.type === 'boolean'
-              ? <input type="checkbox" name={f.id} checked={edited[f.id] === true} onChange={(e) => setEdited({ ...edited, [f.id]: e.target.checked })} />
-              : <input name={f.id} type={f.type === 'date' ? 'date' : 'text'} value={String(edited[f.id] ?? '')} disabled={!!before && f.id === kind.key}
+              ? <Checkbox name={f.id} checked={edited[f.id] === true} onChange={(e) => setEdited({ ...edited, [f.id]: e.target.checked })} />
+              : <Input name={f.id} type={f.type === 'date' ? 'date' : 'text'} value={String(edited[f.id] ?? '')} disabled={!!before && f.id === kind.key}
                   placeholder={f.type === 'list' ? 'comma separated' : f.references ? `a code of ${f.references}` : ''}
                   onChange={(e) => setEdited({ ...edited, [f.id]: e.target.value })} />}
           </label>
         ))}
-        <label><span>From (optional)</span><input type="date" name="validFrom" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></label>
-        <label className="wide"><span>Remarks</span><textarea name="remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
+        <label><span>From (optional)</span><Input type="date" name="validFrom" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} /></label>
+        <label className="wide"><span>Remarks</span><Textarea name="remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
       </div>
       {need.length > 0 && <p className="muted">Required: {need.join(', ')}</p>}
-      <button className="primary" type="submit" disabled={busy || need.length > 0 || Object.keys(fields).length === 0}>Propose the change</button>
+      <Button appearance="primary" type="submit" disabled={busy || need.length > 0 || Object.keys(fields).length === 0}>Propose the change</Button>
       <p className="muted">The change takes effect only when a bank approver other than you consents to it.</p>
     </form>
   );
@@ -44,17 +46,17 @@ function RecordForm({ kind, before, onSubmit, busy }: { kind: RegisterKind; befo
 
 function History({ kind, rows }: { kind: RegisterKind; rows: Version[] }) {
   return (
-    <table className="grid" aria-label="History">
-      <thead><tr><th>Version</th><th>State</th><th>From</th><th>Made by</th><th>Decided by</th><th>In effect from</th><th>{kind.fields.find((f) => f.id === kind.titleField)?.title ?? 'Record'}</th></tr></thead>
-      <tbody>{rows.map((v) => (
-        <tr key={v.id} data-testid="version" data-state={v.state}>
-          <td>{v.versionNo}</td>
-          <td><span className={`badge ${v.state === 'approved' ? 'pass' : v.state === 'rejected' ? 'fail' : 'warn'}`}>{stateLabel(v.state)}</span></td>
-          <td>{show(v.validFrom, 'datetime')}</td><td>{v.madeBy}</td><td>{v.decidedBy ?? '—'}</td><td>{show(v.effectiveFrom, 'datetime')}</td>
-          <td>{show(v.fields[kind.titleField])}</td>
-        </tr>
-      ))}</tbody>
-    </table>
+    <Table size="small" className="grid" aria-label="History">
+      <TableHeader><TableRow><TableHeaderCell>Version</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>From</TableHeaderCell><TableHeaderCell>Made by</TableHeaderCell><TableHeaderCell>Decided by</TableHeaderCell><TableHeaderCell>In effect from</TableHeaderCell><TableHeaderCell>{kind.fields.find((f) => f.id === kind.titleField)?.title ?? 'Record'}</TableHeaderCell></TableRow></TableHeader>
+      <TableBody>{rows.map((v) => (
+        <TableRow key={v.id} data-testid="version" data-state={v.state}>
+          <TableCell>{v.versionNo}</TableCell>
+          <TableCell><Badge className={`badge ${v.state === 'approved' ? 'pass' : v.state === 'rejected' ? 'fail' : 'warn'}`}>{stateLabel(v.state)}</Badge></TableCell>
+          <TableCell>{show(v.validFrom, 'datetime')}</TableCell><TableCell>{v.madeBy}</TableCell><TableCell>{v.decidedBy ?? '—'}</TableCell><TableCell>{show(v.effectiveFrom, 'datetime')}</TableCell>
+          <TableCell>{show(v.fields[kind.titleField])}</TableCell>
+        </TableRow>
+      ))}</TableBody>
+    </Table>
   );
 }
 
@@ -66,7 +68,7 @@ function RecordDetail({ api, kind, keyValue, tenant, maker, go }: { api: Registe
   const [busy, setBusy] = useState(false);
   const load = () => api.record(kind.name, keyValue, tenant).then(setData).catch((e) => setError(String(e.message ?? e)));
   useEffect(() => { load(); }, [keyValue]);
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <Alert tone="fail" className="error">{error}</Alert>;
   if (!data) return <p className="muted">Loading…</p>;
   const waiting = data.history.some((v) => v.state === 'pending');
   return (
@@ -78,7 +80,7 @@ function RecordDetail({ api, kind, keyValue, tenant, maker, go }: { api: Registe
           {kind.fields.map((f) => <div key={f.id} data-field={f.id}><dt>{f.title}</dt><dd>{value(f, data.current![f.id])}</dd></div>)}
         </dl>
       ) : <p className="muted" data-testid="not-in-force">No version is in force yet.</p>}
-      {waiting && <p className="badge warn" data-testid="waiting">A change waits for the bank approver's consent.</p>}
+      {waiting && <Alert tone="warn" className="waiting" data-testid="waiting">A change waits for the bank approver's consent.</Alert>}
       {maker && !waiting && (editing
         ? <RecordForm kind={kind} before={data.current} busy={busy} onSubmit={async (fields, validFrom, remarks) => {
             setBusy(true);
@@ -86,11 +88,11 @@ function RecordDetail({ api, kind, keyValue, tenant, maker, go }: { api: Registe
             catch (e: any) { setMsg(String(e.message ?? e)); }
             finally { setBusy(false); }
           }} />
-        : <button onClick={() => setEditing(true)}>Change</button>)}
-      {msg && <p className="note" role="status">{msg}</p>}
+        : <Button onClick={() => setEditing(true)}>Change</Button>)}
+      {msg && <Alert tone="info" className="note" role="status">{msg}</Alert>}
       <h2>History</h2>
       <History kind={kind} rows={data.history} />
-      <p><button className="link" onClick={() => go('#/registers/changes')}>Changes waiting for consent</button></p>
+      <p><Link as="button" onClick={() => go('#/registers/changes')}>Changes waiting for consent</Link></p>
     </section>
   );
 }
@@ -110,9 +112,9 @@ function RecordList({ api, kind, tenant, maker, go }: { api: RegistersClient; ki
       <h1>{kind.title}</h1>
       <p className="muted">{kind.description}</p>
       <form className="filters" onSubmit={(e) => { e.preventDefault(); load(); }}>
-        <input aria-label="Search" placeholder="Search by id, name, or a lookup field" value={q} onChange={(e) => setQ(e.target.value)} />
-        <button type="submit">Search</button>
-        {maker && <button type="button" onClick={() => setAdding(!adding)}>New {kind.title.toLowerCase()}</button>}
+        <Input aria-label="Search" placeholder="Search by id, name, or a lookup field" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Button type="submit">Search</Button>
+        {maker && <Button type="button" onClick={() => setAdding(!adding)}>New {kind.title.toLowerCase()}</Button>}
         <span className="muted">{total} in force</span>
       </form>
       {adding && <RecordForm kind={kind} before={null} busy={busy} onSubmit={async (fields, validFrom, remarks) => {
@@ -121,15 +123,15 @@ function RecordList({ api, kind, tenant, maker, go }: { api: RegistersClient; ki
         catch (e: any) { setMsg(String(e.message ?? e)); }
         finally { setBusy(false); }
       }} />}
-      {msg && <p className="note" role="status">{msg}</p>}
-      <table className="grid" aria-label="Records">
-        <thead><tr>{cols.map((c) => <th key={c.id}>{c.title}</th>)}</tr></thead>
-        <tbody>{rows?.map((r) => (
-          <tr key={String(r[kind.key])} className="clickable" data-testid="record-row" onClick={() => go(`#/registers/${kind.name}/${encodeURIComponent(String(r[kind.key]))}`)}>
-            {cols.map((c) => <td key={c.id}>{value(c, r[c.id])}</td>)}
-          </tr>
-        ))}</tbody>
-      </table>
+      {msg && <Alert tone="info" className="note" role="status">{msg}</Alert>}
+      <Table size="small" className="grid" aria-label="Records">
+        <TableHeader><TableRow>{cols.map((c) => <TableHeaderCell key={c.id}>{c.title}</TableHeaderCell>)}</TableRow></TableHeader>
+        <TableBody>{rows?.map((r) => (
+          <TableRow key={String(r[kind.key])} className="clickable" data-testid="record-row" onClick={() => go(`#/registers/${kind.name}/${encodeURIComponent(String(r[kind.key]))}`)}>
+            {cols.map((c) => <TableCell key={c.id}>{value(c, r[c.id])}</TableCell>)}
+          </TableRow>
+        ))}</TableBody>
+      </Table>
       {rows?.length === 0 && <p className="muted">No record in force.</p>}
     </section>
   );
@@ -147,26 +149,26 @@ function Changes({ api, kinds }: { api: RegistersClient; kinds: RegisterKind[] }
   return (
     <section>
       <h1>Register changes waiting for consent</h1>
-      {msg && <p className="note" role="status">{msg}</p>}
+      {msg && <Alert tone="info" className="note" role="status">{msg}</Alert>}
       {rows?.length === 0 && <p className="muted">Nothing waits.</p>}
       {rows?.map((c) => {
         const kind = kinds.find((k) => k.name === c.kind);
         // The fields an approver checks first: the record's title and the fields it is looked up by.
         const shown = kind?.fields.filter((f) => f.id !== kind.key && (f.id === kind.titleField || f.lookup || f.type === 'boolean')) ?? [];
         return (
-          <div className="card" key={c.id} data-testid="change" data-change={c.id}>
+          <Card className="card" key={c.id} data-testid="change" data-change={c.id}>
             <h3>{kind?.title ?? c.kind}: {c.count} record(s) <span className="muted mono">{c.id}</span></h3>
             <p className="muted">Proposed by {c.madeBy} on {show(c.madeAt, 'datetime')} from the {c.source}{c.remarks ? `: ${c.remarks}` : ''}</p>
-            <table className="grid" aria-label={`Records of ${c.id}`}>
-              <thead><tr><th>Key</th><th>Version</th>{shown.map((f) => <th key={f.id}>{f.title}</th>)}</tr></thead>
-              <tbody>{c.records.map((r) => (
-                <tr key={r.key}><td className="mono">{r.key}</td><td>{r.versionNo}</td>{shown.map((f) => <td key={f.id}>{value(f, r.fields[f.id])}</td>)}</tr>
-              ))}</tbody>
-            </table>
+            <Table size="small" className="grid" aria-label={`Records of ${c.id}`}>
+              <TableHeader><TableRow><TableHeaderCell>Key</TableHeaderCell><TableHeaderCell>Version</TableHeaderCell>{shown.map((f) => <TableHeaderCell key={f.id}>{f.title}</TableHeaderCell>)}</TableRow></TableHeader>
+              <TableBody>{c.records.map((r) => (
+                <TableRow key={r.key}><TableCell className="mono">{r.key}</TableCell><TableCell>{r.versionNo}</TableCell>{shown.map((f) => <TableCell key={f.id}>{value(f, r.fields[f.id])}</TableCell>)}</TableRow>
+              ))}</TableBody>
+            </Table>
             {c.mayDecide
-              ? <div className="action-buttons"><button className="primary" onClick={() => decide(c, true)}>Consent</button><button onClick={() => decide(c, false)}>Refuse</button></div>
+              ? <div className="action-buttons"><Button appearance="primary" onClick={() => decide(c, true)}>Consent</Button><Button onClick={() => decide(c, false)}>Refuse</Button></div>
               : <p className="muted" data-testid="not-yours">A bank approver other than its maker consents to it.</p>}
-          </div>
+          </Card>
         );
       })}
     </section>
@@ -177,7 +179,7 @@ export function RegistersSection({ api, path, go }: { api: RegistersClient; path
   const [info, setInfo] = useState<RegistersInfo | null | string>(null);
   useEffect(() => { api.info().then(setInfo).catch((e) => setInfo(String(e.message ?? e))); }, []);
   if (info === null) return <p className="muted">Loading…</p>;
-  if (typeof info === 'string') return <p className="error" data-testid="registers-refused">{info}</p>;
+  if (typeof info === 'string') return <Alert tone="fail" className="error" data-testid="registers-refused">{info}</Alert>;
   const tenants = Object.keys(info.tenants).filter((t) => t !== '*');
   const tenant = tenants[0];
   if (!tenant) return <p className="muted">You have no register role in a bank.</p>;

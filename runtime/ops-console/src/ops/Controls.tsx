@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Client } from './api';
 import { show } from './format';
+import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
+import { Alert } from '../ui';
 
 // The console's controls beside the payments: the turnaround breaches (R-05-68), what is due for erasure and the legal holds
 // (R-05-70), and the changes of the system that wait for a bank approver's consent: unmasks, erasures, a legal hold's release,
@@ -20,18 +22,18 @@ export function Turnaround({ api, go }: { api: Client; go(h: string): void }) {
     <section>
       <h1>Turnaround breaches</h1>
       <p className="muted">Payments open, or that ended, later than the bank's turnaround limit after their acceptance. Each breach is alerted once.</p>
-      <label><input type="checkbox" checked={open} onChange={(e) => setOpen(e.target.checked)} /> Open payments only</label>
-      {error && <p className="error">{error}</p>}
+      <Checkbox checked={open} onChange={(e) => setOpen(e.target.checked)} label={<>Open payments only</>} />
+      {error && <Alert tone="fail" className="error">{error}</Alert>}
       <p className="muted" data-testid="tat-total">{data ? `${data.total} breach(es)` : 'Loading…'}</p>
-      <table className="grid" aria-label="Turnaround breaches">
-        <thead><tr><th>Payment</th><th>Scheme</th><th>Accepted</th><th>Ended</th><th>Limit</th><th>Elapsed</th><th>Over by</th><th>Limit from</th></tr></thead>
-        <tbody>{data?.rows.map((r) => (
-          <tr key={r.id} className="clickable" onClick={() => go(`#/payments/${encodeURIComponent(r.id)}`)}>
-            <td className="mono">{r.fileName ?? r.id}</td><td>{r.scheme}</td><td>{show(r.acceptedAt, 'datetime')}</td><td>{r.endedAt ? show(r.endedAt, 'datetime') : 'open'}</td>
-            <td>{r.limit}</td><td>{r.elapsed}</td><td>{r.over}</td><td className="mono small">{r.parameter} ({r.source})</td>
-          </tr>
-        ))}</tbody>
-      </table>
+      <Table size="small" className="grid" aria-label="Turnaround breaches">
+        <TableHeader><TableRow><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Accepted</TableHeaderCell><TableHeaderCell>Ended</TableHeaderCell><TableHeaderCell>Limit</TableHeaderCell><TableHeaderCell>Elapsed</TableHeaderCell><TableHeaderCell>Over by</TableHeaderCell><TableHeaderCell>Limit from</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{data?.rows.map((r) => (
+          <TableRow key={r.id} className="clickable" onClick={() => go(`#/payments/${encodeURIComponent(r.id)}`)}>
+            <TableCell className="mono">{r.fileName ?? r.id}</TableCell><TableCell>{r.scheme}</TableCell><TableCell>{show(r.acceptedAt, 'datetime')}</TableCell><TableCell>{r.endedAt ? show(r.endedAt, 'datetime') : 'open'}</TableCell>
+            <TableCell>{r.limit}</TableCell><TableCell>{r.elapsed}</TableCell><TableCell>{r.over}</TableCell><TableCell className="mono small">{r.parameter} ({r.source})</TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
     </section>
   );
 }
@@ -57,27 +59,27 @@ export function Retention({ api }: { api: Client }) {
       <p className="muted">A payment is due for erasure once it ended longer ago than the bank's retention period. An erasure is asked for here and carried out when a bank approver, another person, consents. A legal hold blocks it.</p>
       {due && <p className="small">Periods in force: {Object.entries(due.periods ?? {}).map(([k, v]: any) => `${k} ${v.value} (${v.source})`).join('; ') || 'none'}</p>}
       {note && <p className="muted" data-testid="retention-note">{note}</p>}
-      {error && <p className="error">{error}</p>}
-      <table className="grid" aria-label="Due for erasure">
-        <thead><tr><th>Payment</th><th>Scheme</th><th>Ended</th><th>Due</th><th>Legal hold</th><th /></tr></thead>
-        <tbody>{due?.rows.map((r: any) => (
-          <tr key={r.id}>
-            <td className="mono">{r.id}</td><td>{r.scheme}</td><td>{show(r.endedAt, 'datetime')}</td><td>{show(r.dueAt, 'datetime')}</td><td>{r.legalHold ? 'yes' : 'no'}</td>
-            <td>
-              <button disabled={r.legalHold} onClick={() => ask(() => api.erase(r.id, reason('Why erase it?')), `Erasure of ${r.id} asked for; it waits for a bank approver.`)}>Ask to erase</button>
-              <button onClick={() => ask(() => api.placeHold(r.id, reason('The matter the hold is for')), `Legal hold placed on ${r.id}.`)}>Legal hold</button>
-            </td>
-          </tr>
-        ))}</tbody>
-      </table>
+      {error && <Alert tone="fail" className="error">{error}</Alert>}
+      <Table size="small" className="grid" aria-label="Due for erasure">
+        <TableHeader><TableRow><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Scheme</TableHeaderCell><TableHeaderCell>Ended</TableHeaderCell><TableHeaderCell>Due</TableHeaderCell><TableHeaderCell>Legal hold</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{due?.rows.map((r: any) => (
+          <TableRow key={r.id}>
+            <TableCell className="mono">{r.id}</TableCell><TableCell>{r.scheme}</TableCell><TableCell>{show(r.endedAt, 'datetime')}</TableCell><TableCell>{show(r.dueAt, 'datetime')}</TableCell><TableCell>{r.legalHold ? 'yes' : 'no'}</TableCell>
+            <TableCell>
+              <Button disabled={r.legalHold} onClick={() => ask(() => api.erase(r.id, reason('Why erase it?')), `Erasure of ${r.id} asked for; it waits for a bank approver.`)}>Ask to erase</Button>
+              <Button onClick={() => ask(() => api.placeHold(r.id, reason('The matter the hold is for')), `Legal hold placed on ${r.id}.`)}>Legal hold</Button>
+            </TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
       <h2>Legal holds</h2>
-      <table className="grid" aria-label="Legal holds">
-        <thead><tr><th>Payment</th><th>Why</th><th>Placed by</th><th>Placed at</th><th /></tr></thead>
-        <tbody>{holds.map((h) => (
-          <tr key={h.id}><td className="mono">{h.subject}</td><td>{h.why}</td><td>{h.placedBy}</td><td>{show(h.placedAt, 'datetime')}</td>
-            <td><button onClick={() => ask(() => api.releaseHold(h.id, reason('Why release it?')), 'The release waits for a bank approver.')}>Ask to release</button></td></tr>
-        ))}</tbody>
-      </table>
+      <Table size="small" className="grid" aria-label="Legal holds">
+        <TableHeader><TableRow><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Why</TableHeaderCell><TableHeaderCell>Placed by</TableHeaderCell><TableHeaderCell>Placed at</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{holds.map((h) => (
+          <TableRow key={h.id}><TableCell className="mono">{h.subject}</TableCell><TableCell>{h.why}</TableCell><TableCell>{h.placedBy}</TableCell><TableCell>{show(h.placedAt, 'datetime')}</TableCell>
+            <TableCell><Button onClick={() => ask(() => api.releaseHold(h.id, reason('Why release it?')), 'The release waits for a bank approver.')}>Ask to release</Button></TableCell></TableRow>
+        ))}</TableBody>
+      </Table>
     </section>
   );
 }
@@ -96,20 +98,20 @@ export function Consents({ api }: { api: Client }) {
     <section>
       <h1>Waiting for a bank approver</h1>
       <p className="muted">Changes of the system another person asked for. The person who asked may not consent.</p>
-      <label><span>Reason for your decision</span> <input name="consent-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
-      {error && <p className="error">{error}</p>}
+      <label><span>Reason for your decision</span> <Input name="consent-remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></label>
+      {error && <Alert tone="fail" className="error">{error}</Alert>}
       {rows?.length === 0 && <p className="muted">Nothing waits.</p>}
-      <table className="grid" aria-label="System actions waiting">
-        <thead><tr><th>Asked</th><th>What</th><th>About</th><th>Asked by</th><th>Why</th><th /></tr></thead>
-        <tbody>{rows?.map((r) => (
-          <tr key={r.data.action} data-testid="consent-row">
-            <td>{show(r.at, 'datetime')}</td><td>{r.data.name}</td>
-            <td className="mono small">{r.data.details ? [r.data.details.subject, r.data.details.field ?? r.data.details.hold].filter(Boolean).join(' · ') : '—'}</td>
-            <td>{r.data.by}</td><td>{r.data.why}</td>
-            <td><button disabled={!remarks} onClick={() => decide(r.data.action, true)}>Consent</button> <button disabled={!remarks} onClick={() => decide(r.data.action, false)}>Refuse</button></td>
-          </tr>
-        ))}</tbody>
-      </table>
+      <Table size="small" className="grid" aria-label="System actions waiting">
+        <TableHeader><TableRow><TableHeaderCell>Asked</TableHeaderCell><TableHeaderCell>What</TableHeaderCell><TableHeaderCell>About</TableHeaderCell><TableHeaderCell>Asked by</TableHeaderCell><TableHeaderCell>Why</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{rows?.map((r) => (
+          <TableRow key={r.data.action} data-testid="consent-row">
+            <TableCell>{show(r.at, 'datetime')}</TableCell><TableCell>{r.data.name}</TableCell>
+            <TableCell className="mono small">{r.data.details ? [r.data.details.subject, r.data.details.field ?? r.data.details.hold].filter(Boolean).join(' · ') : '—'}</TableCell>
+            <TableCell>{r.data.by}</TableCell><TableCell>{r.data.why}</TableCell>
+            <TableCell><Button disabled={!remarks} onClick={() => decide(r.data.action, true)}>Consent</Button> <Button disabled={!remarks} onClick={() => decide(r.data.action, false)}>Refuse</Button></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
     </section>
   );
 }

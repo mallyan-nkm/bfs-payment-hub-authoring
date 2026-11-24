@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { get, post } from '../api';
 import { Badge, ErrorBox, Issues, Loading, useLoad, useStudio } from '../ui';
+import { Button, Input, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 
 // The bank's port bindings (R-11-47, Issue I-70): which adapter answers each port, from which moment, with which
 // settings. A Bank Configurator edits them in scope b; a credential is a secret reference (secretRef), never a
@@ -60,36 +61,36 @@ export function PortBindings() {
     }
   };
   return (
-    <div className="port-bindings">
+    <div className="port-bindings" data-testid="port-bindings">
       <p className="small">
         {d.released ? <>Released: <code>{d.released.release}</code>. </> : <>Not released from the studio yet: the runtime reads {d.runtime.map((r: any) => <code key={r.file}>{r.file.split('/').pop()}</code>).reduce((a: any, b: any) => [a, ', ', b])}. </>}
         {d.draft ? <Badge tone="warn">draft {d.draft.release}</Badge> : <>Editing release <code>{base.release}</code>.</>}
       </p>
-      <table className="grid small" aria-label="Port bindings">
-        <thead><tr><th>Port</th><th>Adapter</th><th>Valid from</th><th>Settings (key=value)</th><th>Secret reference</th><th /></tr></thead>
-        <tbody>
+      <Table size="small" className="grid small" aria-label="Port bindings">
+        <TableHeader><TableRow><TableHeaderCell>Port</TableHeaderCell><TableHeaderCell>Adapter</TableHeaderCell><TableHeaderCell>Valid from</TableHeaderCell><TableHeaderCell>Settings (key=value)</TableHeaderCell><TableHeaderCell>Secret reference</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>
           {rows.map((r, i) => (
-            <tr key={i}>
-              <td>
-                <select aria-label={`Port ${i + 1}`} value={r.port} disabled={!configurator} onChange={(e) => set(i, 'port', e.target.value)}>
+            <TableRow key={i}>
+              <TableCell>
+                <Select aria-label={`Port ${i + 1}`} value={r.port} disabled={!configurator} onChange={(e) => set(i, 'port', e.target.value)}>
                   {!d.ports.some((p: any) => p.name === r.port) && <option value={r.port}>{r.port || 'choose a port'}</option>}
                   {d.ports.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-                </select>
-              </td>
-              <td><input aria-label={`Adapter ${i + 1}`} value={r.adapter} disabled={!configurator} onChange={(e) => set(i, 'adapter', e.target.value)} size={12} /></td>
-              <td><input aria-label={`Valid from ${i + 1}`} value={r.validFrom} disabled={!configurator} onChange={(e) => set(i, 'validFrom', e.target.value)} size={20} /></td>
-              <td><textarea aria-label={`Settings ${i + 1}`} value={r.settings} disabled={!configurator} onChange={(e) => set(i, 'settings', e.target.value)} rows={Math.min(6, Math.max(2, r.settings.split('\n').length))} cols={32} /></td>
-              <td><input aria-label={`Secret reference ${i + 1}`} value={r.secretRef} disabled={!configurator} placeholder="env:NAME" onChange={(e) => set(i, 'secretRef', e.target.value)} size={22} /></td>
-              <td>{configurator && <button aria-label={`Remove binding ${i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</button>}</td>
-            </tr>
+                </Select>
+              </TableCell>
+              <TableCell><Input style={{ width: '15ch' }} aria-label={`Adapter ${i + 1}`} value={r.adapter} disabled={!configurator} onChange={(e) => set(i, 'adapter', e.target.value)} /></TableCell>
+              <TableCell><Input style={{ width: '23ch' }} aria-label={`Valid from ${i + 1}`} value={r.validFrom} disabled={!configurator} onChange={(e) => set(i, 'validFrom', e.target.value)} /></TableCell>
+              <TableCell><Textarea aria-label={`Settings ${i + 1}`} value={r.settings} disabled={!configurator} onChange={(e) => set(i, 'settings', e.target.value)} rows={Math.min(6, Math.max(2, r.settings.split('\n').length))} cols={32} /></TableCell>
+              <TableCell><Input style={{ width: '25ch' }} aria-label={`Secret reference ${i + 1}`} value={r.secretRef} disabled={!configurator} placeholder="env:NAME" onChange={(e) => set(i, 'secretRef', e.target.value)} /></TableCell>
+              <TableCell>{configurator && <Button aria-label={`Remove binding ${i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>Remove</Button>}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {configurator && (
         <div className="row">
-          <button onClick={() => setRows([...rows, { port: d.ports[0]?.name ?? '', adapter: '', validFrom: new Date().toISOString().slice(0, 10), settings: '', secretRef: '' }])}>Add binding</button>
-          <button onClick={() => run('check')}>Check</button>
-          <button className="primary" onClick={() => run('save')}>Save draft</button>
+          <Button onClick={() => setRows([...rows, { port: d.ports[0]?.name ?? '', adapter: '', validFrom: new Date().toISOString().slice(0, 10), settings: '', secretRef: '' }])}>Add binding</Button>
+          <Button onClick={() => run('check')}>Check</Button>
+          <Button appearance="primary" onClick={() => run('save')}>Save draft</Button>
         </div>
       )}
       <ErrorBox error={error} />

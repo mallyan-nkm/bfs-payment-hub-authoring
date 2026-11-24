@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { get, post, put } from '../api';
 import { Badge, ErrorBox, KV, Section, useLoad, useStudio } from '../ui';
 import { AsUser } from './Governance';
+import { Button, Input, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The content branch (R-09-19 to R-09-22, R-11-21 to R-11-25). The studio's only store is a GitHub
 // branch, named by its environment. Each change set in progress is its own branch, studio/<id>; each
@@ -57,45 +58,45 @@ export function GitBranch() {
           ['Token', status.data?.tokenPresent ? 'present in the environment' : 'not in the environment'],
         ]} />
       )}
-      <button disabled={busy} onClick={() => act(() => post('/api/git/reload', {}), (r) => `Read ${r.connection?.branch} again at ${String(r.connection?.head).slice(0, 12)}.`)}>Read the branch again</button>
+      <Button disabled={busy} onClick={() => act(() => post('/api/git/reload', {}), (r) => `Read ${r.connection?.branch} again at ${String(r.connection?.head).slice(0, 12)}.`)}>Read the branch again</Button>
 
       <h4>How the studio publishes</h4>
       <div className="stack">
         <AsUser value={as} onChange={setAs} prefer={(u) => u.roles.includes('platform approver') || u.roles.includes('service operations')} label="Changing as" />
         <label className="field"><span>Mode</span>
-          <select value={form.mode} onChange={(e) => set('mode', e.target.value)} aria-label="Mode"><option value="commit">A commit per change set</option><option value="pull-request">A pull request per change set</option></select>
+          <Select value={form.mode} onChange={(e) => set('mode', e.target.value)} aria-label="Mode"><option value="commit">A commit per change set</option><option value="pull-request">A pull request per change set</option></Select>
         </label>
         <label className="field"><span>Engine package</span>
-          <select value={form.target} onChange={(e) => set('target', e.target.value)} aria-label="Engine package">{TARGETS.map((t) => <option key={t}>{t}</option>)}</select>
+          <Select value={form.target} onChange={(e) => set('target', e.target.value)} aria-label="Engine package">{TARGETS.map((t) => <option key={t}>{t}</option>)}</Select>
         </label>
-        <label className="field"><span>Environment (optional)</span><input value={form.environment} onChange={(e) => set('environment', e.target.value)} placeholder="uat" aria-label="Environment" /></label>
-        <button className="primary" disabled={busy} onClick={() => act(() => put('/api/git', { actor: as, ...form }), (r) => `Saved: ${r.settings.mode}, ${r.settings.target}${r.settings.environment ? `, ${r.settings.environment}` : ''}.`)}>Save settings</button>
+        <label className="field"><span>Environment (optional)</span><Input value={form.environment} onChange={(e) => set('environment', e.target.value)} placeholder="uat" aria-label="Environment" /></label>
+        <Button appearance="primary" disabled={busy} onClick={() => act(() => put('/api/git', { actor: as, ...form }), (r) => `Saved: ${r.settings.mode}, ${r.settings.target}${r.settings.environment ? `, ${r.settings.environment}` : ''}.`)}>Save settings</Button>
       </div>
 
       <h4>Change sets in progress</h4>
-      <table className="grid compact" data-testid="git-drafts">
-        <thead><tr><th>Change set</th><th>Branch</th><th>Drafts</th><th /></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact" data-testid="git-drafts">
+        <TableHeader><TableRow><TableHeaderCell>Change set</TableHeaderCell><TableHeaderCell>Branch</TableHeaderCell><TableHeaderCell>Drafts</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>
           {(status.data?.drafts ?? []).map((d: any) => (
-            <tr key={d.id}><td className="mono">{d.id}</td><td className="mono small">{d.branch}</td><td className="small">{d.members.join(', ')}</td><td>{d.awaitingMerge ? <Badge tone="warn">pull request open</Badge> : <Badge tone="muted">drafting</Badge>}</td></tr>
+            <TableRow key={d.id}><TableCell className="mono">{d.id}</TableCell><TableCell className="mono small">{d.branch}</TableCell><TableCell className="small">{d.members.join(', ')}</TableCell><TableCell>{d.awaitingMerge ? <Badge tone="warn">pull request open</Badge> : <Badge tone="muted">drafting</Badge>}</TableCell></TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
 
       <h4>Published change sets</h4>
-      <table className="grid compact" data-testid="git-change-sets">
-        <thead><tr><th>Change set</th><th>Members</th><th>Published</th><th>On the branch</th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact" data-testid="git-change-sets">
+        <TableHeader><TableRow><TableHeaderCell>Change set</TableHeaderCell><TableHeaderCell>Members</TableHeaderCell><TableHeaderCell>Published</TableHeaderCell><TableHeaderCell>On the branch</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {(sets.data ?? []).slice().reverse().map((x: any) => (
-            <tr key={x.id}>
-              <td className="mono">{x.id}</td>
-              <td className="small">{x.origin === 'seed' ? `the seed: ${x.members.length} documents from spec/` : (x.members ?? []).map((m: any) => `${m.name}@${m.release}`).join(', ') || (x.waivers ? `waiver ${x.waivers.map((w: any) => w.scenario).join(', ')}` : (x.files ?? []).join(', '))}</td>
-              <td className="small">{String(x.publishedAt).slice(0, 16).replace('T', ' ')}</td>
-              <td><Badge tone="pass">written</Badge></td>
-            </tr>
+            <TableRow key={x.id}>
+              <TableCell className="mono">{x.id}</TableCell>
+              <TableCell className="small">{x.origin === 'seed' ? `the seed: ${x.members.length} documents from spec/` : (x.members ?? []).map((m: any) => `${m.name}@${m.release}`).join(', ') || (x.waivers ? `waiver ${x.waivers.map((w: any) => w.scenario).join(', ')}` : (x.files ?? []).join(', '))}</TableCell>
+              <TableCell className="small">{String(x.publishedAt).slice(0, 16).replace('T', ' ')}</TableCell>
+              <TableCell><Badge tone="pass">written</Badge></TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       {msg && <p role="status" className="ok-line">{msg}</p>}
       <ErrorBox error={error} />
     </Section>

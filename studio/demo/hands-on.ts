@@ -53,7 +53,7 @@ export function scenes(d: Director): Scene[] {
     throw new Error(`Expected ${n} of ${loc}, found ${await loc.count()}`);
   };
   const dock = () => p().getByRole('complementary', { name: 'Assistant' });
-  const panel = (title: RegExp) => main().locator('section.panel', { has: p().locator('h3', { hasText: title }) }).first();
+  const panel = (title: RegExp) => main().locator('.panel', { has: p().locator('h3', { hasText: title }) }).first();
   /** Wait until the assistant has stopped working: a live model takes from seconds to a minute or two. */
   const agentSettled = async () => {
     const working = () => dock().getByText('Working…').count();
@@ -107,7 +107,7 @@ export function scenes(d: Director): Scene[] {
   const bench = async (target: string, tenant: string, ports: [string, string, string?][]) => {
     await d.forTenant(tenant);
     await d.go('tests');
-    await d.click(p().getByRole('button', { name: 'Ad hoc bench' }));
+    await d.click(p().getByRole('tab', { name: 'Ad hoc bench' }));
     await d.select(p().getByLabel('Target', { exact: true }), target);
     await d.select(p().getByLabel('Run tenant'), tenant);
     for (const [port, sim, scenario] of ports) {
@@ -118,11 +118,11 @@ export function scenes(d: Director): Scene[] {
     }
   };
   const withContext = async (json: string) => {
-    await d.click(p().getByRole('button', { name: 'Context as JSON' }));
+    await d.click(p().getByRole('tab', { name: 'Context as JSON' }));
     await d.paste(p().getByLabel('Context JSON'), json);
   };
   const withSample = async (sample: string, message?: string) => {
-    await d.click(p().getByRole('button', { name: 'Inbound sample' }));
+    await d.click(p().getByRole('tab', { name: 'Inbound sample' }));
     await d.select(p().getByLabel('Inbound sample'), sample);
     if (message) await d.select(p().getByLabel('Start message'), message);
   };

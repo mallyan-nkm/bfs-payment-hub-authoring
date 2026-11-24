@@ -3,7 +3,7 @@ import { deflateRawSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DevProvider, MAX_PENDING_SIGN_INS, Sessions, authConfigFromEnv, parseCookies } from '../src/server/auth.js';
 import { createStudioServer, isExpensive } from '../src/server/http.js';
-import { RateLimiter, safeFilename } from '../src/server/hardening.js';
+import { RateLimiter, appCsp, safeFilename } from '../src/server/hardening.js';
 import { documentPath, scriptPath } from '../src/content/layout.js';
 import { unzip, ZipRefused } from '../src/export/zip.js';
 import { loadSample } from '../src/testing/runner.js';
@@ -59,6 +59,23 @@ describe('the studio server answers with security headers (R-11-43)', () => {
       expect(r.headers.get('content-security-policy'), p).toMatch(/frame-ancestors 'none'/);
       expect(r.headers.get('content-security-policy'), p).not.toMatch(/unsafe-inline|unsafe-eval/);
     }
+  });
+
+  it("allows the page's style elements only by a nonce that is new on every answer and named in the page (ADR 0003)", async () => {
+    expect(appCsp('abc')).toMatch(/style-src 'self' 'nonce-abc'/);
+    expect(appCsp('abc')).toMatch(/script-src 'self'(;|$)/);
+    const url = await start();
+    const page = async () => {
+      const r = await fetch(url + '/');
+      return { csp: r.headers.get('content-security-policy') ?? '', html: await r.text(), type: r.headers.get('content-type') ?? '' };
+    };
+    const [a, b] = [await page(), await page()];
+    if (!a.type.startsWith('text/html')) return; // the web app is not built here; appCsp is checked above
+    const nonce = (x: { csp: string }) => /'nonce-([^']+)'/.exec(x.csp)?.[1];
+    expect(nonce(a)).toBeTruthy();
+    expect(nonce(a)).not.toBe(nonce(b));
+    expect(a.html).toContain(`<meta name="th-style-nonce" content="${nonce(a)}" />`);
+    expect(a.csp).not.toMatch(/script-src[^;]*nonce/);
   });
 });
 

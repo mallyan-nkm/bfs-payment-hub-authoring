@@ -4,11 +4,15 @@ import type * as http from 'node:http';
 // headers and the web app's content security policy (R-11-43), a bound on a request's body and rate limits on sign-in and
 // on the calls that run something heavy (R-11-41).
 
-/** The web app's page: its own scripts, styles and API only; no frame may hold it. */
-export const APP_CSP = [
+/**
+ * The web app's page: its own scripts, styles and API only; no frame may hold it. Fluent UI writes its styles into style
+ * elements at run time (ADR 0003), so the page allows a style element that carries this answer's nonce, and no other inline
+ * style; the nonce is new on every answer and is never a script's.
+ */
+export const appCsp = (styleNonce: string) => [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self'",
+  `style-src 'self' 'nonce-${styleNonce}'`,
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "connect-src 'self'",

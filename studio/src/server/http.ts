@@ -1,14 +1,14 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { StudioEnv } from '../env.js';
 import { dispatch } from './api.js';
 import { DevicePending, DevProvider, OidcClient, Sessions, type AuthConfig, type Session } from './auth.js';
 import { userById, users, withAssertedRoles } from '../governance/governance.js';
 import { effectiveRoles, landingOf, surfacesOf } from '../governance/permissions.js';
 import { attrs, contextFrom, inSpan, log, meters, SpanKind } from '../telemetry/telemetry.js';
-import { RateLimiter, securityHeaders, APP_CSP, DEV_PAGE_CSP, BodyTooLarge, readLimited, safeFilename, maxBodyBytes } from './hardening.js';
+import { RateLimiter, securityHeaders, appCsp, DEV_PAGE_CSP, BodyTooLarge, readLimited, safeFilename, maxBodyBytes } from './hardening.js';
 
 // The studio's HTTP server: sign-in under /auth (R-11-32), the API under /api, the built web app
 // from web/dist. Every API call takes its user from the session; a state-changing call from a browser
@@ -304,7 +304,14 @@ export function createStudioServer(env: StudioEnv, cfg: AuthConfig, opts: { devP
         res.writeHead(200, { 'content-type': 'text/plain' }).end('The web app is not built. Run: npm run web:build');
         return;
       }
-      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', ...(path.extname(file) === '.html' ? { 'content-security-policy': APP_CSP } : {}) });
+      if (path.extname(file) === '.html') {
+        // The page names this answer's style nonce, which Fluent UI puts on the style elements it writes (ADR 0003).
+        const nonce = randomBytes(18).toString('base64');
+        const html = fs.readFileSync(file, 'utf8').replace(/<meta name="th-style-nonce" content="[^"]*"\s*\/?>/, `<meta name="th-style-nonce" content="${nonce}" />`);
+        res.writeHead(200, { 'content-type': TYPES['.html'], 'content-security-policy': appCsp(nonce), 'cache-control': 'no-store' }).end(html);
+        return;
+      }
+      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
       fs.createReadStream(file).pipe(res);
     } catch (e: any) {
       if (e instanceof BodyTooLarge) {

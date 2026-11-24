@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { downloadUrl, post, refusal } from '../api';
-import { Badge, ErrorBox, PassFail, Section, useStudio } from '../ui';
+import { Alert, Badge, ErrorBox, PassFail, Section, useStudio } from '../ui';
+import { Button, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, ToggleButton } from '@fluentui/react-components';
+import { ArrowDownloadRegular, FolderZipRegular } from '@fluentui/react-icons';
 
 // Import (I-33): an extraction bundle that an AI agent wrote from a scheme's source code
 // (docs/import/EXTRACTION-PROMPT.md). Preview it: what it holds, how much of the source it accounts
@@ -17,6 +19,7 @@ function toBase64(buf: ArrayBuffer): string {
 }
 
 export function Import() {
+  const fileRef = useRef<HTMLInputElement>(null);
   const { tenant, actor, meta, go } = useStudio();
   const [bundle, setBundle] = useState<string>();
   const [label, setLabel] = useState<string>();
@@ -81,14 +84,15 @@ export function Import() {
         <div className="col">
           <Section title="1. The bundle">
             <div className="row-actions">
-              <label className="button">Choose a bundle zip<input type="file" accept=".zip,application/zip" aria-label="Extraction bundle" style={{ display: 'none' }} onChange={(e) => choose(e.target.files?.[0])} /></label>
-              <button onClick={training}>Use the training bundle</button>
+              <Button icon={<FolderZipRegular />} onClick={() => fileRef.current?.click()}>Choose a bundle zip</Button>
+              <input ref={fileRef} type="file" accept=".zip,application/zip" aria-label="Extraction bundle" style={{ display: 'none' }} onChange={(e) => choose(e.target.files?.[0])} />
+              <Button onClick={training}>Use the training bundle</Button>
             </div>
             {label && <p className="small">Chosen: <b>{label}</b></p>}
             <p className="muted small">{bankPart ? `You import the bank part of the bundle (scope b, configuration sets) into ${tenant}. The shared part is imported by the platform.` : 'You import the shared part of the bundle. A bank part (scope b, configuration sets) is left for that bank: its configurator imports it once the shared part is a version.'}</p>
             <div className="row-actions">
-              <button className="primary" disabled={!bundle || !!busy} onClick={preview}>{busy === 'preview' ? 'Checking…' : 'Preview'}</button>
-              <button disabled={!report || !!busy || (!report.ok)} onClick={apply} title={report && !report.ok ? 'Fix the errors first' : undefined}>{busy === 'apply' ? 'Importing…' : `Import as drafts, as ${actor}`}</button>
+              <Button appearance="primary" disabled={!bundle || !!busy} onClick={preview}>{busy === 'preview' ? 'Checking…' : 'Preview'}</Button>
+              <Button disabled={!report || !!busy || (!report.ok)} onClick={apply} title={report && !report.ok ? 'Fix the errors first' : undefined}>{busy === 'apply' ? 'Importing…' : `Import as drafts, as ${actor}`}</Button>
             </div>
             <ErrorBox error={error} />
           </Section>
@@ -97,19 +101,19 @@ export function Import() {
           <Section title="The extraction prompt">
             <p className="small">Give this prompt to an AI coding agent with the source code of a scheme written as workflows, such as WPS. It says what to look for in every file, where each thing goes in the studio, and how to check the bundle before handing it back.</p>
             <div className="row-actions">
-              <a className="button" href={downloadUrl('/api/import/prompt')}>Download the extraction prompt</a>
-              <a className="button" href={downloadUrl('/api/import/sample')}>Download the training bundle</a>
+              <Button as="a" icon={<ArrowDownloadRegular />} href={downloadUrl('/api/import/prompt')}>Download the extraction prompt</Button>
+              <Button as="a" icon={<ArrowDownloadRegular />} href={downloadUrl('/api/import/sample')}>Download the training bundle</Button>
             </div>
           </Section>
         </div>
       </div>
 
       {result?.applied && (
-        <div className="alert pass" role="status">
-          Imported {result.saved.length} as drafts{result.skipped.length ? `; ${result.skipped.length} unchanged, reused or left for their own author` : ''}. Nothing is published: {result.changeSets.length} change set{result.changeSets.length === 1 ? '' : 's'} wait for an approver. <button className="link" onClick={() => go('/governance')}>Open Governance</button>
-        </div>
+        <Alert tone="pass" role="status">
+          Imported {result.saved.length} as drafts{result.skipped.length ? `; ${result.skipped.length} unchanged, reused or left for their own author` : ''}. Nothing is published: {result.changeSets.length} change set{result.changeSets.length === 1 ? '' : 's'} wait for an approver. <Link as="button" onClick={() => go('/governance')}>Open Governance</Link>
+        </Alert>
       )}
-      {result && !result.applied && <div className="alert fail" role="status">Not imported: the bundle has errors.</div>}
+      {result && !result.applied && <Alert tone="fail" role="status">Not imported: the bundle has errors.</Alert>}
 
       {report && (
         <>
@@ -124,17 +128,17 @@ export function Import() {
           <div className="cols">
             <div className="col">
               <Section title="Coverage of the source">
-                <table className="grid compact" data-testid="import-coverage">
-                  <tbody>
-                    <tr><th>Source files</th><td>{report.inventory.sourceFiles.total}</td></tr>
-                    <tr><th>Inventoried</th><td>{report.inventory.sourceFiles.inventoried}</td></tr>
-                    <tr><th>Excluded, with a reason</th><td>{report.inventory.sourceFiles.excluded}</td></tr>
-                    <tr className={report.inventory.sourceFiles.missing.length ? 'row-fail' : ''}><th>Neither</th><td>{report.inventory.sourceFiles.missing.length}</td></tr>
-                    <tr><th>Items of the source</th><td>{report.inventory.total}: {Object.entries(report.inventory.byTarget).map(([k, v]) => `${v} ${k}`).join(', ')}</td></tr>
-                    <tr><th>By what they are</th><td className="small">{Object.entries(report.inventory.bySourceKind).map(([k, v]) => `${v} ${k}`).join(', ')}</td></tr>
-                    {Object.keys(report.inventory.reuse).length > 0 && <tr><th>Platform reuse</th><td>{Object.entries(report.inventory.reuse).map(([k, v]) => `${v} ${k}`).join(', ')}</td></tr>}
-                  </tbody>
-                </table>
+                <Table size="small" className="grid compact" data-testid="import-coverage">
+                  <TableBody>
+                    <TableRow><TableHeaderCell>Source files</TableHeaderCell><TableCell>{report.inventory.sourceFiles.total}</TableCell></TableRow>
+                    <TableRow><TableHeaderCell>Inventoried</TableHeaderCell><TableCell>{report.inventory.sourceFiles.inventoried}</TableCell></TableRow>
+                    <TableRow><TableHeaderCell>Excluded, with a reason</TableHeaderCell><TableCell>{report.inventory.sourceFiles.excluded}</TableCell></TableRow>
+                    <TableRow className={report.inventory.sourceFiles.missing.length ? 'row-fail' : ''}><TableHeaderCell>Neither</TableHeaderCell><TableCell>{report.inventory.sourceFiles.missing.length}</TableCell></TableRow>
+                    <TableRow><TableHeaderCell>Items of the source</TableHeaderCell><TableCell>{report.inventory.total}: {Object.entries(report.inventory.byTarget).map(([k, v]) => `${v} ${k}`).join(', ')}</TableCell></TableRow>
+                    <TableRow><TableHeaderCell>By what they are</TableHeaderCell><TableCell className="small">{Object.entries(report.inventory.bySourceKind).map(([k, v]) => `${v} ${k}`).join(', ')}</TableCell></TableRow>
+                    {Object.keys(report.inventory.reuse).length > 0 && <TableRow><TableHeaderCell>Platform reuse</TableHeaderCell><TableCell>{Object.entries(report.inventory.reuse).map(([k, v]) => `${v} ${k}`).join(', ')}</TableCell></TableRow>}
+                  </TableBody>
+                </Table>
                 {report.inventory.sourceFiles.missing.length > 0 && <ul className="small fail-text">{report.inventory.sourceFiles.missing.map((f: string) => <li key={f}><code>{f}</code></li>)}</ul>}
               </Section>
               {[['Unmapped, for the expert', report.inventory.unmapped], ['Retired', report.inventory.retired], ['Infrastructure', report.inventory.infrastructure]].map(([title, list]: any) => list.length > 0 && (
@@ -148,18 +152,18 @@ export function Import() {
             </div>
             <div className="col">
               <Section title="Tests, run against the bundle itself" count={report.tests.length}>
-                <table className="grid compact" data-testid="import-tests">
-                  <thead><tr><th>Test</th><th>Target</th><th>Ends</th><th>Result</th></tr></thead>
-                  <tbody>{report.tests.map((t: any) => <tr key={t.id}><td className="mono small">{t.id}</td><td className="mono small">{t.target}</td><td className="mono small">{t.outcome}</td><td><PassFail passed={!!t.passed} />{!t.passed && <div className="small fail-text">{t.error ?? t.failed?.join('; ')}</div>}</td></tr>)}</tbody>
-                </table>
+                <Table size="small" className="grid compact" data-testid="import-tests">
+                  <TableHeader><TableRow><TableHeaderCell>Test</TableHeaderCell><TableHeaderCell>Target</TableHeaderCell><TableHeaderCell>Ends</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>{report.tests.map((t: any) => <TableRow key={t.id}><TableCell className="mono small">{t.id}</TableCell><TableCell className="mono small">{t.target}</TableCell><TableCell className="mono small">{t.outcome}</TableCell><TableCell><PassFail passed={!!t.passed} />{!t.passed && <div className="small fail-text">{t.error ?? t.failed?.join('; ')}</div>}</TableCell></TableRow>)}</TableBody>
+                </Table>
               </Section>
               <Section title="Checks" actions={<span className="row-actions">
-                {(['errors', 'warnings', 'all'] as const).map((k) => <button key={k} className={show === k ? 'tab on' : 'tab'} onClick={() => setShow(k)}>{k === 'errors' ? `Errors (${errors})` : k === 'warnings' ? `Warnings (${warnings})` : 'All'}</button>)}
+                {(['errors', 'warnings', 'all'] as const).map((k) => <ToggleButton key={k} size="small" checked={show === k} onClick={() => setShow(k)}>{k === 'errors' ? `Errors (${errors})` : k === 'warnings' ? `Warnings (${warnings})` : 'All'}</ToggleButton>)}
               </span>}>
                 {shown.length ? (
-                  <table className="grid compact" data-testid="import-issues">
-                    <tbody>{shown.slice(0, 300).map((i, n) => <tr key={n} className={i.severity === 'error' ? 'row-fail' : ''}><td><Badge tone={i.severity === 'error' ? 'fail' : 'warn'}>{i.code}</Badge></td><td className="mono small break">{i.where}</td><td className="small">{i.message}</td></tr>)}</tbody>
-                  </table>
+                  <Table size="small" className="grid compact" data-testid="import-issues">
+                    <TableBody>{shown.slice(0, 300).map((i, n) => <TableRow key={n} className={i.severity === 'error' ? 'row-fail' : ''}><TableCell><Badge tone={i.severity === 'error' ? 'fail' : 'warn'}>{i.code}</Badge></TableCell><TableCell className="mono small break">{i.where}</TableCell><TableCell className="small">{i.message}</TableCell></TableRow>)}</TableBody>
+                  </Table>
                 ) : <p className="small muted">None.</p>}
               </Section>
             </div>
@@ -167,21 +171,21 @@ export function Import() {
 
           <Section title="Everything in the bundle" count={report.items.length}>
             <div className="table-wrap tall">
-              <table className="grid compact" data-testid="import-items">
-                <thead><tr><th>Kind</th><th>Name</th><th>Goes to</th><th>Status</th><th>From the source</th><th>Checks</th></tr></thead>
-                <tbody>
+              <Table size="small" className="grid compact" data-testid="import-items">
+                <TableHeader><TableRow><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Goes to</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>From the source</TableHeaderCell><TableHeaderCell>Checks</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>
                   {report.items.map((i: any) => (
-                    <tr key={i.key}>
-                      <td className="small">{i.kind}</td>
-                      <td className="mono small break">{i.name}{i.release ? `@${i.release}` : ''}</td>
-                      <td className="small">{i.tenant}</td>
-                      <td><Badge tone={i.status === 'new' ? 'info' : i.status === 'unchanged' ? 'muted' : 'warn'}>{i.status}</Badge>{i.existing && <div className="small muted">published {i.existing}{i.proposedRelease ? `; propose ${i.proposedRelease}` : ''}</div>}</td>
-                      <td className="small mono break">{i.sources.slice(0, 2).join(', ')}{i.sources.length > 2 ? ` +${i.sources.length - 2}` : ''}</td>
-                      <td>{i.issues.some((x: any) => x.severity === 'error') ? <Badge tone="fail">{i.issues.filter((x: any) => x.severity === 'error').length} error(s)</Badge> : i.issues.length ? <Badge tone="warn">{i.issues.length}</Badge> : <Badge tone="pass">ok</Badge>}</td>
-                    </tr>
+                    <TableRow key={i.key}>
+                      <TableCell className="small">{i.kind}</TableCell>
+                      <TableCell className="mono small break">{i.name}{i.release ? `@${i.release}` : ''}</TableCell>
+                      <TableCell className="small">{i.tenant}</TableCell>
+                      <TableCell><Badge tone={i.status === 'new' ? 'info' : i.status === 'unchanged' ? 'muted' : 'warn'}>{i.status}</Badge>{i.existing && <div className="small muted">published {i.existing}{i.proposedRelease ? `; propose ${i.proposedRelease}` : ''}</div>}</TableCell>
+                      <TableCell className="small mono break">{i.sources.slice(0, 2).join(', ')}{i.sources.length > 2 ? ` +${i.sources.length - 2}` : ''}</TableCell>
+                      <TableCell>{i.issues.some((x: any) => x.severity === 'error') ? <Badge tone="fail">{i.issues.filter((x: any) => x.severity === 'error').length} error(s)</Badge> : i.issues.length ? <Badge tone="warn">{i.issues.length}</Badge> : <Badge tone="pass">ok</Badge>}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </Section>
         </>

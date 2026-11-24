@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react';
 import { get, q } from '../api';
-import { ArtefactLink, Badge, ErrorBox, Issues, Json, KV, List, Loading, PassFail, Provenance, Section, StatusBadge, Tabs, Val, scopeText, useLoad, useStudio } from '../ui';
+import { Alert, ArtefactLink, Badge, ErrorBox, Issues, Json, KV, List, Loading, PassFail, Provenance, Section, StatusBadge, Tabs, Val, scopeText, useLoad, useStudio } from '../ui';
 import { Outline } from './Outline';
+import { Button, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The artefact page (F-02, F-15): contract, releases, usage, tests, issues and what each kind adds.
 
@@ -15,7 +16,7 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
 
   if (!name) return <p>No artefact named.</p>;
   if (loading && !a) return <Loading what={name} />;
-  if (error) return <div className="view"><ErrorBox error={error} /><button onClick={() => go('/catalogue')}>Back to the catalogue</button></div>;
+  if (error) return <div className="view"><ErrorBox error={error} /><Button onClick={() => go('/catalogue')}>Back to the catalogue</Button></div>;
   if (!a) return null;
   const e = a.entry;
   const d = a.doc ?? {};
@@ -38,23 +39,23 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
           {e.tenant !== 'owner' && <Badge tone="info">tenant {e.tenant}</Badge>}
         </div>
         {d.provenance?.status === 'provisional' && (
-          <div className="alert prov">
+          <Alert tone="prov">
             <b>Unconfirmed.</b> This content was written from public sources, not from the scheme rulebook. Treat each scheme fact in it as unconfirmed.
             {d.provenance.note && <> {d.provenance.note}</>}
             {d.provenance.clauses?.length ? <> Sources: {d.provenance.clauses.join('; ')}.</> : null}
-          </div>
+          </Alert>
         )}
         {d.description && <p>{d.description}</p>}
         <div className="row-actions">
-          {isFlow && !a.readOnly && <button onClick={() => go(`/designer?open=${encodeURIComponent(e.status === 'draft' ? e.key : e.name)}${e.status === 'draft' ? '&draft=1' : ''}`)}>{e.status === 'draft' ? 'Open the draft' : 'Make a new release'}</button>}
-          {isFlow && <button onClick={() => go(`/designer?clone=${encodeURIComponent(e.name)}`)}>Clone into a new workflow</button>}
-          {(isFlow || e.kind === 'activity') && <button onClick={() => go(`/tests?bench=${encodeURIComponent(e.name)}`)}>Run on the bench</button>}
-          {e.kind === 'workflow' && <button onClick={() => go(`/export?workflows=${encodeURIComponent(e.name)}`)}>Export</button>}
-          {e.kind === 'workflow' && <button onClick={() => go(`/designer?open=${encodeURIComponent(e.name)}&view=expanded`)}>See the expanded form</button>}
-          {editorKind(d) && !a.readOnly && <button onClick={() => go(`/editors?kind=${editorKind(d)}&open=${encodeURIComponent(e.name)}`)}>Edit in the form</button>}
-          {d.implementation?.binding === 'subflow' && <button onClick={() => go(`/artefact/${encodeURIComponent(d.implementation.subflow)}`)}>Open its subflow</button>}
-          {e.kind === 'activity' && <button onClick={() => go(`/data?tab=types&activity=${encodeURIComponent(e.name)}`)}>Generated types</button>}
-          {e.status === 'published' && <button onClick={() => go(`/governance?tab=releases&name=${encodeURIComponent(e.name)}`)}>Pins and retirement</button>}
+          {isFlow && !a.readOnly && <Button onClick={() => go(`/designer?open=${encodeURIComponent(e.status === 'draft' ? e.key : e.name)}${e.status === 'draft' ? '&draft=1' : ''}`)}>{e.status === 'draft' ? 'Open the draft' : 'Make a new release'}</Button>}
+          {isFlow && <Button onClick={() => go(`/designer?clone=${encodeURIComponent(e.name)}`)}>Clone into a new workflow</Button>}
+          {(isFlow || e.kind === 'activity') && <Button onClick={() => go(`/tests?bench=${encodeURIComponent(e.name)}`)}>Run on the bench</Button>}
+          {e.kind === 'workflow' && <Button onClick={() => go(`/export?workflows=${encodeURIComponent(e.name)}`)}>Export</Button>}
+          {e.kind === 'workflow' && <Button onClick={() => go(`/designer?open=${encodeURIComponent(e.name)}&view=expanded`)}>See the expanded form</Button>}
+          {editorKind(d) && !a.readOnly && <Button onClick={() => go(`/editors?kind=${editorKind(d)}&open=${encodeURIComponent(e.name)}`)}>Edit in the form</Button>}
+          {d.implementation?.binding === 'subflow' && <Button onClick={() => go(`/artefact/${encodeURIComponent(d.implementation.subflow)}`)}>Open its subflow</Button>}
+          {e.kind === 'activity' && <Button onClick={() => go(`/data?tab=types&activity=${encodeURIComponent(e.name)}`)}>Generated types</Button>}
+          {e.status === 'published' && <Button onClick={() => go(`/governance?tab=releases&name=${encodeURIComponent(e.name)}`)}>Pins and retirement</Button>}
         </div>
       </div>
 
@@ -94,20 +95,20 @@ export function ArtefactPage({ name, query }: { name?: string; query: URLSearchP
           <div className="col side">
             <Section title="Releases" count={a.releases?.length}>
               <div className="table-wrap">
-                <table className="grid compact">
-                  <thead><tr><th>Release</th><th>Status</th><th>Maker</th><th>Checker</th><th>Hash</th></tr></thead>
-                  <tbody>
+                <Table size="small" className="grid compact">
+                  <TableHeader><TableRow><TableHeaderCell>Release</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>Maker</TableHeaderCell><TableHeaderCell>Checker</TableHeaderCell><TableHeaderCell>Hash</TableHeaderCell></TableRow></TableHeader>
+                  <TableBody>
                     {(a.releases ?? []).map((r: any, i: number) => (
-                      <tr key={i}>
-                        <td className="mono">{r.release}</td>
-                        <td><StatusBadge status={r.status} /></td>
-                        <td>{r.maker ?? <span className="muted">none</span>}</td>
-                        <td>{r.checker ?? <span className="muted">none</span>}</td>
-                        <td className="mono small" title={r.hash}>{r.hash ? String(r.hash).replace('sha256:', '').slice(0, 12) : ''}</td>
-                      </tr>
+                      <TableRow key={i}>
+                        <TableCell className="mono">{r.release}</TableCell>
+                        <TableCell><StatusBadge status={r.status} /></TableCell>
+                        <TableCell>{r.maker ?? <span className="muted">none</span>}</TableCell>
+                        <TableCell>{r.checker ?? <span className="muted">none</span>}</TableCell>
+                        <TableCell className="mono small" title={r.hash}>{r.hash ? String(r.hash).replace('sha256:', '').slice(0, 12) : ''}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </Section>
             <Section title="Used by" count={a.usedBy?.length}>
@@ -182,18 +183,18 @@ function ActivityContract({ d, policy }: { d: any; policy?: any }) {
 
 export function PolicyTable({ policy }: { policy: Record<string, { value: any; source: string }> }) {
   return (
-    <table className="grid compact">
-      <thead><tr><th>Setting</th><th>Value</th><th>Comes from</th></tr></thead>
-      <tbody>
+    <Table size="small" className="grid compact">
+      <TableHeader><TableRow><TableHeaderCell>Setting</TableHeaderCell><TableHeaderCell>Value</TableHeaderCell><TableHeaderCell>Comes from</TableHeaderCell></TableRow></TableHeader>
+      <TableBody>
         {Object.entries(policy).map(([k, v]) => (
-          <tr key={k}>
-            <td>{k}</td>
-            <td><Val v={v?.value} /></td>
-            <td><Badge tone={v?.source === 'step override' ? 'warn' : v?.source === 'block default' ? 'info' : 'muted'}>{v?.source}</Badge></td>
-          </tr>
+          <TableRow key={k}>
+            <TableCell>{k}</TableCell>
+            <TableCell><Val v={v?.value} /></TableCell>
+            <TableCell><Badge tone={v?.source === 'step override' ? 'warn' : v?.source === 'block default' ? 'info' : 'muted'}>{v?.source}</Badge></TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }
 
@@ -201,14 +202,14 @@ function Parameters({ params }: { params: Record<string, any> }) {
   return (
     <>
       <h4>Parameters</h4>
-      <table className="grid compact">
-        <thead><tr><th>Name</th><th>Type</th><th>Default</th><th>Bounds</th><th>Description</th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Default</TableHeaderCell><TableHeaderCell>Bounds</TableHeaderCell><TableHeaderCell>Description</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {Object.entries<any>(params).map(([k, p]) => (
-            <tr key={k}><td className="mono">{k}</td><td>{p.type}{p.currency ? ` ${p.currency}` : ''}</td><td><Val v={p.default} /></td><td>{p.bounds ? <Val v={p.bounds} /> : <span className="muted">none</span>}</td><td>{p.description}</td></tr>
+            <TableRow key={k}><TableCell className="mono">{k}</TableCell><TableCell>{p.type}{p.currency ? ` ${p.currency}` : ''}</TableCell><TableCell><Val v={p.default} /></TableCell><TableCell>{p.bounds ? <Val v={p.bounds} /> : <span className="muted">none</span>}</TableCell><TableCell>{p.description}</TableCell></TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </>
   );
 }
@@ -230,19 +231,19 @@ function FlowContract({ d }: { d: any }) {
       {d.slots?.length > 0 && (
         <>
           <h4>Slots</h4>
-          <table className="grid compact">
-            <thead><tr><th>Slot</th><th>Reads</th><th>Writes</th><th>Outcomes</th></tr></thead>
-            <tbody>{d.slots.map((s: any) => <tr key={s.name}><td className="mono">{s.name}</td><td><Paths items={s.contract?.reads} /></td><td><Paths items={s.contract?.writes} /></td><td><Paths items={(s.contract?.outcomes ?? []).map((o: string) => (o === s.contract?.primaryOutcome ? `${o} (primary)` : o))} /></td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Slot</TableHeaderCell><TableHeaderCell>Reads</TableHeaderCell><TableHeaderCell>Writes</TableHeaderCell><TableHeaderCell>Outcomes</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{d.slots.map((s: any) => <TableRow key={s.name}><TableCell className="mono">{s.name}</TableCell><TableCell><Paths items={s.contract?.reads} /></TableCell><TableCell><Paths items={s.contract?.writes} /></TableCell><TableCell><Paths items={(s.contract?.outcomes ?? []).map((o: string) => (o === s.contract?.primaryOutcome ? `${o} (primary)` : o))} /></TableCell></TableRow>)}</TableBody>
+          </Table>
         </>
       )}
       {d.hookPoints?.length > 0 && (
         <>
           <h4>Hook points</h4>
-          <table className="grid compact">
-            <thead><tr><th>Hook point</th><th>Type</th><th>Contract</th><th>Policy</th></tr></thead>
-            <tbody>{d.hookPoints.map((h: any) => <tr key={h.name}><td className="mono" title={h.description}>{h.name}</td><td>{h.type}</td><td><Val v={h.contract} /></td><td><Val v={h.policy} /></td></tr>)}</tbody>
-          </table>
+          <Table size="small" className="grid compact">
+            <TableHeader><TableRow><TableHeaderCell>Hook point</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Contract</TableHeaderCell><TableHeaderCell>Policy</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{d.hookPoints.map((h: any) => <TableRow key={h.name}><TableCell className="mono" title={h.description}>{h.name}</TableCell><TableCell>{h.type}</TableCell><TableCell><Val v={h.contract} /></TableCell><TableCell><Val v={h.policy} /></TableCell></TableRow>)}</TableBody>
+          </Table>
         </>
       )}
       {d.parameters && <Parameters params={d.parameters} />}
@@ -256,30 +257,30 @@ function StepPolicies({ steps, selected, onSelect }: { steps: any[]; selected?: 
     <Section title="Steps and effective policy" count={steps.length}>
       <p className="muted small">Each call step's effective policy and where each value comes from: the type default, the block default or the step override.</p>
       <div className="table-wrap">
-        <table className="grid compact">
-          <thead><tr><th>Step</th><th>Kind</th><th>Activity</th><th>Effect</th><th>Handled</th><th>Policy</th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Step</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell><TableHeaderCell>Activity</TableHeaderCell><TableHeaderCell>Effect</TableHeaderCell><TableHeaderCell>Handled</TableHeaderCell><TableHeaderCell>Policy</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {steps.map((s, i) => {
               const unhandled = (s.outcomes ?? []).slice(1).filter((o: string) => !s.handled.includes(o));
               const k = `${s.label}#${i}`;
               return (
                 <Fragment key={k}>
-                  <tr className={selected === s.label ? 'sel' : ''} onClick={() => onSelect(s.label)}>
-                    <td className="mono">{s.label}</td>
-                    <td>{s.kind}</td>
-                    <td>{s.call ? <ArtefactLink name={s.call} /> : ''}{s.type && <span className="muted small"> {s.type}</span>}</td>
-                    <td>{s.effect}</td>
-                    <td>{s.handled?.join(', ')}{unhandled.length > 0 && <span className="muted small"> of {(s.outcomes ?? []).join(', ')}</span>}</td>
-                    <td>{s.policy ? <button className="link" onClick={(e) => { e.stopPropagation(); setOpen(open === k ? undefined : k); }}>{open === k ? 'Hide' : 'Show'}</button> : <span className="muted">none</span>}</td>
-                  </tr>
+                  <TableRow className={selected === s.label ? 'sel' : ''} onClick={() => onSelect(s.label)}>
+                    <TableCell className="mono">{s.label}</TableCell>
+                    <TableCell>{s.kind}</TableCell>
+                    <TableCell>{s.call ? <ArtefactLink name={s.call} /> : ''}{s.type && <span className="muted small"> {s.type}</span>}</TableCell>
+                    <TableCell>{s.effect}</TableCell>
+                    <TableCell>{s.handled?.join(', ')}{unhandled.length > 0 && <span className="muted small"> of {(s.outcomes ?? []).join(', ')}</span>}</TableCell>
+                    <TableCell>{s.policy ? <Link as="button" onClick={(e) => { e.stopPropagation(); setOpen(open === k ? undefined : k); }}>{open === k ? 'Hide' : 'Show'}</Link> : <span className="muted">none</span>}</TableCell>
+                  </TableRow>
                   {open === k && s.policy && (
-                    <tr className="sub"><td colSpan={6}><PolicyTable policy={s.policy} /></td></tr>
+                    <TableRow className="sub"><TableCell colSpan={6}><PolicyTable policy={s.policy} /></TableCell></TableRow>
                   )}
                 </Fragment>
               );
             })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </Section>
   );
@@ -289,14 +290,14 @@ function Examples({ examples }: { examples: any[] }) {
   const passed = examples.filter((x) => x.passed).length;
   return (
     <Section title="Examples" count={examples.length} actions={<Badge tone={passed === examples.length ? 'pass' : 'fail'}>{passed} of {examples.length} pass</Badge>}>
-      <table className="grid compact">
-        <thead><tr><th>Example</th><th>Result</th><th>Expected</th><th>Actual</th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>Example</TableHeaderCell><TableHeaderCell>Result</TableHeaderCell><TableHeaderCell>Expected</TableHeaderCell><TableHeaderCell>Actual</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {examples.map((x, i) => (
-            <tr key={i}><td>{x.name}</td><td><PassFail passed={x.passed} /></td><td><Val v={x.expected} /></td><td><Val v={x.actual} /></td></tr>
+            <TableRow key={i}><TableCell>{x.name}</TableCell><TableCell><PassFail passed={x.passed} /></TableCell><TableCell><Val v={x.expected} /></TableCell><TableCell><Val v={x.actual} /></TableCell></TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Section>
   );
 }
@@ -344,14 +345,14 @@ function SimulatorSummary({ d, missing }: { d: any; missing?: string[] }) {
         ['Stands for', d.standsFor],
         ['Missing standard scenarios', missing?.length ? <span className="chips">{missing.map((m) => <Badge key={m} tone="fail">{m}</Badge>)}</span> : <Badge tone="pass">none missing</Badge>],
       ]} />
-      <table className="grid compact">
-        <thead><tr><th>Scenario</th><th>Steps</th></tr></thead>
-        <tbody>
+      <Table size="small" className="grid compact">
+        <TableHeader><TableRow><TableHeaderCell>Scenario</TableHeaderCell><TableHeaderCell>Steps</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>
           {(d.scenarios ?? []).map((s: any) => (
-            <tr key={s.name}><td className="mono">{s.name}</td><td>{(s.steps ?? []).map((st: any, i: number) => <div key={i} className="small"><Val v={st} /></div>)}</td></tr>
+            <TableRow key={s.name}><TableCell className="mono">{s.name}</TableCell><TableCell>{(s.steps ?? []).map((st: any, i: number) => <div key={i} className="small"><Val v={st} /></div>)}</TableCell></TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Section>
   );
 }
@@ -360,22 +361,22 @@ export function DispatchTable({ rows }: { rows: any[] }) {
   return (
     <Section title="Message catalogue and dispatch" count={rows.length}>
       <div className="table-wrap">
-        <table className="grid compact">
-          <thead><tr><th>Message</th><th>Title</th><th>Direction</th><th>ISO message</th><th>Disposition</th><th>Target</th><th>Confirmed</th></tr></thead>
-          <tbody>
+        <Table size="small" className="grid compact">
+          <TableHeader><TableRow><TableHeaderCell>Message</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Direction</TableHeaderCell><TableHeaderCell>ISO message</TableHeaderCell><TableHeaderCell>Disposition</TableHeaderCell><TableHeaderCell>Target</TableHeaderCell><TableHeaderCell>Confirmed</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
             {rows.map((m) => (
-              <tr key={m.id} className={m.disposition === 'planned' ? 'row-warn' : ''}>
-                <td className="mono">{m.id}</td>
-                <td>{m.title}</td>
-                <td>{m.direction}</td>
-                <td className="mono">{m.isoMessage ?? ''}</td>
-                <td><Badge tone={m.disposition === 'planned' ? 'warn' : 'info'}>{m.disposition}</Badge></td>
-                <td className="mono small break">{m.target}</td>
-                <td>{m.confirmed ? <Badge tone="pass">yes</Badge> : <Badge tone="prov">unconfirmed</Badge>}</td>
-              </tr>
+              <TableRow key={m.id} className={m.disposition === 'planned' ? 'row-warn' : ''}>
+                <TableCell className="mono">{m.id}</TableCell>
+                <TableCell>{m.title}</TableCell>
+                <TableCell>{m.direction}</TableCell>
+                <TableCell className="mono">{m.isoMessage ?? ''}</TableCell>
+                <TableCell><Badge tone={m.disposition === 'planned' ? 'warn' : 'info'}>{m.disposition}</Badge></TableCell>
+                <TableCell className="mono small break">{m.target}</TableCell>
+                <TableCell>{m.confirmed ? <Badge tone="pass">yes</Badge> : <Badge tone="prov">unconfirmed</Badge>}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </Section>
   );

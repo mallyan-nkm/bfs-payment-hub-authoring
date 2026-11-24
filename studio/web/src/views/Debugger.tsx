@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { TestRunReport } from '../api';
 import { Badge, Section } from '../ui';
+import { Button, Checkbox, Link, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 
 // The workflow debugger (F-17; docs/ISSUES.md I-32). A debug run goes end to end on the studio's
 // interpreter and virtual clock, and keeps the data after every event. Here the designer steps
@@ -113,7 +114,7 @@ function Tree({ v, path, changed, depth = 0 }: { v: any; path: string; changed: 
   if (!entries.length) return <span>{Array.isArray(v) ? '[]' : '{}'}</span>;
   return (
     <span>
-      <button className={`link small dbg-fold ${hot ? 'dbg-hot' : ''}`} onClick={() => setOpen(!open)} aria-label={`${open ? 'Fold' : 'Unfold'} ${path || 'the data'}`}>{open ? '▾' : '▸'} {Array.isArray(v) ? `${v.length} item${v.length === 1 ? '' : 's'}` : `${entries.length} field${entries.length === 1 ? '' : 's'}`}</button>
+      <Button className={`link small dbg-fold ${hot ? 'dbg-hot' : ''}`} onClick={() => setOpen(!open)} aria-label={`${open ? 'Fold' : 'Unfold'} ${path || 'the data'}`}>{open ? '▾' : '▸'} {Array.isArray(v) ? `${v.length} item${v.length === 1 ? '' : 's'}` : `${entries.length} field${entries.length === 1 ? '' : 's'}`}</Button>
       {open && (
         <ul className="dbg-tree">
           {entries.map(([k, x]) => {
@@ -212,16 +213,16 @@ export function Debugger({ report, onClose }: { report: TestRunReport; onClose?:
   const decisions = d.decisions && Object.keys(d.decisions).length ? d.decisions : undefined;
 
   return (
-    <Section title="Debugger" actions={<span className="row-actions">{onClose && <button className="link" onClick={onClose}>Show the run report</button>}</span>}>
+    <Section title="Debugger" actions={<span className="row-actions">{onClose && <Link as="button" onClick={onClose}>Show the run report</Link>}</span>}>
       <div className="dbg-bar" role="toolbar" aria-label="Debugger controls">
-        <button onClick={() => go(0)} disabled={p === 0} title="Back to the first event">⏮ Restart</button>
-        <button onClick={() => go(p - 1)} disabled={p === 0} title="One event back">◀ Step back</button>
-        <button className="primary" onClick={() => go(p + 1)} disabled={p >= stops.length - 1} title="The next event, going into a leg or hook">Step into ▶</button>
-        <button onClick={stepOver} disabled={p >= stops.length - 1} title="The next event at this level, over a leg or hook">Step over ⤼</button>
-        <button onClick={stepOut} disabled={!inst?.parent} title="Back up to the workflow that started this one">Step out ⤴</button>
-        <button onClick={cont} disabled={p >= stops.length - 1} title="Run to the next breakpoint, or to the end">Continue ⏭</button>
+        <Button onClick={() => go(0)} disabled={p === 0} title="Back to the first event">⏮ Restart</Button>
+        <Button onClick={() => go(p - 1)} disabled={p === 0} title="One event back">◀ Step back</Button>
+        <Button appearance="primary" onClick={() => go(p + 1)} disabled={p >= stops.length - 1} title="The next event, going into a leg or hook">Step into ▶</Button>
+        <Button onClick={stepOver} disabled={p >= stops.length - 1} title="The next event at this level, over a leg or hook">Step over ⤼</Button>
+        <Button onClick={stepOut} disabled={!inst?.parent} title="Back up to the workflow that started this one">Step out ⤴</Button>
+        <Button onClick={cont} disabled={p >= stops.length - 1} title="Run to the next breakpoint, or to the end">Continue ⏭</Button>
         <span className="dbg-pos" aria-live="polite">Event {p + 1} of {stops.length} · {fmt(cur.at)} on the virtual clock</span>
-        <label className="check small"><input type="checkbox" checked={everything} onChange={(e) => setEverything(e.target.checked)} /> every event</label>
+        <Checkbox className="check small" checked={everything} onChange={(e) => setEverything(e.target.checked)} label={<>every event</>} />
       </div>
 
       <div className="dbg-cols">
@@ -238,7 +239,7 @@ export function Debugger({ report, onClose }: { report: TestRunReport; onClose?:
               const bp = breaks.has(bpKey(inst?.workflow, s.key));
               return (
                 <li key={n} className={`${isHere ? 'dbg-here' : ''} ${outc ? 'dbg-done' : ''}`} style={{ paddingLeft: 6 + s.depth * 14 }} data-step={s.key}>
-                  <button className={`dbg-bp ${bp ? 'on' : ''}`} onClick={() => s.key && toggleBreak(s.key)} aria-label={`Breakpoint at ${s.key || s.text}`} aria-pressed={bp} title="Stop here on Continue">●</button>
+                  <Button className={`dbg-bp ${bp ? 'on' : ''}`} onClick={() => s.key && toggleBreak(s.key)} aria-label={`Breakpoint at ${s.key || s.text}`} aria-pressed={bp} title="Stop here on Continue">●</Button>
                   <span className="mono small">{s.text}</span>
                   {outc && <Badge tone={/reject|fail|declin|unknown/.test(outc) ? 'fail' : 'pass'}>{outc}</Badge>}
                 </li>
@@ -257,7 +258,7 @@ export function Debugger({ report, onClose }: { report: TestRunReport; onClose?:
           {(decisions || d.findings?.length || d.rulesFired?.length) && (
             <div className="dock-card" data-testid="dbg-decisions">
               <div className="small muted">Decisions and rules</div>
-              {decisions && <table className="grid compact"><tbody>{Object.entries<any>(decisions).map(([k, v]) => <tr key={k}><th className="mono small">{k}</th><td className="mono small">{JSON.stringify(v)}</td></tr>)}</tbody></table>}
+              {decisions && <Table size="small" className="grid compact"><TableBody>{Object.entries<any>(decisions).map(([k, v]) => <TableRow key={k}><TableHeaderCell className="mono small">{k}</TableHeaderCell><TableCell className="mono small">{JSON.stringify(v)}</TableCell></TableRow>)}</TableBody></Table>}
               {d.findings?.length > 0 && <ul className="small">{d.findings.map((f: any, n: number) => <li key={n}><Badge tone={f.severity === 'reject' ? 'fail' : 'warn'}>{f.severity}</Badge> <code>{f.reasonCode}</code> at <code>{f.path}</code>{f.message ? `: ${f.message}` : ''}{f.rule ? <span className="muted"> ({f.rule})</span> : null}</li>)}</ul>}
               {d.findings && !d.findings.length && <p className="small">No finding: every rule passed.</p>}
               {d.rulesFired?.length > 0 && <p className="small muted">Rules and tables that ran: {d.rulesFired.map((r: string) => <code key={r}>{r} </code>)}</p>}
@@ -266,10 +267,10 @@ export function Debugger({ report, onClose }: { report: TestRunReport; onClose?:
           <div className="dock-card" data-testid="dbg-changed">
             <div className="small muted">Data changed by this event</div>
             {delta.length ? (
-              <table className="grid compact">
-                <thead><tr><th>Path</th><th>Before</th><th>After</th></tr></thead>
-                <tbody>{delta.slice(0, 60).map((c, n) => <tr key={n}><td className="mono small">{c.path}</td><td className="mono small muted">{c.before ?? '(none)'}</td><td className="mono small dbg-changed">{c.after ?? '(removed)'}</td></tr>)}</tbody>
-              </table>
+              <Table size="small" className="grid compact">
+                <TableHeader><TableRow><TableHeaderCell>Path</TableHeaderCell><TableHeaderCell>Before</TableHeaderCell><TableHeaderCell>After</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{delta.slice(0, 60).map((c, n) => <TableRow key={n}><TableCell className="mono small">{c.path}</TableCell><TableCell className="mono small muted">{c.before ?? '(none)'}</TableCell><TableCell className="mono small dbg-changed">{c.after ?? '(removed)'}</TableCell></TableRow>)}</TableBody>
+              </Table>
             ) : <p className="small muted">Nothing changed.</p>}
             {delta.length > 60 && <p className="small muted">And {delta.length - 60} more.</p>}
           </div>
@@ -288,7 +289,7 @@ export function Debugger({ report, onClose }: { report: TestRunReport; onClose?:
         <ol className="dbg-list">
           {stops.map((e, n) => (
             <li key={e.i} className={n === p ? 'dbg-here' : ''}>
-              <button className="link small" onClick={() => go(n)}>{fmt(e.at)} · {byId.get(e.instance)?.workflow?.split('.').slice(-2, -1)[0] ?? e.instance} · {describe(e, byId.get(e.instance))}</button>
+              <Link as="button" className="small" onClick={() => go(n)}>{fmt(e.at)} · {byId.get(e.instance)?.workflow?.split('.').slice(-2, -1)[0] ?? e.instance} · {describe(e, byId.get(e.instance))}</Link>
             </li>
           ))}
         </ol>

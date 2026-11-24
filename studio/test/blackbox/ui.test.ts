@@ -89,8 +89,13 @@ describe('the web app', () => {
   it('runs the whole conformance kit from the browser', async () => {
     const { p, problems } = await page();
     await p.goto(`${server.url}/#/kit`);
-    await p.getByRole('button', { name: 'Run all 56' }).click();
-    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(/56 of 56/);
+    // The kit's own count, not a fixed one: the kit grows.
+    const runAll = p.getByRole('button', { name: /^Run all \d+$/ });
+    const count = async () => Number(/(\d+)/.exec((await runAll.textContent()) ?? '')?.[1] ?? 0);
+    await expect.poll(count).toBeGreaterThan(0);
+    const n = await count();
+    await runAll.click();
+    await expect.poll(async () => (await p.locator('body').textContent()) ?? '', { timeout: 120000 }).toMatch(new RegExp(`${n} of ${n}`));
     expect(problems).toEqual([]);
     await p.close();
   }, 150000);

@@ -39,7 +39,7 @@ async function signInFromStudio(p: any, user: string) {
   await p.getByLabel('Signed in as').waitFor();
 }
 
-const nav = async (p: any) => (await p.locator('nav.sidebar a.nav > span:first-child').allTextContents()) as string[];
+const nav = async (p: any) => (await p.locator('nav.sidebar [data-testid="nav-label"]').allTextContents()) as string[];
 
 describe('sign-in in the web app', () => {
   it('shows only the sign-in page before sign-in, and nothing of the studio', async () => {
@@ -104,12 +104,14 @@ describe('sign-in in the web app', () => {
     await p.getByLabel(`Valid from ${n}`).fill('2027-02-01T00:00:00Z');
     // A literal credential as a setting is refused by the check (L48) ...
     await p.getByLabel(`Settings ${n}`).fill('baseUrl=https://core-banking.example.invalid/\napiToken=synthetic-literal');
-    await p.getByRole('button', { name: 'Check' }).click();
+    // The port bindings' own Check and Save draft: the bank workspace has the reference tables' too.
+    const bindings = p.getByTestId('port-bindings');
+    await bindings.getByRole('button', { name: 'Check', exact: true }).click();
     await p.getByText(/apiToken holds a value/).first().waitFor();
     // ... and accepted as a reference.
     await p.getByLabel(`Settings ${n}`).fill('baseUrl=https://core-banking.example.invalid/');
     await p.getByLabel(`Secret reference ${n}`).fill('env:TH_EXAMPLE_CORE_BANKING_TOKEN');
-    await p.getByRole('button', { name: 'Save draft' }).click();
+    await bindings.getByRole('button', { name: 'Save draft', exact: true }).click();
     await p.getByText(/Saved as draft/).waitFor();
     await p.getByText(/draft 1\.0\.0/).waitFor();
     expect(problems).toEqual([]);
