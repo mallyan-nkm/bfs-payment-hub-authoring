@@ -382,7 +382,7 @@ public sealed partial class FlowableBinding
             Bindings = dep.BindingsAt(Duration.Today(now)), // hook bindings are taken when the instance starts (R-06-13)
         };
         var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
-        await claim.Create(i.Ref, payload, new AcceptInfo(J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant", J.S(header, "scheme") ?? workflow.Split('.')[0], direction, J.S(input, "distribution") ?? docKey));
+        await claim.Create(i.Ref, payload, new AcceptInfo(J.S(input, "tenant") ?? J.S(config, "tenant") ?? "tenant", J.S(header, "scheme") ?? workflow.Split('.')[0], direction, J.S(input, "distribution") ?? docKey, J.S(header, "paymentId")));
         insts[pid] = i;
         roots.Add(i);
         i.ReleaseTrace.Add($"{ShortName(workflow)}@{release}");
@@ -457,25 +457,40 @@ public sealed partial class FlowableBinding
         var def = byDef.GetValueOrDefault(J.S(timer, "processDefinitionId") ?? "");
         var meta = def?.Ann(element, "timer");
         var calendar = meta?.GetValueOrDefault("calendar");
+        // The payment the timer is of (R-09-186, Issue I-240): its root's header.paymentId, which the binding holds for the instance, so a
+        // value its owner reads as of the payment's date is read as of the payment's acceptance, not as of the timer.
+        var paymentId = PaymentOf(J.S(timer, "processInstanceId"));
         // R-05-47: an await's wait a bank may set names its calendar as a parameter too, the policy giving the default.
         if (meta?.GetValueOrDefault("calendarParameter") is string calendarParameter)
-            calendar = ParamValue(calendarParameter, calendar ?? "elapsed", Duration.Today(vCreated), vCreated);
+            calendar = ParamValue(calendarParameter, calendar ?? "elapsed", Duration.Today(vCreated), vCreated, paymentId);
         var business = calendar == "business";
         var written = def?.DurationOf(element);
         if (meta?.GetValueOrDefault("parameter") is string parameter)
         {
             var id = J.S(timer, "id") ?? "";
             if (!timerValue.TryGetValue(id, out var value))
-                timerValue[id] = value = ParamValue(parameter, meta.GetValueOrDefault("default") ?? written ?? "PT0S", Duration.Today(vCreated), vCreated);
+                timerValue[id] = value = ParamValue(parameter, meta.GetValueOrDefault("default") ?? written ?? "PT0S", Duration.Today(vCreated), vCreated, paymentId);
             lastTimerValue[$"{J.S(timer, "processInstanceId")}|{element}"] = value;
             written = value;
         }
-        if (written is not null && Duration.IsDuration(written)) return Duration.Add(vCreated, written, business);
+        // On the bank's business calendar, its holidays and closing days included (R-09-183, Issue I-166).
+        if (written is not null && Duration.IsDuration(written)) return Duration.Add(vCreated, written, business ? dep.BusinessCalendarAt(vCreated) : null);
         return vCreated + (long)Math.Round(serverDuration / 100.0, MidpointRounding.AwayFromZero) * 100;
     }
 
-    /// <summary>A parameter's value in force on a date (the tenant's configuration), else its default (R-01-17).</summary>
-    string ParamValue(string parameter, string dflt, string date, long? at = null)
+    /// <summary>The payment a process instance is of: its root instance's <c>header.paymentId</c>, or null when the binding holds none.</summary>
+    string? PaymentOf(string? processInstanceId)
+    {
+        if (processInstanceId is null || !insts.TryGetValue(processInstanceId, out var inst)) return null;
+        while (inst.Parent is not null) inst = inst.Parent;
+        return J.S(J.P(inst.State, "header"), "paymentId");
+    }
+
+    /// <summary>
+    /// A parameter's value in force on a date (the tenant's configuration), else its default (R-01-17). On a runtime's engine host, given
+    /// the payment's id, a parameter its owner reads as of the payment's date is read as of the payment's acceptance (R-09-135, R-09-186).
+    /// </summary>
+    string ParamValue(string parameter, string dflt, string date, long? at = null, string? paymentId = null)
     {
         // On a runtime's engine host, the bank's value in force now, from the store (R-09-135): the binding reads it once per timer
         // (timerValue) and journals it, so a value a later configuration release puts in force reaches the later timers only.
@@ -483,7 +498,7 @@ public sealed partial class FlowableBinding
         {
             var r = Deployment.ValuesOp(new JsonObject
             {
-                ["op"] = "values", ["tenant"] = J.S(dep.Config, "tenant"), ["at"] = at ?? Wall(),
+                ["op"] = "values", ["tenant"] = J.S(dep.Config, "tenant"), ["at"] = at ?? Wall(), ["paymentId"] = paymentId,
                 ["parameters"] = new JsonArray(new JsonObject { ["parameter"] = parameter, ["lookupDate"] = dep.LookupDateOf(parameter) }),
             });
             return J.S(J.P(r, "values"), parameter) ?? dflt;
@@ -865,7 +880,7 @@ public sealed partial class FlowableBinding
             // A hold opened its item: the instance awaits the operator's decision until the hold's expiry (Issue I-98, R-05-56).
             // On the bank's business calendar when the hold says so (R-09-88): the timer waits until the expiry so counted.
             var expiry = J.S(res, "expiry") ?? "P1D";
-            if (J.S(res, "expiryCalendar") == "business") expiry = Duration.Seconds(Duration.Add(now, expiry, BusinessCalendar.Of(J.P(res, "calendar")) ?? BusinessCalendar.Default) - now);
+            if (J.S(res, "expiryCalendar") == "business") expiry = Duration.Seconds(Duration.Add(now, expiry, BusinessCalendar.Of(J.P(res, "calendar")) ?? dep.BusinessCalendarAt(now)) - now);
             await CompleteJob(job.Id, new Dictionary<string, JsonNode?> { [$"outcome_{Safe(step)}"] = "held", [$"th_expiry_{Safe(step)}"] = expiry });
             return;
         }

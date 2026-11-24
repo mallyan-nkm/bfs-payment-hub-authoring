@@ -77,7 +77,9 @@ public sealed class PostAccountingV2(INativeCoreBanking coreBanking) : INativeAc
             var fx = NativeContext.Node(line, "facts.fx");
             var ch = NativeContext.Node(line, "facts.charges");
             var amount = Money.Read(NativeContext.Node(fx, "amount")) ?? Money.Read(NativeContext.Node(line, "payment.instructedAmount.value")) ?? 0m;
-            var currency = new[] { NativeContext.S(fx, "to"), NativeContext.S(fx, "currency"), NativeContext.S(line, "payment.instructedAmount.currency"), "AED" }.First(c => c.Length > 0);
+            // The converted currency, else the line's own: never a platform default (R-09-185, Issue I-238).
+            var currency = new[] { NativeContext.S(fx, "to"), NativeContext.S(fx, "currency"), NativeContext.S(line, "payment.instructedAmount.currency") }.FirstOrDefault(c => c.Length > 0)
+                ?? throw new NativeFailure("BusinessReject", $"Line {i + 1} names no currency to post in", false);
             var debit = NativeContext.Node(line, "payment.debtorAccount") is not null;
             var account = b.AccountOf(NativeContext.Node(line, debit ? "payment.debtorAccount" : "payment.creditorAccount"));
             if (account.Length == 0) return new NativeResult("rejected", "AC01", new JsonObject());

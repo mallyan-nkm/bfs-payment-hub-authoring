@@ -97,6 +97,6 @@ A `hold` block already works this way: one block that creates an item and waits 
 ## 3.8 Examples
 
 - Composite exchange: `factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml`, with its subflow `factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml`.
-- External block with a retry policy: `factory/uae.wps/activities/uae.wps.exchange.send-salary-file.v1.yaml`.
+- External block with a retry policy: `factory/uae.wps/activities/uae.wps.exchange.send-salary-file.v2.yaml`.
 - Write block with compensation: `factory/p/activities/p.reserve.funds.v1.yaml`.
 - Item-level validate block: `factory/uae.wps/activities/uae.wps.validate.salary-record.v1.yaml`.

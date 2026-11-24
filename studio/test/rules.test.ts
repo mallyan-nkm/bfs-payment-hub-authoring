@@ -54,6 +54,23 @@ describe('rule sessions (C06-S2 to S5)', () => {
     expect(runRuleSet('b.ruleset.internal-limit.v1', facts, { resolve, lookup, evaluationDate: '2026-12-31' }).worst).toBe('pass');
     expect(runRuleSet('b.ruleset.internal-limit.v1', facts, { resolve, lookup, evaluationDate: '2027-01-01' }).worst).toBe('reject');
   });
+  it('reads a parameter its rule declares payment-date as of the payment\'s business date, and every other as of the step (R-05-93, I-236)', () => {
+    const set = env.store.doc('b.ruleset.internal-limit.v1');
+    const ruleName = (set.rules ?? [])[0];
+    const rule = env.store.doc(ruleName);
+    const asOfPayment = { ...rule, parameters: Object.fromEntries(Object.entries<any>(rule.parameters).map(([k, d]) => [k, { ...d, lookupDate: 'payment-date' }])) };
+    const resolved = (n: string) => (n === ruleName ? asOfPayment : resolve(n));
+    const lookup = (_o: string, p: string, decl: any, date: string) => (p === 'internalLimit' && date >= '2027-01-01' ? 100000 : decl.default);
+    const facts = { Payment: [{ instructedAmount: { value: 150000, currency: 'AED' } }] };
+    // The step is in 2027, the payment's business date in 2026: payment-date reads the 2026 value, step-time the 2027 one.
+    expect(runRuleSet(set.name, facts, { resolve: resolved, lookup, evaluationDate: '2027-01-02', businessDate: '2026-12-31' }).worst).toBe('pass');
+    expect(runRuleSet(set.name, facts, { resolve, lookup, evaluationDate: '2027-01-02', businessDate: '2026-12-31' }).worst).toBe('reject');
+    // A rule with no business date to take reads as of the step.
+    expect(runRuleSet(set.name, facts, { resolve: resolved, lookup, evaluationDate: '2027-01-02' }).worst).toBe('reject');
+    // The word the schema does not have is not read as payment-date.
+    const business = { ...rule, parameters: Object.fromEntries(Object.entries<any>(rule.parameters).map(([k, d]) => [k, { ...d, lookupDate: 'business' }])) };
+    expect(runRuleSet(set.name, facts, { resolve: (n) => (n === ruleName ? business : resolve(n)), lookup, evaluationDate: '2027-01-02', businessDate: '2026-12-31' }).worst).toBe('reject');
+  });
   it('takes the first matching row and resolves an output that names an input', () => {
     const t = env.store.doc('p.table.rail-choice.v1');
     const res = runTable(t, { Header: [{ scheme: 'uae.wps' }] }, { resolve, evaluationDate: '2026-11-17' }, { enabledRails: ['uae.wps'] });

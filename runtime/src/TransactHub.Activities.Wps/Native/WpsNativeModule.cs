@@ -20,6 +20,6 @@ public sealed class WpsNativeModule : INativeModule
         Action<string, string, byte[]> keep = services.KeepRendered;
         // WPS's own match of the corporate the platform's party register found (R-12-27), for the platform module of the same distribution.
         services.Contribute($"party-matcher:{WpsCorporateMatch.Scheme}", (PartyMatcher)WpsCorporateMatch.Match);
-        return [new ValidateCbxFile(), new RenderCbSif(keep), new RenderCbSif(keep, RenderCbSif.FactoryName), new SendSalaryFile(services.Ports), .. WpsInwardActivities.All(keep), new PostReturn(services.CoreBanking), new EnrichEmployerStatus(services.Ports)];
+        return [new ValidateCbxFile(), new RenderCbSif(keep), new RenderCbSif(keep, RenderCbSif.FactoryName), new SendSalaryFile(services.Ports), new SendSalaryFile(services.Ports, SendSalaryFile.V2), .. WpsInwardActivities.All(keep), new PostReturn(services.CoreBanking), new EnrichEmployerStatus(services.Ports)];
     }
 }

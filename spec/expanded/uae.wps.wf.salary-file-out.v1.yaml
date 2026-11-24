@@ -104,7 +104,7 @@ do:
             refused:
               return: rejected
         - id: submit.send
-          call: uae.wps.exchange.send-salary-file.v1
+          call: uae.wps.exchange.send-salary-file.v2
           handle:
             rejected:
               return: rejected

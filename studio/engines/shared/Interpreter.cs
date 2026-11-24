@@ -538,7 +538,7 @@ public sealed partial class Interp
         else
         {
             // On the bank's business calendar when the hold says so (R-09-88, Issue I-127): the calendar comes with the answer.
-            var calendar = J.S(held, "expiryCalendar") == "business" ? BusinessCalendar.Of(J.P(held, "calendar")) ?? BusinessCalendar.Default : null;
+            var calendar = J.S(held, "expiryCalendar") == "business" ? BusinessCalendar.Of(J.P(held, "calendar")) ?? dep.BusinessCalendarAt(eng.Now) : null;
             var at = expiry is not null ? Duration.Add(eng.Now, expiry, calendar) : long.MaxValue;
             OperatorWaits[key] = at;
             try
@@ -1347,7 +1347,8 @@ public sealed partial class Interp
             var calendarValue = J.S(aw, "calendarParameter") is string cp ? valueOf(cp) ?? J.S(aw, "calendar") : J.S(aw, "calendar");
             if (timeoutValue is string timeout)
             {
-                var at = Duration.Add(eng.Now, timeout, calendarValue == "business");
+                // On the bank's business calendar, its holidays and closing days included (R-09-183, Issue I-166).
+                var at = Duration.Add(eng.Now, timeout, calendarValue == "business" ? dep.BusinessCalendarAt(eng.Now) : null);
                 timer = eng.Timer(at, cts.Token);
                 waits.Add(timer);
             }

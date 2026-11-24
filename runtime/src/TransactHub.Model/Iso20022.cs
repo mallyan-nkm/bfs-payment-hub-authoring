@@ -10,7 +10,6 @@ namespace TransactHub.Model;
 /// <summary>ActiveOrHistoricCurrencyAndAmount: an amount and its ISO 4217 currency.</summary>
 public sealed record Money(decimal Amount, string Currency)
 {
-    public static Money Aed(decimal amount) => new(amount, "AED");
     public override string ToString() => $"{Currency} {Amount:0.00}";
 }
 

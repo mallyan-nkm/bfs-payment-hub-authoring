@@ -242,10 +242,16 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             else if (f.Kind == "payload") await ApplyPayloadFact(st, f, data, ct);
         }
 
+        /// <summary>The subjects this batch made, whose chain may hold facts from before their acceptance (R-09-180).</summary>
+        readonly HashSet<string> fresh = new(StringComparer.Ordinal);
+
         async Task<OpsSubject?> Subject(string id, string kind, CancellationToken ct)
         {
             var subj = o.Subjects.Local.FirstOrDefault(x => x.Id == id) ?? await o.Subjects.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (subj is not null) return subj;
+            // A payment the front door started is accepted under its id (R-09-180, Issue I-286): the front door's facts on its chain name it a
+            // payment, the store holds it as a bulk where it is one.
+            if (kind == "payment" && !await s.Payments.AsNoTracking().AnyAsync(x => x.Id == id, ct) && await s.Bulks.AsNoTracking().AnyAsync(x => x.Id == id, ct)) kind = "bulk";
             if (kind == "bulk")
             {
                 var b = await s.Bulks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
@@ -270,8 +276,16 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
                 };
             }
             o.Subjects.Add(subj);
+            fresh.Add(subj.Id);
             return subj;
         }
+
+        static OpsTimelineEntry Entry(OpsSubject subj, FactRow f, JsonObject data) => new()
+        {
+            SubjectId = subj.Id, StreamId = f.SubjectId, Seq = f.Seq, At = f.At, Kind = f.Kind, Code = f.Code, Actor = f.Actor,
+            Instance = (string?)data["instance"], Step = (string?)data["step"], Activity = (string?)data["activity"], DataJson = CanonicalJson.Of(data),
+            TraceId = f.TraceId,
+        };
 
         async Task ApplySubjectFact(FactRow f, JsonObject data, CancellationToken ct)
         {
@@ -279,13 +293,14 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             if (subj is null) return;
             touched.Add(subj.Id);
             if (f.At > subj.UpdatedAt) subj.UpdatedAt = f.At;
+            // The facts of the chain from before the payment was accepted under it (the front door's pin and start, R-09-180): applied
+            // when the chain had no subject yet, they join the timeline now, in their order.
+            if (fresh.Remove(subj.Id) && f.Seq > 1)
+                foreach (var before in await s.Facts.AsNoTracking().Where(x => x.SubjectId == f.SubjectId && x.Seq < f.Seq).OrderBy(x => x.Seq).ToListAsync(ct))
+                    if (!o.Timeline.Local.Any(t => t.StreamId == before.SubjectId && t.Seq == before.Seq))
+                        o.Timeline.Add(Entry(subj, before, JsonNode.Parse(before.DataJson) as JsonObject ?? new JsonObject()));
             // The timeline: every fact of the payment's own chain, with its data (no payload is ever on this chain).
-            o.Timeline.Add(new OpsTimelineEntry
-            {
-                SubjectId = subj.Id, StreamId = f.SubjectId, Seq = f.Seq, At = f.At, Kind = f.Kind, Code = f.Code, Actor = f.Actor,
-                Instance = (string?)data["instance"], Step = (string?)data["step"], Activity = (string?)data["activity"], DataJson = CanonicalJson.Of(data),
-                TraceId = f.TraceId,
-            });
+            o.Timeline.Add(Entry(subj, f, data));
             switch (f.Kind)
             {
                 case "status":
@@ -461,7 +476,11 @@ public sealed class Projector(StoreOptions store, StoreOptions ops, ViewCatalog 
             // A message names its payment or bulk, or a payload reference that was accepted as one.
             var subject = m.SubjectId;
             if (subject is not null && !await s.Bulks.AnyAsync(b => b.Id == subject, ct) && !await s.Payments.AnyAsync(p => p.Id == subject, ct))
-                subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId;
+            {
+                // A payment the front door pinned keeps its id when it is accepted (R-09-180): a message kept before that is already its.
+                var pinned = await s.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == subject && f.Kind == DistributionRegistry.PinKind, ct);
+                subject = (await o.Streams.FirstOrDefaultAsync(x => x.StreamId == subject, ct))?.SubjectId ?? (pinned ? subject : null);
+            }
             o.Documents.Add(new OpsDocument { Id = m.Id, SubjectId = subject, Tenant = m.Tenant, Scheme = m.Scheme, Kind = m.Kind, Direction = m.Direction.ToLowerInvariant(), FileName = m.FileName, Size = m.Size, ContentHash = m.ContentHash, At = m.At });
             if (subject is not null) touched.Add(subject);
         }

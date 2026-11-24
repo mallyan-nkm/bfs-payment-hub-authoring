@@ -48,13 +48,13 @@ public sealed class SimulatedCoreBankingEnquiries(PortBinding b) : ICoreBankingE
 
     public Task<IReadOnlyList<AccountSummary>> Accounts(string customer, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<AccountSummary>>(b.Setting($"accounts.{customer}", "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(a => new AccountSummary(a, b.Setting("currency", "AED"), b.Setting("accountType", "current"), b.Setting("accountStatus", "NORM"), b.Setting("branch", "") is { Length: > 0 } br ? br : null)).ToList());
+            .Select(a => new AccountSummary(a, b.Required("currency"), b.Setting("accountType", "current"), b.Setting("accountStatus", "NORM"), b.Setting("branch", "") is { Length: > 0 } br ? br : null)).ToList());
 
     public Task<ChargeQuote> Charges(string customer, string scheme, string messageKind, int records, decimal amount, string currency, CancellationToken ct = default)
     {
         var charge = Math.Round(D(b.Setting("chargeFixed", "0")) + D(b.Setting("chargePerRecord", "0")) * records, 2, MidpointRounding.AwayFromZero);
         var vat = Math.Round(charge * D(b.Setting("vatRate", "0")), 2, MidpointRounding.AwayFromZero);
-        return Task.FromResult(new ChargeQuote(scheme, messageKind, records, amount, currency, charge, vat, b.Setting("currency", "AED"), "simulator"));
+        return Task.FromResult(new ChargeQuote(scheme, messageKind, records, amount, currency, charge, vat, b.Required("currency"), "simulator"));
     }
 }
 

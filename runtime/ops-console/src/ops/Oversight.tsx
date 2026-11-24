@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Client } from './api';
 import { show } from './format';
-import { alertOffers, alertState, ledgerGroups, ratesWarning, type AlertList, type LedgerBank, type Rates } from './oversight';
+import { alertOffers, alertState, askedNote, ledgerGroups, ratesWarning, type AlertList, type LedgerBank, type Rates } from './oversight';
 import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from '@fluentui/react-components';
 import { Alert, Badge } from '../ui';
 
@@ -16,9 +16,9 @@ export function Alerts({ api, go }: { api: Client; go(h: string): void }) {
   const [remarks, setRemarks] = useState('');
   const load = () => api.alerts(all).then((d) => { setData(d); setError(null); }).catch((e) => setError(e.message));
   useEffect(() => { load(); }, [all]);
-  const run = async (what: () => Promise<any>, done: string) => {
+  const run = async (what: () => Promise<any>, done: string | ((answer: any) => string)) => {
     setError(null);
-    try { await what(); setNote(done); setRemarks(''); await load(); } catch (e: any) { setError(e.message); }
+    try { const answer = await what(); setNote(typeof done === 'string' ? done : done(answer)); setRemarks(''); await load(); } catch (e: any) { setError(e.message); }
   };
   return (
     <section>
@@ -47,8 +47,8 @@ export function Alerts({ api, go }: { api: Client; go(h: string): void }) {
               <TableCell className="actions">
                 {!a.closed && <Button type="button" onClick={() => run(() => api.work('assign', 'alert', a.item), 'Taken')}>Take</Button>}
                 <Button type="button" disabled={!remarks} onClick={() => run(() => api.work('note', 'alert', a.item, remarks), 'Noted')}>Note</Button>
-                {o.release && <Button type="button" onClick={() => run(() => api.alertAction(a.item, 'release', remarks || undefined), 'Release of the payment asked')}>Release payment</Button>}
-                {o.refuse && <Button type="button" disabled={!remarks} onClick={() => run(() => api.alertAction(a.item, 'refuse', remarks), 'Refusal of the payment asked')}>Refuse payment</Button>}
+                {o.release && <Button type="button" onClick={() => run(() => api.alertAction(a.item, 'release', remarks || undefined), (r) => askedNote('release', r))}>Release payment</Button>}
+                {o.refuse && <Button type="button" disabled={!remarks} onClick={() => run(() => api.alertAction(a.item, 'refuse', remarks), (r) => askedNote('refuse', r))}>Refuse payment</Button>}
                 {o.close && <Button type="button" disabled={!remarks} onClick={() => run(() => api.work('close', 'alert', a.item, remarks), 'Closed')}>Close</Button>}
               </TableCell>
             </TableRow>

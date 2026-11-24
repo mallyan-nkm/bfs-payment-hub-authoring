@@ -559,8 +559,52 @@ public partial class EngineHostTests(Servers servers)
         }
     }
 
+    /// <summary>
+    /// The waiting workflow's BPMN, as the generator writes it for a REST binding (studio/src/export/bpmn.ts): each wait from a parameter is
+    /// a timer marked <c>th:timer parameter default</c>, written with its default, and the text after it names the value the timer took.
+    /// </summary>
+    static string WaitingBpmn(string release)
+    {
+        var key = $"p_wf_wait_v1_{release.Replace('.', '_')}";
+        string Call(string s) => $$"""
+            <serviceTask id="{{s}}_task" flowable:type="external-worker" flowable:topic="th-p:p.enrich.check.v1@{{release}}" flowable:exclusive="false">
+              <extensionElements>
+                <flowable:executionListener event="start" expression="${execution.setVariable('th_attempt', 1)}"/>
+                <th:task step="{{s}}" activity="p.enrich.check.v1" release="{{release}}" record="business"/>
+              </extensionElements>
+            </serviceTask>
+            <serviceTask id="{{s}}_rec" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point kind="call" step="{{s}}" var="outcome_{{s}}" record="business"/></extensionElements></serviceTask>
+            """;
+        string Wait(string s, string? parameter, string literal) => $$"""
+            <intermediateCatchEvent id="{{s}}" name="wait:{{literal}}">{{(parameter is null ? "" : $"<extensionElements><th:timer parameter=\"{parameter}\" default=\"{literal}\"/></extensionElements>")}}<timerEventDefinition><timeDuration>{{literal}}</timeDuration></timerEventDefinition></intermediateCatchEvent>
+            <serviceTask id="{{s}}_text" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point kind="text" text="{{s}}:{{literal}}" record="business"{{(parameter is null ? "" : $" timer=\"{s}\" prefix=\"{s}\"")}}/></extensionElements></serviceTask>
+            """;
+        string[] chain = ["start", "th_started", "a_task", "a_rec", "w1", "w1_text", "pause", "pause_text", "w2", "w2_text", "w3", "w3_text", "b_task", "b_rec", "th_endpoint_done", "th_end", "end"];
+        var flows = string.Join("\n", chain.Zip(chain.Skip(1), (f, t) => $"<sequenceFlow id=\"f_{f}_{t}\" sourceRef=\"{f}\" targetRef=\"{t}\"/>"));
+        return $$"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" xmlns:th="urn:transacthub:flowable:1" targetNamespace="urn:test">
+          <process id="{{key}}" isExecutable="true">
+            <extensionElements><th:workflow name="p.wf.wait.v1" release="{{release}}" kind="workflow"/></extensionElements>
+            <startEvent id="start"/>
+            <serviceTask id="th_started" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point kind="processStart"/></extensionElements></serviceTask>
+            {{Call("a")}}
+            {{Wait("w1", "p.wf.wait.v1#gap", "PT20M")}}
+            {{Wait("pause", null, "PT20S")}}
+            {{Wait("w2", "p.wf.wait.v1#gap", "PT20M")}}
+            {{Wait("w3", "p.wf.wait.v1#late", "PT20M")}}
+            {{Call("b")}}
+            <intermediateThrowEvent id="th_endpoint_done"><extensionElements><flowable:executionListener event="start" expression="${execution.setVariable('th_outcome', 'done')}"/></extensionElements></intermediateThrowEvent>
+            <serviceTask id="th_end" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point kind="end"/></extensionElements></serviceTask>
+            <endEvent id="end"/>
+            {{flows}}
+          </process>
+        </definitions>
+        """;
+    }
+
     /// <summary>A stored package whose platform workflow waits as long as the bank says, twice as of the step and once as of the payment's date.</summary>
-    static byte[] WaitingPackage(string release)
+    static byte[] WaitingPackage(string release, bool bpmn = false)
     {
         var docs = Documents(release);
         docs[$"p.wf.wait.v1@{release}"] = Doc($$"""
@@ -584,6 +628,8 @@ public partial class EngineHostTests(Servers servers)
             Put("manifest.yaml", $"kind: distribution\nrelease: {release}\n");
             Put("engine/p.wf.wait.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
             foreach (var (k, v) in docs) Put($"engine/p.wf.wait.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+            // On Flowable the package carries the exported BPMN, as the studio's export for flowable does.
+            if (bpmn) Put($"engine/p.wf.wait.v1/bpmn/p.wf.wait.v1@{release}.bpmn20.xml", WaitingBpmn(release));
         }
         return ms.ToArray();
     }
@@ -612,7 +658,7 @@ public partial class EngineHostTests(Servers servers)
         var since = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         try
         {
-            var package = WaitingPackage("1.0.0");
+            var package = WaitingPackage("1.0.0", bpmn: engine == "flowable");
             await WithRegistry(r => r.Store(bank, id, package, new JsonObject { ["id"] = id, ["bank"] = bank }, Convert.ToHexStringLower(SHA256.HashData(package)), "test", "e2e"));
             await WithRegistry(r => r.Activate(dist, Environment, "test", "e2e"));
             await PutInForce(bank, "2026.11.23", ("p.wf.wait.v1#gap", "PT1S", since, null), ("p.wf.wait.v1#late", "PT1S", since, null));
@@ -663,6 +709,9 @@ public partial class EngineHostTests(Servers servers)
     [Fact] public Task Temporal_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("temporal");
     [Fact] public Task Dtfx_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("dtfx");
     [Fact] public Task Elsa_reads_the_banks_values_as_of_each_step() => ValuesAsOfEachStep("elsa");
+    // R-09-186 (Issue I-240): on Flowable the binding gives the timer's read the payment's id (its root's header.paymentId), so the late
+    // wait, declared payment-date, takes the value of the payment's acceptance, not the value in force when the timer starts.
+    [Fact] public Task Flowable_reads_the_banks_values_as_of_each_step_and_as_of_the_payments_date() => ValuesAsOfEachStep("flowable");
 
     [Fact] public Task Dtfx_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("dtfx");
     [Fact] public Task Elsa_takes_a_message_after_the_run_started_with_a_plan_from_the_store() => MessageAfterStart("elsa");

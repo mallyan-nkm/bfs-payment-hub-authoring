@@ -104,6 +104,43 @@ public sealed class ClaimCheckTests(Databases dbs)
         Assert.True(saves < written, $"{written} facts in {saves} saves: nothing was batched");
     }
 
+    /// <summary>
+    /// R-09-180 (Issue I-286): one payment, one id. A payment the front door started (its pin is on the store under the front door's id,
+    /// <c>header.paymentId</c>) is accepted under that id, so its run's facts, its pin and its end are one chain, and the kept files the
+    /// front door filed under it are the payment's. A payment no front door pinned, or an id the store already holds, gets an id of its own.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_payment_the_front_door_started_is_accepted_under_the_front_doors_id(StoreProvider p)
+    {
+        var o = dbs.Fresh(p);
+        await using (var db = StoreDbContext.Open(o)) await db.Database.MigrateAsync();
+        const string bank = "example-bank", fd = "uae-wps-0000000000000000000000000000000001";
+        await using (var db = StoreDbContext.Open(o))
+        {
+            var reg = new DistributionRegistry(db);
+            await reg.Store(bank, "2026.11.24-1", "synthetic"u8.ToArray(), new JsonObject { ["id"] = "2026.11.24-1", ["bank"] = bank }, new string('a', 64), "test", "e2e");
+            await reg.Activate(DistributionRegistry.IdOf(bank, "2026.11.24-1"), "test", "test", "e2e");
+            await reg.Pin(fd, bank, "test", "front-door");
+        }
+        var cc = new DurableClaimCheck(o);
+        await cc.Create("fd#ctx", SalaryFile(), new AcceptInfo(bank, "uae.wps", Direction.Outward, "p.wf.corporate.v1@1.0.0", fd));
+        Assert.Equal((fd, "bulk"), (cc.Accepted["fd#ctx"].subjectId, cc.Accepted["fd#ctx"].kind));
+        await using (var read = StoreDbContext.Open(o))
+        {
+            Assert.NotNull(await new PaymentStore(read).ReadBulk(fd));
+            // One chain: the front door's pin and the bulk's first status, in order, and it verifies.
+            var chain = await new FactLog(read).Of(fd);
+            Assert.Equal([DistributionRegistry.PinKind, "status"], chain.Select(f => f.Kind));
+            Assert.True((await new FactLog(read).Verify(fd)).Ok);
+        }
+        // Another run of the same payload id is not accepted twice under it, and a payment no front door pinned gets its own id.
+        await cc.Create("again#ctx", SalaryFile(), new AcceptInfo(bank, "uae.wps", Direction.Outward, "p.wf.corporate.v1@1.0.0", fd));
+        Assert.NotEqual(fd, cc.Accepted["again#ctx"].subjectId);
+        await cc.Create("plain#ctx", SalaryFile(), new AcceptInfo(bank, "uae.wps", Direction.Outward, "p.wf.corporate.v1@1.0.0", "never-pinned-0001"));
+        Assert.NotEqual("never-pinned-0001", cc.Accepted["plain#ctx"].subjectId);
+        Assert.Equal(32, cc.Accepted["plain#ctx"].subjectId.Length);
+    }
+
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
     public async Task The_payment_of_a_run_is_accepted_into_the_ISO_20022_tables(StoreProvider p)
     {
@@ -126,7 +163,7 @@ public sealed class ClaimCheckTests(Databases dbs)
         Assert.Equal(1500.25m, bulk.ControlSum);
         var second = bulk.Transactions[1];
         Assert.Equal("0000001234567261117083000-2", second.PaymentId.EndToEndId);
-        Assert.Equal(Money.Aed(500.25m), second.InstructedAmount);
+        Assert.Equal(new Money(500.25m, "AED"), second.InstructedAmount);
         Assert.Equal("Employee Two", second.Creditor.Name);
         Assert.Equal("203320101", second.CreditorAgent!.MemberId);
         Assert.Equal(2, (int)second.SupplementaryData["uae.wps"]["leaveDays"]!);

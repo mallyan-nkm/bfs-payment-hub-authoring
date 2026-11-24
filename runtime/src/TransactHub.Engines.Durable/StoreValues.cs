@@ -12,8 +12,34 @@ namespace TransactHub.Engines.Durable;
 /// </summary>
 public static class StoreValues
 {
-    /// <summary>Installs the store as the engines' live source of values (<see cref="Deployment.LiveValues"/>).</summary>
-    public static void Install(StoreOptions store) => Deployment.LiveValues = a => Read(store, a).GetAwaiter().GetResult();
+    /// <summary>
+    /// Installs the store as the engines' live source of values (<see cref="Deployment.LiveValues"/>) and of the bank's business calendar
+    /// (<see cref="Deployment.LiveCalendar"/>, R-09-183, Issue I-166).
+    /// </summary>
+    public static void Install(StoreOptions store)
+    {
+        Deployment.LiveValues = a => Read(store, a).GetAwaiter().GetResult();
+        Deployment.LiveCalendar = a => Calendar(store, a).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// The bank's business calendar at a moment (R-09-183, Issue I-166), as its configuration release in force installed it (R-09-75):
+    /// the edition of its table of domain <c>business-calendar</c> in force then, weekday rows as the weekend and dated rows as holidays,
+    /// with its own closed days (domain <c>bank-calendar</c>, kind <c>closed</c>) as holidays too; the same calendar a hold's expiry and
+    /// the turnaround count on. Null when the release installed neither table.
+    /// </summary>
+    public static async Task<JsonObject?> Calendar(StoreOptions store, JsonObject a, CancellationToken ct = default)
+    {
+        var tenant = J.S(a, "tenant") ?? throw new InvalidOperationException("The bank's calendar is read for a tenant: the run names none");
+        var at = DateTimeOffset.FromUnixTimeMilliseconds((long)(J.Num(a, "at") ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        await using var db = StoreDbContext.Open(store);
+        var (_, rows) = await ReferenceTables.RowsAt(db, tenant, "business-calendar", at, ct);
+        var (_, bankRows) = await ReferenceTables.RowsAt(db, tenant, "bank-calendar", at, ct);
+        var closed = (bankRows ?? []).OfType<JsonObject>().Where(r => (string?)r["kind"] == "closed" && ((string?)r["day"])?.Length == 10).Select(r => (string)r["day"]!).ToList();
+        if (rows is null && closed.Count == 0) return null;
+        var cal = rows is null ? BusinessCalendar.Default : BusinessCalendar.FromRows(rows);
+        return new BusinessCalendar(cal.Weekend, new HashSet<string>(cal.Holidays.Concat(closed), StringComparer.Ordinal)).ToJson();
+    }
 
     public static async Task<JsonObject> Read(StoreOptions store, JsonObject a, CancellationToken ct = default)
     {

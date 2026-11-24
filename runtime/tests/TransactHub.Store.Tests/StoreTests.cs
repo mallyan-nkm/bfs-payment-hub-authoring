@@ -41,7 +41,7 @@ public sealed class StoreTests(Databases dbs)
     static CreditTransfer Line(string e2e, decimal amount, string name, string iban, decimal fixedPay, decimal variablePay) => new()
     {
         PaymentId = new PaymentIdentification { EndToEndId = e2e, Uetr = Guid.NewGuid().ToString() },
-        InstructedAmount = Money.Aed(amount),
+        InstructedAmount = new Money(amount, "AED"),
         Creditor = new Party { Name = name, OtherIds = [new GenericId("10000000000001", "PERSON-CODE")] },
         CreditorAccount = new Account { Iban = iban },
         CreditorAgent = new Agent { ClearingSystem = "AEUAE", MemberId = "000000002" },
@@ -72,7 +72,7 @@ public sealed class StoreTests(Databases dbs)
 
         var first = back.Transactions[0];
         Assert.Equal("E2E-1", first.PaymentId.EndToEndId);
-        Assert.Equal(Money.Aed(4500.50m), first.InstructedAmount);
+        Assert.Equal(new Money(4500.50m, "AED"), first.InstructedAmount);
         Assert.Equal("Employee One", first.Creditor.Name);
         Assert.Equal("AE070000000000000000011", first.CreditorAccount.Iban);
         Assert.Equal(500.50m, (decimal)first.SupplementaryData["uae.wps"]["variablePay"]!);

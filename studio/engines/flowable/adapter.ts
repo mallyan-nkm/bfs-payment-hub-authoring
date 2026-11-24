@@ -10,7 +10,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BuiltScenario, KitAdapter, KitObservation } from '../../src/conformance/kit.js';
-import { DEFAULT_CALENDAR, durationMs } from '../../src/core/duration.js';
+import { durationMs } from '../../src/core/duration.js';
 import { callsComposite, expandWorkflow } from '../../src/core/expand.js';
 import { compareReleases } from '../../src/core/names.js';
 import { generateBpmn, safe, SIGNAL_MESSAGES } from '../../src/export/bpmn.js';
@@ -174,7 +174,8 @@ export function makePlan(env: StudioEnv, b: BuiltScenario, dir: string) {
     signals: (cfg.signals ?? []).map((s) => ({ atMs: durationMs(s.after), signal: s.signal })),
     signalMessages: SIGNAL_MESSAGES,
     supersessions: (cfg.supersessions ?? []).map((s) => ({ artefact: s.artefact, replaces: s.replaces, with: s.with, id: s.id, ...(s.effectiveAt ? { effectiveAtMs: durationMs(s.effectiveAt) } : {}) })),
-    calendar: DEFAULT_CALENDAR,
+    // The bank's business calendar of the run (R-09-183, Issue I-166): its reference tables, holidays and closing days included.
+    calendar: (({ weekend, holidays }) => ({ weekend, holidays }))(run.businessCalendar(cfg.evaluationDate)),
     // Parameter values by date, the tenant's (R-01-17): the binding resolves a duration parameter from them (R-05-45).
     values: [...(run.configSet?.values ?? []), ...(cfg.values ?? [])].map((x: any) => ({ parameter: x.parameter, value: x.value, validFrom: x.validFrom, ...(x.validTo ? { validTo: x.validTo } : {}) })),
   };

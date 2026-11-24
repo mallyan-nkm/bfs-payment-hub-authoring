@@ -46,17 +46,8 @@ public static class StandingConsent
     }
 
     /// <summary>Whether a configuration release is one the standing consent covers: the feed's rates and table, nothing else.</summary>
-    public static string? NotCovered(Bundle b)
-    {
-        var set = b.Yaml("configuration/configuration-set.yaml") as JsonObject;
-        var values = set?["values"] as JsonArray ?? [];
-        if (values.Count == 0 || values.Any(v => (string?)v?["parameter"] != FxRateFeed.RatesParameter)) return $"it sets values other than {FxRateFeed.RatesParameter}";
-        if ((set?["bindings"] as JsonArray)?.Count > 0 || b.Files.ContainsKey("bindings/port-bindings.yaml")) return "it binds ports";
-        foreach (var f in b.Files.Keys.Where(f => !ReleaseSignature.IsSignatureFile(f) && f is not "manifest.yaml" and not "configuration/configuration-set.yaml"))
-            if (f != $"reference/{FxRateFeed.Table}.yaml") return $"it carries {f}";
-        if ((string?)b.Manifest["feed"] != "fx-rates") return "its manifest does not name the rates feed";
-        return null;
-    }
+    public static string? NotCovered(Bundle b) =>
+        (string?)b.Manifest["feed"] != FxRateFeed.Domain ? "its manifest does not name the rates feed" : b.NotFeedRelease(FxRateFeed.Domain);
 }
 
 /// <summary>
@@ -118,7 +109,7 @@ public sealed class FxRateFeed(StoreOptions store, string bank, PortBindings bin
             ["kind"] = "configuration-release", ["bank"] = bank, ["release"] = release, ["feed"] = "fx-rates", ["changeSet"] = changeSet, ["billOfMaterials"] = bom.DeepClone(),
         }.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
-        var (statement, signature) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"config/{bank}@{release}", "", release, "", bank, changeSet, ReleaseSignature.ConfigurationRelease, new JsonObject { ["billOfMaterials"] = bom }), await signingKey(ct), now);
+        var (statement, signature) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"config/{bank}@{release}", "", release, "", bank, changeSet, ReleaseSignature.ConfigurationRelease, new JsonObject { ["billOfMaterials"] = bom, ["feed"] = Domain }), await signingKey(ct), now);
         bytes[ReleaseSignature.StatementFile] = statement;
         bytes[ReleaseSignature.SignatureFile] = signature;
         var bundle = Bundle.FromFiles(bytes, ReleaseSignature.ConfigurationRelease);

@@ -138,7 +138,7 @@ public sealed class ScenarioRunner
             var (state, payload) = ClaimCheckStore.Split(c);
             var header = J.P(state, "header");
             var direction = J.S(header, "direction") == "inward" ? TransactHub.Model.Direction.Inward : TransactHub.Model.Direction.Outward;
-            await host.Store.Create($"{id}#ctx", payload, new AcceptInfo(tenant, J.S(header, "scheme") ?? docKey.Split('.')[0], direction, distribution ?? docKey));
+            await host.Store.Create($"{id}#ctx", payload, new AcceptInfo(tenant, J.S(header, "scheme") ?? docKey.Split('.')[0], direction, distribution ?? docKey, J.S(header, "paymentId")));
             var inp = new JsonObject { ["kind"] = "workflow", ["doc"] = docKey, ["state"] = state, ["payloadRef"] = $"{id}#ctx" };
             if (J.P(built, "legs") is JsonObject lg) inp["legs"] = J.Clone(lg);
             return inp;

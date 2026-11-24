@@ -11,6 +11,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 TAG=${TH_LAPTOP_TAG:-dev}
+# The native modules' signing key (R-09-181, Issue I-225): TH_NATIVE_MODULE_KEY_FILE names a PEM file holding NEST's module signing
+# key, for any image beyond a laptop. It goes to the build as a BuildKit secret (or, with --local, into one step's environment), never
+# into a layer, an argument or a file of the repository. Without it the build makes a key of its own: the laptop's, for the laptop only.
+KEY_FILE=${TH_NATIVE_MODULE_KEY_FILE:-}
+if [ -n "$KEY_FILE" ] && [ ! -s "$KEY_FILE" ]; then echo "TH_NATIVE_MODULE_KEY_FILE names $KEY_FILE, which is not a file" >&2; exit 2; fi
 OUT=deploy/laptop/.build
 MODE=source
 [ "${1:-}" = "--local" ] && MODE=local
@@ -33,10 +38,12 @@ if [ "$MODE" = local ]; then
   # does (R-09-120, R-09-126). Signed by a key made for this build and held in the environment only (R-09-127); the studio image
   # trusts that key, by its public key in native-module-signers.json.
   rm -rf "$OUT/native-modules"
-  TH_LAPTOP_MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)" TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY sh -c '
+  if [ -n "$KEY_FILE" ]; then MODULE_KEY="$(cat "$KEY_FILE")"; else MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"; fi
+  TH_LAPTOP_MODULE_KEY="$MODULE_KEY" TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY sh -c '
     sh runtime/tools/native-module/build.sh p runtime/src/TransactHub.Activities.Platform.Native "$0/native-modules"
     sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps "$0/native-modules"
     sh runtime/tools/native-module/build.sh --signers > "$0/native-module-signers.json"' "$OUT"
+  unset MODULE_KEY
   # The runtime's web app, built.
   (cd runtime/ops-console && npm run build --silent)
   mkdir -p "$OUT/opt/th/runtime/ops-console" && cp -r runtime/ops-console/dist "$OUT/opt/th/runtime/ops-console/dist"
@@ -49,6 +56,8 @@ if [ "$MODE" = local ]; then
     (cd runtime/temporal-mssql && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "../../$OUT/temporal/" ./cmd/...)
   fi
   ARGS=(--build-arg DOTNET_FROM=dotnet-local --build-arg STUDIO_FROM=studio-local --build-arg TEMPORAL_FROM=temporal-local)
+elif [ -n "$KEY_FILE" ]; then
+  ARGS=(--secret "id=th_native_module_key,src=$KEY_FILE" --build-arg TH_MODULE_SIGNING=secret)
 else
   ARGS=()
 fi

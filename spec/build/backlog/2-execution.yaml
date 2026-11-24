@@ -176,7 +176,7 @@ components:
           - One virtual clock drives timers, awaits, backoff and simulator delays; business calendars are supported.
           - A message that arrives before its await starts is kept and consumed by it.
           - A late message or a second copy resumes nothing and is recorded as unmatched.
-        dos: CK-WAIT-01, CK-AWAIT-01 to 07 and CK-LOOP-01 and 02 pass.
+        dos: CK-WAIT-01, CK-AWAIT-01 to 08 and CK-LOOP-01 and 02 pass.
       - id: C09-S3
         title: Timeouts and retries
         sp: 5

@@ -28,6 +28,7 @@ scenarios:
   - { id: CK-POLICY-01, construct: policy, title: "A step override beats the block default, which beats the type default", expect: [a:ok, "end:done"], effective: { attemptTimeout: PT2S } }
   - { id: CK-AWAIT-01, construct: await, title: An awaited message resumes the workflow, expect: [send:accepted, "await:received", "end:done"] }
   - { id: CK-AWAIT-02, construct: await, title: An await that times out on a business calendar takes its timeout branch, expect: [send:accepted, "await:timeout", "end:pending"], virtualElapsed: P1D }
+  - { id: CK-AWAIT-08, construct: await, title: "An await on the business calendar counts the bank's holidays, on every engine", expect: [send:accepted, "await:timeout", "end:pending"], virtualElapsed: P4D }
   - { id: CK-AWAIT-03, construct: await, title: A message that arrives after the timeout resumes nothing and is recorded as unmatched, expect: [send:accepted, "await:timeout", "end:pending"], unmatched: 1 }
   - { id: CK-AWAIT-04, construct: await, title: A message that arrives before its await starts is kept and consumed by it, expect: [send:accepted, "await:received", "end:done"], arrives: before-await }
   - { id: CK-AWAIT-05, construct: await, title: A second copy of a consumed message is recorded and ignored, expect: [send:accepted, "await:received", "end:done"], duplicates: 1 }

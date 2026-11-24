@@ -62,7 +62,7 @@ public sealed class SimulatedCoreBanking(PortBinding b) : ICoreBanking
     public IReadOnlyList<PostingBatch> Snapshot() { lock (Posted) return Posted.ToList(); }
 
     public Task<BalanceAnswer> Balance(string branch, string account, CancellationToken ct = default) =>
-        Task.FromResult(new BalanceAnswer(account, decimal.Parse(b.Setting("openingBalance", "1000000"), System.Globalization.CultureInfo.InvariantCulture), b.Setting("currency", "AED"), b.Setting("accountStatus", "NORM")));
+        Task.FromResult(new BalanceAnswer(account, decimal.Parse(b.Setting("openingBalance", "1000000"), System.Globalization.CultureInfo.InvariantCulture), b.Required("currency"), b.Setting("accountStatus", "NORM")));
 
     /// <summary>Posts every batch, except one with a leg on the binding's <c>rejectAccount</c> (a test scenario): that one is declined with code 1.</summary>
     public Task<PostingAnswer> Post(PostingBatch batch, CancellationToken ct = default)
@@ -125,7 +125,7 @@ public sealed class GatewayRestCoreBanking(PortBinding b, HttpClient http, ISecr
         using var res = await GuardedHttp.Send(http, b, await Request("balancePath", "balanceFunctionId", $"{b.Setting("referencePrefix", "")}{account}", body, ct), ct, ct);
         res.EnsureSuccessStatusCode();
         var j = (await res.Content.ReadFromJsonAsync<JsonObject>(ct))!;
-        return new BalanceAnswer(account, (decimal)j["available"]!, (string?)j["currency"] ?? "AED", (string?)j["status"] ?? "");
+        return new BalanceAnswer(account, (decimal)j["available"]!, (string?)j["currency"] is { Length: > 0 } cy ? cy : b.Required("currency"), (string?)j["status"] ?? "");
     }
 
     public async Task<PostingAnswer> Post(PostingBatch batch, CancellationToken ct = default)

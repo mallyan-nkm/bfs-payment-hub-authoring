@@ -84,6 +84,44 @@ public sealed class NeutralityTests
         Assert.True(problems.Count == 0, string.Join('\n', problems));
     }
 
+    /// <summary>
+    /// R-09-185 (Issue I-238): platform and engine host code gives no cluster's currency as a default. A currency is the payment's own,
+    /// its batch's, the caller's, or a binding's required setting (<c>currency</c>, <c>localCurrency</c>), set in each bank's binding;
+    /// only the scheme's own projects may name one.
+    /// </summary>
+    [Fact]
+    public void No_platform_or_engine_host_code_defaults_a_currency()
+    {
+        var root = Root();
+        var currency = new Regex(@"""AED""");
+        var problems = new List<string>();
+        foreach (var dir in new[] { "src", "tools/TransactHub.EngineHost", "tools/TransactHub.Migrate", "../studio/engines/shared" })
+            foreach (var f in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(root, f).Replace('\\', '/');
+                if (rel.Contains("/bin/") || rel.Contains("/obj/") || rel.StartsWith("src/TransactHub.Activities.Wps") || rel.Contains(".Migrations.")) continue;
+                var lines = File.ReadAllLines(f);
+                for (var i = 0; i < lines.Length; i++)
+                    if (!lines[i].Trim().StartsWith("//") && currency.IsMatch(lines[i])) problems.Add($"{rel}:{i + 1}: {lines[i].Trim()}");
+            }
+        Assert.True(problems.Count == 0, string.Join('\n', problems));
+        // A simulator's or a file bulk's currency is its binding's required setting: a binding that names none is refused.
+        var b = new TransactHub.Ports.PortBinding("t", "p.port.core-banking.v1", "simulator", DateTimeOffset.UnixEpoch, new Dictionary<string, string>());
+        Assert.Contains("'currency'", Assert.Throws<TransactHub.Ports.PortBindingException>(() => new TransactHub.Ports.SimulatedCoreBanking(b).Balance("", "1").GetAwaiter().GetResult()).Message);
+        // R-11-104: every bank folder's core-banking binding names the currency its accounts are kept in.
+        var banks = Path.Combine(root, "..", "content-configurations", "banks");
+        foreach (var dir in Directory.EnumerateDirectories(banks).Order(StringComparer.Ordinal))
+        {
+            var file = Path.Combine(dir, "core-banking.yaml");
+            if (!File.Exists(file)) continue;
+            var bound = new TransactHub.Ports.PortBindings();
+            bound.Add(File.ReadAllText(file));
+            var tenant = Path.GetFileName(dir);
+            foreach (var at in new[] { DateTimeOffset.Parse("2026-11-24T00:00:00Z"), DateTimeOffset.Parse("2027-06-01T00:00:00Z") })
+                Assert.True(bound.InForce(tenant, "p.port.core-banking.v1", at).Settings.ContainsKey("currency"), $"{tenant}'s core-banking binding names no currency");
+        }
+    }
+
     [Fact]
     public void Only_the_store_and_its_migrations_reference_a_provider_package()
     {

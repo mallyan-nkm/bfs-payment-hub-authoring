@@ -16,6 +16,9 @@ bindings:
     adapter: gateway-rest
     validFrom: 2026-11-22T00:00:00Z
     settings:
+      # The currency the bank's core banking keeps its accounts in, where a reply names none: the bank's setting, no platform
+      # default (R-09-185, Issue I-238).
+      currency: AED
       baseUrl: https://core-banking.fab.invalid/
       # The channel the gateway knows the runtime by (X-Channel): the bank's value, not the platform's (R-09-142).
       channel: WPS

@@ -155,6 +155,52 @@ public sealed class FxRateFeedTests(Databases dbs)
         Assert.Contains("values other than", StandingConsent.NotCovered(bundle));
     }
 
+    /// <summary>
+    /// R-09-184 (Issue I-277): the feed's own key, trusted with <c>kinds: [configuration]</c> and <c>scope: { feed: fx-rates }</c>, verifies the
+    /// feed's rate releases, and nothing else: a distribution it signs, or a configuration release that claims the feed but sets more,
+    /// is refused as <c>signing.OutOfScope</c> and nothing is installed.
+    /// </summary>
+    [Fact]
+    public async Task The_feeds_key_scoped_to_the_feed_signs_rate_releases_and_nothing_else()
+    {
+        var r = await Ready();
+        using var _ = r.Signers;
+        using var feedKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(r.Signers.TrustFile, new JsonObject
+        {
+            ["kind"] = "trusted-signers",
+            ["keys"] = new JsonArray(
+                new JsonObject { ["keyId"] = ReleaseSignature.KeyIdOf(r.Signers.Key), ["publicKey"] = r.Signers.Key.ExportSubjectPublicKeyInfoPem() },
+                new JsonObject { ["keyId"] = ReleaseSignature.KeyIdOf(feedKey), ["publicKey"] = feedKey.ExportSubjectPublicKeyInfoPem(), ["kinds"] = new JsonArray("configuration"), ["scope"] = new JsonObject { ["feed"] = "fx-rates" } }),
+            ["revoked"] = new JsonArray(),
+        }.ToJsonString());
+        await using (var db = StoreDbContext.Open(r.Store)) await StandingConsent.Record(db, r.Clock, Bank, true, "service:ba-1", "rates may refresh on their own (synthetic)");
+        var run = await Feed(r, Bound("simulator", "      rates: AED/USD=0.2723\n"), feedKey).Run();
+        Assert.Equal("in-force", (string?)run["state"]);
+
+        // A distribution signed by the feed's key is refused, as is a configuration release that names the feed and sets more.
+        await using (var db = StoreDbContext.Open(r.Store))
+        {
+            var dist = await Assert.ThrowsAsync<BundleRefused>(() => r.Distributions(db).InstallDistribution(Bundle.FromFiles(Distribution(feedKey, "2026.11.24-9"), ReleaseSignature.Distribution), "pipeline", "test"));
+            Assert.Equal(SignatureRejected.OutOfScope, dist.Code);
+        }
+        var files = new Dictionary<string, string>
+        {
+            ["configuration/configuration-set.yaml"] = $"kind: configuration-set\ntenant: {Bank}\nrelease: 0.0.9\nvalues:\n  - parameter: {FxRateFeed.RatesParameter}\n    value: []\n    validFrom: 2026-12-01\n  - parameter: p.enrich.fx-rate.v1#maxRateAge\n    value: P7D\n    validFrom: 2026-12-01\nbindings: []\n",
+        };
+        var bom = new JsonObject { ["artefacts"] = new JsonArray(files.Select(f => (JsonNode)new JsonObject { ["path"] = f.Key, ["sha256"] = Sha(f.Value) }).ToArray()) };
+        files["manifest.yaml"] = new JsonObject { ["kind"] = "configuration-release", ["bank"] = Bank, ["release"] = "0.0.9", ["feed"] = "fx-rates", ["billOfMaterials"] = bom }.ToJsonString();
+        var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
+        var (st, sig) = ReleaseSignature.Sign(bytes, new ReleaseClaims($"config/{Bank}@0.0.9", "", "0.0.9", "", Bank, "CS-TEST-FX", ReleaseSignature.ConfigurationRelease, new JsonObject { ["billOfMaterials"] = bom.DeepClone(), ["feed"] = "fx-rates" }), feedKey, r.Clock.Now);
+        bytes[ReleaseSignature.StatementFile] = st;
+        bytes[ReleaseSignature.SignatureFile] = sig;
+        var wider = Bundle.FromFiles(bytes, ReleaseSignature.ConfigurationRelease);
+        var trust = TrustedSigners.Parse(File.ReadAllText(r.Signers.TrustFile));
+        var refused = Assert.Throws<SignatureRejected>(() => wider.Verify(trust));
+        Assert.Equal(SignatureRejected.OutOfScope, refused.Code);
+        Assert.Contains("values other than", refused.Message);
+    }
+
     [Fact]
     public async Task The_standing_consent_is_granted_and_revoked_on_a_bank_approvers_consent_through_the_book()
     {

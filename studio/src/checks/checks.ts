@@ -78,6 +78,8 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
   L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
   L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
+  L52: 'A bank that binds the rates port takes its rates from the feed: its configuration sets no p.enrich.fx-rate.v1#rates',
+  L53: 'A bank\'s configuration is released as a major or a minor, never a patch: the rates feed numbers its releases as patches',
 };
 
 // ---------------------------------------------------------------- walking
@@ -694,6 +696,9 @@ export class Checker {
   }
 
   private checkConfigurationSet(d: any, err: (c: string, m: string) => void) {
+    // L53 (R-11-102, Issue I-276): the studio releases a bank's configuration as a major or a minor; the feed takes the patches.
+    if (d.release && !/^\d+\.\d+\.0$/.test(String(d.release)))
+      err('L53', `Configuration release ${d.release} is a patch: a bank's configuration is released as a major or a minor, and the rates feed numbers its releases as the patches after the newest`);
     for (const v of d.values ?? []) {
       const [art, par] = String(v.parameter).split('#');
       const p = this.byName.get(art)?.parameters?.[par];
@@ -1073,8 +1078,48 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
       }
       for (const d of docs.filter((x) => x?.kind === 'port-bindings')) for (const m of portBindingProblems(d, isPort)) out.push({ code: 'L48', severity: 'error', key: p, message: `${p}: ${m}`, file: p });
     }
+    out.push(...feedRateIssues(files, folder));
   }
   return out;
+}
+
+/**
+ * L52 and L53 over a bank's folder on the content branch (R-11-101, R-11-102, Issue I-276). A bank whose port bindings bind
+ * `p.port.fx-rates.v1` takes its rates from the feed, so neither its working configuration set nor its newest released one sets
+ * `p.enrich.fx-rate.v1#rates`: typed rates in a newer studio release would win over the feed's until the feed ran again. And the
+ * studio never makes a patch release of a bank's configuration, which is the feed's line of numbers.
+ */
+export function feedRateIssues(files: Map<string, string>, folder: string): Issue[] {
+  const out: Issue[] = [];
+  const read = (p: string): any[] => {
+    try {
+      return parseYamlAll(files.get(p) ?? '');
+    } catch {
+      return [];
+    }
+  };
+  const mine = [...files.keys()].filter((p) => p.startsWith(`banks/${folder}/`)).sort();
+  const bindings = mine.filter((p) => /\.ya?ml$/.test(p) && (p.split('/').length === 3 || p.startsWith(`banks/${folder}/port-bindings/`)));
+  const feed = bindings.some((p) => read(p).some((d) => d?.kind === 'port-bindings' && (d.bindings ?? []).some((b: any) => b?.port === FX_PORT)));
+  const released = mine.filter((p) => p.startsWith(`banks/${folder}/configuration-sets/`) && /\.ya?ml$/.test(p));
+  for (const p of released) {
+    const r = p.split('/').pop()!.replace(/\.ya?ml$/, '');
+    if (!/^\d+\.\d+\.0$/.test(r)) out.push({ code: 'L53', severity: 'error', key: p, message: `${p}: a patch release of the bank's configuration; the studio releases a major or a minor, and the rates feed numbers its releases as the patches after the newest`, file: p });
+  }
+  if (!feed) return out;
+  const rel = (p: string) => p.split('/').pop()!.replace(/\.ya?ml$/, '').split('.').map(Number);
+  const newest = [...released].sort((a, b) => compareNumbers(rel(a), rel(b))).pop();
+  for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
+    if (read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_RATES)))
+      out.push({ code: 'L52', severity: 'error', key: p, message: `${p} sets ${FX_RATES}, but the bank binds ${FX_PORT}: its rates come from the feed, and typed rates in a newer release would win over them`, file: p });
+  return out;
+}
+
+const FX_PORT = 'p.port.fx-rates.v1';
+const FX_RATES = 'p.enrich.fx-rate.v1#rates';
+function compareNumbers(a: number[], b: number[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
+  return 0;
 }
 
 /**

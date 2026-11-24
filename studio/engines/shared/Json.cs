@@ -229,13 +229,12 @@ public static class Duration
     /// <summary>The ISO duration of a span of milliseconds, in seconds (a BPMN timer's duration).</summary>
     public static string Seconds(long ms) => $"PT{Math.Max(0, ms / 1000).ToString(CultureInfo.InvariantCulture)}S";
 
-    public static long Add(long t, string s, bool business = false) => Add(t, s, business ? BusinessCalendar.Default : null);
 
     /// <summary>
     /// A duration added on a business calendar (R-09-88, Issue I-127): each whole day counts one business day of the calendar and
     /// lands on one; the time part is elapsed time. Without a calendar, every day counts.
     /// </summary>
-    public static long Add(long t, string s, BusinessCalendar? calendar)
+    public static long Add(long t, string s, BusinessCalendar? calendar = null)
     {
         var d = Parse(s);
         var outp = t;

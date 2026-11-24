@@ -23,6 +23,11 @@ ARG GO_IMAGE=golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc2
 ARG DOTNET_FROM=dotnet-source-all
 ARG STUDIO_FROM=studio-source
 ARG TEMPORAL_FROM=temporal-source
+# Who signs the native modules (R-09-181, Issue I-225): `laptop`, the default, a key this build makes and holds in one step's
+# environment, trusted by the laptop's studio alone; `secret`, any image beyond a laptop: NEST's module signing key, given to the
+# build as a BuildKit secret (`docker build --secret id=th_native_module_key,src=<PEM file>`), mounted for the signing step only and
+# never in a layer, an ARG or an ENV. With `secret` and no secret mounted the build stops: it never makes a key of its own.
+ARG TH_MODULE_SIGNING=laptop
 
 # ---- Node, for its binary only ---------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS node
@@ -49,20 +54,27 @@ COPY deploy/laptop/.build/studio-deps/node_modules /out/node_modules
 COPY studio/web/dist /out/web-dist
 
 FROM ${SDK_IMAGE} AS dotnet-source
+ARG TH_MODULE_SIGNING
 WORKDIR /src
 COPY runtime/ runtime/
 COPY studio/engines/ studio/engines/
 COPY deploy/laptop/dedupe.sh /src/dedupe.sh
-RUN set -e; for p in src/TransactHub.Api src/TransactHub.Service.Api src/TransactHub.Operations.Api src/TransactHub.Native src/TransactHub.FileApi \
+RUN --mount=type=secret,id=th_native_module_key,required=false set -e; for p in src/TransactHub.Api src/TransactHub.Service.Api src/TransactHub.Operations.Api src/TransactHub.Native src/TransactHub.FileApi \
       tools/TransactHub.TestBench tools/TransactHub.EngineHost tools/TransactHub.TemporalHarness tools/TransactHub.DtfxHarness \
       tools/TransactHub.ElsaHarness tools/TransactHub.FlowableHarness tools/TransactHub.DevIdentity tools/TransactHub.Migrate; do \
       rid=""; [ "$p" = tools/TransactHub.TemporalHarness ] && rid="-r linux-x64 --self-contained false"; \
       dotnet publish "runtime/$p" -c Release --nologo -v q $rid -o "/out/opt/th/runtime/$p/bin/Release/net10.0" -p:UseAppHost=false -p:DebugType=none; done; \
     sh /src/dedupe.sh /out/opt/th/runtime; \
-    # The native modules, signed by a key this build makes and holds in its environment only (R-09-127): the laptop's studio trusts
-    # that key alone (its public key, in native-module-signers.json). A bank's studio trusts its module builder's key instead.
-    TH_LAPTOP_MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"; export TH_LAPTOP_MODULE_KEY; \
-    export TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY; \
+    # The native modules, signed (R-09-127, R-09-181). `secret`: by NEST's module signing key, read from the BuildKit secret into
+    # this step's environment only; the studio is then given NEST's trusted signers in TH_NATIVE_MODULE_SIGNERS at run time.
+    # `laptop`: by a key this build makes and holds in its environment only, which the laptop's studio trusts alone (its public
+    # key, in native-module-signers.json).
+    case "$TH_MODULE_SIGNING" in \
+      secret) [ -s /run/secrets/th_native_module_key ] || { echo "TH_MODULE_SIGNING=secret: mount NEST's module signing key as the BuildKit secret th_native_module_key" >&2; exit 2; }; \
+              TH_NEST_MODULE_KEY="$(cat /run/secrets/th_native_module_key)"; export TH_NEST_MODULE_KEY; export TH_NATIVE_SIGNING_KEY=env:TH_NEST_MODULE_KEY ;; \
+      laptop) TH_LAPTOP_MODULE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"; export TH_LAPTOP_MODULE_KEY; export TH_NATIVE_SIGNING_KEY=env:TH_LAPTOP_MODULE_KEY ;; \
+      *) echo "TH_MODULE_SIGNING is laptop or secret, not $TH_MODULE_SIGNING" >&2; exit 2 ;; \
+    esac; \
     sh runtime/tools/native-module/build.sh p runtime/src/TransactHub.Activities.Platform.Native /out/native-modules; \
     sh runtime/tools/native-module/build.sh uae.wps runtime/src/TransactHub.Activities.Wps /out/native-modules; \
     sh runtime/tools/native-module/build.sh --signers > /out/native-module-signers.json
