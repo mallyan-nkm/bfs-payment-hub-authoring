@@ -140,6 +140,85 @@ public sealed class PortFileTransferTests
         Assert.Equal("centralBank/outbound/sif", PortFileTransfer.FolderOf(named.InForce("test-bank", "uae.wps.port.wps.v1", Now), Bindings().InForce("test-bank", FileTransferAdapters.Port, Now), "submit-file"));
     }
 
+    /// <summary>
+    /// R-09-182 (Issue I-266): where the bank's binding of <c>p.port.encryption.v1</c> encrypts the salary file (the openpgp adapter, a
+    /// key made by the test), the send v2 puts the encrypted file on the Central Bank's folder, never the plain one the render kept: the
+    /// bytes that reach the destination are an OpenPGP message that the recipient's key opens to the rendered file. The send v1, which
+    /// reads no encryption fact, would have sent the plain file. An encryption that names a file the host does not hold, or one the
+    /// service refused, sends nothing.
+    /// </summary>
+    [Fact]
+    public void The_send_v2_puts_the_encrypted_salary_file_on_the_central_banks_folder_where_the_bank_encrypts()
+    {
+        var pass = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        var (pub, sec) = OpenPgp.GenerateKeyPair("Central Bank WPS (test)", pass.ToCharArray());
+        var env = new Dictionary<string, string> { ["TH_TEST_CB_PUBLIC"] = System.Text.Encoding.UTF8.GetString(pub), ["TH_TEST_CB_SECRET"] = System.Text.Encoding.UTF8.GetString(sec), ["TH_TEST_CB_PASS"] = pass };
+        var secrets = new TransactHub.Security.SecretResolver([new TransactHub.Security.EnvSecretProvider(k => env.GetValueOrDefault(k))]);
+        var bindings = Bindings();
+        bindings.Add("""
+            kind: port-bindings
+            tenant: test-bank
+            bindings:
+              - port: p.port.encryption.v1
+                adapter: openpgp
+                validFrom: 2026-11-23T00:00:00Z
+                settings:
+                  keys.cbuae-wps.secretRef: env:TH_TEST_CB_PUBLIC
+                  armor: "false"
+            """);
+        var files = new MemoryNativeFiles();
+        var transfer = new Recording();
+        var ports = new NativePorts(bindings, files, secrets: secrets, transferOf: _ => transfer);
+        var render = new RenderCbSif((sha, name, content) => files.Keep("out", "rendered", name, content), RenderCbSif.FactoryName);
+        var view = View();
+        view.Remove("header");
+        var rendered = render.Run(new NativeAttempt(render.Name, "1.1.0", view, new JsonObject(), Now, "test-bank", "batch")).Writes["messages.rendered"]!.AsObject();
+        var plain = files.Get(((string)rendered["sha256"]!).ToLowerInvariant())!;
+
+        // The encryption step: the rendered file encrypted for the Central Bank's key, kept by the host.
+        var encrypt = new TransactHub.Activities.Platform.Native.EncryptFile(files, ports);
+        var ctx = View();
+        ctx["messages"] = new JsonObject { ["rendered"] = new JsonObject { ["fileName"] = (string?)rendered["fileName"], ["sha256"] = ((string)rendered["sha256"]!).ToLowerInvariant() } };
+        var e = encrypt.Run(new NativeAttempt(encrypt.Name, "1.1.0", ctx, new JsonObject { ["recipientKey"] = "cbuae-wps" }, Now, "test-bank"));
+        Assert.Equal("encrypted", e.Outcome);
+        ctx["facts"] = new JsonObject { ["encryption"] = e.Writes["facts.encryption"]!.DeepClone() };
+
+        var send = new SendSalaryFile(ports, SendSalaryFile.V2);
+        Assert.Equal("uae.wps.exchange.send-salary-file.v2", send.Name);
+        var s = send.Run(new NativeAttempt(send.Name, "2.0.0", ctx, new JsonObject(), Now, "test-bank"));
+        Assert.Equal("accepted", s.Outcome);
+        Assert.True((bool)s.Writes["messages.sent"]!["encrypted"]!);
+        var (path, owner) = Assert.Single(transfer.Puts);
+        Assert.Equal("centralBank/upload/cb/wps/sif/0000001234567261117083000.SIF.gpg", path);
+        Assert.Equal("uae.wps.exchange.send-salary-file.v2", owner!.Activity);
+        var sent = transfer.Files.Snapshot()[path];
+        // At the destination: an OpenPGP message, not the plain file, which the recipient's key opens to the rendered file.
+        Assert.True(OpenPgp.IsEncrypted(sent));
+        Assert.False(OpenPgp.IsEncrypted(plain));
+        Assert.DoesNotContain("EDR,", System.Text.Encoding.Latin1.GetString(sent));
+        var dec = FileProtectionAdapters.Decryption(new PortBinding("test-bank", OpenPgpDecryption.Port, OpenPgpDecryption.Name, Now, new Dictionary<string, string> { ["privateKeyRef"] = "env:TH_TEST_CB_SECRET", ["secretRef"] = "env:TH_TEST_CB_PASS" }), secrets);
+        Assert.Equal(plain, dec.Decrypt(sent).GetAwaiter().GetResult());
+
+        // v1 reads no encryption fact: it sends the plain file (the bug of Issue I-266).
+        var v1 = new SendSalaryFile(ports).Run(new NativeAttempt(SendSalaryFile.V1, "1.1.0", ctx, new JsonObject(), Now, "test-bank"));
+        Assert.Equal("accepted", v1.Outcome);
+        Assert.False(OpenPgp.IsEncrypted(transfer.Files.Snapshot()["centralBank/upload/cb/wps/sif/0000001234567261117083000.SIF"]));
+
+        // An encryption that names a file the host does not hold, or one the service refused, sends nothing more.
+        var before = transfer.Puts.Count;
+        var missing = (JsonObject)ctx.DeepClone();
+        missing["facts"]!["encryption"]!["sha256"] = new string('0', 64);
+        Assert.Equal("rejected", send.Run(new NativeAttempt(send.Name, "2.0.0", missing, new JsonObject(), Now, "test-bank")).Outcome);
+        var refused = (JsonObject)ctx.DeepClone();
+        refused["facts"] = new JsonObject { ["encryption"] = new JsonObject { ["outcome"] = "refused" } };
+        Assert.Equal("rejected", send.Run(new NativeAttempt(send.Name, "2.0.0", refused, new JsonObject(), Now, "test-bank")).Outcome);
+        Assert.Equal(before, transfer.Puts.Count);
+        // A simulated encryption that names no file (a test distribution): the rendered file goes out, as on the laptop.
+        var simulated = (JsonObject)ctx.DeepClone();
+        simulated["facts"] = new JsonObject { ["encryption"] = new JsonObject { ["outcome"] = "encrypted", ["result"] = "encrypted" } };
+        Assert.False((bool)send.Run(new NativeAttempt(send.Name, "2.0.0", simulated, new JsonObject(), Now, "test-bank")).Writes["messages.sent"]!["encrypted"]!);
+    }
+
     [Fact]
     public void Adibs_laptop_release_binds_the_wps_port_to_the_file_api_and_its_ack_inbox_drops_the_central_banks_file_id()
     {

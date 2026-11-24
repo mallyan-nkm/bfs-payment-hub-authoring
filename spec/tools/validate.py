@@ -457,7 +457,7 @@ for path, d in docs:
     for m in d["messages"]:
         if "deliver" in m["disposition"] and m["id"] not in awaited:
             err("L10", path, "%s is a deliver message but no workflow of %s awaits it" % (m["id"], d["scope"]))
-    # L53 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267) what a message declares beside its disposition holds: a file
+    # L55 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267) what a message declares beside its disposition holds: a file
     # block on a file or mixed wire, with a name pattern that compiles; a reply that answers messages of its own scheme that it
     # sends out; a report's reconcile activity and map; a deliver message's correlation map, an inward map that reads the message
     ids = {m["id"]: m for m in d["messages"]}
@@ -466,34 +466,34 @@ for path, d in docs:
         f = m.get("file")
         if f is not None:
             if d.get("wire") not in ("file", "mixed"):
-                err("L53", path, "%s declares a file block, but %s's wire is %s, not a file" % (mid, d["scope"], d.get("wire", "unstated")))
+                err("L55", path, "%s declares a file block, but %s's wire is %s, not a file" % (mid, d["scope"], d.get("wire", "unstated")))
             if "namePattern" in f:
                 try:
                     re.compile(f["namePattern"])
                 except re.error as e:
-                    err("L53", path, "%s's file name pattern does not compile: %s" % (mid, e))
+                    err("L55", path, "%s's file name pattern does not compile: %s" % (mid, e))
         for r in m.get("repliesTo") or []:
             if m["direction"] != "in":
-                err("L53", path, "%s answers %s but is not a message the bank receives" % (mid, r))
+                err("L55", path, "%s answers %s but is not a message the bank receives" % (mid, r))
             if r not in ids:
-                err("L53", path, "%s answers %s, which is no message of %s" % (mid, r, d["scope"]))
+                err("L55", path, "%s answers %s, which is no message of %s" % (mid, r, d["scope"]))
             elif ids[r]["direction"] != "out":
-                err("L53", path, "%s answers %s, which the bank does not send" % (mid, r))
+                err("L55", path, "%s answers %s, which the bank does not send" % (mid, r))
         rec = m["disposition"].get("reconcile")
         if rec:
             if m["direction"] != "in":
-                err("L53", path, "%s is reconciled, but the bank does not receive it" % mid)
+                err("L55", path, "%s is reconciled, but the bank does not receive it" % mid)
             act = by_name.get(rec["activity"])
             if not act or act.get("kind") != "activity" or act.get("type") != "reconcile":
-                err("L53", path, "%s's reconcile activity %s is not a reconcile activity" % (mid, rec["activity"]))
+                err("L55", path, "%s's reconcile activity %s is not a reconcile activity" % (mid, rec["activity"]))
             mp = by_name.get(rec["map"])
             if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in":
-                err("L53", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
+                err("L55", path, "%s's report map %s is not an inward map" % (mid, rec["map"]))
         cm = (m["disposition"].get("deliver") or {}).get("correlationMap")
         if cm:
             mp = by_name.get(cm)
             if not mp or mp.get("type") != "map" or (mp.get("map") or {}).get("direction") != "in" or "messages" not in (mp.get("reads") or []):
-                err("L53", path, "%s's correlation map %s is not an inward map that reads the message" % (mid, cm))
+                err("L55", path, "%s's correlation map %s is not an inward map that reads the message" % (mid, cm))
     # L33 a start message routes: its kind, direction and segment select, through workflow-select,
     # one platform workflow, and the leg it names fills that workflow's slot (R-05-42)
     for m in d["messages"]:
@@ -952,6 +952,51 @@ for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.i
                 err("L48", at, "binds %s twice from %s" % (port, b.get("validFrom")))
             seen.add((port, b.get("validFrom")))
 
+# ------------------------------------------------------- the rates feed and the studio's configuration releases
+# L52 (R-11-101, Issue I-276): a bank whose port bindings bind the rates port p.port.fx-rates.v1 takes its rates from the feed, so its
+# configuration (the folder's configuration-set.yaml and its newest release in configuration-sets/) sets no p.enrich.fx-rate.v1#rates:
+# a studio release that set them would be newer than the feed's and its typed rates would win until the feed ran again.
+# L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration; the feed numbers its releases as the
+# patches after the bank's newest, so the two lines of numbers never meet. A configuration release in configuration-sets/ is a major
+# or a minor (x.y.0), as is every configuration set the factory's examples hold.
+FX_PORT, FX_RATES = "p.port.fx-rates.v1", "p.enrich.fx-rate.v1#rates"
+
+
+def release_key(r):
+    try:
+        return tuple(int(x) for x in str(r).split("."))
+    except ValueError:
+        return (0,)
+
+
+for bank in sorted(f for f in (BANKS.iterdir() if BANKS.is_dir() else []) if f.is_dir()):
+    where = "content-configurations/banks/%s" % bank.name
+    feed = False
+    for f in sorted(bank.glob("*.yaml")) + sorted((bank / "port-bindings").glob("*.yaml") if (bank / "port-bindings").is_dir() else []):
+        for d in yaml.safe_load_all(f.read_text()):
+            if isinstance(d, dict) and d.get("kind") == "port-bindings" and any(isinstance(b, dict) and b.get("port") == FX_PORT for b in d.get("bindings") or []):
+                feed = True
+    sets = []
+    if (bank / "configuration-set.yaml").is_file():
+        sets.append(("configuration-set.yaml", yaml.safe_load((bank / "configuration-set.yaml").read_text()) or {}))
+    released = []
+    for f in sorted((bank / "configuration-sets").glob("*.yaml")) if (bank / "configuration-sets").is_dir() else []:
+        d = yaml.safe_load(f.read_text()) or {}
+        if not str(f.stem).endswith(".0"):
+            err("L53", "%s/configuration-sets/%s" % (where, f.name), "is a patch release of the bank's configuration: the studio releases a major or a minor, and the rates feed numbers its releases as the patches after the newest")
+        released.append((release_key(f.stem), "configuration-sets/%s" % f.name, d))
+    if released:
+        _, name, d = max(released, key=lambda x: x[0])
+        sets.append((name, d))
+    if feed:
+        for name, d in sets:
+            if any(isinstance(v, dict) and v.get("parameter") == FX_RATES for v in d.get("values") or []):
+                err("L52", "%s/%s" % (where, name), "sets %s, but the bank binds %s: its rates come from the feed, and typed rates in a newer release would win over them" % (FX_RATES, FX_PORT))
+
+for path, d in docs:
+    if d.get("kind") == "configuration-set" and d.get("release") and not str(d.get("release")).endswith(".0"):
+        err("L53", path, "configuration set %s is a patch release: a bank's configuration is released as a major or a minor" % d.get("release"))
+
 # ------------------------------------------------------- operations views
 # L38 an operations view (R-05-48, R-05-49) says only what the store can answer: its scheme and legs exist, each leg is told
 # apart by steps it has, each source reads a step the leg (or platform workflow) has, an extension field that is
@@ -1165,6 +1210,13 @@ for path, d in docs:
                 hosts = shown if only is None else [w for w in shown if w in only]
                 if not hosts or not all(name in (by_name.get(w) or {}).get("signals", []) for w in hosts):
                     err("L38", at, "action %s is a signal that the platform workflows here do not all handle" % name)
+            # R-05-94 (Issue I-279): an action held to the step that led to its hold names a hold and an activity a flow of the view reaches.
+            led = (a.get("when") or {}).get("activity")
+            if led is not None:
+                if not (a.get("when") or {}).get("hold"):
+                    err("L38", at, "action %s names the activity that led to its hold (%s) but no hold" % (name, led))
+                elif led not in by_name or not any(reached([w], led) for w in flows):
+                    err("L38", at, "action %s is held to a hold after %s, which no flow of this view reaches" % (name, led))
             if a.get("secondApprover") and a["secondApprover"] == "Operator" and a["role"] == "Supervisor":
                 err("L38", at, "action %s asks a supervisor's action to be approved by an operator" % name)
         # R-05-67 (Issue I-144): a fixed report is the subject's, and every column is a declared field, a declared line field
@@ -1539,7 +1591,7 @@ if kit_size and (ROOT / "design").is_dir():
                 if said != kit_size:
                     err("L51", "%s:%d" % (f.relative_to(ROOT), n), "counts %d conformance scenarios, but conformance/kit.yaml holds %d: say \"every scenario of conformance/kit.yaml\"" % (said, kit_size))
 
-# L52 (R-03-25, R-03-26, Issue I-303) every attempt of an activity is at least once on every engine (a crash, an expired lock),
+# L54 (R-03-25, R-03-26, Issue I-303) every attempt of an activity is at least once on every engine (a crash, an expired lock),
 # so an activity with an outside effect carries an idempotency key whether or not it retries: one whose effect is write or
 # external, one whose type changes something outside it (an exchange that sends, responds or reports; a reserve, hold, notify or
 # screen), and one that names a port whose operations only send. The key derives from business ids, the same on every attempt:
@@ -1566,9 +1618,9 @@ for path, d in docs:
         continue
     key = d.get("idempotencyKey")
     if not key:
-        err("L52", path, "%s has an outside effect (%s) but no idempotency key: every attempt is at least once" % (d.get("name"), why))
+        err("L54", path, "%s has an outside effect (%s) but no idempotency key: every attempt is at least once" % (d.get("name"), why))
     elif "header." not in key or NOT_A_BUSINESS_ID.search(key):
-        err("L52", path, "%s's idempotency key %r is not the same on every attempt: it must read a business id of the header and not the clock, a new id or the attempt" % (d.get("name"), key))
+        err("L54", path, "%s's idempotency key %r is not the same on every attempt: it must read a business id of the header and not the clock, a new id or the attempt" % (d.get("name"), key))
 
 # ---------------------------------------------------------------- report
 kinds = {}

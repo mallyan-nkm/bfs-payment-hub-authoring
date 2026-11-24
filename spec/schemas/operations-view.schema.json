@@ -107,6 +107,7 @@
           "properties": {
             "hold": { "enum": ["approval", "repair"] },
             "workflow": { "type": "array", "minItems": 1, "items": { "$ref": "urn:th:schema:common#/$defs/artefactName" }, "description": "The platform workflows the action applies to (R-05-61); without it, every platform workflow of the view." },
+            "activity": { "$ref": "urn:th:schema:common#/$defs/artefactName", "description": "With hold: the activity of the step that led to the open hold (R-05-94): a step of this activity answered, since the payment's previous hold opened, before this one opened." },
             "status": { "type": "array", "items": { "type": "string" } },
             "notStatus": { "type": "array", "items": { "type": "string" } }
           }

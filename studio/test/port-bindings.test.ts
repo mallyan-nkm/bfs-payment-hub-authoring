@@ -3,7 +3,7 @@ import { dispatchAs as dispatch } from './support/as-user.js';
 import { parseYaml } from '../src/core/yaml.js';
 import { buildAndPublish } from '../src/governance/distributions.js';
 import * as gov from '../src/governance/governance.js';
-import { checkAll, portBindingProblems } from '../src/checks/checks.js';
+import { checkAll, feedRateIssues, portBindingProblems } from '../src/checks/checks.js';
 import { freshEnv } from './helpers.js';
 import { fake } from './support/content.js';
 
@@ -26,6 +26,33 @@ describe('port bindings in the studio (R-11-47)', () => {
     expect(r.body.issues.filter((i: any) => i.severity === 'error')).toEqual([]);
     // Another bank's bindings are not this user's to read.
     expect((await as(env, 'example.maker', 'GET', '/api/tenants/second-bank/port-bindings')).status).toBe(403);
+  });
+
+  it('a bank on the rates feed types no rates, and no configuration release of a bank is a patch (L52, L53; R-11-101, R-11-102, I-276)', () => {
+    const feedBinding = 'kind: port-bindings\ntenant: feed-bank\nbindings:\n  - port: p.port.fx-rates.v1\n    adapter: gateway-rest\n    validFrom: 2026-11-23T00:00:00Z\n    settings: { baseUrl: "https://rates.feed-bank.invalid/" }\n';
+    const rates = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.2.0\npacks: []\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: "2026-11-01"\n    value: [ { from: USD, to: AED, rate: "3.6725" } ]\n';
+    const plain = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.3.0\npacks: []\nvalues: []\n';
+    const files = new Map<string, string>([
+      ['banks/feed-bank/platform-adapters.yaml', feedBinding],
+      ['banks/feed-bank/configuration-set.yaml', plain],
+      ['banks/feed-bank/configuration-sets/1.2.0.yaml', rates],
+      ['banks/feed-bank/configuration-sets/1.3.0.yaml', plain],
+    ]);
+    // The newest release sets no rates: nothing to say.
+    expect(feedRateIssues(files, 'feed-bank')).toEqual([]);
+    // A newer release that types the rates while the bank binds the feed is refused; so is a patch release.
+    files.set('banks/feed-bank/configuration-sets/1.4.0.yaml', rates.replace('1.2.0', '1.4.0'));
+    files.set('banks/feed-bank/configuration-sets/1.4.1.yaml', plain.replace('1.3.0', '1.4.1'));
+    const found = feedRateIssues(files, 'feed-bank');
+    expect(found.map((i) => `${i.code} ${i.file}`).sort()).toEqual(['L53 banks/feed-bank/configuration-sets/1.4.1.yaml']);
+    files.delete('banks/feed-bank/configuration-sets/1.4.1.yaml');
+    expect(feedRateIssues(files, 'feed-bank').map((i) => `${i.code} ${i.file}`)).toEqual(['L52 banks/feed-bank/configuration-sets/1.4.0.yaml']);
+    // A bank that does not bind the feed may type its rates.
+    files.delete('banks/feed-bank/platform-adapters.yaml');
+    expect(feedRateIssues(files, 'feed-bank')).toEqual([]);
+    // The real banks bind the feed and type no rates; the example bank types its rates and binds no feed.
+    const env = freshEnv();
+    expect(checkAll(env).filter((i) => i.code === 'L52' || i.code === 'L53')).toEqual([]);
   });
 
   it('checks a binding against the port contracts and refuses a literal credential (L48)', () => {

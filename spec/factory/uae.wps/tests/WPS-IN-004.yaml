@@ -36,7 +36,7 @@ expect:
     - port: uae.wps.port.wps.v1
       message: uae.wps.rfa
       count: 1
-  virtualElapsed: P14D
+  virtualElapsed: P17D
   trace:
     - supplement:received
     - file-checks:pass

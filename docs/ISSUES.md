@@ -1769,13 +1769,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Still open (23 November 2026).** The business calendar the studio interpreter and the party hand a hold now counts the bank's own closed days too (R-09-102), but an await's business calendar did not fall out of the cut-off work: the engines count an await on `BusinessCalendar.Default` and would need the calendar with the deployment's values, so the studio interpreter was left as the engines are, to keep their waits equal.
 
+**Done (24 November 2026, R-09-183).** Every business-calendar wait counts the bank's business calendar, holidays and the bank's own closing days included, on every engine, as a hold's expiry and the turnaround already did. The studio interpreter counts an await's business timeout on `Run.businessCalendar` (the bank's reference tables of domains `business-calendar` and `bank-calendar`). The engines' shared interpreter (Temporal, DTFx, Elsa) and the Flowable REST binding count it on `Deployment.BusinessCalendarAt`: on a runtime's engine host the calendar of the configuration release in force, read from the store (`Deployment.LiveCalendar`, installed by `StoreValues.Install` beside the live values), else the plan's reference tables, read as the studio reads them; a hold whose answer names no calendar takes the same one. The Flowable kit harness is handed the run's calendar in place of `DEFAULT_CALENDAR`. `Duration.Add(t, s, bool business)` is gone, so no wait can fall back to Saturday and Sunday by mistake. The kit's scenarios carry the store's calendar tables, so every engine counts the calendar the interpreter counts. Conformance CK-AWAIT-08: an await of one business day from Friday 27 November 2026, over the bank's holiday on Monday 30 November, ends on Tuesday, four days on (Saturday and Sunday alone would give three).
+
 ## I-167. A requeue cannot be told from a retry by the kit's stubs
 
 **Issue.** Requeue (R-09-91) runs a dead-lettered step with its full retry policy, a retry gives it one attempt. The kit's stub fails a step only on its first call (`failTimes` counts the first call's attempts), so CK-PARK-03 shows the requeue's path on every engine but not that the second run had the full policy. On Flowable a dead-lettered payment's run waits for a requeue only in production mode with the runtime's live path; elsewhere the binding still ends the run at the dead letter.
 
 **Recommendation.** Let a stub fail a number of attempts across calls (`failAttempts`), and add a scenario whose requeued step fails once more and then succeeds, which a retry would not survive.
 
-**Done (24 November 2026, R-09-208).** A kit stub may fail a number of a step's attempts counted across its calls, `failAttempts` (`studio/src/interp/interpreter.ts`, counted per instance and step on the run, so on every engine through the party service). CK-PARK-04 fails the first three attempts of its step: both attempts of its policy fail and it parks; the requeue runs its full policy, whose first attempt fails once more and whose second succeeds (four attempts in all), which one more attempt (a retry) would not survive. The kit holds 58 scenarios; the counts derived from it are updated (`studio/test/execution.test.ts`, the READMEs, `docs/north-star`, `docs/TRAINING.md`, Annex C's table). CK-PARK-03 and 04 pass on the studio interpreter, DTFx and Elsa.
+**Done (24 November 2026, R-09-208).** A kit stub may fail a number of a step's attempts counted across its calls, `failAttempts` (`studio/src/interp/interpreter.ts`, counted per instance and step on the run, so on every engine through the party service). CK-PARK-04 fails the first three attempts of its step: both attempts of its policy fail and it parks; the requeue runs its full policy, whose first attempt fails once more and whose second succeeds (four attempts in all), which one more attempt (a retry) would not survive. The kit holds 59 scenarios (with CK-AWAIT-08 of wave 6); the counts derived from it are updated (`studio/test/execution.test.ts`, the READMEs, `docs/north-star`, `docs/TRAINING.md`, Annex C's table). CK-PARK-03 and 04 pass on the studio interpreter, DTFx and Elsa.
 
 ## I-168. A reconciliation break is resolved by status only
 
@@ -2106,6 +2108,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** For any image beyond a laptop, pass NEST's module signing key into the build as a BuildKit secret mounted as an environment variable (`RUN --mount=type=secret,id=...,env=TH_NATIVE_MODULE_KEY`), and give the studio NEST's trusted signers in `TH_NATIVE_MODULE_SIGNERS` at run time.
 
+**Done (24 November 2026, R-09-181).** The Dockerfile's build stage takes NEST's module signing key as a BuildKit secret (`th_native_module_key`), mounted for the signing step only and read into that step's environment, with `--build-arg TH_MODULE_SIGNING=secret`; with that mode and no secret the build stops and makes no key. `TH_MODULE_SIGNING=laptop`, the default, keeps the self-made key for the laptop only. `TH_NATIVE_MODULE_KEY_FILE=<PEM file> deploy/laptop/build.sh` passes the key as the secret (with `--local`, into the signing step's environment only). Documented in `deploy/laptop/README.md` and `docs/runtime/PACKAGING-AND-DEPLOYMENT.md` (section 3.1); `LaptopDeploymentTests.A_production_image_build_takes_the_module_signing_key_as_a_BuildKit_secret_and_never_makes_one`. No image was built here (disk); the test reads the files.
+
 ## I-226. `INativeServices.Service<T>` still hands out the image's types
 
 **Issue.** Contract 1.0.0's `Service<T>()` gave a module the image's `PortBindings` and `CoreBankingResolver`. It stays, so that a module built against 1.0.0 keeps running, but a module that references the contract only has nothing of the image it can name with it.
@@ -2154,6 +2158,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Make the rule service read `payment-date` as of the payment's business date (`opts.businessDate`), with a studio test of a rule whose parameter declares it; found by this change and not fixed, as it is the studio's.
 
+**Done (24 November 2026, R-05-93).** The rule service reads a parameter declared `payment-date` as of the payment's business date (`opts.businessDate`, the header's `businessDate`), and every other as of the step; with no business date, as of the step (`lookupDateOf` in `studio/src/rules/service.ts`). The word `business` the schema does not have is no longer read. `studio/test/rules.test.ts` shows both dates and that `business` reads as of the step.
+
 ## I-237. The labour ministry's port is a scheme's, but its adapters are in the platform's ports library
 
 **Issue.** R-09-142 says platform code names no scheme. `TransactHub.Ports/EmployerRegister.cs` holds the adapters of `uae.wps.port.labour-ministry.v1`, and names that port, because the WPS native module reaches them through `TransactHub.Ports` (Issue I-220). Its default channel header (`WPS`) is gone: the channel is the bank's binding's setting (`channel`), set in each bank's binding. `NeutralityTests.No_platform_or_engine_host_code_names_a_scheme` lists this file as the one exception.
@@ -2165,6 +2171,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** R-09-142 is checked for a scheme's name. A cluster's values are still defaults in platform code: the currency `AED` where a payment, a binding or a reply names none (`PostingActivities`, `CanonicalMapper`, the core banking adapters' `currency` and `localCurrency`, `CoreBankingEnquiries`). The test bench's one-off run (`deploy/laptop/bin/run-pinned.mts`) also takes its values from the bank folder's configuration set, not from the configuration release in force, and the WPS salary file as its default message.
 
 **Recommendation.** Make a currency a binding's required setting or the payment's own, with no default, in a change of its own with the banks' bindings; have `run-pinned` read the values from the release API (`GET /values`) and name its message.
+
+**Done (24 November 2026, R-09-185, R-09-187, R-11-104).** No platform or engine host code gives `AED` as a default: a currency is the payment's own or its batch's (`CanonicalMapper.ToPayment` takes the batch's), the caller's (the channel's charges preview now needs `currency`), or a binding's required setting (`currency` of the core banking simulator and of a gateway whose reply names none, `localCurrency` of the file bulk adapter, each by `PortBinding.Required`); a posting with no currency is refused (`BusinessReject`). `Money.Aed` is gone. Each bank folder's core-banking binding names its currency (`currency: AED`, the bank's setting). `NeutralityTests.No_platform_or_engine_host_code_defaults_a_currency` holds the platform's code to it and every bank folder's binding. `deploy/laptop/bin/run-pinned.mts` reads the bank's values from the release API (`GET /values`) as of the payment's date and gives them to the run, the distribution's own configuration set giving its bindings, and it needs its caller to name the message and the file; `LaptopDeploymentTests.The_one_off_run_reads_the_values_in_force_from_the_release_API_and_names_its_message`. The WPS module and the test bench's WPS data builder keep the scheme's currency, which is theirs.
 
 ## I-239. An activation that loses a race is refused, not tried again
 
@@ -2179,6 +2187,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** R-09-135 reads a parameter declared `payment-date` as of the payment's acceptance. The Flowable binding computes a timer's due date outside the run's state and does not have the payment's id where it reads the value, so it reads every value as of the timer's start, as of the step.
 
 **Recommendation.** Give the binding's timer the payment's id (the root's `header.paymentId`, which the binding holds for the instance) and pass it with the read, with a test on the engine host's Flowable supervisor.
+
+**Done (24 November 2026, R-09-186).** The Flowable binding hands a timer's read of a bank's value the payment's id, its root instance's `header.paymentId` (`FlowableBinding.PaymentOf`), so a parameter declared `payment-date` is read as of the payment's acceptance. `EngineHostTests.Flowable_reads_the_banks_values_as_of_each_step_and_as_of_the_payments_date` runs the values test of the other engines on the engine host's Flowable supervisor, with a stored package that carries the waiting workflow's BPMN as the generator writes it.
 
 ## I-245. A seed after a lock file the studio published
 
@@ -2248,6 +2258,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Either release `p.protect.encrypt-file.v1` in a minor that also writes the encrypted file as `messages.rendered` (a write added to `messages`, which it does not write yet: check whether L26 calls that a major), or add `uae.wps.exchange.send-salary-file.v2` that reads `facts.encryption` and sends the encrypted file when there is one. Until one is decided, a bank that binds the WPS port to the File API must not also bind `p.port.encryption.v1` to a real key.
 
+**Done (24 November 2026, R-09-182).** The second option: `uae.wps.exchange.send-salary-file.v2` (2.0.0, a read added, a new major line) reads `facts.encryption` and, where the bank's binding encrypted the file, sends the encrypted file the host kept; an encryption that names a file the host does not hold, or one the service refused, sends nothing; a simulated encryption that names no file sends the rendered file, as before. The submit block's subflow `uae.wps.sub.submit-salary-file.v1` 1.3.0 calls it and the scheme's catalogue 1.4.0 names it as the sender (factory 1.19.0). Why not a minor of `p.protect.encrypt-file.v1` writing `messages.rendered`: a write added is a major too (L26), and a send that knows it sends an encrypted file can say so (`messages.sent.encrypted`) and refuse a mismatch. `PortFileTransferTests.The_send_v2_puts_the_encrypted_salary_file_on_the_central_banks_folder_where_the_bank_encrypts`: on the openpgp adapter with a key the test makes, the bytes put on the Central Bank's folder are an OpenPGP message that the recipient's key opens to the rendered SIF; v1 would have sent the plain file. The scheme's other sends are Issue I-293.
+
 ## I-267. An acknowledgement is correlated by a stem the bank's binding trims, not by a correlation map
 
 **Issue.** The Central Bank names an ACK or NAK after the SIF it answers with its twelve-character WPS file id before the extension (the source's `WpsAckNakFile`). The front door correlates a received file by the keys the sender gives, else the stem of its name (I-160 (2)), which matches no payment for such a name. The scheme does not say this naming; it is the source's reading of the SSM.
@@ -2282,11 +2294,15 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** For a bank on the feed, the studio should not set `p.enrich.fx-rate.v1#rates` (lint: a bank whose configuration binds `p.port.fx-rates.v1` sets no `rates`), and should never make a patch release of a bank's configuration; or give the feed a line of its own (a configuration release per kind, ordered per parameter by release and kind). Until one is decided, a bank that takes the feed removes its typed rates.
 
+**Done (24 November 2026, R-11-101, R-11-102).** The recommendation's first option. Lint L52 (tools/validate.py and the studio's check, mutation M82): a bank whose port bindings bind `p.port.fx-rates.v1` sets no `p.enrich.fx-rate.v1#rates` in its `configuration-set.yaml` or its newest released configuration set. Lint L53 (mutation M83): a bank's configuration is released as a major or a minor (`x.y.0`), never a patch, so the feed's patch numbers and the studio's never meet. The real banks bind the feed and type no rates; the example bank types its rates and binds no feed. `studio/test/port-bindings.test.ts`.
+
 ## I-277. The feed's signing key is trusted like the studio's
 
 **Issue.** The feed signs its releases with a key of its own (`Service:FxRates:SigningKeyRef`, by reference), which the bank adds to its trusted signers. The trust list does not say what a key may sign, so a leak of the feed's key could sign any configuration release. That release would still wait for a bank approver's consent (the standing consent covers rate releases only), but it would verify.
 
 **Recommendation.** Let a trusted signer name the kinds it may sign (`kinds: [configuration]`) and, for a configuration release, a scope (`feed: fx-rates`), checked at verification; give the feed's key that scope only.
+
+**Done (24 November 2026, R-09-184, R-11-103).** A trusted signer may name `kinds` (among `workflow-package`, `distribution`, `configuration`) and, for a configuration release, `scope: { feed }`; verification refuses another kind, and for a scoped key a statement that claims no feed or another, with `signing.OutOfScope` (error dictionary 1.9.0, with its runbook). The feed signs `feed: fx-rates` into its statement; a release that claims a feed must name the same feed in its manifest and hold only what the feed makes (`Bundle.NotFeedRelease`, which the standing consent's check now uses too). A scope on a key that may sign more than configuration releases is an invalid trust list. Give the feed's key `"kinds": ["configuration"], "scope": { "feed": "fx-rates" }` in the bank's trusted signers. `SigningTests.A_trusted_signer_signs_only_the_kinds_and_the_feed_the_trust_list_gives_it`.
 
 ## I-278. A rate set by hand is never aged
 
@@ -2299,6 +2315,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** An alert's payment is released by the payment's own `approve` action (R-05-90). `p.view.operations.v1` offers `approve` on any approval hold to an Operator with no second approver, so one operator can release a payment the fraud engine found suspect. The view cannot tell a fraud hold from another approval hold; the original platform's rule for this is not on this machine.
 
 **Recommendation.** Let a view's action say `when: { hold: approval, activity: p.screen.fraud.v1 }` (the step that led to the hold), and give the platform view an `approve` for fraud holds with `secondApprover: Supervisor`, in its next release. Decide with each bank's fraud team.
+
+**Done (24 November 2026, R-05-94).** A view's action may say `when: { hold, activity }`: it is offered only on a hold that a step of that activity led to, as the hold's opening fact names it (`after`, which the runtime's hold now records) or, for a hold opened before, as the chain shows it (`HoldCause`: the latest step before the hold with a reason code or an outcome that holds, the step the hold's reason names). `p.view.operations.v1` 1.7.0 (factory 1.19.0) offers `approve` on a hold after `p.screen.fraud.v1` with a second approver of role Supervisor and remarks required, declared before the plain approve, which every other approval hold keeps. The fraud alert list's release goes through it: it waits for a supervisor, another person, and the console says so. Lint L38 holds `when.activity` to a hold and an activity a flow of the view reaches (mutation M84). `FraudAlertTests` and `runtime/ops-console/test/unit/oversight.test.ts`. A hold after parallel branches is Issue I-290. Decide with each bank's fraud team whether the second approver should also refuse.
 
 ## I-280. What makes a fraud alert, beyond a suspect payment
 
@@ -2332,6 +2350,38 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Make one id: let the store accept a payment the front door started under the front door's id (`header.paymentId`), or record the bulk's id as a correlation on the front door's chain when it is accepted. Then the console's payment route resolves either id, the read model files each kept file under the subject the console shows, and the upload page's link opens the payment. Until then the video opens the payment from the payments list and shows its kept files through the File API (`GET /files?paymentId=`).
 
+**Done (24 November 2026, R-09-180, R-05-95).** The first option: the store accepts a payment the front door started under the front door's id. Why: one id needs no lookup anywhere, where a correlation would need one in every reader (the console's route, the read model's documents, the File API's `GET /files?paymentId=`, the service console's actions, the release API's end); and the payment's pin, its run's facts and its end are one chain that verifies as one. The claim check's acceptance carries `header.paymentId` (`AcceptInfo.PaymentId`, `ClaimCheckStore.AcceptFor`, on every engine), and `PaymentStore` takes it where the store holds the pin under that id and no bulk or payment has it yet; otherwise a new id, as before. The read model files a message or file kept under a pinned id before acceptance under that id, takes the front door's facts named `payment` for the bulk the store holds, and puts the chain's earlier facts (the pin, the start) on the timeline once the payment is accepted. So the console's payment route resolves the upload page's link, and the Documents tab lists the file in, the SIF out and the ACK in. `ClaimCheckTests.A_payment_the_front_door_started_is_accepted_under_the_front_doors_id`, `OperatorApiTests.A_payment_the_front_door_started_opens_under_its_id_with_its_files`, on SQL Server and PostgreSQL. The video's workaround is no longer needed; it was not recorded again.
+
+## I-290. A hold after parallel branches is told by the latest step with a reason
+
+**Issue.** R-05-94 offers the supervisor's release on a hold that a fraud step led to. The runtime's hold records the step that led to it (`after`) as the latest step before it with a reason code or an outcome that holds (`HoldCause`), the step the hold's reason has always named. In `p.seg.check-and-screen.v1` sanctions and fraud screening run side by side: if both hold at once (sanctions `pending`, fraud `suspect`), each hold names the same latest step, so one of the two holds names the other's cause. A hold after a parallel step that cleared is not affected: a clear answer gives no reason code.
+
+**Recommendation.** Let the engine name the step that holds and the step whose handler it is in, in the attempt's envelope (with Issue I-285's envelope schema), and have the hold record that step, not the latest one.
+
+## I-291. The kit's business elapsed check counts Saturday and Sunday only
+
+**Issue.** A kit scenario may check its elapsed time on the business calendar (`virtualElapsedBusiness`, CK-AWAIT-02). The runner counts it on `DEFAULT_CALENDAR`, not on the calendar the scenario's documents give, so a scenario over a holiday must state its elapsed time in plain days, as CK-AWAIT-08 does.
+
+**Recommendation.** Count `virtualElapsedBusiness` on the scenario's calendar (`businessCalendarIn` over the scenario's documents and the store's tables, as the run counts it).
+
+## I-292. The trusted signers of a bank do not show what each key may sign
+
+**Issue.** R-09-184 lets a trusted signer name its kinds and scope. The service console shows the trusted keys and their rotation, not their kinds or scope, and no laptop or bank folder holds the feed's entry: each installation adds it by hand to the document `TH_TRUSTED_SIGNERS` names.
+
+**Recommendation.** Show each key's kinds and scope on the service console's trust page, and have the rotation action ask for them, with the feed's key offered as `kinds: [configuration]`, `scope: { feed: fx-rates }`.
+
+## I-293. The scheme's other sends still read no encryption fact
+
+**Issue.** R-09-182 makes the salary file's send send the encrypted file. The returns file, the refund request and response, the disbursement cancellation and the receipt confirmation are encrypted by their subflows too, but have no native code-behind yet (Issue I-268) and read no encryption fact: once each is given one, it would send the plain file as the salary file's v1 did.
+
+**Recommendation.** Give each send its v2 that reads `facts.encryption`, with its native code-behind, in the same change as I-268's; and retire `uae.wps.exchange.send-salary-file.v1` (now reached by no workflow, L11) once no distribution in force pins it.
+
+## I-294. A payment with no currency is accepted with none
+
+**Issue.** R-09-185 removed the platform's default currency. A payload whose payment and batch name no currency is accepted into the store with an empty currency, and only its posting refuses it (`BusinessReject`). The canonical checks do not refuse it first.
+
+**Recommendation.** Have `p.validate.canonical.v1` refuse a payment that names no currency (a rule of the platform's canonical rule set, in its next release), so the payment is refused at its checks, before anything else runs.
+
 ## I-300. A distribution's engine service runs one work item at a time
 
 **Issue.** Since I-165 one DTFx or Elsa service runs every payment of a distribution (R-09-196). Its orchestration service is the harness's: on DTFx one work item holds the baton at a time (an episode or an activity attempt), on Elsa every operation runs on the clock's thread, and a timer fires only while nothing is in flight. One slow worker call therefore delays every other payment of the distribution, and the service's throughput is that of one payment at a time. The spec sets no throughput for an engine host (I-68).
@@ -2358,7 +2408,7 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** State in the spec that every activity attempt is at least once on every engine (a crash, an expired lock), so that an activity with an effect MUST carry an idempotency key whether or not it retries, and add the check to the validator with its mutation case.
 
-**Done (24 November 2026, R-03-25, R-03-26).** The spec says that every activity attempt is at least once on every engine and in the interpreter (R-03-25, in `spec/design/03-activity-contract-and-types.md` and the guard-rails of `spec/CLAUDE.md`), and that an activity with an outside effect carries an idempotency key whether or not it retries (R-03-26): its effect is `write` or `external`, it is a `reserve`, `hold`, `notify` or `screen`, an `exchange` that sends, responds or reports, or it names a port whose operations only send. Lint L52 checks it in `spec/tools/validate.py` and in the studio (`checks.ts`), with mutation cases M90 (a notify that says it reads, with no key) and M91 (a key that reads the clock), and `studio/test/checks.test.ts`. The key must read a business id of the header and not the clock, a new id or the attempt. Every activity of the factory and of the bank packs already passes: the schema has required a key on `write` and `external` since R-03-05, and no activity of another type with an outside effect says it only reads, so no factory activity needed a new release.
+**Done (24 November 2026, R-03-25, R-03-26).** The spec says that every activity attempt is at least once on every engine and in the interpreter (R-03-25, in `spec/design/03-activity-contract-and-types.md` and the guard-rails of `spec/CLAUDE.md`), and that an activity with an outside effect carries an idempotency key whether or not it retries (R-03-26): its effect is `write` or `external`, it is a `reserve`, `hold`, `notify` or `screen`, an `exchange` that sends, responds or reports, or it names a port whose operations only send. Lint L54 checks it in `spec/tools/validate.py` and in the studio (`checks.ts`), with mutation cases M90 (a notify that says it reads, with no key) and M91 (a key that reads the clock), and `studio/test/checks.test.ts`. The key must read a business id of the header and not the clock, a new id or the attempt. Every activity of the factory and of the bank packs already passes: the schema has required a key on `write` and `external` since R-03-05, and no activity of another type with an outside effect says it only reads, so no factory activity needed a new release.
 
 ## I-304. A rule trace kept in memory is lost when a service starts again
 

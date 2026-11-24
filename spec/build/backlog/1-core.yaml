@@ -242,7 +242,7 @@ components:
         dod:
           - A change to reads, writes, outcomes, errors, ports, parameters, slots, hook points, entry or exit proposes a major.
           - Adding a hook point proposes a minor; any other change proposes a patch unless the designer raises it to a minor.
-        dos: Adding an outcome to uae.wps.exchange.send-salary-file.v1 proposes 2.0.0 and a new name ending in v2.
+        dos: Adding an outcome to uae.wps.exchange.send-returns-file.v1 proposes 2.0.0 and a new name ending in v2.
       - id: C05-S4
         title: Dependency release propagation
         sp: 5

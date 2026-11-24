@@ -39,8 +39,13 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     // the posting that reads FX and charges is a new major line; payments on v1 keep it (R-12-23)
     expect(env.store.get('p.post.accounting.v1')!.release).toBe('1.1.0');
     expect(env.store.get('p.post.accounting.v2')!.release).toBe('2.0.0');
-    // 1.2.0: the agent's refund cycle (I-133); 1.3.0: the employer's refund order is an outward refund order (R-12-24)
-    expect(env.store.scheme('uae.wps').release).toBe('1.3.0');
+    // the salary file's send that reads the encryption step's fact is a new major line; v1 stays as published (R-09-182)
+    expect(env.store.get('uae.wps.exchange.send-salary-file.v1')!.release).toBe('1.1.0');
+    expect(env.store.get('uae.wps.exchange.send-salary-file.v2')!.release).toBe('2.0.0');
+    // 1.2.0: the agent's refund cycle (I-133); 1.3.0: the employer's refund order is an outward refund order (R-12-24); 1.4.0: the
+    // salary file is sent by the send v2 (R-09-182)
+    expect(env.store.scheme('uae.wps').release).toBe('1.4.0');
+    expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.sif-submission').disposition.sentBy).toBe('uae.wps.exchange.send-salary-file.v2');
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.refund-order').disposition.start).toMatchObject({ kind: 'refund', direction: 'outward', leg: 'uae.wps.wf.refund-out.v2' });
     expect(env.store.scheme('uae.wps').messages.find((m: any) => m.id === 'uae.wps.pif').disposition.start.leg).toBe('uae.wps.wf.agent-payment-in.v2');
   });
@@ -75,7 +80,8 @@ describe('every changed factory artefact is a new release; the earlier stays as 
     expect(body(disk('banks/example-bank/packs/1.15.0.yaml')).release).toBe('1.15.0');
     expect(body(disk('banks/example-bank/configuration-sets/1.10.0.yaml')).release).toBe('1.10.0');
     expect(body(disk('banks/example-bank/packs/1.17.0.yaml')).release).toBe('1.17.0');
-    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.18.0');
+    expect(body(disk('banks/example-bank/packs/1.18.0.yaml')).release).toBe('1.18.0');
+    expect(body(disk('banks/example-bank/pack.yaml')).release).toBe('1.19.0');
     // Since 1.5.0 the lock file names the schemes the bank licenses (Issue I-111); the earlier one stays without.
     expect(body(disk('banks/example-bank/pack.yaml')).licensedSchemes).toEqual(['uae.wps']);
     expect(body(disk('banks/example-bank/packs/1.5.0.yaml')).licensedSchemes).toEqual(['uae.wps']);

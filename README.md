@@ -37,7 +37,7 @@ Run in this repository on 23 November 2026, unless the row says otherwise.
 | Factory release | 1.9.0 (`spec/factory/p/pack.yaml`), seeded to `content-configurations/` |
 | Factory and bank test cases on the studio interpreter | 63 of 63 (`npm run studio -- test`) |
 | Static checks over the content (`npm run studio -- check`) | 0 errors, 18 warnings |
-| Conformance kit, studio interpreter | 58 of 58 |
+| Conformance kit, studio interpreter | 59 of 59 |
 | Conformance kit, DTFx (DurableTask.Core 3.11.3) | 57 of 57 |
 | Conformance kit, Elsa 3.10.2 | 57 of 57 |
 | Conformance kit, Temporal (time-skipping test server) and Flowable 7.1.0 with generated BPMN | Not run for this page (Temporal's test server did not start here); CI runs both (`engines.yml`, job `kit`) |

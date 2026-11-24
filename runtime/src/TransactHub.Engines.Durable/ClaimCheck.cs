@@ -29,7 +29,9 @@ public interface IClaimCheck
 }
 
 /// <summary>Who a run's payment belongs to, for accepting it into the store.</summary>
-public sealed record AcceptInfo(string Tenant, string Scheme, Direction Direction, string ReleaseId);
+/// <param name="PaymentId">The id the front door started the payment under (<c>header.paymentId</c>), which the store accepts it under when it
+/// holds its pin (R-09-180, Issue I-286).</param>
+public sealed record AcceptInfo(string Tenant, string Scheme, Direction Direction, string ReleaseId, string? PaymentId = null);
 
 /// <summary>The claim check of a kit run: in memory, as on every engine's harness.</summary>
 public sealed class MemoryClaimCheck : IClaimCheck
@@ -152,13 +154,13 @@ public sealed class DurableClaimCheck(StoreOptions options, TimeProvider? clock 
         var store = new PaymentStore(db, clock);
         if (CanonicalMapper.ToBulk(payload) is { } bulk)
         {
-            var b = await store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId);
+            var b = await store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId, frontDoorId: a.PaymentId);
             Accepted[r] = (b.BulkId, "bulk", b.PaymentIds.Count);
             await Fact(r, "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, null, a.ReleaseId);
         }
         else if (CanonicalMapper.ToPayment(payload, null, 0) is { } t)
         {
-            var id = await store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId);
+            var id = await store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId, frontDoorId: a.PaymentId);
             Accepted[r] = (id, "payment", 1);
             await Fact(r, "accepted", new JsonObject { ["payment"] = id }, null, a.ReleaseId);
         }
@@ -281,7 +283,7 @@ public static class CanonicalMapper
         var id = (string?)batch["id"] ?? Guid.NewGuid().ToString("N");
         var txs = new List<CreditTransfer>();
         for (var i = 0; i < items.Count; i++)
-            if (ToPayment(items[i] as JsonObject ?? new JsonObject(), id, i + 1) is { } t) txs.Add(t);
+            if (ToPayment(items[i] as JsonObject ?? new JsonObject(), id, i + 1, (string?)batch["currency"]) is { } t) txs.Add(t);
         return new PaymentBulk
         {
             MessageId = Short(id), PaymentInformationId = Short(id),
@@ -297,7 +299,9 @@ public static class CanonicalMapper
         };
     }
 
-    public static CreditTransfer? ToPayment(JsonObject holder, string? batchId, int line)
+    /// <param name="batchCurrency">The currency the batch names, for a line that names none. A payment's currency is its own or its
+    /// batch's: no platform default (R-09-185, Issue I-238); one that names neither is accepted with none.</param>
+    public static CreditTransfer? ToPayment(JsonObject holder, string? batchId, int line, string? batchCurrency = null)
     {
         if (holder["payment"] is not JsonObject p) return null;
         var amount = p["instructedAmount"] as JsonObject;
@@ -305,7 +309,7 @@ public static class CanonicalMapper
         return new CreditTransfer
         {
             PaymentId = new PaymentIdentification { EndToEndId = Short(e2e), InstructionId = (string?)p["instructionId"], TransactionId = (string?)p["transactionId"], Uetr = (string?)p["uetr"] },
-            InstructedAmount = new Money(Amount(amount?["value"]), (string?)amount?["currency"] ?? "AED"),
+            InstructedAmount = new Money(Amount(amount?["value"]), (string?)amount?["currency"] ?? batchCurrency ?? ""),
             Debtor = Party(p["debtor"]), DebtorAccount = Account(p["debtorAccount"]), DebtorAgent = Agent(p["debtorAgent"]),
             Creditor = Party(p["creditor"]) ?? new Party(),
             CreditorAccount = Account(p["creditorAccount"]) ?? new Account(),

@@ -25,7 +25,7 @@ Tests are written first and seen to fail (`spec/CLAUDE.md`).
 | Studio white-box | Store, names, hashes, rules, sandboxes, simulators, interpreter, checks, export, every API route, governance | `cd studio && npm test` |
 | Studio black-box | The HTTP API, the command line, the web app in Chromium, end to end | `cd studio && npm run test:blackbox` |
 | Factory and bank tests | The pack's own test cases on the interpreter | `npm run studio -- test` |
-| Conformance kit | Every scenario of `spec/conformance/kit.yaml` (58), the same expected traces on every engine | `npm run studio -- kit`, then each engine's `run-kit.ts` |
+| Conformance kit | Every scenario of `spec/conformance/kit.yaml` (59), the same expected traces on every engine | `npm run studio -- kit`, then each engine's `run-kit.ts` |
 | Runtime | Store on both databases, neutrality, bank checks, release API, WPS golden corpus | `cd runtime && dotnet test` |
 | Temporal on SQL Server | Temporal's own persistence suites, the durability check, the kit, the WPS file | `runtime/temporal-mssql/README.md` |
 

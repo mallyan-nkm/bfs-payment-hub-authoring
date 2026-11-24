@@ -131,6 +131,10 @@ RELEASES = {
     # the bank's staleness limit maxRateAge refuses an older one as no-rate with fx.RateStale. A parameter added with a default, and a
     # write's fields: no read, write path, outcome or port changed, a minor.
     "p.enrich.fx-rate.v1": ("1.2.0", "maxRateAge: a rate older than the bank's staleness limit is refused (fx.RateStale)"),
+    # Issue I-266 (R-09-182): the salary file's send reads the encryption step's fact and sends the encrypted file where the bank's
+    # binding encrypted it. A read added is a major (check L26): a new line, uae.wps.exchange.send-salary-file.v2, at 2.0.0; the v1
+    # line stays at 1.1.0 as published.
+    "uae.wps.exchange.send-salary-file.v2": ("2.0.0", "reads facts.encryption and sends the encrypted file where there is one (Issue I-266)"),
 }
 # Script-behinds re-released with their activity: the script is published as scripts/<name>@<release>.ts beside the earlier one.
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
@@ -162,8 +166,12 @@ SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.ma
 # port.CircuitOpen (Issue I-259); the salary file's intake map 1.4.0, which takes the file's name from the File API (Issue I-195,
 # R-05-85); native code-behinds of the salary file's render and send, whose send goes out on the bank's binding of the WPS port, the
 # File API's outbox where the bank binds it so (Issue I-192, R-09-162).
+# 1.19.0 (change set CS-2026-11-24-014): the issues before a real bank goes live (R-11-100): the platform's error dictionary 1.9.0,
+# hand-written in factory/p/errors, with signing.OutOfScope (Issue I-277, R-09-184); p.view.operations.v1 1.7.0, written by hand:
+# a suspect payment's release needs a supervisor's second approval (Issue I-279, R-05-94); the salary file's send v2, which sends the
+# encrypted file (Issue I-266, R-09-182), called by the submit block's subflow 1.3.0.
 # 1.20.0 (change set CS-2026-11-24-015; 1.19.0 and CS-2026-11-24-014 are another change's): the scheme manifest's message rules,
-# uae.wps 1.4.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
+# uae.wps 1.5.0 (repliesTo and the ACK's correlation map uae.wps.map.ack-correlation.v1, R-09-211, R-09-212; Issues I-235, I-267),
 # native code-behinds of WPS's other sends (Issue I-268), the accounting activities' ledger-account parameters (Issue I-282), the
 # salary file's intake map writing the employer's CIF (Issue I-153), and the platform's error dictionary 1.10.0, on 1.9.0.
 PACK_RELEASES = {"p": "1.20.0", "uae.p": "1.20.0", "uae.wps": "1.20.0", "b": "1.20.0"}
@@ -512,18 +520,23 @@ act("uae.wps.validate.salary-record.v1", "Salary record checks", ["items[]"], ["
     ["pass", "reject"], "pure", level="item", rule_sets=["uae.wps.ruleset.salary-record.v1"], p=WP)
 act("uae.wps.validate.payment-file.v1", "Inward payment file checks", ["batch", "items[]", W], ["facts.validation"],
     ["pass", "reject"], "pure", level="batch", rule_sets=["uae.wps.ruleset.payment-file.v1"], p=WP)
-for nm, ttl, mode in [("send-salary-file", "Submit the salary file to WPS", "send"),
-                      ("send-refund-request", "Submit a refund request to WPS", "send"),
+# The salary file's send v1 went with the subflow that called it (Issue I-266): its v2 below replaces it, and v1 stays on the
+# content branch at 1.1.0 as published, for the distributions that pinned it.
+for nm, ttl, mode in [("send-refund-request", "Submit a refund request to WPS", "send"),
                       ("send-receipt-confirmation", "Send the receipt confirmation", "report"),
                       ("send-disbursement-file", "Send the disbursement file", "report"),
                       ("send-returns-file", "Send the returns file to WPS", "send"),
                       ("send-disbursement-cancellation", "Send the disbursement cancellation request to WPS", "send"),
                       ("send-refund-response", "Send the refund request response to WPS", "send")]:
-    # The salary file's send has a native code-behind from 1.1.0 (R-09-162, Issue I-192): the file the render kept goes out on the
-    # bank's binding of the WPS port, which a bank may bind to the File API (adapter file-transfer).
     act("uae.wps.exchange.%s.v1" % nm, ttl, ["header", "messages"], ["status", "messages"],
-        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP,
-        native=nm == "send-salary-file")
+        ["accepted", "rejected", "unknown"], "external", mode=mode, ports=["uae.wps.port.wps.v1"], policy=STD, p=WP)
+
+# The salary file's send, v2 (Issue I-266, R-09-182): the send reads the encryption step's fact (facts.encryption), and where the bank's
+# binding of p.port.encryption.v1 encrypted the file it sends that file, not the plain one the render kept. A read added, a new major
+# line; the submit block's subflow calls it from its 1.3.0.
+act("uae.wps.exchange.send-salary-file.v2", "Submit the salary file to WPS, encrypted where the bank encrypts it", ["header", "messages", "facts.encryption"],
+    ["status", "messages"], ["accepted", "rejected", "unknown"], "external", mode="send", ports=["uae.wps.port.wps.v1"], policy=STD, p=WP,
+    native=True)
 
 # The employer's status at the labour ministry (Issue I-88, R-12-14): a lookup behind a port, written to the scheme's extension,
 # so the salary file checks can refuse an employer the ministry has suspended. The source's bank forks each read the status
@@ -1368,8 +1381,10 @@ test("WPS-IN-003", "A returns file that WPS refuses goes to operations and ends 
      {"outcome": "pending", "messages": RFA_SENT, "trace": TRACE_RFA["nak"], "detail": DETAIL_RFA["nak"]},
      bench_=returns_bench("payment-file-returns-refused"), tenant="example-bank")
 # The example bank waits ten business days for the acknowledgement (its value of replyWait, Issue I-41): two weeks.
+# The bank's ten business days counted on its business calendar (R-09-183, Issue I-166): the platform's UAE table makes 1 to 3 December
+# 2026 holidays, so the wait from 17 November ends on 4 December, seventeen days on (fourteen on Saturday and Sunday alone).
 test("WPS-IN-004", "No acknowledgement of the returns file within the bank's wait ends pending", AGENT_LEG, "end-to-end", PIF,
-     {"outcome": "pending", "messages": RFA_SENT, "virtualElapsed": "P14D", "trace": TRACE_RFA["timeout"], "detail": DETAIL_RFA["timeout"]},
+     {"outcome": "pending", "messages": RFA_SENT, "virtualElapsed": "P17D", "trace": TRACE_RFA["timeout"], "detail": DETAIL_RFA["timeout"]},
      bench_=returns_bench("payment-file-returns-no-reply"), tenant="example-bank")
 # Issue I-40: no credit reached an employee and the whole amount went back, so the leg ends returned.
 test("WPS-IN-005", "Every credit refused: the whole file is returned and the leg ends returned", AGENT_LEG, "end-to-end", PIF,

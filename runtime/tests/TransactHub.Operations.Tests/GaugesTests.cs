@@ -49,7 +49,7 @@ public sealed class GaugesTests(Databases dbs)
 
     /// <summary>
     /// R-09-211, Issue I-235: the gauge reads the awaited replies from the schemes of the active distributions (a message's
-    /// <c>repliesTo</c>, here uae.wps 1.4.0 of the repository: the ACK answers the salary file the bank submits), and the installation's
+    /// <c>repliesTo</c>, here uae.wps 1.5.0 of the repository: the ACK answers the salary file the bank submits), and the installation's
     /// setting only adds to them; a distribution not active adds nothing.
     /// </summary>
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]

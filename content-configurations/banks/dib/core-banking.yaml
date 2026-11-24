@@ -26,6 +26,9 @@ bindings:
     adapter: gateway-rest
     validFrom: 2026-11-21T00:00:00Z
     settings:
+      # The currency the bank's core banking keeps its accounts in, where a reply names none: the bank's setting, no platform
+      # default (R-09-185, Issue I-238).
+      currency: AED
       baseUrl: https://core-banking.dib.invalid/
       balancePath: /api/v1/accounts/balance-enquiry
       postingPath: /api/v1/accounts/transactions

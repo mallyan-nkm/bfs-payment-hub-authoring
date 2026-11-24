@@ -138,7 +138,7 @@ npm run test:blackbox
 | `npm run test:blackbox` | The black-box suites, against the studio as separate processes: the HTTP API on a fresh fork of the seeded content repository in the fake GitHub, the command line by output and exit code, the web app in Chromium through Playwright (every view, at desktop and phone width), and the end-to-end test below. `TH_ENGINES=1` adds the kit on DTFx, Elsa and Flowable |
 | `studio -- test [ID...]` | The factory and bank test cases on the studio interpreter, with failing checks. Like `kit`, `check` and the engine adapters, it reads the connected branch when `TH_CONTENT_REPO` is set, else an in-memory fake seeded from `content-configurations/`; it says which on stderr |
 | `studio -- seed-content [--write-local]` | Publish the factory and the example bank to the content branch as one change set, or regenerate `content-configurations/` |
-| `studio -- kit [CK-ID...]` | Every conformance scenario (58) against the expected traces in `spec/conformance/kit.yaml` |
+| `studio -- kit [CK-ID...]` | Every conformance scenario (59) against the expected traces in `spec/conformance/kit.yaml` |
 | `studio -- check` | Schemas and static checks over every artefact |
 | `studio -- export <workflow> <target>` | The manifest of an export package |
 | `studio -- export-zip <workflow> <target> <out.zip> [--with-simulators] [--tenant t]` | The package as a reproducible zip, with one worker per task queue |

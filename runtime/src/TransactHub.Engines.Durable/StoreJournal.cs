@@ -52,18 +52,18 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
     {
         Fact(reff, "create", new JsonObject { ["payload"] = J.Clone(payload) });
         if (accept is null) return;
-        var a = new AcceptInfo(J.S(accept, "tenant") ?? "tenant", J.S(accept, "scheme") ?? "", J.S(accept, "direction") == "inward" ? Direction.Inward : Direction.Outward, J.S(accept, "release") ?? "");
+        var a = new AcceptInfo(J.S(accept, "tenant") ?? "tenant", J.S(accept, "scheme") ?? "", J.S(accept, "direction") == "inward" ? Direction.Inward : Direction.Outward, J.S(accept, "release") ?? "", J.S(accept, "paymentId"));
         using var db = StoreDbContext.Open(options);
         var store = new PaymentStore(db, clock);
         if (CanonicalMapper.ToBulk(payload) is { } bulk)
         {
-            var b = store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId).GetAwaiter().GetResult();
+            var b = store.AcceptBulk(a.Tenant, a.Scheme, a.Direction, bulk, a.ReleaseId, frontDoorId: a.PaymentId).GetAwaiter().GetResult();
             Accepted[reff] = (b.BulkId, "bulk", b.PaymentIds.Count);
             Fact(reff, "accepted", new JsonObject { ["bulk"] = b.BulkId, ["payments"] = b.PaymentIds.Count }, a.ReleaseId);
         }
         else if (CanonicalMapper.ToPayment(payload, null, 0) is { } t)
         {
-            var id = store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId).GetAwaiter().GetResult();
+            var id = store.AcceptPayment(a.Tenant, a.Scheme, a.Direction, t, a.ReleaseId, frontDoorId: a.PaymentId).GetAwaiter().GetResult();
             Accepted[reff] = (id, "payment", 1);
             Fact(reff, "accepted", new JsonObject { ["payment"] = id }, a.ReleaseId);
         }

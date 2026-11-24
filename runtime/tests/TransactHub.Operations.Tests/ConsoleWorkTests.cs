@@ -392,7 +392,7 @@ public sealed class ConsoleWorkTests(Databases dbs)
         Assert.Equal(["AE070331234567890123456", "AE260331234567890123457"], accts["accounts"]!.AsArray().Select(a => (string?)a!["account"]));
         Assert.Equal([true, false], accts["accounts"]!.AsArray().Select(a => (bool)a!["registered"]!));
 
-        var q = await Json(await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=2&amount=1500"));
+        var q = await Json(await channel.GetAsync("/api/channel/charges/preview?corporateId=C-0001&scheme=uae.wps&messageKind=uae.wps.sif&records=2&amount=1500&currency=AED"));
         Assert.Equal(13m, (decimal)q["charge"]!);
         Assert.Equal(0.65m, (decimal)q["vat"]!);
         Assert.True((bool)q["preview"]!);

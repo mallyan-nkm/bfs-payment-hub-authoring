@@ -261,6 +261,34 @@ scenarios:
         - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: P1D, calendar: business, onTimeout: { end: pending } } }
         - end: done
 
+  # The bank's business calendar on every engine (R-09-183, Issue I-166): Friday 27 November 2026, and the bank's own table makes
+  # Monday 30 November a holiday, so a business day's wait ends on Tuesday 1 December, four days on; Saturday and Sunday alone would
+  # end it on Monday, three days on. The bank's table is the one counted, the shared one's holidays aside.
+  - id: CK-AWAIT-08
+    evaluationDate: "2026-11-27"
+    bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    workflow:
+      do:
+        - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }
+        - { id: await, await: { message: ck.kit.reply, correlateBy: header.endToEndId, timeout: P1D, calendar: business, onTimeout: { end: pending } } }
+        - end: done
+    documents:
+      - kind: reference-table
+        name: b.ref.business-calendar.v1
+        release: 1.0.0
+        title: The kit bank's non-business days
+        domain: business-calendar
+        key: [day]
+        columns:
+          - { id: day, type: code, title: Weekday or date, required: true }
+          - { id: kind, type: code, title: Kind, required: true }
+        editions:
+          - validFrom: "2026-10-01"
+            rows:
+              - { day: saturday, kind: weekend }
+              - { day: sunday, kind: weekend }
+              - { day: "2026-11-30", kind: holiday }
+
   - id: CK-AWAIT-03
     bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: late-reply } ]
     checks: { unmatched: 1 }

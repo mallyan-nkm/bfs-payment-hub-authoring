@@ -124,11 +124,21 @@ function activations(conds: any[], facts: Facts, start: Binding[]): Binding[] {
   return envs;
 }
 
+/**
+ * The date a parameter is read as of (R-04-10, R-05-93): `payment-date` as of the payment's business date (the header's
+ * `businessDate`, which the interpreter hands the session), else as of the step (`step-time`, the default). The runtime's engine
+ * host reads the same parameter as of the payment's acceptance (R-09-135); the studio's run has no store, so the payment's own
+ * business date stands for it. A run that gives no business date reads as of the step.
+ */
+export function lookupDateOf(decl: any, opts: Pick<SessionOptions, 'evaluationDate' | 'businessDate'>): string {
+  return decl?.lookupDate === 'payment-date' && opts.businessDate ? opts.businessDate : opts.evaluationDate;
+}
+
 /** Facts for each declared parameter: `Param` instances and a variable per name. */
 function paramFacts(rule: any, opts: SessionOptions, owner: string, overrides: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [name, decl] of Object.entries<any>(rule.parameters ?? {})) {
-    const date = decl.lookupDate === 'business' && opts.businessDate ? opts.businessDate : opts.evaluationDate;
+    const date = lookupDateOf(decl, opts);
     const value = name in overrides ? overrides[name] : (opts.lookup ?? defaultParamLookup)(owner, name, decl, date);
     out[name] = { name, value };
   }
@@ -208,7 +218,7 @@ function runRules(rules: any[], mode: string, stages: string[] | undefined, inFa
   const facts: Facts = JSON.parse(JSON.stringify(inFacts));
   const res: SessionResult = { findings: [], decisions: [], facts, trace: [], worst: 'pass', parameters: {} };
   for (const r of rules) for (const [k, decl] of Object.entries<any>(r.parameters ?? {})) {
-    const date = decl.lookupDate === 'business' && opts.businessDate ? opts.businessDate : opts.evaluationDate;
+    const date = lookupDateOf(decl, opts);
     res.parameters[`${r.name}#${k}`] = k in (paramOverrides[r.name] ?? {}) ? paramOverrides[r.name][k] : (opts.lookup ?? defaultParamLookup)(r.name, k, decl, date);
   }
 

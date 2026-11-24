@@ -19,7 +19,7 @@ public sealed class TraceIdTests(Databases dbs)
     static CreditTransfer Payment(string e2e) => new()
     {
         PaymentId = new PaymentIdentification { EndToEndId = e2e, Uetr = Guid.NewGuid().ToString() },
-        InstructedAmount = Money.Aed(100m),
+        InstructedAmount = new Money(100m, "AED"),
         Creditor = new Party { Name = "Synthetic Payee", OtherIds = [new GenericId("10000000000009", "PERSON-CODE")] },
         CreditorAccount = new Account { Iban = "AE070000000000000000099" },
         CreditorAgent = new Agent { ClearingSystem = "AEUAE", MemberId = "000000002" },

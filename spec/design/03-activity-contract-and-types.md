@@ -57,8 +57,8 @@ A block MAY name its outcomes differently where the business meaning differs; th
 | R-03-17 | A port names a party by role. It MUST NOT name an endpoint, a bank or a vendor. | Schema `port` (L00); lint L09 |
 | R-03-18 | An activity that no workflow calls MUST say what runs it: `invokedBy: front-door` or `invokedBy: schedule`. A block that nothing reaches and that says neither is reported. | Lint L11 |
 | R-03-24 | A `protect` activity MUST reach its key service through at least one declared port and MUST be of effect `read`: it encrypts or decrypts a file and changes nothing in the bank. A key MUST NOT be a parameter or a value; the activity names the key by id and the bank's port binding holds it by reference (`secretRef`). | Schema `activity` (L00); `EncryptionTests` in `runtime/tests/TransactHub.Store.Tests` |
-| R-03-25 | Every activity attempt is at least once, on every engine and in the interpreter: an attempt in flight when its host stops, or whose worker's lock expires, MUST be run again, so a worker MAY be called more than once for one attempt; the step's fact is recorded once (R-05-50). A workflow cannot declare this away (Issue I-303). | `RestartTests` (R-09-197: an activity running at the stop runs again); lint L52 |
-| R-03-26 | An activity with an outside effect MUST carry an idempotency key whether or not it retries: one whose effect is `write` or `external`, a `reserve`, `hold`, `notify` or `screen`, an `exchange` that sends, responds or reports, and one that names a port whose operations only send. The key MUST read a business id of the header and MUST NOT read the clock, a new id or the attempt (R-03-05, Issue I-303). | Lint L52 |
+| R-03-25 | Every activity attempt is at least once, on every engine and in the interpreter: an attempt in flight when its host stops, or whose worker's lock expires, MUST be run again, so a worker MAY be called more than once for one attempt; the step's fact is recorded once (R-05-50). A workflow cannot declare this away (Issue I-303). | `RestartTests` (R-09-197: an activity running at the stop runs again); lint L54 |
+| R-03-26 | An activity with an outside effect MUST carry an idempotency key whether or not it retries: one whose effect is `write` or `external`, a `reserve`, `hold`, `notify` or `screen`, an `exchange` that sends, responds or reports, and one that names a port whose operations only send. The key MUST read a business id of the header and MUST NOT read the clock, a new id or the attempt (R-03-05, Issue I-303). | Lint L54 |
 
 ## 3.5 Type default policies
 
@@ -99,6 +99,6 @@ A `hold` block already works this way: one block that creates an item and waits 
 ## 3.8 Examples
 
 - Composite exchange: `factory/uae.wps/activities/uae.wps.exchange.submit-salary-file.v1.yaml`, with its subflow `factory/uae.wps/workflows/uae.wps.sub.submit-salary-file.v1.yaml`.
-- External block with a retry policy: `factory/uae.wps/activities/uae.wps.exchange.send-salary-file.v1.yaml`.
+- External block with a retry policy: `factory/uae.wps/activities/uae.wps.exchange.send-salary-file.v2.yaml`.
 - Write block with compensation: `factory/p/activities/p.reserve.funds.v1.yaml`.
 - Item-level validate block: `factory/uae.wps/activities/uae.wps.validate.salary-record.v1.yaml`.

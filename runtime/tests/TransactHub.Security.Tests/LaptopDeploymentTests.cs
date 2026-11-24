@@ -82,6 +82,53 @@ public sealed class LaptopDeploymentTests
         Assert.DoesNotMatch(@"(?im)^\s*(ENV|ARG)\s+\S*(PASSWORD|SECRET|TOKEN)\S*=", Dockerfile);
     }
 
+    /// <summary>
+    /// R-09-181 (Issue I-225): an image beyond a laptop signs its native modules with NEST's module signing key, given to the build as
+    /// a BuildKit secret mounted for the signing step only, never an ARG, an ENV or a file of a layer; with that mode and no secret the
+    /// build stops. The key the build makes itself is the laptop's only, and build.sh passes NEST's key as a secret when it is named.
+    /// </summary>
+    [Fact]
+    public void A_production_image_build_takes_the_module_signing_key_as_a_BuildKit_secret_and_never_makes_one()
+    {
+        var source = Dockerfile[Dockerfile.IndexOf("AS dotnet-source\n", StringComparison.Ordinal)..Dockerfile.IndexOf("AS ops-console-source", StringComparison.Ordinal)];
+        Assert.Contains("ARG TH_MODULE_SIGNING=laptop", Dockerfile);
+        Assert.Contains("RUN --mount=type=secret,id=th_native_module_key,required=false ", source);
+        string Branch(string label)
+        {
+            var at = source.IndexOf(label + ")", StringComparison.Ordinal);
+            return source[at..source.IndexOf(";;", at, StringComparison.Ordinal)];
+        }
+        // secret: the mounted key, read into the step's environment; the build stops without it, before any key is made.
+        var secret = Branch("secret");
+        Assert.Contains("[ -s /run/secrets/th_native_module_key ] || {", secret);
+        Assert.Contains("exit 2", secret);
+        Assert.Contains("TH_NATIVE_SIGNING_KEY=env:TH_NEST_MODULE_KEY", secret);
+        Assert.DoesNotContain("genpkey", secret);
+        // The self-made key only in the laptop's branch; nothing else makes one.
+        Assert.Contains("genpkey", Branch("laptop"));
+        Assert.Single(Regex.Matches(source, "genpkey"));
+        Assert.DoesNotMatch(@"(?im)^\s*(ENV|ARG)\s+\S*KEY\S*=", Dockerfile);
+        var build = File.ReadAllText(Path.Combine(Laptop, "build.sh"));
+        Assert.Contains("--secret \"id=th_native_module_key,src=$KEY_FILE\" --build-arg TH_MODULE_SIGNING=secret", build);
+        Assert.Contains("unset MODULE_KEY", build);
+        Assert.Contains("TH_NATIVE_MODULE_KEY_FILE", File.ReadAllText(Path.Combine(Laptop, "README.md")));
+    }
+
+    /// <summary>
+    /// R-09-187 (Issue I-238): the front door's one-off run reads the bank's values from the release API (<c>GET /values</c>) as of the
+    /// payment's date, not the bank folder's configuration set, and runs the message and file its caller names, with no scheme's default.
+    /// </summary>
+    [Fact]
+    public void The_one_off_run_reads_the_values_in_force_from_the_release_API_and_names_its_message()
+    {
+        var run = File.ReadAllText(Path.Combine(Laptop, "bin", "run-pinned.mts"));
+        Assert.Contains("/values?tenant=", run);
+        Assert.DoesNotContain("configuration-set.yaml", run);
+        Assert.DoesNotContain("uae.wps", run);
+        Assert.DoesNotContain(".sif", run);
+        Assert.Contains("Name the start message", run);
+    }
+
     [Fact]
     public void The_engine_host_answers_the_File_API_on_the_compose_network_with_its_token_only()
     {

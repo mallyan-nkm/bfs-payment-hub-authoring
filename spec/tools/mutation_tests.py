@@ -217,6 +217,17 @@ CASES = [
      "        headOffice: AE-AJ\n", "        headOffice: AE-XX\n", "a head office names no emirate of the emirates table"),
     ("M75", "ERROR L49", "factory/uae.p/reference/uae.p.ref.emirates.v1.yaml",
      "      - code: AE-DU\n", "      - code: AE-AZ\n", "an edition repeats a key"),
+    # L38 (R-05-94, Issue I-279): an action held to the step that led to its hold names an activity a flow of the view reaches
+    ("M84", "ERROR L38", "factory/p/views/p.view.operations.v1.yaml",
+     "when: { hold: approval, activity: p.screen.fraud.v1 }", "when: { hold: approval, activity: p.screen.fraud.v9 }",
+     "a supervisor's release is held to a fraud step no flow has"),
+    # L52 (R-11-101, Issue I-276): a bank that binds the rates port takes its rates from the feed and sets none in its configuration
+    ("M82", "ERROR L52", "../content-configurations/banks/adib/configuration-set.yaml",
+     "\nvalues:\n", "\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: \"2026-11-01\"\n    value:\n      - { from: USD, to: AED, rate: \"3.6725\" }\n",
+     "a bank on the rates feed types its rates into its configuration"),
+    # L53 (R-11-102, Issue I-276): the studio never makes a patch release of a bank's configuration
+    ("M83", "ERROR L53", "examples/bank/configuration-set.yaml",
+     "\nrelease: 1.10.0\n", "\nrelease: 1.10.1\n", "the studio makes a patch release of a bank's configuration"),
     # L50 (R-11-51): a value read from a reference table names a published table and its columns
     ("M76", "ERROR L50", "examples/bank/configuration-set.yaml",
      "    value:\n      - { routingCode: \"203320101\", name: Example Bank One }\n      - { routingCode: \"302620122\", name: Example Bank Two }\n",
@@ -235,22 +246,22 @@ CASES = [
     ("M81", "ERROR L51", "design/annex-c-conformance-kit.md",
      "and it is the one place that counts the scenarios", "it holds 55 scenarios, and it is the one place that counts the scenarios",
      "Annex C counts the kit's scenarios again, and wrongly"),
-    # L52 (R-03-26, Issue I-303): every attempt is at least once, so an activity with an outside effect carries a stable key
-    ("M90", "ERROR L52", "factory/p/activities/p.notify.channel.v1.yaml",
+    # L54 (R-03-26, Issue I-303): every attempt is at least once, so an activity with an outside effect carries a stable key
+    ("M90", "ERROR L54", "factory/p/activities/p.notify.channel.v1.yaml",
      "effect: write\nidempotencyKey: concat(header.paymentId, ':channel')", "effect: read",
      "a notify activity that says it only reads and carries no idempotency key"),
-    ("M91", "ERROR L52", "factory/p/activities/p.notify.channel.v1.yaml",
+    ("M91", "ERROR L54", "factory/p/activities/p.notify.channel.v1.yaml",
      "idempotencyKey: concat(header.paymentId, ':channel')", "idempotencyKey: concat(header.paymentId, now())",
      "an idempotency key that reads the clock, so it changes on every attempt"),
-    # L53 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267): what a scheme message declares beside its disposition holds
-    ("M92", "ERROR L53", "factory/uae.wps/scheme.yaml",
+    # L55 (R-09-209 to R-09-212; Issues I-159, I-164, I-235, I-267): what a scheme message declares beside its disposition holds
+    ("M92", "ERROR L55", "factory/uae.wps/scheme.yaml",
      "repliesTo: [uae.wps.sif-submission]", "repliesTo: [uae.wps.pif]", "the acknowledgement answers a message the bank receives"),
-    ("M93", "ERROR L53", "factory/uae.wps/scheme.yaml",
+    ("M93", "ERROR L55", "factory/uae.wps/scheme.yaml",
      "correlationMap: uae.wps.map.ack-correlation.v1", "correlationMap: uae.wps.map.sif-out.v1", "a correlation map that is an outward map"),
-    ("M94", "ERROR L53", "factory/uae.wps/scheme.yaml",
+    ("M94", "ERROR L55", "factory/uae.wps/scheme.yaml",
      "  - id: uae.wps.pif\n    title: Payment information file, one per agent\n",
      "  - id: uae.wps.pif\n    title: Payment information file, one per agent\n    file: { namePattern: '([0-9' }\n", "a file name pattern that does not compile"),
-    ("M95", "ERROR L53", "factory/uae.wps/scheme.yaml",
+    ("M95", "ERROR L55", "factory/uae.wps/scheme.yaml",
      "legs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "  - id: uae.wps.test-report\n    title: A report\n    direction: in\n    disposition:\n      reconcile: { activity: p.post.verify.v1, map: uae.wps.map.psi-in.v1, period: P1D }\nlegs:\n  - uae.wps.wf.salary-file-out.v1\n",
      "a report whose reconcile activity is not a reconcile activity"),

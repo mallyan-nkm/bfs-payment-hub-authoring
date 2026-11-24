@@ -44,9 +44,11 @@ describe('the returns exchange: the wait and the upload hold are the bank\'s val
     // On the business calendar the same thirty would be about six weeks from Tuesday 17 November 2026.
     const business = await runTest(env(), { ...test('WPS-IN-004'), tenant: undefined, expect: { outcome: 'pending' } }, { values: [ROUTING, { parameter: `${RETURN}#replyWaitCalendar`, value: 'business', validFrom: '2026-01-01' }] });
     expect(business.record!.elapsedMs).toBeGreaterThanOrEqual(durationMs('P42D'));
+    // The bank's ten business days, on its business calendar: the UAE's holidays of 1 to 3 December 2026 count (R-09-183, I-166).
     const bank = await runTest(env(), test('WPS-IN-004'));
     expect(bank.passed, JSON.stringify(bank.checks)).toBe(true);
-    expect(bank.record!.elapsedMs).toBeLessThan(durationMs('P15D'));
+    expect(bank.record!.elapsedMs).toBeGreaterThanOrEqual(durationMs('P17D'));
+    expect(bank.record!.elapsedMs).toBeLessThan(durationMs('P18D'));
   }, 60000);
 
   it('holds the upload for the bank\'s upload hold', async () => {

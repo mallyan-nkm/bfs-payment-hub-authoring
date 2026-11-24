@@ -10,7 +10,7 @@ Which suites prove the north star, and what each showed on 2026-11-23. It replac
 | Studio, white-box | Each component in process, every API route through `dispatch` | `studio/test/*.test.ts` (`npm test`) |
 | Studio, black-box | The studio as separate processes: HTTP API, command line, web app in Chromium, end to end | `studio/test/blackbox/` (`npm run test:blackbox`) |
 | Content | The factory's and the example bank's own test cases | `npm run studio -- test` |
-| Conformance | The same expected traces (58 scenarios) on the interpreter and on each engine | `npm run studio -- kit`; `studio/engines/*/run-kit.ts` |
+| Conformance | The same expected traces (59 scenarios) on the interpreter and on each engine | `npm run studio -- kit`; `studio/engines/*/run-kit.ts` |
 | Runtime | The store on both databases, neutrality, bank configuration, release API, native activities, the File API and the sftp adapter, the engine hosts, the operations and service consoles, secrets and signatures, the test bench | `runtime/tests/*` (`cd runtime && dotnet test`) |
 | Deployment | The laptop stack: a switch-over on Temporal on SQL Server, insert-only at the database, another bank refused | `deploy/laptop/test/insert-only.mts` |
 | Parity | The runtime's WPS rules answer the source's own code exactly | `runtime/tests/TransactHub.Store.Tests/Golden` (1,977 cases), `docs/runtime/PARITY.md` |
@@ -30,7 +30,7 @@ Run in this repository while writing these docs, on Linux with Node 22, .NET 10 
 | `cd studio && npm test` | 501 pass, 1 skipped (the real-GitHub test), in 54 files |
 | `cd studio && npx tsc --noEmit -p .` | No errors |
 | `cd studio && npm run studio -- test` | 63 of 63 tests pass |
-| `cd studio && npm run studio -- kit` | 58 of 58 on the studio interpreter |
+| `cd studio && npm run studio -- kit` | 59 of 59 on the studio interpreter |
 | `cd studio && npm run studio -- check` | 0 errors, 18 warnings |
 | `cd studio && npm run studio -- seed-content` | 295 of 295 seeded files current |
 | `cd studio && npx tsx engines/dtfx/run-kit.ts` | 57 of 57 on DTFx |

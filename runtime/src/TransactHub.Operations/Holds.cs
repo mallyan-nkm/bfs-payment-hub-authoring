@@ -49,7 +49,8 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
             else
             {
                 holdId = Guid.NewGuid().ToString("N");
-                var reason = await ReasonOf(db, subjectId);
+                var cause = await HoldCause.Before(db, subjectId, int.MaxValue);
+                var reason = cause?.Reason;
                 db.ExceptionItems.Add(new ExceptionItemRow
                 {
                     Id = holdId, Tenant = tenant, SubjectId = subjectId, Code = $"hold.{kind}", Text = reason,
@@ -57,7 +58,7 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
                 });
                 await db.SaveChangesAsync();
                 await new FactLog(db, clock).Append(subjectId, subjectKind, new NewFact("hold", "opened",
-                    new JsonObject { ["hold"] = holdId, ["kind"] = kind, ["activity"] = activity, ["reason"] = reason, ["expiry"] = expiry, ["expiryCalendar"] = business ? "business" : null, ["expiresAt"] = expiresAt, ["calendar"] = calendar?.Table }, Actor: "runtime"));
+                    new JsonObject { ["hold"] = holdId, ["kind"] = kind, ["activity"] = activity, ["reason"] = reason, ["after"] = cause?.Activity, ["expiry"] = expiry, ["expiryCalendar"] = business ? "business" : null, ["expiresAt"] = expiresAt, ["calendar"] = calendar?.Table }, Actor: "runtime"));
             }
         }
         // Held: the engine awaits the decision until the hold's expiry (R-05-56). No connection is held while it waits.
@@ -84,15 +85,24 @@ public sealed class StoreHold(StoreOptions store, string activity, string kind, 
     static string? Short(string? s) => s is null ? null : s.Length <= 35 ? s : s[..35];
 
     /// <summary>Why the payment is held: the last step before the hold that did not take its primary outcome, with its reason code.</summary>
-    static async Task<string?> ReasonOf(StoreDbContext db, string subjectId)
+}
+
+/// <summary>
+/// The step that led to a hold (R-05-94, Issue I-279): of the payment's last twenty steps before it, the latest that answered with a
+/// reason code or an outcome that holds (reject, repair, hold, hit, rejected, unknown, unverified). A step that answered its primary
+/// outcome names no reason code, so a step of a parallel branch that cleared is passed over. Its words are the hold's reason.
+/// </summary>
+public sealed record HoldCause(string? Step, string? Activity, string Reason)
+{
+    public static async Task<HoldCause?> Before(StoreDbContext db, string subjectId, int seq, CancellationToken ct = default)
     {
-        var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step").OrderByDescending(f => f.Seq).Take(20).ToListAsync();
+        var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "step" && f.Seq < seq).OrderByDescending(f => f.Seq).Take(20).ToListAsync(ct);
         foreach (var s in steps)
         {
             var d = JsonNode.Parse(s.DataJson) as JsonObject;
             var rc = (string?)d?["reasonCode"];
             if (rc is not null || s.Code is "reject" or "repair" or "hold" or "hit" or "rejected" or "unknown" or "unverified")
-                return $"{rc ?? s.Code} at {(string?)d?["step"]} ({(string?)d?["activity"]})";
+                return new HoldCause((string?)d?["step"], (string?)d?["activity"], $"{rc ?? s.Code} at {(string?)d?["step"]} ({(string?)d?["activity"]})");
         }
         return null;
     }

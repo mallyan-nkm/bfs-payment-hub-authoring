@@ -1,6 +1,6 @@
 kind: error-dictionary
 name: p.errors.platform.v1
-release: 1.8.0
+release: 1.9.0
 title: Platform error dictionary
 description: 'Every error the platform''s activities, rules and ports can raise, the interpreter and the four engine bindings,
   and the runtime beneath them: the store, the read model, signing and packages, the package source, authentication, the operations
@@ -636,6 +636,28 @@ entries:
         - Validate the trusted signers document.
       safeActions:
         - Restore the previous trusted signers document.
+      actions:
+        - rotate-trusted-key
+      escalation: Escalate to the bank's security officer and the runtime's service team. Do not install or activate anything
+        until it is explained.
+  - code: signing.OutOfScope
+    title: The key may not sign this kind of release
+    category: technical
+    retryable: false
+    raisedBy:
+      - signing
+    meaning: 'The package is signed by a trusted key whose entry in the trusted signers names the kinds it may sign or the feed it is
+      scoped to (R-09-184), and this package is another kind, claims no feed or another, or holds more than that feed makes: the rates
+      feed''s key signs the feed''s rate releases only.'
+    causes:
+      - A key scoped to a feed signed a release the feed does not make, which may mean the key has leaked.
+      - The trusted signers give a key narrower kinds than it is used for.
+    runbook:
+      checks:
+        - Read the key id and the kinds and scope its trusted signers entry gives it.
+        - Read what the refused release sets and carries.
+      safeActions:
+        - Do not install it. If the feed's key signed anything but a rate release, revoke the key and give the feed a new one.
       actions:
         - rotate-trusted-key
       escalation: Escalate to the bank's security officer and the runtime's service team. Do not install or activate anything

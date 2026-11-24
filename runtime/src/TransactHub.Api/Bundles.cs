@@ -85,7 +85,32 @@ public sealed class Bundle
         foreach (var field in Kind == ReleaseSignature.Distribution ? new[] { "billOfMaterials", "parameterContract" } : ["billOfMaterials"])
             if (TransactHub.Store.CanonicalJson.Of(st?[field]) != TransactHub.Store.CanonicalJson.Of(Manifest[field]))
                 throw new SignatureRejected($"The signed {field} is not the manifest's");
+        // A feed's release (R-09-184, Issue I-277): the statement's feed is the manifest's, and the release holds only what that feed
+        // makes. A key scoped to the feed cannot sign more by naming the feed on a release that is not one.
+        var feed = (string?)Manifest["feed"];
+        if (v.Feed != feed) throw new SignatureRejected($"The signed feed ({v.Feed ?? "none"}) is not the manifest's ({feed ?? "none"})", SignatureRejected.OutOfScope);
+        if (feed is not null && NotFeedRelease(feed) is { } why) throw new SignatureRejected($"A release of the {feed} feed holds what that feed makes only: {why}", SignatureRejected.OutOfScope);
         return v;
+    }
+
+    /// <summary>What a feed's configuration release may hold (R-09-179, R-09-184): for the rates feed, the bank's rates and its rates table.</summary>
+    public static readonly IReadOnlyDictionary<string, (string Parameter, string Table)> Feeds = new Dictionary<string, (string, string)>(StringComparer.Ordinal)
+    {
+        ["fx-rates"] = ("p.enrich.fx-rate.v1#rates", "b.ref.fx-rates.v1"),
+    };
+
+    /// <summary>Why this bundle is not a configuration release of the feed (values other than its parameter, a binding, another file), or null.</summary>
+    public string? NotFeedRelease(string feed)
+    {
+        if (Kind != ReleaseSignature.ConfigurationRelease) return $"it is a {Kind}, not a configuration release";
+        if (!Feeds.TryGetValue(feed, out var f)) return $"no feed {feed} is known";
+        var set = Yaml("configuration/configuration-set.yaml") as JsonObject;
+        var values = set?["values"] as JsonArray ?? [];
+        if (values.Count == 0 || values.Any(x => (string?)x?["parameter"] != f.Parameter)) return $"it sets values other than {f.Parameter}";
+        if ((set?["bindings"] as JsonArray)?.Count > 0 || Files.ContainsKey("bindings/port-bindings.yaml")) return "it binds ports";
+        foreach (var name in Files.Keys.Where(x => !ReleaseSignature.IsSignatureFile(x) && x is not "manifest.yaml" and not "configuration/configuration-set.yaml"))
+            if (name != $"reference/{f.Table}.yaml") return $"it carries {name}";
+        return null;
     }
 
     public byte[] CanonicalZip(bool withSignature = true)

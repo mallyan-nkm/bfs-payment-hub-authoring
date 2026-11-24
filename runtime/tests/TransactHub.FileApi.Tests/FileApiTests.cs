@@ -335,7 +335,7 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
     /// <summary>
     /// R-09-162, R-09-212, Issues I-267 and I-160 (2): a payment's outward file names the payment by its stem, and an answer the partner
     /// names after it, with a file id of its own (an ACK: the SIF's stem and twelve characters), is correlated to the payment by the
-    /// scheme's correlation map (uae.wps 1.4.0, <c>uae.wps.map.ack-correlation.v1</c>). A binding's <c>stemDrop</c> is no longer read.
+    /// scheme's correlation map (uae.wps 1.5.0, <c>uae.wps.map.ack-correlation.v1</c>). A binding's <c>stemDrop</c> is no longer read.
     /// </summary>
     [Fact]
     public async Task An_answer_named_after_the_file_a_payment_sent_reaches_that_payment()

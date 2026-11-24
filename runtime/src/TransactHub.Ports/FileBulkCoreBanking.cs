@@ -171,7 +171,7 @@ public sealed class FileBulkCoreBanking(PortBinding b, IFileTransfer transfer, I
     async Task<PostingAnswer> PostOnce(PostingBatch batch, CancellationToken ct)
     {
         var folder = b.Required("folder");
-        var local = b.Setting("localCurrency", "AED");
+        var local = b.Required("localCurrency");
         if (batch.Legs.Count == 0) return new PostingAnswer(batch.Reference, false, "NO-LEGS", null);
         // A bulk file carries one currency and the rate 1: a leg in another is refused before anything is sent.
         var foreign = batch.Legs.Select((l, i) => (l, n: i + 1)).Where(x => !string.Equals(x.l.Currency, local, StringComparison.OrdinalIgnoreCase)).ToList();

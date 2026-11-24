@@ -245,7 +245,9 @@ public sealed class PostAccounting(CoreBankingResolver resolver) : CoreBankingAc
     {
         var (cb, b) = Bound(a);
         var t = AccountingTemplate.From(a.Params);
-        var currency = NativeContext.S(a.View, "payment.instructedAmount.currency") is { Length: > 0 } c ? c : "AED";
+        // The payment's own currency, never a platform default (R-09-185, Issue I-238).
+        var currency = NativeContext.S(a.View, "payment.instructedAmount.currency") is { Length: > 0 } c ? c
+            : throw new NativeFailure("BusinessReject", "The payment names no currency to post in", false);
         var settlementBranch = BranchFor(t.SettlementAccount, b);
         var legs = new List<PostingLeg>();
         string reference;

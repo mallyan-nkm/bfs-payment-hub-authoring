@@ -78,8 +78,10 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
   L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
   L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
-  L52: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
-  L53: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
+  L52: 'A bank that binds the rates port takes its rates from the feed: its configuration sets no p.enrich.fx-rate.v1#rates',
+  L53: 'A bank\'s configuration is released as a major or a minor, never a patch: the rates feed numbers its releases as patches',
+  L54: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
+  L55: 'A scheme message\'s file rules, the messages it answers, its report\'s activity and map, and its correlation map hold',
 };
 
 // ---------------------------------------------------------------- walking
@@ -593,7 +595,7 @@ export class Checker {
     const awaited = new Set<string>();
     for (const w of this.docs) if (w.kind === 'workflow' && scopeOf(w.name) === d.scope) for (const st of allSteps(w)) if (st.await) awaited.add(st.await.message);
     for (const m of d.messages ?? []) if (m.disposition?.deliver && !awaited.has(m.id)) err('L10', `${m.id} is a deliver message but no workflow of ${d.scope} awaits it`);
-    // L53 (R-09-209 to R-09-212): a message's file rules, the messages it answers, its report's activity and map, its correlation map.
+    // L55 (R-09-209 to R-09-212): a message's file rules, the messages it answers, its report's activity and map, its correlation map.
     const ids = new Map<string, any>((d.messages ?? []).map((m: any) => [m.id, m]));
     const inwardMap = (n: string | undefined, reads?: string) => {
       const a = n ? this.byName.get(n) : undefined;
@@ -601,25 +603,25 @@ export class Checker {
     };
     for (const m of d.messages ?? []) {
       if (m.file) {
-        if (!['file', 'mixed'].includes(d.wire)) err('L53', `${m.id} declares a file block, but ${d.scope}'s wire is ${d.wire ?? 'unstated'}, not a file`);
+        if (!['file', 'mixed'].includes(d.wire)) err('L55', `${m.id} declares a file block, but ${d.scope}'s wire is ${d.wire ?? 'unstated'}, not a file`);
         if (m.file.namePattern !== undefined) {
-          try { new RegExp(m.file.namePattern); } catch (e: any) { err('L53', `${m.id}'s file name pattern does not compile: ${e.message}`); }
+          try { new RegExp(m.file.namePattern); } catch (e: any) { err('L55', `${m.id}'s file name pattern does not compile: ${e.message}`); }
         }
       }
       for (const r of m.repliesTo ?? []) {
-        if (m.direction !== 'in') err('L53', `${m.id} answers ${r} but is not a message the bank receives`);
-        if (!ids.has(r)) err('L53', `${m.id} answers ${r}, which is no message of ${d.scope}`);
-        else if (ids.get(r).direction !== 'out') err('L53', `${m.id} answers ${r}, which the bank does not send`);
+        if (m.direction !== 'in') err('L55', `${m.id} answers ${r} but is not a message the bank receives`);
+        if (!ids.has(r)) err('L55', `${m.id} answers ${r}, which is no message of ${d.scope}`);
+        else if (ids.get(r).direction !== 'out') err('L55', `${m.id} answers ${r}, which the bank does not send`);
       }
       const rec = m.disposition?.reconcile;
       if (rec) {
-        if (m.direction !== 'in') err('L53', `${m.id} is reconciled, but the bank does not receive it`);
+        if (m.direction !== 'in') err('L55', `${m.id} is reconciled, but the bank does not receive it`);
         const act = this.byName.get(rec.activity);
-        if (!act || act.kind !== 'activity' || act.type !== 'reconcile') err('L53', `${m.id}'s reconcile activity ${rec.activity} is not a reconcile activity`);
-        if (!inwardMap(rec.map)) err('L53', `${m.id}'s report map ${rec.map} is not an inward map`);
+        if (!act || act.kind !== 'activity' || act.type !== 'reconcile') err('L55', `${m.id}'s reconcile activity ${rec.activity} is not a reconcile activity`);
+        if (!inwardMap(rec.map)) err('L55', `${m.id}'s report map ${rec.map} is not an inward map`);
       }
       const cm = m.disposition?.deliver?.correlationMap;
-      if (cm && !inwardMap(cm, 'messages')) err('L53', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
+      if (cm && !inwardMap(cm, 'messages')) err('L55', `${m.id}'s correlation map ${cm} is not an inward map that reads the message`);
     }
     // L33 (R-05-42): the dispatch table routes a start message. Its kind, direction and segment select
     // one platform workflow through workflow-select, and the leg it names fills that workflow's slot.
@@ -694,7 +696,7 @@ export class Checker {
     if (d.effect === 'write' && ['reserve', 'post'].includes(d.type) && !d.compensation && !/release|reverse|verify|undo/.test(d.name)) {
       warn('L20', `${d.name} writes and names no compensation (R-03-12 SHOULD)`);
     }
-    // L52 (R-03-25, R-03-26, Issue I-303): every attempt is at least once, so an outside effect needs a key the same on every attempt.
+    // L54 (R-03-25, R-03-26, Issue I-303): every attempt is at least once, so an outside effect needs a key the same on every attempt.
     {
       let why: string | undefined;
       if (['write', 'external'].includes(d.effect)) why = `its effect is ${d.effect}`;
@@ -705,9 +707,9 @@ export class Checker {
         if (ops.length && ops.every((o) => o.style === 'send')) { why = `its port ${pn} only sends`; break; }
       }
       const key = d.idempotencyKey;
-      if (why && !key) err('L52', `${d.name} has an outside effect (${why}) but no idempotency key: every attempt is at least once`);
+      if (why && !key) err('L54', `${d.name} has an outside effect (${why}) but no idempotency key: every attempt is at least once`);
       else if (why && (typeof key !== 'string' || !key.includes('header.') || /\b(?:now|clock|ids|uuid|random|attempt)\b/.test(key)))
-        err('L52', `${d.name}'s idempotency key is not the same on every attempt: it must read a business id of the header, not the clock, a new id or the attempt`);
+        err('L54', `${d.name}'s idempotency key is not the same on every attempt: it must read a business id of the header, not the clock, a new id or the attempt`);
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {
@@ -739,6 +741,9 @@ export class Checker {
   }
 
   private checkConfigurationSet(d: any, err: (c: string, m: string) => void) {
+    // L53 (R-11-102, Issue I-276): the studio releases a bank's configuration as a major or a minor; the feed takes the patches.
+    if (d.release && !/^\d+\.\d+\.0$/.test(String(d.release)))
+      err('L53', `Configuration release ${d.release} is a patch: a bank's configuration is released as a major or a minor, and the rates feed numbers its releases as the patches after the newest`);
     for (const v of d.values ?? []) {
       const [art, par] = String(v.parameter).split('#');
       const p = this.byName.get(art)?.parameters?.[par];
@@ -1118,8 +1123,48 @@ export function runtimeBindingIssues(env: StudioEnv): Issue[] {
       }
       for (const d of docs.filter((x) => x?.kind === 'port-bindings')) for (const m of portBindingProblems(d, isPort)) out.push({ code: 'L48', severity: 'error', key: p, message: `${p}: ${m}`, file: p });
     }
+    out.push(...feedRateIssues(files, folder));
   }
   return out;
+}
+
+/**
+ * L52 and L53 over a bank's folder on the content branch (R-11-101, R-11-102, Issue I-276). A bank whose port bindings bind
+ * `p.port.fx-rates.v1` takes its rates from the feed, so neither its working configuration set nor its newest released one sets
+ * `p.enrich.fx-rate.v1#rates`: typed rates in a newer studio release would win over the feed's until the feed ran again. And the
+ * studio never makes a patch release of a bank's configuration, which is the feed's line of numbers.
+ */
+export function feedRateIssues(files: Map<string, string>, folder: string): Issue[] {
+  const out: Issue[] = [];
+  const read = (p: string): any[] => {
+    try {
+      return parseYamlAll(files.get(p) ?? '');
+    } catch {
+      return [];
+    }
+  };
+  const mine = [...files.keys()].filter((p) => p.startsWith(`banks/${folder}/`)).sort();
+  const bindings = mine.filter((p) => /\.ya?ml$/.test(p) && (p.split('/').length === 3 || p.startsWith(`banks/${folder}/port-bindings/`)));
+  const feed = bindings.some((p) => read(p).some((d) => d?.kind === 'port-bindings' && (d.bindings ?? []).some((b: any) => b?.port === FX_PORT)));
+  const released = mine.filter((p) => p.startsWith(`banks/${folder}/configuration-sets/`) && /\.ya?ml$/.test(p));
+  for (const p of released) {
+    const r = p.split('/').pop()!.replace(/\.ya?ml$/, '');
+    if (!/^\d+\.\d+\.0$/.test(r)) out.push({ code: 'L53', severity: 'error', key: p, message: `${p}: a patch release of the bank's configuration; the studio releases a major or a minor, and the rates feed numbers its releases as the patches after the newest`, file: p });
+  }
+  if (!feed) return out;
+  const rel = (p: string) => p.split('/').pop()!.replace(/\.ya?ml$/, '').split('.').map(Number);
+  const newest = [...released].sort((a, b) => compareNumbers(rel(a), rel(b))).pop();
+  for (const p of [`banks/${folder}/configuration-set.yaml`, ...(newest ? [newest] : [])].filter((x) => files.has(x)))
+    if (read(p).some((d) => d?.kind === 'configuration-set' && (d.values ?? []).some((v: any) => v?.parameter === FX_RATES)))
+      out.push({ code: 'L52', severity: 'error', key: p, message: `${p} sets ${FX_RATES}, but the bank binds ${FX_PORT}: its rates come from the feed, and typed rates in a newer release would win over them`, file: p });
+  return out;
+}
+
+const FX_PORT = 'p.port.fx-rates.v1';
+const FX_RATES = 'p.enrich.fx-rate.v1#rates';
+function compareNumbers(a: number[], b: number[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
+  return 0;
 }
 
 /**

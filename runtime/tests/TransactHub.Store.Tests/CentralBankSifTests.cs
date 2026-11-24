@@ -23,7 +23,7 @@ public sealed class CentralBankSifTests(Databases dbs)
         return new CreditTransfer
         {
             PaymentId = new PaymentIdentification { EndToEndId = e2e },
-            InstructedAmount = Money.Aed(fixedPay + variablePay),
+            InstructedAmount = new Money(fixedPay + variablePay, "AED"),
             Creditor = new Party { Name = "Employee " + e2e },
             CreditorAccount = new Account { Iban = iban },
             CreditorAgent = new Agent { ClearingSystem = "AEUAE", MemberId = "203320101" },
