@@ -26,6 +26,8 @@ const PARTY = {
   // Pty/Id/OrgId/Othr (R-02-21): an organisation's id and the scheme that issued it, for example an establishment id (MOL).
   // An organisation's id, not a person's: the party register is asked by it (R-12-27).
   organisationId: { id: ['Max35Text', false, 'The organisation\'s id (OrgId/Othr/Id)'], scheme: ['Max35Text', false, 'The scheme that issued the id (OrgId/Othr/SchmeNm/Prtry)'] },
+  // R-02-22 (Issue I-153): the organisation's further ids, each an OrgId/Othr of its own, for example its CIF at the bank (scheme CIF).
+  'otherOrganisationIds[]': { id: ['Max35Text', false, 'A further id of the organisation (OrgId/Othr/Id)'], scheme: ['Max35Text', false, 'The scheme that issued it (OrgId/Othr/SchmeNm/Prtry), CIF for the bank\'s customer number'] },
 };
 const ACCOUNT = {
   iban: ['IBAN2007Identifier', true, 'International bank account number'], other: ['Max34Text', true],

@@ -1643,6 +1643,9 @@ On the engines, a hold's decision comes back to the instance as a message, not a
 4. **The read model's lag.** The enquiries read the operations read model, so a payment accepted a moment ago may not be found yet.
 
 **Recommendation.** Register the CIF as a debtor's organisation id with scheme CIF (R-02-21) and have the intake map write it from the channel's upload; let an operations view declare its channel status field (an operations-view schema change with its lint, in the same change as the enquiry that reads it); merge `status.transactions` into the lines in the projection; answer 404 with a retry hint while the read model's lag is above a second.
+
+**(1) Done (24 November 2026, R-02-22).** The debtor's organisation id holds its establishment id (scheme MOL, R-12-27), so its CIF is a further organisation id: the canonical model gives a party `otherOrganisationIds[]` (Pty/Id/OrgId/Othr, repeated), and the salary file's intake map 1.5.0 (factory 1.20.0, `studio/scripts/uae.wps.map.sif-in.v1@1.5.0.ts`) writes the CIF the channel declared at upload (`# cif:`) there with scheme CIF. The store keeps every organisation id of a party as its OrgId/Othr (`CanonicalMapper`, which kept none before, so the MOL id is now in the store too). The runtime's match of the corporate still compares the account only: comparing the CIF and the e-mail is the source's `MatchCorporate`, whose e-mail the model does not carry (Issue I-314). (2) to (4) stay open.
+
 ## I-154. One runtime serves one bank: what the runtime still allows for several
 
 **Issue.** The owner decided on 23 November 2026 that the runtime is not multi-tenant: one runtime serves one bank, and it must be impossible to deploy DIB's package in ADIB. Until then the runtime stored a distribution, a configuration release, a workflow package exported for a tenant, a payment's pin, a kept file, a branch's configuration sets and a backup for any bank a caller had a role in. Per-tenant role grants (R-06-28) let one person hold roles in several banks of one runtime.
@@ -2453,6 +2456,12 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Issue.** Since R-09-213 every send of the WPS port has a native code-behind, which sends the file its render kept. The receipt confirmation, the disbursement file and the returns file are rendered natively by the source's writers (PRC, DIF, RFA); the disbursement cancellation (DCR), the refund request (RFR) and the refund request response (RRR) are not: the source holds no writer for them and the factory's layouts are unconfirmed, so on a runtime their native send finds no kept file and refuses (`FF01`). And the bank's binding of the port names one folder and one kind for its `submit-file` operation (on the laptop `centralBank.sifFolder`, `uae.wps.sif-out`), so every file of the port goes there under the salary file's kind.
 
 **Recommendation.** Write the DCR, RFR and RRR renders natively once the rulebook (D10) gives their layouts, in minor releases; and let a port binding name a folder and a kind per message the port sends (`submit-file.<message>.folder`), or the File API derive the kind from the message (Issue I-310). Until then a laptop or test of the refund cycle names the port's simulator in its bench.
+
+## I-314. The corporate match does not compare the CIF yet, and the e-mail has no place
+
+**Issue.** Since R-02-22 the debtor carries the CIF the channel declared (scheme CIF), but WPS's match of the corporate the party register found (`WpsCorporateMatch`, the source's `MatchCorporate`) compares the account only. The source compared a CIF, an account and an e-mail; the canonical model has no place for the uploader's e-mail, which is personal data, and the spec does not say whether the match needs it.
+
+**Recommendation.** Have the match compare the debtor's CIF organisation id with the register's CIF where both are known (a minor of the WPS module); and decide with the owner whether the e-mail is compared at all, and if so where it is read (the channel's identity, not the payment).
 
 ## Not done, and why
 

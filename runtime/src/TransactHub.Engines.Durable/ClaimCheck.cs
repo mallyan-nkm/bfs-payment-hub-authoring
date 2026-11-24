@@ -337,7 +337,22 @@ public static class CanonicalMapper
             StreetName = (string?)a["streetName"], BuildingNumber = (string?)a["buildingNumber"], PostCode = (string?)a["postCode"],
             TownName = (string?)a["townName"], CountrySubDivision = (string?)a["countrySubDivision"], Country = (string?)a["country"],
         } : null,
+        // Pty/Id/OrgId/Othr (R-02-21, R-02-22): the organisation's id, then its further ids (its CIF at the bank, scheme CIF; I-153).
+        OtherIds = OrganisationIds(o),
+        IsOrganisation = o["organisationId"] is JsonObject || o["otherOrganisationIds"] is JsonArray { Count: > 0 },
     };
+
+    static List<GenericId> OrganisationIds(JsonObject o)
+    {
+        var ids = new List<GenericId>();
+        void Add(JsonNode? n)
+        {
+            if (n is JsonObject x && (string?)x["id"] is { Length: > 0 } id) ids.Add(new GenericId(id, (string?)x["scheme"]));
+        }
+        Add(o["organisationId"]);
+        foreach (var x in o["otherOrganisationIds"] as JsonArray ?? []) Add(x);
+        return ids;
+    }
 
     static Account? Account(JsonNode? n) => n is not JsonObject o ? null : new Account
     {

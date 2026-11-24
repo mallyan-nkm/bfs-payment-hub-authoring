@@ -145,6 +145,9 @@ for _n in ("send-refund-request", "send-receipt-confirmation", "send-disbursemen
 RELEASES["p.post.accounting.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
 RELEASES["p.post.accounting.v2"] = ("2.1.0", "its ledger accounts marked role ledger-account (Issue I-282)")
 RELEASES["uae.wps.post.return.v1"] = ("1.2.0", "its ledger accounts marked role ledger-account (Issue I-282)")
+# Issue I-153, R-02-22 (factory 1.20.0): the salary file's intake map writes the employer's CIF the channel declared at upload as a
+# further organisation id of the debtor, scheme CIF. A field written under batch, a minor; its script at scripts/...@1.5.0.ts.
+RELEASES["uae.wps.map.sif-in.v1"] = ("1.5.0", "the employer's CIF from the channel's upload as the debtor's organisation id, scheme CIF (Issue I-153)")
 SCRIPT_RELEASES = {"uae.wps.map.pif-in.v1", "uae.wps.map.sif-in.v1", "uae.wps.map.rri-in.v1", "p.enrich.fx-rate.v1"}
 # The release of each pack's lock file, and of the inventory: a pack whose content changed is a new release of the pack.
 # 1.5.0: the platform's error dictionary 1.1.0, hand-written in factory/p/errors, with the codes of Issue I-126 (p, and the
@@ -473,7 +476,10 @@ wmap("uae.wps.map.sif-in.v1", "Salary file to canonical batch", "in", "WPS SIF: 
              {"from": "constant SALA", "to": "batch.categoryPurpose"},
              # 1.3.0 (R-12-27): the employer's establishment id as the debtor's organisation id, which the party register is asked by
              {"from": "SCR.employerId", "to": "batch.debtor.organisationId.id"},
-             {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
+             {"from": "constant MOL", "to": "batch.debtor.organisationId.scheme"},
+             # 1.5.0 (Issue I-153, R-02-22): the employer's CIF at the bank, as the channel declared it at upload
+             {"from": "upload.cif", "to": "batch.debtor.otherOrganisationIds[].id"},
+             {"from": "constant CIF", "to": "batch.debtor.otherOrganisationIds[].scheme"}])["ruleSets"] = ["uae.wps.table.participant-names.v1"]
 wmap("uae.wps.map.sif-out.v1", "Canonical batch to salary file", "out", "WPS SIF: EDR and SCR records",
      ["batch", "items[]", W], ["messages"], native=True)
 wmap("uae.wps.map.ack-in.v1", "ACK or NAK to status", "in", "WPS ACK and NAK: AHR, DER and ATR records", ["messages"], ["status"],
