@@ -35,6 +35,8 @@ public sealed class StoreJournal(StoreOptions options, TimeProvider? clock = nul
         StoreSignals.Install(o, StepFacts.Install(o));
         // A plan the engine host built reads the bank's values from the store, step by step (R-09-135).
         StoreValues.Install(o);
+        // A harness that serves a distribution keeps its engine's history in the store (Issue I-165, R-09-196).
+        StoreHistory.Install(o);
         return j;
     }
 

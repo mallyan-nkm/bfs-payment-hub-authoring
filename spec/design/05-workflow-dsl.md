@@ -45,7 +45,7 @@ An activity never sits waiting for a reply that comes later, and the designer ne
 
 | The reply comes | Underneath the block | Example |
 | --- | --- | --- |
-| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply | `uae.wps.exchange.send-salary-file.v1`, inside the WPS submit composite |
+| On the same connection, inside the attempt timeout | One `exchange` activity. Its outcome is the reply | `uae.wps.exchange.send-salary-file.v2`, inside the WPS submit composite |
 | Later, as its own message | A send step, then an `await` on that message, then a map that reads it | `uae.wps.sub.submit-salary-file.v1` |
 | Only when asked | A `loop` with `every` around an inquiry activity | Kit scenario CK-UNKNOWN-01. No factory scheme has one (Issue I-38 in `docs/ISSUES.md`) |
 | From a person | A `hold` block, which was always one block | `p.hold.repair.v1` |
@@ -192,7 +192,7 @@ What an engine runs:
     by: uae.wps.sub.submit-salary-file.v1
     do:
       - id: submit.send
-        call: uae.wps.exchange.send-salary-file.v1
+        call: uae.wps.exchange.send-salary-file.v2
         handle:
           rejected: { return: rejected }
           unknown: { return: pending }

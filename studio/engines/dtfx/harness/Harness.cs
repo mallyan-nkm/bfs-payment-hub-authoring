@@ -17,6 +17,8 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        // `serve <plan>`: one service for a distribution on the runtime's engine host, kept in the store (Issue I-165).
+        if (args.Length == 2 && args[0] == "serve") return await Harness.ServeMain(args[1]);
         var input = (JsonObject)J.Parse(await File.ReadAllTextAsync(args[0]))!;
         var h = new Harness(input);
         int code;
@@ -43,7 +45,7 @@ public static class Program
     }
 }
 
-public sealed class Harness : IDisposable
+public sealed partial class Harness : IDisposable
 {
     readonly JsonObject input;
     readonly JsonObject built;
@@ -79,8 +81,6 @@ public sealed class Harness : IDisposable
         Deployment.Current = dep;
         Clock = new VirtualClock(start);
         Service = new VirtualTimeOrchestrationService(Clock);
-        PartyActivity.H = this;
-        ClaimCheckActivity.H = this;
 
         // A deployment calls the separate workers; a kit run calls the party service.
         party = J.P(input, "workers") is JsonObject workers
@@ -88,24 +88,7 @@ public sealed class Harness : IDisposable
             : new PartyClient(J.S(input, "studioRoot")!);
         await party.Call(new JsonObject { ["op"] = "open", ["scenario"] = J.S(built, "id") });
 
-        // The worker: one generic orchestration, one task activity per activity release (R-09-04).
-        var worker = new TaskHubWorker(Service);
-        worker.AddTaskOrchestrations(new Creator<TaskOrchestration>(DtfxEngine.OrchestrationName, () => new InterpreterOrchestration()));
-        var acts = new List<ObjectCreator<TaskActivity>> { new Creator<TaskActivity>(Interp.ClaimCheck, () => new ClaimCheckActivity()) };
-        foreach (var (key, d) in dep.Entries())
-            if (J.S(d, "kind") == "activity") acts.Add(new Creator<TaskActivity>(key, () => new PartyActivity()));
-        worker.AddTaskActivities(acts.ToArray());
-        // The orchestration's clock is the virtual clock: each episode's OrchestratorStarted event
-        // carries the virtual time, so CurrentUtcDateTime, timers and RetryInterceptor all use it.
-        worker.AddOrchestrationDispatcherMiddleware(async (ctx, next) =>
-        {
-            var rs = ctx.GetProperty<OrchestrationRuntimeState>();
-            var started = rs.NewEvents.OfType<OrchestratorStartedEvent>().LastOrDefault();
-            if (started is not null) started.Timestamp = Clock.NowUtc;
-            await next();
-        });
-        await worker.StartAsync();
-        client = new TaskHubClient(Service);
+        await StartWorker();
 
         var ctx = (JsonObject)J.Clone(J.P(built, "context"))!;
         var workflow = J.S(built, "workflow")!;
@@ -146,6 +129,31 @@ public sealed class Harness : IDisposable
         liveStop.Cancel();
         if (!finished) log.Add("the clock ran out of work before every root ended");
         return await Observe(start);
+    }
+
+    /// <summary>The worker on the service: one generic orchestration, one task activity per activity release (R-09-04).</summary>
+    async Task StartWorker()
+    {
+        PartyActivity.H = this;
+        ClaimCheckActivity.H = this;
+        // The worker: one generic orchestration, one task activity per activity release (R-09-04).
+        var worker = new TaskHubWorker(Service);
+        worker.AddTaskOrchestrations(new Creator<TaskOrchestration>(DtfxEngine.OrchestrationName, () => new InterpreterOrchestration()));
+        var acts = new List<ObjectCreator<TaskActivity>> { new Creator<TaskActivity>(Interp.ClaimCheck, () => new ClaimCheckActivity()) };
+        foreach (var (key, d) in dep.Entries())
+            if (J.S(d, "kind") == "activity") acts.Add(new Creator<TaskActivity>(key, () => new PartyActivity()));
+        worker.AddTaskActivities(acts.ToArray());
+        // The orchestration's clock is the virtual clock: each episode's OrchestratorStarted event
+        // carries the virtual time, so CurrentUtcDateTime, timers and RetryInterceptor all use it.
+        worker.AddOrchestrationDispatcherMiddleware(async (ctx, next) =>
+        {
+            var rs = ctx.GetProperty<OrchestrationRuntimeState>();
+            var started = rs.NewEvents.OfType<OrchestratorStartedEvent>().LastOrDefault();
+            if (started is not null) started.Timestamp = Clock.NowUtc;
+            await next();
+        });
+        await worker.StartAsync();
+        client = new TaskHubClient(Service);
     }
 
     void StartRoot(string id, string docKey, JsonObject ctx)
@@ -422,6 +430,21 @@ public sealed class Harness : IDisposable
         }
     }
 
+    /// <summary>One instance's part of an observation, from the output the interpreter gave it.</summary>
+    JsonObject InstanceObservation(string label, JsonObject o, long start, IEnumerable<string> storedKeys)
+    {
+        var keys = new SortedSet<string>(J.Strings(J.P(o, "engineStateKeys")));
+        foreach (var k in storedKeys) keys.Add(k);
+        return new JsonObject
+        {
+            ["label"] = label, ["trace"] = J.Clone(J.P(o, "trace")), ["detail"] = J.Clone(J.P(o, "detail")), ["releaseTrace"] = J.Clone(J.P(o, "releaseTrace")),
+            ["steps"] = J.Clone(J.P(o, "steps")), ["attempts"] = J.Clone(J.P(o, "attempts")), ["ruleTraceSteps"] = J.Clone(J.P(o, "ruleTraceSteps")),
+            ["engineStateKeys"] = J.Arr(keys), ["startedAt"] = (long)(J.Num(o, "startedAt") ?? start) - start,
+            ["endedAt"] = J.Num(o, "endedAt") is double e ? (long)e - start : null, ["failed"] = J.S(o, "failed"),
+            ["ctx"] = Store.Full(J.P(o, "state"), J.S(o, "payloadRef") ?? ""),
+        };
+    }
+
     async Task<JsonObject> Observe(long start)
     {
         var obsInstances = new JsonArray();
@@ -441,19 +464,7 @@ public sealed class Harness : IDisposable
                 foreach (var ev in JArray.Parse(hjson).OfType<JObject>())
                     if (((string?)ev["$type"])?.Contains("TaskCompletedEvent") == true && J.Truthy(J.P(Unwrap((string?)ev["Result"]), "late"))) late++;
 
-        JsonObject Inst(string label, JsonObject o)
-        {
-            var keys = new SortedSet<string>(J.Strings(J.P(o, "engineStateKeys")));
-            foreach (var k in storedForbidden) keys.Add(k);
-            return new JsonObject
-            {
-                ["label"] = label, ["trace"] = J.Clone(J.P(o, "trace")), ["detail"] = J.Clone(J.P(o, "detail")), ["releaseTrace"] = J.Clone(J.P(o, "releaseTrace")),
-                ["steps"] = J.Clone(J.P(o, "steps")), ["attempts"] = J.Clone(J.P(o, "attempts")), ["ruleTraceSteps"] = J.Clone(J.P(o, "ruleTraceSteps")),
-                ["engineStateKeys"] = J.Arr(keys), ["startedAt"] = (long)(J.Num(o, "startedAt") ?? start) - start,
-                ["endedAt"] = J.Num(o, "endedAt") is double e ? (long)e - start : null, ["failed"] = J.S(o, "failed"),
-                ["ctx"] = Store.Full(J.P(o, "state"), J.S(o, "payloadRef") ?? ""),
-            };
-        }
+        JsonObject Inst(string label, JsonObject o) => InstanceObservation(label, o, start, storedForbidden);
         if (J.Truthy(J.P(spec, "handler")))
         {
             if (handlerOutputs.Count > 0) obsInstances.Add(Inst("root", handlerOutputs[0]));

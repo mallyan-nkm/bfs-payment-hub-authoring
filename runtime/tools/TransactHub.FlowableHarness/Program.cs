@@ -17,6 +17,28 @@ if (args.Length == 0)
     return 2;
 }
 int code;
+// `serve <plan>`: the one binding of a distribution on the runtime's engine host (Issue I-165, R-09-198).
+if (args.Length == 2 && args[0] == "serve")
+{
+    using var serveTelemetry = TelemetryHost.Start("transacthub-engine-flowable");
+    EngineTelemetry.LogSink = serveTelemetry.Sink(EngineTelemetry.SourceName);
+    try
+    {
+        var plan = (JsonObject)J.Parse(await File.ReadAllTextAsync(args[1]))!;
+        var (plans, _, first) = ServiceLines.Of(plan);
+        var serving = (JsonObject)J.Clone(first)!;
+        serving["plans"] = plans;
+        serving["distribution"] = J.S(plan, "distribution");
+        using var serveRest = FlowableRest.FromEnvironment() ?? throw new InvalidOperationException("Flowable runs on its REST server: set TH_FLOWABLE_URL");
+        await new FlowableBinding(serving, serveRest, options: FlowableOptions.FromEnvironment()).Serve();
+        return 0;
+    }
+    catch (Exception e)
+    {
+        ServiceLines.Out("ERROR", new JsonObject { ["error"] = e.ToString() });
+        return 1;
+    }
+}
 // Traces, metrics and logs over OTLP when OTEL_* names an endpoint; the run joins the caller's trace (TRACEPARENT) (R-09-31, R-09-32).
 using var telemetry = TelemetryHost.Start("transacthub-engine-flowable");
 EngineTelemetry.LogSink = telemetry.Sink(EngineTelemetry.SourceName);

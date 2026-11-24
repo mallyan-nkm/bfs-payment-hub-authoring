@@ -231,6 +231,26 @@ public sealed class ClaimCheckStore
         }
     }
 
+    /// <summary>
+    /// A payload as the store's facts give it, put back without a journal entry, with the writes still staged on it: a service that
+    /// starts again from its history (Issue I-165). A token committed already is not staged again, so a commit made twice is made once.
+    /// </summary>
+    /// <param name="tokens">Every token the facts name, committed or not: a new token is numbered after them all.</param>
+    public void Restore(string r, JsonObject payload, IEnumerable<(string token, List<(string path, JsonNode? value)> writes)> stagedWrites, IEnumerable<string> tokens)
+    {
+        lock (Gate(r))
+        {
+            payloads[r] = payload;
+            foreach (var (token, writes) in stagedWrites) staged[token] = (r, writes);
+            foreach (var token in tokens)
+                if (token.LastIndexOf('!') is var bang and > 0 && long.TryParse(token[(bang + 1)..], out var n))
+                    for (var cur = Interlocked.Read(ref seq); n > cur && Interlocked.CompareExchange(ref seq, n, cur) != cur; cur = Interlocked.Read(ref seq)) { }
+        }
+    }
+
+    /// <summary>Whether the store holds a payload under this reference.</summary>
+    public bool Holds(string r) => payloads.ContainsKey(r);
+
     public JsonObject Payload(string r) { lock (Gate(r)) return (JsonObject)J.Clone(payloads.TryGetValue(r, out var p) ? p : new JsonObject())!; }
 
     /// <summary>The whole context: the engine's state and the payload behind the reference.</summary>

@@ -109,6 +109,8 @@ public sealed partial class FlowableBinding
             ["answered"] = Map(answered, v => J.Clone(v)),
             ["ruleTraces"] = Map(claim.RuleTraces, v => J.Clone(v)),
             ["pending"] = pending is null ? null : J.Clone(pending),
+            // A distribution's binding (R-09-198): the payments it serves, by root, and which ends its host has recorded.
+            ["served"] = J.Clone(servedRoots),
         };
     }
 
@@ -166,6 +168,7 @@ public sealed partial class FlowableBinding
         if (J.Num(s, "waitingSince") is double ws) waitingSince = DateTimeOffset.FromUnixTimeMilliseconds((long)ws);
         foreach (var (k, v) in J.Obj(J.P(s, "answered"))) answered[k] = (JsonObject)J.Clone(v)!;
         foreach (var (k, v) in J.Obj(J.P(s, "ruleTraces"))) claim.RuleTraces[k] = J.Clone(v);
+        foreach (var (k, v) in J.Obj(J.P(s, "served"))) servedRoots[k] = J.Clone(v);
     }
 
     /// <summary>

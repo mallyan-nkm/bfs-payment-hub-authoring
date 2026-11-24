@@ -73,13 +73,31 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
         return last.StartsWith("end:") ? last[4..] : J.S(root, "failed") is not null ? "failed" : "unknown";
     }
 
-    async Task Start(string paymentId, JsonObject context, JsonObject? legs)
+    /// <summary>
+    /// Once its start is in the engine's own record (a distribution's service writes it in its history): the front door's answer
+    /// waits for it, so that a payment accepted is one the engine goes on with after a restart (Issue I-165). At once by default.
+    /// </summary>
+    protected virtual Task Begun(string paymentId) => Task.CompletedTask;
+
+    /// <summary>The payment's end is recorded in the store: an engine service that told it is told it need not tell it again.</summary>
+    protected virtual void Recorded(string paymentId, string outcome) { }
+
+    Task Start(string paymentId, JsonObject context, JsonObject? legs) => Track(paymentId, () => RunPayment(paymentId, context, legs), resumed: false);
+
+    /// <summary>
+    /// A payment the engine's service took back from its history when the host started again (Issue I-165): it is run on to its end
+    /// and its end recorded, as one started here is.
+    /// </summary>
+    protected void Adopt(string paymentId, Func<Task<JsonObject>> run) => _ = Task.Run(() => Track(paymentId, run, resumed: true));
+
+    async Task Track(string paymentId, Func<Task<JsonObject>> run, bool resumed)
     {
         var rec = new JsonObject { ["paymentId"] = paymentId, ["status"] = "running", ["distribution"] = Distribution, ["startedAt"] = DateTimeOffset.UtcNow.ToString("O") };
+        if (resumed) rec["resumed"] = true;
         if (!Payments.TryAdd(paymentId, rec)) return;
         try
         {
-            var obs = await RunPayment(paymentId, context, legs);
+            var obs = await run();
             var outcome = Outcome(obs);
             await using (var db = StoreDbContext.Open(Store))
             {
@@ -91,6 +109,7 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                 }
                 await new DistributionRegistry(db).End(paymentId, outcome, $"engine:{Engine}");
             }
+            Recorded(paymentId, outcome);
             rec["observation"] = obs;
             rec["outcome"] = outcome;
             rec["status"] = "ended";
@@ -130,7 +149,12 @@ public abstract class DistributionHost(StoreOptions store, string engine, string
                     Workflows[id] = wf;
                 }
                 var legs = J.P(body, "legs") is JsonObject l ? (JsonObject)J.Clone(l)! : null;
-                _ = Task.Run(() => Start(id, ctx, legs));
+                var run = Task.Run(() => Start(id, ctx, legs));
+                // Accepted once the engine has it: a run that fails before is answered as failed.
+                var begun = Begun(id);
+                await Task.WhenAny(begun, run, Task.Delay(TimeSpan.FromMinutes(5)));
+                if (!begun.IsCompletedSuccessfully)
+                    return (503, new JsonObject { ["error"] = $"{id} did not start on {Engine}: {(Payments.TryGetValue(id, out var failed) ? J.S(failed, "error") : "no answer")}" });
                 return (202, new JsonObject { ["paymentId"] = id, ["host"] = Distribution });
             }
             case ("POST", "/current"):
@@ -233,17 +257,20 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
 }
 
 /// <summary>
-/// DTFx, Elsa and Flowable: the host runs each payment on the engine's runtime harness (runtime/tools/TransactHub.*Harness), from
-/// this distribution's plan, so the engine names what it registers after the distribution (DTFx: the orchestrations, Elsa: the
-/// workflow definitions, Flowable: the deployment, R-09-55). A Flowable payment runs in production mode with a run key of its
-/// own, so that a host that restarts goes on with it (Issue I-89). An operator wait on DTFx and Elsa, whose engines keep a
-/// virtual clock in the harness, waits in wall time for at most TH_HOST_OPERATOR_PATIENCE (default P30D), not the harness's test
-/// patience (Issue I-127).
+/// DTFx, Elsa and Flowable: the host runs one service of the engine's runtime harness (runtime/tools/TransactHub.*Harness) for its
+/// distribution, for as long as it runs, and every payment of the distribution on it (Issue I-165, R-09-196 to R-09-199). The
+/// engine names what it registers after the distribution (DTFx: the orchestration, Elsa: the workflow definition, Flowable: the
+/// deployment, R-09-55). DTFx and Elsa keep the service's history in the store, one chain per distribution, and a service that
+/// starts again rebuilds itself from it; Flowable's binding keeps its journal there (I-89) and serves every instance of the
+/// distribution's tenant, from one deployment. A payment the service had not ended when its host stopped is taken back and run to
+/// its end. An operator wait on DTFx and Elsa waits in wall time for at most TH_HOST_OPERATOR_PATIENCE (default P30D), not the
+/// harness's test patience (Issue I-127).
 /// </summary>
 public sealed class HarnessDistributionHost(StoreOptions store, string engine, string distribution, JsonObject plan, string bank, string environment)
     : DistributionHost(store, engine, distribution, plan, bank, environment)
 {
-    readonly ConcurrentDictionary<int, Process> running = new();
+    HarnessService service = null!;
+    string planFile = "";
 
     static string HarnessDll(string engine)
     {
@@ -258,67 +285,55 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
     }
 
     /// <summary>A short key of its own for a payment's run: the store's subject ids are at most 64 characters.</summary>
-    static string Key(string s) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(s)))[..24];
+    static string Key(string s) => EngineHistory.Key(s);
 
-    protected override Task Open(CancellationToken ct)
+    /// <summary>A payment's root instance on the service: its own, so that its payload's chain is the payment's own.</summary>
+    static string RootOf(string paymentId) => $"root-{Key(paymentId)}";
+
+    protected override async Task Open(CancellationToken ct)
     {
-        HarnessDll(Engine);
-        return Task.CompletedTask;
+        var dll = HarnessDll(Engine);
+        var dir = Path.Combine(Path.GetTempPath(), $"th-service-{Supervisor.Safe(Distribution)}-{Guid.NewGuid():N}"[..56]);
+        Directory.CreateDirectory(dir);
+        planFile = Path.Combine(dir, "plan.json");
+        var input = (JsonObject)J.Clone(Plan)!;
+        input["distribution"] = Distribution;
+        await File.WriteAllTextAsync(planFile, J.Str(input), ct);
+        var patience = HostStore.Duration("TH_HOST_OPERATOR_PATIENCE", TimeSpan.FromDays(30));
+        var env = new Dictionary<string, string>
+        {
+            ["TH_OPERATOR_PATIENCE_SECONDS"] = ((long)patience.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["TH_HARNESS_REAL_TIME"] = "1",
+        };
+        if (Engine == "flowable")
+        {
+            env["TH_FLOWABLE_MODE"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MODE") ?? "production";
+            // The distribution's one binding: its journal, its tenant and its deployment are the distribution's (R-09-198).
+            env["TH_FLOWABLE_RUN"] = $"dist-{Key(Distribution)}";
+        }
+        service = new HarnessService(Engine, dll, planFile, env)
+        {
+            // A payment the service took back from its history: its end is recorded when it comes (R-09-197).
+            Resumed = (paymentId, _, workflow) =>
+            {
+                if (workflow is not null) Workflows[paymentId] = workflow;
+                Adopt(paymentId, () => service.EndOf(paymentId));
+            },
+            // The service ended under the host: the host ends too, the supervisor starts it again and the service rebuilds.
+            Exited = code => { Console.Error.WriteLine($"{Distribution}: the {Engine} service ended ({code}); the host ends for its supervisor to start it again"); System.Environment.Exit(3); },
+        };
+        await service.Start(ct);
     }
 
     protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
-        var input = (JsonObject)J.Clone(PlanFor(Workflows.GetValueOrDefault(paymentId)))!;
-        var built = (JsonObject)input["built"]!;
-        built["context"] = context;
-        // DTFx and Elsa run in real time in the host (R-09-93): the run starts now, its timers fire on the wall clock, and a message
-        // the front door correlates to it after it started reaches it on its live path (DeliverToRun).
-        if (Engine is "dtfx" or "elsa")
-        {
-            var cfg = built["config"] as JsonObject ?? new JsonObject();
-            var now = DateTimeOffset.UtcNow;
-            cfg["evaluationDate"] = now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-            cfg["startTime"] = now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
-            built["config"] = cfg;
-        }
-        if (legs is not null) built["legs"] = legs;
-        built["id"] = paymentId;
-        input["distribution"] = Distribution;
-        // Many payments on one store: each root's instance, and so its payload's chain, is the payment's own.
-        input["rootId"] = $"root-{Key(paymentId)}";
-        var dir = Path.Combine(Path.GetTempPath(), $"th-host-{Supervisor.Safe(Distribution)}-{Guid.NewGuid():N}"[..48]);
-        Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, "plan.json");
-        await File.WriteAllTextAsync(file, J.Str(input));
-        try
-        {
-            var psi = new ProcessStartInfo("dotnet", [HarnessDll(Engine), file]) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            var patience = HostStore.Duration("TH_HOST_OPERATOR_PATIENCE", TimeSpan.FromDays(30));
-            psi.Environment["TH_OPERATOR_PATIENCE_SECONDS"] = ((long)patience.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (Engine is "dtfx" or "elsa") psi.Environment["TH_HARNESS_REAL_TIME"] = System.Environment.GetEnvironmentVariable("TH_HARNESS_REAL_TIME") ?? "1";
-            if (Engine == "flowable")
-            {
-                psi.Environment["TH_FLOWABLE_MODE"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MODE") ?? "production";
-                psi.Environment["TH_FLOWABLE_RUN"] = Key($"{Distribution}|{paymentId}");
-                psi.Environment["TH_FLOWABLE_MAX_WAIT"] = System.Environment.GetEnvironmentVariable("TH_FLOWABLE_MAX_WAIT") ?? System.Xml.XmlConvert.ToString(patience);
-            }
-            for (var attempt = 0; ; attempt++)
-            {
-                using var p = Process.Start(psi)!;
-                running[p.Id] = p;
-                var stdout = p.StandardOutput.ReadToEndAsync();
-                var stderr = p.StandardError.ReadToEndAsync();
-                await p.WaitForExitAsync();
-                running.TryRemove(p.Id, out _);
-                var outText = await stdout;
-                if (outText.Split('\n').FirstOrDefault(l => l.StartsWith("OBSERVATION ")) is string line) return (JsonObject)J.Parse(line["OBSERVATION ".Length..])!;
-                // A Flowable binding that stopped goes on from its journal when it is started again with the same run key.
-                if (Engine == "flowable" && attempt < 3 && outText.Split('\n').All(l => !l.StartsWith("ERROR "))) continue;
-                throw new InvalidOperationException($"the {Engine} harness exited {p.ExitCode}: {outText.Split('\n').FirstOrDefault(l => l.StartsWith("ERROR ")) ?? (await stderr)[^Math.Min(2000, (await stderr).Length)..]}");
-            }
-        }
-        finally { try { Directory.Delete(dir, true); } catch { } }
+        await service.Begin(paymentId, RootOf(paymentId), Workflows.GetValueOrDefault(paymentId) ?? J.S(J.P(PlanFor(null), "built"), "workflow"), context, legs);
+        return await service.EndOf(paymentId);
     }
+
+    protected override Task Begun(string paymentId) => service.WhenStarted(paymentId);
+
+    protected override void Recorded(string paymentId, string outcome) => service.Ack(paymentId, RootOf(paymentId), outcome);
 
     /// <summary>
     /// A message for a payment whose run has started (R-09-93): on DTFx, Elsa and Flowable it goes on the payment's outbox, and its
@@ -327,7 +342,7 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
     /// </summary>
     protected override async Task<(int, JsonNode?)> Deliver(string paymentId, JsonObject message)
     {
-        var subject = await new StoreSignals(Store).DeliverToRun($"root-{Key(paymentId)}", message, $"engine-host:{Distribution}");
+        var subject = await new StoreSignals(Store).DeliverToRun(RootOf(paymentId), message, $"engine-host:{Distribution}");
         return subject is null
             ? (409, new JsonObject { ["error"] = $"{paymentId}'s run on {Engine} has not started on the store yet; send the message again" })
             : (202, new JsonObject { ["answer"] = "delivered", ["paymentId"] = paymentId, ["path"] = "outbox", ["subject"] = subject });
@@ -339,15 +354,17 @@ public sealed class HarnessDistributionHost(StoreOptions store, string engine, s
         {
             "dtfx" => $"orchestration transacthub.interpreter@{Distribution}",
             "elsa" => $"workflow definition transacthub.interpreter@{Distribution}",
-            _ => $"a deployment transacthub-{Distribution}-<run> per payment",
+            _ => $"deployment transacthub-{Distribution}",
         },
-        ["harnessRuns"] = running.Count,
+        // One service for every payment of the distribution (R-09-196): its process, and what it rebuilt when it started.
+        ["service"] = new JsonObject { ["pid"] = service.Pid, ["resumed"] = service.Resumes, ["ready"] = J.Clone(service.Ready) },
     });
 
-    protected override Task<JsonObject> Unregister() => Task.FromResult(new JsonObject
+    protected override async Task<JsonObject> Unregister()
     {
-        ["engine"] = Engine,
-        // Each payment's engine run deployed, and on its end removed, what it registered: nothing of the distribution is left on the engine.
-        ["registered"] = 0,
-    });
+        // Flowable: the distribution's deployment is removed with its binding; DTFx and Elsa hold nothing on an engine of their own.
+        var removed = Engine == "flowable" ? await service.Unregister() : null;
+        await service.DisposeAsync();
+        return new JsonObject { ["engine"] = Engine, ["registered"] = 0, ["removed"] = removed };
+    }
 }
