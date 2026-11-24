@@ -263,10 +263,12 @@ scenarios:
 
   # The bank's business calendar on every engine (R-09-183, Issue I-166): Friday 27 November 2026, and the bank's own table makes
   # Monday 30 November a holiday, so a business day's wait ends on Tuesday 1 December, four days on; Saturday and Sunday alone would
-  # end it on Monday, three days on. The bank's table is the one counted, the shared one's holidays aside.
+  # end it on Monday, three days on. The bank's table is the one counted, the shared one's holidays aside. The kit counts the
+  # elapsed business day on the same calendar (R-09-246, Issue I-291), so the check is one business day, not four plain days.
   - id: CK-AWAIT-08
     evaluationDate: "2026-11-27"
     bench: [ { port: ck.kit.port.party.v1, simulator: ck.kit.sim.party.v1, scenario: no-reply } ]
+    checks: { virtualElapsedBusiness: P1D }
     workflow:
       do:
         - { id: send, call: ck.kit.exchange.send.v1, handle: { rejected: { end: rejected }, unknown: { end: pending } } }

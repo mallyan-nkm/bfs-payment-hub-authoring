@@ -33,7 +33,7 @@ describe('the factory tests on the studio interpreter (C09, C11)', () => {
   it('passes every factory test', async () => {
     const env = freshEnv();
     const reports = await runAllTests(env);
-    expect(reports.length).toBe(67); // WPS-MAP-006 and 007 (R-05-85, I-195); P-FX-004 and 005 (R-09-178); P-REG-001 to 004, WPS-OUT-009 and 010 (R-12-27); P-POST-001 to 004, WPS-RFR-001 to 003 (I-136); P-FX-001 to 003, P-CHG-001 and 002, WPS-RRI-001 to 007 (I-133); P-DEC-001 and 002, WPS-MAP-005, WPS-IN-009 (I-115, I-117); WPS-IN-008 and WPS-RTC-001 (plan P2); P-ENC, WPS-ENR, WPS-EXC-003, WPS-MAP-003 and 004, WPS-OUT-006 to 008 (I-87, I-88, I-100, I-109)
+    expect(reports.length).toBe(72); // UAEP-CUR-001 to 003 (R-02-24); P-FX-006 and 007 (R-09-247); WPS-MAP-006 and 007 (R-05-85, I-195); P-FX-004 and 005 (R-09-178); P-REG-001 to 004, WPS-OUT-009 and 010 (R-12-27); P-POST-001 to 004, WPS-RFR-001 to 003 (I-136); P-FX-001 to 003, P-CHG-001 and 002, WPS-RRI-001 to 007 (I-133); P-DEC-001 and 002, WPS-MAP-005, WPS-IN-009 (I-115, I-117); WPS-IN-008 and WPS-RTC-001 (plan P2); P-ENC, WPS-ENR, WPS-EXC-003, WPS-MAP-003 and 004, WPS-OUT-006 to 008 (I-87, I-88, I-100, I-109)
     const failing = reports.filter((r) => !r.passed).map((r) => r.id);
     expect(failing).toEqual([]);
   });
@@ -81,5 +81,13 @@ describe('the conformance kit on the studio interpreter (C23, C09)', () => {
     const red = res.filter((r) => !r.passed).map((r) => `${r.id}: ${JSON.stringify(r.actual)} ${r.error ?? ''}`);
     expect(red).toEqual([]);
     expect(res.length).toBe(59);
+  });
+  it("counts a scenario's business elapsed time on its own calendar, the bank's holiday included (R-09-246, Issue I-291)", async () => {
+    const env = freshEnv();
+    const [r] = await runKit(env, ['CK-AWAIT-08']);
+    const check = r.checks.find((c) => c.what === 'virtual elapsed on the business calendar')!;
+    // Friday 27 November 2026 plus one business day: Monday 30 November is the bank's holiday, so Tuesday, four days on.
+    expect(check).toMatchObject({ expected: 4 * 86_400_000, actual: 4 * 86_400_000, passed: true });
+    expect(r.passed).toBe(true);
   });
 });

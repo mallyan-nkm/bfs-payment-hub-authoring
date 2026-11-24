@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
@@ -32,6 +32,7 @@ const procs: ChildProcess[] = [];
 const logs: Record<string, string> = {};
 let browser: any;
 let apiUrl = '';
+let trustFile = '';
 let gh: http.Server | undefined;
 
 const docker = (...a: string[]) => spawnSync('docker', a, { encoding: 'utf8' });
@@ -135,6 +136,13 @@ beforeAll(async () => {
   const port = docker('port', DB, '5432').stdout.split('\n')[0].split(':').pop()!.trim();
   const connection = `Host=127.0.0.1;Port=${port};Username=postgres;Password=${PASSWORD};Database=th_svc_e2e`;
 
+  // The trusted signers in this run's folder, writable, and the rates feed's own signing key (R-09-249): a key of this run's own.
+  const trustCopy = path.join(work, 'trusted-signers.json');
+  fs.copyFileSync((process.env.TH_TRUSTED_SIGNERS ?? '').replace(/^file:/, ''), trustCopy);
+  const feedKey = path.join(work, 'fx-feed-key.pem');
+  fs.writeFileSync(feedKey, generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ type: 'pkcs8', format: 'pem' }) as string, { mode: 0o600 });
+  trustFile = trustCopy;
+
   const apiPort = await freePort();
   apiUrl = `http://127.0.0.1:${apiPort}`;
   logs.api = '';
@@ -146,6 +154,7 @@ beforeAll(async () => {
       PackageSource__GitHub__Repository: 'bank/content', PackageSource__GitHub__Api: `http://127.0.0.1:${ghPort}/`,
       Service__Errors: path.join(REPO, 'content-configurations', 'artefacts'), Service__Docs: path.join(REPO, 'docs', 'north-star'),
       Service__Console: path.join(CONSOLE, 'dist'), Service__Dashboards__Payments: 'http://127.0.0.1:3000/d/payments',
+      TH_TRUSTED_SIGNERS: `file:${trustCopy}`, Service__TrustWritable: 'true', Service__FxRates__SigningKeyRef: `file:${feedKey}`,
     } as NodeJS.ProcessEnv,
   });
   p.stdout?.on('data', (d) => (logs.api += d));
@@ -323,6 +332,58 @@ describe('the service console', () => {
     expect(audit.filter((f: any) => f.code === 'install').every((f: any) => f.actor === 'service:reg.approver' && f.data.why)).toBe(true);
     expect(audit.filter((f: any) => f.code === 'action.requested' && f.data.name === 'install').every((f: any) => f.actor === 'service:svc.engineer')).toBe(true);
     expect(audit.filter((f: any) => f.code === 'action.approved').every((f: any) => f.actor === 'service:reg.approver' && f.data.requestedBy === 'service:svc.engineer')).toBe(true);
+    expect(problems).toEqual([]);
+    await page.close();
+  });
+
+  it("shows what each trusted key may sign, and trusts the rates feed's key on a bank approver's consent without hand editing (R-09-249, Issue I-292)", async () => {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    const problems: string[] = [];
+    page.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    page.on('response', (r: any) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
+    await page.goto(apiUrl);
+    await page.evaluate(() => sessionStorage.clear());
+    await page.goto(apiUrl);
+    await page.getByRole('button', { name: /Sign in as Example service engineer/ }).click();
+    await page.getByTestId('who').filter({ hasText: 'Example service engineer' }).waitFor();
+    await page.goto(`${apiUrl}/#/service/trust`);
+    await page.getByRole('heading', { name: 'Signers and native modules' }).waitFor();
+    // The run's own key names no kind: it signs every kind.
+    await page.getByTestId('signer-row').first().waitFor();
+    expect(await page.getByTestId('trust-kinds').first().textContent()).toBe('every kind');
+    const feed = page.getByTestId('feed-key');
+    await feed.filter({ hasText: 'not trusted' }).waitFor();
+    await feed.getByRole('button', { name: "Trust the feed's key" }).click();
+    await page.locator('textarea[name=reason]').fill('The bank takes its rates from the feed (synthetic)');
+    await page.getByRole('button', { name: "Confirm trusting the rates feed's key" }).click();
+    await page.getByTestId('result').filter({ hasText: 'waits for the consent of a bank approver' }).waitFor();
+    // A bank approver, another person, consents on the actions page.
+    const approver = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    approver.on('pageerror', (e: Error) => problems.push(`page error: ${e.message}`));
+    await approver.goto(apiUrl);
+    await approver.evaluate(() => sessionStorage.clear());
+    await approver.goto(apiUrl);
+    await approver.getByRole('button', { name: /Sign in as Example bank approver/ }).click();
+    await approver.getByTestId('who').filter({ hasText: 'Example bank approver' }).waitFor();
+    await approver.goto(`${apiUrl}/#/service/actions`);
+    await approver.reload();
+    const row = approver.getByTestId('pending-row').filter({ hasText: 'rotate-trusted-key' }).first();
+    await row.waitFor();
+    await row.getByRole('button', { name: 'Approve' }).click();
+    await approver.locator('textarea[name=reason]').fill('Agreed with the security officer (synthetic)');
+    await approver.getByRole('button', { name: 'Confirm approval' }).click();
+    const r = approver.getByTestId('result').filter({ hasText: 'rotate-trusted-key' });
+    await r.waitFor();
+    expect(await r.locator('.badge').textContent()).toBe('done');
+    await approver.close();
+    // The list holds the feed's entry, written by the action: kinds configuration, scope fx-rates.
+    const list = JSON.parse(fs.readFileSync(trustFile, 'utf8'));
+    const entry = list.keys.find((k: any) => k.scope?.feed === 'fx-rates');
+    expect(entry).toMatchObject({ kinds: ['configuration'], scope: { feed: 'fx-rates' } });
+    await page.goto(`${apiUrl}/#/service/trust`);
+    await page.reload();
+    await page.getByTestId('feed-key').filter({ hasText: 'trusted for configuration releases of the fx-rates feed' }).waitFor();
+    expect(await page.locator(`[data-testid=signer-row][data-key="${entry.keyId}"] [data-testid=trust-kinds]`).textContent()).toBe('configuration, of the fx-rates feed only');
     expect(problems).toEqual([]);
     await page.close();
   });

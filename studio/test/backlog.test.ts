@@ -30,6 +30,11 @@ describe('C03 canonical model, types and registries', () => {
     expect(m.resolve('items[].ext.uae.wps.personId')?.personalData).toBe(true);
     expect(m.resolve('ext.uae.unknown.field')).toBeUndefined();
   });
+  it("gives a party its contact e-mail, personal data (R-02-23, Issues I-153, I-314)", () => {
+    expect(m.resolve('batch.debtor.contactDetails.emailAddress')).toMatchObject({ isoType: 'Max2048Text', personalData: true });
+    expect(m.resolve('payment.creditor.contactDetails.emailAddress')?.personalData).toBe(true);
+    expect(m.resolve('batch.debtor.otherOrganisationIds[].id')?.personalData).toBe(false);
+  });
   it('generates types reproducibly and the type check refuses an undeclared path (C03-S3, S4)', () => {
     const a = env.store.doc('p.validate.duplicate.v1');
     expect(typescriptTypes(m, a)).toBe(typescriptTypes(m, a));

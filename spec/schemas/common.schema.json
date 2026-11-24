@@ -194,9 +194,10 @@
           "type": "string"
         },
         "role": {
-          "description": "What the value is, where a console must know it (Issue I-282, R-05-100): ledger-account, an account of the bank's ledger a posting moves money through; the ledger view lists every parameter so marked.",
+          "description": "What the value is, where a console or the front door must know it: ledger-account (Issue I-282, R-05-100), an account of the bank's ledger a posting moves money through, which the ledger view lists; default-currency (R-02-24), a country cluster's default currency, an ISO 4217 code, which the front door gives a payment that names none and a bank's configuration release gives a binding that names none (lint L56).",
           "enum": [
-            "ledger-account"
+            "ledger-account",
+            "default-currency"
           ]
         },
         "ledgerKind": {
@@ -206,11 +207,23 @@
         }
       },
       "dependentRequired": {
-        "role": [
-          "ledgerKind"
-        ],
         "ledgerKind": [
           "role"
+        ]
+      },
+      "if": {
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "const": "ledger-account"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "ledgerKind"
         ]
       }
     },

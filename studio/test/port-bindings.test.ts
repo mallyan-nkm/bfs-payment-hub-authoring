@@ -30,8 +30,10 @@ describe('port bindings in the studio (R-11-47)', () => {
 
   it('a bank on the rates feed types no rates, and no configuration release of a bank is a patch (L52, L53; R-11-101, R-11-102, I-276)', () => {
     const feedBinding = 'kind: port-bindings\ntenant: feed-bank\nbindings:\n  - port: p.port.fx-rates.v1\n    adapter: gateway-rest\n    validFrom: 2026-11-23T00:00:00Z\n    settings: { baseUrl: "https://rates.feed-bank.invalid/" }\n';
-    const rates = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.2.0\npacks: []\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: "2026-11-01"\n    value: [ { from: USD, to: AED, rate: "3.6725" } ]\n';
-    const plain = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.3.0\npacks: []\nvalues: []\n';
+    // Each sets requireAsOf, as a bank on the feed does (L60, R-09-247).
+    const req = '  - parameter: p.enrich.fx-rate.v1#requireAsOf\n    validFrom: "2026-11-24"\n    value: true\n';
+    const rates = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.2.0\npacks: []\nvalues:\n  - parameter: p.enrich.fx-rate.v1#rates\n    validFrom: "2026-11-01"\n    value: [ { from: USD, to: AED, rate: "3.6725" } ]\n' + req;
+    const plain = 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.3.0\npacks: []\nvalues:\n' + req;
     const files = new Map<string, string>([
       ['banks/feed-bank/platform-adapters.yaml', feedBinding],
       ['banks/feed-bank/configuration-set.yaml', plain],
@@ -53,6 +55,26 @@ describe('port bindings in the studio (R-11-47)', () => {
     // The real banks bind the feed and type no rates; the example bank types its rates and binds no feed.
     const env = freshEnv();
     expect(checkAll(env).filter((i) => i.code === 'L52' || i.code === 'L53')).toEqual([]);
+  });
+
+  it('a bank on the rates feed requires each rate\'s asOf (L60; R-09-247, I-278)', () => {
+    const feedBinding = 'kind: port-bindings\ntenant: feed-bank\nbindings:\n  - port: p.port.fx-rates.v1\n    adapter: gateway-rest\n    validFrom: 2026-11-23T00:00:00Z\n    settings: { baseUrl: "https://rates.feed-bank.invalid/" }\n';
+    const set = (release: string, value: string) => `kind: configuration-set\ntenant: feed-bank\nrelease: ${release}\npacks: []\nvalues:\n  - parameter: p.enrich.fx-rate.v1#requireAsOf\n    validFrom: "2026-11-24"\n    value: ${value}\n`;
+    const files = new Map<string, string>([
+      ['banks/feed-bank/platform-adapters.yaml', feedBinding],
+      ['banks/feed-bank/configuration-set.yaml', set('1.3.0', 'true')],
+      ['banks/feed-bank/configuration-sets/1.3.0.yaml', set('1.3.0', 'true')],
+    ]);
+    expect(feedRateIssues(files, 'feed-bank')).toEqual([]);
+    // A newer release that lets a typed rate stand without its asOf is refused, and so is a working set that leaves it out.
+    files.set('banks/feed-bank/configuration-sets/1.4.0.yaml', set('1.4.0', 'false'));
+    files.set('banks/feed-bank/configuration-set.yaml', 'kind: configuration-set\ntenant: feed-bank\nrelease: 1.4.0\npacks: []\nvalues: []\n');
+    expect(feedRateIssues(files, 'feed-bank').map((i) => `${i.code} ${i.file}`).sort()).toEqual(['L60 banks/feed-bank/configuration-set.yaml', 'L60 banks/feed-bank/configuration-sets/1.4.0.yaml']);
+    // A bank that does not bind the feed need not.
+    files.delete('banks/feed-bank/platform-adapters.yaml');
+    expect(feedRateIssues(files, 'feed-bank')).toEqual([]);
+    // The real banks bind the feed and set it.
+    expect(checkAll(freshEnv()).filter((i) => i.code === 'L60')).toEqual([]);
   });
 
   it('checks a binding against the port contracts and refuses a literal credential (L48)', () => {

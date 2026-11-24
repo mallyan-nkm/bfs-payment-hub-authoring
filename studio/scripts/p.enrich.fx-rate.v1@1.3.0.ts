@@ -1,0 +1,97 @@
+// Convert each line of an order at the bank's exchange rate (R-12-20), refusing a rate older than the bank allows (R-09-178). A
+// platform activity: the rates are the bank's values (p.enrich.fx-rate.v1#rates, each { from, to, rate } and, from the rates
+// feed, its asOf instant), effective-dated in its configuration, never a constant here; the staleness limit is the bank's dial
+// p.enrich.fx-rate.v1#maxRateAge (default PT24H).
+//
+// A line converts from its instructed currency into its account's (payment.debtorAccount.currency). A line whose account's
+// currency is not known, or is its own, converts at one. A rate is used as given, or inverted when only the other direction is
+// set; the amount is exact (rules.money) and rounded to two decimals, half away from zero. A line with no rate makes the order
+// no-rate, and names the pair it lacks. A rate with an asOf older than the limit, as of the engine's clock, is refused: the line is
+// no-rate, the order names the pair as stale and carries the code fx.RateStale. A rate with no asOf is one the bank set by hand and
+// is not aged. Each line's conversion is its own fact (items[].facts.fx); the order's is the total and, where every line has the
+// same, the rate and the currency (facts.fx). An order with no lines is its own payment.
+//
+// 1.3.0 (owner's decision of 24 November 2026, Issue I-278, R-09-247): the bank's dial p.enrich.fx-rate.v1#requireAsOf (default
+// false). A bank on the rates feed sets it, so that a rate with no asOf, one typed by hand, is refused like a stale one: the line is
+// no-rate, the order names the pair as undated and carries the code fx.RateUndated. Without it a hand-typed rate is not aged, as before.
+
+// An ISO 8601 duration of days, hours, minutes and seconds, in milliseconds (the parameter's bounds keep it so).
+function durationMs(iso: string): number {
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(iso);
+  if (!m) throw new Error(`maxRateAge ${iso} is not a duration of days, hours, minutes and seconds`);
+  return ((Number(m[1] ?? 0) * 24 + Number(m[2] ?? 0)) * 60 + Number(m[3] ?? 0)) * 60000 + Number(m[4] ?? 0) * 1000;
+}
+
+export async function run({ ctx, params, rules, clock }) {
+  const m = rules.money;
+  const rates: any[] = Array.isArray(params.rates) ? params.rates : [];
+  const limit = String(params.maxRateAge ?? 'PT24H');
+  const limitMs = durationMs(limit);
+  const now = Date.parse(String(clock.now()));
+  const requireAsOf = params.requireAsOf === true || params.requireAsOf === 'true';
+  const dated = (r: any) => r && r.asOf !== undefined && r.asOf !== null && r.asOf !== '';
+  const stale = (r: any) => dated(r) && now - Date.parse(String(r.asOf)) > limitMs;
+  const undated = (r: any) => requireAsOf && r && !dated(r);
+  const lined = Array.isArray(ctx.items) && ctx.items.length > 0;
+  const items: any[] = lined ? ctx.items : [{ payment: ctx.payment ?? {} }];
+  const rateFor = (from: string, to: string) => {
+    if (from === to) return { rate: 1, source: 'same-currency' };
+    const direct = rates.find((r) => r && r.from === from && r.to === to);
+    if (direct) return { rate: direct.rate, source: 'bank', asOf: direct.asOf, stale: stale(direct), undated: undated(direct) };
+    const inverse = rates.find((r) => r && r.from === to && r.to === from && m.cmp(r.rate, 0) > 0);
+    if (inverse) return { rate: m.div(1, inverse.rate), source: 'bank-inverse', asOf: inverse.asOf, stale: stale(inverse), undated: undated(inverse) };
+    return undefined;
+  };
+  const lines: any[] = [];
+  const missing: string[] = [];
+  const old: string[] = [];
+  const bare: string[] = [];
+  items.forEach((item) => {
+    const amt = item?.payment?.instructedAmount ?? {};
+    const from = String(amt.currency ?? '');
+    const to = String(item?.payment?.debtorAccount?.currency ?? from);
+    const r = rateFor(from, to);
+    if (!r) {
+      if (!missing.includes(`${from}/${to}`)) missing.push(`${from}/${to}`);
+      lines.push({ outcome: 'no-rate', from, to });
+      return;
+    }
+    if (r.stale) {
+      if (!old.includes(`${from}/${to}`)) old.push(`${from}/${to}`);
+      lines.push({ outcome: 'no-rate', from, to, stale: true, asOf: r.asOf, code: 'fx.RateStale' });
+      return;
+    }
+    if (r.undated) {
+      if (!bare.includes(`${from}/${to}`)) bare.push(`${from}/${to}`);
+      lines.push({ outcome: 'no-rate', from, to, undated: true, code: 'fx.RateUndated' });
+      return;
+    }
+    const line: any = { outcome: 'converted', from, to, rate: r.rate, source: r.source, instructed: amt.value, amount: m.round2(m.mul(amt.value, r.rate)) };
+    if (r.asOf !== undefined && r.asOf !== null && r.asOf !== '') line.asOf = r.asOf;
+    lines.push(line);
+  });
+  if (lined) ctx.items = ctx.items.map((item: any, i: number) => ({ ...item, facts: { ...(item.facts ?? {}), fx: lines[i] } }));
+  const outcome = missing.length || old.length || bare.length ? 'no-rate' : 'converted';
+  const currencies = [...new Set(lines.map((l) => l.to))];
+  const fx: any = { outcome, result: outcome, lines: lines.length };
+  if (missing.length) fx.missing = missing.join(", ");
+  if (old.length) {
+    fx.stale = old.join(", ");
+    fx.code = 'fx.RateStale';
+    fx.maxRateAge = limit;
+  }
+  if (bare.length) {
+    fx.undated = bare.join(", ");
+    // A stale rate's code stands where the order has both; each line names its own.
+    if (!fx.code) fx.code = 'fx.RateUndated';
+    fx.requireAsOf = true;
+  }
+  if (outcome === 'converted' && currencies.length === 1) {
+    fx.currency = currencies[0];
+    fx.amount = m.sum(lines, (l) => l.amount);
+    const rs = [...new Set(lines.map((l) => m.str(l.rate)))];
+    if (rs.length === 1) fx.rate = lines[0].rate;
+  }
+  ctx.facts = { ...(ctx.facts ?? {}), fx };
+  return outcome;
+}

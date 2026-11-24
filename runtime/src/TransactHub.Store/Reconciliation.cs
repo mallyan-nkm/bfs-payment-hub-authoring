@@ -78,7 +78,14 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
     /// A report's lines as its scheme's map read them (R-09-210, Issue I-164), or why they could not be read. With a period, each
     /// payment of the bank and scheme accepted within it before now that no line names is a break too (<c>not-in-report</c>).
     /// </summary>
-    public async Task<JsonObject> Run(string tenant, string scheme, string fileId, List<ReportLine>? lines, string? unreadable, TimeSpan? period, string activity, string actor, CancellationToken ct = default)
+    public async Task<JsonObject> Run(string tenant, string scheme, string fileId, List<ReportLine>? lines, string? unreadable, TimeSpan? period, string activity, string actor, CancellationToken ct = default) =>
+        await Run(tenant, scheme, fileId, lines, unreadable, period, activity, actor, null, ct);
+
+    /// <summary>
+    /// The same, naming the report's message (<paramref name="message"/>), which the run and each break record: a break's resolution
+    /// that starts an order reads, from the report's reconcile disposition, the message that starts it (R-09-250, Issue I-168).
+    /// </summary>
+    public async Task<JsonObject> Run(string tenant, string scheme, string fileId, List<ReportLine>? lines, string? unreadable, TimeSpan? period, string activity, string actor, string? message, CancellationToken ct = default)
     {
         var run = $"recon-{fileId}"[..Math.Min(64, $"recon-{fileId}".Length)];
         var log = new FactLog(db, clock);
@@ -103,7 +110,7 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
         await log.Append(run, SubjectKind, new NewFact("reconciliation", "run", new JsonObject
         {
             ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme, ["lines"] = lines.Count, ["activity"] = activity,
-            ["period"] = period is TimeSpan pd ? System.Xml.XmlConvert.ToString(pd) : null,
+            ["period"] = period is TimeSpan pd ? System.Xml.XmlConvert.ToString(pd) : null, ["message"] = message,
         }, Actor: actor), ct);
         var breaks = new JsonArray();
         var matched = 0;
@@ -122,7 +129,7 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
             var b = new JsonObject
             {
                 ["break"] = id, ["kind"] = kind, ["line"] = l.LineNo, ["reference"] = l.Reference, ["payment"] = p?.Id, ["expected"] = expected, ["reported"] = actual,
-                ["reportedStatus"] = Iso(l.Status), ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme,
+                ["reportedStatus"] = Iso(l.Status), ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme, ["message"] = message,
             };
             await log.Append(run, SubjectKind, new NewFact("reconciliation", "break", b, Actor: actor), ct);
             breaks.Add(b.DeepClone());
@@ -134,6 +141,7 @@ public sealed class SchemeReconciliation(StoreDbContext db, TimeProvider? clock 
             var b = new JsonObject
             {
                 ["break"] = id, ["kind"] = "not-in-report", ["reference"] = p.EndToEndId, ["payment"] = p.Id, ["file"] = fileId, ["tenant"] = tenant, ["scheme"] = scheme,
+                ["message"] = message,
             };
             await log.Append(run, SubjectKind, new NewFact("reconciliation", "break", b, Actor: actor), ct);
             breaks.Add(b.DeepClone());

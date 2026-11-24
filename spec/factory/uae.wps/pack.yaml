@@ -168,8 +168,8 @@ artefacts:
     path: activities/uae.wps.map.rtc-in.v2.yaml
   - name: uae.wps.map.sif-in.v1
     kind: activity
-    release: 1.5.0
-    hash: sha256:339823e878cc57a3434e472f3c3d681157f25732ce3d2c7c09d789c7758c7886
+    release: 1.6.0
+    hash: sha256:601a340c9565ef246cae5773453b878c2022281f4d22c69209783d9df28365d5
     path: activities/uae.wps.map.sif-in.v1.yaml
   - name: uae.wps.map.sif-out.v1
     kind: activity

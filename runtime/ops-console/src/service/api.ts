@@ -14,12 +14,19 @@ export interface Release { releaseId: string; scope: string; release: string; ta
 export interface StuckPin { paymentId: string; distribution: string; bank: string; environment: string; pinnedAt: string; lastFact?: string; action: string }
 export interface ValuesInForce { bank: string; at: string; values: { parameter: string; value: unknown; version: number; configurationSet: string; effectiveFrom: string }[]; hookBindings: { hookPoint: string; hook: string; release?: string; validFrom?: string }[] }
 export interface NativeModule { scope: string; assembly: string; activities: string[]; files: { name: string; sha256: string }[] }
-export interface Trust { signers: { keyId: string; kinds?: string[] | null; feed?: string | null; retiredAt?: string | null; revokedAt?: string; reason?: string; state: string }[]; problem?: string | null; distributions: { releaseId: string; state: string; contract?: string | null; modules: NativeModule[]; notCarried?: unknown }[] }
+/** What the runtime trusts: its signers and each distribution's native modules (R-09-120), and each key's kinds and scope and the rates feed's own key (R-09-249). */
+export interface Trust {
+  signers: { keyId: string; kinds?: string[] | null; feed?: string | null; retiredAt?: string | null; revokedAt?: string; reason?: string; state: string }[]; problem?: string | null;
+  distributions: { releaseId: string; state: string; contract?: string | null; modules: NativeModule[]; notCarried?: unknown }[];
+  at?: string; kinds?: string[]; keys?: TrustedKey[]; revoked?: { keyId: string; revokedAt: string; reason?: string }[]; feed?: FeedKey | null;
+}
 export interface ErrorLink { code: string; title?: string; category: string; runbook: string }
 export interface LogItem { source: 'fact' | 'log' | 'backend'; traceId?: string | null; at: string; level: string; subject?: string; tenant?: string; scheme?: string; kind?: string; code?: string; actor?: string; step?: string; activity?: string; message?: string; category?: string; data?: any; errors: ErrorLink[]; error?: { name: string; retryable?: boolean | null } | null; payment?: string; trace?: string }
 export interface ErrorEntry { code: string; scope: string; title?: string; category: string; retryable: boolean; isoReasonCode?: string; raisedBy: string[]; meaning: string; causes: string[]; runbook: { checks: string[]; safeActions: string[]; actions?: string[]; escalation: string }; actionsOffered: { id: string; title: string; risky: boolean; path: string; missing?: string }[]; dictionary: string }
 export interface ActionSpec { id: string; title: string; target: string; risky: boolean; path: 'built' | 'missing'; does: string; missing?: string }
 export interface ActionResult { action: string; name: string; status: string; code?: string; runbook?: string; result?: any; needs?: string }
+export interface TrustedKey { keyId: string; state: string; retiredAt?: string | null; revokedAt?: string | null; kinds: string[]; everyKind: boolean; scope?: { feed: string } | null }
+export interface FeedKey { feed: string; keyId: string; trusted: boolean; state: string; previous?: string | null; entry: { keyId: string; publicKey: string; kinds: string[]; scope: { feed: string } } }
 export interface Proposal { action: string; title: string; target?: string; runbook: string; runbookLink: string; why?: string; risky: boolean; path: string; inRunbook: boolean; confirm: string }
 export interface Answer { answer: string; sources: string[]; cited: string[]; proposals: Proposal[]; model: string; stopReason: string; note: string }
 

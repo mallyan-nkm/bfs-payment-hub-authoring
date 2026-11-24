@@ -32,18 +32,24 @@ public sealed class PlatformNativeTests
     }
 
     /// <summary>The parameters the studio sends: each declared one at its default, or the bank's value in force on the test's date.</summary>
-    static JsonObject Params(JsonObject act, string? tenant, string date)
+    static JsonObject Params(JsonObject act, string? tenant, string date, JsonObject? given = null)
     {
         var p = new JsonObject();
         foreach (var (k, decl) in act["parameters"] as JsonObject ?? []) p[k] = decl?["default"]?.DeepClone();
-        if (tenant != "example-bank") return p;
+        if (tenant == "example-bank") Bank(p, act, date);
+        // The parameters the test sets (given.parameters) stand over the defaults and the bank's values (R-09-247).
+        foreach (var (k, v) in given ?? []) p[k] = v?.DeepClone();
+        return p;
+    }
+
+    static void Bank(JsonObject p, JsonObject act, string date)
+    {
         var cs = Doc(Path.Combine(Spec, "examples", "bank", "configuration-set.yaml"));
         var name = (string)act["name"]!;
         foreach (var v in (cs["values"] as JsonArray ?? []).OfType<JsonObject>()
                      .Where(v => ((string?)v["parameter"])?.StartsWith(name + "#", StringComparison.Ordinal) == true && string.CompareOrdinal((string?)v["validFrom"] ?? "", date) <= 0)
                      .OrderBy(v => (string?)v["validFrom"], StringComparer.Ordinal))
             p[((string)v["parameter"]!)[(name.Length + 1)..]] = v["value"]?.DeepClone();
-        return p;
     }
 
     static INativeActivity Native(string name, JsonArray? bench)
@@ -95,7 +101,7 @@ public sealed class PlatformNativeTests
         var act = Doc(Path.Combine(Spec, "factory", "p", "activities", $"{target}.yaml"));
         var date = (string?)test["evaluationDate"] ?? "2026-11-17";
         var view = (JsonObject)(test["given"]!["context"]!.DeepClone());
-        var attempt = new NativeAttempt(target, (string?)act["release"], view, Params(act, (string?)test["tenant"], date),
+        var attempt = new NativeAttempt(target, (string?)act["release"], view, Params(act, (string?)test["tenant"], date, test["given"]?["parameters"] as JsonObject),
             DateTimeOffset.Parse($"{date}T06:00:00Z", CultureInfo.InvariantCulture), (string?)test["tenant"] ?? "example-bank", (string?)act["level"]);
         var r = Native(target, test["bench"] as JsonArray).Run(attempt);
         var expect = (JsonObject)test["expect"]!;

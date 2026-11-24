@@ -64,8 +64,8 @@ describe.each(BANKS)('the bank pack in content-configurations/banks/%s (platform
     const cs = e.store.configurationSet(tenant);
     expect(gov.checkConfiguration(e, tenant, cs).filter((i) => i.severity === 'error')).toEqual([]);
     for (const v of cs.values) expect(e.store.doc(v.parameter.split('#')[0])?.parameters?.[v.parameter.split('#')[1]], v.parameter).toBeDefined();
-    // The bank does not run WPS in the source: no rail, and no WPS dial.
-    expect(cs.values.map((v: any) => [v.parameter, v.value])).toEqual([['p.table.rail-choice.v1#enabledRails', []]]);
+    // The bank does not run WPS in the source: no rail, and no WPS dial. It binds the rates feed, so each rate needs its asOf (L60, R-09-247).
+    expect(cs.values.map((v: any) => [v.parameter, v.value])).toEqual([['p.enrich.fx-rate.v1#requireAsOf', true], ['p.table.rail-choice.v1#enabledRails', []]]);
   });
 
   it('has a lock file equal to the one the studio generates, and exports without simulators', () => {

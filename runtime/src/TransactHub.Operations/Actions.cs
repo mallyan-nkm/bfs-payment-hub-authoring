@@ -108,6 +108,9 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
                 // A dead-lettered step (R-09-91): one whose attempts are spent, parked on any engine or left dead by Flowable.
                 if (name == "requeue" && (state.ended || !(state.parked || state.deadLetter))) continue;
                 if (name == "resend" && !state.file) continue;
+                // Pause while the payment runs and is not paused, resume while it is paused (R-05-106).
+                if (name == "pause" && state.paused) continue;
+                if (name == "resume" && !state.paused) continue;
                 offers.Add(new ActionOffer(name, (string?)a["label"] ?? name, (string?)a["role"] ?? OperatorRoles.Operator, (string?)a["secondApprover"],
                     (string?)a["remarks"] == "required", ActionNames.HoldDecisions.ContainsKey(name) ? open?.id : null, leg));
             }
@@ -152,8 +155,11 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
             .OrderBy(d => ((string)d!["instance"]!).Count(c => c == '/')).Select(d => (string?)d!["workflow"]).FirstOrDefault();
     }
 
-    /// <summary>What the store says of a payment now: whether it has ended, whether its last step is parked, whether a file of it was kept.</summary>
-    async Task<(bool ended, bool parked, bool file, bool deadLetter)> StateOf(string subjectId, CancellationToken ct)
+    /// <summary>
+    /// What the store says of a payment now: whether it has ended, whether its last step is parked, whether a file of it was kept, and
+    /// whether it is paused: the latest pause or resume an operator had carried out (R-05-106).
+    /// </summary>
+    async Task<(bool ended, bool parked, bool file, bool deadLetter, bool paused)> StateOf(string subjectId, CancellationToken ct)
     {
         await using var db = StoreDbContext.Open(store);
         var ended = await db.Facts.AsNoTracking().AnyAsync(f => f.SubjectId == subjectId && f.Kind == "payment.end", ct);
@@ -161,7 +167,17 @@ public sealed class OperatorActions(StoreOptions store, StoreOptions ops, ViewCa
         var file = await db.Messages.AsNoTracking().AnyAsync(m => m.SubjectId == subjectId && m.Direction == "Outward", ct);
         // A Flowable dead-letter job the binding surfaced (engine dead-letter) and no requeue of it delivered since (R-09-91).
         var dead = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && (f.Kind == "engine" && f.Code == "dead-letter" || f.Kind == "engine" && f.Code == "requeued")).OrderByDescending(f => f.Seq).Select(f => f.Code).FirstOrDefaultAsync(ct);
-        return (ended, lastStep == "stuck", file, dead == "dead-letter");
+        var operators = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subjectId && f.Kind == "operator").OrderBy(f => f.Seq).Select(f => new { f.Code, f.DataJson }).ToListAsync(ct);
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        var paused = false;
+        foreach (var f in operators)
+        {
+            var d = JsonNode.Parse(f.DataJson);
+            if ((string?)d?["action"] is not { } id) continue;
+            if (f.Code == "requested" && (string?)d?["name"] is { } n) names[id] = n;
+            else if (f.Code == "done" && names.TryGetValue(id, out var done) && done is "pause" or "resume") paused = done == "pause";
+        }
+        return (ended, lastStep == "stuck", file, dead == "dead-letter", paused);
     }
 
     async Task<(string tenant, string kind)> SubjectOf(string subjectId, CancellationToken ct)

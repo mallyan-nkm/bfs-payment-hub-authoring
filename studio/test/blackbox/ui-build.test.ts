@@ -208,6 +208,9 @@ describe('the guide: build a full workflow in the web app', () => {
     // The next minor of the set the studio returns, whatever the factory ships (I-187, I-204).
     next.release = nextMinor(cs.configurationSet.release);
     configRelease = next.release;
+    // "Bump the release" raises the set to that next minor, never a patch, which L53 refuses (R-11-118).
+    await page.getByRole('button', { name: 'Bump the release' }).click();
+    await expect.poll(async () => /^release: (\S+)$/m.exec(await page.getByLabel('Configuration set YAML').inputValue())?.[1]).toBe(next.release);
     next.accepts.push({ scope: 'uae.demo', release: '1.0.0' });
     next.values.find((v: any) => v.parameter === 'p.table.rail-choice.v1#enabledRails').value.push('uae.demo');
     await page.getByLabel('Configuration set YAML').fill(toYaml(next));
