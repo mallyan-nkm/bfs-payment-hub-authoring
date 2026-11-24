@@ -131,7 +131,8 @@ public sealed class FileApiTests(Store pg) : IClassFixture<Store>
     static string NextScheme(Func<string, string>? change = null)
     {
         var text = File.ReadAllText(Path.Combine(SftpTests.Repo(), "spec", "factory", "uae.wps", "scheme.yaml"));
-        return change is null ? text : change(text);
+        // A test's change is a release of its own, later than any the branch holds, so the dispatch table reads it.
+        return change is null ? text : System.Text.RegularExpressions.Regex.Replace(change(text), @"(?m)^release: .*$", "release: 99.0.0", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
     }
 
     async Task<Rig> Make(PortBindings? bindings = null, Dictionary<string, string>? secrets = null, Dictionary<string, string?>? config = null, string? scheme = null)
