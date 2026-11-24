@@ -9,12 +9,83 @@ namespace TransactHub.EngineHost.Tests;
 
 /// <summary>
 /// Issue I-165, R-09-196 to R-09-199: on DTFx, Elsa and Flowable one engine service per distribution serves all its payments and
-/// survives a restart of its host. A payment starts, the host stops while the payment waits (DTFx and Elsa for a message, Flowable on
-/// a timer), a new host starts, the message is delivered, and the payment ends with its facts chains intact: the payment's own, its
+/// survives a restart of its host. A payment starts, the host stops while the payment waits for a message, a new host starts, the message is delivered, and the payment ends with its facts chains intact: the payment's own, its
 /// payload's and the service's history (DTFx, Elsa) or the binding's journal (Flowable). On both databases.
 /// </summary>
 public partial class EngineHostTests
 {
+    /// <summary>
+    /// On Flowable, the payment of <c>p.wf.ask.v1</c> as the generator writes it for a REST binding: a step, an await of
+    /// <c>p.test.answer</c> (an event-based gateway, the message or a three-minute timeout), a step, the end.
+    /// </summary>
+    static string AskBpmn(string release)
+    {
+        var key = $"p_wf_ask_v1_{release.Replace('.', '_')}";
+        string Call(string s) => $$"""
+            <serviceTask id="{{s}}_task" flowable:type="external-worker" flowable:topic="th-p:p.enrich.check.v1@{{release}}" flowable:exclusive="false">
+              <extensionElements>
+                <flowable:executionListener event="start" expression="${execution.setVariable('th_attempt', 1)}"/>
+                <th:task step="{{s}}" activity="p.enrich.check.v1" release="{{release}}" record="business"/>
+              </extensionElements>
+            </serviceTask>
+            <serviceTask id="{{s}}_rec" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point kind="call" step="{{s}}" var="outcome_{{s}}" record="business"/></extensionElements></serviceTask>
+            """;
+        string Point(string id, string attrs) => $$"""<serviceTask id="{{id}}" flowable:type="external-worker" flowable:topic="th.binding" flowable:exclusive="false"><extensionElements><th:point {{attrs}}/></extensionElements></serviceTask>""";
+        return $$"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" xmlns:th="urn:transacthub:flowable:1" targetNamespace="urn:test">
+          <message id="msg_answer" name="p.test.answer"/>
+          <process id="{{key}}" isExecutable="true">
+            <extensionElements><th:workflow name="p.wf.ask.v1" release="{{release}}" kind="workflow"/></extensionElements>
+            <startEvent id="start"/>
+            {{Point("th_started", "kind=\"processStart\"")}}
+            {{Call("a")}}
+            <eventBasedGateway id="w" name="await w"/>
+            <intermediateCatchEvent id="w_message" name="w:received"><extensionElements><th:await step="w" message="p.test.answer"/></extensionElements><messageEventDefinition messageRef="msg_answer"/></intermediateCatchEvent>
+            {{Point("w_got", "kind=\"awaitReceived\" step=\"w\" message=\"p.test.answer\" record=\"business\"")}}
+            <intermediateCatchEvent id="w_timeout" name="w:timeout"><timerEventDefinition><timeDuration>PT3M</timeDuration></timerEventDefinition></intermediateCatchEvent>
+            {{Point("w_out", "kind=\"awaitTimeout\" step=\"w\" message=\"p.test.answer\" record=\"business\"")}}
+            {{Call("b")}}
+            <intermediateThrowEvent id="th_endpoint_done"><extensionElements><flowable:executionListener event="start" expression="${execution.setVariable('th_outcome', 'done')}"/></extensionElements></intermediateThrowEvent>
+            <intermediateThrowEvent id="th_endpoint_timedout"><extensionElements><flowable:executionListener event="start" expression="${execution.setVariable('th_outcome', 'timedout')}"/></extensionElements></intermediateThrowEvent>
+            {{Point("th_end", "kind=\"end\"")}}
+            <endEvent id="end"/>
+            <sequenceFlow id="f1" sourceRef="start" targetRef="th_started"/>
+            <sequenceFlow id="f2" sourceRef="th_started" targetRef="a_task"/>
+            <sequenceFlow id="f3" sourceRef="a_task" targetRef="a_rec"/>
+            <sequenceFlow id="f4" sourceRef="a_rec" targetRef="w"/>
+            <sequenceFlow id="f5" sourceRef="w" targetRef="w_message"/>
+            <sequenceFlow id="f6" sourceRef="w_message" targetRef="w_got"/>
+            <sequenceFlow id="f7" sourceRef="w_got" targetRef="b_task"/>
+            <sequenceFlow id="f8" sourceRef="w" targetRef="w_timeout"/>
+            <sequenceFlow id="f9" sourceRef="w_timeout" targetRef="w_out"/>
+            <sequenceFlow id="f10" sourceRef="w_out" targetRef="th_endpoint_timedout"/>
+            <sequenceFlow id="f11" sourceRef="th_endpoint_timedout" targetRef="th_end"/>
+            <sequenceFlow id="f12" sourceRef="b_task" targetRef="b_rec"/>
+            <sequenceFlow id="f13" sourceRef="b_rec" targetRef="th_endpoint_done"/>
+            <sequenceFlow id="f14" sourceRef="th_endpoint_done" targetRef="th_end"/>
+            <sequenceFlow id="f15" sourceRef="th_end" targetRef="end"/>
+          </process>
+        </definitions>
+        """;
+    }
+
+    static JsonObject AskPlan(string release, string workerUrl)
+    {
+        var plan = Plan("flowable", release, workerUrl, "PT1S");
+        var docs = (JsonObject)plan["documents"]!;
+        docs[$"p.wf.ask.v1@{release}"] = JsonNode.Parse($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.ask.v1", "release": "{{release}}", "do": [
+              { "id": "a", "call": "p.enrich.check.v1" },
+              { "id": "w", "await": { "message": "p.test.answer", "timeout": "PT3M", "onTimeout": { "end": "timedout" } } },
+              { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
+        ((JsonObject)plan["built"]!)["workflow"] = "p.wf.ask.v1";
+        plan["bpmn"] = new JsonObject { [$"p.wf.ask.v1@{release}.bpmn20.xml"] = AskBpmn(release) };
+        return plan;
+    }
+
     async Task UseStore(string database) => store = database == "sqlserver" ? await servers.SqlServer() : servers.Store;
 
     /// <summary>A bank's distribution installed and active, with its plan: from the stored package (DTFx, Elsa) or written (Flowable's BPMN).</summary>
@@ -29,8 +100,8 @@ public partial class EngineHostTests
         if (engine == "flowable")
         {
             await Install(bank, id);
-            await File.WriteAllTextAsync(Path.Combine(plans, $"{Safe.Of(dist)}.json"), Plan(engine, "1.0.0", worker.Url, wait).ToJsonString());
-            workflow = "p.wf.pay.v1";
+            await File.WriteAllTextAsync(Path.Combine(plans, $"{Safe.Of(dist)}.json"), AskPlan("1.0.0", worker.Url).ToJsonString());
+            workflow = "p.wf.ask.v1";
         }
         else
         {
@@ -97,7 +168,7 @@ public partial class EngineHostTests
             var p = $"R1-{bank}";
             var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = workflow });
             Assert.True(r.status == 202, r.body.ToJsonString());
-            // Its first step is done: it now waits, for the message (DTFx, Elsa) or on its timer (Flowable).
+            // Its first step is done: it now waits for the message.
             await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
             await Task.Delay(TimeSpan.FromSeconds(1));
             // The host stops mid-run, as a machine that fails does: the supervisor, its hosts and their engine services are killed.
@@ -109,7 +180,6 @@ public partial class EngineHostTests
             // The new host took the payment back from the engine's record.
             await Until(async () => (await sup.Call("GET", $"/payments/{p}")).status == 200, TimeSpan.FromMinutes(2), $"{p} taken back");
             Assert.True(J.Truthy(J.P((await sup.Call("GET", $"/payments/{p}")).body, "resumed")));
-            if (engine != "flowable")
             {
                 (int status, JsonObject body) m = default;
                 await Until(async () => (m = await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.answer", ["id"] = $"answer-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
@@ -117,7 +187,8 @@ public partial class EngineHostTests
             var e = await Ended(sup, p);
             Assert.True(J.S(e, "outcome") == "done", e.ToJsonString());
             var trace = J.Strings(J.P(J.A(J.P(e, "observation"), "instances")[0], "trace"));
-            if (engine != "flowable") Assert.Contains("w:received", trace);
+            Assert.Contains("w:received", trace);
+            if (engine == "flowable") Assert.True(J.Num(J.P(J.P(e, "observation"), "engine"), "restarts") >= 1, "the binding restarted from its journal");
             Assert.Contains($"{p}:b@1.0.0", worker.Calls);
             await ChainsIntact(p);
             var chain = await EngineChain(engine, dist);
@@ -159,12 +230,11 @@ public partial class EngineHostTests
                 var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = workflow });
                 Assert.True(r.status == 202, r.body.ToJsonString());
             }
-            if (engine != "flowable")
-                foreach (var p in ids)
-                {
-                    await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
-                    await Until(async () => (await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.answer", ["id"] = $"answer-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
-                }
+            foreach (var p in ids)
+            {
+                await Until(() => StepRecorded(p, "ok"), TimeSpan.FromMinutes(3), $"{p}'s first step");
+                await Until(async () => (await sup.Call("POST", $"/payments/{p}/messages", new JsonObject { ["message"] = new JsonObject { ["type"] = "p.test.answer", ["id"] = $"answer-{p}" } })).status == 202, TimeSpan.FromMinutes(2), "the message taken");
+            }
             var ends = new List<JsonObject>();
             foreach (var p in ids) ends.Add(await Ended(sup, p));
             Assert.All(ends, e => Assert.True(J.S(e, "outcome") == "done", e.ToJsonString()));

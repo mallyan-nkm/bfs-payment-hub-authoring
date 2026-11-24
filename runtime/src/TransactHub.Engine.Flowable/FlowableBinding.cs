@@ -1303,9 +1303,10 @@ public sealed partial class FlowableBinding
     // ================================================================ signals (R-05-12)
 
     /// <summary>An operator's control of a parked step (R-05-55): delivered only where a parked step waits for it.</summary>
-    async Task<bool> Operator(string control)
+    async Task<bool> Operator(string control, Inst? target = null)
     {
-        var root = roots.FirstOrDefault();
+        // The payment's own root where a distribution's binding serves many (R-09-198); the run's one root otherwise.
+        var root = target ?? roots.FirstOrDefault();
         if (root is null || root.Ended) return false;
         // Requeue (R-09-91): a dead-letter job goes back to the executable jobs with its retries; a parked step is re-driven.
         if (control == "requeue" && root.DeadLetterJob is { } job)
@@ -1380,10 +1381,10 @@ public sealed partial class FlowableBinding
         return DateTimeOffset.UtcNow - waitingSince.Value < LiveSignals.Patience;
     }
 
-    async Task Signal(string signal)
+    async Task Signal(string signal, Inst? target = null)
     {
-        if (Interp.OperatorControls.Contains(signal)) { await Operator(signal); return; }
-        var root = roots.FirstOrDefault();
+        if (Interp.OperatorControls.Contains(signal)) { await Operator(signal, target); return; }
+        var root = target ?? roots.FirstOrDefault();
         if (root is null || root.Ended) return;
         string? aw = null;
         foreach (var s in await rest.EventSubscriptions(tenant, "message", null, root.Pid))
