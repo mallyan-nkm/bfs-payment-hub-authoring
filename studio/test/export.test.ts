@@ -19,6 +19,12 @@ describe('export (C05, C20, C22)', () => {
     const t = pkg.manifest.tasks.find((x: any) => x.task === 'uae.wps.exchange.send-salary-file.v2@2.0.0');
     expect(t.queue).toBe('th-uae-wps');
   });
+  it('serves the scheme\'s correlation map on its worker, as the front door calls it (R-09-212, Issue I-267)', () => {
+    const pkg = exportPackage(env, { workflows: ['p.wf.corporate.v1'], target: 'temporal' });
+    const t = pkg.manifest.tasks.find((x: any) => x.task.startsWith('uae.wps.map.ack-correlation.v1@'));
+    expect(t).toMatchObject({ kind: 'activity', queue: 'th-uae-wps', invokedBy: 'front-door' });
+    expect(pkg.manifest.workers.find((w: any) => w.queue === 'th-uae-wps').tasks).toContain(t.task);
+  });
   it('serves a handler on the interop endpoint (R-09-05)', () => {
     // The factory has no handler now (docs/ISSUES.md I-38), so the export uses a minimal synthetic one.
     const e = freshEnv();

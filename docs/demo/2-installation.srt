@@ -1,0 +1,171 @@
+1
+00:00:05,814 --> 00:00:21,963
+In this video we install TransactHub on a laptop. We build the images, start the services, and sign in to each screen. Then we install the bank's first distribution, put its configuration in force, and run a test payment. Everything here is synthetic.
+
+2
+00:00:23,571 --> 00:00:34,685
+You need Docker, with the compose plugin, and about eight gigabytes of free disk. That is all. Every service runs in a container, so you install no database and no SDK.
+
+3
+00:00:36,288 --> 00:00:47,360
+You also need passwords and client secrets: for the databases, for the synthetic users, and for the machines that call each other. You make them yourself, at random, in your shell.
+
+4
+00:00:48,968 --> 00:01:05,224
+Why in the shell? A secret in a file ends up in a commit, a backup or an image. So no file in the repository holds one, and no image holds one. Compose reads them from the environment when the stack starts. Here we show the names only, never the values.
+
+5
+00:01:06,832 --> 00:01:17,882
+The keys are different. A one-off container makes the signing keys into a volume on first start. The build makes its own key to sign the native modules, for this laptop only.
+
+6
+00:01:19,488 --> 00:01:34,314
+First, build the images from the repository root. The build script makes three: the studio, the runtime, and Temporal on SQL Server. With no options it builds everything inside Docker. It takes a few minutes, so we show its last lines.
+
+7
+00:01:35,920 --> 00:01:46,053
+Check the compose file. Then start the SFTP server first, and pin its host keys: the File API trusts that server by its keys, and nothing else.
+
+8
+00:01:47,658 --> 00:02:04,746
+Now start everything. Up, dash d, dash dash wait, returns when every service is healthy. The first start takes a few minutes. SQL Server starts, the migrations run once as the database owner, and the runtime's login is granted read and insert only.
+
+9
+00:02:06,352 --> 00:02:25,125
+Here is what runs. The studio, on port 4317: where content is designed. Then the runtime: the release API, the service console, the operations console, and the test bench, on 8481 to 8484.
+
+10
+00:02:26,727 --> 00:02:41,297
+The engine host runs payments on Temporal. The workers run each distribution's activities. The native host runs the compiled modules a distribution carries. The File API is the only door for files, in and out.
+
+11
+00:02:42,908 --> 00:02:59,590
+Machine auth keeps fresh tokens for the services that call the File API. The bank I D P is the bank's development sign-in, with synthetic users. SQL Server holds the store and Temporal's data. The SFTP server plays the bank's partners.
+
+12
+00:03:01,196 --> 00:03:16,641
+Some services start only when you ask. DTFx, Elsa and Flowable each have an engine host of their own, under a profile. The events profile adds two brokers: MQTT for the operators' alerts, and Kafka for the payment events.
+
+13
+00:03:18,256 --> 00:03:28,730
+Every image has a health check, and runs as an unprivileged user. Every port is on this machine only. To check the stack at any time, ask each container its health.
+
+14
+00:03:30,335 --> 00:03:41,321
+Now the screens. First, the studio. On a laptop it has its own development sign-in, with synthetic users. At a bank, the sign-in is the bank's identity provider.
+
+15
+00:03:42,924 --> 00:03:56,726
+We sign in as the workflow designer. The navy top bar holds the search, the scope badges and the theme menu. The side bar lists what this role may open: the designer, the editors, the catalogue, the tests, and more.
+
+16
+00:03:58,330 --> 00:04:09,466
+The workflow designer shows the YAML beside the canvas. Every screen follows your system's light or dark setting, or you choose one in the theme menu. Here is dark, and back to light.
+
+17
+00:04:15,090 --> 00:04:21,554
+A bank's configurator sees the bank workspace instead, where the bank sets its values and binds its hooks.
+
+18
+00:04:23,156 --> 00:04:37,300
+Next, the runtime's consoles. They are one web app, and they share one sign-in at the bank's identity provider. On a laptop, that is a development provider with six synthetic users. The runtime keeps no users of its own.
+
+19
+00:04:38,905 --> 00:04:51,150
+We sign in as an operator. The operations console is where the bank's operators see running payments. There are none yet. The badge in the top bar says whether the read model has caught up with the store.
+
+20
+00:04:52,752 --> 00:04:58,576
+The same console in dark. The work queue, approvals, reports and the rest are in the side bar.
+
+21
+00:05:09,026 --> 00:05:21,335
+The registers hold the bank's customer data, such as the corporate registration. It never goes to the studio or to GitHub. A register maker proposes a change, and a bank approver consents.
+
+22
+00:05:24,091 --> 00:05:39,749
+The service console is for the bank's service engineers. Health shows each part of the runtime: the store, the read model, the package source, the keys, the engine and each bound port. On a laptop some rows are red, as the bank's own hosts are placeholders.
+
+23
+00:05:41,352 --> 00:05:50,333
+Content lists the signed versions offered on GitHub. The studio has already published this bank's first distribution. We install it in a moment.
+
+24
+00:05:51,936 --> 00:06:01,407
+Last, the test bench, for the bank's testers. It runs a payment on the real engines, beside the interpreter as a reference. We sign in as the tester.
+
+25
+00:06:03,008 --> 00:06:16,874
+A distribution is a signed, complete copy of everything the bank runs, built by the studio. The service engineer opens the service console. Difference shows what it would change. Nothing is active yet, so everything is new.
+
+26
+00:06:26,518 --> 00:06:34,603
+Install asks for a reason, and then it waits. The engineer who asks may not consent. A bank approver, another person, must.
+
+27
+00:06:37,513 --> 00:06:50,078
+The bank approver signs in, sees what waits, and approves it, with a reason. The runtime checks the signature, and the hash of every native module, and stores the distribution. It only ever adds rows.
+
+28
+00:07:19,526 --> 00:07:29,104
+Installing is not using. The engineer activates it, and the approver consents again. From now on, new payments of this bank take this distribution.
+
+29
+00:08:10,461 --> 00:08:28,893
+Next, the bank's configuration release: its values and bindings, never code. On this laptop every partner of the bank is the one SFTP server, so the bank approver builds the release with the laptop's bindings. There is no screen for that yet, so it is done with the studio's API.
+
+30
+00:08:30,496 --> 00:08:42,890
+The engineer installs it, and asks for it to be put in force. The runtime checks every value against the bounds the distribution declares. The bank approver consents once, and the release is in force.
+
+31
+00:09:24,681 --> 00:09:34,793
+Now a quick check on the test bench. The tester picks a profile, a salary file on the default engine, then the bank, and a synthetic salary file from the library.
+
+32
+00:09:45,098 --> 00:09:59,604
+On this laptop the bench's run on Temporal does not yet receive the scheme simulator's answer, which is issue I 331. So we untick Temporal, and run the file on the reference interpreter, with the bank's values.
+
+33
+00:10:01,206 --> 00:10:07,115
+Passed: the file settles with the bank's values. Now one real payment, as the bank would make it.
+
+34
+00:10:08,718 --> 00:10:23,160
+An operator opens the operations console's upload page, picks the salary file message, and uploads a synthetic salary file. The File API checks it, keeps it, and starts its payment on the active distribution.
+
+35
+00:10:40,001 --> 00:10:50,411
+The payment writes the salary file for the Central Bank, the SIF, and the File API delivers it to the Central Bank's folder on the SFTP server. Here it is.
+
+36
+00:10:52,013 --> 00:11:02,082
+Now we play the Central Bank, and leave an acknowledgement, an ACK, in its answer folder. The File API reads it, matches it to the payment, and the payment goes on.
+
+37
+00:11:03,684 --> 00:11:11,385
+Settled. Its page in the operations console shows each step as a fact on its timeline. The stack works, end to end.
+
+38
+00:11:22,794 --> 00:11:27,082
+Last, how to stop the stack, reset it, and run it on PostgreSQL.
+
+39
+00:11:28,691 --> 00:11:37,672
+Stop keeps everything: start it again, and it carries on where it was. Down removes the containers, but keeps the volumes, so the data stays too.
+
+40
+00:11:41,330 --> 00:11:51,207
+Down, dash v, also removes the volumes: the store, the keys and the files. That is a full reset. The next start is a first start again, with new keys.
+
+41
+00:11:52,808 --> 00:12:10,066
+To run on PostgreSQL, add the PostgreSQL file to the command. The store, the read model and Temporal then run on one PostgreSQL server, and SQL Server is not started. The same secrets are used, and the SFTP server's keys are pinned again.
+
+42
+00:12:13,386 --> 00:12:20,767
+Here it is, healthy, with postgres in place of SQL Server. Everything you saw in this video works the same way on it.
+
+43
+00:12:22,368 --> 00:12:35,082
+That is the installation. The stack is up, the bank's first distribution and configuration are in force, and a payment has run. Next, we look at the architecture behind it, and follow a payment end to end.

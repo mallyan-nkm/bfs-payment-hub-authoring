@@ -50,9 +50,12 @@ export class Director {
   now() {
     return (Date.now() - this.t0) / 1000;
   }
+  /** The caption on screen: drawn again on every page a scene opens (a sign-in, another console), so it stays while the voice talks. */
+  private caption = '';
   start(page: any) {
     this.page = page;
     this.t0 = Date.now();
+    page.on('load', () => { if (this.caption) page.evaluate((t: string) => (window as any).__caption?.(t), this.caption).catch(() => undefined); });
   }
   async wait(ms: number) {
     if (!DRY) await this.page.waitForTimeout(ms);
@@ -82,6 +85,7 @@ export class Director {
     const at = this.now();
     this.marks.push({ at, wav: v.wav, seconds: v.seconds, text: s.say });
     if (s.card) await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [s.card[0], s.card[1] ?? '']);
+    this.caption = s.say;
     await this.page.evaluate((t: string) => (window as any).__caption?.(t), s.say);
     // A card over a scene with actions shows for a moment, then lifts so the viewer sees the clicks.
     if (s.card && s.do) {

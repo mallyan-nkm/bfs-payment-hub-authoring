@@ -1,6 +1,6 @@
 # Narrated demos and training videos
 
-Three recorded videos of the studio (the three of the runtime are further down), each a real browser session on a fresh workspace, driven click by
+Four recorded videos of the studio and the laptop stack (the runtime's two are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
 an `.srt` subtitle file. The concept video and the hands-on training video (in `docs/demo/training/`) run at a slower pace,
 in plain words for someone new to payments; the concept video draws every idea as a restaurant kitchen.
@@ -9,16 +9,16 @@ in plain words for someone new to payments; the concept video draws every idea a
 | --- | --- |
 | `1-concept.mp4` | The concept, in two parts. First, with no screens, every idea drawn as a kitchen on the animated stage (`demo/explainer/ideas.html`, in the apps' navy and teal): the studio designs and the runtime runs; one order's journey; activities, outcomes and rules; values (dials with a default and bounds) beside logic that stays fixed; workflows, schemes, the slot and the leg; the factory (`p`, `uae.p`, `uae.wps`); a bank's hooks, its values and maker and checker; the distribution and the configuration release, and a payment pinned to its distribution; one bank per runtime; everything together. Then a short tour of the same ideas in the studio on Fluent UI 2: the top bar and the catalogue, the factory's scopes and the four-part names, an activity, a rule's editor, the corporate workflow on the canvas, the WPS dispatch table, a test with its simulator, the bank workspace, the configuration set, the audit log and the export |
 | `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; the assistant beside the editor: help on a field, the rule in plain words, then a rule built by asking, allowed once, a change allowed always and undone; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved; then the same payment in the debugger: stepping into and back, a breakpoint on the bank's hook point and on the route, the decision and the data it changed |
+| `2-installation.mp4` | The installation, on the laptop stack (`deploy/laptop`) on Fluent UI 2: what you need (Docker, and the secrets made at random in your shell, never in a file) and why; the images built and the stack started (the SFTP server first and its host keys pinned, then `up -d --wait`), what each service is (the studio, the runtime's APIs and consoles, the engine host, the workers, the native host, the File API, machine auth, the bank's development provider, SQL Server, Temporal, SFTP; the engine profiles, and the `events` profile's brokers) and the health check; the first sign-in to the studio, the operations console, the registers, the service console and the test bench, light and dark; the bank's first distribution installed and activated, and its configuration release with the laptop's bindings put in force, each with a bank approver's consent; a salary file on the test bench, on the reference interpreter with the bank's values (its run on Temporal on the laptop is Issue I-331), then one real payment: uploaded on the operations console, its SIF delivered to the Central Bank's folder on the SFTP server, the ACK left there and read back, the payment settled; then stop, reset (`down -v`) and the same stack started on PostgreSQL |
 | `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
 
 ## The runtime videos
 
-Three videos of the runtime with the studio, in `docs/demo/runtime/`, each with its `.srt`, voiced at the training pace
-(`TH_TTS_SPEED=0.85`). Videos 1 and 3 run on the laptop stack (`deploy/laptop`); video 2 is drawn, with no screens.
+Two videos of the runtime with the studio, in `docs/demo/runtime/`, each with its `.srt`, voiced at the training pace
+(`TH_TTS_SPEED=0.85`). Video 3 runs on the laptop stack (`deploy/laptop`), as does the installation video above; video 2 is drawn, with no screens.
 
 | Video | What it shows |
 | --- | --- |
-| `runtime-1-install-and-screens.mp4` | Building the images, the stack's secrets by name only, `docker compose ... up -d --wait` and what runs; the studio's sign-in and its surfaces by role (designer, bank configurator, bank approver, auditor, administrator); the runtime's sign-in at the bank's development provider; every page of the service console (health, content, logs, errors and runbooks, actions, backup, assistant), the operations console (payments and a payment's page, work queue, approvals, reports, breaks, turnaround, retention, consents, registers, and its audit read from the API) and the test bench (run, test data, suite, history) |
 | `runtime-2-north-star-architecture.mp4` | The north-star architecture, drawn: ISO 20022 at the centre and scheme formats mapped at the edges; one insert-only store on SQL Server or PostgreSQL; four engines behind one contract, Temporal the default; the three layers and why; a payment pinned at acceptance, side by side, drained, removed, rolled back; platform workflows with slots, scheme legs (WPS also in a refund order), hooks and rules; the File API as the only door for files; the studio multi-tenant on its GitHub branch, a runtime one bank; maker-checker and the bank approver's consent; what is not built yet |
 | `runtime-3-full-payment-run.mp4` | One bank's payments end to end: its distribution installed and activated in the service console, the native modules it carries checked by hash, its configuration release (with the laptop's file transfer bindings) put in force, each on a bank approver's consent; a salary file uploaded on the operations console's upload page (`POST /ops/api/upload`, which posts to the File API's `POST /files/ui`), its SIF sent through the File API's outbox to the Central Bank's SFTP folder, the ACK left there and matched back, the payment settled; the synthetic scheme `uae.demo` built in the studio, licensed by the bank (its configurator proposes, its approver approves, I-205), distribution B activated while A drains and is removed, and a demo credit file paid on `uae.demo`; the fraud alerts, ledger accounts, rates badge and audit |
 
@@ -26,7 +26,7 @@ Bring the stack up first, with a compose project of your own and the secrets in 
 from `studio/`, with the same shell:
 
 ```bash
-TH_TTS_SPEED=0.85 npx tsx demo/run.ts install --out ../docs/demo/runtime
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 TH_DEMO_BUILD_LOG=<the log of build.sh> npx tsx demo/run.ts install
 ```
 
 ```bash
@@ -39,7 +39,10 @@ TH_TTS_SPEED=0.85 npx tsx demo/run.ts full-run --out ../docs/demo/runtime
 
 `demo/stack.ts` holds what the two stack videos share: the stack's URLs, the sign-in at the bank's development provider, the
 services' APIs for a step that has no screen, and the commands shown in the terminal panel, run for real with every
-`TH_LAPTOP_*` secret in their output replaced by stars. The full run starts on a fresh stack: it adds the bank's two studio
+`TH_LAPTOP_*` secret in their output replaced by stars. The installation video starts on a fresh stack, adds the bank's two studio users and
+publishes the bank's first distribution before the camera, and shows the last lines of the build's log named by `TH_DEMO_BUILD_LOG`
+(the build is not run while recording). Its last chapter stops the stack, removes its volumes and starts it again on PostgreSQL, for
+real, when recording; a dry run leaves the stack as it is unless `TH_DEMO_RESET=1`. The full run starts on a fresh stack: it adds the bank's two studio
 users and publishes the bank's first distribution before the camera, then installs it and everything after on screen. It needs the
 demo scheme's simulator among the workers' simulators: bring the stack up with `TH_LAPTOP_WORKERS_BENCH` set to the default list in
 `compose.yaml` plus `{"port":"uae.demo.port.demo.v1","simulator":"uae.demo.sim.demo-outward.v1","scenario":"accept"}`. Where a step has no screen today it is done as an operator would,

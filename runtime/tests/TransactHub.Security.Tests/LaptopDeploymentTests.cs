@@ -201,7 +201,7 @@ public sealed class LaptopDeploymentTests
         var workers = Service("workers");
         Assert.Contains("{\"port\":\"uae.wps.port.wps.v1\",\"simulator\":\"runtime\"}", workers);
         Assert.Contains("TH_NATIVE_HOST: http://native:7300", workers);
-        Assert.Contains("TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.map.ack-in.v1", workers);
+        Assert.Contains("TH_NATIVE_ACTIVITIES: uae.wps.map.sif-out.v1,uae.wps.exchange.send-salary-file.v1,uae.wps.exchange.send-salary-file.v2,uae.wps.map.ack-in.v1", workers);
         Assert.Contains("TH_FILE_API_URL: http://file-api:8080", workers);
         Assert.Matches(@"TH_NATIVE_TOKEN: file:\S+", workers);
         Assert.Contains("'TH_NATIVE_TOKEN', 'TH_FILE_API_URL', 'TH_FILE_API_TOKEN'", File.ReadAllText(Path.Combine(Laptop, "bin", "workers.mts")));

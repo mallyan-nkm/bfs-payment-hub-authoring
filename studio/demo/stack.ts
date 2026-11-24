@@ -76,11 +76,12 @@ export function useStackStudio(d: Director) {
 }
 
 /** Sign in to a runtime console at the bank's development provider, as one of its synthetic users. */
-export async function runtimeSignIn(d: Director, base: string, who: 'service engineer' | 'bank approver' | 'operator' | 'supervisor' | 'tester', hash = '') {
+export async function runtimeSignIn(d: Director, base: string, who: 'service engineer' | 'bank approver' | 'operator' | 'supervisor' | 'tester' | 'register maker', hash = '') {
   const p = d.page;
   await p.goto(`${base}/`);
   await p.waitForLoadState('load');
-  await p.locator('button').first().waitFor();
+  // The page is ready once it offers Sign in or Sign out (on Fluent the first button is the menu toggle, hidden at this width).
+  await p.getByRole('button', { name: /^Sign (in|out)$/ }).first().waitFor();
   // Signed in already as someone else: sign out first.
   const out = p.getByRole('button', { name: 'Sign out' });
   if (await out.count()) await d.click(out.first());
