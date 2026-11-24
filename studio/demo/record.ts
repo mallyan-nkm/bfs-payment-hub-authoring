@@ -76,11 +76,15 @@ export class Director {
     return { wav, seconds: JSON.parse(fs.readFileSync(meta, 'utf8')).seconds };
   }
 
+  /** The scene's caption, shown again when an action loads a new page (record() listens for each load). */
+  caption = '';
+
   /** One scene: a chapter card if any, the caption and voice, the actions; it lasts as long as both. */
   async scene(s: Scene) {
     const v = this.voice(s.say);
     const at = this.now();
     this.marks.push({ at, wav: v.wav, seconds: v.seconds, text: s.say });
+    this.caption = s.say;
     if (s.card) await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [s.card[0], s.card[1] ?? '']);
     await this.page.evaluate((t: string) => (window as any).__caption?.(t), s.say);
     // A card over a scene with actions shows for a moment, then lifts so the viewer sees the clicks.
@@ -358,6 +362,8 @@ export async function record(prod: Production, outDir: string) {
   // The recordings show the studio without the assistant panel, unless a production opens it.
   await context.addInitScript(() => { try { if (localStorage.getItem('th.dock') === null) localStorage.setItem('th.dock', '0'); } catch { /* no storage */ } });
   const page = await context.newPage();
+  // A scene that opens another page (the explainer stage, the studio, a console) keeps its caption.
+  page.on('load', () => { if (d.caption) page.evaluate((t: string) => (window as any).__caption?.(t), d.caption).catch(() => undefined); });
   d.start(page);
   await d.as('owner', 'shared.designer');
   let length = 0;

@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STUDIO } from './server.js';
 import { stackUp } from '../../demo/stack.js';
+import { storeUp } from '../../demo/north-star.js';
 
 // Black box, in the browser: every step of the recorded demo and training videos, run fast with no
 // video and no voice (TH_DEMO_DRY=1). The hands-on video checks its own results as it goes: the
@@ -24,12 +25,21 @@ const dry = (which: string, limit = 300_000) => new Promise<string>((resolve) =>
 });
 
 describe('demo and training videos, dry run', () => {
-  for (const which of ['concept', 'build', 'hands-on', 'architecture']) {
+  for (const which of ['concept', 'build', 'hands-on']) {
     it(`${which}: every scene runs`, async () => {
       const out = await dry(which);
       expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);
     }, 320_000);
   }
+});
+
+// The north-star video reads a store of its own (demo/north-star/store.sh up) and runs a conformance scenario on each of the four
+// engines (.NET 8, Java and the Temporal test server: CLAUDE.md), so it runs only where its store is up. The engines take minutes.
+describe.skipIf(!storeUp())('north-star video, dry run', () => {
+  it('north-star: every scene runs', async () => {
+    const out = await dry('north-star', 1_500_000);
+    expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);
+  }, 1_520_000);
 });
 
 // The runtime videos that drive the laptop stack (deploy/laptop) run only where a stack is up, with its secrets in the
