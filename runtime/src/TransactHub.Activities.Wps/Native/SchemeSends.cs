@@ -14,7 +14,7 @@ namespace TransactHub.Activities.Wps.Native;
 /// binding names one (R-09-235, Issue I-313). The file is taken: <c>accepted</c>. No kept file, or a request the port refuses, is
 /// <c>rejected</c>; a binding that cannot be reached now is the port's retryable error.
 /// </summary>
-public sealed class SendKeptFile(INativePorts ports, string name) : INativeActivity
+public sealed class SendKeptFile(INativeBoundPorts ports, INativeFiles files, string name) : INativeActivity
 {
     /// <summary>Each send of the port: what it sends, for its refusal when nothing was rendered, and the scheme message it is.</summary>
     public static readonly IReadOnlyDictionary<string, (string What, string Message)> Sends = new Dictionary<string, (string, string)>(StringComparer.Ordinal)
@@ -33,18 +33,23 @@ public sealed class SendKeptFile(INativePorts ports, string name) : INativeActiv
         ["uae.wps.exchange.send-refund-response.v2"] = ("refund request response", "uae.wps.rrr"),
     };
 
-    public static IEnumerable<INativeActivity> All(INativePorts ports) => Sends.Keys.Select(n => (INativeActivity)new SendKeptFile(ports, n));
+    public static IEnumerable<INativeActivity> All(INativeBoundPorts ports, INativeFiles files) => Sends.Keys.Select(n => (INativeActivity)new SendKeptFile(ports, files, n));
 
     public string Name => name;
 
     public NativeResult Run(NativeAttempt a)
     {
         var (what, message) = Sends.TryGetValue(name, out var s) ? s : ("file", "");
-        return SchemeSend.Run(ports, a, name, what, message, readsEncryption: name.EndsWith(".v2", StringComparison.Ordinal));
+        return SchemeSend.Run(ports, files, a, name, what, message, readsEncryption: name.EndsWith(".v2", StringComparison.Ordinal));
     }
 }
 
-/// <summary>One send of a file the host kept on the WPS port, shared by every send of the scheme (R-09-182, R-09-232).</summary>
+/// <summary>
+/// One send of a file the host kept on the WPS port, shared by every send of the scheme (R-09-182, R-09-232). Since native contract
+/// 2.2.0 the module reads the kept file through the host's files and puts it through the binding's transfer itself
+/// (<see cref="INativeBoundPorts.Put"/>, naming the scheme message the file is), not through the image's kept-file case of
+/// <see cref="INativePorts"/> (R-09-294, Issue I-385).
+/// </summary>
 public static class SchemeSend
 {
     static NativeResult Rejected(string code, string why) =>
@@ -55,7 +60,7 @@ public static class SchemeSend
     /// encrypted, that file: an encryption the service refused, or of another file than the one rendered, sends nothing.
     /// <paramref name="message"/> is the scheme message the file is (the File API's kind of it, R-09-234).
     /// </summary>
-    public static NativeResult Run(INativePorts ports, NativeAttempt a, string name, string what, string message, bool readsEncryption)
+    public static NativeResult Run(INativeBoundPorts ports, INativeFiles files, NativeAttempt a, string name, string what, string message, bool readsEncryption)
     {
         var rendered = NativeContext.Node(a.View, "messages.rendered");
         var sha = NativeContext.S(rendered, "sha256");
@@ -77,21 +82,25 @@ public static class SchemeSend
                 encrypted = true;
             }
         }
-        NativePortAnswer answer;
+        NativeBinding binding;
+        NativeFileSent put;
         try
         {
-            var request = new JsonObject
+            // The bank's binding of the WPS port in force (a binding to another adapter than file-transfer is PortNotBound), the file the
+            // host kept by its SHA-256, put through the binding's transfer as the scheme message it is (R-09-234, R-09-281, R-09-293).
+            binding = ports.For(a, SendSalaryFile.Port);
+            var content = files.Get(sha) ?? throw new NativePortRefused(SendSalaryFile.Port, $"The host holds no file {sha} to send");
+            var paymentId = Ctx.S(a.View, "header.paymentId");
+            put = ports.Put(a, binding, new NativeFilePut(SendSalaryFile.Operation, fileName, content, paymentId.Length > 0 ? paymentId : null, "scheme-leg")
             {
-                ["sha256"] = sha, ["fileName"] = fileName, ["paymentId"] = Ctx.S(a.View, "header.paymentId"), ["scheme"] = "uae.wps", ["leg"] = "scheme-leg",
-            };
-            if (message.Length > 0) request["message"] = message;
-            answer = ports.Ask(a, SendSalaryFile.Port, SendSalaryFile.Operation, request);
+                Message = message.Length > 0 ? message : null,
+            });
         }
         catch (NativePortRefused e) { return Rejected("NARR", e.Message); }
         var sent = new JsonObject
         {
-            ["by"] = name, ["at"] = a.Now.ToString("O", CultureInfo.InvariantCulture), ["fileName"] = fileName, ["sha256"] = sha, ["via"] = answer.Adapter,
-            ["folder"] = answer.Body["folder"]?.DeepClone(),
+            ["by"] = name, ["at"] = a.Now.ToString("O", CultureInfo.InvariantCulture), ["fileName"] = fileName, ["sha256"] = sha, ["via"] = binding.Adapter,
+            ["folder"] = put.Folder,
         };
         if (readsEncryption) sent["encrypted"] = encrypted;
         if (message.Length > 0) sent["message"] = message;

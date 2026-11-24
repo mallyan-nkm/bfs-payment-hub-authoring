@@ -155,8 +155,8 @@ describe('a native module references the native contract only (R-09-125, Issue I
 });
 
 describe('native contract 2.0.0 (R-09-262, Issues I-226, I-224)', () => {
-  it('the studio builds for contract 2.1.0 and refuses a module build made against contract 1.x, with its code', () => {
-    expect(NATIVE_CONTRACT).toBe('2.1.0');
+  it('the studio builds for contract 2.2.0 and refuses a module build made against contract 1.x, with its code', () => {
+    expect(NATIVE_CONTRACT).toBe('2.2.0');
     expect(contractVersion()).toBe(NATIVE_CONTRACT);
     expect(contractSupported('2.0.0', '2.0.0')).toBe(true);
     for (const v of ['1.0.0', '1.1.0', '2.1.0', '3.0.0', undefined, 'x']) expect(contractSupported(v, '2.0.0')).toBe(false);
@@ -167,7 +167,7 @@ describe('native contract 2.0.0 (R-09-262, Issues I-226, I-224)', () => {
       writeModuleFolder(path.join(root, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, [{ name: CONTRACT.name, version: '1.1.0' }]), true, '1.1.0');
       process.env.TH_NATIVE_MODULES = root;
       expect(() => buildDistribution(freshEnv(), { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-31' }))
-        .toThrow(new RegExp(`${CONTRACT_UNSUPPORTED.replace('.', '\\.')}: the module build of uae\\.wps was built against native contract 1\\.1\\.0; .*rebuild it against 2\\.1\\.0`));
+        .toThrow(new RegExp(`${CONTRACT_UNSUPPORTED.replace('.', '\\.')}: the module build of uae\\.wps was built against native contract 1\\.1\\.0; .*rebuild it against 2\\.2\\.0`));
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });
@@ -186,8 +186,8 @@ describe('native contract 2.1.0, a minor (R-09-276, R-09-282; Issues I-381, I-38
       expect(d.manifest.native.contract).toBe('2.1.0');
       expect(d.manifest.native.modules.map((m: any) => m.scope)).toEqual(['p', 'uae.wps']);
       // A build of a later minor than the studio's own is refused, with its code.
-      writeModuleFolder(path.join(root, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, [{ name: CONTRACT.name, version: '2.2.0' }]), true, '2.2.0');
-      expect(() => buildDistribution(freshEnv(), { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-62' })).toThrow(new RegExp(`${CONTRACT_UNSUPPORTED.replace('.', '\\.')}: the module build of uae\\.wps was built against native contract 2\\.2\\.0`));
+      writeModuleFolder(path.join(root, 'uae.wps'), 'uae.wps', SYNTHETIC_ASSEMBLY, syntheticAssembly(SYNTHETIC_ASSEMBLY, [{ name: CONTRACT.name, version: '2.3.0' }]), true, '2.3.0');
+      expect(() => buildDistribution(freshEnv(), { bank: 'example-bank', engine: 'temporal', id: '2026.11.24-62' })).toThrow(new RegExp(`${CONTRACT_UNSUPPORTED.replace('.', '\\.')}: the module build of uae\\.wps was built against native contract 2\\.3\\.0`));
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 

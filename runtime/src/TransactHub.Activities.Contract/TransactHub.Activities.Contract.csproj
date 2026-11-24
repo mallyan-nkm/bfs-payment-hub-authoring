@@ -14,14 +14,16 @@
     so the reservation, its release, the reversal and the check of a posting are the platform module's; and on the bound ports a body
     of bytes with its content type (NativeHttpRequest.Content) and a file put through the binding's transfer (INativeBoundPorts.Put).
     A 2.0 module runs on it unchanged; a 2.1 module on a 2.0 runtime is refused (native.ContractUnsupported).
+    2.2.0 (R-09-293, R-09-294, Issue I-385): a minor. A file put names the scheme message the file is (NativeFilePut.Message), so a
+    scheme's sends put their files through the bound ports themselves; the kept-file case of INativePorts is obsolete, removed at 3.0.0.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.1.0</Version>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
-    <FileVersion>2.1.0.0</FileVersion>
+    <Version>2.2.0</Version>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>

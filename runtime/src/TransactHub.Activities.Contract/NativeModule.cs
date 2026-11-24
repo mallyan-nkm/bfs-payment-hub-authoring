@@ -11,8 +11,9 @@ public static class NativeContract
     /// The contract this runtime supports. Keep it the project's <c>Version</c>. 2.0.0 (R-09-262) removed <c>Service&lt;T&gt;</c> and added
     /// bound ports, so a module built against 1.x is refused (<c>native.ContractUnsupported</c>) and rebuilt. 2.1.0 (R-09-276), a minor, added
     /// the balance enquiry of a core-banking binding and, on the bound ports, a body of bytes and a file put: a 2.0 module runs on it.
+    /// 2.2.0 (R-09-293), a minor, added the scheme message a file put names (<see cref="NativeFilePut.Message"/>): a 2.0 or 2.1 module runs on it.
     /// </summary>
-    public const string Version = "2.1.0";
+    public const string Version = "2.2.0";
 
     /// <summary>The contract assembly's name, which a module references and never carries.</summary>
     public const string AssemblyName = "TransactHub.Activities.Contract";

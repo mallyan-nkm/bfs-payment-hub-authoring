@@ -33,7 +33,7 @@ describe('a module build made ahead of time, signed by build.sh (R-09-127)', () 
         const m = readModuleFolder(dir)!;
         // The source hash build.sh wrote is the studio's; the module references the native contract only (R-09-125).
         expect(m.sourceSha256).toBe(sourceSha256(path.join(REPO, m.project!)));
-        expect(m.contract).toBe('2.1.0');
+        expect(m.contract).toBe('2.2.0');
         expect(imageReferences(m)).toEqual([]);
       }
       // Tampered: one byte of the assembly changed.

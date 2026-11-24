@@ -145,7 +145,7 @@ public sealed class RenderCbSif(Action<string, string, byte[]>? keep = null, str
 /// (R-09-234). The file is taken: <c>accepted</c>. A request the port refuses is <c>rejected</c>; a binding that cannot be reached now
 /// is a retryable <c>TransientError</c>. Its v1 line, which read no encryption fact, is retired (R-09-233, Issue I-293).
 /// </summary>
-public sealed class SendSalaryFile(INativePorts ports) : INativeActivity
+public sealed class SendSalaryFile(INativeBoundPorts ports, INativeFiles files) : INativeActivity
 {
     public const string Port = "uae.wps.port.wps.v1";
     public const string Operation = "submit-file";
@@ -154,5 +154,5 @@ public sealed class SendSalaryFile(INativePorts ports) : INativeActivity
     public const string Message = "uae.wps.sif-submission";
     public string Name => V2;
 
-    public NativeResult Run(NativeAttempt a) => SchemeSend.Run(ports, a, V2, "salary file", Message, readsEncryption: true);
+    public NativeResult Run(NativeAttempt a) => SchemeSend.Run(ports, files, a, V2, "salary file", Message, readsEncryption: true);
 }

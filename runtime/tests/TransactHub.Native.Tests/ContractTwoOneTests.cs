@@ -68,7 +68,7 @@ public sealed class ContractTwoOneTests(Store store)
         // A distribution of 2.0 modules, built before the minor: the 2.1 runtime takes it.
         var old = await Install("2026.11.24-51", "2.0.0", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, wps20, [ack]));
         // A 2.0 WPS module beside a 2.1 platform module: the manifest names the latest minor of its modules.
-        var mixed = await Install("2026.11.24-52", "2.1.0",
+        var mixed = await Install("2026.11.24-52", NativeContract.Version,
             new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [window]),
             new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, wps20, [ack]));
         // A 2.1 module under a manifest that names 2.0: refused, the manifest names too early a contract.
@@ -81,10 +81,10 @@ public sealed class ContractTwoOneTests(Store store)
         Assert.Equal("platform-build-a", (string?)(await Post(c, Window(mixed)))["writes"]!["facts.postingWindow"]!["build"]);
         var u = await Post(c, Window(under));
         Assert.Equal("native.ModuleRefused", (string?)u["name"]);
-        Assert.Contains("was built against native contract 2.1.0, its manifest says 2.0.0", (string?)u["message"]);
+        Assert.Contains($"was built against native contract {NativeContract.Version}, its manifest says 2.0.0", (string?)u["message"]);
 
         // A 2.0 runtime refuses a 2.1 module, at install and at load, with the contract's code (the check the image runs, at 2.0).
-        var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-54", "2.1.0", new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [window]));
+        var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-54", NativeContract.Version, new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [window]));
         var files = NativeAssemblies.Unzip(package);
         var e = Assert.Throws<NativeAssembliesRefused>(() => NativeAssemblies.Check(manifest, f => files.TryGetValue(f, out var x) ? x : null, files.Keys, runtimeContract: "2.0.0"));
         Assert.Equal(NativeAssemblies.ContractUnsupported, e.Code);
@@ -106,7 +106,7 @@ public sealed class ContractTwoOneTests(Store store)
     {
         var ack = $"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}";
         var hold = "kind: activity\nname: p.hold.approval.v1\nrelease: 1.1.0\ntype: hold\nports:\n  - p.port.operations-queue.v1\nimplementation:\n  binding: builtin\n  service: operations\n";
-        var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-61", "2.1.0",
+        var (manifest, package) = ModuleBuilds.Distribution(Bank, "2026.11.24-61", NativeContract.Version,
             new Dictionary<string, string> { ["p.reserve.funds.v1@1.0.0"] = ReservationBefore21, ["p.hold.approval.v1@1.1.0"] = hold },
             new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [ack]));
         await using (var db = StoreDbContext.Open(store.Options))

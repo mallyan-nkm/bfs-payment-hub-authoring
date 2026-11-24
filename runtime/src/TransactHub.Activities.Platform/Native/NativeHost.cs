@@ -99,7 +99,8 @@ public sealed class NativePorts(PortBindings bindings, INativeFiles files, Regis
             default:
             {
                 // A port the bank binds to the File API (adapter file-transfer, R-09-160): the file the host kept is sent through the
-                // bank's file-transfer binding, which on a runtime host is the File API's outbox (R-09-138).
+                // bank's file-transfer binding, which on a runtime host is the File API's outbox (R-09-138). Obsolete since contract 2.2.0
+                // (R-09-294, Issue I-385): kept for modules built before it, removed at 3.0.0; a module puts its file through BoundPorts.Put.
                 if (!string.IsNullOrEmpty(a.Tenant) && Bound(a.Tenant, port, a.Now) is { Adapter: PortFileTransfer.Name })
                     return SendFile(a, port, operation, request);
                 throw new NativeFailure("PortNotBound", $"The runtime image answers no {operation} of {port} for a native module", false);

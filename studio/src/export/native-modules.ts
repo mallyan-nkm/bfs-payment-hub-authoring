@@ -42,9 +42,10 @@ const CONTRACT_PROJECT = 'runtime/src/TransactHub.Activities.Contract/TransactHu
 /**
  * The native contract this studio builds against when the runtime's sources are not here (a prebuilt module says its own). 2.0.0
  * (R-09-261 to R-09-264): bound ports, no Service<T>; a module built against 1.x is refused here and on the runtime. 2.1.0 (R-09-276), a
- * minor: a balance enquiry on core banking, a body of bytes and a file put on the bound ports; a module built against 2.0 is taken.
+ * minor: a balance enquiry on core banking, a body of bytes and a file put on the bound ports; a module built against 2.0 is taken. 2.2.0
+ * (R-09-293), a minor: a file put names the scheme message the file is.
  */
-export const NATIVE_CONTRACT = '2.1.0';
+export const NATIVE_CONTRACT = '2.2.0';
 /** The error dictionary's code of a module built against a native contract the runtime does not take (R-09-262). */
 export const CONTRACT_UNSUPPORTED = 'native.ContractUnsupported';
 /** The native contract's assembly: the one assembly of TransactHub a module references (R-09-125). */

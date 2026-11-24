@@ -52,7 +52,8 @@ public sealed class NativeBoundPorts(PortBindings bindings, TransactHub.Security
         if (string.IsNullOrWhiteSpace(file.FileName) || file.FileName.IndexOfAny(['/', '\\']) >= 0 || file.FileName is "." or "..")
             throw new NativePortRefused(b.Port, $"A file put on {b.Port} names a file, never a folder ({file.FileName})");
         var scheme = string.Join('.', b.Port.Split('.').Take(2));
-        return PutFile(bindings, a, b.Port, file.Operation, new PortFile(file.FileName, file.Content, file.PaymentId, file.Leg, scheme, a.Activity), transferOf, secrets);
+        // The scheme message the file is, since contract 2.2.0 (R-09-293): its kind and its folder where the binding names one (R-09-234, R-09-235).
+        return PutFile(bindings, a, b.Port, file.Operation, new PortFile(file.FileName, file.Content, file.PaymentId, file.Leg, scheme, a.Activity, file.Message is { Length: > 0 } m ? m : null), transferOf, secrets);
     }
 
     /// <summary>

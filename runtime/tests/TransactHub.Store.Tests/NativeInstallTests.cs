@@ -107,8 +107,8 @@ public sealed class NativeInstallTests(Databases dbs)
         Assert.True(two0on21 == HttpStatusCode.Created, two0on21Body);
         var (under, underBody) = await Post(c, Distribution(s.Key, "2026.11.24-43", Wps, contract: "2.0.0"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, under);
-        Assert.Contains("was built against native contract 2.1.0, its manifest says 2.0.0", underBody);
-        var (later, laterBody) = await Post(c, Distribution(s.Key, "2026.11.24-44", Wps, contract: "2.2.0"));
+        Assert.Contains($"was built against native contract {TransactHub.Activities.Native.NativeContract.Version}, its manifest says 2.0.0", underBody);
+        var (later, laterBody) = await Post(c, Distribution(s.Key, "2026.11.24-44", Wps, contract: "2.3.0"));
         Assert.Equal(HttpStatusCode.UnprocessableEntity, later);
         Assert.Contains(NativeAssemblies.ContractUnsupported, laterBody);
 

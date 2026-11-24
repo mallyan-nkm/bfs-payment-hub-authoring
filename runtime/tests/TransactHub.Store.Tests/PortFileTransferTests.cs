@@ -87,6 +87,7 @@ public sealed class PortFileTransferTests
         var files = new MemoryNativeFiles();
         var transfer = new Recording();
         var ports = new NativePorts(Bindings(), files, transferOf: _ => transfer);
+        var portsBound = Bound(Bindings(), transfer);
         var render = new RenderCbSif((sha, name, content) => files.Keep("out", "rendered", name, content), RenderCbSif.FactoryName);
         Assert.Equal("uae.wps.map.sif-out.v1", render.Name);
         // The factory's render has no parameter: the employer's bank is the batch's debtor agent; its file id the batch's.
@@ -97,7 +98,7 @@ public sealed class PortFileTransferTests
         var rendered = r.Writes["messages.rendered"]!.AsObject();
         Assert.Equal("0000001234567261117083000.SIF", (string?)rendered["fileName"]);
 
-        var send = new SendSalaryFile(ports);
+        var send = new SendSalaryFile(portsBound, files);
         var ctx = View();
         ctx["messages"] = new JsonObject { ["rendered"] = new JsonObject { ["fileName"] = (string?)rendered["fileName"], ["sha256"] = ((string)rendered["sha256"]!).ToLowerInvariant() } };
         var s = send.Run(new NativeAttempt(send.Name, "2.0.0", ctx, new JsonObject(), Now, "test-bank"));
@@ -118,15 +119,36 @@ public sealed class PortFileTransferTests
     /// R-09-213, Issue I-268: the scheme's other sends on the WPS port have native code-behinds as the salary file's does: the receipt
     /// confirmation the native render kept goes out on the bank's binding of the port; nothing rendered is refused, nothing sent.
     /// </summary>
+    /// <summary>The bound ports a module puts its file through (contract 2.2.0, R-09-294), on the recording transfer.</summary>
+    static NativeBoundPorts Bound(PortBindings bindings, IFileTransfer transfer, TransactHub.Security.ISecretResolver? secrets = null) => new(bindings, secrets, transferOf: _ => transfer);
+
+    /// <summary>
+    /// R-09-294 (Issue I-385): the image's kept-file case of INativePorts, obsolete since contract 2.2.0, still sends a kept file for a
+    /// module built before it, by the same code as the bound ports' file put, and keeps it as the message the request names.
+    /// </summary>
+    [Fact]
+    public void The_obsolete_kept_file_case_still_sends_a_kept_file_for_a_module_built_before_2_2()
+    {
+        var files = new MemoryNativeFiles();
+        var transfer = new Recording();
+        var sha = files.Keep("out", "rendered", "PRC000261118103000.PRC", "RDR,synthetic\r\n"u8.ToArray());
+        var answer = new NativePorts(Bindings(), files, transferOf: _ => transfer).Ask(new NativeAttempt("uae.wps.exchange.send-receipt-confirmation.v1", "1.1.0", View(), new JsonObject(), Now, "test-bank"),
+            "uae.wps.port.wps.v1", "submit-file", new JsonObject { ["sha256"] = sha, ["fileName"] = "PRC000261118103000.PRC", ["paymentId"] = "uae-wps-0001", ["leg"] = "scheme-leg", ["message"] = "uae.wps.prc" });
+        Assert.True((bool?)answer.Body["sent"]);
+        var (_, owner) = Assert.Single(transfer.Puts);
+        Assert.Equal("uae.wps.prc", owner!.Kind);
+    }
+
     [Fact]
     public void The_schemes_other_sends_put_the_kept_file_on_the_banks_binding_of_the_port()
     {
         var files = new MemoryNativeFiles();
         var transfer = new Recording();
         var ports = new NativePorts(Bindings(), files, transferOf: _ => transfer);
+        var portsBound = Bound(Bindings(), transfer);
         var sha = files.Keep("out", "rendered", "PRC000261118103000.PRC", "RDR,synthetic\r\n"u8.ToArray());
         Assert.Equal(12, SendKeptFile.Sends.Count); // the v1 lines for the distributions that pin them, and their v2 lines (R-09-232)
-        var send = SendKeptFile.All(ports).Single(s => s.Name == "uae.wps.exchange.send-receipt-confirmation.v1");
+        var send = SendKeptFile.All(portsBound, files).Single(s => s.Name == "uae.wps.exchange.send-receipt-confirmation.v1");
         var ctx = View();
         ctx["messages"] = new JsonObject { ["rendered"] = new JsonObject { ["fileName"] = "PRC000261118103000.PRC", ["sha256"] = sha } };
         var s = send.Run(new NativeAttempt(send.Name, "1.1.0", ctx, new JsonObject(), Now, "test-bank"));
@@ -148,7 +170,7 @@ public sealed class PortFileTransferTests
         var transfer = new Recording();
         var files = new MemoryNativeFiles();
         var sha = files.Keep("out", "rendered", "0000001234567261117083000.SIF", "EDR,synthetic\r\n"u8.ToArray());
-        var send = new SendSalaryFile(new NativePorts(Bindings(sifFolder: "centralBank.missingFolder"), files, transferOf: _ => transfer));
+        var send = new SendSalaryFile(Bound(Bindings(sifFolder: "centralBank.missingFolder"), transfer), files);
         NativeResult Send(SendSalaryFile s, string hash)
         {
             var ctx = View();
@@ -156,11 +178,11 @@ public sealed class PortFileTransferTests
             return s.Run(new NativeAttempt(s.Name, "2.0.0", ctx, new JsonObject(), Now, "test-bank"));
         }
         Assert.Equal("rejected", Send(send, sha).Outcome); // the send's folder names a setting the file-transfer binding lacks
-        var unbound = new SendSalaryFile(new NativePorts(Bindings(), files, transferOf: _ => transfer));
+        var unbound = new SendSalaryFile(Bound(Bindings(), transfer), files);
         Assert.Equal("rejected", Send(unbound, "0000").Outcome);
         Assert.Contains("missingFolder", Assert.Throws<PortBindingException>(() => PortFileTransfer.FolderOf(Bindings(sifFolder: "centralBank.missingFolder").InForce("test-bank", "uae.wps.port.wps.v1", Now), Bindings().InForce("test-bank", FileTransferAdapters.Port, Now), "submit-file")).Message);
         // A bank that binds the WPS port to another adapter is not answered by the image for a module.
-        var other = new SendSalaryFile(new NativePorts(Bindings(wpsAdapter: "gateway-rest"), files, transferOf: _ => transfer));
+        var other = new SendSalaryFile(Bound(Bindings(wpsAdapter: "gateway-rest"), transfer), files);
         Assert.Equal("PortNotBound", Assert.Throws<NativeFailure>(() => Send(other, sha)).Name);
         Assert.Empty(transfer.Puts);
         // A folder of the file-transfer binding may be named as it is.
@@ -206,6 +228,7 @@ public sealed class PortFileTransferTests
         var files = new MemoryNativeFiles();
         var transfer = new Recording();
         var ports = new NativePorts(bindings, files, secrets: secrets, transferOf: _ => transfer);
+        var portsBound = Bound(bindings, transfer, secrets);
         var render = new RenderCbSif((sha, name, content) => files.Keep("out", "rendered", name, content), RenderCbSif.FactoryName);
         var view = View();
         view.Remove("header");
@@ -220,7 +243,7 @@ public sealed class PortFileTransferTests
         Assert.Equal("encrypted", e.Outcome);
         ctx["facts"] = new JsonObject { ["encryption"] = e.Writes["facts.encryption"]!.DeepClone() };
 
-        var send = new SendSalaryFile(ports);
+        var send = new SendSalaryFile(portsBound, files);
         Assert.Equal("uae.wps.exchange.send-salary-file.v2", send.Name);
         var s = send.Run(new NativeAttempt(send.Name, "2.0.0", ctx, new JsonObject(), Now, "test-bank"));
         Assert.Equal("accepted", s.Outcome);
@@ -264,7 +287,8 @@ public sealed class PortFileTransferTests
         var files = new MemoryNativeFiles();
         var transfer = new Recording();
         var ports = new NativePorts(Bindings(perMessage: folders), files, transferOf: _ => transfer);
-        var v2 = SendKeptFile.All(ports).Where(a => a.Name.EndsWith(".v2", StringComparison.Ordinal)).ToList();
+        var portsBound = Bound(Bindings(perMessage: folders), transfer);
+        var v2 = SendKeptFile.All(portsBound, files).Where(a => a.Name.EndsWith(".v2", StringComparison.Ordinal)).ToList();
         Assert.Equal(6, v2.Count);
         foreach (var send in v2)
         {
@@ -283,7 +307,7 @@ public sealed class PortFileTransferTests
             Assert.Equal((message, send.Name), (owner!.Kind, owner.Activity));
             Assert.Equal($"cipher,{message}", System.Text.Encoding.UTF8.GetString(transfer.Files.Snapshot()[path]));
             // The same send v1 reads no encryption fact, and sends the plain file (the bug of Issue I-293).
-            var v1 = SendKeptFile.All(ports).Single(a => a.Name == send.Name.Replace(".v2", ".v1"));
+            var v1 = SendKeptFile.All(portsBound, files).Single(a => a.Name == send.Name.Replace(".v2", ".v1"));
             Assert.Equal("accepted", v1.Run(new NativeAttempt(v1.Name, "1.1.0", ctx, new JsonObject(), Now, "test-bank")).Outcome);
             Assert.Equal($"plain,{message}\r\n", System.Text.Encoding.UTF8.GetString(transfer.Files.Snapshot()[$"centralBank/upload/cb/wps/{message[(message.LastIndexOf('.') + 1)..]}/F-{message}.TXT"]));
             // A refused encryption sends nothing.
@@ -295,7 +319,8 @@ public sealed class PortFileTransferTests
         }
         // A binding that names no folder for a message sends it to the operation's folder.
         var plainBinding = new NativePorts(Bindings(), files, transferOf: _ => transfer);
-        var prc = SendKeptFile.All(plainBinding).Single(a => a.Name == "uae.wps.exchange.send-receipt-confirmation.v2");
+        var plainBindingBound = Bound(Bindings(), transfer);
+        var prc = SendKeptFile.All(plainBindingBound, files).Single(a => a.Name == "uae.wps.exchange.send-receipt-confirmation.v2");
         var c = View();
         var sha = files.Keep("out", "rendered", "PRC1.PRC", "RDR,synthetic\r\n"u8.ToArray());
         c["messages"] = new JsonObject { ["rendered"] = new JsonObject { ["fileName"] = "PRC1.PRC", ["sha256"] = sha } };

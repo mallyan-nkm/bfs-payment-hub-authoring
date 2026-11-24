@@ -46,7 +46,15 @@ public sealed record NativeContent(string ContentType, byte[] Bytes);
 /// <c>&lt;operation&gt;.folder</c> names where it goes, and <c>&lt;operation&gt;.kind</c> its kind), its name and its bytes, and the payment
 /// and leg it belongs to.
 /// </summary>
-public sealed record NativeFilePut(string Operation, string FileName, byte[] Content, string? PaymentId = null, string? Leg = null);
+public sealed record NativeFilePut(string Operation, string FileName, byte[] Content, string? PaymentId = null, string? Leg = null)
+{
+    /// <summary>
+    /// Since 2.2.0 (R-09-293, Issue I-385). The scheme message the file is (the message whose <c>disposition.sentBy</c> names the send,
+    /// R-09-234): the File API keeps the file as that message, in the message's folder where the binding names one
+    /// (<c>&lt;operation&gt;.&lt;message&gt;.folder</c>, R-09-235). None: the binding's <c>&lt;operation&gt;.kind</c> and <c>&lt;operation&gt;.folder</c>.
+    /// </summary>
+    public string? Message { get; init; }
+}
 
 /// <summary>Since 2.1.0. A file put: the transfer's adapter that took it (<c>file-api</c>, <c>sftp</c>, ...), the folder, its name, kind and size.</summary>
 public sealed record NativeFileSent(string Via, string Folder, string FileName, string Kind, int Bytes);

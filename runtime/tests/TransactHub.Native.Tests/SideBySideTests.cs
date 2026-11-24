@@ -211,7 +211,7 @@ public sealed class SideBySideTests(Store store)
         var tampered = await Install("2026.11.23-3", store.BuildA, carried: store.BuildB);
         var future = await Install("2026.11.23-4", store.BuildA, contract: "3.0.0");
         var newer = await Install("2026.11.23-5", store.BuildA, contract: "2.9.0");
-        // Built against 2.1.0, its manifest claiming 1.1.0, a contract 2.x no longer takes (R-09-262).
+        // Built against 2.2.0, its manifest claiming 1.1.0, a contract 2.x no longer takes (R-09-262).
         var claims = await Install("2026.11.23-6", store.BuildA, contract: "1.1.0");
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
@@ -257,13 +257,14 @@ public sealed class SideBySideTests(Store store)
         Assert.Equal(NativeContract.Version, $"{v.Major}.{v.Minor}.{v.Build}");
         Assert.Equal(NativeContract.AssemblyName, typeof(INativeModule).Assembly.GetName().Name);
         // 2.0.0 (R-09-262): the same major, at a minor no later than the runtime's own; every 1.x module is refused. 2.1.0 (R-09-276), a
-        // minor: a 2.0 module runs on it, and a 2.1 module is refused by a 2.0 runtime.
-        Assert.Equal("2.1.0", NativeContract.Version);
+        // minor: a 2.0 module runs on it, and a 2.1 module is refused by a 2.0 runtime. 2.2.0 (R-09-293), a minor: a 2.0 or 2.1 module runs on it.
+        Assert.Equal("2.2.0", NativeContract.Version);
         Assert.True(NativeContract.Supports("2.0.0"));
         Assert.True(NativeContract.Supports("2.1.0"));
+        Assert.True(NativeContract.Supports("2.2.0"));
         Assert.False(NativeContract.Supports("1.0.0"));
         Assert.False(NativeContract.Supports("1.1.0"));
-        Assert.False(NativeContract.Supports("2.2.0"));
+        Assert.False(NativeContract.Supports("2.3.0"));
         Assert.False(NativeContract.Supports("3.0.0"));
         Assert.False(NativeContract.Supports(null));
         Assert.True(NativeContract.Supports("2.0.0", "2.0.0"));

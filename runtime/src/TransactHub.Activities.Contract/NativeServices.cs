@@ -82,7 +82,9 @@ public sealed class NativePortRefused(string port, string message) : Exception(m
 /// <item><c>p.port.party-register.v1</c> <c>lookup</c>: <c>{ kind, field, value }</c> to <c>{ found, key, record }</c>;</item>
 /// <item><c>p.port.encryption.v1</c> <c>encrypt</c>: <c>{ sha256, recipientKey, fileName }</c> (a file the host keeps) to <c>{ sha256, bytes }</c>, the encrypted file kept;</item>
 /// <item><c>p.port.decryption.v1</c> <c>decrypt</c>: <c>{ sha256 }</c> (a file the host keeps) to <c>{ sha256, bytes }</c>, the decrypted file kept;</item>
-/// <item>any port the bank binds to <c>file-transfer</c>: <c>{ sha256, fileName, paymentId, leg, scheme }</c> to <c>{ sent, via, folder, fileName, kind, bytes }</c>, the kept file sent.</item>
+/// <item>any port the bank binds to <c>file-transfer</c>: <c>{ sha256, fileName, paymentId, leg, scheme }</c> to <c>{ sent, via, folder, fileName, kind, bytes }</c>, the kept file sent.
+/// Obsolete since 2.2.0 (R-09-294, Issue I-385), removed at the contract's next major: a module reads the kept file through
+/// <see cref="INativeFiles"/> and puts it through <see cref="INativeBoundPorts.Put"/>, so a port's wire is the module's alone.</item>
 /// </list>
 /// Since 2.0.0 the image answers no scheme's port: a scheme's module builds its own adapter on <see cref="INativeServices.BoundPorts"/>
 /// (the labour ministry's register is the WPS module's, R-09-263).
