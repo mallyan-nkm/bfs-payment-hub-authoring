@@ -78,6 +78,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L48: 'A bank\'s port bindings bind published ports to adapters from a validFrom, each port once per validFrom, with credentials as secretRef only',
   L49: 'A reference table\'s rows fit its columns and key, its editions run in date order, and a referencing column holds the other table\'s keys',
   L50: 'A configuration value read from a reference table names a published table and its columns, for a list parameter',
+  L52: 'Every attempt is at least once: an activity with an outside effect carries an idempotency key read from the header\'s business ids',
 };
 
 // ---------------------------------------------------------------- walking
@@ -663,6 +664,21 @@ export class Checker {
     }
     if (d.effect === 'write' && ['reserve', 'post'].includes(d.type) && !d.compensation && !/release|reverse|verify|undo/.test(d.name)) {
       warn('L20', `${d.name} writes and names no compensation (R-03-12 SHOULD)`);
+    }
+    // L52 (R-03-25, R-03-26, Issue I-303): every attempt is at least once, so an outside effect needs a key the same on every attempt.
+    {
+      let why: string | undefined;
+      if (['write', 'external'].includes(d.effect)) why = `its effect is ${d.effect}`;
+      else if (['reserve', 'hold', 'notify', 'screen'].includes(d.type)) why = `it is a ${d.type}`;
+      else if (d.type === 'exchange' && ['send', 'respond', 'report'].includes(d.mode)) why = `it is an exchange that ${d.mode}s`;
+      else for (const pn of d.ports ?? []) {
+        const ops: any[] = this.byName.get(pn)?.operations ?? [];
+        if (ops.length && ops.every((o) => o.style === 'send')) { why = `its port ${pn} only sends`; break; }
+      }
+      const key = d.idempotencyKey;
+      if (why && !key) err('L52', `${d.name} has an outside effect (${why}) but no idempotency key: every attempt is at least once`);
+      else if (why && (typeof key !== 'string' || !key.includes('header.') || /\b(?:now|clock|ids|uuid|random|attempt)\b/.test(key)))
+        err('L52', `${d.name}'s idempotency key is not the same on every attempt: it must read a business id of the header, not the clock, a new id or the attempt`);
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {

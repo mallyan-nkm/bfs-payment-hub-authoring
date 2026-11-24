@@ -1497,6 +1497,37 @@ if kit_size and (ROOT / "design").is_dir():
                 if said != kit_size:
                     err("L51", "%s:%d" % (f.relative_to(ROOT), n), "counts %d conformance scenarios, but conformance/kit.yaml holds %d: say \"every scenario of conformance/kit.yaml\"" % (said, kit_size))
 
+# L52 (R-03-25, R-03-26, Issue I-303) every attempt of an activity is at least once on every engine (a crash, an expired lock),
+# so an activity with an outside effect carries an idempotency key whether or not it retries: one whose effect is write or
+# external, one whose type changes something outside it (an exchange that sends, responds or reports; a reserve, hold, notify or
+# screen), and one that names a port whose operations only send. The key derives from business ids, the same on every attempt:
+# it reads the header and not the clock, a new id or the attempt.
+OUTSIDE_TYPES = {"reserve", "hold", "notify", "screen"}
+NOT_A_BUSINESS_ID = re.compile(r"\b(?:now|clock|ids|uuid|random|attempt)\b")
+for path, d in docs:
+    if d.get("kind") != "activity":
+        continue
+    why = None
+    if d.get("effect") in ("write", "external"):
+        why = "its effect is %s" % d["effect"]
+    elif d.get("type") in OUTSIDE_TYPES:
+        why = "it is a %s" % d["type"]
+    elif d.get("type") == "exchange" and d.get("mode") in ("send", "respond", "report"):
+        why = "it is an exchange that %ss" % ("report" if d["mode"] == "report" else d["mode"])
+    else:
+        for pn in d.get("ports") or []:
+            ops = (by_name.get(pn) or {}).get("operations") or []
+            if ops and all(o.get("style") == "send" for o in ops):
+                why = "its port %s only sends" % pn
+                break
+    if why is None:
+        continue
+    key = d.get("idempotencyKey")
+    if not key:
+        err("L52", path, "%s has an outside effect (%s) but no idempotency key: every attempt is at least once" % (d.get("name"), why))
+    elif "header." not in key or NOT_A_BUSINESS_ID.search(key):
+        err("L52", path, "%s's idempotency key %r is not the same on every attempt: it must read a business id of the header and not the clock, a new id or the attempt" % (d.get("name"), key))
+
 # ---------------------------------------------------------------- report
 kinds = {}
 for _, d in docs:

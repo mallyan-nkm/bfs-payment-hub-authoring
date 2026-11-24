@@ -235,6 +235,13 @@ CASES = [
     ("M81", "ERROR L51", "design/annex-c-conformance-kit.md",
      "and it is the one place that counts the scenarios", "it holds 55 scenarios, and it is the one place that counts the scenarios",
      "Annex C counts the kit's scenarios again, and wrongly"),
+    # L52 (R-03-26, Issue I-303): every attempt is at least once, so an activity with an outside effect carries a stable key
+    ("M90", "ERROR L52", "factory/p/activities/p.notify.channel.v1.yaml",
+     "effect: write\nidempotencyKey: concat(header.paymentId, ':channel')", "effect: read",
+     "a notify activity that says it only reads and carries no idempotency key"),
+    ("M91", "ERROR L52", "factory/p/activities/p.notify.channel.v1.yaml",
+     "idempotencyKey: concat(header.paymentId, ':channel')", "idempotencyKey: concat(header.paymentId, now())",
+     "an idempotency key that reads the clock, so it changes on every attempt"),
 ]
 
 

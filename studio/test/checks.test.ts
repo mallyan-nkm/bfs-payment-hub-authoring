@@ -123,3 +123,23 @@ describe('mutation cases', () => {
     expect(lintScript('export async function run() { return String(Date.now()); }').length).toBe(1);
   });
 });
+
+describe('every attempt is at least once (L52, R-03-25, R-03-26, Issue I-303)', () => {
+  it('needs an idempotency key on an activity with an outside effect, read from the header, the same on every attempt', () => {
+    expect(fire('L52', () => {})).toEqual([]);
+    const noKey = fire('L52', (find) => {
+      const a = find('p.notify.channel.v1');
+      a.effect = 'read';
+      delete a.idempotencyKey;
+    });
+    expect(noKey.map((i) => i.message)).toEqual([expect.stringMatching(/p\.notify\.channel\.v1 has an outside effect \(it is a notify\)/)]);
+    const clock = fire('L52', (find) => { find('p.notify.channel.v1').idempotencyKey = 'concat(header.paymentId, now())'; });
+    expect(clock).toHaveLength(1);
+    const send = fire('L52', (find) => {
+      const a = find('uae.wps.exchange.send-salary-file.v1');
+      a.effect = 'read';
+      delete a.idempotencyKey;
+    });
+    expect(send.map((i) => i.message)).toEqual([expect.stringMatching(/an exchange that sends/)]);
+  });
+});
