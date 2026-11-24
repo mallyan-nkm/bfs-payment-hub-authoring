@@ -2540,6 +2540,24 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Ask DIB whether its AML service records a case per request. If it does, release `b.screen.employer-aml.v1` 1.1.0 as `external` with an idempotency key on the payment's id; if not, nothing changes.
 
+## I-340. A bank's second table approval cannot build its configuration release
+
+**Issue.** Approving a bank's own reference table builds the bank's configuration release (R-11-52), named by the configuration set's release (and `+bindings.<release>` when port bindings are released, R-11-47). When a release of that name is already on the content branch, a second approval that changes only a table builds a release of the same name with other content, and is refused: `R-09-21 The branch main already holds other content for ... releases/configuration/example-bank/1.11.0/...`. So, after the configuration set's release has been built once, a bank cannot approve a new edition of its calendar, its cut-offs or a new table of its own without also releasing a new configuration set. Found while recording video 5a: the configuration set (with the cut-off edition in its change set) was approved, then a new table `b.ref.payroll-desks.v1` was refused. The video approves the new table first, which builds the release that was not there yet.
+
+**Recommendation.** Name a configuration release by everything it carries, as the port bindings already are: for example `<configuration set release>+tables.<n>`, `n` counting the bank's table approvals since that set release, or a hash of the reference tables' releases. Then the runtime's release ids, the tag pattern in `studio/src/content/github.ts`, R-11-47 and R-11-52 change with it, with a test in `studio/test/bank-calendar.test.ts` that approves two table editions in turn under one configuration set release.
+
+## I-341. The bench and the tests run only published releases
+
+**Issue.** The test bench (`POST /api/bench/run`) and a stored test run their target from the published releases: a draft activity is `404 No <name>`. So a designer who writes a new activity and its script cannot run it before it is published: the activity is approved and published first, its tests are saved from the bench afterwards, in a change set of their own, and until then its tests gate stays red ("No test expects: pass, reject"). Part 8 says AI drafts a script with its tests, and R-11-19 says approval runs the tests that target a member with the whole set in place, which suggests tests are written before the approval; the spec does not say whether the bench runs drafts. Video 5b shows the order the studio allows: publish, then bench, then tests.
+
+**Recommendation.** Decide whether the bench runs the signed-in maker's drafts as a working set, as the checks already do (`gov.draftSet`). If it should, resolve the target and every call from the tenant's drafts first on the bench and in a draft test's run, mark such a run as made with drafts, and add a requirement and a black-box test: an activity draft with its script runs on the bench, its tests are saved as drafts in the same change set, and approval publishes the three together.
+
+## I-342. A scripted check must say it reads outside state
+
+**Issue.** The activity schema lets a `validate` or `decide` activity without rule sets have only `effect: read` (`spec/schemas/activity.schema.json`, allOf 3), so that a check against an outside register is not called pure. A check written as a script that reads only the context, such as `uae.wps.validate.pay-period.v1` in video 5b, is pure, but the schema refuses `effect: pure` for it, so it is declared `read`, and its retry and idempotency reasoning (R-03-25) treats it as a read.
+
+**Recommendation.** Allow `effect: pure` for a `validate` or `decide` activity bound to a script with no ports, keep `read` required when it names ports, and add the mutation case and the check to the catalogue in `design/05-workflow-dsl.md` as `spec/CLAUDE.md` asks.
+
 ## Not done, and why
 
 | Story | Why |

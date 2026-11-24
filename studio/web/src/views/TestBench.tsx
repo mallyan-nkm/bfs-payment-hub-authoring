@@ -427,7 +427,7 @@ function SaveAsTest({ report, source }: { report: TestRunReport; source?: any })
     return e;
   };
   const testDoc = () => ({
-    kind: 'test', id, release: '1.0.0', title, target: source.target, level: source.level ?? report.level, evaluationDate: source.evaluationDate ?? '2026-11-17',
+    kind: 'test', id, title, target: source.target, level: source.level ?? report.level, evaluationDate: source.evaluationDate ?? '2026-11-17',
     ...(source.tenant ? { tenant: source.tenant } : {}), ...(source.bench?.length ? { bench: source.bench } : {}), given: source.given ?? {}, expect: expect(),
   });
   const verify = async () => {

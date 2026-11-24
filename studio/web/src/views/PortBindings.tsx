@@ -66,6 +66,7 @@ export function PortBindings() {
         {d.released ? <>Released: <code>{d.released.release}</code>. </> : <>Not released from the studio yet: the runtime reads {d.runtime.map((r: any) => <code key={r.file}>{r.file.split('/').pop()}</code>).reduce((a: any, b: any) => [a, ', ', b])}. </>}
         {d.draft ? <Badge tone="warn">draft {d.draft.release}</Badge> : <>Editing release <code>{base.release}</code>.</>}
       </p>
+      <div className="table-wrap">
       <Table size="small" className="grid small" aria-label="Port bindings">
         <TableHeader><TableRow><TableHeaderCell>Port</TableHeaderCell><TableHeaderCell>Adapter</TableHeaderCell><TableHeaderCell>Valid from</TableHeaderCell><TableHeaderCell>Settings (key=value)</TableHeaderCell><TableHeaderCell>Secret reference</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
         <TableBody>
@@ -86,6 +87,7 @@ export function PortBindings() {
           ))}
         </TableBody>
       </Table>
+      </div>
       {configurator && (
         <div className="row">
           <Button onClick={() => setRows([...rows, { port: d.ports[0]?.name ?? '', adapter: '', validFrom: new Date().toISOString().slice(0, 10), settings: '', secretRef: '' }])}>Add binding</Button>

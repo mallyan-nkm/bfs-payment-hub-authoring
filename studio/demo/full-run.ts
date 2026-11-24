@@ -15,7 +15,7 @@ import { BANK, LAPTOP, ROOT, URLS, call, runtimeGo, runtimeSignIn, sh, stackUp, 
 //      file transfer, put in force on consent.
 //   2. The operations console's upload page (POST /ops/api/upload, which posts to the File API's POST /files/ui): a salary file
 //      starts payment P1 on A; its outgoing SIF leaves through the File API's outbox for the Central Bank's folder on the SFTP server.
-//   3. The studio: the synthetic scheme uae.demo, built by the platform's designer (as demo/build.ts builds it), on the bench.
+//   3. The studio: the synthetic scheme uae.demo, built by the platform's designer (test/blackbox/demo-scheme.ts), on the bench.
 //   4. The studio: the bank licenses uae.demo (its configurator proposes, its approver approves, Issue I-205), which builds the
 //      bank's distribution B; the bank accepts the scheme and enables its rail.
 //   5. B installed and activated with consent beside A: A drains while P1 waits; the new values put in force.
@@ -109,7 +109,7 @@ export function scenes(d: Director): Scene[] {
     if (!d.dry) d.pace = { ...NORMAL, steps: 8, settle: 60, after: 150, highlight: 0, typeDelay: 10, tail: 0.4 };
     try { await fn(); } finally { d.pace = was; }
   };
-  // ------------------------------------------------------------ studio helpers (as demo/build.ts)
+  // ------------------------------------------------------------ studio helpers
   const editor = async (kind: string, doc: any) => {
     await go(`editors?kind=${kind}`);
     await d.click(p().getByRole('button', { name: 'Start new' }));

@@ -1,0 +1,239 @@
+1
+00:00:02,061 --> 00:00:21,837
+This video shows the studio as the platform's designer and developer use it. They write the shared content every bank runs: the data, the rules, the activities, the workflows, the schemes and their connections. And where a form is not enough, a developer writes a script. Every value you will see is made up for training.
+
+2
+00:00:23,449 --> 00:00:42,435
+We are signed in as the workflow designer. The top bar says shared content: what we write here is the platform's, not one bank's. The left bar lists the designer's surfaces: the designer, the editors, the catalogue, the data, the assistant, import, the test bench, the conformance kit, export and governance.
+
+3
+00:00:44,045 --> 00:01:03,437
+The catalogue lists every published artefact. The factory is the content the platform ships, in scopes. p is the platform, shared by every scheme. U A E p is the U A E cluster's platform. And U A E W P S is the salary scheme. A scheme may use its cluster and p. p uses nothing else.
+
+4
+00:01:05,037 --> 00:01:20,610
+Every name has four parts: the scope, the type, the name, and the major version. U A E W P S, validate, salary file, v one. A release inside the major is three numbers. A published release is never edited: a change is a new release.
+
+5
+00:01:22,216 --> 00:01:35,826
+Search finds an artefact by name or by the data it touches. Here, iban. The activity page says what the block reads and writes, its outcomes, its releases, who uses it, what it uses, and the tests that target it.
+
+6
+00:01:40,597 --> 00:01:57,642
+Every workflow works on one context, the canonical model, in ISO 20022 terms. Only a map touches another format. The ISO data page lists every path, with the blocks that read it and the blocks that write it. Here, the instructed amount.
+
+7
+00:01:59,243 --> 00:02:12,725
+The canonical model, as a tree, with each element's ISO type. A field a scheme needs that ISO does not have is a registered extension, such as the W P S salary fields. There is no untyped field.
+
+8
+00:02:14,330 --> 00:02:28,175
+The code registry holds the reason codes, from the ISO code sets, and says which blocks give each one. And the sample messages: for every scheme message, a valid sample and invalid ones, each proven against its checks.
+
+9
+00:02:29,777 --> 00:02:44,283
+A rule is one check that answers yes or no. Ours checks the salary month on a W P S file: six digits, month and year, and month thirteen does not exist. The rule editor is a form. We give the rule its name and title.
+
+10
+00:02:50,738 --> 00:03:05,052
+When: the fact it looks at, the W P S batch, called w. Where: the salary month does not match a real month. Then: reject the file, with the path of the wrong value and the reason code D T zero one, an invalid date.
+
+11
+00:03:11,913 --> 00:03:28,190
+Now its examples, each a small test. October passes. Month thirteen fails with D T zero one. And the edge: December, the last real month, passes. The gates on the right run on every change: the schema, the static checks, and every example.
+
+12
+00:03:36,084 --> 00:03:51,166
+Break it on purpose: give the passing example month zero zero. The rule rejects it, so that example turns red and shows what really happened. Here the example was wrong, not the rule, so we put October back. Every example is green again.
+
+13
+00:03:52,771 --> 00:04:06,573
+We save the draft and request its release. A checker, another person, approves it as a version. Rules also come as decision tables, rows of when and then, in their own editor, with a check for gaps and overlaps.
+
+14
+00:04:13,768 --> 00:04:28,637
+The workflow designer. We open the corporate payment workflow, the platform's workflow for an outward file. On the left is its text, on the right the same workflow drawn as blocks. The two stay in step, and every check runs on every edit.
+
+15
+00:04:30,239 --> 00:04:44,895
+Each block is a call to an activity, with what to do on each outcome that is not the main one. Its interface names a slot, scheme leg, which a scheme fills, and two hook points, before release and on close, where a bank plugs in its own steps.
+
+16
+00:04:46,496 --> 00:04:56,650
+The outline shows the steps as a list. The expanded form is what the engines run: each composite step opened into its subflow, and nobody edits it by hand.
+
+17
+00:04:58,253 --> 00:05:12,290
+A composite is one step in a workflow that does several things underneath: here, submit the salary file and wait for the scheme's answer. The wait lives in its subflow, shown below the composite's contract, on a canvas of its own.
+
+18
+00:05:13,899 --> 00:05:29,173
+A leg is the scheme's part of a payment. The W P S salary file leg fills the corporate workflow's slot: it checks the file and each line, renders the file for the scheme, submits it, and ends as settled, rejected, returned or pending.
+
+19
+00:05:30,777 --> 00:05:47,715
+A scheme's manifest holds its dispatch table: for each message, what to do with it. A salary file starts an outward corporate payment, read by its intake map, with the W P S leg in the slot. An answer from the scheme is delivered to the workflow that awaits it.
+
+20
+00:05:49,321 --> 00:06:01,374
+A port is a door to another system, here the W P S system: its party, and its operations, to send a file and to receive one. The bank decides later which adapter answers it.
+
+21
+00:06:02,976 --> 00:06:17,866
+Every port has a simulator, a stand-in for the bench and the tests. It must carry the eight standard scenarios: accept, reject, no reply, a late reply, a duplicate, and more. A simulator is never part of a package a bank promotes.
+
+22
+00:06:19,472 --> 00:06:38,159
+Now the developer's part. Some checks are more than a rule. W P S pays each employee for a pay period, with a start date, an end date, and the days paid. Our new activity checks that each line's period lies inside the file's salary month, starts before it ends, and pays the right number of days.
+
+23
+00:06:39,772 --> 00:06:54,001
+First the contract: what the activity is, before how it works. Its name in the W P S scope, a title, and a description. Its type is validate, because it checks. Its level is batch: it sees the whole file at once.
+
+24
+00:06:58,716 --> 00:07:15,334
+What it may read: the W P S salary fields of the file, and its lines. What it may write: its findings, and nothing else. A script that touches anything else is stopped. Its outcomes: pass, the main one, and reject, which every workflow that uses it must handle.
+
+25
+00:07:16,936 --> 00:07:32,381
+Its implementation is a script, in TypeScript. A check without rule sets is declared with effect read. The form is complete. And the gates say what is missing: the schema and the static checks are green, but no test yet expects pass or reject.
+
+26
+00:07:33,984 --> 00:07:47,338
+We save the contract as a draft. Now the script-behind editor appears. A script sees only what the studio gives it: the context, ports, rules, parameters, a clock, ids and a log. Nothing else.
+
+27
+00:07:48,944 --> 00:08:07,866
+A first try. We start by reading today's date from the computer, and save. The studio refuses it: the script uses new Date, outside the injected interface. A script never reads the system clock, randomness, the network, files or the environment, so that every run of it gives the same answer.
+
+28
+00:08:09,469 --> 00:08:24,530
+Now the real script. It reads the salary month, month then year. For each line, it takes the start and end dates, and checks that both fall in that month, and that the start is not after the end. Dates are ISO text, so this needs no clock at all.
+
+29
+00:08:26,991 --> 00:08:43,375
+Then the days paid must be the days from start to end, both included. Each problem is a finding with a path, a reason code and a message. The findings are written to the context, a line goes to the log, and the outcome is reject when there is a finding, else pass.
+
+30
+00:08:44,977 --> 00:08:57,755
+Save the script. This time it passes the check, and is saved beside the activity's draft, in the same change set. The generated types give a developer the exact shape of what the script reads and writes.
+
+31
+00:08:59,359 --> 00:09:12,777
+The bench runs published releases, so the checker approves the activity and its script now. Its tests follow in a change set of their own. Once published, its behaviour is fixed: a change to the script is a new release.
+
+32
+00:09:14,379 --> 00:09:24,299
+On the bench, we choose our activity and give it a small context: a salary file for October, with two lines, each paid for the whole month, thirty one days.
+
+33
+00:09:26,404 --> 00:09:34,318
+Run. The outcome is pass. We keep this run as a test: an id, a title, and the studio takes the assertions from the run.
+
+34
+00:09:40,837 --> 00:09:51,226
+Now the second line pays thirty days for a thirty one day period. Run. The outcome is reject. We keep it as a second test. Now each outcome has a test.
+
+35
+00:10:01,653 --> 00:10:11,338
+The two tests are drafts too. In Governance we request their release, and the checker approves them. From now on, a change that breaks either one stops the approval.
+
+36
+00:10:16,904 --> 00:10:25,373
+On the test bench's tests tab we find them and run them. Both pass. Every stored test runs the same way, alone or all together.
+
+37
+00:10:29,826 --> 00:10:43,202
+Now we use the activity in a workflow: a W P S leg with the new check. We start a blank leg and paste its header: it fills the corporate workflow's scheme leg slot, and says what it reads and how it can end.
+
+38
+00:10:51,713 --> 00:11:03,851
+On the canvas we insert steps from the palette. A call to the block that sets the business date. Then the W P S file checks, whose repair and reject outcomes end the leg as rejected.
+
+39
+00:11:27,556 --> 00:11:41,166
+Then our own new block, the pay period check. The canvas shows its reject outcome in red until we say what to do. It ends the leg as rejected. The rest of the leg is built the same way, so we paste the finished steps.
+
+40
+00:11:49,212 --> 00:11:58,108
+The checks say there is no error: every outcome is handled, and every block exists and is published. We save the leg and the checker publishes it.
+
+41
+00:12:05,521 --> 00:12:15,248
+Now the leg on the bench, with simulators for the W P S system and the bank calendar, and a sample salary file of two lines, each paid for October.
+
+42
+00:12:39,727 --> 00:12:48,580
+Run. The business date, the file checks, our pay period check passes, each line is checked, the file is rendered and submitted, and the leg settles.
+
+43
+00:12:50,181 --> 00:13:01,487
+Now a file with a mistake. We add a sample file on the bench: the same file, but its second line pays thirty days. Samples are synthetic, never real names or accounts.
+
+44
+00:13:08,949 --> 00:13:17,333
+Run. The file checks pass, but our pay period check rejects the file, and the leg ends as rejected. Nothing was sent to the scheme.
+
+45
+00:13:18,937 --> 00:13:31,907
+The debugger shows how a run got there. Instead of run, we choose debug step by step. On the left, the steps of the leg. On the right, what just happened, what it decided, what data changed, and the whole context.
+
+46
+00:13:33,509 --> 00:13:47,823
+Step into reads the file through the intake map, then enters the leg, and its steps appear. We set a breakpoint on the pay period step, and continue. The run stops there. Step into, and the script has run: its outcome is reject.
+
+47
+00:13:53,209 --> 00:14:06,883
+What changed: the findings our script wrote, with the line, the field, and the reason code. Step back moves the run back one event, exactly, because every run is on the studio's own clock. Continue runs to the end.
+
+48
+00:14:08,485 --> 00:14:25,018
+Beside every editor sits the assistant. We open our activity again and open the panel. Its first tab, what is happening, needs no model. Click into a field, and it says what the field means, the values it takes, an example and the usual mistake. Here, the effect.
+
+49
+00:14:26,619 --> 00:14:35,451
+Below it, the document explained in plain words, a checklist of what is left before it can be published, and the next step. It follows every edit.
+
+50
+00:14:37,053 --> 00:14:53,479
+The second tab, ask, is Claude with tools: it reads, runs the bench, and proposes changes that you allow once, allow always, or deny. It never publishes. It needs a model key on the studio server. In this recording there is none, so it says so plainly.
+
+51
+00:14:55,085 --> 00:15:12,365
+The A I assistant page asks for a whole draft from a template: a contract, a rule, a script, a simulator or a map, from a scheme's text and samples. A draft comes back with tests and every gate, or shows the gate that is red. Nothing is saved until you save it.
+
+52
+00:15:13,973 --> 00:15:26,538
+Import brings a scheme in from the source code of an older system. An A I coding agent reads the source with the studio's extraction prompt and writes a bundle. We use the training bundle, and preview it.
+
+53
+00:15:28,140 --> 00:15:42,156
+The preview says whether it may be imported: its coverage of the source, its findings, its own tests run against the bundle, and its checks. Imported, everything is a draft, and nothing is a version until a checker approves it.
+
+54
+00:15:43,765 --> 00:15:56,202
+A workflow is independent of the engine that runs it. The export builds a package for one of four engines: Temporal, D T F X, Flowable or Elsa. Here, the corporate workflow for Temporal.
+
+55
+00:15:57,804 --> 00:16:11,414
+The same workflow for Flowable, and for Elsa, and for D T F X. Each package holds the expanded workflow, a worker per task queue, and its manifest. The portability notes say what each engine does differently.
+
+56
+00:16:23,265 --> 00:16:36,491
+The conformance kit proves an engine runs the language the same way. Its scenarios run here on the studio's interpreter, and the same scenarios run on each of the four engines from the command line. Run all.
+
+57
+00:16:38,093 --> 00:16:46,562
+Governance. Users and roles: who may do what, in which scopes. The server checks every write, request and approval against this table.
+
+58
+00:16:48,163 --> 00:17:03,096
+Packs: each scope released as a pack with its release gate, every test green and every check passed. Pins and retirement: which releases banks still use. And the audit log, a chain of every save and approval, which the studio can verify.
+
+59
+00:17:04,696 --> 00:17:23,747
+The studio's only store is a GitHub branch. Each change set in progress is a branch of its own, and an approval is one commit on the content branch, or a pull request. A published file is never rewritten. When a bank approver approves a bank's change, the studio builds and signs the bank's distribution.
+
+60
+00:17:25,361 --> 00:17:46,331
+That is the studio for the designer and the developer. The catalogue and the data. A rule and its examples. Workflows on the canvas, schemes, ports and simulators. A new activity written with a script, tested, used in a leg, run on the bench and in the debugger. Then the assistant, import, the export to four engines, the kit, and governance.

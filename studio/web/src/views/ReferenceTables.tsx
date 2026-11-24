@@ -43,7 +43,10 @@ export function ReferenceTables() {
     setValidFrom('');
     setIssues(table.issues);
   }, [table?.name, data.data, fresh]);
-  if (data.loading) return <Loading />;
+  useEffect(() => {
+    if (fresh && data.data?.tables?.some((t: any) => t.name === fresh.name && t.draft)) setFresh(undefined);
+  }, [data.data, fresh]);
+  if (data.loading && !data.data) return <Loading />;
   if (data.error) return <ErrorBox error={data.error} />;
   const newTable = configurator && (creating || !table) && (
     <NewTable tenant={tenant} onStart={(d) => { setFresh(d); setCreating(false); setName(d.name); }} onCancel={table ? () => setCreating(false) : undefined} />
@@ -63,7 +66,8 @@ export function ReferenceTables() {
         const r = await post('/api/drafts', { doc: doc() });
         setIssues(r.issues);
         setNote(`Saved as draft ${r.draft.key}. A bank approver approves it into a configuration release.`);
-        setFresh(undefined);
+        // A new table stays on screen: it is put down only once the reloaded list holds its draft (below), or the editor
+        // would fall back to the first table while the list reloads.
         data.reload();
       }
     } catch (e: any) { setError(e.message); }
@@ -83,6 +87,7 @@ export function ReferenceTables() {
         A new edition starts at its valid-from date; the next release is {table.start.release}.
       </p>
       <label className="field"><span>New edition valid from</span><Input aria-label="Valid from" type="date" value={validFrom} disabled={!configurator} onChange={(e) => setValidFrom(e.target.value)} /></label>
+      <div className="table-wrap">
       <Table size="small" className="grid small" aria-label={`Rows of ${table.name}`}>
         <TableHeader><TableRow>{cols.map((c) => <TableHeaderCell key={c.id}>{c.title ?? c.id}</TableHeaderCell>)}<TableHeaderCell /></TableRow></TableHeader>
         <TableBody>{rows.map((r, i) => (
@@ -100,6 +105,7 @@ export function ReferenceTables() {
           </TableRow>
         ))}</TableBody>
       </Table>
+      </div>
       {configurator && (
         <div className="row">
           <Button onClick={() => setRows([...rows, {}])}>Add a row</Button>
@@ -150,6 +156,7 @@ function NewTable({ tenant, onStart, onCancel }: { tenant: string; onStart: (doc
       <label className="field"><span>Name</span><Input aria-label="Table name" contentBefore="b.ref." contentAfter=".v1" value={short} onChange={(e) => setShort(e.target.value.toLowerCase())} /></label>
       <label className="field"><span>Title</span><Input aria-label="Table title" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
       <label className="field"><span>Domain</span><Input aria-label="Table domain" value={domain} onChange={(e) => setDomain(e.target.value)} /></label>
+      <div className="table-wrap">
       <Table size="small" className="grid small" aria-label="Columns of the new table">
         <TableHeader><TableRow><TableHeaderCell>Id</TableHeaderCell><TableHeaderCell>Type</TableHeaderCell><TableHeaderCell>Title</TableHeaderCell><TableHeaderCell>Required</TableHeaderCell><TableHeaderCell>Allowed values</TableHeaderCell><TableHeaderCell>Key</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
         <TableBody>{columns.map((c, i) => (
@@ -164,6 +171,7 @@ function NewTable({ tenant, onStart, onCancel }: { tenant: string; onStart: (doc
           </TableRow>
         ))}</TableBody>
       </Table>
+      </div>
       <div className="row">
         <Button onClick={() => setColumns([...columns, { id: '', type: 'text', title: '', required: false, allowed: '' }])}>Add a column</Button>
         <Button appearance="primary" onClick={() => void start()} disabled={!short || !title || !domain}>Start the table</Button>

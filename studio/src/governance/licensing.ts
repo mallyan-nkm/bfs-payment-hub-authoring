@@ -56,7 +56,9 @@ export function licensing(env: StudioEnv, tenant: string) {
     bank: tenant,
     release: lock?.release ?? null,
     licensedSchemes: licensed,
-    schemes: env.store.byKind('scheme').filter((e) => e.tenant === OWNER_TENANT).map((e) => ({
+    // One row per scheme, at its latest published release: the store holds every release of a scheme's manifest.
+    schemes: [...env.store.byKind('scheme').filter((e) => e.tenant === OWNER_TENANT && e.status === 'published')
+      .reduce((m, e) => (m.has(e.doc.scope) && compareReleases(m.get(e.doc.scope)!.release || '1.0.0', e.release || '1.0.0') >= 0 ? m : m.set(e.doc.scope, e)), new Map<string, Entry>()).values()].map((e) => ({
       scope: e.doc.scope, title: e.doc.title, release: e.release, provenance: e.doc.provenance?.status,
       licensed: licensed.includes(e.doc.scope), bound: bound.includes(e.doc.scope),
     })).sort((a, b) => a.scope.localeCompare(b.scope)),

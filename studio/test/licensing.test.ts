@@ -49,6 +49,12 @@ describe('the schemes a bank licenses (R-11-75)', () => {
     expect(r.body.schemes.find((s: any) => s.scope === 'uae.wps')).toMatchObject({ licensed: true, bound: true });
     expect(r.body.schemes.find((s: any) => s.scope === S)).toMatchObject({ licensed: false, bound: false });
     expect(r.body.draft).toBeNull();
+    // One row per scheme, at its latest release, though the store holds every release of its manifest.
+    const wps = r.body.schemes.filter((s: any) => s.scope === 'uae.wps');
+    expect(wps.length).toBe(1);
+    const releases = env.store.byKind('scheme').filter((e) => e.doc.scope === 'uae.wps').map((e) => e.release);
+    expect(releases.length).toBeGreaterThan(1);
+    expect(wps[0].release).toBe([...releases].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop());
   });
 
   it('reads the schemes a configuration binds: accepted, enabled as a rail, dialled or hooked; never a platform scope', () => {

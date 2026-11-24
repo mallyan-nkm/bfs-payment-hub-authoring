@@ -42,6 +42,25 @@ describe('import: the training bundle', () => {
     expect(env.store.drafts('owner')).toEqual([]);
   });
 
+  it('stays clean once a designer has published a scheme activity with a script of its own: the bundle is the factory\'s', async () => {
+    const env = freshEnv();
+    const as = (user: string, method: string, p: string, body: any = {}) => dispatch(env, { method, path: p, query: {}, body, user });
+    const act = {
+      kind: 'activity', name: 'uae.wps.validate.studio-made.v1', release: '1.0.0', title: 'A check written in the studio', type: 'validate', level: 'batch',
+      reads: ['ext.uae.wps'], writes: ['facts.validation'], outcomes: [{ name: 'pass', primary: true }, { name: 'reject' }], effect: 'read',
+      implementation: { binding: 'script', language: 'typescript', script: 'scripts/uae.wps.validate.studio-made.v1.ts' },
+      provenance: { origin: 'authored', status: 'provisional', clauses: ['Test'] },
+    };
+    const saved = await as('shared.designer', 'POST', '/api/drafts', { doc: act });
+    expect((await as('shared.designer', 'POST', '/api/scripts', { activity: act.name, source: 'export async function run({ ctx }) {\n  return \'pass\';\n}\n' })).status).toBe(200);
+    await as('shared.designer', 'POST', '/api/request-release', { key: saved.body.draft.key });
+    expect((await as('shared.checker', 'POST', '/api/publish', { key: saved.body.draft.key })).status).toBe(200);
+    const bundle = wpsTrainingBundle(env);
+    expect(bundle.some((f) => f.name.includes('studio-made'))).toBe(false);
+    const r = await analyse(env, readBundle(bundle), OPTS);
+    expect(errors(r)).toEqual([]);
+  });
+
   it('applies as drafts only, then publishes through maker-checker and runs like authored content', async () => {
     const env = freshEnv();
     const res = await apply(env, readBundle(wpsTrainingBundle(env)), { ...OPTS, actor: 'shared.designer', bankActor: 'example.maker' });

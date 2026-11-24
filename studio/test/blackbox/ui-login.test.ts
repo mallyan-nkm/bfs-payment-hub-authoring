@@ -118,6 +118,30 @@ describe('sign-in in the web app', () => {
     await p.close();
   });
 
+  it('lets a bank configurator start a table of its own and keeps it on screen once saved (R-11-106)', async () => {
+    const { p, problems } = await fresh();
+    await signInFromStudio(p, 'example.maker');
+    const tables = p.locator('[aria-label="Reference tables"]');
+    await tables.getByRole('button', { name: 'New table' }).click();
+    const form = p.locator('[aria-label="New reference table"]');
+    await form.getByLabel('Table name').fill('ui-desks');
+    await form.getByLabel('Table title').fill('Desks, from the browser test');
+    await form.getByLabel('Table domain').fill('desks');
+    await form.getByRole('button', { name: 'Start the table' }).click();
+    await expect.poll(() => tables.getByLabel('Reference table').inputValue()).toBe('b.ref.ui-desks.v1');
+    await tables.getByLabel('Valid from').fill('2027-01-01');
+    await tables.getByRole('button', { name: 'Add a row' }).click();
+    await tables.getByLabel('code 1', { exact: true }).fill('D-01');
+    await tables.getByRole('button', { name: 'Save as draft' }).click();
+    await tables.getByText(/Saved as draft .*b\.ref\.ui-desks\.v1/).waitFor();
+    // Once the list has reloaded, the editor still shows the new table and its first edition, not the first table of the list.
+    await tables.getByText(/draft 1\.0\.0 in progress/).waitFor();
+    expect(await tables.getByLabel('Reference table').inputValue()).toBe('b.ref.ui-desks.v1');
+    expect(await tables.getByLabel('code 1', { exact: true }).inputValue()).toBe('D-01');
+    expect(problems).toEqual([]);
+    await p.close();
+  });
+
   it('signs out: the session ends and the API answers 401', async () => {
     const { p } = await fresh();
     await signInFromStudio(p, 'workflow.designer');
