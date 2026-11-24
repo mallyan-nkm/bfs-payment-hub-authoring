@@ -2860,6 +2860,36 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-09-298 to R-09-300).** The engine host's DTFx and Elsa services set each attempt's deadline on the worker's call (`WorkerRouter.AbandonAt`, the wall clock's moment of the step's deadline): at it the call is abandoned and the attempt answers a retryable `Timeout`, marked late, which frees its work item or slot, and the step retries; the worker's later answer is told to `WorkerRouter.Late` and kept on the service's history as a `late-answer` fact (its step, attempt, kind and outcome, never its writes). The payment's chain records the attempt that timed out (`error`, `Timeout`) and the one that answered, never the late answer. DTFx's attempt timer (`IEngine.AttemptTimer`) fires on the host's clock though work items are in flight (`VirtualClock.ScheduleOnTime`, kept on the episode's fact for a rebuilt service); its other timers keep their semantics. Elsa's timers no longer wait for an attempt of their instance in its call, and Elsa's service runs its attempts off the clock's thread at any concurrency. Temporal and Flowable already behave so: their binding places the deadline (R-09-299, Part 9's table). Evidence: `RestartTests.Dtfx_abandons_an_attempt_at_its_deadline_and_retries_it` and `Elsa_abandons_an_attempt_at_its_deadline_and_retries_it`, each on PostgreSQL and SQL Server, with one work item at once (a three-second timeout, a ten-second call: the retry reaches the worker before the first call answers, the payment ends `done` with the retry's write, the late answer is on the history); the side-by-side tests still pass. The slow enrich case: the engine host tests' check activity gives its slow call (25 s) an attempt timeout of a minute in its policy, as a step whose real calls are slow must. The factory's defaults (5 s to 10 s an attempt by type) are already enforced on Temporal, the laptop's default engine, by its Start-To-Close; the time an attempt waits for a free slot of DTFx's service counts against it (Issue I-397).
 
+## I-397. On the engine host, the time an attempt waits for a free slot counts against its timeout
+
+**Issue.** R-05-54 says the time an attempt waits in a queue does not count against its timeout. On the engine host (R-09-298) DTFx's and Elsa's services end an attempt at the deadline the step set when it scheduled the attempt, which its timer races too. When every slot of the service is taken (`TH_HOST_SERVICE_CONCURRENCY` calls in flight), an attempt waits for one, and that wait counts: an attempt whose deadline passed before it started sends nothing and is a `Timeout`. Temporal's Start-To-Close counts from when a worker starts the attempt.
+
+**Recommendation.** Have the services measure an attempt's budget from when its call starts (the deadline less the step's now, added to the call's start), and the attempt timer fire at that time, so the service's own queue never counts; or accept it and size the concurrency, with the owner (Issue I-362).
+
+## I-398. Native contract 2.2.0 was needed for WPS's sends to use the bound ports
+
+**Issue.** Issue I-385 asked WPS's sends to use `INativeBoundPorts.Put`. The 2.1 file put names no scheme message, so the File API would have kept each file as the binding's `submit-file.kind`, not as the message its send sends (R-09-234), and put it in no message's folder (R-09-235). This change made contract 2.2.0, a minor: `NativeFilePut.Message` (R-09-293). A distribution built by a studio of 2.2.0 needs runtime images of 2.2.0; 2.0 and 2.1 modules run on them unchanged.
+
+**Recommendation.** Confirm the minor with the owner, and move the runtime images to 2.2.0 before a studio of 2.2.0 builds a bank's distribution (`docs/runtime/PACKAGING-AND-DEPLOYMENT.md` section 3.4).
+
+## I-399. A distribution built at factory 1.23.0 that carries WPS is refused at install
+
+**Issue.** At install the release API counts a module's activities as the manifest lists them (R-09-291), because it does not load the module. At factory 1.23.0 `uae.wps.post.return.v1` was a builtin on core banking that did not say `native: true`, so the WPS module's list does not name it, though the module serves it. Such a distribution is refused at install with `native.ActivityUnserved`; the native host, which reads what the module serves, would take it. No bank is live, and the laptop builds from the current studio.
+
+**Recommendation.** Rebuild every distribution at factory 1.24.0, as section 3.3 says. If one must be kept, let the release API take an activity of a scope whose module the distribution carries and leave its check to the load.
+
+## I-400. An imported scheme's posting is a script-behind that cannot reach core banking
+
+**Issue.** R-09-297 imports a builtin of the accounting or reservation service in an imported scheme as a script-behind, because the scheme brings no native module. In the studio it runs the reference behaviour. On a runtime a script runs on the worker with the injected interface only, and the image calls core banking only through the platform module's gate (R-09-279), so the script has no way to post until someone writes the posting in a module.
+
+**Recommendation.** Decide with the owner how an imported scheme posts: through the platform's own posting (`p.post.accounting.v1`, with the scheme's template), which the import could propose as the mapping, or with a native module the bundle format would then carry.
+
+## I-401. No engine host test of a call that outlives its attempt timeout on Temporal or Flowable
+
+**Issue.** R-09-299 says Temporal's and Flowable's bindings place an attempt's deadline on the engine host. The evidence is their code (`TemporalEngine.Attempt`, `FlowableBinding.ArmAttemptTimer`) and the conformance kit's timeout scenarios; no engine host test runs a worker's call that outlives its timeout on either, as `RestartTests` now does on DTFx and Elsa.
+
+**Recommendation.** Run the same test (`OutlivesItsTimeout`) on Temporal and Flowable: on Flowable with a BPMN whose task has its attempt timer boundary.
+
 ## Not done, and why
 
 | Story | Why |
