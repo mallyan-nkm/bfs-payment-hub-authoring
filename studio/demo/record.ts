@@ -79,11 +79,13 @@ export class Director {
     return { wav, seconds: JSON.parse(fs.readFileSync(meta, 'utf8')).seconds };
   }
 
+
   /** One scene: a chapter card if any, the caption and voice, the actions; it lasts as long as both. */
   async scene(s: Scene) {
     const v = this.voice(s.say);
     const at = this.now();
     this.marks.push({ at, wav: v.wav, seconds: v.seconds, text: s.say });
+    this.caption = s.say;
     if (s.card) await this.page.evaluate(([t, u]: string[]) => (window as any).__card?.(t, u), [s.card[0], s.card[1] ?? '']);
     this.caption = s.say;
     await this.page.evaluate((t: string) => (window as any).__caption?.(t), s.say);

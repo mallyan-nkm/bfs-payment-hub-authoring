@@ -1,6 +1,6 @@
 # Narrated demos and training videos
 
-Four recorded videos of the studio and the laptop stack (the runtime's two are further down), each a real browser session on a fresh workspace, driven click by
+Four recorded videos of the studio and the laptop stack (the north-star video and the runtime's remaining one are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
 an `.srt` subtitle file. The concept video and the hands-on training video (in `docs/demo/training/`) run at a slower pace,
 in plain words for someone new to payments; the concept video draws every idea as a restaurant kitchen.
@@ -12,14 +12,42 @@ in plain words for someone new to payments; the concept video draws every idea a
 | `2-installation.mp4` | The installation, on the laptop stack (`deploy/laptop`) on Fluent UI 2: what you need (Docker, and the secrets made at random in your shell, never in a file) and why; the images built and the stack started (the SFTP server first and its host keys pinned, then `up -d --wait`), what each service is (the studio, the runtime's APIs and consoles, the engine host, the workers, the native host, the File API, machine auth, the bank's development provider, SQL Server, Temporal, SFTP; the engine profiles, and the `events` profile's brokers) and the health check; the first sign-in to the studio, the operations console, the registers, the service console and the test bench, light and dark; the bank's first distribution installed and activated, and its configuration release with the laptop's bindings put in force, each with a bank approver's consent; a salary file on the test bench, on the reference interpreter with the bank's values (its run on Temporal on the laptop is Issue I-331), then one real payment: uploaded on the operations console, its SIF delivered to the Central Bank's folder on the SFTP server, the ACK left there and read back, the payment settled; then stop, reset (`down -v`) and the same stack started on PostgreSQL |
 | `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
 
+## The north-star video
+
+`3-north-star.mp4`, in `docs/demo/` with its `.srt`, voiced at the training pace (`TH_TTS_SPEED=0.85`, `TH_DEMO_CRF=29`, a little smaller than the concept video's 28, for its terminal and studio frames). It starts
+with the architecture drawn as one diagram on the explainer stage (the studio and its GitHub branch; the runtime of one bank with
+the File API and front door, the engine host, workers and native modules, the store, the read model, the consoles, ports and
+adapters, machine auth and the bank's identity provider), then takes each north-star tenet in turn, comes back to the diagram to
+light the parts it is about, and shows it working: ISO 20022 native (the studio's ISO data dictionary and proven samples, then the
+store's tables, a salary file as a pain.001-shaped bulk and its payments, and the facts, which carry no personal data); the platform
+workflow and the scheme leg (the slot, the designer's canvas, the WPS dispatch table); the workflow independent of the engine (the
+export for Temporal and for Flowable, the kit on the studio interpreter, then the same eight scenarios run on DTFx, Elsa, Temporal and
+Flowable, the waits cut); SQL Server and PostgreSQL; insert-only, versioned and hot update (the hash-chained facts, an update and a
+delete refused to the runtime's login, two distributions side by side and draining, the effective-dated values, the outbox and the
+event stream's position); a bank as configuration with the bank approver's consent; no-code and code, and signed native modules per
+distribution; files, ports, circuit breakers, Kafka and MQTT; authentication and personas; one bank per runtime, the multi-tenant
+studio on GitHub, and the laptop's compose file.
+
+The tables are live: `demo/north-star/store.sh up` starts a PostgreSQL container of its own (`th-nstar-store` on loopback port 55433,
+no compose project), applies the runtime's migrations, seeds through the store's own classes (`demo/north-star/store/Program.cs`) two
+distributions of the example bank and one synthetic salary file of two lines with the facts of a run (written by the seeder, not
+by an engine), and grants the runtime's login `th_runtime` read and insert only, as `deploy/laptop/sql/grants-postgres.sql` does.
+Its password is made at random in that shell and never written down. The video reads the store with `psql` in the container. The
+engines need what their kits need (`CLAUDE.md`: .NET 8, the Temporal test server's classpath, the Flowable harness). From `studio/`:
+
+```bash
+demo/north-star/store.sh up
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=29 npx tsx demo/run.ts north-star
+demo/north-star/store.sh down
+```
+
 ## The runtime videos
 
-Two videos of the runtime with the studio, in `docs/demo/runtime/`, each with its `.srt`, voiced at the training pace
-(`TH_TTS_SPEED=0.85`). Video 3 runs on the laptop stack (`deploy/laptop`), as does the installation video above; video 2 is drawn, with no screens.
+One video of the runtime with the studio, in `docs/demo/runtime/`, with its `.srt`, voiced at the training pace
+(`TH_TTS_SPEED=0.85`). It runs on the laptop stack (`deploy/laptop`), as do the installation video and the north-star video's store above.
 
 | Video | What it shows |
 | --- | --- |
-| `runtime-2-north-star-architecture.mp4` | The north-star architecture, drawn: ISO 20022 at the centre and scheme formats mapped at the edges; one insert-only store on SQL Server or PostgreSQL; four engines behind one contract, Temporal the default; the three layers and why; a payment pinned at acceptance, side by side, drained, removed, rolled back; platform workflows with slots, scheme legs (WPS also in a refund order), hooks and rules; the File API as the only door for files; the studio multi-tenant on its GitHub branch, a runtime one bank; maker-checker and the bank approver's consent; what is not built yet |
 | `runtime-3-full-payment-run.mp4` | One bank's payments end to end: its distribution installed and activated in the service console, the native modules it carries checked by hash, its configuration release (with the laptop's file transfer bindings) put in force, each on a bank approver's consent; a salary file uploaded on the operations console's upload page (`POST /ops/api/upload`, which posts to the File API's `POST /files/ui`), its SIF sent through the File API's outbox to the Central Bank's SFTP folder, the ACK left there and matched back, the payment settled; the synthetic scheme `uae.demo` built in the studio, licensed by the bank (its configurator proposes, its approver approves, I-205), distribution B activated while A drains and is removed, and a demo credit file paid on `uae.demo`; the fraud alerts, ledger accounts, rates badge and audit |
 
 Bring the stack up first, with a compose project of your own and the secrets in your shell (`deploy/laptop/README.md`), then,
@@ -27,10 +55,6 @@ from `studio/`, with the same shell:
 
 ```bash
 TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 TH_DEMO_BUILD_LOG=<the log of build.sh> npx tsx demo/run.ts install
-```
-
-```bash
-TH_TTS_SPEED=0.85 npx tsx demo/run.ts architecture --out ../docs/demo/runtime
 ```
 
 ```bash
@@ -53,7 +77,7 @@ runs in real time; `Director.skip` cuts such a wait from the video and shows a c
 
 ## Record them again
 
-The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/build.ts`
+The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/north-star.ts` (the same stage, and its store, `demo/north-star/`), `demo/build.ts`
 and `demo/hands-on.ts` (with the documents it builds, in
 `demo/hands-on/docs.ts`); `demo/record.ts` drives the browser, lays the
 voice at the time each scene starts, and joins them with ffmpeg. From `studio/`:
@@ -83,7 +107,7 @@ each time.
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
 hands-on production also checks its results as it goes. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
 video used 28, a smaller file). `test/blackbox/demo-videos.test.ts` runs the three studio
-productions and the architecture video this way, and the two stack videos too where a laptop stack is up with its
+productions this way, the north-star video where its store is up (one scenario on each engine), and the two stack videos where a laptop stack is up with its
 secrets in the environment (the full run takes up to half an hour: it pays two payments on Temporal).
 
 Needs ffmpeg, and for the build demo the .NET 8 SDK (it deploys on DTFx). Without a voice the videos

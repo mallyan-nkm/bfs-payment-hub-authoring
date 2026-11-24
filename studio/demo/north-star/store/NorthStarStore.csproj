@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The north-star video's store (demo/north-star/store.sh): migrates a PostgreSQL store and accepts one synthetic WPS salary file
+       through the runtime's own store classes. A demo aid, not part of the runtime. -->
+  <ItemGroup>
+    <ProjectReference Include="../../../../runtime/src/TransactHub.Store/TransactHub.Store.csproj" />
+    <ProjectReference Include="../../../../runtime/src/TransactHub.Store.Migrations.PostgreSql/TransactHub.Store.Migrations.PostgreSql.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
