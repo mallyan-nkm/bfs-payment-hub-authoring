@@ -89,7 +89,7 @@ Status: 23 November 2026. Each capability of the original TransactHub platform (
 | The AI workflow builder | The studio's assistant behind the same gates as a designer | Built; no live model run here | |
 | Users, roles, departments, unlocking a user | The bank's identity provider and role map; the runtime keeps no users (R-06-24, R-06-28) | Built | |
 | API gateway | Each host authenticates its callers itself (`TransactHub.Auth`); a gateway and TLS termination are the installation's | No decision | I-68 |
-| Workflow engine | Four engines behind one interpreter, proved by the conformance kit; long-running engine hosts (R-09-66 to R-09-68, R-09-93 to R-09-95) | Partly: DTFx and Elsa runs do not survive a restart of their host | I-165 |
+| Workflow engine | Four engines behind one interpreter, proved by the conformance kit; long-running engine hosts (R-09-66 to R-09-68, R-09-93 to R-09-95) | Yes: one service per distribution on DTFx, Elsa and Flowable, which survives a restart of its host (R-09-196 to R-09-199); one work item at a time | I-300, I-301 |
 | Temporal on SQL Server | The SQL Server plugin (`runtime/temporal-mssql`), the default engine (R-09-79) | Built; we keep the plugin | I-42 |
 | Workflow authoring, versions and releases | The studio: authoring, tests, maker-checker, signed distributions on GitHub | Built | |
 | Testers' tools: WPS tester, payment tester, bank simulator, sandbox | The studio's test bench and simulators; the runtime's test bench (`runtime/testbench`) | Built | |
