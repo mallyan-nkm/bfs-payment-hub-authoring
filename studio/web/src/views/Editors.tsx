@@ -210,11 +210,12 @@ function EditorFor({ kind, open }: { kind: Kind; open?: string }) {
             <DraftActions doc={clean(doc)} draftKey={draftKey} setDraftKey={setDraftKey} />
           </Section>
           <YamlPane doc={doc} onDoc={setDoc} />
-          {(kind === 'activity' || kind === 'map') && doc.implementation?.binding === 'script' && <ScriptBehind doc={doc} />}
           {(kind === 'activity' || kind === 'composite' || kind === 'map') && <Untested name={doc.name} />}
           {kind === 'simulator' && doc.name && <Section title="Stub"><Button as="a" icon={<ArrowDownloadRegular />} href={downloadUrl(`/api/simulators/${encodeURIComponent(doc.name)}/stub`)}>Download the stub of the published {doc.name}</Button><p className="muted small">A stand-alone stub that plays the scenarios, for a bank's own test environment.</p></Section>}
         </div>
       </div>
+      {/* The script-behind takes the page's width: a script's lines are longer than the side column. */}
+      {(kind === 'activity' || kind === 'map') && doc.implementation?.binding === 'script' && <ScriptBehind doc={doc} />}
       {kind === 'composite' && sub && <SubflowEditor act={doc} sub={sub} setSub={setSub} />}
       {kind === 'composite' && <TestsOf name={doc.name} title="Tests of the composite alone" />}
     </>
@@ -293,7 +294,7 @@ function ScriptBehind({ doc }: { doc: any }) {
   return (
     <Section title="Script-behind">
       <p className="muted small">Save the activity as a draft first. The script is checked as you save: no network, files, clock, randomness or environment.</p>
-      <Textarea className="yaml-editor short" spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Script source" />
+      <Textarea className="yaml-editor short script" spellCheck={false} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Script source" />
       <Button onClick={save}>Save the script as {actor}</Button>
       {msg && <div className={`alert ${msg.tone}`} role="status">{msg.text}</div>}
     </Section>

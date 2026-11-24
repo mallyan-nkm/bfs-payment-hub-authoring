@@ -7,10 +7,11 @@ import { STUDIO } from './server.js';
 import { stackUp } from '../../demo/stack.js';
 import { storeUp } from '../../demo/north-star.js';
 
-// Black box, in the browser: every step of the recorded demo and training videos, run fast with no
-// video and no voice (TH_DEMO_DRY=1). The hands-on video checks its own results as it goes: the
-// examples turn red and green, the canvas writes the steps, the bench traces show the month check
-// and the bank's hold. So a change to the web app that would break a video fails here first.
+// Black box, in the browser: every step of the recorded demo videos, run fast with no video and no
+// voice (TH_DEMO_DRY=1). The console videos check their own results as they go: the licence is
+// approved, a value out of bounds is refused, the examples turn red and green, the script is refused
+// and then saved, the canvas writes the steps, the bench traces show the pay period check. So a
+// change to the web app that would break a video fails here first.
 
 const tsx = path.join(STUDIO, 'node_modules', '.bin', 'tsx');
 /** Runs one production dry; asynchronous, so the test worker stays responsive while it runs. */
@@ -25,11 +26,11 @@ const dry = (which: string, limit = 300_000) => new Promise<string>((resolve) =>
 });
 
 describe('demo and training videos, dry run', () => {
-  for (const which of ['concept', 'build', 'hands-on']) {
+  for (const which of ['concept', 'bank-configurator', 'designer']) {
     it(`${which}: every scene runs`, async () => {
-      const out = await dry(which);
+      const out = await dry(which, 420_000);
       expect(out, out.slice(-3000)).toMatch(/\d+ scenes ran, dry/);
-    }, 320_000);
+    }, 440_000);
   }
 });
 

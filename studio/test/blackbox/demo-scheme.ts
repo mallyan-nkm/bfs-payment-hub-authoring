@@ -152,5 +152,5 @@ export const TESTS = {
 };
 
 
-/** The next minor of a release, as demo/build.ts makes the next configuration set (I-187, I-204): 1.8.0 gives 1.9.0. */
+/** The next minor of a release, as the configuration set's next release is made (I-187, I-204): 1.8.0 gives 1.9.0. */
 export const nextMinor = (release: string) => release.replace(/^(\d+)\.(\d+)\..*/, (_: string, M: string, m: string) => `${M}.${Number(m) + 1}.0`);

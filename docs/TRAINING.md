@@ -1,6 +1,6 @@
 # Training: the TransactHub Designer Studio, step by step
 
-The complete guide, with every feature, setting up and deploying, this training path, and a full workflow built from scratch in the web app, is `docs/guide/studio-guide.html` (built from `docs/guide/template.html` by `docs/guide/build.ts`). This file is the training path as plain text. To watch before you start: the concept video, `docs/demo/1-concept.mp4` (the ideas, as a kitchen, then the same ideas in the studio), the hands-on training video in `docs/demo/training/`, and the scheme built from scratch in `docs/demo/`.
+The complete guide, with every feature, setting up and deploying, this training path, and a full workflow built from scratch in the web app, is `docs/guide/studio-guide.html` (built from `docs/guide/template.html` by `docs/guide/build.ts`). This file is the training path as plain text. To watch before you start: the concept video, `docs/demo/1-concept.mp4` (the ideas, as a kitchen, then the same ideas in the studio), and the two console videos in `docs/demo/`: `5a-bank-configurator.mp4` (the studio as a bank's configurator and approver) and `5b-studio-designer-developer.mp4` (the studio as designer and developer, with an activity written as a script).
 
 **The videos are out of date.** They were recorded before the Aani scheme (`uae.aani`) was removed from the studio in plan phase P6 (Issue I-37 in `docs/ISSUES.md`), and they still show it. `uae.wps` is now the only scheme. Where a video and this file differ, follow this file. The videos need re-recording.
 

@@ -239,6 +239,7 @@ ul.issues .msg { flex: 1 1 260px; min-width: 0; }
 .fui-Textarea.yaml-editor { min-height: 640px; }
 .fui-Textarea.yaml-editor.short { min-height: 340px; }
 .fui-Textarea.yaml-editor.short textarea { min-height: 320px; }
+.fui-Textarea.yaml-editor.short.script, .fui-Textarea.yaml-editor.short.script textarea { min-height: 440px; }
 .fui-Textarea.yaml-editor textarea { min-height: 620px; line-height: 18px; tab-size: 2; white-space: pre; overflow: auto; max-height: none; }
 .fui-Textarea.code-input textarea, .fui-Textarea.yaml-editor textarea { background: transparent; }
 .fui-Textarea.code-input textarea { min-height: 8em; max-height: none; }

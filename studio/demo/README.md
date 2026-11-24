@@ -2,15 +2,16 @@
 
 Four recorded videos of the studio and the laptop stack (the north-star video and the runtime's remaining one are further down), each a real browser session on a fresh workspace, driven click by
 click, with a visible cursor, captions and a voice-over. The videos are in `docs/demo/`, each with
-an `.srt` subtitle file. The concept video and the hands-on training video (in `docs/demo/training/`) run at a slower pace,
-in plain words for someone new to payments; the concept video draws every idea as a restaurant kitchen.
+an `.srt` subtitle file. They run at a slow pace, in plain words for someone new to payments; the concept video draws every idea
+as a restaurant kitchen. The two console videos, 5a and 5b, show every feature of the studio for one kind of user each; the
+service console's video is recorded on the laptop stack.
 
 | Video | What it shows |
 | --- | --- |
 | `1-concept.mp4` | The concept, in two parts. First, with no screens, every idea drawn as a kitchen on the animated stage (`demo/explainer/ideas.html`, in the apps' navy and teal): the studio designs and the runtime runs; one order's journey; activities, outcomes and rules; values (dials with a default and bounds) beside logic that stays fixed; workflows, schemes, the slot and the leg; the factory (`p`, `uae.p`, `uae.wps`); a bank's hooks, its values and maker and checker; the distribution and the configuration release, and a payment pinned to its distribution; one bank per runtime; everything together. Then a short tour of the same ideas in the studio on Fluent UI 2: the top bar and the catalogue, the factory's scopes and the four-part names, an activity, a rule's editor, the corporate workflow on the canvas, the WPS dispatch table, a test with its simulator, the bank workspace, the configuration set, the audit log and the export |
-| `training/training-2-hands-on.mp4` | Training 2, hands-on, one long file: a rule built in the form and tested by its examples, broken on purpose and fixed; an activity tested on the bench and saved as a test; the assistant beside the editor: help on a field, the rule in plain words, then a rule built by asking, allowed once, a change allowed always and undone; a WPS leg composed on the canvas from blocks that exist, with the new check; the order to build in when nothing exists; a bank's own rule with a parameter, its rule set, check and halt hook, the configuration refusing a value out of bounds, the compatibility run, and a salary file held for approval, declined and then approved; then the same payment in the debugger: stepping into and back, a breakpoint on the bank's hook point and on the route, the decision and the data it changed |
 | `2-installation.mp4` | The installation, on the laptop stack (`deploy/laptop`) on Fluent UI 2: what you need (Docker, and the secrets made at random in your shell, never in a file) and why; the images built and the stack started (the SFTP server first and its host keys pinned, then `up -d --wait`), what each service is (the studio, the runtime's APIs and consoles, the engine host, the workers, the native host, the File API, machine auth, the bank's development provider, SQL Server, Temporal, SFTP; the engine profiles, and the `events` profile's brokers) and the health check; the first sign-in to the studio, the operations console, the registers, the service console and the test bench, light and dark; the bank's first distribution installed and activated, and its configuration release with the laptop's bindings put in force, each with a bank approver's consent; a salary file on the test bench, on the reference interpreter with the bank's values (its run on Temporal on the laptop is Issue I-331), then one real payment: uploaded on the operations console, its SIF delivered to the Central Bank's folder on the SFTP server, the ACK left there and read back, the payment settled; then stop, reset (`down -v`) and the same stack started on PostgreSQL |
-| `02-build-a-scheme-from-scratch.mp4` | The synthetic scheme `uae.demo` built in the web app: sample files, port and simulator, rule, rule set and file checks, the intake map and its script, maps and the send, the composite, its subflow and the leg, the scheme and its dispatch table published as one change set, the leg on the bench, the bank enabling the rail, a payment end to end, the export, and the deploy on DTFx |
+| `5a-bank-configurator.mp4` | One video per console: the studio as a bank's configurator and its approver (`demo/bank-configurator.ts`). Before the camera the platform publishes the synthetic scheme `uae.demo` through the API (`test/blackbox/demo-scheme.ts`). Then: the bank workspace; `uae.demo` licensed, the configurator proposing and the approver approving; the configuration set and its dials with bounds and dates, a value out of bounds refused (L14); the bank's rule with its parameter and examples, and the rail-choice decision table; reference tables, a new edition of the cut-offs and a new table started in the editor's New table form; port bindings with the rates port bound by a secret reference, the rate feed and the standing consent to its releases (told, not shown: the service console has its own video); the bank's hooks at the corporate workflow's hook points and the compatibility run; maker and checker, the change set and the approvals in Governance (the new table first, I-340); a demo credit file paid on the bench with the bank's configuration; the audit log verified; what reaches the runtime |
+| `5b-studio-designer-developer.mp4` | One video per console: the studio as the platform's designer and developer (`demo/designer.ts`, with the documents it builds in `demo/designer/docs.ts`). The catalogue and the factory's scopes and names; the ISO data dictionary (readers and writers, the canonical model, the code registry, the samples); a rule written in the form with its examples, broken and fixed, and the decision table editor; the corporate workflow on the canvas, its outline and expanded form, a composite and its subflow, the WPS leg in its slot; the WPS dispatch table; a port and its simulator's standard scenarios; then a new activity that needs a script, `uae.wps.validate.pay-period.v1`, written in full: its contract in the form, its TypeScript script-behind typed in the editor (a first try that reads the clock is refused), published, run on the bench, its two runs saved as tests, approved and run as stored tests, the activity used in a leg on the canvas, and the leg on the bench with a good and a bad sample and in the debugger; the explain panel and the assistant (Ask without a model key says so); import of the training bundle; the export to Temporal, Flowable, Elsa and DTFx; the conformance kit; governance and the GitHub branch |
 
 ## The north-star video
 
@@ -77,40 +78,31 @@ runs in real time; `Director.skip` cuts such a wait from the video and shows a c
 
 ## Record them again
 
-The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/north-star.ts` (the same stage, and its store, `demo/north-star/`), `demo/build.ts`
-and `demo/hands-on.ts` (with the documents it builds, in
-`demo/hands-on/docs.ts`); `demo/record.ts` drives the browser, lays the
-voice at the time each scene starts, and joins them with ffmpeg. From `studio/`:
+The scripts are `demo/concept.ts` (with its animated stage, `demo/explainer/ideas.html`), `demo/north-star.ts` (the same stage,
+and its store, `demo/north-star/`), `demo/bank-configurator.ts` and `demo/designer.ts` (with the documents it builds, in
+`demo/designer/docs.ts`); `demo/record.ts` drives the browser, lays the voice at the time each scene starts, and joins them with
+ffmpeg. Each runs the studio's own server on an in-memory fake GitHub seeded from `content-configurations/`, as
+`npm run studio:dev` does. From `studio/`:
 
 ```bash
 TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts concept
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts bank-configurator
+TH_TTS_SPEED=0.85 TH_DEMO_CRF=28 npx tsx demo/run.ts designer
 ```
 
-```bash
-npx tsx demo/run.ts build
-```
+The designer video's assistant scene shows **What is happening**, which needs no model, and the **Ask** tab saying it has no
+credentials, as the studio server had no model key (`ANTHROPIC_API_KEY` or `TH_ANTHROPIC_API_KEY`) when it was recorded. With a
+key in the recorder's environment the server takes it, and that scene is left out.
 
-The hands-on training video goes to its own folder and was voiced a little slower:
-
-```bash
-TH_TTS_SPEED=0.85 npx tsx demo/run.ts hands-on --out ../docs/demo/training
-```
-
-The hands-on video's assistant chapter asks the live model only when the studio server has a model key
-(`ANTHROPIC_API_KEY` or `TH_ANTHROPIC_API_KEY` in its environment). Without one, it shows **What is
-happening**, which needs no model, and the **Ask** tab saying it has no credentials, and the voice
-says so too. The recorded video was made with a key set, so it shows the agent at work. The server
-takes its environment from the recorder, so a key set in the shell that runs the recorder reaches it.
-The agent takes from a few seconds to a minute to answer; the recording waits up to four minutes
-each time.
+`TH_DEMO_SHOTS=<dir>` saves a screenshot of the page at the end of every scene, to look a run over before recording it.
 
 `TH_DEMO_DRY=1` runs any production fast, with no video and no voice, as a check of every step; the
-hands-on production also checks its results as it goes. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
+console productions also check their results as they go. `TH_DEMO_CRF` sets the picture's quality (default 26; the concept
 video used 28, a smaller file). `test/blackbox/demo-videos.test.ts` runs the three studio
 productions this way, the north-star video where its store is up (one scenario on each engine), and the two stack videos where a laptop stack is up with its
 secrets in the environment (the full run takes up to half an hour: it pays two payments on Temporal).
 
-Needs ffmpeg, and for the build demo the .NET 8 SDK (it deploys on DTFx). Without a voice the videos
+Needs ffmpeg. Without a voice the videos
 are recorded silent, with captions.
 
 ## The voice
@@ -138,7 +130,7 @@ print(json.dumps({"seconds": len(samples) / sr}))
 and point the recorder at it:
 
 ```bash
-TH_TTS="tts/bin/python say.py kokoro-v1.0.int8.onnx voices-v1.0.bin bf_emma" npx tsx demo/run.ts build
+TH_TTS="tts/bin/python say.py kokoro-v1.0.int8.onnx voices-v1.0.bin bf_emma" npx tsx demo/run.ts designer
 ```
 
 Voice clips are cached in a `.voice/` folder beside the videos, by their text and speed, so a change to one line re-voices only that line.

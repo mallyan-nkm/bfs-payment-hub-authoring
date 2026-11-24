@@ -10,7 +10,7 @@ import { client, signInPage, startServer, STUDIO, type Server } from '../test/bl
 // by click, with a visible cursor, a highlight before each click, captions, chapter cards, and a
 // voice-over laid at the time each scene starts.
 //
-//   npx tsx demo/run.ts concept|build|hands-on|... [--out dir]
+//   npx tsx demo/run.ts concept|bank-configurator|designer|... [--out dir]
 //
 // The voice comes from a text-to-speech command: TH_TTS="<python> <say.py> <model> <voices> <voice>"
 // reads the text on stdin, writes a WAV to the path given last, and prints {"seconds": n}
@@ -377,6 +377,8 @@ export async function record(prod: Production, outDir: string) {
         if (process.env.TH_DEMO_FAIL_SHOT) await page.screenshot({ path: process.env.TH_DEMO_FAIL_SHOT }).catch(() => undefined);
         throw e;
       });
+      // TH_DEMO_SHOTS=<dir>: a screenshot of the page at the end of every scene, to look the run over before recording it.
+      if (process.env.TH_DEMO_SHOTS) await page.screenshot({ path: path.join(process.env.TH_DEMO_SHOTS, `${String(i + 1).padStart(3, '0')}.png`) });
     }
     await d.wait(1500);
     length = d.now();
