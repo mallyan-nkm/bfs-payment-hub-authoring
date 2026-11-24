@@ -96,7 +96,7 @@ describe('instructions written into content (R-11-49)', () => {
 
   it('the panel never offers "Allow always" for a tool that asks every time, and shows a flagged result', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'web', 'src', 'views', 'AssistantDock.tsx'), 'utf8');
-    expect(src).toMatch(/conv\.pending\.allowAlways !== false && <button .*Allow always<\/button>/);
+    expect(src).toMatch(/conv\.pending\.allowAlways !== false && <Button .*Allow always<\/Button>/);
     expect(src).toMatch(/data-testid="instruction-flag"/);
   });
 });

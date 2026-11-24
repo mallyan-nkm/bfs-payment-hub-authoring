@@ -101,13 +101,14 @@ table.grid th, table.grid td { padding: 6px 8px; text-align: left; vertical-alig
 table.grid th { font-weight: var(--fontWeightSemibold); color: var(--text-2); background: var(--surface-2); }
 table.grid td.num, table.grid th.num { text-align: right; }
 tr.clickable { cursor: pointer; }
+table.grid .fui-Button { min-height: 24px; height: auto; padding: 1px 8px; font-size: var(--fontSizeBase200); }
 .fui-Badge.badge { margin-right: 4px; vertical-align: 1px; }
 a.badge-link { text-decoration: none; }
 .summary { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; color: var(--text-2); }
 .crumbs { margin: 0 0 4px; }
 
 /* Cards: summary cards and declared field groups */
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin: 0 0 12px; }
 .fui-Card.card { padding: 14px 16px; gap: 6px; }
 .card dl { margin: 0; display: grid; grid-template-columns: 1fr; gap: 4px; }
 .card dl > div { display: grid; grid-template-columns: 45% 55%; gap: 8px; }
