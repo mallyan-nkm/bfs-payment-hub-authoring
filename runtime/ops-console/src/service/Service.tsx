@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ServiceError, type ActionResult, type ActionSpec, type Answer, type ErrorEntry, type ErrorLink, type Health, type LogItem, type Release, type ServiceClient, type Version } from './api';
-import { PAGES, diffSummary, hashQuery, logQuery, runbookHref, stateTone, when } from './format';
+import { ServiceError, type ActionResult, type ActionSpec, type Answer, type ErrorEntry, type ErrorLink, type Health, type LogItem, type Release, type ServiceClient, type StuckPin, type Trust, type ValuesInForce, type Version } from './api';
+import { PAGES, diffSummary, hashQuery, logQuery, runbookHref, stateTone, stepError, when } from './format';
 import { AuditTrail } from '../shell/AuditTrail';
 import { Button, Card, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Input, Select, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 import { Alert, Badge } from '../ui';
@@ -81,7 +81,7 @@ function HealthPage({ api }: { api: ServiceClient }) {
         <TableHeader><TableRow><TableHeaderCell>Component</TableHeaderCell><TableHeaderCell>Group</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Detail</TableHeaderCell><TableHeaderCell>Version</TableHeaderCell><TableHeaderCell>History</TableHeaderCell><TableHeaderCell>Links</TableHeaderCell></TableRow></TableHeader>
         <TableBody>{h?.components.map((c) => (
           <TableRow key={c.name} data-testid="health-row" data-name={c.name}>
-            <TableCell className="mono">{c.name}</TableCell><TableCell>{c.group}</TableCell><TableCell><StateBadge s={c.status} /></TableCell><TableCell>{c.detail}</TableCell><TableCell className="mono">{c.version ?? '—'}</TableCell>
+            <TableCell className="mono wrap">{c.name}</TableCell><TableCell>{c.group}</TableCell><TableCell><StateBadge s={c.status} /></TableCell><TableCell className="wrap">{c.detail}</TableCell><TableCell className="mono">{c.version ?? '—'}</TableCell>
             <TableCell aria-label="history">{c.history.map((x, i) => <span key={i} className={`dot ${stateTone(x.status)}`} title={`${when(x.at)} ${x.status} ${x.ms} ms`} />)}</TableCell>
             <TableCell>{c.code && <a href={runbookHref(c.code)} data-testid="error-link">{c.code}</a>} {c.dashboard && <a href={c.dashboard} target="_blank" rel="noreferrer">Dashboard</a>}</TableCell>
           </TableRow>
@@ -101,7 +101,12 @@ function ContentPage({ api }: { api: ServiceClient }) {
   const [result, setResult] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
   const [diff, setDiff] = useState<any>(null);
-  const load = () => { api.versions().then(setVersions).catch(setErr); api.releases().then(setReleases).catch(setErr); };
+  const [pins, setPins] = useState<StuckPin[] | null>(null);
+  const [values, setValues] = useState<ValuesInForce | null>(null);
+  const load = () => {
+    api.versions().then(setVersions).catch(setErr); api.releases().then(setReleases).catch(setErr);
+    api.stuckPins().then(setPins).catch(setErr); api.values().then(setValues).catch(setErr);
+  };
   useEffect(load, []);
   const go = (label: string, run: (reason: string) => Promise<any>, detail?: ReactNode) => { setResult(null); setErr(null); setAsk({ label, run, detail }); };
   return (
@@ -149,11 +154,91 @@ function ContentPage({ api }: { api: ServiceClient }) {
               {r.state === 'active' && <Button onClick={() => go(`roll back ${r.scope}`, (reason) => api.act('rollback', r.scope, reason))}>Roll back</Button>}
               {r.state !== 'active' && r.state !== 'removed' && <Button disabled={r.openPayments > 0} title={r.openPayments > 0 ? 'Refused while a payment pinned to it is open' : ''} onClick={() => go(`remove ${r.release}`, (reason) => api.act('remove', r.releaseId, reason))}>Remove</Button>}
               </>}
+              {(r as any).kind === 'configuration' && r.state === 'awaiting-consent' && <Button onClick={() => go(`put ${r.release} in force`, (reason) => api.act('put-in-force', r.releaseId, reason))}>Put in force</Button>}
               <Button onClick={() => go(`re-verify ${r.release}`, (reason) => api.act('reverify-package', r.releaseId, reason))}>Re-verify</Button>
             </div></TableCell>
           </TableRow>
         ))}</TableBody>
       </Table>
+      <h2>Values in force</h2>
+      <p className="note">What the workers and the engine hosts read at each attempt, from the configuration releases put in force: each value with the configuration set it came from and the day it took effect. A value with a later day takes over on that day, for payments in flight too; logic does not change.</p>
+      <Table size="small" className="grid" aria-label="Values in force">
+        <TableHeader><TableRow><TableHeaderCell>Parameter</TableHeaderCell><TableHeaderCell>Value</TableHeaderCell><TableHeaderCell>Configuration set</TableHeaderCell><TableHeaderCell>From</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{values?.values.map((v) => (
+          <TableRow key={v.parameter} data-testid="value-row" data-parameter={v.parameter}>
+            <TableCell className="mono">{v.parameter}</TableCell><TableCell className="mono wrap" title={JSON.stringify(v.value)}>{shortJson(v.value)}</TableCell><TableCell className="mono">{v.configurationSet}</TableCell><TableCell>{when(v.effectiveFrom)}</TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
+      {values && values.hookBindings.length > 0 && <p data-testid="hook-bindings">Hook bindings: {values.hookBindings.map((h) => <span key={h.hookPoint} className="mono" style={{ marginRight: 12 }}>{h.hookPoint} → {h.hook}{h.release ? `@${h.release}` : ''}</span>)}</p>}
+      <h2>Payments pinned but never started</h2>
+      <p className="note">A payment the front door pinned to a distribution whose start never reached an engine. Each one counts as an open payment of its distribution, which cannot drain until it is ended, with a bank approver's consent.</p>
+      {pins?.length === 0 && <p className="muted" data-testid="no-stuck-pins">None: every payment pinned to a distribution reached its engine.</p>}
+      {pins && pins.length > 0 && <Table size="small" className="grid" aria-label="Pins with no payment">
+        <TableHeader><TableRow><TableHeaderCell>Payment</TableHeaderCell><TableHeaderCell>Distribution</TableHeaderCell><TableHeaderCell>Pinned</TableHeaderCell><TableHeaderCell>Last fact</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{pins.map((x) => (
+          <TableRow key={x.paymentId} data-testid="stuck-pin-row">
+            <TableCell className="mono">{x.paymentId}</TableCell><TableCell className="mono">{x.distribution}</TableCell><TableCell>{when(x.pinnedAt)}</TableCell><TableCell>{x.lastFact ?? '—'}</TableCell>
+            <TableCell><Button onClick={() => go(`end the pin of ${x.paymentId}`, (reason) => api.act('end-pin', x.paymentId, reason))}>End pin</Button></TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>}
+    </section>
+  );
+}
+
+/** A value for a table cell: its JSON, cut short. */
+function shortJson(v: unknown): string {
+  const t = typeof v === 'string' ? v : JSON.stringify(v);
+  return t.length > 90 ? `${t.slice(0, 88)}…` : t;
+}
+
+function TrustPage({ api }: { api: ServiceClient }) {
+  const [t, setT] = useState<Trust | null>(null);
+  const [ask, setAsk] = useState<{ label: string; run(reason: string): Promise<any> } | null>(null);
+  const [result, setResult] = useState<any>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const load = () => api.trust().then(setT).catch(setErr);
+  useEffect(() => { load(); }, []);
+  return (
+    <section>
+      <h1>Signers and native modules</h1>
+      <p className="note">Every version is verified against these signers before it is stored, and again on Re-verify. A distribution's native modules are its compiled activities: each file is listed in the signed bill of materials with its SHA-256, checked when the distribution is installed and again when the native host loads it. A key is added or retired with the Rotate a trusted key action, with a bank approver's consent.</p>
+      <Problem e={err} />
+      {t?.problem && <Alert tone="fail" role="alert">{t.problem}</Alert>}
+      <Done r={result} />
+      {ask && <Confirm label={ask.label} onCancel={() => setAsk(null)} onConfirm={async (reason) => {
+        try { setResult(await ask.run(reason)); } catch (e) { setErr(e); }
+        setAsk(null); load();
+      }} />}
+      <h2>Trusted signers</h2>
+      <Table size="small" className="grid" aria-label="Trusted signers">
+        <TableHeader><TableRow><TableHeaderCell>Key</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>Signs</TableHeaderCell><TableHeaderCell>Retires or revoked</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{t?.signers.map((k) => (
+          <TableRow key={k.keyId} data-testid="signer-row">
+            <TableCell className="mono">{k.keyId}</TableCell><TableCell><StateBadge s={k.state} /></TableCell>
+            <TableCell>{k.feed ? `the ${k.feed} feed's configuration releases` : k.kinds?.join(', ') ?? 'every kind'}</TableCell>
+            <TableCell>{k.revokedAt ? `revoked ${when(k.revokedAt)} ${k.reason ?? ''}` : k.retiredAt ? when(k.retiredAt) : '—'}</TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
+      <h2>Native modules of each distribution</h2>
+      {t?.distributions.map((d) => (
+        <Card key={d.releaseId} className="card" data-testid="native-distribution">
+          <h3><span className="mono">{d.releaseId}</span> <StateBadge s={d.state} /> {d.contract && <span className="muted">native contract {d.contract}</span>}{' '}
+            <Button onClick={() => { setResult(null); setErr(null); setAsk({ label: `re-verify ${d.releaseId}`, run: (reason) => api.act('reverify-package', d.releaseId, reason) }); }}>Re-verify</Button></h3>
+          {d.modules.length === 0 && <p className="muted">No native module.</p>}
+          {d.modules.length > 0 && <Table size="small" className="grid" aria-label={`Native modules of ${d.releaseId}`}>
+            <TableHeader><TableRow><TableHeaderCell>Scope</TableHeaderCell><TableHeaderCell>File</TableHeaderCell><TableHeaderCell>SHA-256</TableHeaderCell><TableHeaderCell className="num">Activities</TableHeaderCell></TableRow></TableHeader>
+            <TableBody>{d.modules.flatMap((m) => m.files.map((f) => (
+              <TableRow key={`${m.scope}/${f.name}`} data-testid="native-file-row">
+                <TableCell className="mono">{m.scope}</TableCell><TableCell className="mono">{f.name}</TableCell><TableCell className="mono" title={f.sha256}>{f.sha256.slice(0, 23)}…</TableCell>
+                <TableCell className="num" title={m.activities.join(', ')}>{f.name === `${m.assembly}.dll` ? m.activities.length : ''}</TableCell>
+              </TableRow>
+            )))}</TableBody>
+          </Table>}
+        </Card>
+      ))}
     </section>
   );
 }
@@ -183,7 +268,7 @@ function LogsPage({ api }: { api: ServiceClient }) {
             <TableRow key={n} data-testid="log-row" className={i.level === 'Error' ? 'error-row' : ''}>
               <TableCell className="mono">{when(i.at)}</TableCell><TableCell><StateBadge s={i.level === 'Error' ? 'fail' : 'ok'} /></TableCell>
               <TableCell>{i.payment ? <a href={i.payment} title="Open in the operations console">{i.subject}</a> : <span className="mono">{i.subject ?? i.category}</span>} {i.tenant && <span className="muted">{i.tenant}</span>} {i.scheme && <span className="muted">{i.scheme}</span>}</TableCell>
-              <TableCell>{i.source === 'fact' ? <><span className="mono">{i.kind}:{i.code}</span> {i.step && <span className="muted">{i.step} ({i.activity})</span>} <span className="muted">{i.actor}</span></> : <>{i.source === 'backend' && <Badge className="badge">{i.category}</Badge>} {i.message}</>}
+              <TableCell>{i.source === 'fact' ? <><span className="mono">{i.kind}:{i.code}</span> {i.step && <span className="muted">{i.step} ({i.activity})</span>} {stepError(i.error, i.errors) && <span className="mono" data-testid="step-error">{stepError(i.error, i.errors)}</span>} <span className="muted">{i.actor}</span></> : <>{i.source === 'backend' && <Badge className="badge">{i.category}</Badge>} {i.message}</>}
                 {i.traceId && <>{' '}{i.trace ? <a className="mono" href={i.trace} target="_blank" rel="noreferrer">trace {i.traceId.slice(0, 8)}</a> : <a className="mono" href={`#/service/logs?trace=${i.traceId}`}>trace {i.traceId.slice(0, 8)}</a>}</>}</TableCell>
               <TableCell><Errors errors={i.errors} /></TableCell>
             </TableRow>
@@ -278,7 +363,7 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
         <TableHeader><TableRow><TableHeaderCell>Action</TableHeaderCell><TableHeaderCell>Target</TableHeaderCell><TableHeaderCell>Asked by</TableHeaderCell><TableHeaderCell>Why</TableHeaderCell><TableHeaderCell></TableHeaderCell></TableRow></TableHeader>
         <TableBody>{pending?.map((p) => (
           <TableRow key={p.data.action} data-testid="pending-row">
-            <TableCell>{p.data.name}</TableCell><TableCell className="mono">{p.data.target ?? '—'}</TableCell><TableCell>{p.data.by} <span className="muted">{when(p.at)}</span></TableCell><TableCell>{p.data.why}</TableCell>
+            <TableCell>{p.data.name}</TableCell><TableCell className="mono">{p.data.target ?? '—'}</TableCell><TableCell>{p.data.by} <span className="muted">{when(p.at)}</span></TableCell><TableCell className="wrap">{p.data.why}</TableCell>
             <TableCell>{approver && <div className="action-buttons"><Button onClick={() => setDeciding({ id: p.data.action, approve: true })}>Approve</Button><Button onClick={() => setDeciding({ id: p.data.action, approve: false })}>Reject</Button></div>}</TableCell>
           </TableRow>
         ))}</TableBody>
@@ -291,7 +376,7 @@ function ActionsPage({ api, approver }: { api: ServiceClient; approver: boolean 
       <Table size="small" className="grid" aria-label="Catalogue">
         <TableHeader><TableRow><TableHeaderCell>Action</TableHeaderCell><TableHeaderCell>Path</TableHeaderCell><TableHeaderCell>Approver</TableHeaderCell><TableHeaderCell>What it does</TableHeaderCell></TableRow></TableHeader>
         <TableBody>{catalogue?.map((a) => (
-          <TableRow key={a.id}><TableCell className="mono">{a.id}</TableCell><TableCell><StateBadge s={a.path === 'built' ? 'ok' : 'fail'} />{a.path}</TableCell><TableCell>{a.risky ? 'yes' : 'no'}</TableCell><TableCell>{a.does} <span className="note">{a.missing}</span></TableCell></TableRow>
+          <TableRow key={a.id}><TableCell className="mono">{a.id}</TableCell><TableCell><StateBadge s={a.path === 'built' ? 'ok' : 'fail'} />{a.path}</TableCell><TableCell>{a.risky ? 'yes' : 'no'}</TableCell><TableCell className="wrap">{a.does} <span className="note">{a.missing}</span></TableCell></TableRow>
         ))}</TableBody>
       </Table>
     </section>
@@ -385,6 +470,7 @@ export function ServiceSection({ api, path, approver }: { api: ServiceClient; pa
       {page === 'errors' && <ErrorsPage api={api} code={path[1]} />}
       {page === 'actions' && <ActionsPage key={location.hash} api={api} approver={approver} />}
       {page === 'backup' && <BackupPage api={api} />}
+      {page === 'trust' && <TrustPage api={api} />}
       {page === 'assistant' && <AssistantPage api={api} />}
       {page === 'audit' && <AuditTrail title="Service audit" load={async (q) => {
         const [rows, chain] = await Promise.all([api.audit(q), api.auditChain()]);

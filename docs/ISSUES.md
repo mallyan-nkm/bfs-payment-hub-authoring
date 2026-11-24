@@ -2578,6 +2578,50 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-03-27).** The activity schema takes `effect: pure` beside `read` for a `validate` or `decide` without rule sets (`spec/schemas/activity.schema.json`). Lint L57 holds the rest, in `tools/validate.py` and the studio's `checks.ts`: a pure activity names no port, and a check without rule sets is pure only when it is bound to a script (a builtin or a subflow without rule sets reads, as `p.validate.duplicate.v1` and `p.decide.await-posting-window.v1` do; mutations M97 and M98). Pure needs no idempotency key, as read does not (L54). The interpreter refuses a port call from a pure activity (`ContractViolation` R-03-27) before the declared-port check. R-03-08 says a check of its own may name no rule sets. No factory activity changes: `p.decide.cut-off.v1` and `p.decide.posting-window.v1` read the bank's calendar and the clock and stay `read`. `studio/test/checks.test.ts` ("a scripted check without rule sets may be pure").
 
+## I-338. A step that parks on Temporal deadlocked its run, so no retry reached it
+
+**Issue.** A step with a park policy that fails parks for an operator's retry or re-drive (R-05-55), and the engine host records the payment's step fact `stuck` through `Interp.Stuck` (`runtime/src/TransactHub.Engines.Durable/EngineSignals.cs`). That callback wrote the fact to the store and waited for it, in workflow code. On Temporal the workflow runs on its deterministic scheduler, so the write's continuation could never run: the workflow task failed with `TMPRL1101 deadlocked after 00:00:02`, every later task of the run timed out, and the operator's retry, delivered and recorded on the payment's chain, never reached the parked step. The hold's decision had been moved off the workflow's thread for the same reason (5ba6106); the stuck fact had not. Found while recording video 5c: with the laptop's native host stopped, a salary file's render step parked, and `retry-attempt` with the approver's consent changed nothing.
+
+**Recommendation.** Write the stuck fact as the hold's decision is written: queued, by a thread of its own, in order.
+
+**Done (24 November 2026, R-05-55).** `StoreSignals.Install` queues both the stuck fact and the hold's decision for one writer thread (`th-step-facts`); a replay that parks again still records one fact. `OperatorActionTests.A_parked_step_is_recorded_stuck_without_waiting_on_the_workflows_scheduler` calls the callback on a scheduler of one thread, as a workflow's is, on SQL Server and PostgreSQL; it timed out before. On the laptop, the parked render step now takes the retry, renders and sends the SIF (video 5c).
+
+## I-339. The service console listed running salary files as pins never started
+
+**Issue.** The content page's pins with no payment (R-09-165) counted a pin as started only when a payload `create` fact named the payment. A salary file's run on Temporal writes its payload as `accepted` for the bulk, and its steps on the bulk's own chain, so every salary file still running fifteen minutes after its pin was listed as never started, with `end-pin` offered: a bank approver's consent would have ended a running payment as abandoned. Found on the laptop while preparing video 5c (`GET /service/api/content/stuck-pins` listed two files waiting for their ACK).
+
+**Recommendation.** Count a pin as started when an engine's run took the payment in any of the ways it records it.
+
+**Done (24 November 2026, R-09-165).** `DistributionRegistry.Unstarted` (`runtime/src/TransactHub.Store/Distributions.cs`) treats a pin as started when a payload `create` or `accepted` fact names the payment, or when its own chain has a `step` or `engine` fact. `DistributionContentTests.A_pin_with_no_payment_is_listed_ended_with_consent_and_its_distribution_drains_and_is_removed` adds such a bulk; it was listed before.
+
+## I-350. A step's error had no runbook link in the service console's log
+
+**Issue.** An engine's step fact names its error as an object, `error: { name, retryable }`. The service console's log (`runtime/src/TransactHub.Service/Logs.cs`) read only `error.code` from an object, so a step's error was neither linked to its runbook nor found by the code filter, and the page showed it only inside the masked data, where the masking replaced its `name` with `[masked]`. And the error a worker raises when it cannot reach the native host, `NativeHostUnreachable` (`studio/src/interp/interpreter.ts`), has no entry in the platform error dictionary (`p.errors.platform.v1` 1.10.0), so even read by its name it has no runbook. Found in video 5c, where the native host was stopped and the render step failed with it.
+
+**Recommendation.** Read an error object's `name` as its code. Release `p.errors.platform.v1` 1.11.0 with an entry for `NativeHostUnreachable` (technical, retryable; checks: the native host's health and its log; safe action: bring the host back, then retry the parked step; action `retry-attempt`), with the factory's next release and a check that every error name the interpreter and the engine bindings throw has an entry.
+
+**Partly done (24 November 2026, R-05-52).** The log reads an error object's name as its code, so the code filter finds it and a known code links to its runbook (`ServiceApiTests.Logs_show_the_facts_masked_filtered_and_linked_to_the_payment_and_each_error_to_its_runbook`); each item carries its step's error unmasked, by name and whether it may be retried (an error's name is a code; the fact's data is masked, and an error object's `name` was masked with it), and an error the dictionary does not know is named on the row (`stepError`, `runtime/ops-console/src/service/format.ts`). The dictionary entry is not added: it is a new release of factory content.
+
+## I-351. The service console's content page misread configuration releases and lacked what it is for
+
+**Issue.** Four things, found while recording video 5c. (1) The Difference of a configuration release grouped its files by `kind:name`, which a configuration release's bill of materials does not have, so every file appeared as one line keyed `:` with all the hashes joined. (2) Every configuration release ever put in force was shown `in-force`, although only the latest counts (a configuration set is the bank's whole set, `ConfigurationValues`). (3) The page showed neither the values in force nor the pins with no payment, which have API routes or store reads of their own, and offered no Put in force for a release installed but not in force. (4) Nothing showed the trusted signers, nor a distribution's native modules and their SHA-256 (R-09-120 to R-09-123). And a long probe name, the disk's path, widened the health page beyond the screen.
+
+**Recommendation.** Key a configuration release's files by path; mark earlier releases superseded; show the values in force, the pins and what the runtime trusts.
+
+**Done (24 November 2026, R-09-40, R-09-110, R-09-111, R-09-165, R-09-120).** The Difference keys a file without a kind by its path. Of a bank's configuration releases put in force, the latest is `in-force` and the earlier ones `superseded` (the rates feed's releases among themselves). `GET /service/api/content/values` answers the values in force at a moment, each with its configuration set and day, and the hook bindings in force; `GET /service/api/trust` the trusted signers, each in use, retired or revoked, and each installed distribution's native modules with their files' SHA-256 (`ContentService.ValuesInForce`, `Trust`, `NativeOf`). The content page shows the values in force, the pins with no payment with End pin, and Put in force for a configuration release awaiting consent; a new page, Signers and modules, shows the signers and the modules, with Re-verify. Long names and values wrap in their cells. `DistributionContentTests.A_configuration_releases_difference_values_in_force_and_supersession_and_the_signers_and_native_modules_are_shown`, `A_distributions_native_section_is_listed_module_by_module`, `ServiceApiTests.Every_route_needs_a_signed_in_caller_with_a_service_role`, `runtime/ops-console/test/unit/service.test.ts`.
+
+## I-352. The service console's health has no probe for the native host, the workers or the engine host
+
+**Issue.** The health page probes the store, the read model, the package source, the trusted signers, Temporal, the disk and the circuit breakers. With the native host stopped on the laptop, health stayed green apart from the disk while salary files parked at their render step; the engineer found the cause only in the log (video 5c).
+
+**Recommendation.** Add probes for the native host (`/health` of `TH_NATIVE_HOST`), the activity workers and the engine host, each with an error code and a runbook entry, as `TH_HEALTH_URL` already names for each container.
+
+## I-353. The File API answers 500 with an exception's text when the engine host is down
+
+**Issue.** With the laptop's engine host stopped, `POST /files` answered `500` with the .NET exception and its stack (`HttpRequestException: Name or service not known (enginehost:7600)`), and no code. The channel cannot tell a refusal from a fault, and the text names the runtime's hosts. Found while preparing video 5c.
+
+**Recommendation.** Have the front door catch a failure to reach the engine host, answer `503` with a code of the error dictionary (for example `frontdoor.EngineUnreachable`) and no exception text, and say whether the file was kept for a retry.
+
 ## Not done, and why
 
 | Story | Why |

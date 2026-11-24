@@ -185,6 +185,43 @@ public sealed class OperatorActionTests(Databases dbs)
         await new Projector(store, ops, Views) { GapTimeout = TimeSpan.Zero }.CatchUp();
         Assert.Contains(await actions.Offers(other), x => x.Action == "re-screen");
     }
+
+    /// <summary>
+    /// A step that parks on an engine is recorded as the payment's step fact <c>stuck</c> (R-05-55), off the workflow's thread: on
+    /// Temporal the step parks in workflow code, on its deterministic scheduler, and writing the fact there waited on the database
+    /// with the scheduler held, so the run deadlocked (TMPRL1101) and no operator's retry reached it (video 5c, Issue I-338).
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_parked_step_is_recorded_stuck_without_waiting_on_the_workflows_scheduler(StoreProvider p)
+    {
+        var (store, _) = await dbs.Pair(p);
+        var id = await WpsRun.Seed(store, hold: false);
+        var root = $"park-{Guid.NewGuid():N}"[..20];
+        await using (var db = StoreDbContext.Open(store))
+            await new FactLog(db).Append($"{root}#ctx", "payload", new NewFact("payload", "accepted", new JsonObject { ["bulk"] = id }, Actor: "claim-check"));
+        var before = TransactHub.Engines.Interp.Stuck;
+        TransactHub.Engines.Durable.StoreSignals.Install(store);
+        try
+        {
+            // A scheduler of one thread, as a workflow's is: the call must return without a continuation of its own on it.
+            var workflow = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
+            var parked = Task.Factory.StartNew(() => TransactHub.Engines.Interp.Stuck!($"{root}/leg2", "render", 1), CancellationToken.None, TaskCreationOptions.None, workflow);
+            Assert.True(parked.Wait(TimeSpan.FromSeconds(2)), "Recording the stuck fact held the workflow's scheduler");
+            TransactHub.Engines.Interp.Stuck!($"{root}/leg2", "render", 1); // a replay parks again: one fact
+        }
+        finally { TransactHub.Engines.Interp.Stuck = before; }
+        for (var i = 0; i < 100; i++)
+        {
+            await using var db = StoreDbContext.Open(store);
+            if (await db.Facts.AsNoTracking().AnyAsync(x => x.SubjectId == id && x.Kind == "step" && x.Code == "stuck")) break;
+            await Task.Delay(100);
+        }
+        await using (var db = StoreDbContext.Open(store))
+        {
+            var stuck = Assert.Single(await db.Facts.AsNoTracking().Where(x => x.SubjectId == id && x.Kind == "step" && x.Code == "stuck").ToListAsync());
+            Assert.Contains("render", stuck.DataJson);
+        }
+    }
 }
 
 /// <summary>A clock a test moves.</summary>

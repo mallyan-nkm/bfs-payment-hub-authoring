@@ -11,8 +11,12 @@ export interface Probe { name: string; group: string; status: 'ok' | 'warn' | 'f
 export interface Health { sampledAt?: string; status: string; components: Probe[]; dashboards: Record<string, string> }
 export interface Version { tag: string; kind: string; workflow: string; release: string; target: string; releaseId: string; state: string; installable: boolean; notInstallable?: string }
 export interface Release { releaseId: string; scope: string; release: string; target?: string; state: string; openPayments: number; promotable: boolean; storedBy: string; storedAt: string; activations: { environment: string; effectiveFrom: string; by: string }[]; facts: any[] }
+export interface StuckPin { paymentId: string; distribution: string; bank: string; environment: string; pinnedAt: string; lastFact?: string; action: string }
+export interface ValuesInForce { bank: string; at: string; values: { parameter: string; value: unknown; version: number; configurationSet: string; effectiveFrom: string }[]; hookBindings: { hookPoint: string; hook: string; release?: string; validFrom?: string }[] }
+export interface NativeModule { scope: string; assembly: string; activities: string[]; files: { name: string; sha256: string }[] }
+export interface Trust { signers: { keyId: string; kinds?: string[] | null; feed?: string | null; retiredAt?: string | null; revokedAt?: string; reason?: string; state: string }[]; problem?: string | null; distributions: { releaseId: string; state: string; contract?: string | null; modules: NativeModule[]; notCarried?: unknown }[] }
 export interface ErrorLink { code: string; title?: string; category: string; runbook: string }
-export interface LogItem { source: 'fact' | 'log' | 'backend'; traceId?: string | null; at: string; level: string; subject?: string; tenant?: string; scheme?: string; kind?: string; code?: string; actor?: string; step?: string; activity?: string; message?: string; category?: string; data?: any; errors: ErrorLink[]; payment?: string; trace?: string }
+export interface LogItem { source: 'fact' | 'log' | 'backend'; traceId?: string | null; at: string; level: string; subject?: string; tenant?: string; scheme?: string; kind?: string; code?: string; actor?: string; step?: string; activity?: string; message?: string; category?: string; data?: any; errors: ErrorLink[]; error?: { name: string; retryable?: boolean | null } | null; payment?: string; trace?: string }
 export interface ErrorEntry { code: string; scope: string; title?: string; category: string; retryable: boolean; isoReasonCode?: string; raisedBy: string[]; meaning: string; causes: string[]; runbook: { checks: string[]; safeActions: string[]; actions?: string[]; escalation: string }; actionsOffered: { id: string; title: string; risky: boolean; path: string; missing?: string }[]; dictionary: string }
 export interface ActionSpec { id: string; title: string; target: string; risky: boolean; path: 'built' | 'missing'; does: string; missing?: string }
 export interface ActionResult { action: string; name: string; status: string; code?: string; runbook?: string; result?: any; needs?: string }
@@ -38,6 +42,9 @@ export function serviceClient(auth: SignIn) {
     health: (refresh = false) => call<Health>('GET', `/health${refresh ? '?refresh=1' : ''}`),
     versions: () => call<Version[]>('GET', '/content/versions'),
     releases: () => call<Release[]>('GET', '/content/releases'),
+    stuckPins: () => call<StuckPin[]>('GET', '/content/stuck-pins'),
+    values: (at?: string) => call<ValuesInForce>('GET', `/content/values${at ? `?at=${encodeURIComponent(at)}` : ''}`),
+    trust: () => call<Trust>('GET', '/trust'),
     diff: (tag: string) => call<any>('GET', `/content/diff?tag=${encodeURIComponent(tag)}`),
     verify: (tag: string, reason: string) => call<any>('POST', '/content/verify', { tag, reason }),
     install: (tag: string, reason: string) => call<any>('POST', '/content/install', { tag, reason }),
