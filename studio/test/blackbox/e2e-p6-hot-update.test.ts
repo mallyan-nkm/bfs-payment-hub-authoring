@@ -116,8 +116,11 @@ afterAll(() => {
  * the branch, and the signed configuration release the approval builds. The limit's 2026 period gets the value; from a later
  * validFrom, the earlier period is closed the day before (periods may not overlap, L14).
  */
-async function publishLimit(version: string, value: number, validFrom?: string) {
+async function publishLimit(value: number, validFrom?: string) {
   const c = JSON.parse(JSON.stringify(shipped));
+  // The next minor of the release on the branch (R-06-15): the bank's configuration set has releases of its own before this test.
+  const [major, minor] = String(shipped.release).split('.').map(Number);
+  const version = `${major}.${minor + 1}.0`;
   c.release = version;
   const year = c.values.filter((v: any) => v.parameter === LIMIT && v.validTo === '2026-12-31');
   const last = year[year.length - 1];
@@ -172,7 +175,7 @@ describe('P6: the studio deploys a distribution to the runtime and hot-updates a
   }, 600000);
 
   it('2. the bank publishes its internal limit; its signed configuration release is installed and its values are in force', async () => {
-    const c = await publishLimit('1.3.0', 1200);
+    const c = await publishLimit(1200);
     const inst = await install(c.tag);
     expect(inst).toMatchObject({ inForce: true, state: 'in-force', checkedAgainst: [distribution] });
     expect(await valueAt('2026-11-17T06:00:00Z')).toBe(1200);
@@ -188,7 +191,7 @@ describe('P6: the studio deploys a distribution to the runtime and hot-updates a
 
   it('4. the bank raises the limit to 2000 from 2026-11-20: a configuration release, a new value version, no new distribution or activation', async () => {
     const before = ((await call('GET', `/distributions?bank=${TENANT}&environment=${ENV}`)).data as any[]).length;
-    const c = await publishLimit('1.4.0', 2000, '2026-11-20');
+    const c = await publishLimit(2000, '2026-11-20');
     expect((await install(c.tag)).inForce).toBe(true);
     expect(await valueAt('2026-11-24T06:00:00Z')).toBe(2000);
     expect(await valueAt('2026-11-17T06:00:00Z')).toBe(1200);

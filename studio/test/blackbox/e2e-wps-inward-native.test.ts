@@ -44,7 +44,11 @@ beforeAll(async () => {
   for (let i = 0; i < 120; i++) { try { if ((await fetch(`${nativeUrl}/health`)).ok) break; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 500)); }
   // Every file the agent sends is encrypted first (Issue I-117). The example bank holds no Central Bank key, so its encryption stays
   // with the studio's simulator here; the runtime's encryption is proved by FileProtectionAndRegisterTests.
-  onRuntime = await startServer({ TH_NATIVE_HOST: nativeUrl, TH_NATIVE_ACTIVITIES: '*,!p.protect.encrypt-file.v1' });
+  // The WPS port is the studio's simulator in this bench (BENCH). Since R-09-213 (Issue I-268) the scheme's sends are native code-behinds
+  // that put the kept file on the bank's binding of the port, which the example bank does not bind: the sends stay with the studio's
+  // simulator, as the encryption does, and the native host renders every file and reads every answer.
+  const SENDS = ['receipt-confirmation', 'disbursement-file', 'returns-file'].map((s) => `!uae.wps.exchange.send-${s}.v2`);
+  onRuntime = await startServer({ TH_NATIVE_HOST: nativeUrl, TH_NATIVE_ACTIVITIES: ['*', '!p.protect.encrypt-file.v1', ...SENDS].join(',') });
   onStudio = await startServer();
 }, 600000);
 afterAll(() => {

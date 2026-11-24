@@ -81,7 +81,7 @@ describe('the WPS salary file on Temporal', () => {
       expect(Object.keys(w.served).every((t) => t.startsWith(scope[w.queue])), `${w.queue} ${Object.keys(w.served)}`).toBe(true);
     }
     // The salary file went to the scheme and its acknowledgement came back.
-    expect(d.workers.find((w) => w.queue === 'th-uae-wps')!.served['uae.wps.exchange.send-salary-file.v1@1.0.0']).toBe(1);
+    expect(d.workers.find((w) => w.queue === 'th-uae-wps')!.served['uae.wps.exchange.send-salary-file.v2@2.0.0']).toBe(1);
   }, RUN_MS);
 
   // The same salary file and the same party behaviour give the same trace on Temporal as on the

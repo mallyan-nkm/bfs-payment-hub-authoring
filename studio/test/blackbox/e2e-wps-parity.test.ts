@@ -106,7 +106,7 @@ for (const engine of ENGINES) {
         expect(Object.keys(w.served).every((t) => t.startsWith(scope[w.queue])), `${w.queue} ${Object.keys(w.served)}`).toBe(true);
       }
       // The salary file went to the scheme and its acknowledgement came back.
-      expect(d.workers.find((w) => w.queue === 'th-uae-wps')!.served['uae.wps.exchange.send-salary-file.v1@1.0.0']).toBe(1);
+      expect(d.workers.find((w) => w.queue === 'th-uae-wps')!.served['uae.wps.exchange.send-salary-file.v2@2.0.0']).toBe(1);
       if (ON_STORE) expect(/^store: .*$/m.exec(d.out)?.[0] ?? '', d.out.slice(-2500)).toMatch(/chains unbroken, all match the run$/);
     }, RUN_MS);
 

@@ -95,7 +95,7 @@ describe('a WPS salary file against the bank\'s party register, on the runtime (
   it('refuses the file of an unregistered employer, still refuses it while the registration waits, and sends it once consented', async () => {
     const refused = await run();
     expect(refused.status, JSON.stringify(refused.data).slice(0, 800)).toBe(200);
-    expect(traceOf(refused), JSON.stringify(refused.data).slice(0, 1500)).toEqual(['business-date:set', 'corporate:not-registered', 'end:rejected']);
+    expect(traceOf(refused), JSON.stringify(refused.data).slice(0, 1500)).toEqual(['business-date:set', 'cut-off:taken', 'corporate:not-registered', 'end:rejected']);
     expect(refused.data.outcome).toBe('rejected');
     // The runtime answered, not the simulator (its scenario says not-registered too, so the served count proves it).
     expect((await (await fetch(`${nativeUrl}/health`)).json()).served['p.enrich.party-register.v1']).toBeGreaterThan(0);
@@ -109,7 +109,7 @@ describe('a WPS salary file against the bank\'s party register, on the runtime (
     expect(proposed.status, await proposed.clone().text()).toBe(201);
     const change = (await proposed.json()).id;
     const waiting = await run();
-    expect(traceOf(waiting)).toEqual(['business-date:set', 'corporate:not-registered', 'end:rejected']);
+    expect(traceOf(waiting)).toEqual(['business-date:set', 'cut-off:taken', 'corporate:not-registered', 'end:rejected']);
     expect((await fetch(`${opsUrl}/ops/api/registers/changes/${change}/decision`, { method: 'POST', headers: as('reg.maker', 'BankApprover'), body: JSON.stringify({ approve: true }) })).status).toBe(403);
     const consented = await fetch(`${opsUrl}/ops/api/registers/changes/${change}/decision`, { method: 'POST', headers: as('reg.approver', 'BankApprover'), body: JSON.stringify({ approve: true }) });
     expect(consented.status).toBe(200);

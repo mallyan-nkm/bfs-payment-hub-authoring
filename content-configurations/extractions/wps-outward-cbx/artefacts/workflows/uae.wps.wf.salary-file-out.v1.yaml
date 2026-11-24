@@ -1,7 +1,7 @@
 kind: workflow
 wfKind: leg
 name: uae.wps.wf.salary-file-out.v1
-release: 1.4.0
+release: 1.5.0
 dsl: 1.0.0
 title: WPS salary file, bank as the employer's bank
 description: Sets the business date, asks the labour ministry for the employer's status,
@@ -12,7 +12,10 @@ description: Sets the business date, asks the labour ministry for the employer's
   business date, the employer's status, the file checks and the render. Release 1.3.0
   first looks the employer up in the bank's party register, as the source's pre-check
   did, and refuses a file whose employer the bank has not registered, or registered
-  with other details than the channel supplied (R-12-27).
+  with other details than the channel supplied (R-12-27). Release 1.4.0 applies the
+  bank's cut-off after the business date. A file accepted after the cut-off of its
+  scheme and direction counts for the next business day, or is refused, as the bank's
+  row says (R-12-28, Issue I-191).
 direction: outward
 implements:
   slot: scheme-leg
@@ -39,6 +42,11 @@ do:
   call: uae.p.enrich.business-date.v1
   policy:
     park: P1D
+- id: cut-off
+  call: p.decide.cut-off.v1
+  handle:
+    refused:
+      end: rejected
 - id: corporate
   call: p.enrich.party-register.v1
   policy:
@@ -101,7 +109,6 @@ provenance:
   clauses:
   - TransactHub source 666f1ee
   - UAEWPS SSM V2020-001
-  note: 'Release 1.4.0 of the factory leg, after its 1.3.0 (the employer looked up
-    in the bank''s party register, R-12-27): the salary file is rendered by the source''s
-    Central Bank SIF writer (native). Same interface: payments started on 1.3.0 finish
-    on it.'
+  note: 'Release 1.5.0 of the factory leg, after its 1.4.0: the salary file is rendered
+    by the source''s Central Bank SIF writer (native). Same interface: payments started
+    on 1.4.0 finish on it.'

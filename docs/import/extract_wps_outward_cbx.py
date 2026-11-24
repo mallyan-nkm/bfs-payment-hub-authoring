@@ -97,7 +97,7 @@ t('WPS-CBX-006', 'The leg renders the file with the source\'s writer and settles
   bench=[{'port': p, 'simulator': s, 'scenario': 'accept'} for p, s in [('uae.wps.port.wps.v1', 'uae.wps.sim.wps-outward.v1'), ('uae.p.port.calendar.v1', 'uae.p.sim.calendar.v1'),
          ('p.port.encryption.v1', 'p.sim.encryption.v1'), ('uae.wps.port.labour-ministry.v1', 'uae.wps.sim.labour-ministry.v1'), ('p.port.party-register.v1', 'p.sim.party-register.v1')]])
 with open(os.path.join(out, 'tests/WPS-CBX-006.yaml')) as f: d6 = yaml.safe_load(f)
-d6['expect']['trace'] = ['business-date:set', 'corporate:registered', 'employer-status:found', 'file-checks:pass', 'record-checks:pass', 'record-iban:pass', 'render:mapped', 'submit:accepted', 'end:settled']
+d6['expect']['trace'] = ['business-date:set', 'cut-off:taken', 'corporate:registered', 'employer-status:found', 'file-checks:pass', 'record-checks:pass', 'record-iban:pass', 'render:mapped', 'submit:accepted', 'end:settled']
 dump('tests/WPS-CBX-006.yaml', d6)
 
 # The example bank's values for the new parameters.

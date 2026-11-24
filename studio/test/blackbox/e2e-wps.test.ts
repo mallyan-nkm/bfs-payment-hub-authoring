@@ -176,7 +176,7 @@ describe('the factory WPS scheme, changed only by bank configuration', () => {
     expect(d.outcome, d.out.slice(-1500)).toBe('rejected');
     expect(d.trace).toEqual(HELD('declined'));
     expect(d.workers.find((w) => w.queue === 'th-bank')!.served['b.validate.internal-limit.v1@1.0.0']).toBe(1);
-    expect(d.workers.find((w) => w.queue === 'th-p')!.served['p.hold.approval.v1@1.0.0']).toBe(1);
+    expect(d.workers.find((w) => w.queue === 'th-p')!.served['p.hold.approval.v1@1.1.0']).toBe(1);
   }, 300000);
 
   it(`${V(4)} sets the limit to 900: the line of 1000 is above it, so the payment is held`, async () => {
