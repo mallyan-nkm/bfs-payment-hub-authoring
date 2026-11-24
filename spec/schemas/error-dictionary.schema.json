@@ -28,7 +28,7 @@
       "description": "What raises the error: an activity's declared errors, a rule's reason code, a port's party (as its simulators answer), an engine binding or the interpreter every binding runs, or a part of the runtime.",
       "enum": [
         "activity", "rule", "port", "interpreter", "engine:temporal", "engine:dtfx", "engine:flowable", "engine:elsa",
-        "native", "store", "read-model", "signing", "package-source", "auth", "operations-console", "service-console", "assistant"
+        "native", "store", "read-model", "signing", "package-source", "auth", "operations-console", "service-console", "assistant", "file-api"
       ]
     },
     "entry": {

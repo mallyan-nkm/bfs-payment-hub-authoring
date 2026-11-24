@@ -192,7 +192,7 @@ Size: 3 SP. Phase 3. Branch: `story/c09-s7-signals`.
 
 **Definition of Success**
 
-- CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01, CK-PARK-02 and CK-PARK-03 pass.
+- CK-SIGNAL-01 to 03, CK-HOLD-01, CK-HOLD-02, CK-PARK-01, CK-PARK-02, CK-PARK-03 and CK-PARK-04 pass.
 
 ### C09-S8 Hook points and bindings
 
