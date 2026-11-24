@@ -2460,6 +2460,14 @@ The consent is the role `BankApprover`, in the service console's and the operati
 **Done (24 November 2026).** Each answer with the page names a fresh nonce: the studio server (`appCsp`, `src/server/http.ts`) and the runtime hosts (`SecurityHeaders.WriteConsolePageAsync`, `UseConsolePage`) put it in the page's `<meta name="th-style-nonce">` and in `style-src 'self' 'nonce-…'`; the page gives it to Fluent's renderer, which sets it on every style element. `unsafe-inline` stays out, and scripts are still the page's own files only (`script-src 'self'`). Checked by `studio/test/security.test.ts` and `SecurityHeadersTests`.
 
 **Recommendation.** Say in R-09-60 and R-11-43 that a page may also apply style elements its own script writes when they carry the nonce of that answer, and never inline script; or, if the owner prefers no style elements at all, build Fluent's styles ahead of time into a stylesheet (Griffel's CSS extraction), which needs a build plugin the studio's Vite build does not have today.
+## I-336. The service console's log failed once any action was done
+
+**Issue.** The service console's log (`GET /service/api/logs`, R-09-69) read a few fields of each fact's data as text: `result`, `error`, `code`, `reasonCode`, `step`, `activity`, `instance`. A service action's `action.done` fact, and a release's `activate` fact, carry their `result` as an object, and casting an object to text throws. So once an engineer's action had been approved and done (on the laptop, the first install of a distribution), the log answered 500 and its page showed only "Unexpected token 'S' ... is not valid JSON". Found on the laptop while recording the end-to-end video.
+
+**Recommendation.** Read such a field as text only when it is text, and an object by its `code`; test the log on a chain that holds a done action.
+
+**Done (24 November 2026).** `EventLog.Facts` reads them so (`Word`, `runtime/src/TransactHub.Service/Logs.cs`); `ActionTests.A_risky_action_waits_for_another_person_and_every_troubleshooting_action_reaches_its_target` now reads the log of a payment with done actions, and answered 500 before.
+
 ## I-335. No bank hook ran on a runtime
 
 **Issue.** The long-running engine host builds each payment's plan from the stored distribution with the bank's values read live (R-09-135), but with no hook bindings: a distribution carries no configuration set, and the configuration release put in force kept its values, port bindings, calendars and tables, not its hook bindings. Every bank hook point therefore ran as unbound on a runtime, whatever the bank's configuration said: ADIB's bound labour ministry notification never ran, and a hook a bank binds in a new configuration release never runs, while the studio's bench and the test bench (which read the configuration set from the package) ran them. Found on the laptop while preparing the end-to-end video's new hook.

@@ -164,6 +164,17 @@ public sealed class EventLog(StoreOptions store, StoreOptions ops, LogBuffer log
 
     static JsonArray Links(IEnumerable<ErrorEntry> es) => new(es.Select(e => (JsonNode)new JsonObject { ["code"] = e.Code, ["title"] = e.Title, ["category"] = e.Category, ["runbook"] = e.Link }).ToArray());
 
+    /// <summary>
+    /// A fact's field as a word: its text, or an object's code. A service action's fact carries its result and its error as objects
+    /// (Issue I-336), and a cast of an object to text throws.
+    /// </summary>
+    static string? Word(JsonNode? n) => n switch
+    {
+        JsonValue v when v.TryGetValue<string>(out var s) => s,
+        JsonObject o => Word(o["code"]),
+        _ => null,
+    };
+
     async Task<List<JsonObject>> Facts(ServiceIdentity who, LogFilter f, CancellationToken ct)
     {
         await using var o = OpsDbContext.Open(ops);
@@ -186,17 +197,17 @@ public sealed class EventLog(StoreOptions store, StoreOptions ops, LogBuffer log
         foreach (var r in rows)
         {
             var data = JsonNode.Parse(r.DataJson) as JsonObject ?? new JsonObject();
-            if (instances is not null && !instances.Contains(r.SubjectId + "|" + (string?)data["instance"])) continue;
+            if (instances is not null && !instances.Contains(r.SubjectId + "|" + Word(data["instance"]))) continue;
             var scheme = subj.TryGetValue(r.SubjectId, out var s) ? s.Scheme : null;
-            var codes = new[] { (string?)data["reasonCode"], (string?)data["error"], (string?)data["code"], r.Kind == "step" ? null : r.Code }.OfType<string>().Distinct().ToList();
+            var codes = new[] { Word(data["reasonCode"]), Word(data["error"]), Word(data["code"]), r.Kind == "step" ? null : r.Code }.OfType<string>().Distinct().ToList();
             var errors = codes.Select(c => dictionary.Find(c, scheme)).OfType<ErrorEntry>().ToList();
             if (f.Code is { } c && !codes.Contains(c)) continue;
-            var isError = errors.Count > 0 || r.Code is "refused" or "reject" or "rejected" or "failed" or "expired" || (string?)data["result"] == "refused";
+            var isError = errors.Count > 0 || r.Code is "refused" or "reject" or "rejected" or "failed" or "expired" || Word(data["result"]) == "refused";
             result.Add(new JsonObject
             {
                 ["source"] = "fact", ["at"] = r.At.ToString("O"), ["level"] = isError ? "Error" : "Information", ["subject"] = r.SubjectId, ["subjectKind"] = r.SubjectKind,
                 ["tenant"] = s?.Tenant, ["scheme"] = scheme, ["seq"] = r.Seq, ["kind"] = r.Kind, ["code"] = r.Code, ["actor"] = r.Actor,
-                ["step"] = (string?)data["step"], ["activity"] = (string?)data["activity"], ["instance"] = (string?)data["instance"],
+                ["step"] = Word(data["step"]), ["activity"] = Word(data["activity"]), ["instance"] = Word(data["instance"]),
                 ["data"] = Masked.Json(data), ["errors"] = Links(errors),
                 ["payment"] = s is null ? null : $"#/payments/{Uri.EscapeDataString(r.SubjectId)}",
                 ["traceId"] = r.TraceId,

@@ -91,6 +91,12 @@ public sealed class ActionTests(Databases dbs)
             Assert.Equal("expired", (string?)JsonNode.Parse(rows[4])!["decision"]);
             Assert.Contains(await db.Facts.AsNoTracking().Where(f => f.SubjectId == bulk && f.Kind == "hold").Select(f => f.Code).ToListAsync(), c => c == "expired");
         }
+        // The logs show the actions' facts, whose result is an object, not a word (Issue I-336).
+        var logs = await se.GetAsync($"/service/api/logs?payment={bulk}");
+        Assert.True(logs.StatusCode == HttpStatusCode.OK, await logs.Content.ReadAsStringAsync());
+        var done = (await J.Of(logs))["items"]!.AsArray().Where(i => (string?)i!["code"] == "action.done").ToList();
+        Assert.NotEmpty(done);
+        Assert.Contains(done, i => i!["data"]!["result"] is JsonObject && (string?)i["level"] == "Information");
 
         // Intake per scheme (R-09-62): paused, the runtime refuses the bank's new payments of the scheme; resumed, it takes them.
         var pause = await J.Of(await se.PostAsJsonAsync("/service/api/actions", new { action = "pause-intake", target = "uae.wps", reason = "the Central Bank's window is closed", parameters = new { tenant = Seed.Tenant } }));
