@@ -240,6 +240,34 @@ public sealed class DistributionApiTests(Databases dbs)
         Assert.Equal("gateway-rest", (string?)(await J(await c.GetAsync($"/bindings?tenant={Bank}&port=p.port.core-banking.v1&at=2026-12-16T00:00:00Z")))["adapter"]);
     }
 
+    // R-09-303 (Issue I-406): the hook bindings of the latest configuration release put in force are served under /hook-bindings, to a
+    // caller that may read the bank's values, so a run the studio's deploy runner makes against the runtime takes the bank's hooks.
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task The_hook_bindings_of_the_configuration_in_force_are_served_to_a_values_reader(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        await using var host = new ApiHost(dbs.Fresh(p), s);
+        var c = host.Client();
+        Assert.Equal(HttpStatusCode.Created, (await c.PostAsync("/distributions", new ByteArrayContent(Distribution(s.Key, "2026.11.24-1")))).StatusCode);
+        // None in force yet: an empty list, not a refusal.
+        var none = await J(await c.GetAsync($"/hook-bindings?tenant={Bank}"));
+        Assert.Empty(none["bindings"]!.AsArray());
+        const string limit = "  - parameter: b.rule.internal-limit.v1#internalLimit\n    value: 5000\n    validFrom: 2026-12-01\n";
+        var set = $"kind: configuration-set\ntenant: {Bank}\nrelease: 1.3.0\nvalues:\n{limit}bindings:\n  - hookPoint: p.wf.corporate.v1#before-release\n    hook: b.hook.pre-release-approval.v1\n    release: 1.0.0\n    validFrom: 2026-01-01\n";
+        var r = await c.PostAsync("/configuration-releases", new ByteArrayContent(Configuration(s.Key, "1.3.0", limit, extra: new() { ["configuration/configuration-set.yaml"] = set })));
+        Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var worker = host.Client("bank-worker");
+        var got = await J(await worker.GetAsync($"/hook-bindings?tenant={Bank}"));
+        Assert.Equal(Bank, (string?)got["tenant"]);
+        var b = Assert.Single(got["bindings"]!.AsArray());
+        Assert.Equal(("p.wf.corporate.v1#before-release", "b.hook.pre-release-approval.v1"), ((string?)b!["hookPoint"], (string?)b["hook"]));
+        // Before the release was put in force, none.
+        Assert.Empty((await J(await worker.GetAsync($"/hook-bindings?tenant={Bank}&at=2000-01-01T00:00:00Z")))["bindings"]!.AsArray());
+        // A caller that may not read the bank's values is refused.
+        Assert.Equal(HttpStatusCode.Forbidden, (await worker.GetAsync("/hook-bindings?tenant=other-bank")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await host.Client("reader").GetAsync($"/hook-bindings?tenant={Bank}")).StatusCode);
+    }
+
     // R-01-25, R-09-75: the reference tables a configuration release carries are served by date under /lookups/{domain}, to a caller
     // with the lookup-reader role in the bank.
     [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]

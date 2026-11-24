@@ -2898,6 +2898,28 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Done (24 November 2026, R-09-302).** A scheme message may name the kinds an earlier runtime kept it under (`formerKinds`, schema `scheme`); lint L63 holds each to a name of its own scheme, no message's id and one message's only (mutations M112 to M114, in the validator and the studio's checks). `uae.wps` 1.7.0 (factory 1.25.0, change set CS-2026-11-24-020) names `uae.wps.sif-out` as the salary file's. The operations read model's catalogue reads the former kinds from every release of every scheme manifest in its content folder (`ViewCatalog.FormerKinds`), beside the views, and `DocumentKinds` is gone, so no platform code names the scheme. The store is insert-only, so old rows keep their kind and are read as the message. Evidence: `NeutralityTests`, `ProjectionTests` (three cases, SQL Server and PostgreSQL), `studio/test/checks.test.ts`.
 
+## I-406. A run the studio's deploy runner makes against a runtime takes no hook of the bank
+
+**Issue.** A distribution carries no configuration (R-09-110), so the bank's hook bindings reach a runtime only in the configuration release put in force, where the engine host reads them when an instance starts (R-09-217, Issue I-335). The studio's deploy runner, when it runs a payment the runtime pinned (`runPinned`, `studio/src/deploy/front-door.ts`), read the bank's values from the runtime at each attempt but took its hook bindings from the configuration set the run was given, which is none: every bank hook point ran as unbound. `test/blackbox/e2e-p6-hot-update.test.ts` failed for it (a salary file above the bank's limit was not held: no `hook:hold`).
+
+**Recommendation.** Let the runtime's release API serve the hook bindings of the configuration release in force, to a caller that may read the bank's values, and let the deploy runner give a pinned run those bindings when it is given no configuration set of its own.
+
+**Done (24 November 2026, R-09-303).** `GET /hook-bindings?tenant=&at=` (role `values-reader`, `runtime/src/TransactHub.Api/Program.cs`) answers `HookBindings.InForce`; `runPinned` reads it when the payment starts and gives the run those bindings (`DeployEnvironment.hookBindings`), and says so in its log. Evidence: `DistributionApiTests.The_hook_bindings_of_the_configuration_in_force_are_served_to_a_values_reader` (SQL Server and PostgreSQL), `test/blackbox/e2e-p6-hot-update.test.ts`.
+
+## I-407. A Flowable binding that restarts does not hold its root's start payload, so its store report says it does not match
+
+**Issue.** Since Issue I-302 a root's start keeps its payload in the claim check under a reference of its own (`<label>-<tenant>#start`). A binding that restarts with its run key (Issue I-89) reloads the payloads of its instances and of the starts still queued or pending, not those of roots already started. The store report then finds that start's payload in the store and not in the binding (`rebuilt: false`), and says the store does NOT match the run. `test/blackbox/e2e-wps-flowable-production.test.ts` ("a binding that stops in the middle of the payment is started again and goes on from the store", PostgreSQL) failed for it every time.
+
+**Recommendation.** On a restart, reload the start payload of every root already started, beside its instances' payloads.
+
+**Done (24 November 2026).** `FlowableBinding.Resume` reloads the start reference of each root already started (`runtime/src/TransactHub.Engine.Flowable/BindingJournal.cs`). Evidence: `FlowableRestartTests` (the three restarts now also check that the run's start payload is held as the store rebuilds it; they failed before the change), `test/blackbox/e2e-wps-flowable-production.test.ts`.
+
+## I-408. A distribution installed from the content branch sometimes has a worker file that does not match its signed hash
+
+**Issue.** In `test/blackbox/e2e-distributions.test.ts` the runtime's install from the fake GitHub branch (`POST /sources/install`) refused a distribution the studio had just built and tagged, with `engine/<workflow>/workers/<queue>/worker.cjs does not match its hash in the signed statement`, in two of three runs of this regression (22/22, then 19/22 and 21/22), each time another distribution and another queue (`th-uae-p`, `th-bank`, `th-uae-wps`); the later failures of a run follow from the first. The worker bundle is built once per process and is the same text for every queue, and the fake branch is content-addressed, so the file the tag's commit holds must differ from the text the studio signed: a race in how the studio writes a release's files to the branch (the parts a large commit is built in, a retry on a moved head, or the tag's commit) is the likely cause. Not found in this regression.
+
+**Recommendation.** Record, in the studio's content store, the blob SHA of each file of a release as it signs it and as the tree request returns it, and fail the write (not the install) when they differ; then run the black-box file in a loop until it fails, and fix the write. Until then, treat a failure of this kind in that file as this issue, and rerun.
+
 ## Not done, and why
 
 | Story | Why |

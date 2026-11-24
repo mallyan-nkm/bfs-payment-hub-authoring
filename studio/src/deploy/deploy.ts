@@ -27,6 +27,11 @@ export interface DeployEnvironment {
   bench?: { port: string; simulator: string; scenario: string }[];
   values?: any[];
   configurationSet?: any;
+  /**
+   * The bank's hook bindings, where they come from the runtime and not from a configuration set: those of the configuration release in
+   * force there (R-06-13, R-09-217, R-09-303, Issue I-406). They take the place of the configuration set's bindings.
+   */
+  hookBindings?: any[];
   /** When the run starts on its evaluation date, HH:MM:SS UTC (default 06:00:00): a bank's cut-off is a time of day (R-12-28). */
   startTime?: string;
 }
@@ -211,6 +216,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
   if (!environment.configurationSet && packaged && fs.existsSync(packaged)) environment.configurationSet = parseYaml(fs.readFileSync(packaged, 'utf8'));
   if (environment.configurationSet) log.push(`configuration ${environment.tenant}@${environment.configurationSet.release}${req.environment.configurationSet ? '' : ' from the package'}`);
   if (process.env.TH_RUNTIME_URL) log.push(`values from the runtime at ${process.env.TH_RUNTIME_URL}, in force at each attempt's time`);
+  if (environment.hookBindings) log.push(`hook bindings from the runtime: ${environment.hookBindings.length}, of the configuration release in force`);
 
   // 1. Workers: one process per queue, each on a free port; or an installation's workers, shared by distributions (R-09-133).
   let set: WorkerSet | undefined;
@@ -331,7 +337,7 @@ async function deployRun(req: DeployRequest): Promise<DeployResult> {
       ...(req.distribution ? { distribution: req.distribution } : {}),
       // On shared workers each payment's root instance is its own, as the long-running host names it.
       ...(own ? { rootId: `root-${own}` } : {}),
-      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, ...(environment.startTime ? { startTime: environment.startTime } : {}), tenant: environment.tenant, bindings: environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
+      built: { id: 'DEPLOY', spec: {}, workflow: req.workflow, ...(legs ? { legs } : {}), config: { evaluationDate: environment.evaluationDate, ...(environment.startTime ? { startTime: environment.startTime } : {}), tenant: environment.tenant, bindings: environment.hookBindings ?? environment.configurationSet?.bindings ?? [], values: [...(environment.configurationSet?.values ?? []), ...(environment.values ?? [])] }, context: ctx },
       documents,
       workers: Object.fromEntries(procs.map((p) => [p.queue, p.url])),
       queues: binding.queues,

@@ -121,14 +121,24 @@ export async function acceptAndRun(req: AcceptAndRun): Promise<{ distribution: s
 }
 
 /** Runs a payment already pinned (a message for a running payment goes to its own distribution): from that distribution only. */
+/** The bank's hook bindings of the configuration release in force on the runtime now (R-09-303): its `GET /hook-bindings`. */
+export async function hookBindingsInForce(rt: RuntimeClient, bank: string): Promise<any[]> {
+  const r = await call(rt, 'GET', `/hook-bindings?tenant=${encodeURIComponent(bank)}`);
+  return Array.isArray(r?.bindings) ? r.bindings : [];
+}
+
 export async function runPinned(req: AcceptAndRun & { distribution: string }): Promise<{ result: DeployResult; ended: boolean; manifest: any }> {
   const { dir, manifest } = await distributionCopy(req.runtime, req.distribution, req.cache);
   // The file the payment arrived with is kept before it runs, as received.
   if (req.inbound?.payload) await keepFile(req.runtime, { tenant: req.bank, paymentId: req.paymentId, message: req.inbound.message, payload: req.inbound.payload });
   const pkg = path.join(dir, 'engine', req.workflow);
   if (!fs.existsSync(pkg)) throw new Error(`${req.distribution} carries no ${req.workflow}`);
+  // A distribution carries no configuration (R-09-110): the bank's hook bindings are the configuration release's in force on the
+  // runtime, read when the payment starts, as the engine host reads them (R-09-217, R-09-303, Issue I-406). A run given its own
+  // configuration set keeps that set's.
+  const hookBindings = req.deployEnvironment.configurationSet || req.deployEnvironment.hookBindings ? req.deployEnvironment.hookBindings : await hookBindingsInForce(req.runtime, req.bank);
   const result = await deploy({
-    packagePath: pkg, workflow: req.workflow, engine: req.engine ?? manifest.engine, environment: { tenant: req.bank, ...req.deployEnvironment },
+    packagePath: pkg, workflow: req.workflow, engine: req.engine ?? manifest.engine, environment: { tenant: req.bank, ...req.deployEnvironment, ...(hookBindings ? { hookBindings } : {}) },
     inbound: req.inbound, studioRoot: req.studioRoot, distribution: req.distribution, paymentId: req.paymentId, workers: req.workers,
   });
   const ended = result.outcome ? await end(req.runtime, req.paymentId, result.outcome) : false;

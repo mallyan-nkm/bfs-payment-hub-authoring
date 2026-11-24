@@ -160,6 +160,16 @@ app.MapGet("/values", async (string tenant, DateTimeOffset? at, ClaimsPrincipal 
         ? Results.Ok(await BankValues.InForce(db, tenant, at ?? clock.GetUtcNow()))
         : Problem(403, $"{ApiAuth.Actor(user)} may not read the values of {tenant}")).RequireAuthorization(ApiAuth.ValuesReader);
 
+// A bank's hook bindings, of the latest configuration release put in force by a moment (R-06-13, R-09-217, R-09-303, Issue I-406):
+// what a run takes when its instance starts, beside the values, so a run the studio's deploy runner makes against this runtime
+// takes the bank's hooks as the engine host does. Each binding's own validFrom and validTo the engine applies on its date.
+app.MapGet("/hook-bindings", async (string tenant, DateTimeOffset? at, ClaimsPrincipal user, StoreDbContext db, TimeProvider clock) =>
+{
+    if (!ApiAuth.Has(user, ApiAuth.ValuesReader, tenant)) return Problem(403, $"{ApiAuth.Actor(user)} may not read the hook bindings of {tenant}");
+    var moment = at ?? clock.GetUtcNow();
+    return Results.Ok(new JsonObject { ["tenant"] = tenant, ["at"] = moment.ToString("O"), ["bindings"] = await HookBindings.InForce(db, tenant, moment) });
+}).RequireAuthorization(ApiAuth.ValuesReader);
+
 // The reference tables of the bank's installed configuration, as of a date (R-01-25, R-09-75): the participant directory, the
 // emirates, free zones, purpose codes, the business calendar, the bank's branches. The bank is the one named, or the only one the
 // caller's grant gives it.
