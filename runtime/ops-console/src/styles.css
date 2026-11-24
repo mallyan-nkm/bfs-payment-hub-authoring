@@ -165,3 +165,8 @@ fieldset { border: 1px solid var(--border); border-radius: var(--radius); paddin
 .top-status { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
 .top-status .fui-Badge { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; display: inline-block; line-height: 20px; }
 .top .fui-Button.topbar-button { white-space: nowrap; flex-shrink: 0; }
+
+/* The trust page's rotation (R-09-249): the kinds a new key may sign, side by side; the key's PEM takes the row's room. */
+.filters fieldset.kinds { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.filters fieldset.kinds legend { font-size: 12px; padding: 0; }
+.filters label.grow { flex: 1 1 320px; }

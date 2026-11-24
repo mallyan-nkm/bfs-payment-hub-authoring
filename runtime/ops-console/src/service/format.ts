@@ -3,6 +3,8 @@
 export const PAGES = [
   { id: 'health', title: 'Health' },
   { id: 'content', title: 'Content' },
+  // The trusted signers, each with what it may sign (R-09-249, Issue I-292).
+  { id: 'trust', title: 'Trust' },
   { id: 'logs', title: 'Logs' },
   { id: 'errors', title: 'Errors and runbooks' },
   { id: 'actions', title: 'Actions' },
@@ -45,6 +47,37 @@ export function diffSummary(d: { flows?: any[]; artefacts?: any[]; parameters?: 
 export function hashQuery(hash: string): Record<string, string> {
   const q = hash.split('?')[1] ?? '';
   return Object.fromEntries(new URLSearchParams(q));
+}
+
+/** The kinds a package may be signed as (R-09-184). */
+export const SIGNED_KINDS = ['workflow-package', 'distribution', 'configuration'] as const;
+/** The runtime's one feed (R-09-177): its key signs configuration releases of the feed only. */
+export const RATES_FEED = 'fx-rates';
+/** The target of a rotation that retires no key: the rates feed's first key, or another signer's (R-09-249). */
+export const RETIRE_NONE = 'none';
+
+/** What a trusted key may sign, in words: every kind where it names none, else its kinds, and its feed where it is scoped. */
+export function keyMaySign(k: { kinds?: string[]; everyKind?: boolean; scope?: { feed?: string } | null }): string {
+  const what = k.everyKind ? 'every kind' : (k.kinds ?? []).join(', ') || 'nothing';
+  return k.scope?.feed ? `${what}, of the ${k.scope.feed} feed only` : what;
+}
+
+/**
+ * The parameters of a rotation as the trust page asks for them (R-09-249): the new key's PEM, the kinds it may sign (all of them is
+ * every kind, so none is sent), and a feed's scope, which only a key that signs configuration releases alone may take. A string when
+ * something is missing or wrong, which the page says instead of asking.
+ */
+export function rotationParameters(publicKey: string, kinds: string[], feed: string): Record<string, unknown> | string {
+  if (!publicKey.includes('BEGIN PUBLIC KEY')) return 'Paste the new key\'s public key, as PEM';
+  if (kinds.length === 0) return 'Choose at least one kind the key may sign';
+  const every = SIGNED_KINDS.every((k) => kinds.includes(k));
+  if (feed.trim() && !(kinds.length === 1 && kinds[0] === 'configuration')) return 'A key scoped to a feed signs configuration releases only';
+  return { publicKey: publicKey.trim(), ...(every ? {} : { kinds: SIGNED_KINDS.filter((k) => kinds.includes(k)) }), ...(feed.trim() ? { scope: { feed: feed.trim() } } : {}) };
+}
+
+/** The action that trusts the rates feed's own key (R-09-249): no PEM pasted, the key before it retired if there is one. */
+export function feedKeyAction(feed: { previous?: string | null }): { action: string; target: string; parameters: Record<string, unknown> } {
+  return { action: 'rotate-trusted-key', target: feed.previous || RETIRE_NONE, parameters: { feed: RATES_FEED } };
 }
 
 /** A short time for tables. */

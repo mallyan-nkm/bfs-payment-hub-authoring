@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ServiceError, type ActionResult, type ActionSpec, type Answer, type ErrorEntry, type ErrorLink, type Health, type LogItem, type Release, type ServiceClient, type Version } from './api';
-import { PAGES, diffSummary, hashQuery, logQuery, runbookHref, stateTone, when } from './format';
+import { ServiceError, type ActionResult, type ActionSpec, type Answer, type ErrorEntry, type ErrorLink, type Health, type LogItem, type Release, type ServiceClient, type Trust, type Version } from './api';
+import { PAGES, RETIRE_NONE, SIGNED_KINDS, diffSummary, feedKeyAction, hashQuery, keyMaySign, logQuery, rotationParameters, runbookHref, stateTone, when } from './format';
 import { AuditTrail } from '../shell/AuditTrail';
-import { Button, Card, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Input, Select, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
+import { Button, Card, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Input, Select, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea } from '@fluentui/react-components';
 import { Alert, Badge } from '../ui';
 
 // The service console (spec R-09-39 to R-09-44): a section of the runtime's web app for service engineers. Every action
@@ -154,6 +154,69 @@ function ContentPage({ api }: { api: ServiceClient }) {
           </TableRow>
         ))}</TableBody>
       </Table>
+    </section>
+  );
+}
+
+/**
+ * The trusted signers (R-09-249, Issue I-292): each key with what it may sign and its scope, the rates feed's own key and whether it
+ * is trusted, and the rotation, which asks for the new key's kinds and scope. Every change waits for a bank approver's consent.
+ */
+function TrustPage({ api }: { api: ServiceClient }) {
+  const [t, setT] = useState<Trust | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [result, setResult] = useState<any>(null);
+  const [ask, setAsk] = useState<{ label: string; detail?: ReactNode; run(reason: string): Promise<any> } | null>(null);
+  const [retire, setRetire] = useState(RETIRE_NONE);
+  const [pem, setPem] = useState('');
+  const [kinds, setKinds] = useState<string[]>([...SIGNED_KINDS]);
+  const [feed, setFeed] = useState('');
+  const load = () => api.trust().then(setT).catch(setErr);
+  useEffect(() => { load(); }, []);
+  const params = rotationParameters(pem, kinds, feed);
+  const toggle = (k: string) => setKinds(kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k]);
+  return (
+    <section>
+      <h1>Trusted signers</h1>
+      <p className="note">The keys whose signatures this runtime accepts, and what each may sign: a kind of package (workflow packages, distributions, configuration releases) and, for a feed's key, the feed it is scoped to. A key that names no kind signs every kind. Adding or retiring a key waits for a bank approver's consent, another person's.</p>
+      <Problem e={err} />
+      <Done r={result} />
+      {ask && <Confirm label={ask.label} detail={ask.detail} onCancel={() => setAsk(null)} onConfirm={async (reason) => {
+        try { setResult(await ask.run(reason)); } catch (e) { setErr(e); }
+        setAsk(null); load();
+      }} />}
+      <Table size="small" className="grid" aria-label="Trusted keys">
+        <TableHeader><TableRow><TableHeaderCell>Key</TableHeaderCell><TableHeaderCell>State</TableHeaderCell><TableHeaderCell>May sign</TableHeaderCell><TableHeaderCell>Scope</TableHeaderCell><TableHeaderCell>Retired from</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{t?.keys.map((k) => (
+          <TableRow key={k.keyId} data-testid="trust-row" data-key={k.keyId}>
+            <TableCell className="mono">{k.keyId}</TableCell><TableCell><StateBadge s={k.state === 'trusted' ? 'active' : k.state === 'retiring' ? 'scheduled' : k.state === 'revoked' ? 'removed' : k.state} /> {k.state}</TableCell>
+            <TableCell data-testid="trust-kinds">{keyMaySign(k)}</TableCell><TableCell className="mono">{k.scope?.feed ?? '—'}</TableCell><TableCell>{when(k.retiredAt ?? undefined)}</TableCell>
+          </TableRow>
+        ))}</TableBody>
+      </Table>
+      {t && t.revoked.length > 0 && <p className="muted">Revoked: {t.revoked.map((r) => <span key={r.keyId} className="mono">{r.keyId} </span>)}</p>}
+      <h2>The rates feed's key</h2>
+      {t && !t.feed && <p className="muted">This host runs no rates feed (Service:FxRates:SigningKeyRef is not set).</p>}
+      {t?.feed && (
+        <Card className="card" data-testid="feed-key">
+          <p>Key <span className="mono">{t.feed.keyId}</span>, the public half of the feed's signing key: <StateBadge s={t.feed.trusted ? 'active' : 'offered'} /> {t.feed.trusted ? 'trusted for configuration releases of the fx-rates feed' : t.feed.state === 'trusted-otherwise' ? 'trusted, but not as the feed\'s key' : 'not trusted'}</p>
+          {!t.feed.trusted && <Button appearance="primary" onClick={() => { const a = feedKeyAction(t.feed!); setResult(null); setErr(null); setAsk({ label: 'trusting the rates feed\'s key', detail: <>Adds <span className="mono">{t.feed!.keyId}</span> with kinds configuration and scope fx-rates{a.target !== RETIRE_NONE && <>, and retires <span className="mono">{a.target}</span></>}.</>, run: (reason) => api.act(a.action, a.target, reason, a.parameters) }); }}>Trust the feed's key</Button>}
+        </Card>
+      )}
+      <h2>Rotate a key</h2>
+      <div className="filters">
+        <label><span>Retire</span>
+          <Select name="retire" value={retire} onChange={(e) => setRetire(e.target.value)}>
+            <option value={RETIRE_NONE}>No key</option>
+            {t?.keys.filter((k) => k.state === 'trusted').map((k) => <option key={k.keyId} value={k.keyId}>{k.keyId}</option>)}
+          </Select>
+        </label>
+        <label className="grow"><span>New public key (PEM)</span><Textarea name="publicKey" value={pem} onChange={(e) => setPem(e.target.value)} /></label>
+        <fieldset className="kinds"><legend>May sign</legend>{SIGNED_KINDS.map((k) => <Checkbox key={k} label={k} checked={kinds.includes(k)} onChange={() => toggle(k)} />)}</fieldset>
+        <label><span>Scope: feed</span><Input name="feed" value={feed} onChange={(e) => setFeed(e.target.value)} placeholder="fx-rates" /></label>
+        <Button disabled={typeof params === 'string'} onClick={() => { if (typeof params === 'string') return; setResult(null); setErr(null); setAsk({ label: 'key rotation', detail: <>{retire === RETIRE_NONE ? 'Adds the key' : <>Retires <span className="mono">{retire}</span> and adds the key</>}; it may sign {keyMaySign({ kinds: (params.kinds as string[] | undefined) ?? [...SIGNED_KINDS], everyKind: !params.kinds, scope: params.scope as any })}.</>, run: (reason) => api.act('rotate-trusted-key', retire, reason, params) }); }}>Rotate</Button>
+      </div>
+      {typeof params === 'string' && pem && <p className="note" data-testid="rotation-note">{params}</p>}
     </section>
   );
 }
@@ -381,6 +444,7 @@ export function ServiceSection({ api, path, approver }: { api: ServiceClient; pa
       </TabList>
       {page === 'health' && <HealthPage api={api} />}
       {page === 'content' && <ContentPage api={api} />}
+      {page === 'trust' && <TrustPage api={api} />}
       {page === 'logs' && <LogsPage key={location.hash} api={api} />}
       {page === 'errors' && <ErrorsPage api={api} code={path[1]} />}
       {page === 'actions' && <ActionsPage key={location.hash} api={api} approver={approver} />}

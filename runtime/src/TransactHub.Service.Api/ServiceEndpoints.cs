@@ -55,6 +55,9 @@ public static class ServiceEndpoints
             });
         }));
 
+        // The trusted signers (R-09-249, Issue I-292): each key's kinds and scope, and the rates feed's own key.
+        api.MapGet("/trust", (HttpContext http, TrustSettings t) => Guard(async () => { Who(http); return Results.Ok(await t.Describe(http.RequestAborted)); }));
+
         // Content (R-09-40).
         api.MapGet("/content/versions", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Versions(http.RequestAborted)); }));
         api.MapGet("/content/releases", (HttpContext http, ContentService c) => Guard(async () => { Who(http); return Results.Ok(await c.Releases(http.RequestAborted)); }));

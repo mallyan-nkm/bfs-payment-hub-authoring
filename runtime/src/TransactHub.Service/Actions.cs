@@ -41,7 +41,7 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         new("drain", "Drain a distribution", "release", true, "built", "Stops a distribution taking new payments; its open payments run to their end on it."),
         new("end-pin", "End a payment pinned but never started", "pin", true, "built", "Ends a pin the front door made for a payment whose start never reached an engine: the payment ends abandoned with the reason given, so its distribution can drain and be removed (R-09-165)."),
         new("reverify-package", "Re-verify a package", "release", false, "built", "Verifies a stored package again against the signers trusted now, and records the verification on the release's chain."),
-        new("rotate-trusted-key", "Rotate a trusted key", "key", true, "built", "Adds the studio's new public key to the trusted signers and retires the old one from a moment; writes the new list where TH_TRUSTED_SIGNERS names a writable file."),
+        new("rotate-trusted-key", "Rotate a trusted key", "key", true, "built", "Adds a new public key to the trusted signers, with what it may sign (kinds, and a feed's scope), and retires the old one from a moment (target none retires none); with feed fx-rates it adds the rates feed's own key, kinds [configuration] and scope fx-rates. Writes the new list where TH_TRUSTED_SIGNERS names a writable file (R-09-249)."),
         new("rebuild-read-model", "Rebuild the read model", "read-model", true, "built", "Throws the operations read model away and replays every fact from the outbox. Changes nothing in the store."),
         new("replay-read-model", "Replay the read model from its checkpoint", "read-model", false, "built", "Applies the outbox from the read model's checkpoint now. A fact already applied is not applied again (by its number on its chain)."),
         new("release-hold", "Release a hold", "payment", true, "built", "Decides the payment's open hold (approved for an approval hold, released for a repair hold) as the operations-queue port's decision."),
@@ -289,31 +289,67 @@ public sealed class ActionBook(StoreOptions store, ServiceAudit audit)
         }
     };
 
-    /// <summary>Rotate a trusted key: the new list, checked, written where the setting names a writable file.</summary>
-    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> RotateKey(string trustSetting, ISecretResolver secrets, bool writable, TimeProvider clock) => async (who, ask, ct) =>
+    /// <summary>The target of a rotation that adds a key and retires none (R-09-249): the rates feed's first key, or another signer's.</summary>
+    public const string RetireNone = "none";
+
+    /// <summary>
+    /// Rotate a trusted key: the new list, checked, written where the setting names a writable file (R-09-249, Issue I-292). The new key
+    /// is the PEM given (<c>publicKey</c>), with what it may sign (<c>kinds</c>, among workflow-package, distribution, configuration;
+    /// none, every kind) and its <c>scope</c> (<c>{ feed }</c>, for a key that signs configuration releases only, R-09-184); or, with
+    /// <c>feed: fx-rates</c>, the rates feed's own public key, read from the feed's signing key, as kinds [configuration] and scope
+    /// fx-rates, so its entry is added without hand editing. The target is the key it retires (from <c>retireAt</c>, else now), or
+    /// <c>none</c>.
+    /// </summary>
+    public static Func<ServiceIdentity, ActionAsk, CancellationToken, Task<JsonObject>> RotateKey(string trustSetting, ISecretResolver secrets, bool writable, TimeProvider clock, TrustSettings? trust = null) => async (who, ask, ct) =>
     {
         var p = ask.Parameters ?? new JsonObject();
-        var pem = (string?)p["publicKey"] ?? throw new ServiceRefused(400, ErrorCodes.TrustListInvalid, "rotate-trusted-key needs the new publicKey (PEM)");
+        string pem;
+        JsonArray? kinds = p["kinds"] is JsonNode kn ? kn as JsonArray ?? throw new ServiceRefused(400, ErrorCodes.TrustListInvalid, "kinds is a list") : null;
+        JsonObject? scope = p["scope"] is JsonNode sn ? sn as JsonObject ?? throw new ServiceRefused(400, ErrorCodes.TrustListInvalid, "scope is { feed }") : null;
+        if ((string?)p["feed"] is { Length: > 0 } feed)
+        {
+            if (feed != FxRateFeed.Domain) throw new ServiceRefused(400, ErrorCodes.TrustListInvalid, $"No feed {feed}: the runtime's feed is {FxRateFeed.Domain}");
+            if (await (trust?.FeedKey(ct) ?? Task.FromResult<(string, string)?>(null)) is not { } fk)
+                throw new ServiceRefused(409, ErrorCodes.TrustListInvalid, "This host runs no rates feed: set Service:FxRates:SigningKeyRef, the feed's signing key by reference");
+            pem = fk.Item2;
+            kinds = new JsonArray(ReleaseSignature.ConfigurationRelease);
+            scope = new JsonObject { ["feed"] = FxRateFeed.Domain };
+        }
+        else pem = (string?)p["publicKey"] ?? throw new ServiceRefused(400, ErrorCodes.TrustListInvalid, "rotate-trusted-key needs the new publicKey (PEM), or feed fx-rates");
         var retire = ask.Target!;
         var current = JsonNode.Parse(trustSetting.TrimStart().StartsWith('{') ? trustSetting : (await secrets.Resolve(trustSetting, ct)).Reveal()) as JsonObject ?? throw new ServiceRefused(422, ErrorCodes.TrustListInvalid, "The trusted signers are not JSON");
         using var key = System.Security.Cryptography.ECDsa.Create();
         try { key.ImportFromPem(pem); } catch (Exception e) when (e is ArgumentException or System.Security.Cryptography.CryptographicException) { throw new ServiceRefused(422, ErrorCodes.TrustListInvalid, "The new key is not a PEM EC public key"); }
         var newId = ReleaseSignature.KeyIdOf(key);
         var keys = current["keys"] as JsonArray ?? new JsonArray();
-        if (!keys.Any(k => (string?)k?["keyId"] == retire)) throw new ServiceRefused(404, ErrorCodes.UntrustedKey, $"Key {retire} is not trusted here");
+        var none = retire == RetireNone;
+        if (!none && !keys.Any(k => (string?)k?["keyId"] == retire)) throw new ServiceRefused(404, ErrorCodes.UntrustedKey, $"Key {retire} is not trusted here");
+        if (!none && retire == newId) throw new ServiceRefused(409, ErrorCodes.TrustListInvalid, "The new key is the key it would retire");
         var at = (string?)p["retireAt"] is { } r ? DateTimeOffset.Parse(r, System.Globalization.CultureInfo.InvariantCulture) : clock.GetUtcNow();
-        foreach (var k in keys.OfType<JsonObject>().Where(k => (string?)k["keyId"] == retire)) k["retiredAt"] = at.ToString("O");
-        if (!keys.Any(k => (string?)k?["keyId"] == newId)) keys.Add(new JsonObject { ["keyId"] = newId, ["publicKey"] = pem });
+        if (!none) foreach (var k in keys.OfType<JsonObject>().Where(k => (string?)k["keyId"] == retire)) k["retiredAt"] = at.ToString("O");
+        // The new key's entry: what it may sign and its scope, given or the feed's; a key trusted already takes them, not retired.
+        var entry = keys.OfType<JsonObject>().FirstOrDefault(k => (string?)k["keyId"] == newId);
+        if (entry is null) keys.Add(entry = new JsonObject { ["keyId"] = newId, ["publicKey"] = pem });
+        else entry.Remove("retiredAt");
+        // A key trusted already keeps what it may sign unless the rotation says otherwise: a rotation never widens a key by leaving kinds out.
+        if (kinds is not null) entry["kinds"] = kinds.DeepClone();
+        if (scope is not null) entry["scope"] = scope.DeepClone();
         current["keys"] = keys.DeepClone();
         var text = current.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        TrustedSigners.Parse(text);
+        try { TrustedSigners.Parse(text); }
+        catch (SignatureRejected e) { throw new ServiceRefused(422, ErrorCodes.TrustListInvalid, e.Message); }
         string? written = null;
         if (writable && !trustSetting.TrimStart().StartsWith('{') && SecretRef.IsRef(trustSetting) && SecretRef.Parse(trustSetting) is { Scheme: "file" } f)
         {
             await File.WriteAllTextAsync(f.Locator, text, ct);
             written = f.Locator;
         }
-        return new JsonObject { ["added"] = newId, ["retired"] = retire, ["retiredAt"] = at.ToString("O"), ["written"] = written, ["trustedSigners"] = written is null ? JsonNode.Parse(text) : null };
+        return new JsonObject
+        {
+            ["added"] = newId, ["retired"] = none ? null : retire, ["retiredAt"] = none ? null : at.ToString("O"),
+            ["kinds"] = entry["kinds"]?.DeepClone(), ["scope"] = entry["scope"]?.DeepClone(),
+            ["written"] = written, ["trustedSigners"] = written is null ? JsonNode.Parse(text) : null,
+        };
     };
 
     /// <summary>Requeue a Flowable dead-letter job through the Flowable REST server's management API.</summary>

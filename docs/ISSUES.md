@@ -2413,6 +2413,8 @@ The consent is the role `BankApprover`, in the service console's and the operati
 
 **Recommendation.** Show each key's kinds and scope on the service console's trust page, and have the rotation action ask for them, with the feed's key offered as `kinds: [configuration]`, `scope: { feed: fx-rates }`.
 
+**Done (24 November 2026, R-09-249).** The service console has a Trust page (`GET /service/api/trust`, `TrustSettings`): each key with its state, what it may sign (its kinds, or every kind) and its scope; and, where the host runs the rates feed, the feed's own key (the public half of `Service:FxRates:SigningKeyRef`) and whether it is trusted for the feed. `rotate-trusted-key` asks for the new key's kinds and scope, never widens a key it leaves them out for, and with `feed: fx-rates` adds the feed's own key as `kinds: [configuration]`, `scope: { feed: fx-rates }`, no PEM pasted (target `none` retires nothing; the page offers it as "Trust the feed's key", retiring the feed's key before it). Each waits for a bank approver's consent. The laptop's and each bank's installation now add the feed's entry from the console instead of by hand; the laptop stack itself is not changed here (Issue I-370).
+
 ## I-293. The scheme's other sends still read no encryption fact
 
 **Issue.** R-09-182 makes the salary file's send send the encrypted file. The returns file, the refund request and response, the disbursement cancellation and the receipt confirmation are encrypted by their subflows too, but have no native code-behind yet (Issue I-268) and read no encryption fact: once each is given one, it would send the plain file as the salary file's v1 did.

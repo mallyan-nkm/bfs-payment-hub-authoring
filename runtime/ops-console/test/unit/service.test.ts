@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PAGES, diffSummary, hashQuery, logQuery, runbookHref, stateTone, when } from '../../src/service/format';
+import { PAGES, RETIRE_NONE, diffSummary, feedKeyAction, hashQuery, keyMaySign, logQuery, rotationParameters, runbookHref, stateTone, when } from '../../src/service/format';
 import { DEV_USERS } from '../../src/shell/Shell';
 
 // The service console's own logic (R-09-39 to R-09-44): its pages, the runbook link of every error it shows, the log
@@ -11,8 +11,27 @@ import { DEV_USERS } from '../../src/shell/Shell';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 describe('the service console', () => {
-  it('has the seven pages of Part 9, section 9.12, and its audit trail (R-05-76)', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'logs', 'errors', 'actions', 'backup', 'assistant', 'audit']);
+  it('has the seven pages of Part 9, section 9.12, the trusted signers (R-09-249) and its audit trail (R-05-76)', () => {
+    expect(PAGES.map((p) => p.id)).toEqual(['health', 'content', 'trust', 'logs', 'errors', 'actions', 'backup', 'assistant', 'audit']);
+  });
+
+  it("says what each trusted key may sign, and asks a rotation for the new key's kinds and scope (R-09-249, Issue I-292)", () => {
+    expect(keyMaySign({ everyKind: true, kinds: ['workflow-package', 'distribution', 'configuration'] })).toBe('every kind');
+    expect(keyMaySign({ kinds: ['workflow-package'] })).toBe('workflow-package');
+    expect(keyMaySign({ kinds: ['configuration'], scope: { feed: 'fx-rates' } })).toBe('configuration, of the fx-rates feed only');
+    const pem = '-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----';
+    expect(rotationParameters('', ['configuration'], '')).toMatch(/PEM/);
+    expect(rotationParameters(pem, [], '')).toMatch(/at least one kind/);
+    expect(rotationParameters(pem, ['distribution', 'configuration'], 'fx-rates')).toMatch(/configuration releases only/);
+    // Every kind is sent as none, so the key's entry names none; a narrower key names its kinds, in their order.
+    expect(rotationParameters(pem, ['configuration', 'workflow-package', 'distribution'], '')).toEqual({ publicKey: pem });
+    expect(rotationParameters(pem, ['distribution', 'workflow-package'], '')).toEqual({ publicKey: pem, kinds: ['workflow-package', 'distribution'] });
+    expect(rotationParameters(pem, ['configuration'], ' fx-rates ')).toEqual({ publicKey: pem, kinds: ['configuration'], scope: { feed: 'fx-rates' } });
+  });
+
+  it("trusts the rates feed's own key without a PEM pasted, retiring the feed's key before it (R-09-249)", () => {
+    expect(feedKeyAction({})).toEqual({ action: 'rotate-trusted-key', target: RETIRE_NONE, parameters: { feed: 'fx-rates' } });
+    expect(feedKeyAction({ previous: 'k-old' })).toEqual({ action: 'rotate-trusted-key', target: 'k-old', parameters: { feed: 'fx-rates' } });
   });
 
   it('links an error to its runbook in the dictionary, whatever its code', () => {

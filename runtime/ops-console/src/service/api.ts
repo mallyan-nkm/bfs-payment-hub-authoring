@@ -16,6 +16,9 @@ export interface LogItem { source: 'fact' | 'log' | 'backend'; traceId?: string 
 export interface ErrorEntry { code: string; scope: string; title?: string; category: string; retryable: boolean; isoReasonCode?: string; raisedBy: string[]; meaning: string; causes: string[]; runbook: { checks: string[]; safeActions: string[]; actions?: string[]; escalation: string }; actionsOffered: { id: string; title: string; risky: boolean; path: string; missing?: string }[]; dictionary: string }
 export interface ActionSpec { id: string; title: string; target: string; risky: boolean; path: 'built' | 'missing'; does: string; missing?: string }
 export interface ActionResult { action: string; name: string; status: string; code?: string; runbook?: string; result?: any; needs?: string }
+export interface TrustedKey { keyId: string; state: string; retiredAt?: string | null; revokedAt?: string | null; kinds: string[]; everyKind: boolean; scope?: { feed: string } | null }
+export interface FeedKey { feed: string; keyId: string; trusted: boolean; state: string; previous?: string | null; entry: { keyId: string; publicKey: string; kinds: string[]; scope: { feed: string } } }
+export interface Trust { at: string; kinds: string[]; keys: TrustedKey[]; revoked: { keyId: string; revokedAt: string; reason?: string }[]; feed?: FeedKey | null }
 export interface Proposal { action: string; title: string; target?: string; runbook: string; runbookLink: string; why?: string; risky: boolean; path: string; inRunbook: boolean; confirm: string }
 export interface Answer { answer: string; sources: string[]; cited: string[]; proposals: Proposal[]; model: string; stopReason: string; note: string }
 
@@ -37,6 +40,7 @@ export function serviceClient(auth: SignIn) {
     me: () => call<{ subject: string; displayName: string; roles: string[]; tenants: string[]; service: boolean }>('GET', '/me'),
     health: (refresh = false) => call<Health>('GET', `/health${refresh ? '?refresh=1' : ''}`),
     versions: () => call<Version[]>('GET', '/content/versions'),
+    trust: () => call<Trust>('GET', '/trust'),
     releases: () => call<Release[]>('GET', '/content/releases'),
     diff: (tag: string) => call<any>('GET', `/content/diff?tag=${encodeURIComponent(tag)}`),
     verify: (tag: string, reason: string) => call<any>('POST', '/content/verify', { tag, reason }),
