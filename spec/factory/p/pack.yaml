@@ -154,7 +154,7 @@ artefacts:
   - name: p.errors.platform.v1
     kind: error-dictionary
     release: 1.11.0
-    hash: sha256:5aa0daed6d76c19dbc8a4853a5ee3425c6da8e8d171ed2afa47a49415e1389ba
+    hash: sha256:b83adab02bb1cadd35a49300bcc871262d1f2ad435261f9cee8fd2c0b33ab7c7
     path: errors/p.errors.platform.v1.yaml
   - name: p.port.channel.v1
     kind: port
