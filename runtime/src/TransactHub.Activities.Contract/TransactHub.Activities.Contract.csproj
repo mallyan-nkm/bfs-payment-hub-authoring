@@ -10,14 +10,18 @@
     2.0.0 (R-09-261 to R-09-264, Issues I-315, I-226): bound ports (INativeServices.BoundPorts), so a module builds the adapters of its
     own scheme's ports; a module's gate on a binding (NativeBindingGate); Service<T> is removed, so a 1.x module is refused
     (native.ContractUnsupported). Every module is rebuilt against it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2).
+    2.1.0 (R-09-276 to R-09-281, Issues I-382, I-383): a minor. A balance enquiry on a core-banking binding (INativeCoreBankingBinding.Balance),
+    so the reservation, its release, the reversal and the check of a posting are the platform module's; and on the bound ports a body
+    of bytes with its content type (NativeHttpRequest.Content) and a file put through the binding's transfer (INativeBoundPorts.Put).
+    A 2.0 module runs on it unchanged; a 2.1 module on a 2.0 runtime is refused (native.ContractUnsupported).
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>2.0.0</Version>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
-    <FileVersion>2.0.0.0</FileVersion>
+    <Version>2.1.0</Version>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
+    <FileVersion>2.1.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>

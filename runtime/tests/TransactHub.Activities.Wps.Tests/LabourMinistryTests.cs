@@ -30,6 +30,9 @@ public sealed class LabourMinistryTests
             Sent.Add((b, request));
             return answer!(request);
         }
+
+        // The register's adapters put no file (contract 2.1.0's file put is for a port on a file wire, R-09-281).
+        public NativeFileSent Put(NativeAttempt a, NativeBinding b, NativeFilePut file) => throw new InvalidOperationException("The register puts no file");
     }
 
     static NativeBinding Binding(string adapter, Dictionary<string, string> settings) =>

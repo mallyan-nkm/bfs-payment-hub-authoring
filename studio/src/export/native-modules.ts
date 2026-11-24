@@ -39,16 +39,12 @@ const DEFAULT_PROJECTS: Record<string, string> = { p: 'runtime/src/TransactHub.A
 const CONTRACT_PROJECT = 'runtime/src/TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj';
 /**
  * The native contract this studio builds against when the runtime's sources are not here (a prebuilt module says its own). 2.0.0
- * (R-09-261 to R-09-264): bound ports, no Service<T>; a module built against 1.x is refused here and on the runtime.
+ * (R-09-261 to R-09-264): bound ports, no Service<T>; a module built against 1.x is refused here and on the runtime. 2.1.0 (R-09-276), a
+ * minor: a balance enquiry on core banking, a body of bytes and a file put on the bound ports; a module built against 2.0 is taken.
  */
-export const NATIVE_CONTRACT = '2.0.0';
+export const NATIVE_CONTRACT = '2.1.0';
 /** The error dictionary's code of a module built against a native contract the runtime does not take (R-09-262). */
 export const CONTRACT_UNSUPPORTED = 'native.ContractUnsupported';
-/**
- * Builtin activities a platform module answers on the runtime since native contract 2.0.0 (R-09-264, Issue I-227): the image keeps no
- * copy, so a distribution that carries one needs its scope's module as it needs the module of an activity with no script-behind.
- */
-export const MODULE_BUILTINS: Record<string, string[]> = { p: ['p.post.accounting.v1'] };
 /** The native contract's assembly: the one assembly of TransactHub a module references (R-09-125). */
 export const CONTRACT_ASSEMBLY = 'TransactHub.Activities.Contract';
 /** The error dictionary's code of a module that references the runtime image beyond the contract (R-09-125, Issue I-220). */
@@ -73,20 +69,26 @@ export interface NativeModuleBuild {
 
 const sha = (b: Buffer | string) => `sha256:${createHash('sha256').update(b).digest('hex')}`;
 
-/** Does the runtime run this activity as native code-behind? */
+/**
+ * Does the runtime run this activity as native code-behind? A builtin a module answers on the runtime says so too (`native: true`, lint
+ * L40): since native contract 2.1.0 the image answers no core-banking activity (R-09-278, R-09-282, Issues I-381, I-382), so a
+ * distribution that carries one needs its scope's module, as it needs the module of an activity with no script-behind.
+ */
 export function isNative(doc: any): boolean {
   return doc?.kind === 'activity' && (doc.implementation?.binding === 'native' || doc.implementation?.native === true);
-}
-
-/** Is this a builtin activity a platform module answers on the runtime (MODULE_BUILTINS)? */
-export function isModuleBuiltin(doc: any, scope: string): boolean {
-  return doc?.kind === 'activity' && doc.implementation?.binding === 'builtin' && (MODULE_BUILTINS[scope] ?? []).includes(doc.name);
 }
 
 /** Whether a module built against `built` runs on a runtime of contract `own`: the same major, at a minor no later (R-09-123, R-09-262). */
 export function contractSupported(built: string | undefined, own = contractVersion()): boolean {
   const [a, b] = [built, own].map((v) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v ?? '')?.slice(1).map(Number));
   return !!a && !!b && a[0] === b[0] && a[1] <= b[1];
+}
+
+/** Orders two contract versions (major.minor.patch). */
+function compareContract(a: string, b: string): number {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+  return 0;
 }
 
 /** A platform scope: the platform and the cluster platforms. Since R-09-126 their native code is a module like any other. */
@@ -257,7 +259,7 @@ export function imageReferences(m: NativeModuleBuild): string[] {
 export function nativeModules(docs: any[], scopeOf: (name: string) => string, promotable: boolean): { section: any; files: Record<string, string>; artefacts: any[]; problems: string[] } {
   const byScope = new Map<string, string[]>();
   const nativeOnly = new Map<string, string[]>();
-  for (const d of docs.filter((x) => isNative(x) || (x?.implementation?.binding === 'builtin' && typeof x.name === 'string' && isModuleBuiltin(x, scopeOf(x.name))))) {
+  for (const d of docs.filter(isNative)) {
     const s = scopeOf(d.name);
     byScope.set(s, [...(byScope.get(s) ?? []), `${d.name}@${d.release}`].sort());
     if (d.implementation?.binding !== 'script') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
@@ -267,7 +269,8 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
   const artefacts: any[] = [];
   const notCarried: string[] = [];
   const problems: string[] = [];
-  let contract = contractVersion();
+  // The manifest names the latest minor its modules were built against (R-09-276): a 2.0 module beside a 2.1 one runs on a 2.1 runtime.
+  let contract: string | undefined;
   for (const [scope, activities] of [...byScope].sort(([a], [b]) => a.localeCompare(b))) {
     let m: NativeModuleBuild | undefined;
     try { m = moduleFor(scope); } catch (e: any) { problems.push(e.message); continue; }
@@ -284,7 +287,7 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
     }
     const refused = imageReferences(m);
     if (refused.length) { problems.push(...refused); continue; }
-    contract = m.contract ?? contract;
+    if (m.contract && (!contract || compareContract(m.contract, contract) > 0)) contract = m.contract;
     const listed = m.files.map((f) => {
       const p = `${NATIVE_FOLDER}/${scope}/${f.name}.base64`;
       files[p] = `${f.content.toString('base64')}\n`;
@@ -293,6 +296,6 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
     });
     modules.push({ scope, assembly: m.assembly, ...(m.project ? { project: m.project } : {}), ...(m.sourceSha256 ? { sourceSha256: m.sourceSha256 } : {}), ...(m.signature ? { signature: m.signature } : {}), activities, files: listed });
   }
-  const section = { contract, modules, ...(notCarried.length ? { notCarried } : {}) };
+  const section = { contract: contract ?? contractVersion(), modules, ...(notCarried.length ? { notCarried } : {}) };
   return { section, files, artefacts, problems };
 }

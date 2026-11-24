@@ -115,7 +115,7 @@ public sealed class LaptopDeploymentTests
     }
 
     /// <summary>
-    /// R-09-262: the laptop image's modules are built and signed against the native contract the image carries, 2.0.0, read from the
+    /// R-09-262: the laptop image's modules are built and signed against the native contract the image carries, 2.1.0 (R-09-276), read from the
     /// contract project's Version by runtime/tools/native-module/build.sh, never written in the laptop's files; both builds of the image
     /// (in Docker, and --local) build the platform's and WPS's modules that way.
     /// </summary>
@@ -124,7 +124,7 @@ public sealed class LaptopDeploymentTests
     {
         var csproj = File.ReadAllText(Path.Combine(Root(), "runtime", "src", "TransactHub.Activities.Contract", "TransactHub.Activities.Contract.csproj"));
         Assert.Equal(TransactHub.Activities.Native.NativeContract.Version, Regex.Match(csproj, "<Version>([^<]+)</Version>").Groups[1].Value);
-        Assert.Equal("2.0.0", TransactHub.Activities.Native.NativeContract.Version);
+        Assert.Equal("2.1.0", TransactHub.Activities.Native.NativeContract.Version);
         var tool = File.ReadAllText(Path.Combine(Root(), "runtime", "tools", "native-module", "build.sh"));
         Assert.Contains("TransactHub.Activities.Contract/TransactHub.Activities.Contract.csproj", tool);
         Assert.Contains("\"contract\": \"$contract\"", tool);

@@ -9,26 +9,40 @@ public static class NativeContract
 {
     /// <summary>
     /// The contract this runtime supports. Keep it the project's <c>Version</c>. 2.0.0 (R-09-262) removed <c>Service&lt;T&gt;</c> and added
-    /// bound ports, so a module built against 1.x is refused (<c>native.ContractUnsupported</c>) and rebuilt.
+    /// bound ports, so a module built against 1.x is refused (<c>native.ContractUnsupported</c>) and rebuilt. 2.1.0 (R-09-276), a minor, added
+    /// the balance enquiry of a core-banking binding and, on the bound ports, a body of bytes and a file put: a 2.0 module runs on it.
     /// </summary>
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
 
     /// <summary>The contract assembly's name, which a module references and never carries.</summary>
     public const string AssemblyName = "TransactHub.Activities.Contract";
 
     /// <summary>Whether a module built against <paramref name="version"/> runs on this runtime.</summary>
-    public static bool Supports(string? version)
+    public static bool Supports(string? version) => Supports(version, Version);
+
+    /// <summary>
+    /// Whether a module built against <paramref name="version"/> runs on a runtime of contract <paramref name="own"/>: the same major, at a
+    /// minor no later (R-09-123, R-09-276). So a 2.0 module runs on a 2.1 runtime, and a 2.1 module is refused by a 2.0 runtime.
+    /// </summary>
+    public static bool Supports(string? version, string own)
     {
-        if (!System.Version.TryParse(version, out var v)) return false;
-        var own = System.Version.Parse(Version);
-        return v.Major == own.Major && v.Minor <= own.Minor;
+        if (!System.Version.TryParse(version, out var v) || !System.Version.TryParse(own, out var o)) return false;
+        return v.Major == o.Major && v.Minor <= o.Minor;
     }
 
     /// <summary>Why a version is refused, for a refusal's message.</summary>
-    public static string Refusal(string? version) =>
-        $"the distribution's native assemblies were built against native contract {version ?? "(none)"}; this runtime supports {System.Version.Parse(Version).Major}.x up to {Version}"
-        + (System.Version.TryParse(version, out var v) && v.Major < System.Version.Parse(Version).Major
-            ? $": rebuild every module against {Version} and build a new distribution (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2)" : "");
+    public static string Refusal(string? version) => Refusal(version, Version);
+
+    /// <summary>Why a version is refused by a runtime of contract <paramref name="own"/>.</summary>
+    public static string Refusal(string? version, string own)
+    {
+        var o = System.Version.Parse(own);
+        var why = $"the distribution's native assemblies were built against native contract {version ?? "(none)"}; this runtime supports {o.Major}.x up to {own}";
+        if (!System.Version.TryParse(version, out var v)) return why;
+        if (v.Major < o.Major) return why + $": rebuild every module against {own} and build a new distribution (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2)";
+        if (v.Major == o.Major && v.Minor > o.Minor) return why + $": take the runtime images of contract {v.Major}.{v.Minor}, or build the distribution's modules against {own}";
+        return why;
+    }
 }
 
 /// <summary>
@@ -75,6 +89,8 @@ public interface INativeServices
     /// <summary>
     /// Since 2.0.0 (R-09-261, Issue I-315). The bank's binding in force of any port, so a module builds the adapter of its own scheme's
     /// port: its adapter and settings, and a request sent to its endpoint with its credential, circuit breaker and timeout applied by the image.
+    /// Since 2.1.0 (R-09-280, R-09-281, Issue I-383) a request may carry a body of bytes with its content type, and a file may be put
+    /// through the binding's transfer, so a scheme's port on another wire is the module's too.
     /// </summary>
     INativeBoundPorts BoundPorts { get; }
 

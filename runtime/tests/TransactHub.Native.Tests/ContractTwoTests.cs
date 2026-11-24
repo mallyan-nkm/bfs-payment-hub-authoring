@@ -123,7 +123,7 @@ public sealed class ContractTwoTests(Store store)
                       channel: BANK-CHANNEL
                       timeoutSeconds: "5"
                 """);
-            var d = await Install("2026.11.24-21", "2.0.0", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{EmployerStatus}@{EmployerStatusRelease}"]));
+            var d = await Install("2026.11.24-21", NativeContract.Version, new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{EmployerStatus}@{EmployerStatusRelease}"]));
             await using var host = new Host(store.Options, banks.FullName);
             var c = host.CreateClient();
 
@@ -160,9 +160,9 @@ public sealed class ContractTwoTests(Store store)
         var old = ModuleBuilds.BuiltAgainst("1.1.0");
         Assert.Equal("1.1.0", NativeAssemblies.ContractOf(old));
         var legacy = await Install("2026.11.24-22", "1.1.0", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, old, []));
-        // Its manifest claims 2.0.0, its assembly was built against 1.1.0: refused as well.
-        var claims = await Install("2026.11.24-23", "2.0.0", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, old, []));
-        var rebuilt = await Install("2026.11.24-24", "2.0.0", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"]));
+        // Its manifest claims the image's contract, its assembly was built against 1.1.0: refused as well.
+        var claims = await Install("2026.11.24-23", NativeContract.Version, new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, old, []));
+        var rebuilt = await Install("2026.11.24-24", NativeContract.Version, new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"]));
         await using var host = new Host(store.Options);
         var c = host.CreateClient();
         static object Ack(string d) => new
@@ -173,12 +173,12 @@ public sealed class ContractTwoTests(Store store)
         var r = await Post(c, Ack(legacy));
         Assert.Equal(("error", NativeAssemblies.ContractUnsupported, false), ((string?)r["kind"], (string?)r["name"], (bool?)r["retryable"]));
         Assert.Contains("native contract 1.1.0", (string?)r["message"]);
-        Assert.Contains("rebuild every module against 2.0.0", (string?)r["message"]);
+        Assert.Contains($"rebuild every module against {NativeContract.Version}", (string?)r["message"]);
         var cr = await Post(c, Ack(claims));
         Assert.Equal(NativeAssemblies.ContractUnsupported, (string?)cr["name"]);
-        Assert.Contains("was built against native contract 1.1.0, its manifest says 2.0.0", (string?)cr["message"]);
+        Assert.Contains($"was built against native contract 1.1.0, its manifest says {NativeContract.Version}", (string?)cr["message"]);
         Assert.Equal("ack", (string?)(await Post(c, Ack(rebuilt)))["outcome"]);
-        Assert.Equal("2.0.0", (string?)(await c.GetFromJsonAsync<JsonObject>("/modules"))!["contract"]);
+        Assert.Equal(NativeContract.Version, (string?)(await c.GetFromJsonAsync<JsonObject>("/modules"))!["contract"]);
     }
 
     [Fact]
@@ -187,10 +187,10 @@ public sealed class ContractTwoTests(Store store)
         // A scheme release's module, built at its own assembly version: the same assembly name, two versions, one context each.
         var v1 = await Task.Run(() => ModuleBuilds.Wps("wps-v1-20", "1.20.0"));
         var v2 = await Task.Run(() => ModuleBuilds.Wps("wps-v1-23", "1.23.0"));
-        var a = await Install("2026.11.24-25", "2.0.0",
+        var a = await Install("2026.11.24-25", NativeContract.Version,
             new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, [$"{ModuleBuilds.PostingWindow}@{ModuleBuilds.PostingWindowRelease}"]),
             new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, v1, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"]));
-        var b = await Install("2026.11.24-26", "2.0.0",
+        var b = await Install("2026.11.24-26", NativeContract.Version,
             new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformB, [$"{ModuleBuilds.PostingWindow}@{ModuleBuilds.PostingWindowRelease}"]),
             new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, v2, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"]));
         await using var host = new Host(store.Options);
@@ -208,8 +208,8 @@ public sealed class ContractTwoTests(Store store)
         Assert.Equal("1.20.0.0", Version(a));
         Assert.Equal("1.23.0.0", Version(b));
         Assert.NotEqual((string?)loaded[a]["context"], (string?)loaded[b]["context"]);
-        // Both are 2.0.0 modules: the contract the image shares with them is one.
-        Assert.Equal("2.0.0", NativeAssemblies.ContractOf(v1));
-        Assert.Equal("2.0.0", NativeAssemblies.ContractOf(v2));
+        // Both are modules of the image's contract: the contract the image shares with them is one.
+        Assert.Equal(NativeContract.Version, NativeAssemblies.ContractOf(v1));
+        Assert.Equal(NativeContract.Version, NativeAssemblies.ContractOf(v2));
     }
 }
