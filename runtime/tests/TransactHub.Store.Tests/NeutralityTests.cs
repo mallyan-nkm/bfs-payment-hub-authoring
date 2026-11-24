@@ -52,19 +52,15 @@ public sealed class NeutralityTests
     }
 
     /// <summary>
-    /// R-09-142: platform and engine host code names no scheme. A scheme's values (its channel, its awaited replies, its waits) are the
-    /// scheme pack's declared values or the bank's configuration; only the scheme's own projects (TransactHub.Activities.Wps, TransactHub.Activities.Wps.Store)
-    /// and the generated migrations may name one. The one place left is listed with its issue.
+    /// R-09-142, R-09-263: platform and engine host code names no scheme. A scheme's values (its channel, its awaited replies, its waits)
+    /// are the scheme pack's declared values or the bank's configuration, and a scheme's ports are answered by its own module's adapters on
+    /// the contract's bound ports; only the scheme's own projects (TransactHub.Activities.Wps, TransactHub.Activities.Wps.Store) and the
+    /// generated migrations may name one. Since native contract 2.0.0 nothing else is left (Issue I-237: the labour ministry's adapters moved).
     /// </summary>
     [Fact]
     public void No_platform_or_engine_host_code_names_a_scheme()
     {
         var root = Root();
-        var allowed = new Dictionary<string, string>
-        {
-            // The labour ministry's port is WPS's, but its adapters are still in the platform's ports library (Issue I-237).
-            ["src/TransactHub.Ports/EmployerRegister.cs"] = "public const string Port = \"uae.wps.port.labour-ministry.v1\";",
-        };
         var scheme = new Regex(@"""[^""]*(\buae\.wps\b|\bWPS\b)[^""]*""");
         var problems = new List<string>();
         foreach (var dir in new[] { "src", "tools/TransactHub.EngineHost", "tools/TransactHub.Migrate", "../studio/engines/shared" })
@@ -77,11 +73,16 @@ public sealed class NeutralityTests
                 {
                     var line = lines[i].Trim();
                     if (line.StartsWith("//") || !scheme.IsMatch(line)) continue;
-                    if (allowed.TryGetValue(rel, out var ok) && line == ok) continue;
                     problems.Add($"{rel}:{i + 1}: {line}");
                 }
             }
         Assert.True(problems.Count == 0, string.Join('\n', problems));
+        // The labour ministry's adapters are the WPS module's: no adapter of a scheme's port is left in the image's ports library.
+        Assert.False(File.Exists(Path.Combine(root, "src", "TransactHub.Ports", "EmployerRegister.cs")));
+        Assert.True(File.Exists(Path.Combine(root, "src", "TransactHub.Activities.Wps", "Native", "EmployerStatus.cs")));
+        foreach (var dir in new[] { "TransactHub.Ports", "TransactHub.Activities.Platform", "TransactHub.Activities.Platform.Native", "TransactHub.Native" })
+            foreach (var f in Directory.EnumerateFiles(Path.Combine(root, "src", dir), "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains("/bin/") && !f.Contains("/obj/")))
+                Assert.DoesNotContain("labour-ministry", File.ReadAllText(f).Split('\n').Where(l => !l.TrimStart().StartsWith("//")).Aggregate("", (x, y) => x + y + "\n"));
     }
 
     /// <summary>
