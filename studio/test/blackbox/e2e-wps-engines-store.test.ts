@@ -51,7 +51,7 @@ beforeAll(async () => {
 }, 900000);
 afterAll(() => {
   server?.stop();
-  for (const c of started) docker('rm', '-f', c);
+  for (const c of started) docker('rm', '-f', '-v', c);
 });
 
 /** One database server per kind, started once; each engine gets a database of its own on it. */

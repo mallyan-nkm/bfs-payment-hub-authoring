@@ -72,7 +72,7 @@ beforeAll(async () => {
 afterAll(() => {
   server?.stop();
   native?.kill();
-  for (const c of containers) spawnSync('docker', ['rm', '-f', c]);
+  for (const c of containers) spawnSync('docker', ['rm', '-f', '-v', c]);
 });
 
 describe('the source WPS outward flow, through the north-star path', () => {

@@ -107,7 +107,7 @@ afterAll(() => {
   server?.stop();
   runtime?.kill();
   for (const k of ['TH_RUNTIME_URL', 'TH_STORE_PROVIDER', 'TH_STORE_CONNECTION']) delete process.env[k];
-  for (const c of containers) spawnSync('docker', ['rm', '-f', c]);
+  for (const c of containers) spawnSync('docker', ['rm', '-f', '-v', c]);
   fs.rmSync(work, { recursive: true, force: true });
 });
 

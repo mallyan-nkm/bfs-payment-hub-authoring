@@ -74,7 +74,7 @@ beforeAll(async () => {
 afterAll(() => {
   server?.stop();
   for (const c of children) c.kill('SIGKILL');
-  for (const c of started) docker('rm', '-f', c);
+  for (const c of started) docker('rm', '-f', '-v', c);
   fs.rmSync(work, { recursive: true, force: true });
 });
 

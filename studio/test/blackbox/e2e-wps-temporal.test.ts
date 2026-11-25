@@ -138,7 +138,7 @@ describe('the WPS salary file on Temporal', () => {
   const PASSWORD = 'Th-Test-Only-1234';
   const docker = (...a: string[]) => spawnSync('docker', a, { encoding: 'utf8' });
   const started: string[] = [];
-  afterAll(() => { for (const c of started) docker('rm', '-f', c); });
+  afterAll(() => { for (const c of started) docker('rm', '-f', '-v', c); });
   async function database(kind: 'PostgreSql' | 'SqlServer') {
     const name = `th-e2e-${kind.toLowerCase()}-${process.pid}`;
     const run = kind === 'PostgreSql'

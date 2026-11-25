@@ -182,7 +182,7 @@ afterAll(async () => {
   runtime?.kill();
   native?.kill();
   for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  for (const c of containers) spawnSync('docker', ['rm', '-f', c]);
+  for (const c of containers) spawnSync('docker', ['rm', '-f', '-v', c]);
   fs.rmSync(work, { recursive: true, force: true });
 });
 
