@@ -345,8 +345,9 @@ public sealed partial class Harness : IDisposable
             // The step whose handler the attempt is in (R-09-241, Issue I-290).
             ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
-        // On the engine host the attempt ends at its deadline on the host's clock, and a later answer is ignored (R-09-298, Issue I-390).
-        if (Service.History is not null && J.Num(a, "deadline") is double due) req[WorkerRouter.AbandonAt] = Clock.WallAt((long)due);
+        // On the engine host the attempt ends at its deadline on the host's clock, and a later answer is ignored (R-09-298, Issue I-390);
+        // its budget counts from when its call starts, not from when it was scheduled (R-09-307, Issue I-397).
+        if (Service.History is not null) WorkerRouter.SetDeadline(req, a, Clock.WallAt);
         var res = await party.Call(req);
         Schedule(res);
         // The party service answers at once; the time an attempt takes is the stub's latency.

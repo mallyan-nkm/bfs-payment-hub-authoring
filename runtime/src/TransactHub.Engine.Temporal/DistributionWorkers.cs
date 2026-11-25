@@ -166,6 +166,8 @@ public sealed class DistributionWorkers : IAsyncDisposable
         }
         input["distribution"] = Distribution;
         if (J.P(payment, "legs") is JsonObject legs) built["legs"] = J.Clone(legs);
+        // The platform workflow the front door routed the payment to (R-09-85, R-09-94), when the host runs more than one.
+        if (J.S(payment, "workflow") is string workflow) built["workflow"] = workflow;
         var paymentId = J.S(payment, "id");
         if (paymentId is not null && J.P(J.P(payment, "context"), "header") is JsonObject header) Headers[paymentId] = (JsonObject)J.Clone(header)!;
         try { return await new ScenarioRunner(input) { OnFrontDoor = fd => { if (paymentId is not null) FrontDoors[paymentId] = fd; } }.Run(new WorkflowEnvironment(client), this); }

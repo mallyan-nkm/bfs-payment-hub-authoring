@@ -65,7 +65,9 @@ public sealed partial class Harness
         elsa = new ElsaHost();
         party = serviceParty = new ServiceParty(plans, distribution);
         // Attempts of different payments side by side, as many as the host allows (R-09-286, Issue I-360): the worker's calls run off
-        // the clock's thread, one at a time too, so the clock fires an attempt's timer at its deadline (R-09-298); Elsa's journals stay on it.
+        // the clock's thread, one at a time too; Elsa's journals stay on it. Each attempt's deadline is kept in its call to the worker,
+        // from when the call starts, after any wait for a free slot (R-09-298, R-09-307, Issue I-397).
+        WorkerRouter.KeepsAttemptDeadlines = true;
         attemptsAtOnce = EngineHistory.ServiceConcurrency();
         attempts = new SemaphoreSlim(attemptsAtOnce, attemptsAtOnce);
         // A worker's answer after its attempt was abandoned at its deadline: on the history, and ignored (R-09-298, Issue I-390).

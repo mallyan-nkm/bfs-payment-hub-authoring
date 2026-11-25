@@ -218,14 +218,28 @@ public sealed class TemporalDistributionHost(StoreOptions store, string distribu
         StoreSignals.Install(Store, StepFacts.Install(Store));
         // The bank's values as of each step, from the configuration releases in force (R-09-135).
         StoreValues.Install(Store);
-        workers = new DistributionWorkers(client, PlanFor(null), DeploymentName(Bank, Environment), IdPart, null, Store, pinnedAs: Distribution);
+        workers = new DistributionWorkers(client, EveryWorkflow(), DeploymentName(Bank, Environment), IdPart, null, Store, pinnedAs: Distribution);
         await workers.StartAsync();
+    }
+
+    /// <summary>
+    /// The plan the distribution's workers run: the first platform workflow's, with the documents of every platform workflow the host runs,
+    /// so a payment the front door routed to another one runs that one (R-09-94). Before, every payment ran the first workflow.
+    /// </summary>
+    JsonObject EveryWorkflow()
+    {
+        var plan = (JsonObject)J.Clone(PlanFor(null))!;
+        if (J.P(Plan, "plans") is JsonObject plans && plan["documents"] is JsonObject docs)
+            foreach (var (_, p) in plans)
+                foreach (var (k, v) in J.Obj(J.P(p, "documents")))
+                    if (!docs.ContainsKey(k)) docs[k] = J.Clone(v);
+        return plan;
     }
 
     protected override async Task<JsonObject> RunPayment(string paymentId, JsonObject context, JsonObject? legs)
     {
         Interlocked.Increment(ref open);
-        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context, ["legs"] = legs, ["now"] = DateTimeOffset.UtcNow.ToString("O") }); }
+        try { return await workers.RunPaymentAsync(new JsonObject { ["id"] = paymentId, ["context"] = context, ["legs"] = legs, ["now"] = DateTimeOffset.UtcNow.ToString("O"), ["workflow"] = Workflows.GetValueOrDefault(paymentId) }); }
         finally { Interlocked.Decrement(ref open); }
     }
 

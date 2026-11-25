@@ -430,11 +430,38 @@ public sealed class WorkerRouter : IParty
     public static Action<JsonObject, JsonObject?, Exception?>? Late;
 
     /// <summary>
-    /// The request field an engine host's service sets on an attempt (R-09-298): the wall clock's moment (Unix milliseconds) of the
-    /// attempt's deadline. At that moment the attempt ends as a retryable Timeout, marked late; the worker's later answer is ignored.
-    /// It is not sent to the worker.
+    /// The request field an engine host's service sets on an attempt (R-09-298, R-09-307): how long, in milliseconds, the attempt may
+    /// run, counted from when its call to the worker starts, so the time it waited for a free slot of the service does not count
+    /// (R-05-54, Issue I-397). When it has run so long the attempt ends as a retryable Timeout, marked late; the worker's later answer
+    /// is ignored. It is not sent to the worker.
     /// </summary>
-    public const string AbandonAt = "abandonAt";
+    public const string AttemptBudget = "attemptBudget";
+
+    /// <summary>
+    /// The request field for the latest moment an attempt may run to, whenever it starts: the wall clock's moment (Unix milliseconds)
+    /// of the step's total timeout, which counts from the step's first attempt. A moment already passed sends nothing.
+    /// </summary>
+    public const string AbandonBy = "abandonBy";
+
+    /// <summary>
+    /// The engine host's DTFx and Elsa services keep each attempt's deadline in their call to the worker (R-09-307): the interpreter
+    /// then races no attempt timer of its own, which would count from when the attempt was scheduled. Set by their services only.
+    /// </summary>
+    public static bool KeepsAttemptDeadlines;
+
+    /// <summary>
+    /// The deadline fields of an attempt on the engine host, from the interpreter's input: the attempt's own budget (its deadline less
+    /// the step's time when it scheduled the attempt) and the step's total timeout as a wall clock moment, when it has one. When the
+    /// total timeout is what binds, only it is set.
+    /// </summary>
+    public static void SetDeadline(JsonObject req, JsonNode? input, Func<long, long> wallAt)
+    {
+        if (J.Num(input, "deadline") is not double due) return;
+        var now = (long)(J.Num(input, "now") ?? due);
+        long? total = J.Num(input, "totalDeadline") is double t ? (long)t : null;
+        if (total is long tt) req[AbandonBy] = wallAt(tt);
+        if (total is not long bound || (long)due < bound) req[AttemptBudget] = Math.Max(0, (long)due - now);
+    }
 
     /// <summary>The answer of an attempt abandoned at its deadline: a retryable Timeout, marked late, as an engine that keeps the deadline gives it.</summary>
     public static JsonObject Abandoned() => new()
@@ -510,18 +537,24 @@ public sealed class WorkerRouter : IParty
                 var body = (JsonObject)J.Clone(req)!;
                 body.Remove("op");
                 if (Distribution is not null && J.S(body, "distribution") is null) body["distribution"] = Distribution;
-                long? abandonAt = J.Num(body, AbandonAt) is double ab ? (long)ab : null;
-                body.Remove(AbandonAt);
+                long? budget = J.Num(body, AttemptBudget) is double bg ? (long)bg : null;
+                long? by = J.Num(body, AbandonBy) is double ab ? (long)ab : null;
+                body.Remove(AttemptBudget);
+                body.Remove(AbandonBy);
                 // One span per attempt; HttpClient carries its context to the worker (traceparent).
                 using var span = EngineTelemetry.Attempt(req, queue);
                 try
                 {
                     Task<JsonObject>? call = null;
-                    if (abandonAt is long at)
+                    if (budget is not null || by is not null)
                     {
                         // The engine host's attempt ends at its deadline on the host's clock (R-09-298): a call that outlives it is
-                        // abandoned, and its answer, when it comes, is ignored. A deadline already passed sends nothing.
-                        var left = at - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        // abandoned, and its answer, when it comes, is ignored. Its budget counts from now, as its call starts, so the
+                        // time it waited for a slot of the service is not counted (R-09-307); the step's total timeout is a moment.
+                        // A deadline already passed sends nothing.
+                        var start = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        var at = Math.Min(budget is long b ? start + b : long.MaxValue, by ?? long.MaxValue);
+                        var left = at - start;
                         call = left > 0 ? Post($"{url}/attempt", body) : null;
                         if (call is null || await Task.WhenAny(call, Task.Delay(TimeSpan.FromMilliseconds(left))) != call)
                         {

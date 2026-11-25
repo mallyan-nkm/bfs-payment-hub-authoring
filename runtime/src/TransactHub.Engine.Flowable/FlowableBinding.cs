@@ -683,6 +683,9 @@ public sealed partial class FlowableBinding
         return moved;
     }
 
+    /// <summary>How long after an attempt's timer boundary is due the binding abandons the worker's call (R-09-310): the boundary goes first.</summary>
+    const long LateGrace = 1000;
+
     /// <summary>The timer boundary of an attempt (studio/src/export/bpmn.ts: <c>{sid}_timeout</c> on <c>{sid}_task</c>).</summary>
     static bool IsAttemptTimer(BpmnProcess? def, string element) =>
         def is not null && element.EndsWith("_timeout", StringComparison.Ordinal) && def.Ann(element[..^"_timeout".Length] + "_task", "task") is not null;
@@ -853,6 +856,11 @@ public sealed partial class FlowableBinding
         if (HandlerOf(job, def) is { } handlerOf) req["handlerOf"] = handlerOf;
         // A worker that does not answer is a technical failure, not an attempt: the job's retries cover it.
         JsonObject? res = null;
+        // Production: the worker's call is abandoned a second after the attempt's timer boundary is due (R-09-310, Issue I-401), so a call
+        // that outlives its timeout holds the binding up no longer than that. The boundary, armed as the attempt began, ends the attempt
+        // first; the call's answer, if it comes later, is the router's to ignore and never reaches the payment.
+        if (opts.Production && job.ElementId.EndsWith("_task", StringComparison.Ordinal) && def.DurationOf(job.ElementId[..^"_task".Length] + "_timeout") is string budget && budget.StartsWith('P'))
+            req[WorkerRouter.AttemptBudget] = Duration.Ms(budget) + LateGrace;
         // A job the binding had answered before it restarted (Issue I-89) is answered from the journal, not called again.
         var reused = answered.TryGetValue(job.Id, out var kept);
         if (reused)

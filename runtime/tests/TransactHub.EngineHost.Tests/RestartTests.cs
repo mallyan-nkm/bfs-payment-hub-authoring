@@ -86,6 +86,22 @@ public partial class EngineHostTests
         return plan;
     }
 
+    /// <summary>On Flowable, <c>p.wf.timeout.v1</c> as the studio exports it (<see cref="TimeoutBpmn"/>): a step whose attempt may outlive its three seconds.</summary>
+    static JsonObject TimeoutPlan(string release, string workerUrl)
+    {
+        var plan = Plan("flowable", release, workerUrl, "PT1S");
+        var docs = (JsonObject)plan["documents"]!;
+        docs[$"p.wf.timeout.v1@{release}"] = JsonNode.Parse($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.timeout.v1", "release": "{{release}}", "do": [
+              { "id": "a", "call": "p.enrich.check.v1", "policy": { "attemptTimeout": "PT3S" } },
+              { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
+        ((JsonObject)plan["built"]!)["workflow"] = "p.wf.timeout.v1";
+        plan["bpmn"] = new JsonObject { [$"p.wf.timeout.v1@{release}.bpmn20.xml"] = TimeoutBpmn.Xml };
+        return plan;
+    }
+
     async Task UseStore(string database) => store = database == "sqlserver" ? await servers.SqlServer() : servers.Store;
 
     /// <summary>A bank's distribution installed and active, with its plan: from the stored package (DTFx, Elsa) or written (Flowable's BPMN).</summary>
@@ -100,8 +116,8 @@ public partial class EngineHostTests
         if (engine == "flowable")
         {
             await Install(bank, id);
-            await File.WriteAllTextAsync(Path.Combine(plans, $"{Safe.Of(dist)}.json"), AskPlan("1.0.0", worker.Url).ToJsonString());
-            workflow = "p.wf.ask.v1";
+            await File.WriteAllTextAsync(Path.Combine(plans, $"{Safe.Of(dist)}.json"), (timeout ? TimeoutPlan("1.0.0", worker.Url) : AskPlan("1.0.0", worker.Url)).ToJsonString());
+            workflow = timeout ? "p.wf.timeout.v1" : "p.wf.ask.v1";
         }
         else
         {
@@ -381,6 +397,132 @@ public partial class EngineHostTests
                 Assert.DoesNotContain(ofA, x => x.d.ToJsonString().Contains("1.0.0#1"));
                 Assert.Equal("1.0.0#2", (string?)ofA[1].d["writes"]?["facts.a"]);
             }
+            await ChainsIntact(p);
+        }
+        catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+        {
+            throw new Xunit.Sdk.XunitException($"{x.Message}\n{x.StackTrace}\n--- the supervisor's log ---\n{sup?.Log}");
+        }
+        finally
+        {
+            if (sup is not null) await sup.DisposeAsync();
+            System.Environment.SetEnvironmentVariable("TH_HOST_SERVICE_CONCURRENCY", null);
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
+    [Fact] public Task Temporal_abandons_an_attempt_at_its_deadline_and_retries_it_on_PostgreSql() => BindingPlacesTheDeadline("temporal", "postgres");
+    [Fact] public Task Temporal_abandons_an_attempt_at_its_deadline_and_retries_it_on_SqlServer() => BindingPlacesTheDeadline("temporal", "sqlserver");
+    [Fact] public Task Flowable_abandons_an_attempt_at_its_deadline_and_retries_it_on_PostgreSql() => BindingPlacesTheDeadline("flowable", "postgres");
+    [Fact] public Task Flowable_abandons_an_attempt_at_its_deadline_and_retries_it_on_SqlServer() => BindingPlacesTheDeadline("flowable", "sqlserver");
+
+    /// <summary>
+    /// R-09-299, R-09-310 (Issue I-401), as <see cref="OutlivesItsTimeout"/> is for DTFx and Elsa: on Temporal and Flowable the binding
+    /// places an attempt's deadline (Temporal's Start-To-Close on a real server, Flowable's attempt timer boundary armed when the binding
+    /// begins the attempt). A worker's call that outlives its three seconds (it takes ten) is abandoned at its deadline, and the retry
+    /// reaches the worker while the first call is still out. The first call's late answer is ignored: the payment's facts hold the attempt
+    /// that timed out and the one that answered, never the late answer's writes, and the payment takes the retry's answer.
+    /// </summary>
+    async Task BindingPlacesTheDeadline(string engine, string database)
+    {
+        await UseStore(database);
+        using var worker = new Worker { TagAttempts = true };
+        var (bank, dist, plans, workflow) = await Distribution(engine, "tb", "PT1S", worker, timeout: true);
+        var p = $"T2-{bank}";
+        var slow = TimeSpan.FromSeconds(10);
+        worker.AttemptDelay = (payment, step, attempt) => payment == p && step == "a" && attempt == 1 ? slow : TimeSpan.Zero;
+        Supervisor? sup = null;
+        try
+        {
+            sup = await Current(engine, bank, plans, dist);
+            var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.timeout.v1" });
+            Assert.True(r.status == 202, r.body.ToJsonString());
+            var e = await Ended(sup, p);
+            Assert.True(J.S(e, "outcome") == "done", e.ToJsonString());
+            // The retry reached the worker after the deadline and before the first call answered: the first was abandoned, not awaited.
+            await Until(() => Task.FromResult(worker.Timed.Count(x => x.call == $"{p}:a") >= 2), TimeSpan.FromSeconds(30), "the first call's late answer");
+            var calls = string.Join(", ", worker.Timed.Select(x => $"{x.call}#{x.attempt} at {x.at:O} answered {x.answered:O}"));
+            var a1 = worker.Timed.FirstOrDefault(x => x.call == $"{p}:a" && x.attempt == 1);
+            var a2 = worker.Timed.FirstOrDefault(x => x.call == $"{p}:a" && x.attempt == 2);
+            Assert.True(a1.call is not null && a2.call is not null, calls);
+            Assert.True(a2.at - a1.at >= TimeSpan.FromSeconds(2.5), $"the retry came {a2.at - a1.at} after the first attempt: before its deadline ({calls})");
+            Assert.True(a2.at < a1.answered, $"the retry came at {a2.at:O}, after the first call answered at {a1.answered:O}: the attempt was not abandoned at its deadline");
+            Assert.Equal(1, worker.Timed.Count(x => x.call == $"{p}:b"));
+            // The payment took the retry's answer, never the late one.
+            var ctx = J.P(J.A(J.P(e, "observation"), "instances").FirstOrDefault(), "ctx");
+            if (ctx is not null) Assert.Equal("1.0.0#2", J.S(J.P(ctx, "facts"), "a"));
+            // The payment's facts: step a timed out on its first attempt and answered on its second; nothing of the late answer, though
+            // it came after the payment had ended.
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            var subject = await SubjectOf(p) ?? throw new Xunit.Sdk.XunitException($"{p} was not accepted");
+            await using (var db = StoreDbContext.Open(Db))
+            {
+                var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").OrderBy(f => f.Seq).ToListAsync();
+                // By attempt: on Temporal the attempt that timed out is told a second after its Start-To-Close, when the retry may already have answered.
+                var ofA = steps.Select(f => (f.Code, d: JsonNode.Parse(f.DataJson)!)).Where(x => J.S(x.d, "step") == "a").OrderBy(x => (int)(J.Num(x.d, "attempt") ?? 0)).ToList();
+                var shown = string.Join("; ", ofA.Select(x => $"{x.Code} {x.d.ToJsonString()}"));
+                Assert.DoesNotContain(ofA, x => x.d.ToJsonString().Contains("1.0.0#1"));
+                Assert.True(ofA.Count >= 1 && ofA[^1].Code == "ok" && (int)(J.Num(ofA[^1].d, "attempt") ?? 0) == 2, shown);
+                Assert.Equal("1.0.0#2", (string?)ofA[^1].d["writes"]?["facts.a"]);
+                Assert.True(ofA.Count == 2 && ofA[0].Code == "error" && J.S(J.P(ofA[0].d, "error"), "name") == "Timeout" && (int)(J.Num(ofA[0].d, "attempt") ?? 0) == 1, shown);
+            }
+            await ChainsIntact(p);
+        }
+        catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))
+        {
+            throw new Xunit.Sdk.XunitException($"{x.Message}\n{x.StackTrace}\n--- the supervisor's log ---\n{sup?.Log}");
+        }
+        finally
+        {
+            if (sup is not null) await sup.DisposeAsync();
+            System.Environment.SetEnvironmentVariable("TH_HOST_WORKERS", null);
+            try { Directory.Delete(plans, true); } catch { }
+        }
+    }
+
+    [Fact] public Task Dtfx_does_not_count_an_attempts_wait_for_a_slot_against_its_timeout_on_PostgreSql() => WaitsForASlot("dtfx", "postgres");
+    [Fact] public Task Dtfx_does_not_count_an_attempts_wait_for_a_slot_against_its_timeout_on_SqlServer() => WaitsForASlot("dtfx", "sqlserver");
+    [Fact] public Task Elsa_does_not_count_an_attempts_wait_for_a_slot_against_its_timeout_on_PostgreSql() => WaitsForASlot("elsa", "postgres");
+    [Fact] public Task Elsa_does_not_count_an_attempts_wait_for_a_slot_against_its_timeout_on_SqlServer() => WaitsForASlot("elsa", "sqlserver");
+
+    /// <summary>
+    /// R-09-307 (Issue I-397; R-05-54: the time an attempt waits in a queue does not count against its timeout). With one slot
+    /// (TH_HOST_SERVICE_CONCURRENCY=1), a payment's two branches schedule their attempts at once, each with three seconds; each call
+    /// takes two. The second waits two seconds for the slot and then runs its two seconds: it answers within its own three, so it is
+    /// taken, first time. Before, its deadline counted from when it was scheduled, so it was abandoned a second into its call and retried.
+    /// </summary>
+    async Task WaitsForASlot(string engine, string database)
+    {
+        await UseStore(database);
+        using var worker = new Worker { TagAttempts = true };
+        var (bank, dist, plans, _) = await Distribution(engine, "slot", "PT1S", worker, timeout: true);
+        var p = $"Q1-{bank}";
+        worker.AttemptDelay = (payment, step, _) => payment == p ? TimeSpan.FromSeconds(2) : TimeSpan.Zero;
+        System.Environment.SetEnvironmentVariable("TH_HOST_SERVICE_CONCURRENCY", "1");
+        Supervisor? sup = null;
+        try
+        {
+            sup = await Current(engine, bank, plans, dist);
+            var r = await sup.Call("POST", "/payments", new JsonObject { ["paymentId"] = p, ["context"] = Context(p), ["workflow"] = "p.wf.queued.v1" });
+            Assert.True(r.status == 202, r.body.ToJsonString());
+            var e = await Ended(sup, p);
+            Assert.True(J.S(e, "outcome") == "done", e.ToJsonString());
+            // One attempt of each step reached the worker, one after the other: the second waited for the slot.
+            var calls = worker.Timed.Where(x => x.call.StartsWith($"{p}:")).OrderBy(x => x.at).ToList();
+            Assert.True(calls.Count == 2, string.Join(", ", calls.Select(x => $"{x.call}#{x.attempt} at {x.at:O}")));
+            Assert.All(calls, x => Assert.Equal(1, x.attempt));
+            Assert.True(calls[1].at >= calls[0].answered - TimeSpan.FromMilliseconds(200), $"the second call came at {calls[1].at:O}, before the first answered at {calls[0].answered:O}: it did not wait for the slot");
+            // Neither attempt timed out, and no answer was late.
+            var subject = await SubjectOf(p) ?? throw new Xunit.Sdk.XunitException($"{p} was not accepted");
+            await using (var db = StoreDbContext.Open(Db))
+            {
+                var steps = await db.Facts.AsNoTracking().Where(f => f.SubjectId == subject && f.Kind == "step").OrderBy(f => f.Seq).ToListAsync();
+                var of = steps.Select(f => (f.Code, d: JsonNode.Parse(f.DataJson)!)).Where(x => J.S(x.d, "step") is "a" or "c").ToList();
+                Assert.True(of.All(x => x.Code == "ok") && of.Count == 2, string.Join("; ", of.Select(x => $"{x.Code} {x.d.ToJsonString()}")));
+                Assert.All(of, x => Assert.Equal(1, (int)(J.Num(x.d, "attempt") ?? 0)));
+            }
+            Assert.DoesNotContain(await EngineChain(engine, dist), f => f.Code == "late-answer");
             await ChainsIntact(p);
         }
         catch (Exception x) when (x is not Xunit.Sdk.XunitException || !x.Message.Contains("--- the supervisor's log ---"))

@@ -1055,13 +1055,16 @@ public sealed partial class Interp
                     ["deadline"] = limitAt == long.MaxValue ? null : limitAt,
                 };
                 if (frame.HandlerOf is not null) input["handlerOf"] = J.Clone(frame.HandlerOf);
+                // The step's total timeout, which counts from its first attempt; the deadline is the earlier of it and the attempt's own.
+                if (total != long.MaxValue) input["totalDeadline"] = total;
                 var task = eng.Activity($"{J.S(act, "name")}@{release}", input);
                 var cts = new CancellationTokenSource();
                 var waits = new List<Task> { task, frame.Scope.CancelledTask };
                 Task? timer = null;
                 // R-05-54: the attempt timeout measures the attempt's own execution. An engine that keeps the deadline
-                // itself answers a late attempt as a Timeout; any other races a timer on its business clock.
-                if (limitAt != long.MaxValue && eng is not IAttemptDeadlines) { timer = eng.AttemptTimer(limitAt, cts.Token); waits.Add(timer); }
+                // itself answers a late attempt as a Timeout; any other races a timer on its business clock. On the engine host
+                // DTFx's and Elsa's services keep it in their call to the worker, from when the call starts (R-09-307, Issue I-397).
+                if (limitAt != long.MaxValue && eng is not IAttemptDeadlines && !WorkerRouter.KeepsAttemptDeadlines) { timer = eng.AttemptTimer(limitAt, cts.Token); waits.Add(timer); }
                 var w = await Task.WhenAny(waits);
                 if (w == task)
                 {

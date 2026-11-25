@@ -70,6 +70,11 @@ public sealed class Host
             // The step whose handler the attempt is in (R-09-241, Issue I-290).
             ["handlerOf"] = J.Clone(J.P(a, "handlerOf")),
         };
+        // On a real server the attempt's Start-To-Close is its budget (R-09-299): the worker's call is abandoned a second after it, so the
+        // worker's late answer is ignored and never recorded as the step's, and the attempt that timed out is (R-09-310, Issue I-401).
+        if (TemporalEngine.RealServer && J.Num(a, "deadline") is not null && ActivityExecutionContext.HasCurrent
+            && ActivityExecutionContext.Current.Info.StartToCloseTimeout is TimeSpan budget)
+            req[WorkerRouter.AttemptBudget] = (long)budget.TotalMilliseconds + 1000;
         var res = await Party.Call(req);
         var deliveries = J.Clone(J.P(res, "deliveries")) ?? new JsonArray();
         double? latency = J.S(Dep.Stub(step, activity), "latency") is string l ? Duration.Ms(l) : null;

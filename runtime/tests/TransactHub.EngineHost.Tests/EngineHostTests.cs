@@ -513,7 +513,8 @@ public partial class EngineHostTests(Servers servers)
 
     /// <summary>A distribution's stored package as the studio builds it: an engine package per platform workflow (engine/&lt;wf&gt;/).</summary>
     /// <param name="flowable">The package as the studio exports it for Flowable too: the platform workflow's BPMN beside its documents (I-269).</param>
-    /// <param name="timeout">A second platform workflow, whose first step's call may outlive its attempt's timeout (R-09-298).</param>
+    /// <param name="timeout">A second platform workflow, whose first step's call may outlive its attempt's timeout (R-09-298), and a third,
+    /// whose two branches call at once, each with an attempt timeout of three seconds (R-09-307).</param>
     static byte[] Package(string release, bool flowable = false, bool timeout = false)
     {
         var docs = Documents(release);
@@ -522,6 +523,14 @@ public partial class EngineHostTests(Servers servers)
             { "kind": "workflow", "wfKind": "platform", "name": "p.wf.timeout.v1", "release": "{{release}}", "do": [
               { "id": "a", "call": "p.enrich.check.v1", "policy": { "attemptTimeout": "PT3S" } },
               { "id": "b", "call": "p.enrich.check.v1" },
+              { "end": "done" } ] }
+            """);
+        // Two attempts scheduled at once, each with three seconds (R-09-307): with one slot, the second waits for the first's call.
+        if (timeout) docs[$"p.wf.queued.v1@{release}"] = Doc($$"""
+            { "kind": "workflow", "wfKind": "platform", "name": "p.wf.queued.v1", "release": "{{release}}", "do": [
+              { "id": "both", "parallel": { "join": "all", "branches": [
+                [ { "id": "a", "call": "p.enrich.check.v1", "policy": { "attemptTimeout": "PT3S" } } ],
+                [ { "id": "c", "call": "p.enrich.check.v1", "policy": { "attemptTimeout": "PT3S" } } ] ] } },
               { "end": "done" } ] }
             """);
         docs[$"p.wf.ask.v1@{release}"] = Doc($$"""
@@ -543,6 +552,8 @@ public partial class EngineHostTests(Servers servers)
             {
                 Put("engine/p.wf.timeout.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
                 foreach (var (k, v) in docs) Put($"engine/p.wf.timeout.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
+                Put("engine/p.wf.queued.v1/binding.yaml", "kind: engine-binding\nqueues:\n  p: th-p\n");
+                foreach (var (k, v) in docs) Put($"engine/p.wf.queued.v1/{(k.StartsWith("p.wf.") ? "workflows" : "activities")}/{k}.yaml", v!.ToJsonString());
             }
         }
         return ms.ToArray();
