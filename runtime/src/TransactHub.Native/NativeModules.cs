@@ -147,7 +147,7 @@ public sealed class NativeModules : IDisposable
         catch (NativeAssembliesRefused e) { throw new NativeRefusal(e.Code ?? "native.ModuleRefused", $"{distribution}: {e.Message}"); }
         var releases = (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>()
             .Where(a => (string?)a["kind"] == "activity").Select(a => $"{(string?)a["name"]}@{(string?)a["release"]}").ToHashSet(StringComparer.Ordinal);
-        var table = Build(distribution, modules, releases);
+        var table = Build(distribution, modules, releases, NativeServed.PostsWith(manifest));
         // Every activity the host answers for the distribution is served, by the image or a module as loaded (R-09-291, Issue I-384): a
         // distribution built before its runtime's contract moved an activity into a module is refused here, not at the payment's step.
         var unserved = NativeServed.Unserved(manifest, p => files.TryGetValue(p, out var c) ? c : null, (name, _) => table.ByName.ContainsKey(name));
@@ -159,7 +159,7 @@ public sealed class NativeModules : IDisposable
         return table;
     }
 
-    ActivityTable Build(string key, IReadOnlyList<NativeModulePackage> modules, IReadOnlySet<string>? releases)
+    ActivityTable Build(string key, IReadOnlyList<NativeModulePackage> modules, IReadOnlySet<string>? releases, IReadOnlyDictionary<string, string>? postsWith = null)
     {
         var carried = modules.SelectMany(m => m.Files).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
         ModuleContext? ctx = modules.Count == 0 ? null : new ModuleContext($"th-native:{key}", carried);
@@ -189,6 +189,11 @@ public sealed class NativeModules : IDisposable
             }
             // The image's platform activities, made with what this distribution's modules gave them.
             foreach (var a in platform(contributions)) byName.TryAdd(a.Name, a);
+            // A scheme's posting that posts with the platform's is answered by the platform module's posting, with the scheme activity's
+            // own parameters as the accounting template, on the bank's core-banking binding and through the gate the platform module
+            // contributes (R-09-311, Issue I-400): an imported scheme, which brings no module, so reaches core banking only through the platform.
+            foreach (var (posting, target) in postsWith ?? new Dictionary<string, string>())
+                if (byName.TryGetValue(target, out var answers)) byName.TryAdd(posting[..posting.LastIndexOf('@')], answers);
         }
         catch
         {

@@ -5,7 +5,7 @@ import { canonicalJson } from '../core/canonical.js';
 import { parseName, parseScope } from '../core/names.js';
 import { keyOf, Store } from '../core/store.js';
 import { parseYamlAll } from '../core/yaml.js';
-import { checkDocument, interfaceDiff, MODULE_SERVICES, proposeRelease } from '../checks/checks.js';
+import { checkDocument, interfaceDiff, MODULE_SERVICES, PLATFORM_POSTING, postsWithMisfits, proposeRelease } from '../checks/checks.js';
 import type { StudioEnv } from '../env.js';
 import { unzip } from '../export/zip.js';
 import { saveSample, saveScript } from '../governance/authoring.js';
@@ -183,6 +183,9 @@ function tenantFor(doc: any, opts: ImportOptions): string {
 
 /** The documents the import rewrote from a builtin a native module answers to a script-behind, with the builtin's service (R-09-297). */
 const rewritten = new WeakMap<object, string>();
+/** The postings the import kept as builtins that post with the platform's posting (R-09-311), and why another could not. */
+const postsWith = new WeakSet<object>();
+const misfits = new WeakMap<object, string[]>();
 
 /** Everything the import knows before it saves anything. */
 export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): Promise<Report> {
@@ -214,17 +217,30 @@ export async function analyse(env: StudioEnv, b: Bundle, opts: ImportOptions): P
   // A builtin of the accounting or reservation service in the imported scheme: on the runtime only a native module of its scheme
   // answers it (lint L40 asks native: true), and an imported scheme brings no module, so its promotable distribution would be refused.
   // It is imported as a script-behind of the same contract, with a finding that says why (R-09-297, Issue I-387).
+  // A posting whose contract is the platform posting's posts with it instead (R-09-311, Issue I-400): it stays a builtin, and on the
+  // runtime the platform module answers it with the scheme's own parameters as the accounting template, on the bank's core-banking
+  // binding and through the posting gate, so the scheme reaches core banking only through the platform.
+  const platformPosting = env.store.latest(PLATFORM_POSTING)?.doc;
   for (const { doc } of b.docs) {
     if (doc?.kind !== 'activity' || !scope || parseName(doc.name ?? '')?.scope !== scope) continue;
     const impl = doc.implementation ?? {};
     if (impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service)) {
+      const why = impl.service === 'accounting' ? (platformPosting ? postsWithMisfits(doc, platformPosting) : [`${PLATFORM_POSTING} is not in the catalogue`]) : [];
+      if (impl.service === 'accounting' && !why.length) {
+        doc.implementation = { binding: 'builtin', service: 'accounting', native: true, postsWith: PLATFORM_POSTING };
+        postsWith.add(doc);
+        continue;
+      }
       doc.implementation = { binding: 'script', language: 'typescript', script: `scripts/${doc.name}.ts` };
       rewritten.set(doc, impl.service);
+      if (why.length) misfits.set(doc, why);
     }
   }
   for (const { doc } of b.docs) {
+    if (postsWith.has(doc)) warn('I55', doc.name, `A builtin posting in the source whose contract is the platform's posting: it is imported to post with ${PLATFORM_POSTING} (implementation.postsWith). On the runtime the platform module answers it with this activity's own parameters as the accounting template, on the bank's core-banking binding in force and through the posting gate; the scheme brings no module. Check that the parameters' defaults are the source's template, and that the bank sets its accounts.`);
     const service = rewritten.get(doc);
-    if (service) warn('I54', doc.name, `A builtin of the ${service} service in the source: on the runtime only the scheme's own native module answers it, and an imported scheme brings none, so its distribution would be refused. It is imported as a script-behind of the same contract (binding script), which runs the reference behaviour in the studio. Translate the source's ${service === 'reservation' ? 'reservation' : 'posting'} into its script, or call the platform's ${service === 'reservation' ? 'p.reserve.funds.v1' : 'p.post.accounting.v1'} instead.`);
+    const cannot = misfits.get(doc);
+    if (service) warn('I54', doc.name, `A builtin of the ${service} service in the source: on the runtime only the scheme's own native module answers it, and an imported scheme brings none, so its distribution would be refused. It is imported as a script-behind of the same contract (binding script), which runs the reference behaviour in the studio.${cannot ? ` It cannot post with the platform's posting ${PLATFORM_POSTING}: ${cannot.join('; ')}.` : ''} Translate the source's ${service === 'reservation' ? 'reservation' : 'posting'} into its script, or call the platform's ${service === 'reservation' ? 'p.reserve.funds.v1' : PLATFORM_POSTING} instead.`);
   }
 
   // A shadow of the catalogue, in memory only, with the bundle in it as if it were published: what

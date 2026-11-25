@@ -41,7 +41,8 @@ public static class NativeContract
         var why = $"the distribution's native assemblies were built against native contract {version ?? "(none)"}; this runtime supports {o.Major}.x up to {own}";
         if (!System.Version.TryParse(version, out var v)) return why;
         if (v.Major < o.Major) return why + $": rebuild every module against {own} and build a new distribution (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.2)";
-        if (v.Major == o.Major && v.Minor > o.Minor) return why + $": take the runtime images of contract {v.Major}.{v.Minor}, or build the distribution's modules against {own}";
+        // The images move first (R-09-309, Issue I-398): a studio of a later minor builds modules this runtime does not take.
+        if (v.Major == o.Major && v.Minor > o.Minor) return why + $": take the runtime images of contract {v.Major}.{v.Minor} first, then install the distribution, or build the distribution's modules against {own} (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.4)";
         return why;
     }
 }

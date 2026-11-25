@@ -262,7 +262,13 @@ export function imageReferences(m: NativeModuleBuild): string[] {
 export function nativeModules(docs: any[], scopeOf: (name: string) => string, promotable: boolean): { section: any; files: Record<string, string>; artefacts: any[]; problems: string[] } {
   const byScope = new Map<string, string[]>();
   const nativeOnly = new Map<string, string[]>();
+  // A scheme's posting that posts with the platform's (R-09-311, Issue I-400): the platform module answers it, not a module of its scope.
+  const postsWith: Record<string, string> = {};
   for (const d of docs.filter(isNative)) {
+    if (d.implementation?.postsWith) {
+      postsWith[`${d.name}@${d.release}`] = d.implementation.postsWith;
+      continue;
+    }
     const s = scopeOf(d.name);
     byScope.set(s, [...(byScope.get(s) ?? []), `${d.name}@${d.release}`].sort());
     if (d.implementation?.binding !== 'script') nativeOnly.set(s, [...(nativeOnly.get(s) ?? []), `${d.name}@${d.release}`].sort());
@@ -306,6 +312,20 @@ export function nativeModules(docs: any[], scopeOf: (name: string) => string, pr
     const banking = modules.filter((m) => m.activities.some((a: string) => (byKey.get(a)?.ports ?? []).includes(CORE_BANKING_PORT)));
     for (const m of banking) problems.push(`The module of ${m.scope} carries activities that name ${CORE_BANKING_PORT} (${m.activities.filter((a: string) => (byKey.get(a)?.ports ?? []).includes(CORE_BANKING_PORT)).join(', ')}), and the distribution carries no platform module: the runtime calls core banking only through the gate the platform module contributes (R-09-279). Set TH_NATIVE_MODULES so the platform module is built too`);
   }
-  const section = { contract: contract ?? contractVersion(), modules, ...(notCarried.length ? { notCarried } : {}) };
+  // A posting that posts with the platform's needs the platform module, which answers it on the runtime (R-09-311). A test distribution
+  // without it runs the posting's builtin on its worker instead, as any scope whose module it does not carry.
+  const posted = Object.keys(postsWith).sort();
+  const platformModule = modules.find((m) => m.scope === 'p');
+  if (posted.length && !platformModule) {
+    if (promotable) problems.push(`${posted.join(', ')} post${posted.length === 1 ? 's' : ''} with the platform's posting, which the platform module answers on the runtime, and the distribution carries no platform module: set TH_NATIVE_MODULES so the platform module is built too (R-09-311)`);
+    else for (const k of posted) { const s = scopeOf(k.slice(0, k.lastIndexOf('@'))); if (!notCarried.includes(s)) notCarried.push(s); }
+  }
+  // The runtime takes the posting only where the platform module lists what it posts with, as it lists every activity it serves.
+  for (const k of posted) {
+    const target = postsWith[k];
+    if (platformModule && !platformModule.activities.some((a: string) => a.startsWith(`${target}@`)))
+      problems.push(`${k} posts with ${target}, which the distribution does not carry, so its platform module does not list it (R-09-311)`);
+  }
+  const section = { contract: contract ?? contractVersion(), modules, ...(notCarried.length ? { notCarried } : {}), ...(posted.length ? { postsWith: Object.fromEntries(posted.map((k) => [k, postsWith[k]])) } : {}) };
   return { section, files, artefacts, problems };
 }

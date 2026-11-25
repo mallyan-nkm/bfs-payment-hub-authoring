@@ -89,6 +89,12 @@ public sealed class ContractTwoOneTests(Store store)
         var e = Assert.Throws<NativeAssembliesRefused>(() => NativeAssemblies.Check(manifest, f => files.TryGetValue(f, out var x) ? x : null, files.Keys, runtimeContract: "2.0.0"));
         Assert.Equal(NativeAssemblies.ContractUnsupported, e.Code);
         Assert.Contains("this runtime supports 2.x up to 2.0.0", e.Message);
+        // A 2.1 runtime refuses a 2.2 module so too, and says the images move first (R-09-309, Issue I-398).
+        var e21 = Assert.Throws<NativeAssembliesRefused>(() => NativeAssemblies.Check(manifest, f => files.TryGetValue(f, out var x) ? x : null, files.Keys, runtimeContract: "2.1.0"));
+        Assert.Equal(NativeAssemblies.ContractUnsupported, e21.Code);
+        Assert.Contains("built against native contract 2.2.0", e21.Message);
+        Assert.Contains("this runtime supports 2.x up to 2.1.0: take the runtime images of contract 2.2 first, then install the distribution", e21.Message);
+        Assert.Contains("section 3.4", e21.Message);
         // The same distribution on this runtime is taken.
         Assert.Single(NativeAssemblies.Check(manifest, f => files.TryGetValue(f, out var x) ? x : null, files.Keys));
     }
@@ -178,6 +184,78 @@ public sealed class ContractTwoOneTests(Store store)
 
             // The image answers none of them: with no distribution and no development module, the host has no reservation to run.
             Assert.Equal("native.NotNative", (string?)(await Post(c, Attempt(null, "p.reserve.funds.v1", "1.1.0", view.DeepClone())))["name"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TH_BANKS_DIR", null);
+            banks.Delete(true);
+        }
+    }
+
+    /// <summary>An imported scheme's posting that posts with the platform's (R-09-311, Issue I-400): a builtin the runtime answers.</summary>
+    const string SchemePosting = "kind: activity\nname: uae.xps.post.payment.v1\nrelease: 1.0.0\ntype: post\nports:\n  - p.port.core-banking.v1\nimplementation:\n  binding: builtin\n  service: accounting\n  native: true\n  postsWith: p.post.accounting.v1\n";
+
+    async Task<string> InstallPosting(string id, string postsWith, params ModuleBuilds.Module[] modules)
+    {
+        var (manifest, package) = ModuleBuilds.Distribution(Bank, id, NativeContract.Version, new Dictionary<string, string> { ["uae.xps.post.payment.v1@1.0.0"] = SchemePosting }, modules);
+        ((JsonObject)manifest["native"]!)["postsWith"] = new JsonObject { ["uae.xps.post.payment.v1@1.0.0"] = postsWith };
+        await using var db = StoreDbContext.Open(store.Options);
+        await new DistributionRegistry(db).Store(Bank, id, package, manifest, ModuleBuilds.Sha(package)[7..], "test", "a scheme's posting that posts with the platform's");
+        return DistributionRegistry.IdOf(Bank, id);
+    }
+
+    /// <summary>
+    /// R-09-311 (Issue I-400): an imported scheme brings no native module, so its posting, when its contract is the platform posting's,
+    /// posts with the platform's: the native host answers it from the distribution's platform module, with the scheme activity's own
+    /// parameters as the accounting template, on the bank's core-banking binding in force and through the posting gate the platform module
+    /// contributes. Outside the binding's window the gate holds core banking back. Without the platform module the distribution is refused
+    /// as it is loaded: there is no other way to core banking.
+    /// </summary>
+    [Fact]
+    public async Task An_imported_schemes_posting_posts_with_the_platforms_posting_through_the_posting_gate()
+    {
+        var banks = Directory.CreateTempSubdirectory("th-native-pw-banks-");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(banks.FullName, Bank));
+            await File.WriteAllTextAsync(Path.Combine(banks.FullName, Bank, "core-banking.yaml"), $"""
+                kind: port-bindings
+                tenant: {Bank}
+                bindings:
+                  - port: p.port.core-banking.v1
+                    adapter: simulator
+                    validFrom: 2026-01-01T00:00:00Z
+                    settings:
+                      openingBalance: "5000"
+                      currency: AED
+                      postingWindowStart: "07:00"
+                      postingWindowEnd: "22:00"
+                """);
+            var withPlatform = await InstallPosting("2026.11.25-81", "p.post.accounting.v1", new ModuleBuilds.Module("p", ModuleBuilds.PlatformAssembly, store.PlatformA, ["p.post.accounting.v1@1.3.0"]));
+            var withoutPlatform = await InstallPosting("2026.11.25-82", "p.post.accounting.v1", new ModuleBuilds.Module("uae.wps", ModuleBuilds.Assembly, store.BuildA, [$"{ModuleBuilds.AckIn}@{ModuleBuilds.AckInRelease}"]));
+            await using var host = new Host(store.Options, banks.FullName);
+            var c = host.CreateClient();
+            var view = new JsonObject
+            {
+                ["header"] = new JsonObject { ["paymentId"] = "P-NATIVE-PW-1", ["direction"] = "outward", ["businessDate"] = "2026-11-25" },
+                ["payment"] = new JsonObject { ["debtorAccount"] = new JsonObject { ["id"] = "0010000000001" }, ["instructedAmount"] = new JsonObject { ["value"] = 1200, ["currency"] = "AED" } },
+                ["facts"] = new JsonObject(),
+            };
+            // The scheme's own template: its parameters, as the bank set them on the scheme's activity.
+            var template = new { template = "xps-payment", transactionCode = "XPS", reversalTransactionCode = "XRV", narration = "Scheme payment", settlementAccount = "9990000000002", chargeSlabs = Array.Empty<object>(), vatPercent = 0 };
+            var posted = await Post(c, Attempt(withPlatform, "uae.xps.post.payment.v1", "1.0.0", view.DeepClone(), template, "2026-11-25T06:00:00Z"));
+            Assert.True((string?)posted["outcome"] == "posted", posted.ToJsonString());
+            Assert.Equal("xps-payment", (string?)posted["writes"]!["facts.posting"]!["template"]);
+            var postings = (await c.GetFromJsonAsync<JsonArray>("/postings"))!.OfType<JsonObject>().Single(x => (string?)x["tenant"] == Bank);
+            var batch = ((JsonArray)postings["batches"]!).OfType<JsonObject>().Single(b => (string?)b["reference"] == "P-NATIVE-PW-1");
+            Assert.All(((JsonArray)batch["legs"]!).OfType<JsonObject>(), l => Assert.Equal("XPS", (string?)l["txnCode"]));
+            // The posting gate: outside the binding's window core banking is not asked, a retryable error.
+            var closed = await Post(c, Attempt(withPlatform, "uae.xps.post.payment.v1", "1.0.0", view.DeepClone(), template, "2026-11-25T20:00:00Z"));
+            Assert.Equal(("error", "TransientError", true), ((string?)closed["kind"], (string?)closed["name"], (bool?)closed["retryable"]));
+            // Without the platform module nothing answers it, and the distribution is refused as it is loaded.
+            var refused = await Post(c, Attempt(withoutPlatform, "uae.xps.post.payment.v1", "1.0.0", view.DeepClone(), template, "2026-11-25T06:00:00Z"));
+            Assert.Equal(("error", NativeAssemblies.ActivityUnserved), ((string?)refused["kind"], (string?)refused["name"]));
+            Assert.Contains("uae.xps.post.payment.v1@1.0.0", (string?)refused["message"]);
         }
         finally
         {

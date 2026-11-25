@@ -24,7 +24,7 @@ public sealed class NativeInstallTests(Databases dbs)
 
     /// <summary>A distribution with a native module, signed as the studio signs it; each argument breaks one thing.</summary>
     static byte[] Distribution(ECDsa key, string id, byte[] assembly, string? claimedSha = null, string contract = TransactHub.Activities.Native.NativeContract.Version, string name = Asm, string? stray = null,
-        string scope = "uae.wps", string[]? activities = null, IReadOnlyDictionary<string, string>? docs = null)
+        string scope = "uae.wps", string[]? activities = null, IReadOnlyDictionary<string, string>? docs = null, JsonObject? postsWith = null)
     {
         var path = $"activities/native/{scope}/{name}.dll.base64";
         var files = new Dictionary<string, string> { ["binding.yaml"] = "kind: engine-binding\ntarget: temporal\n", [path] = Convert.ToBase64String(assembly) + "\n" };
@@ -49,6 +49,7 @@ public sealed class NativeInstallTests(Databases dbs)
                 ["files"] = new JsonArray(new JsonObject { ["path"] = path, ["name"] = $"{name}.dll", ["sha256"] = claimedSha ?? real }),
             }),
         };
+        if (postsWith is not null) native["postsWith"] = postsWith;
         var manifest = new JsonObject { ["kind"] = "distribution", ["id"] = id, ["bank"] = Bank, ["engine"] = "temporal", ["longestWait"] = "PT0S", ["billOfMaterials"] = bom.DeepClone(), ["parameterContract"] = pc.DeepClone(), ["native"] = native };
         files["manifest.yaml"] = manifest.ToJsonString();
         var bytes = files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
@@ -162,6 +163,8 @@ public sealed class NativeInstallTests(Databases dbs)
         Assert.DoesNotContain("p.hold.approval.v1", refusedBody);
         Assert.DoesNotContain("p.validate.limits.v1", refusedBody);
         Assert.Contains("section 3.3", refusedBody);
+        // The refusal names the rebuild: the factory release and the native contract (R-09-308, Issue I-399).
+        Assert.Contains($"rebuild the distribution once from a studio of factory {NativeServed.RebuildFactory} or later, with its module builds made against native contract {TransactHub.Activities.Native.NativeContract.Version}", refusedBody);
 
         // Rebuilt at factory 1.23.0: the reservation says native: true and the platform module serves it. Installed.
         var platform = File.ReadAllBytes(typeof(TransactHub.Activities.Platform.Native.PlatformNativeModule).Assembly.Location);
@@ -192,6 +195,38 @@ public sealed class NativeInstallTests(Databases dbs)
             }
             finally { ctx.Unload(); }
         }
+    }
+
+    /// <summary>An imported scheme's posting that posts with the platform's (R-09-311, Issue I-400): a builtin the runtime answers.</summary>
+    const string SchemePosting = "kind: activity\nname: uae.xps.post.payment.v1\nrelease: 1.0.0\ntype: post\nports:\n  - p.port.core-banking.v1\nimplementation:\n  binding: builtin\n  service: accounting\n  native: true\n  postsWith: p.post.accounting.v1\n";
+
+    /// <summary>
+    /// R-09-311 (Issue I-400), on SQL Server and PostgreSQL: a scheme's posting that posts with the platform's is served by the platform
+    /// module, so the release API installs a distribution that carries it with the platform module, and refuses one without it
+    /// (`native.ActivityUnserved`, naming the posting), or one whose manifest has it post with an activity the platform module does not list.
+    /// </summary>
+    [Theory, MemberData(nameof(Providers.Both), MemberType = typeof(Providers))]
+    public async Task A_schemes_posting_that_posts_with_the_platforms_needs_the_platform_module(StoreProvider p)
+    {
+        using var s = new TestSigners();
+        await using var host = new ApiHost(dbs.Fresh(p), s);
+        var c = host.Client();
+        var docs = new Dictionary<string, string> { ["uae.xps.post.payment.v1@1.0.0"] = SchemePosting };
+        var platform = File.ReadAllBytes(typeof(TransactHub.Activities.Platform.Native.PlatformNativeModule).Assembly.Location);
+        JsonObject To(string target) => new() { ["uae.xps.post.payment.v1@1.0.0"] = target };
+        var (ok, okBody) = await Post(c, Distribution(s.Key, "2026.11.25-71", platform, scope: "p", name: "TransactHub.Activities.Platform.Native",
+            activities: ["p.post.accounting.v1@1.3.0"], docs: docs, postsWith: To("p.post.accounting.v1")));
+        Assert.True(ok == HttpStatusCode.Created, okBody);
+        // Without the platform module (only WPS's): nothing answers the posting, and core banking is not reached any other way.
+        var (none, noneBody) = await Post(c, Distribution(s.Key, "2026.11.25-72", Wps, docs: docs, postsWith: To("p.post.accounting.v1")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, none);
+        Assert.Contains(NativeAssemblies.ActivityUnserved, noneBody);
+        Assert.Contains("uae.xps.post.payment.v1@1.0.0", noneBody);
+        // Posting with an activity the platform module does not list is not taken: the posting is then served by nothing.
+        var (other, otherBody) = await Post(c, Distribution(s.Key, "2026.11.25-73", platform, scope: "p", name: "TransactHub.Activities.Platform.Native",
+            activities: ["p.post.accounting.v1@1.3.0"], docs: docs, postsWith: To("p.post.verify.v1")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, other);
+        Assert.Contains("uae.xps.post.payment.v1@1.0.0", otherBody);
     }
 
     /// <summary>R-09-291: what the native host answers on a runtime, read from an activity's document.</summary>

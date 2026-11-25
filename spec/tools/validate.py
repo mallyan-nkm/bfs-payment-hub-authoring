@@ -782,6 +782,55 @@ for path, d in docs:
         err("L40", path, "%s is a builtin of the %s service, which a native module answers on the runtime and the image does not; it says native: true"
             % (d["name"], impl.get("service")))
 
+# L64 (R-09-311, Issue I-400): an activity that posts with the platform's posting (`implementation.postsWith`) is a scheme's builtin of the
+# accounting service that says native: true, and its contract is the posting's: the same outcomes and primary, the same writes, every read
+# of the posting and each of its parameters, of the same type. On the runtime the platform module answers it with its own parameters.
+def _covers(root, p):
+    r, q = root.replace("[]", ""), p.replace("[]", "")
+    return q == r or q.startswith(r + ".")
+
+def posts_with_misfits(d, posting):
+    out = []
+    names = lambda xs: sorted(o.get("name") for o in (xs or []))
+    primary = lambda xs: next((o.get("name") for o in (xs or []) if o.get("primary")), None)
+    if names(d.get("outcomes")) != names(posting.get("outcomes")):
+        out.append("its outcomes are %s, the posting's %s" % (", ".join(names(d.get("outcomes"))) or "none", ", ".join(names(posting.get("outcomes")))))
+    elif primary(d.get("outcomes")) != primary(posting.get("outcomes")):
+        out.append("its primary outcome is %s, the posting's %s" % (primary(d.get("outcomes")), primary(posting.get("outcomes"))))
+    if sorted(d.get("writes") or []) != sorted(posting.get("writes") or []):
+        out.append("it writes %s, the posting %s" % (", ".join(sorted(d.get("writes") or [])) or "nothing", ", ".join(sorted(posting.get("writes") or []))))
+    unread = [r for r in posting.get("reads") or [] if not any(_covers(x, r) for x in d.get("reads") or [])]
+    if unread:
+        out.append("it does not read %s, which the posting reads" % ", ".join(unread))
+    for k, p in (posting.get("parameters") or {}).items():
+        q = (d.get("parameters") or {}).get(k)
+        if not q:
+            out.append("it does not declare the posting's parameter %s" % k)
+        elif q.get("type") != p.get("type"):
+            out.append("its parameter %s is a %s, the posting's a %s" % (k, q.get("type"), p.get("type")))
+    return out
+
+_latest = {}
+for _, d in docs:
+    if d.get("kind") == "activity" and d.get("name"):
+        prev = _latest.get(d["name"])
+        if prev is None or tuple(map(int, str(d.get("release", "0.0.0")).split("."))) >= tuple(map(int, str(prev.get("release", "0.0.0")).split("."))):
+            _latest[d["name"]] = d
+for path, d in docs:
+    impl = d.get("implementation") or {}
+    if d.get("kind") != "activity" or "postsWith" not in impl:
+        continue
+    scope = scope_of(d.get("name", ""))
+    if impl.get("binding") != "builtin" or impl.get("service") != "accounting" or impl.get("native") is not True:
+        err("L64", path, "%s posts with %s, but it is not a builtin of the accounting service that says native: true" % (d["name"], impl["postsWith"]))
+    elif scope == "p" or scope.endswith(".p") or scope == "b":
+        err("L64", path, "%s posts with %s, but it is not a scheme's: only a scheme's posting posts with the platform's" % (d["name"], impl["postsWith"]))
+    elif impl["postsWith"] not in _latest:
+        err("L64", path, "%s posts with %s, which is not in the catalogue" % (d["name"], impl["postsWith"]))
+    else:
+        for m in posts_with_misfits(d, _latest[impl["postsWith"]]):
+            err("L64", path, "%s posts with %s, but %s" % (d["name"], impl["postsWith"], m))
+
 # ------------------------------------------------------- factory packs
 # L34 the factory holds only the packs its inventory lists (R-12-11): every folder under factory/
 # is a listed shared pack with a manifest, every listed shared pack has a folder, and every

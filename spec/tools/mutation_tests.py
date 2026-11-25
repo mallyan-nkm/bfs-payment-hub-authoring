@@ -320,6 +320,16 @@ CASES = [
     # R-09-296 (Issue I-387): L40 in every scope; a scheme's builtin posting says its module answers it.
     ("M111", "ERROR L40", "factory/uae.wps/activities/uae.wps.post.return.v1.yaml",
      "  service: accounting\n  native: true\n", "  service: accounting\n", "WPS's return posting does not say the WPS module answers it"),
+    # L64 (R-09-311, Issue I-400): a posting that posts with the platform's is a scheme's builtin posting whose contract is the posting's
+    ("M115", "ERROR L64", "factory/uae.wps/activities/uae.wps.post.return.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n  native: true\n  postsWith: p.post.accounting.v1\n",
+     "WPS's return posting, which reads the returns and not the payment, posts with the platform's posting"),
+    ("M116", "ERROR L64", "factory/p/activities/p.post.accounting.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n  native: true\n  postsWith: p.post.accounting.v1\n",
+     "the platform's posting posts with itself: only a scheme's posting may"),
+    ("M117", "ERROR L00", "factory/uae.wps/activities/uae.wps.post.return.v1.yaml",
+     "  service: accounting\n  native: true\n", "  service: accounting\n  native: true\n  postsWith: p.post.verify.v1\n",
+     "a posting that posts with an activity that is not the platform's posting"),
 ]
 
 

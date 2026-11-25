@@ -270,6 +270,11 @@ public sealed class SideBySideTests(Store store)
         Assert.True(NativeContract.Supports("2.0.0", "2.0.0"));
         Assert.False(NativeContract.Supports("2.1.0", "2.0.0"));
         Assert.Contains("take the runtime images of contract 2.1", NativeContract.Refusal("2.1.0", "2.0.0"));
+        // A 2.2 module on a 2.0 or 2.1 image: refused, and the refusal says to move the images first (R-09-309, Issue I-398).
+        Assert.False(NativeContract.Supports("2.2.0", "2.1.0"));
+        Assert.False(NativeContract.Supports("2.2.0", "2.0.0"));
+        foreach (var image in new[] { "2.0.0", "2.1.0" })
+            Assert.Contains($"this runtime supports 2.x up to {image}: take the runtime images of contract 2.2 first, then install the distribution", NativeContract.Refusal("2.2.0", image));
         // 2.0.0 hands out no type of the image (Issue I-226) and gives a module bound ports (Issue I-315).
         Assert.Null(typeof(INativeServices).GetMethod("Service"));
         Assert.NotNull(typeof(INativeServices).GetProperty(nameof(INativeServices.BoundPorts)));

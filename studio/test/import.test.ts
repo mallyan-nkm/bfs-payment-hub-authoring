@@ -106,6 +106,31 @@ describe('import: the training bundle', () => {
     expect(saved.ports).toEqual(['p.port.core-banking.v1']);
   });
 
+  it('imports a builtin posting whose contract is the platform posting\'s to post with it, through the platform module (R-09-311, Issue I-400)', async () => {
+    const env = freshEnv();
+    const platform = env.store.latest('p.post.accounting.v1')!.doc;
+    // The source's posting, with the platform posting's contract: what it reads, and each of its parameters (the scheme's template).
+    const file = 'artefacts/activities/uae.wpsx.post.return.v1.yaml';
+    const fits = (d: any) => {
+      d.reads = [...new Set([...(d.reads ?? []), ...platform.reads])];
+      d.parameters = { ...Object.fromEntries(Object.entries<any>(platform.parameters).map(([k, v]) => [k, { ...v }])), ...d.parameters };
+    };
+    expect(wpsTrainingBundle(env).some((f) => f.name === file)).toBe(true);
+    const r = await analyse(env, readBundle(edited(env, file, yamlEdit(fits))), OPTS);
+    expect(errors(r)).toEqual([]);
+    const finding = r.issues.find((i: any) => i.code === 'I55' && i.where === 'uae.wpsx.post.return.v1');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.message).toMatch(/post with p\.post\.accounting\.v1.*platform module answers it with this activity's own parameters as the accounting template.*posting gate/);
+    expect(r.issues.filter((i: any) => i.code === 'I54')).toEqual([]);
+    const res = await apply(env, readBundle(edited(env, file, yamlEdit(fits))), { ...OPTS, actor: 'shared.designer', bankActor: 'example.maker' });
+    expect(res.applied).toBe(true);
+    const saved = env.store.drafts('owner').find((d) => d.name === 'uae.wpsx.post.return.v1')!.doc;
+    expect(saved.implementation).toEqual({ binding: 'builtin', service: 'accounting', native: true, postsWith: 'p.post.accounting.v1' });
+    // The bundle's posting as the factory's is, reading the returns and not the payment, cannot: it is a script-behind, and says why.
+    const plain = await analyse(env, readBundle(wpsTrainingBundle(env)), OPTS);
+    expect(plain.issues.find((i: any) => i.code === 'I54' && i.where === 'uae.wpsx.post.return.v1')?.message).toMatch(/cannot post with the platform's posting p\.post\.accounting\.v1: .*does not read payment/);
+  });
+
   it('a second import of the same, once published, is unchanged and saves nothing new', async () => {
     const env = freshEnv();
     const first = await apply(env, readBundle(wpsTrainingBundle(env)), { ...OPTS, actor: 'shared.designer', bankActor: 'example.maker' });

@@ -47,6 +47,7 @@ public static class NativeServed
     public static IReadOnlyList<string> Unserved(JsonObject manifest, Func<string, byte[]?> file, Func<string, string, bool> serves)
     {
         var notCarried = (manifest["native"]?["notCarried"] as JsonArray ?? []).Select(x => x?.ToString() ?? "").ToHashSet(StringComparer.Ordinal);
+        var postsWith = PostsWith(manifest);
         var outp = new List<string>();
         foreach (var a in (manifest["billOfMaterials"]?["artefacts"] as JsonArray ?? []).OfType<JsonObject>())
         {
@@ -55,19 +56,53 @@ public static class NativeServed
             var release = (string?)a["release"] ?? "";
             if (notCarried.Contains((string?)a["scope"] ?? ScopeOf(name))) continue;
             if (file(path) is not { } bytes || Doc(bytes) is not { } doc || !AnsweredByTheHost(doc)) continue;
+            // A scheme's posting that posts with the platform's is served by what serves the platform's posting (R-09-311, Issue I-400).
+            if (postsWith.TryGetValue($"{name}@{release}", out var target))
+            {
+                if (!serves(target, AnyRelease)) outp.Add($"{name}@{release}");
+                continue;
+            }
             if (!ImageActivities.Contains(name) && !serves(name, release)) outp.Add($"{name}@{release}");
         }
         return outp;
     }
 
-    /// <summary>At install: served by the image or listed by a module of the manifest, by name and release or by name.</summary>
+    /// <summary>
+    /// At install: served by the image or listed by a module of the manifest, by name and release or by name. What a scheme's posting
+    /// posts with is served only where the platform module lists it (R-09-311).
+    /// </summary>
     public static IReadOnlyList<string> Unserved(JsonObject manifest, Func<string, byte[]?> file, IReadOnlyList<NativeModulePackage> modules) =>
-        Unserved(manifest, file, (name, release) => modules.Any(m => m.Activities.Contains($"{name}@{release}") || m.Activities.Contains(name)));
+        Unserved(manifest, file, (name, release) => release == AnyRelease
+            ? modules.Any(m => m.Scope == "p" && m.Activities.Any(a => a == name || a.StartsWith(name + "@", StringComparison.Ordinal)))
+            : modules.Any(m => m.Activities.Contains($"{name}@{release}") || m.Activities.Contains(name)));
 
-    /// <summary>The refusal's text: what is not served, and what to do (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.3).</summary>
+    /// <summary>The release a check of what a posting posts with names: any, since a scheme's posting does not pin the platform's (R-09-311).</summary>
+    public const string AnyRelease = "*";
+
+    /// <summary>
+    /// The postings of the distribution that post with the platform's (R-09-311, Issue I-400): <c>name@release</c> to the platform
+    /// activity that answers it on the runtime, as the studio wrote them (<c>native.postsWith</c>; lint L64 holds it to the platform's
+    /// posting). The image names no platform activity: it takes only a platform activity, which only the platform module serves.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> PostsWith(JsonObject manifest) =>
+        (manifest["native"]?["postsWith"] as JsonObject ?? new JsonObject())
+            .Where(kv => kv.Value?.ToString() is { } t && t.StartsWith("p.", StringComparison.Ordinal))
+            .ToDictionary(kv => kv.Key, kv => kv.Value!.ToString(), StringComparer.Ordinal);
+
+    /// <summary>
+    /// The earliest factory release whose every builtin the native host answers says so (<c>implementation.native: true</c>, R-09-296):
+    /// a distribution built from it, with its scopes' modules, lists every such activity under the module that serves it (Issue I-399).
+    /// </summary>
+    public const string RebuildFactory = "1.24.0";
+
+    /// <summary>
+    /// The refusal's text: what is not served, and the rebuild to do, by factory release and native contract (R-09-308, Issue I-399;
+    /// docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.3).
+    /// </summary>
     public static string Refusal(IReadOnlyList<string> unserved) =>
         $"{NativeAssemblies.ActivityUnserved}: it carries {string.Join(", ", unserved)}, which the runtime's native host answers, and neither the runtime image nor a native module of the distribution serves {(unserved.Count == 1 ? "it" : "them")}: " +
-        "build a new distribution from a studio of the factory release the runtime takes, install and activate it (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.3)";
+        $"rebuild the distribution once from a studio of factory {RebuildFactory} or later, with its module builds made against native contract {TransactHub.Activities.Native.NativeContract.Version} (the contract of this runtime), " +
+        "then install and activate the new distribution and let this one drain (docs/runtime/PACKAGING-AND-DEPLOYMENT.md section 3.3)";
 
     static string ScopeOf(string name)
     {

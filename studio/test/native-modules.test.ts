@@ -224,6 +224,35 @@ describe('a module that calls core banking needs the platform module (R-09-295, 
   });
 });
 
+describe('a scheme\'s posting that posts with the platform\'s needs the platform module (R-09-311, Issue I-400)', () => {
+  it('lists it under postsWith, not under a module of its scope; a promotable distribution without the platform module is refused', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'th-test-posts-with-'));
+    try {
+      const posting = { kind: 'activity', name: 'uae.xps.post.payment.v1', release: '1.0.0', ports: ['p.port.core-banking.v1'], implementation: { binding: 'builtin', service: 'accounting', native: true, postsWith: 'p.post.accounting.v1' } };
+      const fx = { kind: 'activity', name: 'p.enrich.fx-rate.v1', release: '1.3.0', implementation: { binding: 'script', native: true } };
+      const platformPosting = { kind: 'activity', name: 'p.post.accounting.v1', release: '1.3.0', implementation: { binding: 'builtin', service: 'accounting', native: true } };
+      // With the platform module: the posting is the platform module's to answer, by the platform's posting.
+      writeModuleFolder(path.join(root, 'p'), 'p', SYNTHETIC_PLATFORM_ASSEMBLY, syntheticAssembly(SYNTHETIC_PLATFORM_ASSEMBLY, [CONTRACT]));
+      process.env.TH_NATIVE_MODULES = root;
+      const ok = nativeModules([posting, fx, platformPosting], scopeOf, true);
+      expect(ok.problems).toEqual([]);
+      expect(ok.section.postsWith).toEqual({ 'uae.xps.post.payment.v1@1.0.0': 'p.post.accounting.v1' });
+      expect(ok.section.modules.map((m: any) => m.scope)).toEqual(['p']);
+      expect(ok.section.modules[0].activities).toEqual(['p.enrich.fx-rate.v1@1.3.0', 'p.post.accounting.v1@1.3.0']);
+      // The platform module must list what the posting posts with: a distribution that does not carry the platform's posting is refused.
+      expect(nativeModules([posting, fx], scopeOf, true).problems).toEqual([expect.stringMatching(/^uae\.xps\.post\.payment\.v1@1\.0\.0 posts with p\.post\.accounting\.v1, which the distribution does not carry/)]);
+      expect(ok.section.notCarried).toBeUndefined();
+      // Without it: refused when promotable; a test distribution runs the posting's builtin on its worker (its scope is not carried).
+      fs.rmSync(path.join(root, 'p'), { recursive: true, force: true });
+      const refused = nativeModules([posting, fx], scopeOf, true);
+      expect(refused.problems).toEqual([expect.stringMatching(/^uae\.xps\.post\.payment\.v1@1\.0\.0 posts with the platform's posting, which the platform module answers on the runtime, and the distribution carries no platform module/)]);
+      const test = nativeModules([posting, fx], scopeOf, false);
+      expect(test.problems).toEqual([]);
+      expect(test.section.notCarried).toEqual(['p', 'uae.xps']);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
 describe('a module build made ahead of time is signed (R-09-127, Issue I-223)', () => {
   it('a folder signed by a trusted key is taken; a tampered one and an unsigned one are refused', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'th-test-signed-'));

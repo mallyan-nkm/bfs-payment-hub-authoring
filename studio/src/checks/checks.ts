@@ -38,6 +38,37 @@ export interface Issue {
  */
 export const MODULE_SERVICES = ['accounting', 'reservation'];
 
+/**
+ * The platform's posting, which a scheme's builtin posting may post with (`implementation.postsWith`, R-09-311, Issue I-400): on the
+ * runtime the platform module answers it, with the scheme activity's own parameters as the accounting template, on the bank's
+ * core-banking binding in force and through the posting gate the platform module contributes. A scheme with no native module of its own
+ * (an imported scheme) so reaches core banking only through the platform.
+ */
+export const PLATFORM_POSTING = 'p.post.accounting.v1';
+
+/**
+ * Why an activity cannot post with the platform's posting (R-09-311): what of its contract is not the posting's. Its outcomes, their
+ * primary and its writes are the posting's; it reads what the posting reads; it declares each of the posting's parameters, of the same
+ * type, so the bank sets the scheme's template on the scheme's own parameters. Empty when it fits.
+ */
+export function postsWithMisfits(d: any, posting: any): string[] {
+  const out: string[] = [];
+  const names = (xs: any[] | undefined) => (xs ?? []).map((o: any) => o.name).sort();
+  const primary = (xs: any[] | undefined) => (xs ?? []).find((o: any) => o.primary)?.name;
+  if (names(d.outcomes).join() !== names(posting.outcomes).join()) out.push(`its outcomes are ${names(d.outcomes).join(', ') || 'none'}, the posting's ${names(posting.outcomes).join(', ')}`);
+  else if (primary(d.outcomes) !== primary(posting.outcomes)) out.push(`its primary outcome is ${primary(d.outcomes) ?? 'none'}, the posting's ${primary(posting.outcomes)}`);
+  const writes = (x: any) => [...(x.writes ?? [])].sort().join(', ');
+  if (writes(d) !== writes(posting)) out.push(`it writes ${writes(d) || 'nothing'}, the posting ${writes(posting)}`);
+  const unread = (posting.reads ?? []).filter((r: string) => !coveredByAny(d.reads ?? [], r));
+  if (unread.length) out.push(`it does not read ${unread.join(', ')}, which the posting reads`);
+  for (const [k, p] of Object.entries<any>(posting.parameters ?? {})) {
+    const q = d.parameters?.[k];
+    if (!q) out.push(`it does not declare the posting's parameter ${k}`);
+    else if (q.type !== p.type) out.push(`its parameter ${k} is a ${q.type}, the posting's a ${p.type}`);
+  }
+  return out;
+}
+
 export const CHECK_CATALOGUE: Record<string, string> = {
   L00: 'Schema validity',
   L02: 'Scope direction',
@@ -93,6 +124,7 @@ export const CHECK_CATALOGUE: Record<string, string> = {
   L56: 'A parameter marked a ledger account is an activity\'s string or code',
   L57: 'A pure activity names no port; a check without rule sets is pure only as a script',
   L60: 'A bank that binds the rates port requires each rate\'s asOf: its configuration sets p.enrich.fx-rate.v1#requireAsOf to true',
+  L64: 'An activity that posts with the platform\'s posting is a scheme\'s builtin posting that says native: true, and its contract is the posting\'s',
 };
 
 // ---------------------------------------------------------------- walking
@@ -784,6 +816,20 @@ export class Checker {
         err('L40', `${d.name} says the native host implements it too, but its binding is ${impl.binding}; native: true needs a script or a builtin`);
       if (impl.binding === 'builtin' && MODULE_SERVICES.includes(impl.service) && impl.native !== true)
         err('L40', `${d.name} is a builtin of the ${impl.service} service, which a native module answers on the runtime and the image does not; it says native: true`);
+      // L64 (R-09-311, Issue I-400): an activity that posts with the platform's posting is a scheme's builtin posting the runtime
+      // answers (native: true), and its contract is the posting's, so the platform module can answer it with its own parameters.
+      if (impl.postsWith !== undefined) {
+        const scope = parseName(d.name ?? '')?.scope ?? '';
+        if (impl.binding !== 'builtin' || impl.service !== 'accounting' || impl.native !== true)
+          err('L64', `${d.name} posts with ${impl.postsWith}, but it is not a builtin of the accounting service that says native: true`);
+        else if (scope === 'p' || scope.endsWith('.p') || scope === 'b')
+          err('L64', `${d.name} posts with ${impl.postsWith}, but it is not a scheme's: only a scheme's posting posts with the platform's`);
+        else {
+          const posting = this.byName.get(impl.postsWith);
+          if (!posting) err('L64', `${d.name} posts with ${impl.postsWith}, which is not in the catalogue`);
+          else for (const m of postsWithMisfits(d, posting)) err('L64', `${d.name} posts with ${impl.postsWith}, but ${m}`);
+        }
+      }
     }
     // L28: the script-behind uses only the injected interface.
     if (this.scriptOf && d.implementation?.binding === 'script') {

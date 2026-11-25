@@ -104,6 +104,14 @@ The factory release that marks the builtins is 1.23.0 (change set CS-2026-11-24-
 
 No bank is live yet, so no payment is pinned to such a distribution; the step is for every installation from now on.
 
+**The one-off rebuild of a distribution built at factory 1.23.0 that carries WPS (Issue I-399).** At factory 1.23.0 WPS's own posting, `uae.wps.post.return.v1` 1.2.0, was a builtin on core banking that did not yet say `native: true`, so a WPS module built then does not list it among the activities it serves. The release API counts a module's activities as its manifest lists them, because it does not load the module (R-09-291), so it refuses such a distribution at install with `native.ActivityUnserved`, naming `uae.wps.post.return.v1@1.2.0`; the native host, which reads what the loaded module serves, would have taken it. The refusal names the rebuild (R-09-308): a studio of factory 1.24.0 or later, and module builds made against the native contract of the runtime that refused it. Once, for every bank whose distribution was built at factory 1.23.0 and carries WPS:
+
+1. Build a new distribution of the bank from a studio of factory 1.24.0 or later (the latest the runtime takes), with its module builds (`TH_NATIVE_MODULES`) made against the runtime's native contract (2.2.0 now, `GET /health` on the native host says it). At 1.24.0 `uae.wps.post.return.v1` is 1.3.0, says `native: true`, and the WPS module lists it.
+2. Install it and activate it; new payments are pinned to it.
+3. Let the refused or older distribution drain, then remove it (section 6). A distribution the release API refused was never stored, so nothing is pinned to it.
+
+No bank is live and the laptop builds from the current studio, so no installation holds such a distribution today.
+
 ### 3.4 Native contract 2.2.0, a minor (R-09-293, R-09-294)
 
 Issue I-385 moved WPS's sends onto the bound ports. A file put of 2.1.0 named no scheme message, so the File API could keep a file only as the binding's `<operation>.kind`; the sends name the message they send (R-09-234). 2.2.0 adds `NativeFilePut.Message`, an init property, and changes nothing else, so a module built against 2.0 or 2.1 is not rebuilt.
@@ -114,7 +122,9 @@ Issue I-385 moved WPS's sends onto the bound ports. A file put of 2.1.0 named no
 | WPS's sends | A kept file through the image's kept-file case of `INativePorts.Ask` | The module reads the kept file through `INativeFiles` and puts it through `INativeBoundPorts.Put` (R-09-294) |
 | The kept-file case of `INativePorts` | The way a module sent a kept file | Obsolete, kept for modules built before 2.2.0; removed at 3.0.0 |
 
-**What an installation does to move.** Take the runtime images of contract 2.2.0 before installing a distribution built by a studio of 2.2.0: a 2.1 runtime refuses its modules (`native.ContractUnsupported`). Distributions of 2.0 and 2.1 modules run on the 2.2 images unchanged, apart from the one-off rebuild of section 3.3.
+The owner confirmed the minor on 24 and 25 November 2026 (Issue I-398).
+
+**What an installation does to move: the images first (R-09-309).** Move every runtime image (the release API, the native host, the engine hosts and the File API) to contract 2.2.0 before a studio of 2.2.0 builds a bank's distribution, and so before any distribution of 2.2 modules is installed. A studio of 2.2.0 builds every module against 2.2.0 and names it in the distribution's `native.contract`, so its distribution needs a 2.2 runtime. A runtime of contract 2.0 or 2.1 refuses it, at install and when the native host loads it, with `native.ContractUnsupported`; the refusal names the contract the modules were built against and the runtime's own, and says what to do: take the runtime images of contract 2.2 first, then install the distribution, or build the distribution's modules against the runtime's contract. Distributions of 2.0 and 2.1 modules run on the 2.2 images unchanged, apart from the one-off rebuilds of section 3.3. The same holds for every later minor: the images move first, then the studio.
 
 ## 4. What is in a configuration release
 
