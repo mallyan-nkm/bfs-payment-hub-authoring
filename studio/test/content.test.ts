@@ -299,6 +299,41 @@ describe('memory only, through the GitHub API (R-11-24)', () => {
     expect(files(env)[`${ROOT}/artefacts/p/p.enrich.cs-note-g.v1/1.0.0.yaml`]).toBeUndefined();
   });
 
+  it('a file GitHub holds as other bytes than the text the studio sent is caught before the commit: built once more, then the write fails and nothing is tagged (R-09-306, Issue I-408)', async () => {
+    const env = freshEnv();
+    const c = env.store.content!;
+    const repo = c.repository;
+    const text = 'A synthetic note with a section sign: § and a quote: ’.\n';
+    // The bytes of one character arrive as another, as a body decoded a chunk at a time turned them (Issue I-408).
+    const garble = (s: string) => s.replace('§', '��');
+    let calls = 0;
+    fake().onTreeContent = (p, t) => (p.endsWith('/notes/i408-once.md') && calls++ === 0 ? garble(t) : t);
+    try {
+      await c.write(BRANCH, 'A note, garbled once', [{ path: 'notes/i408-once.md', text, guard: 'create' }], { tags: [{ name: 'dist/example-bank/2026.11.25-91', message: 'A synthetic tag' }] });
+      await c.flush();
+    } finally {
+      fake().onTreeContent = undefined;
+    }
+    expect(calls).toBe(2);
+    expect(files(env)[`${ROOT}/notes/i408-once.md`]).toBe(text);
+    expect(fake().repo(repo).tags.has('dist/example-bank/2026.11.25-91')).toBe(true);
+
+    const head = fake().head(repo, BRANCH);
+    fake().onTreeContent = (p, t) => (p.endsWith('/notes/i408-always.md') ? garble(t) : t);
+    let err: any;
+    try {
+      c.write(BRANCH, 'A note, garbled every time', [{ path: 'notes/i408-always.md', text, guard: 'create' }], { tags: [{ name: 'dist/example-bank/2026.11.25-92', message: 'A synthetic tag' }] });
+      await c.flush().catch((e) => (err = e));
+    } finally {
+      fake().onTreeContent = undefined;
+    }
+    expect(err?.code).toBe('R-09-306');
+    expect(err?.message).toMatch(/as other bytes than the text it sent, twice: content-configurations\/notes\/i408-always\.md\. Nothing was committed, no branch moved and no tag was made/);
+    expect(fake().head(repo, BRANCH)).toBe(head);
+    expect(fake().repo(repo).tags.has('dist/example-bank/2026.11.25-92')).toBe(false);
+    expect(files(env)[`${ROOT}/notes/i408-always.md`]).toBeUndefined();
+  });
+
   it('never stores, shows, logs or writes the token', async () => {
     const env = freshEnv();
     const key = await draft(env, ACT('h'));

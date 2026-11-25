@@ -55,7 +55,8 @@ function receive(m) {
   const res = play(rest, m, sync); conv.set(m.id, { fails: 0, res }); return res;
 }
 http.createServer((req, res) => {
-  let body = ''; req.on('data', (d) => body += d); req.on('end', () => {
+  const chunks = []; req.on('data', (d) => chunks.push(d)); req.on('end', () => {
+    const body = Buffer.concat(chunks).toString('utf8'); // decoded once: a character split between chunks stays whole
     const send = (code, o) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
     try {
       if (req.method === 'POST' && req.url === '/message') {

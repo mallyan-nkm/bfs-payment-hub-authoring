@@ -41,6 +41,8 @@ export class FakeGitHub {
   readonly deleted: string[] = [];
   /** Called before a ref update is checked: a test moves the branch here to play another writer. */
   beforeRefUpdate?: (repo: string, branch: string) => void;
+  /** Called on each file's text in a tree request: a test changes it here to play bytes that do not arrive as they were sent. */
+  onTreeContent?: (path: string, content: string) => string;
   private server?: http.Server;
   url = '';
   private clock = Date.parse('2026-11-21T09:00:00Z');
@@ -258,9 +260,11 @@ export class FakeGitHub {
   /** `unref`: do not keep the process alive for it (a command that reads, then exits). */
   async start(opts: { unref?: boolean; port?: number; host?: string } = {}): Promise<string> {
     this.server = http.createServer((req, res) => {
-      let raw = '';
-      req.on('data', (c) => (raw += c));
+      // The body's bytes are joined, then decoded once: a chunk may end inside a character (Issue I-408).
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
       req.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
         const send = (status: number, body: any) => (status === 204 ? res.writeHead(204).end() : res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body)));
         try {
           const url = new URL(req.url ?? '/', 'http://fake');
@@ -353,7 +357,7 @@ export class FakeGitHub {
       if (body?.base_tree && !this.get(body.base_tree, 'tree')) return unprocessable('base_tree is not a tree');
       for (const e of body?.tree ?? []) if (typeof e.content !== 'string' && e.sha !== null && !this.objects.has(e.sha)) return unprocessable(`No object ${e.sha}`);
       // An entry with `content` is stored as a blob of that text, as GitHub does.
-      const sha = this.buildTree(body?.base_tree, (body?.tree ?? []).map((e: any) => ({ path: e.path, mode: e.mode === '040000' ? '40000' : e.mode, type: e.type, sha: typeof e.content === 'string' ? this.blob(e.content) : e.sha })));
+      const sha = this.buildTree(body?.base_tree, (body?.tree ?? []).map((e: any) => ({ path: e.path, mode: e.mode === '040000' ? '40000' : e.mode, type: e.type, sha: typeof e.content === 'string' ? this.blob(this.onTreeContent ? this.onTreeContent(e.path, e.content) : e.content) : e.sha })));
       return { status: 201, body: { sha } };
     }
     if (method === 'POST' && rest === 'git/commits') {

@@ -17,6 +17,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
+import { bodyText } from '../../../studio/src/core/http-body.js';
 import { parseYaml } from '../../../studio/src/core/yaml.js';
 import { distributionCopy, type RuntimeClient } from '../../../studio/src/deploy/front-door.js';
 
@@ -138,8 +139,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/health' || url.pathname === '/health/live') return send(200, { status: 'live', distributions: [...distributions.keys()] });
     const [d, workflow, queue, ...rest] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     if (!d || !workflow || !queue) return send(404, { error: 'Call /<distribution>/<workflow>/<queue>/<path>' });
-    let raw = '';
-    for await (const c of req) raw += c;
+    const raw = await bodyText(req);
     let body: any;
     try { body = raw ? JSON.parse(raw) : undefined; } catch { body = undefined; }
     const w = choose(await workersOf(d), workflow, queue, body);

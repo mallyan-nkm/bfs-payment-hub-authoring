@@ -9,6 +9,7 @@ import { FolderSequences, SimulatorInstance } from '../sim/runtime.js';
 import { attrs, contextFrom, inSpan, initTelemetry, log, meters, shutdownTelemetry, SpanKind } from '../telemetry/telemetry.js';
 import { resolveSecret } from '../secrets/secrets.js';
 import { runtimePortGaps } from '../checks/runtime-ports.js';
+import { bodyText } from '../core/http-body.js';
 
 // A deployed activity worker (Part 9; R-09-04, R-09-05). One process per task queue. It serves only
 // the tasks its manifest lists, registered as <name>@<release>, and refuses any other. It holds
@@ -91,8 +92,7 @@ function send(res: http.ServerResponse, code: number, body: any) {
 }
 
 const server = http.createServer(async (req, res) => {
-  let raw = '';
-  for await (const c of req) raw += c;
+  const raw = await bodyText(req);
   try {
     const url = new URL(req.url ?? '/', 'http://worker');
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { queue: manifest.queue, tasks: manifest.tasks, simulators: dirs.length > 1, version, pid: process.pid, draining, inFlight });

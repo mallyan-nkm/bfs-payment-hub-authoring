@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { GitHubClient, GitHubError } from './github.js';
+import { GitHubClient, GitHubError, type Tree } from './github.js';
 import { DRAFT_PREFIX, READ_PREFIXES, STATE_ACTIONS, changeSetAuditPath, changeSetPath, draftBranch, eventFileName, isYaml } from './layout.js';
 
 // The content store (R-11-21 to R-11-24). The studio's only store is a branch of a GitHub repository:
@@ -326,7 +326,13 @@ export class ContentStore {
     const hit = SNAPSHOTS.get(k);
     if (hit) return hit;
     const top = await this.client.getTree(commit);
-    let files = new Map<string, string>();
+    const snap: Snapshot = { commit, rootTree: top.sha, files: await this.contentFiles(top) };
+    SNAPSHOTS.set(k, snap);
+    return snap;
+  }
+
+  /** The content folder of a tree as GitHub holds it: path (under the root) to blob SHA. */
+  private async contentFiles(top: Tree): Promise<Map<string, string>> {
     let sub: string | undefined = top.sha;
     let items = top.tree;
     for (const seg of this.conn.root ? this.conn.root.split('/') : []) {
@@ -335,10 +341,7 @@ export class ContentStore {
       if (!sub) break;
       items = (await this.client.getTree(sub)).tree;
     }
-    if (sub) files = new Map((await this.client.getTree(sub, true)).tree.filter((x) => x.type === 'blob').map((x) => [x.path, x.sha]));
-    const snap: Snapshot = { commit, rootTree: top.sha, files };
-    SNAPSHOTS.set(k, snap);
-    return snap;
+    return sub ? new Map((await this.client.getTree(sub, true)).tree.filter((x) => x.type === 'blob').map((x) => [x.path, x.sha])) : new Map();
   }
 
   // ------------------------------------------------------------------ change set ids
@@ -475,14 +478,15 @@ export class ContentStore {
     for (const part of parts(entries)) {
       tree = await this.client.createTree(tree, part.map((e) => (e.text === null ? { path: e.path, mode: e.mode, type: e.type, sha: null } : { path: e.path, mode: e.mode, type: e.type, content: e.text })));
     }
+    // R-09-306 (Issue I-408): before anything points at the tree, it is read back, and each file the studio writes must be
+    // there as the blob of exactly the text it wrote (and signed, for a release); a deleted file must be gone. A file
+    // GitHub holds as other bytes stops the write here, before the commit, the branch and the tag.
+    const files = await this.contentFiles(await this.client.getTree(tree));
+    const wrong = changes.filter((c, i) => (c.text === null ? files.has(c.path) : files.get(c.path) !== entries[i].sha)).map((c) => this.full(c.path));
+    if (wrong.length) throw new TreeMismatch(wrong);
     const commit = await this.client.createCommit(message, tree, parents);
-    const files = new Map(snap.files);
     changes.forEach((c, i) => {
-      if (c.text === null) files.delete(c.path);
-      else {
-        files.set(c.path, entries[i].sha!);
-        BLOBS.set(entries[i].sha!, c.text);
-      }
+      if (c.text !== null) BLOBS.set(entries[i].sha!, c.text);
     });
     const next: Snapshot = { commit, rootTree: tree, files };
     SNAPSHOTS.set(this.key(commit), next);
@@ -492,6 +496,7 @@ export class ContentStore {
   private async run(op: Op): Promise<WriteResult> {
     const onContent = op.branch === this.conn.branch;
     const d = onContent ? undefined : this.drafts.get(op.branch.slice(DRAFT_PREFIX.length));
+    let rebuilt = false;
     for (let attempt = 0; ; attempt++) {
       // A new change set branch starts from the content branch's head.
       const base = onContent ? this.head : d?.head ?? this.head;
@@ -503,7 +508,18 @@ export class ContentStore {
       if (changes.length) {
         second = op.merge?.();
         const parents = [base, ...(second && second !== base ? [second] : [])];
-        commit = (await this.commit(snap, changes, op.message, parents)).commit;
+        try {
+          commit = (await this.commit(snap, changes, op.message, parents)).commit;
+        } catch (e) {
+          if (!(e instanceof TreeMismatch)) throw e;
+          // The text did not arrive as it was sent. The tree is built once more from the start; a second mismatch fails the write.
+          if (!rebuilt) {
+            rebuilt = true;
+            attempt--;
+            continue;
+          }
+          throw new ContentError('R-09-306', `GitHub holds ${e.paths.length} file(s) the studio wrote to ${op.branch} as other bytes than the text it sent, twice: ${e.paths.slice(0, 5).join(', ')}${e.paths.length > 5 ? ', …' : ''}. Nothing was committed, no branch moved and no tag was made. Try again; if it happens again, something between the studio and GitHub changes what it sends.`);
+        }
       }
       try {
         if (!onContent && !d?.head) {
@@ -556,6 +572,13 @@ export class ContentStore {
       }
       return { status: 'committed', branch: op.branch, commit, files, ...(deletedBranches.length ? { deletedBranches } : {}), ...(tags.length ? { tags } : {}), ...(keptBranches.length ? { keptBranches } : {}) };
     }
+  }
+}
+
+/** A tree GitHub built that does not hold a file as the blob of the text the studio sent (R-09-306). */
+class TreeMismatch extends Error {
+  constructor(readonly paths: string[]) {
+    super(`The tree does not hold ${paths.join(', ')} as written`);
   }
 }
 
