@@ -149,7 +149,8 @@ afterAll(() => {
   runtime?.kill();
   delete process.env.TH_STORE_PROVIDER;
   delete process.env.TH_STORE_CONNECTION;
-  for (const c of containers) spawnSync('docker', ['rm', '-f', c]);
+  // With its anonymous volumes (-v): a run leaves nothing on the disk.
+  for (const c of containers) spawnSync('docker', ['rm', '-f', '-v', c]);
   fs.rmSync(work, { recursive: true, force: true });
 });
 
