@@ -179,7 +179,7 @@ describe.skipIf(!hasDocker)('AWS Secrets Manager (aws-sm:) and Parameter Store (
     ssmc.destroy();
   });
   afterAll(() => {
-    spawnSync('docker', ['rm', '-f', name]);
+    spawnSync('docker', ['rm', '-f', '-v', name]);
   });
 
   it('reads a secret string by name and by ARN, and one field of a JSON secret', async () => {
